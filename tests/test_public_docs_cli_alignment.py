@@ -234,7 +234,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     for stage in ("1 · Discover inventory", "2 · Scan", "3 · Reachable graph", "4 · Ranked path", "5 · Act and verify"):
         assert stage in readme
     for image in (
-        "fleet-state-live.png",
+        "inventory-live.png",
         "jobs-pipeline-live.png",
         "lineage-graph-live.png",
         "security-graph-live.png",

@@ -120,6 +120,7 @@ Current PNG inventory:
 | `security-graph-live.png` | Fix-first attack-path queue with export controls and remediation handoff | Product views |
 | `lineage-graph-live.png` | Focused filtered attack-path lineage across agent, MCP, package, and finding nodes | Product views |
 | `context-map-live.png` | Focused lateral context map with MCP reachability, shared infrastructure, credentials, tools, and findings | Product views |
+| `inventory-live.png` | Unified cross-source asset inventory with explicit evidence coverage | Product views |
 | `fleet-state-live.png` | Fleet lifecycle review state with owner, environment, trust factors, and quarantine context | Product views |
 | `gateway-policies-live.png` | Runtime gateway posture with enforcement, firewall decisions, policy rules, and bound agents | Product views |
 | `dependency-map-live.png` | Findings queue with seeded package and fictional vulnerability evidence | Product views |

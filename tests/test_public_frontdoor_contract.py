@@ -56,7 +56,7 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
     assert ">CVE</text>" not in svg
     assert ">package</text>" not in svg
     assert 'width="244" height="64"' not in svg
-    assert svg.count('width="64" height="64" rx="16"') == 12
+    assert svg.count('width="64" height="64" rx="16"') == 13
 
     assert "file:///" not in svg
     assert "/Users/" not in svg
@@ -64,8 +64,11 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
     assert "tint-" not in svg
     assert "Codex CLI" not in svg
     assert "OpenAI · GPT" not in svg
-    assert svg.count("<symbol ") == 12
-    assert svg.count('href="#embedded-') == 13
+    assert 'href="vendor/openai-blossom-white.svg" x="-15" y="-15" width="94" height="94"' in template_svg
+    assert 'href="vendor/simple-icons/clickhouse.svg"' in template_svg
+    assert "Also supports VS Code · Okta · ClickHouse" not in template_svg
+    assert svg.count("<symbol ") == 13
+    assert svg.count('href="#embedded-') == 14
     assert render_social_preview(template) == svg
     for relative_asset in (
         "brand/mark-dark.svg",
@@ -79,6 +82,7 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         "vendor/simple-icons/kubernetes.svg",
         "vendor/simple-icons/snowflake.svg",
         "vendor/simple-icons/databricks.svg",
+        "vendor/simple-icons/clickhouse.svg",
     ):
         assert relative_asset in template_svg
         assert (source.parent / relative_asset).is_file()
@@ -89,7 +93,7 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
 
     journey = readme.split("### Product journey", 1)[1].split("## Quick start", 1)[0]
     stages = ["Discover inventory", "Scan", "Reachable graph", "Ranked path", "Act and verify"]
-    images = ["fleet-state-live.png", "jobs-pipeline-live.png", "lineage-graph-live.png", "security-graph-live.png", "remediation-live.png"]
+    images = ["inventory-live.png", "jobs-pipeline-live.png", "lineage-graph-live.png", "security-graph-live.png", "remediation-live.png"]
     assert all(stage in journey for stage in stages)
     assert all(image in journey for image in images)
     assert [journey.index(stage) for stage in stages] == sorted(journey.index(stage) for stage in stages)

@@ -2081,6 +2081,11 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       scope: "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
     },
     {
+      path: "inventory-live.png",
+      page: "/inventory?capture=1",
+      scope: "Unified asset-kind roll-up across discovered packages, MCP servers, agents, cloud, identities, containers, and code",
+    },
+    {
       path: "fleet-state-live.png",
       page: "/fleet?capture=1",
       scope: "Expanded quarantined fleet row showing lifecycle distribution, owner metadata, environment label, and enforcement state",
@@ -2350,6 +2355,17 @@ async function main() {
         minGraphEdges: 3,
       },
     );
+    await page.setViewportSize({ width: 1440, height: 980 });
+    await capture(page, "/inventory?capture=1", "inventory-live.png", async (inventoryPage) => {
+      await inventoryPage.getByRole("heading", { name: "Asset inventory" }).waitFor({
+        state: "visible",
+        timeout: 10_000,
+      });
+      await scrollTo(inventoryPage, 0);
+    }, {
+      expectedText: ["Asset inventory", "Packages", "MCP servers", "AI agents", "Cloud resources", "Coverage reflects only what has actually been scanned or connected"],
+      expectedApiPaths: ["/v1/graph"],
+    });
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
       await fleetPage.getByText("developer-copilot").first().click({ force: true });
       await fleetPage.waitForTimeout(500);
@@ -2399,7 +2415,8 @@ async function main() {
       rejectedText: ["17 findings"],
     });
     await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
-      expectedText: ["Risk campaigns", "Package remediation plan", "Upgrade openssl to 3.0.14", "DEMO-VULN-21441"],
+      expectedText: ["Package remediation plan", "next", "16.2.7", "DEMO-VULN-21441", "Campaign workflow and verification"],
+      rejectedText: ["42.5% modeled window risk"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
     });
 
@@ -2419,8 +2436,8 @@ async function main() {
       readySelector: 'section[aria-label="Selected exposure path graph"]',
     });
     await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {
-      expectedText: ["Risk campaigns", "Package remediation plan", "Upgrade openssl to 3.0.14", "DEMO-VULN-21441"],
-      rejectedText: [/Loading prioritized campaigns/i],
+      expectedText: ["Package remediation plan", "next", "16.2.7", "DEMO-VULN-21441", "Campaign workflow and verification"],
+      rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
     });
 
@@ -2442,8 +2459,8 @@ async function main() {
       assertNoHorizontalOverflow: true,
     });
     await capture(mobilePage, "/remediation?capture=1", "remediation-mobile-live.png", undefined, {
-      expectedText: ["Risk campaigns", "Package remediation plan", "Upgrade openssl to 3.0.14"],
-      rejectedText: [/Loading prioritized campaigns/i],
+      expectedText: ["Package remediation plan", "next", "16.2.7", "Campaign workflow and verification"],
+      rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
       assertNoHorizontalOverflow: true,
     });

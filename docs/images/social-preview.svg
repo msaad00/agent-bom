@@ -88,6 +88,10 @@
       <title>Databricks</title>
       <path d="M.95 14.184L12 20.403l9.919-5.55v2.21L12 22.662l-10.484-5.96-.565.308v.77L12 24l11.05-6.218v-4.317l-.515-.309L12 19.118l-9.867-5.653v-2.21L12 16.805l11.05-6.218V6.32l-.515-.308L12 11.974 2.647 6.681 12 1.388l7.76 4.368.668-.411v-.566L12 0 .95 6.27v.72L12 13.207l9.919-5.55v2.26L12 15.52 1.516 9.56l-.565.308Z" />
     </symbol>
+    <symbol id="embedded-clickhouse" viewBox="0 0 24 24" fill="#ffcc00">
+      <title>ClickHouse</title>
+      <path d="M21.333 10H24v4h-2.667ZM16 1.335h2.667v21.33H16Zm-5.333 0h2.666v21.33h-2.666ZM0 22.665V1.335h2.667v21.33zm5.333-21.33H8v21.33H5.333Z" />
+    </symbol>
   </defs>
   <rect width="1280" height="420" fill="url(#bg)" />
   <g font-family="Inter,'Segoe UI',ui-sans-serif,Arial,sans-serif">
@@ -119,7 +123,7 @@
     </g>
     <text x="60" y="251" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">AI CLIENTS + MODELS</text>
     <text x="648" y="251" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">CLOUD + IDENTITY + DATA</text>
-    <text x="1220" y="251" text-anchor="end" fill="#64748b" font-size="11">Also supports VS Code · Okta · ClickHouse</text>
+    <text x="1220" y="251" text-anchor="end" fill="#64748b" font-size="11">Also supports VS Code · Okta</text>
     <line x1="626" y1="247" x2="626" y2="369" stroke="#334155" stroke-width="1" />
     <g transform="translate(60 270)">
       <g>
@@ -127,27 +131,27 @@
         <use x="10" y="10" width="44" height="44" href="#embedded-claude-icon-rounded" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Claude</text>
       </g>
-      <g transform="translate(98)">
+      <g transform="translate(92)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
-        <use x="10" y="10" width="44" height="44" href="#embedded-openai-blossom-white" />
+        <use x="-15" y="-15" width="94" height="94" href="#embedded-openai-blossom-white" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="10.5" font-weight="600">OpenAI / Codex</text>
       </g>
-      <g transform="translate(196)">
+      <g transform="translate(184)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-cursor" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Cursor</text>
       </g>
-      <g transform="translate(294)">
+      <g transform="translate(276)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-githubcopilot" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">GitHub Copilot</text>
       </g>
-      <g transform="translate(392)">
+      <g transform="translate(368)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-windsurf" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Windsurf</text>
       </g>
-      <g transform="translate(490)">
+      <g transform="translate(460)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-snowflake" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">Cortex Code</text>
@@ -157,30 +161,35 @@
         <use x="10" y="10" width="44" height="44" href="#embedded-amazonwebservices" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">AWS</text>
       </g>
-      <g transform="translate(686)">
+      <g transform="translate(676)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-microsoftazure" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Azure</text>
       </g>
-      <g transform="translate(784)">
+      <g transform="translate(764)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-googlecloud" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">GCP</text>
       </g>
-      <g transform="translate(882)">
+      <g transform="translate(852)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-kubernetes" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Kubernetes</text>
       </g>
-      <g transform="translate(980)">
+      <g transform="translate(940)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-snowflake" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Snowflake</text>
       </g>
-      <g transform="translate(1078)">
+      <g transform="translate(1028)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
         <use x="10" y="10" width="44" height="44" href="#embedded-databricks" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Databricks</text>
+      </g>
+      <g transform="translate(1116)">
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-clickhouse" />
+        <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">ClickHouse</text>
       </g>
     </g>
     <text x="60" y="404" fill="#475569" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="600">discover → scan → correlate → act</text>

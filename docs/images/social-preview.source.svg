@@ -55,7 +55,7 @@
 
     <text x="60" y="251" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">AI CLIENTS + MODELS</text>
     <text x="648" y="251" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">CLOUD + IDENTITY + DATA</text>
-    <text x="1220" y="251" text-anchor="end" fill="#64748b" font-size="11">Also supports VS Code · Okta · ClickHouse</text>
+    <text x="1220" y="251" text-anchor="end" fill="#64748b" font-size="11">Also supports VS Code · Okta</text>
     <line x1="626" y1="247" x2="626" y2="369" stroke="#334155" stroke-width="1" />
 
     <g transform="translate(60 270)">
@@ -64,27 +64,27 @@
         <image href="vendor/claude-icon-rounded.svg" x="10" y="10" width="44" height="44"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Claude</text>
       </g>
-      <g transform="translate(98)">
+      <g transform="translate(92)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/openai-blossom-white.svg" x="10" y="10" width="44" height="44"/>
+        <image href="vendor/openai-blossom-white.svg" x="-15" y="-15" width="94" height="94"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="10.5" font-weight="600">OpenAI / Codex</text>
       </g>
-      <g transform="translate(196)">
+      <g transform="translate(184)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/cursor.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Cursor</text>
       </g>
-      <g transform="translate(294)">
+      <g transform="translate(276)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/githubcopilot.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">GitHub Copilot</text>
       </g>
-      <g transform="translate(392)">
+      <g transform="translate(368)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/windsurf.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Windsurf</text>
       </g>
-      <g transform="translate(490)">
+      <g transform="translate(460)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/snowflake.svg" x="10" y="10" width="44" height="44" filter="url(#tint-snowflake)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">Cortex Code</text>
@@ -94,30 +94,35 @@
         <image href="vendor/simple-icons/amazonwebservices.svg" x="10" y="10" width="44" height="44" filter="url(#tint-aws)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">AWS</text>
       </g>
-      <g transform="translate(686)">
+      <g transform="translate(676)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/microsoftazure.svg" x="10" y="10" width="44" height="44" filter="url(#tint-azure)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Azure</text>
       </g>
-      <g transform="translate(784)">
+      <g transform="translate(764)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/googlecloud.svg" x="10" y="10" width="44" height="44" filter="url(#tint-gcp)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">GCP</text>
       </g>
-      <g transform="translate(882)">
+      <g transform="translate(852)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/kubernetes.svg" x="10" y="10" width="44" height="44" filter="url(#tint-kubernetes)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Kubernetes</text>
       </g>
-      <g transform="translate(980)">
+      <g transform="translate(940)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/snowflake.svg" x="10" y="10" width="44" height="44" filter="url(#tint-snowflake)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Snowflake</text>
       </g>
-      <g transform="translate(1078)">
+      <g transform="translate(1028)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/databricks.svg" x="10" y="10" width="44" height="44" filter="url(#tint-databricks)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Databricks</text>
+      </g>
+      <g transform="translate(1116)">
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
+        <image href="vendor/simple-icons/clickhouse.svg" x="10" y="10" width="44" height="44" filter="url(#tint-clickhouse)"/>
+        <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">ClickHouse</text>
       </g>
     </g>
 

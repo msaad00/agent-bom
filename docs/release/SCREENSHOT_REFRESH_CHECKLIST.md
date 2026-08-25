@@ -27,6 +27,7 @@ PR clearly explains why an asset is unchanged.
 | `security-graph-live.png` | Prioritized attack path with graph evidence export and remediation handoff. |
 | `lineage-graph-live.png` | Focused filtered attack-path lineage across agent, MCP server, package, and finding nodes. |
 | `context-map-live.png` | Lateral context view with selected agent scope, reachable tools, shared infrastructure, and evidence metadata. |
+| `inventory-live.png` | Unified asset-kind roll-up with explicit evidence coverage and non-empty discovered asset cards. |
 | `fleet-state-live.png` | Fleet lifecycle review state with owner, environment, trust factors, and quarantine context. |
 | `gateway-policies-live.png` | Runtime gateway posture with enforcement, firewall decisions, policy rules, and bound agents. |
 | `identity-audit-live.png` | Auth, key lifecycle, tenant boundaries, and audit log evidence without overflowing cards. |

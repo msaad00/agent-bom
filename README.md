@@ -66,7 +66,7 @@ Finding + UnifiedGraph contracts. Select any image for the full-size proof.
     <th>2 · Scan</th>
   </tr>
   <tr>
-    <td><a href="docs/images/fleet-state-live.png"><img src="docs/images/fleet-state-live.png" alt="Persisted developer endpoint and agent inventory with evidence state, lifecycle, and trust posture" width="440" /></a></td>
+    <td><a href="docs/images/inventory-live.png"><img src="docs/images/inventory-live.png" alt="Unified asset inventory across packages, MCP servers, AI agents, cloud resources, identities, containers, and code with evidence coverage" width="440" /></a></td>
     <td><a href="docs/images/jobs-pipeline-live.png"><img src="docs/images/jobs-pipeline-live.png" alt="Completed read-only scan pipeline from discovery through persisted findings, graph, and report evidence" width="440" /></a></td>
   </tr>
   <tr>

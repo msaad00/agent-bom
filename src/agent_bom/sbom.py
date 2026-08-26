@@ -72,6 +72,7 @@ def parse_cyclonedx(data: dict) -> list[Package]:
     direct vs transitive dependencies.
     """
     packages: list[Package] = []
+    bom_ref_to_pkg: dict[str, Package] = {}
     components = data.get("components", [])
 
     # Build adjacency map and direct refs from dependencies array
@@ -167,39 +168,29 @@ def parse_cyclonedx(data: dict) -> list[Package]:
         else:
             _is_direct = True  # fallback when no dependency info
 
-        packages.append(
-            Package(
-                name=name,
-                version=version,
-                ecosystem=ecosystem,
-                purl=purl or None,
-                is_direct=_is_direct,
-                resolved_from_registry=False,
-                license=lic_id,
-                license_expression=lic_expr,
-                supplier=supplier_name,
-                author=author_val,
-                description=description_val,
-                homepage=homepage_val,
-                repository_url=repo_val,
-                download_url=download_val,
-                copyright_text=copyright_val,
-            )
+        package = Package(
+            name=name,
+            version=version,
+            ecosystem=ecosystem,
+            purl=purl or None,
+            is_direct=_is_direct,
+            resolved_from_registry=False,
+            license=lic_id,
+            license_expression=lic_expr,
+            supplier=supplier_name,
+            author=author_val,
+            description=description_val,
+            homepage=homepage_val,
+            repository_url=repo_val,
+            download_url=download_val,
+            copyright_text=copyright_val,
         )
+        packages.append(package)
+        if bom_ref:
+            bom_ref_to_pkg[bom_ref] = package
 
     # Multi-hop dependency graph walking: set dependency_depth for each package
     if dep_map and root_ref:
-        # Build a bom-ref → Package index for efficient lookup
-        _bom_ref_index: dict[str, Package] = {}
-        for pkg in packages:
-            bom_ref = pkg.purl or pkg.name
-            # Prefer to match by exact bom-ref stored during component parsing
-            for comp in components:
-                if isinstance(comp, dict) and comp.get("name") == pkg.name and comp.get("version") == pkg.version:
-                    br = comp.get("bom-ref", "")
-                    if br:
-                        _bom_ref_index[br] = pkg
-                    break
 
         def _walk_deps(ref: str, depth: int, visited: set) -> None:
             """Visit *ref* at the given depth, then recurse into its children at depth+1."""
@@ -207,7 +198,7 @@ def parse_cyclonedx(data: dict) -> list[Package]:
                 return
             visited.add(ref)
             # Set depth on the current node
-            pkg = _bom_ref_index.get(ref)
+            pkg = bom_ref_to_pkg.get(ref)
             if pkg is not None:
                 if depth > pkg.dependency_depth:
                     pkg.dependency_depth = depth
@@ -222,16 +213,6 @@ def parse_cyclonedx(data: dict) -> list[Package]:
             _walk_deps(direct_ref, 0, _visited)
 
     # Ingest CycloneDX vulnerabilities[] array if present
-    _bom_ref_to_pkg: dict[str, Package] = {}
-    for comp in components:
-        if isinstance(comp, dict):
-            br = comp.get("bom-ref", "")
-            if br:
-                for pkg in packages:
-                    if pkg.name == comp.get("name") and pkg.version == comp.get("version"):
-                        _bom_ref_to_pkg[br] = pkg
-                        break
-
     for vuln_data in data.get("vulnerabilities", []):
         if not isinstance(vuln_data, dict):
             continue
@@ -264,7 +245,7 @@ def parse_cyclonedx(data: dict) -> list[Package]:
             if not isinstance(affect, dict):
                 continue
             affected_ref = affect.get("ref", "")
-            affected_pkg = _bom_ref_to_pkg.get(affected_ref)
+            affected_pkg = bom_ref_to_pkg.get(affected_ref)
             if affected_pkg is not None and vuln not in affected_pkg.vulnerabilities:
                 affected_pkg.vulnerabilities.append(vuln)
 

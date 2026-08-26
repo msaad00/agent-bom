@@ -171,6 +171,53 @@ def test_parse_cyclonedx_skip_empty_name():
     assert packages[0].name == "valid-pkg"
 
 
+def test_parse_cyclonedx_joins_duplicate_components_by_bom_ref():
+    data = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "metadata": {"component": {"bom-ref": "root"}},
+        "components": [
+            {
+                "type": "library",
+                "bom-ref": "pkg:npm/shared@1.0.0?copy=transitive",
+                "name": "shared",
+                "version": "1.0.0",
+                "purl": "pkg:npm/shared@1.0.0",
+            },
+            {
+                "type": "library",
+                "bom-ref": "pkg:npm/shared@1.0.0?copy=direct",
+                "name": "shared",
+                "version": "1.0.0",
+                "purl": "pkg:npm/shared@1.0.0",
+            },
+        ],
+        "dependencies": [
+            {"ref": "root", "dependsOn": ["pkg:npm/shared@1.0.0?copy=direct"]},
+            {
+                "ref": "pkg:npm/shared@1.0.0?copy=direct",
+                "dependsOn": ["pkg:npm/shared@1.0.0?copy=transitive"],
+            },
+        ],
+        "vulnerabilities": [
+            {
+                "id": "CVE-2026-4242",
+                "ratings": [{"severity": "high", "score": 8.1}],
+                "affects": [{"ref": "pkg:npm/shared@1.0.0?copy=direct"}],
+            }
+        ],
+    }
+
+    transitive, direct = parse_cyclonedx(data)
+
+    assert transitive.dependency_depth == 1
+    assert transitive.is_direct is False
+    assert transitive.vulnerabilities == []
+    assert direct.dependency_depth == 0
+    assert direct.is_direct is True
+    assert [vulnerability.id for vulnerability in direct.vulnerabilities] == ["CVE-2026-4242"]
+
+
 # ─── parse_spdx ──────────────────────────────────────────────────────────────
 
 

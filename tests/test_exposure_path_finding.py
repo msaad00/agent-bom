@@ -3,7 +3,19 @@
 from __future__ import annotations
 
 from agent_bom.finding import blast_radius_to_finding
-from agent_bom.models import Agent, AgentStatus, AgentType, BlastRadius, MCPServer, MCPTool, Package, Severity, TransportType, Vulnerability
+from agent_bom.models import (
+    Agent,
+    AgentStatus,
+    AgentType,
+    BlastRadius,
+    MCPServer,
+    MCPTool,
+    Package,
+    ServerSurface,
+    Severity,
+    TransportType,
+    Vulnerability,
+)
 from agent_bom.output.exposure_path import exposure_path_for_blast_radius, exposure_path_for_finding
 
 
@@ -74,6 +86,79 @@ def test_exposure_path_for_blast_radius_keeps_legacy_id_prefix() -> None:
     path = exposure_path_for_blast_radius(br, rank=2)
     assert path["id"].startswith("blast:")
     assert path["rank"] == 2
+
+
+def test_non_runtime_inventory_surfaces_do_not_fabricate_agent_server_hops() -> None:
+    package = _pkg(name="chromadb", version="1.1.1", ecosystem="pypi")
+    inventory_server = MCPServer(name="ai-inventory", surface=ServerSurface.AI_INVENTORY, packages=[package])
+    project_server = MCPServer(name="crewai", surface=ServerSurface.OTHER, packages=[package])
+    inventory_agent = Agent(
+        name="ai-inventory",
+        agent_type=AgentType.CUSTOM,
+        config_path="/tmp/crewai",
+        source="ai-inventory",
+        mcp_servers=[inventory_server],
+    )
+    project_agent = Agent(
+        name="project:crewai",
+        agent_type=AgentType.CUSTOM,
+        config_path="/tmp/crewai",
+        source="project",
+        mcp_servers=[project_server],
+    )
+    br = BlastRadius(
+        package=package,
+        vulnerability=_vuln("CVE-2026-45829"),
+        affected_agents=[inventory_agent, project_agent],
+        affected_servers=[inventory_server, project_server],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+
+    finding = blast_radius_to_finding(br)
+    path = exposure_path_for_blast_radius(br, rank=1)
+
+    assert finding.asset.asset_type == "package"
+    assert finding.asset.name == "chromadb"
+    assert path["source"] == "pkg:pypi:chromadb@1.1.1"
+    assert path["hops"] == ["pkg:pypi:chromadb@1.1.1", "finding:CVE-2026-45829"]
+    assert path["relationships"] == [
+        {
+            "id": "pkg:pypi:chromadb@1.1.1->vulnerable_to->finding:CVE-2026-45829",
+            "type": "vulnerable_to",
+            "source": "pkg:pypi:chromadb@1.1.1",
+            "target": "finding:CVE-2026-45829",
+        }
+    ]
+    assert path["affectedAgents"] == ["ai-inventory", "project:crewai"]
+    assert path["affectedServers"] == ["ai-inventory", "crewai"]
+
+
+def test_exposure_path_chooses_one_observed_agent_mcp_server_pair() -> None:
+    package = _pkg()
+    primary_server = _server("primary-mcp")
+    secondary_server = _server("secondary-mcp")
+    primary_agent = _agent("primary-agent", [primary_server])
+    secondary_agent = _agent("secondary-agent", [secondary_server])
+    br = BlastRadius(
+        package=package,
+        vulnerability=_vuln(),
+        affected_agents=[secondary_agent, primary_agent],
+        affected_servers=[primary_server, secondary_server],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+
+    path = exposure_path_for_finding(blast_radius_to_finding(br), rank=1)
+
+    assert path["source"] == "agent:primary-agent"
+    assert path["hops"] == [
+        "agent:primary-agent",
+        "server:primary-mcp",
+        "pkg:npm:lodash@4.17.20",
+        "finding:CVE-2024-0001",
+    ]
+    assert "server:secondary-mcp" not in path["nodeIds"]
 
 
 def test_json_and_sarif_exposure_paths_use_finding_native_projection() -> None:

@@ -36,6 +36,21 @@ def _npm_plan_item() -> dict:
     }
 
 
+def _pip_plan_item(package: str = "flask", current: str = "2.0.0", fixed: str = "3.0.0") -> dict:
+    return {
+        "package": package,
+        "ecosystem": "pypi",
+        "current": current,
+        "fix": fixed,
+        "priority": "P1",
+        "vulns": ["CVE-test-0001"],
+        "agents": ["cursor"],
+        "references": ["https://example.invalid/CVE-test-0001"],
+        "blast_radius_score": 7.0,
+        "has_kev": False,
+    }
+
+
 def test_apply_remediation_plan_updates_clean_repo_and_writes_audit(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     package_json = tmp_path / "package.json"
@@ -68,3 +83,34 @@ def test_apply_remediation_plan_refuses_dirty_worktree_and_audits(tmp_path: Path
     audit = [json.loads(line) for line in audit_log.read_text().splitlines()]
     assert audit[-1]["status"] == "refused"
     assert audit[-1]["reason"] == "dirty_worktree"
+
+
+def test_apply_remediation_plan_discovers_nested_tracked_pyproject(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    nested = tmp_path / "services" / "api"
+    nested.mkdir(parents=True)
+    pyproject = nested / "pyproject.toml"
+    pyproject.write_text('[project]\nname = "api"\ndependencies = [\n    "flask==2.0.0",\n]\n')
+    _run(["git", "add", "services/api/pyproject.toml"], tmp_path)
+    _run(["git", "commit", "-m", "fixture"], tmp_path)
+
+    outcome = apply_remediation_plan([_pip_plan_item()], project_dir=tmp_path, backup=False)
+
+    assert [fix.package for fix in outcome.apply_result.applied] == ["flask"]
+    assert outcome.changed_files == ["services/api/pyproject.toml"]
+    assert '"flask>=3.0.0"' in pyproject.read_text()
+
+
+def test_apply_remediation_plan_fails_when_no_advertised_fix_is_applicable(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[project]\nname = "fixture"\ndependencies = ["requests==2.31.0"]\n')
+    _run(["git", "add", "pyproject.toml"], tmp_path)
+    _run(["git", "commit", "-m", "fixture"], tmp_path)
+
+    audit_log = tmp_path / "audit.jsonl"
+    with pytest.raises(RemediationApplyError, match="flask.*not a direct dependency"):
+        apply_remediation_plan([_pip_plan_item()], project_dir=tmp_path, backup=False, audit_log_path=audit_log)
+
+    audit = [json.loads(line) for line in audit_log.read_text().splitlines()]
+    assert audit[-1]["status"] == "no_applicable_dependency_updates"

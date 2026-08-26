@@ -6,12 +6,14 @@ import json
 import os
 import re
 import subprocess
+import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Sequence
 
 from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
 
 from agent_bom.remediate import ApplyResult, RemediationPlan, apply_fixes, generate_package_fixes
 
@@ -40,6 +42,7 @@ class RemediationApplyOutcome:
             "dry_run": self.apply_result.dry_run,
             "applied": [_fix_to_json(fix) for fix in self.apply_result.applied],
             "skipped": [_fix_to_json(fix) for fix in self.apply_result.skipped],
+            "skipped_reasons": self.apply_result.skipped_reasons,
             "backed_up": self.apply_result.backed_up,
             "changed_files": self.changed_files,
             "validation_commands": self.validation_commands,
@@ -119,8 +122,23 @@ def apply_remediation_plan(
         _require_gh_auth(repo_root, runner, audit_path, base_event)
         _run_checked(["git", "checkout", "-b", branch], repo_root, runner)
 
-    result = apply_fixes(RemediationPlan(package_fixes=fixable), [project], dry_run=False, backup=(backup and not open_pr))
+    manifest_dirs = _tracked_manifest_dirs(project, repo_root, runner)
+    result = apply_fixes(
+        RemediationPlan(package_fixes=fixable),
+        manifest_dirs,
+        dry_run=False,
+        backup=(backup and not open_pr),
+    )
     changed_files = _git_changed_files(repo_root, runner)
+
+    if not result.applied:
+        reason = _no_applicable_fix_message(result)
+        outcome = RemediationApplyOutcome(result, changed_files=changed_files, audit_log_path=str(audit_path))
+        _write_audit_event(
+            audit_path,
+            {**base_event, "status": "no_applicable_dependency_updates", "reason": reason, "outcome": outcome.to_json()},
+        )
+        raise RemediationApplyError(reason)
 
     validation_commands: list[list[str]] = []
     if verify and result.applied:
@@ -174,6 +192,32 @@ def _git_changed_files(repo_root: Path, runner: CommandRunner) -> list[str]:
     return [line.strip() for line in completed.stdout.splitlines() if line.strip() and not line.endswith(".agent-bom-backup")]
 
 
+def _tracked_manifest_dirs(project: Path, repo_root: Path, runner: CommandRunner) -> list[Path]:
+    completed = _run_checked(["git", "ls-files"], repo_root, runner)
+    supported = {"package.json", "requirements.txt", "pyproject.toml"}
+    directories: set[Path] = set()
+    for rel_path in completed.stdout.splitlines():
+        candidate = (repo_root / rel_path).resolve()
+        if candidate.name not in supported:
+            continue
+        if candidate.parent != project and project not in candidate.parents:
+            continue
+        directories.add(candidate.parent)
+    return sorted(directories) or [project]
+
+
+def _no_applicable_fix_message(result: ApplyResult) -> str:
+    details: list[str] = []
+    for fix in result.skipped:
+        package = canonicalize_name(fix.package) if fix.ecosystem.lower() == "pypi" else fix.package.lower()
+        key = f"{fix.ecosystem.lower()}:{package}"
+        reason = result.skipped_reasons.get(key, "was not applied")
+        if reason == "no supported dependency manifest contains this direct dependency":
+            reason = "is not a direct dependency in a supported manifest"
+        details.append(f"{fix.package} ({fix.ecosystem}) {reason}")
+    return "no advertised remediation was applied: " + "; ".join(details)
+
+
 def _refuse_dirty_worktree(repo_root: Path, runner: CommandRunner, audit_path: Path, base_event: dict) -> None:
     completed = _run_checked(["git", "status", "--porcelain"], repo_root, runner)
     if completed.stdout.strip():
@@ -192,18 +236,23 @@ def _validate_dependency_files(project: Path, repo_root: Path, changed_files: li
     commands: list[list[str]] = []
     changed = set(changed_files)
 
-    package_json_rel = _rel(project / "package.json", repo_root)
-    package_lock_rel = _rel(project / "package-lock.json", repo_root)
-    if package_json_rel in changed:
-        json.loads((project / "package.json").read_text())
-        if (project / "package-lock.json").exists() or package_lock_rel in changed:
-            cmd = ["npm", "install", "--package-lock-only", "--ignore-scripts"]
-            _run_checked(cmd, project, runner)
-            commands.append(cmd)
-
-    requirements_rel = _rel(project / "requirements.txt", repo_root)
-    if requirements_rel in changed:
-        _validate_requirements(project / "requirements.txt")
+    for rel_path in changed_files:
+        path = repo_root / rel_path
+        if path.name == "package.json":
+            json.loads(path.read_text())
+            package_lock = path.parent / "package-lock.json"
+            package_lock_rel = _rel(package_lock, repo_root)
+            if package_lock.exists() or package_lock_rel in changed:
+                cmd = ["npm", "install", "--package-lock-only", "--ignore-scripts"]
+                _run_checked(cmd, path.parent, runner)
+                commands.append(cmd)
+        elif path.name == "requirements.txt":
+            _validate_requirements(path)
+        elif path.name == "pyproject.toml":
+            try:
+                tomllib.loads(path.read_text())
+            except tomllib.TOMLDecodeError as exc:
+                raise RemediationApplyError(f"{rel_path} is not valid TOML after remediation") from exc
 
     return commands
 

@@ -640,3 +640,30 @@ def test_sanitize_sensitive_payload_masks_email_keys():
     assert "dave@example.org" not in str(result)
     assert result["package"] == "express"
     assert result["user_email"] == "c***@e***.com"
+
+
+def test_sanitize_sensitive_payload_reuses_repeated_field_redaction(monkeypatch):
+    import agent_bom.security as security
+
+    original = security._sanitize_sensitive_string
+    calls: list[tuple[str, object]] = []
+
+    def tracked(value: str, *, key: object | None, max_str_len: int) -> object:
+        calls.append((value, key))
+        return original(value, key=key, max_str_len=max_str_len)
+
+    monkeypatch.setattr(security, "_sanitize_sensitive_string", tracked)
+    payload = {"packages": [{"name": "same-package", "ecosystem": "pypi"} for _ in range(100)]}
+
+    assert security.sanitize_sensitive_payload(payload) == payload
+    assert calls.count(("same-package", "name")) == 1
+    assert calls.count(("pypi", "ecosystem")) == 1
+
+
+def test_sanitize_sensitive_payload_cache_is_field_sensitive():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    value = "same-value"
+    result = sanitize_sensitive_payload({"name": value, "api_token": value})
+
+    assert result == {"name": value, "api_token": "***REDACTED***"}

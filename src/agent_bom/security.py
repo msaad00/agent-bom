@@ -662,60 +662,116 @@ def sanitize_path_label(value: object) -> str:
     return f"<path:{basename}>"
 
 
-def sanitize_sensitive_payload(value: object, *, key: object | None = None, max_str_len: int = 1000, depth: int = 0) -> object:
-    """Recursively redact sensitive runtime/audit payloads before persistence/export."""
+_SANITIZE_PAYLOAD_CACHE_LIMIT = 262_144
+_SANITIZE_PAYLOAD_CACHE_MISS = object()
+
+
+def _sanitize_sensitive_string(value: str, *, key: object | None, max_str_len: int) -> object:
+    """Redact one string while preserving the caller's field-sensitive rules."""
+    # A credential env-var NAME is an identifier, not a secret value.  Keep
+    # it intact so distinct credentials stay distinct graph nodes; still
+    # redact defensively if the string itself looks like a leaked secret.
+    if _key_is_credential_identifier(key) and not _looks_sensitive_value(value):
+        return sanitize_text(value, max_len=max_str_len)
+    if key is not None and _key_looks_sensitive(key):
+        return "***REDACTED***"
+    if key is not None and _key_looks_like_email(key):
+        return mask_email(value)
+    if key is not None and _key_looks_like_url(key):
+        return sanitize_url(value)
+    if key is not None and _key_looks_like_cloud_identity(key):
+        if _looks_sensitive_value(value):
+            return "***REDACTED***"
+        return sanitize_text(value, max_len=max_str_len)
+    # Graph edge identifiers are deterministic relationship coordinates,
+    # not opaque credentials.  Their punctuation and length can otherwise
+    # trip the entropy detector.  Keep the exception deliberately narrow:
+    # only ID fields with the canonical ``source->relation->target`` shape,
+    # and never values matching a known credential pattern.
+    key_text = str(key or "").strip().lower().replace("-", "_")
+    edge_parts = value.split("->")
+    if (
+        key_text in {"id", "canonical_id"}
+        and _STRUCTURED_EDGE_ID_RE.fullmatch(value)
+        and len(edge_parts) == 3
+        and not _looks_sensitive_value(edge_parts[0])
+        and not _looks_sensitive_value(edge_parts[2])
+    ):
+        return sanitize_text(value, max_len=max_str_len)
+    if "://" in value:
+        return sanitize_text(value, max_len=max_str_len)
+    if key is not None and _key_looks_like_path(key) and _looks_like_path_value(value):
+        return sanitize_path_label(value)
+    if _looks_like_path_value(value):
+        return sanitize_path_label(value)
+    if _looks_sensitive_value(value):
+        return "***REDACTED***"
+    return sanitize_text(value, max_len=max_str_len)
+
+
+def sanitize_sensitive_payload(
+    value: object,
+    *,
+    key: object | None = None,
+    max_str_len: int = 1000,
+    depth: int = 0,
+    _string_cache: dict[tuple[str | None, str, int], object] | None = None,
+    _key_cache: dict[str, str] | None = None,
+) -> object:
+    """Recursively redact sensitive runtime/audit payloads before persistence/export.
+
+    One report repeats the same immutable package fields across its inventory,
+    agent, and AI-BOM contract views. Keep bounded caches for the duration of a
+    single traversal so those values are redacted once, without retaining
+    potentially sensitive strings globally between exports.
+    """
+    if _string_cache is None:
+        _string_cache = {}
+    if _key_cache is None:
+        _key_cache = {}
     if depth >= 24:
         return "[truncated]"
     if value is None or isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
-        # A credential env-var NAME is an identifier, not a secret value.  Keep
-        # it intact so distinct credentials stay distinct graph nodes; still
-        # redact defensively if the string itself looks like a leaked secret.
-        if _key_is_credential_identifier(key) and not _looks_sensitive_value(value):
-            return sanitize_text(value, max_len=max_str_len)
-        if key is not None and _key_looks_sensitive(key):
-            return "***REDACTED***"
-        if key is not None and _key_looks_like_email(key):
-            return mask_email(value)
-        if key is not None and _key_looks_like_url(key):
-            return sanitize_url(value)
-        if key is not None and _key_looks_like_cloud_identity(key):
-            if _looks_sensitive_value(value):
-                return "***REDACTED***"
-            return sanitize_text(value, max_len=max_str_len)
-        # Graph edge identifiers are deterministic relationship coordinates,
-        # not opaque credentials.  Their punctuation and length can otherwise
-        # trip the entropy detector.  Keep the exception deliberately narrow:
-        # only ID fields with the canonical ``source->relation->target`` shape,
-        # and never values matching a known credential pattern.
-        key_text = str(key or "").strip().lower().replace("-", "_")
-        edge_parts = value.split("->")
-        if (
-            key_text in {"id", "canonical_id"}
-            and _STRUCTURED_EDGE_ID_RE.fullmatch(value)
-            and len(edge_parts) == 3
-            and not _looks_sensitive_value(edge_parts[0])
-            and not _looks_sensitive_value(edge_parts[2])
-        ):
-            return sanitize_text(value, max_len=max_str_len)
-        if "://" in value:
-            return sanitize_text(value, max_len=max_str_len)
-        if key is not None and _key_looks_like_path(key) and _looks_like_path_value(value):
-            return sanitize_path_label(value)
-        if _looks_like_path_value(value):
-            return sanitize_path_label(value)
-        if _looks_sensitive_value(value):
-            return "***REDACTED***"
-        return sanitize_text(value, max_len=max_str_len)
+        cache_key = (str(key) if key is not None else None, value, max_str_len)
+        cached = _string_cache.get(cache_key, _SANITIZE_PAYLOAD_CACHE_MISS)
+        if cached is not _SANITIZE_PAYLOAD_CACHE_MISS:
+            return cached
+        sanitized_value = _sanitize_sensitive_string(value, key=key, max_str_len=max_str_len)
+        if len(_string_cache) < _SANITIZE_PAYLOAD_CACHE_LIMIT:
+            _string_cache[cache_key] = sanitized_value
+        return sanitized_value
     if isinstance(value, dict):
         sanitized: dict[str, object] = {}
         for raw_key, raw_value in value.items():
-            clean_key = sanitize_text(raw_key, max_len=200)
-            sanitized[clean_key] = sanitize_sensitive_payload(raw_value, key=clean_key, max_str_len=max_str_len, depth=depth + 1)
+            raw_key_text = str(raw_key)
+            clean_key = _key_cache.get(raw_key_text)
+            if clean_key is None:
+                clean_key = sanitize_text(raw_key, max_len=200)
+                if len(_key_cache) < _SANITIZE_PAYLOAD_CACHE_LIMIT:
+                    _key_cache[raw_key_text] = clean_key
+            sanitized[clean_key] = sanitize_sensitive_payload(
+                raw_value,
+                key=clean_key,
+                max_str_len=max_str_len,
+                depth=depth + 1,
+                _string_cache=_string_cache,
+                _key_cache=_key_cache,
+            )
         return sanitized
     if isinstance(value, list | tuple | set):
-        return [sanitize_sensitive_payload(item, key=key, max_str_len=max_str_len, depth=depth + 1) for item in list(value)]
+        return [
+            sanitize_sensitive_payload(
+                item,
+                key=key,
+                max_str_len=max_str_len,
+                depth=depth + 1,
+                _string_cache=_string_cache,
+                _key_cache=_key_cache,
+            )
+            for item in list(value)
+        ]
     return sanitize_text(value, max_len=max_str_len)
 
 

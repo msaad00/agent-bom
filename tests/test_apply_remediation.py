@@ -186,6 +186,22 @@ def test_apply_pip_preserves_comments(tmp_path):
     assert lines[4] == "pytest==7.0.0"
 
 
+def test_apply_pip_fixes_pep621_pyproject_without_reformatting(tmp_path):
+    """PEP 621 dependencies are updated in place while comments stay byte-stable."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "fixture"\ndependencies = [\n    "flask>=2.0.0,<4",  # keep this operator note\n    "requests==2.31.0",\n]\n'
+    )
+
+    result = apply_fixes(RemediationPlan(package_fixes=[_pip_fix()]), [tmp_path], backup=False)
+
+    assert [fix.package for fix in result.applied] == ["flask"]
+    rendered = pyproject.read_text()
+    assert '"flask>=3.0.0"' in rendered
+    assert '"requests==2.31.0"' in rendered
+    assert "# keep this operator note" in rendered
+
+
 # ─── Edge cases ──────────────────────────────────────────────────────────────
 
 
@@ -204,6 +220,7 @@ def test_apply_skips_unknown_ecosystem(tmp_path):
     assert len(result.skipped) == 1
     assert result.skipped[0].package == "serde"
     assert len(result.applied) == 0
+    assert result.skipped_reasons["cargo:serde"] == "unsupported ecosystem"
 
 
 def test_apply_no_matching_file(tmp_path):
@@ -213,6 +230,7 @@ def test_apply_no_matching_file(tmp_path):
 
     assert len(result.skipped) == 1
     assert len(result.applied) == 0
+    assert result.skipped_reasons["npm:express"] == "no supported dependency manifest contains this direct dependency"
 
 
 def test_apply_empty_plan(tmp_path):

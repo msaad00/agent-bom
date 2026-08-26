@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 import click
+from packaging.utils import canonicalize_name
 
 from agent_bom import __version__
 from agent_bom.cli._common import _make_console, _sync_runtime_consoles, logger
@@ -176,7 +177,10 @@ def _print_apply_outcome(output_console, outcome) -> None:
             output_console.print(f"  [green]applied[/green] {fix.package} {fix.current_version} -> {fix.fixed_version}")
     if outcome.apply_result.skipped:
         for fix in outcome.apply_result.skipped:
-            output_console.print(f"  [yellow]skipped[/yellow] {fix.package} ({fix.ecosystem})")
+            package = canonicalize_name(fix.package) if fix.ecosystem.lower() == "pypi" else fix.package.lower()
+            reason = outcome.apply_result.skipped_reasons.get(f"{fix.ecosystem.lower()}:{package}")
+            suffix = f" — {reason}" if reason else ""
+            output_console.print(f"  [yellow]skipped[/yellow] {fix.package} ({fix.ecosystem}){suffix}")
     if outcome.changed_files:
         output_console.print("  changed files: " + ", ".join(outcome.changed_files))
     if outcome.validation_commands:

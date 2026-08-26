@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import shutil
+import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
 
 from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output import build_remediation_plan
@@ -445,6 +448,7 @@ class ApplyResult:
 
     applied: list[PackageFix] = field(default_factory=list)
     skipped: list[PackageFix] = field(default_factory=list)
+    skipped_reasons: dict[str, str] = field(default_factory=dict)
     backed_up: list[str] = field(default_factory=list)
     dry_run: bool = False
 
@@ -540,11 +544,11 @@ def _apply_pip_fixes(
     except OSError:
         return [], fixes, []
 
-    # Build lookup of fixes by lowercase package name
+    # Build lookup of fixes by canonical package name.
     fix_map: dict[str, PackageFix] = {}
     for fix in fixes:
         if fix.fixed_version:
-            fix_map[fix.package.lower()] = fix
+            fix_map[canonicalize_name(fix.package)] = fix
 
     new_lines: list[str] = []
     matched_packages: set[str] = set()
@@ -557,16 +561,18 @@ def _apply_pip_fixes(
             new_lines.append(line)
             continue
 
-        # Parse package name from line (handles ==, >=, ~=, etc.)
-        match = re.match(r"^([a-zA-Z0-9_.-]+)", stripped)
-        if not match:
+        try:
+            requirement = Requirement(stripped)
+        except InvalidRequirement:
             new_lines.append(line)
             continue
 
-        pkg_name = match.group(1).lower()
+        pkg_name = canonicalize_name(requirement.name)
         if pkg_name in fix_map:
             fix = fix_map[pkg_name]
-            new_line = f"{fix.package}>={fix.fixed_version}"
+            marker = f"; {requirement.marker}" if requirement.marker else ""
+            extras = f"[{','.join(sorted(requirement.extras))}]" if requirement.extras else ""
+            new_line = f"{requirement.name}{extras}>={fix.fixed_version}{marker}"
             new_lines.append(new_line)
             matched_packages.add(pkg_name)
             modified = True
@@ -574,7 +580,7 @@ def _apply_pip_fixes(
             new_lines.append(line)
 
     for fix in fixes:
-        if fix.package.lower() in matched_packages:
+        if canonicalize_name(fix.package) in matched_packages:
             applied.append(fix)
         else:
             skipped.append(fix)
@@ -587,6 +593,105 @@ def _apply_pip_fixes(
     return applied, skipped, backed_up
 
 
+def _pyproject_dependency_strings(data: dict) -> list[str]:
+    """Return PEP 621 and dependency-group requirement strings."""
+    dependencies: list[str] = []
+    project = data.get("project")
+    if isinstance(project, dict):
+        direct = project.get("dependencies")
+        if isinstance(direct, list):
+            dependencies.extend(value for value in direct if isinstance(value, str))
+        optional = project.get("optional-dependencies")
+        if isinstance(optional, dict):
+            for values in optional.values():
+                if isinstance(values, list):
+                    dependencies.extend(value for value in values if isinstance(value, str))
+
+    groups = data.get("dependency-groups")
+    if isinstance(groups, dict):
+        for values in groups.values():
+            if isinstance(values, list):
+                dependencies.extend(value for value in values if isinstance(value, str))
+
+    tool = data.get("tool")
+    uv = tool.get("uv") if isinstance(tool, dict) else None
+    if isinstance(uv, dict):
+        dev_dependencies = uv.get("dev-dependencies")
+        if isinstance(dev_dependencies, list):
+            dependencies.extend(value for value in dev_dependencies if isinstance(value, str))
+    return dependencies
+
+
+def _replace_toml_string(content: str, old: str, new: str) -> tuple[str, bool]:
+    """Replace an exact, simply quoted TOML string without reformatting the file."""
+    for quote in ('"', "'"):
+        token = f"{quote}{old}{quote}"
+        if token in content:
+            return content.replace(token, f"{quote}{new}{quote}", 1), True
+    return content, False
+
+
+def _apply_pyproject_fixes(
+    fixes: list[PackageFix],
+    project_dir: Path,
+    dry_run: bool,
+    backup: bool,
+) -> tuple[list[PackageFix], list[PackageFix], list[str]]:
+    """Apply PyPI fixes to direct requirements declared in pyproject.toml."""
+    pyproject_path = project_dir / "pyproject.toml"
+    if not pyproject_path.exists():
+        return [], fixes, []
+
+    try:
+        content = pyproject_path.read_text()
+        data = tomllib.loads(content)
+    except (OSError, tomllib.TOMLDecodeError):
+        return [], fixes, []
+
+    requirements: list[tuple[str, Requirement]] = []
+    for raw in _pyproject_dependency_strings(data):
+        try:
+            requirement = Requirement(raw)
+        except InvalidRequirement:
+            continue
+        if requirement.url is None:
+            requirements.append((raw, requirement))
+
+    applied: list[PackageFix] = []
+    modified = False
+    for fix in fixes:
+        if not fix.fixed_version:
+            continue
+        wanted = canonicalize_name(fix.package)
+        match = next(((raw, req) for raw, req in requirements if canonicalize_name(req.name) == wanted), None)
+        if match is None:
+            continue
+        raw, requirement = match
+        marker = f"; {requirement.marker}" if requirement.marker else ""
+        extras = f"[{','.join(sorted(requirement.extras))}]" if requirement.extras else ""
+        replacement = f"{requirement.name}{extras}>={fix.fixed_version}{marker}"
+        content, replaced = _replace_toml_string(content, raw, replacement)
+        if replaced:
+            applied.append(fix)
+            modified = True
+
+    if modified and not dry_run:
+        backed_up = [_backup_file(pyproject_path)] if backup else []
+        pyproject_path.write_text(content)
+    else:
+        backed_up = []
+
+    applied_keys = {_fix_key(fix) for fix in applied}
+    skipped = [fix for fix in fixes if _fix_key(fix) not in applied_keys]
+    return applied, skipped, backed_up
+
+
+def _fix_key(fix: PackageFix) -> str:
+    ecosystem = fix.ecosystem.lower()
+    package = canonicalize_name(fix.package) if ecosystem == "pypi" else fix.package.lower()
+    return f"{ecosystem}:{package}"
+
+
 def apply_fixes(
     plan: RemediationPlan,
     project_dirs: list[Path],
@@ -595,7 +700,8 @@ def apply_fixes(
 ) -> ApplyResult:
     """Apply package version fixes to dependency files.
 
-    Modifies package.json (npm) and requirements.txt (pypi) with fixed versions.
+    Modifies package.json (npm), requirements.txt, and pyproject.toml (PyPI)
+    with fixed versions.
     Creates backup files before modification unless backup=False.
 
     Args:
@@ -612,31 +718,38 @@ def apply_fixes(
     if not plan.package_fixes:
         return result
 
-    # Split fixes by ecosystem
-    npm_fixes = [f for f in plan.package_fixes if f.ecosystem == "npm" and f.fixed_version]
-    pip_fixes = [f for f in plan.package_fixes if f.ecosystem in ("pypi", "PyPI") and f.fixed_version]
-    other_fixes = [f for f in plan.package_fixes if f.ecosystem not in ("npm", "pypi", "PyPI") or not f.fixed_version]
-
-    # Skip unsupported ecosystems
-    result.skipped.extend(other_fixes)
+    npm_fixes = [f for f in plan.package_fixes if f.ecosystem.lower() == "npm" and f.fixed_version]
+    pip_fixes = [f for f in plan.package_fixes if f.ecosystem.lower() == "pypi" and f.fixed_version]
+    applied_keys: set[str] = set()
 
     for project_dir in project_dirs:
         project_dir = Path(project_dir)
 
         if npm_fixes:
-            applied, skipped, backed = _apply_npm_fixes(npm_fixes, project_dir, dry_run, backup)
-            result.applied.extend(applied)
-            # Only add to skipped if not applied in any directory
-            if not applied:
-                result.skipped.extend(skipped)
+            applied, _skipped, backed = _apply_npm_fixes(npm_fixes, project_dir, dry_run, backup)
+            applied_keys.update(_fix_key(fix) for fix in applied)
             result.backed_up.extend(backed)
 
         if pip_fixes:
-            applied, skipped, backed = _apply_pip_fixes(pip_fixes, project_dir, dry_run, backup)
-            result.applied.extend(applied)
-            if not applied:
-                result.skipped.extend(skipped)
+            applied, _skipped, backed = _apply_pip_fixes(pip_fixes, project_dir, dry_run, backup)
+            applied_keys.update(_fix_key(fix) for fix in applied)
             result.backed_up.extend(backed)
+            applied, _skipped, backed = _apply_pyproject_fixes(pip_fixes, project_dir, dry_run, backup)
+            applied_keys.update(_fix_key(fix) for fix in applied)
+            result.backed_up.extend(backed)
+
+    for fix in plan.package_fixes:
+        key = _fix_key(fix)
+        if key in applied_keys:
+            result.applied.append(fix)
+            continue
+        result.skipped.append(fix)
+        if not fix.fixed_version:
+            result.skipped_reasons[key] = "no fixed version available"
+        elif fix.ecosystem.lower() not in {"npm", "pypi"}:
+            result.skipped_reasons[key] = "unsupported ecosystem"
+        else:
+            result.skipped_reasons[key] = "no supported dependency manifest contains this direct dependency"
 
     return result
 

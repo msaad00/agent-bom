@@ -639,6 +639,16 @@ test("mobile ranked path selection moves the selected graph into view", async ({
   await expect.poll(async () => (await detail.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(120);
 });
 
+async function openEvidenceControls(page: Page) {
+  const controls = page.getByTestId("graph-evidence-controls");
+  await expect(controls).toBeVisible();
+  if ((await controls.getAttribute("open")) === null) {
+    await controls.locator(":scope > summary").click();
+  }
+  await expect(controls).toHaveAttribute("open", "");
+  return controls;
+}
+
 for (const theme of ["dark", "light"] as const) {
 test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ page }, testInfo: TestInfo) => {
   await routeCockpit(page, 1_241);
@@ -670,6 +680,7 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   await expect(page).toHaveURL(/scan=scan-cockpit-fixture/);
   await expect(page).toHaveURL(/rollup=1/);
   await rollupRequest;
+  await openEvidenceControls(page);
   await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
   // The roll-up used to emit no edges, so this banner had to disclaim that the
   // cards were "not rendered relationship evidence". It now draws the real
@@ -705,6 +716,7 @@ test("36-node snapshots default to real topology and forced roll-up still draws 
 
   await page.goto(`/graph?scan=${scanId}&rollup=1`);
   await page.waitForLoadState("networkidle");
+  await openEvidenceControls(page);
   await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
   await expect(page.locator('[data-rollup-container="true"]')).toHaveCount(2);
   // Collapsing the estate changes what a relationship is drawn *between*, never
@@ -719,6 +731,7 @@ test("200-node snapshots default to roll-up and explicit raw topology persists",
 
   await page.goto(`/graph?scan=${scanId}`);
   await page.waitForLoadState("networkidle");
+  await openEvidenceControls(page);
   await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
   await expect(page.getByText(/200 nodes in snapshot/i)).toBeVisible();
 
@@ -735,14 +748,16 @@ test("empty forced roll-up preserves operator preference and falls back to real 
   await page.goto(`/graph?scan=${scanId}&rollup=1`);
   await page.waitForLoadState("networkidle");
   await expect(page).toHaveURL(/rollup=1/);
+  await openEvidenceControls(page);
   await expect(page.getByText(/Roll-up unavailable/i)).toBeVisible();
   expect(await page.locator(".react-flow__edge").count()).toBeGreaterThan(0);
 });
 
 test("eligible roll-up shows a loading surface without raw-topology counts", async ({ page }) => {
-  await routeCockpit(page, 200, { rollupDelayMs: 750 });
+  await routeCockpit(page, 200, { rollupDelayMs: 3_000 });
 
   await page.goto(`/graph?scan=${scanId}`);
+  await openEvidenceControls(page);
   await expect(page.getByText("Loading scope navigation")).toBeVisible();
   await expect(page.getByTestId("graph-compression-summary")).toHaveCount(0);
   await expect(page.locator(".react-flow__edge")).toHaveCount(0);
@@ -785,7 +800,10 @@ for (const proof of [
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByRole("heading", { name: "Investigation Canvas" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Estate/ })).toHaveAttribute("aria-pressed", "true");
+    const evidenceControls = page.getByTestId("graph-evidence-controls");
+    await expect(evidenceControls).toBeVisible();
+    await expect(evidenceControls).not.toHaveAttribute("open", "");
+    await expect(evidenceControls.getByRole("button", { name: /Estate/ })).toBeHidden();
     await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
     await expect(page.getByTestId("graph-rollup-relationship-completeness")).toHaveText(
       "1 aggregated relationship rows · complete for this scope",

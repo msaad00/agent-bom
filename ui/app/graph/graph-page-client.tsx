@@ -2833,6 +2833,7 @@ function GraphPageInner() {
           )}
 
           <details
+            data-testid="graph-evidence-controls"
             open={Boolean(
               selectedScenario ||
                 activeScopePreset === "assetDrift" ||

@@ -6,7 +6,7 @@
  * severity. The product's core value has to have a text equivalent.
  */
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { GraphTextAlternative } from "@/components/graph-text-alternative";
 import { buildGraphTextAlternative } from "@/lib/graph-text-alternative";
@@ -176,6 +176,28 @@ describe("buildGraphTextAlternative", () => {
 });
 
 describe("<GraphTextAlternative>", () => {
+  it("keeps parallel relationship sentences keyed independently", () => {
+    const first = edge("a1", "s1", "calls");
+    const second = { ...edge("a1", "s1", "calls"), id: "a1->s1:duplicate" };
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(
+      <GraphTextAlternative
+        id="overview-text"
+        renderer="2D canvas overview"
+        model={model({ edges: [first, second] })}
+        summary={SUMMARY}
+      />,
+    );
+
+    expect(
+      consoleError.mock.calls.some((args) =>
+        args.map(String).join(" ").includes("same key"),
+      ),
+    ).toBe(false);
+    consoleError.mockRestore();
+  });
+
   it("exposes the graph as a named region a screen reader can reach", () => {
     render(
       <GraphTextAlternative

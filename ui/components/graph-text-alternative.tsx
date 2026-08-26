@@ -88,8 +88,8 @@ export function GraphTextAlternative({
       <h3>Connections</h3>
       <p>{text.connectionsNote}</p>
       <ul>
-        {text.connections.map((sentence) => (
-          <li key={sentence}>{sentence}</li>
+        {text.connections.map((sentence, index) => (
+          <li key={`${index}:${sentence}`}>{sentence}</li>
         ))}
       </ul>
     </section>

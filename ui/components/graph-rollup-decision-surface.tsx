@@ -88,6 +88,14 @@ export function GraphRollupDecisionSurface({
   }, [filter, items]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const compactLayout = visible.length <= 3;
+  const cardGridClass = compactLayout
+    ? visible.length === 1
+      ? "grid-cols-1"
+      : visible.length === 2
+        ? "grid-cols-1 md:grid-cols-2"
+        : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+    : "grid-cols-1 flex-1 auto-rows-fr md:grid-cols-2 xl:grid-cols-3";
   const nodeScopeLabel = completeness?.truncated
     ? `${items.length.toLocaleString()} returned from a bounded node scope`
     : `${items.length.toLocaleString()} containers`;
@@ -106,7 +114,8 @@ export function GraphRollupDecisionSurface({
   return (
     <section
       data-testid="graph-rollup-decision-surface"
-      className="flex h-full min-h-[32rem] flex-col overflow-hidden rounded-2xl bg-[var(--surface)]"
+      data-layout={compactLayout ? "compact" : "paged"}
+      className={`flex flex-col overflow-hidden rounded-2xl bg-[var(--surface)] ${compactLayout ? "min-h-0" : "h-full min-h-[32rem]"}`}
       aria-label="Risk-prioritized estate scopes"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
@@ -158,7 +167,10 @@ export function GraphRollupDecisionSurface({
         </span>
       </div>
 
-      <div className="grid flex-1 auto-rows-fr gap-2 overflow-y-auto p-4 md:grid-cols-2 xl:grid-cols-3">
+      <div
+        data-testid="graph-rollup-card-grid"
+        className={`grid gap-2 overflow-y-auto p-4 ${cardGridClass}`}
+      >
         {visible.map((item) => {
           const relation = relationEvidence(item.id, edges);
           const severity = item.aggregate.worst_severity || item.severity || "none";

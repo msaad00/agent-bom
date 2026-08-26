@@ -214,12 +214,14 @@ async function routeGraphPage(page: Page) {
 
 async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "dark" | "light") {
   await expect(page.getByRole("heading", { name: "Lineage Graph" })).toBeVisible();
-  await expect(page.getByText("Relevant paths", { exact: true }).first()).toBeVisible();
-  // View controls, operator details, and the attack-path queue now live inside
-  // one collapsed-by-default "Advanced controls" shelf so the canvas owns the
-  // fold (#3932). The shelf summary stays visible; its contents open on demand.
-  await expect(page.getByText("Advanced controls", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("graph-compression-summary")).toContainText(/compressed|rendered/);
+  await expect(page.getByText("Relevant paths", { exact: true }).first()).toBeHidden();
+  // Evidence, lens selection, and advanced controls now share one
+  // collapsed-by-default shelf so the canvas owns the fold. Nested controls
+  // remain available on demand without becoming first-view chrome.
+  await expect(page.getByText("Advanced controls", { exact: true })).toBeHidden();
+  const evidenceControls = page.getByTestId("graph-evidence-controls");
+  await expect(evidenceControls).not.toHaveAttribute("open", "");
+  await expect(evidenceControls.getByText("Evidence & controls", { exact: true })).toBeVisible();
 
   const largeOverview = page.getByTestId("large-graph-overview");
   const application = page.getByRole("application");
@@ -237,7 +239,6 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
   } else {
     await expect(desktopNode).toBeVisible();
     await expect(application.getByText("CVE-2026-103", { exact: true })).toBeVisible();
-    await expect(page.getByText("Legend").first()).toBeVisible();
     // Topology with the legend collapsed — proves the nodes fill the canvas
     // and read clearly at default zoom.
     await application.screenshot({
@@ -247,14 +248,15 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
     const legendToggle = page.getByRole("button", { name: /show legend/i });
     if (await legendToggle.isVisible()) {
       await legendToggle.click();
+    } else {
+      await evidenceControls.locator(":scope > summary").click();
     }
-    // Graph chrome may render the legend as a details dock (without a
-    // persistent hide button) on focused views. Verify the legend remains
-    // readable after the optional toggle instead of coupling the test to one
-    // control implementation.
-    await expect(page.getByText("Legend").first()).toBeVisible();
-    await application.screenshot({
+    // Graph chrome may render the legend in the evidence shelf instead of on
+    // the canvas. Verify that either route keeps the legend readable.
+    await expect(page.getByText("Legend", { exact: true }).first()).toBeVisible();
+    await page.screenshot({
       path: testInfo.outputPath(`lineage-graph-legend-${theme}.png`),
+      fullPage: false,
     });
   }
   await page.screenshot({

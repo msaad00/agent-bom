@@ -508,6 +508,38 @@ def test_conditional_access_blocks_at_gateway(store):
     assert allowed.status_code == 200 and allowed.json()["result"] == {"ok": True}
 
 
+def test_conditional_access_ignores_spoofed_forwarded_ip_from_direct_caller(store, monkeypatch):
+    """A direct caller cannot satisfy a CIDR policy by supplying its own XFF."""
+    from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+    from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", raising=False)
+    create_conditional_policy(
+        store,
+        tenant_id="default",
+        name="private-network-only",
+        effect="require",
+        allowed_source_cidrs=["10.0.0.0/8"],
+    )
+
+    async def ok_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://fs.local:8100")]),
+        policy={},
+        upstream_caller=ok_caller,
+    )
+    client = TestClient(create_gateway_app(settings))
+    message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_files", "arguments": {}}}
+
+    blocked = client.post("/mcp/filesystem", json=message, headers={"x-forwarded-for": "10.1.2.3"})
+
+    assert blocked.json().get("error", {}).get("code") == -32001, blocked.text
+    assert blocked.json()["error"]["data"]["policy_source"] == "conditional_access"
+
+
 def _gateway_client_with_audit(store, audit_events):
     from agent_bom.gateway_server import GatewaySettings, create_gateway_app
     from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry

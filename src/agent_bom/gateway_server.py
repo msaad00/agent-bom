@@ -53,6 +53,7 @@ from agent_bom.agent_identity import (
     scopes_from_claims,
 )
 from agent_bom.api.auth import Role, get_key_store
+from agent_bom.api.forwarded_identity import resolve_forwarded_client_ip
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
 from agent_bom.api.oauth_as import OAuthAuthorizationServer, build_oauth_as_router
@@ -549,16 +550,16 @@ def _evaluate_control_plane_bundle(
 def _request_source_ip(request: Request) -> str:
     """Resolve the caller IP for conditional-access CIDR conditions.
 
-    Prefers the first hop of ``X-Forwarded-For`` (the original client behind a
-    trusted reverse proxy), falling back to the direct socket peer.
+    The transport peer is authoritative unless the deployment declares both a
+    bounded proxy depth and trusted transport-peer CIDRs.  This prevents a
+    direct caller from satisfying an allowlisted CIDR by spoofing
+    ``X-Forwarded-For``.
     """
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        first = forwarded.split(",")[0].strip()
-        if first:
-            return first
     client = getattr(request, "client", None)
-    return getattr(client, "host", "") or ""
+    return resolve_forwarded_client_ip(
+        peer_host=getattr(client, "host", "") or "",
+        forwarded_for=request.headers.get("x-forwarded-for", ""),
+    )
 
 
 def _request_environment(request: Request) -> str:

@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import logging
 import random
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from starlette.testclient import TestClient
 
-from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+from agent_bom.gateway_server import GatewaySettings, _request_source_ip, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.proxy_policy import (
     DecisionContext,
@@ -77,6 +78,24 @@ def _settings(audit: list[dict[str, Any]] | None = None, **kwargs: Any) -> Gatew
 def _is_blocked(resp) -> bool:
     body = resp.json()
     return resp.status_code == 200 and isinstance(body.get("error"), dict) and body["error"].get("code") == -32001
+
+
+def test_gateway_source_ip_requires_declared_trusted_proxy_topology(monkeypatch):
+    request = SimpleNamespace(
+        headers={"x-forwarded-for": "192.0.2.40, 10.0.0.20"},
+        client=SimpleNamespace(host="10.0.0.5"),
+    )
+
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", raising=False)
+    assert _request_source_ip(request) == "10.0.0.5"
+
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_HOPS", "2")
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", "10.0.0.0/24")
+    assert _request_source_ip(request) == "192.0.2.40"
+
+    request.client.host = "203.0.113.10"
+    assert _request_source_ip(request) == "203.0.113.10"
 
 
 @pytest.fixture(autouse=True)

@@ -47,6 +47,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from agent_bom.api.forwarded_identity import resolve_forwarded_client_ip, trusted_proxy_hops, trusted_proxy_networks
 from agent_bom.api.models import (
     CreateKeyRequest,
     ExceptionRequest,
@@ -101,36 +102,12 @@ _TRIAGE_PREFIX = "[finding_triage]"
 _LEGACY_FALSE_POSITIVE_PREFIX = "[false_positive]"
 
 
-def _trusted_proxy_hops() -> int:
-    raw = (os.environ.get("AGENT_BOM_TRUSTED_PROXY_HOPS") or "").strip()
-    if not raw:
-        return 0
-    try:
-        value = int(raw)
-    except ValueError:
-        return 0
-    return value if 1 <= value <= 32 else 0
-
-
-def _trusted_proxy_networks() -> tuple[Any, ...]:
-    """Return explicitly trusted transport-peer networks, or none on any error."""
-    from ipaddress import ip_network
-
-    raw = (os.environ.get("AGENT_BOM_TRUSTED_PROXY_CIDRS") or "").strip()
-    if not raw:
-        return ()
-    try:
-        return tuple(ip_network(part.strip(), strict=False) for part in raw.split(",") if part.strip())
-    except ValueError:
-        return ()
-
-
 def _auth_session_client_identity_posture() -> dict[str, Any]:
     """Describe whether forwarded client identity is safely active."""
     raw_hops = (os.environ.get("AGENT_BOM_TRUSTED_PROXY_HOPS") or "").strip()
     raw_cidrs = (os.environ.get("AGENT_BOM_TRUSTED_PROXY_CIDRS") or "").strip()
-    hops = _trusted_proxy_hops()
-    networks = _trusted_proxy_networks()
+    hops = trusted_proxy_hops()
+    networks = trusted_proxy_networks()
     active = bool(hops and networks)
     warning = None
     if raw_hops and not hops:
@@ -162,24 +139,11 @@ def _client_fingerprint(request: Request) -> str:
     Nth-from-rightmost entry and fall back to the transport peer when the chain
     is missing, malformed, oversized, or shorter than declared.
     """
-    host = request.client.host if request.client else "unknown"
-    hops = _trusted_proxy_hops()
-    networks = _trusted_proxy_networks()
-    try:
-        from ipaddress import ip_address
-
-        peer = ip_address(host)
-    except ValueError:
-        peer = None
-    if hops > 0 and networks and peer is not None and any(peer in network for network in networks):
-        forwarded = [part.strip() for part in (request.headers.get("x-forwarded-for") or "").split(",") if part.strip()]
-        if hops <= len(forwarded) <= 32:
-            candidate = forwarded[-hops]
-            try:
-                host = str(ip_address(candidate))
-            except ValueError:
-                pass
-    return (host or "unknown")[:128]
+    return resolve_forwarded_client_ip(
+        peer_host=request.client.host if request.client else "",
+        forwarded_for=request.headers.get("x-forwarded-for") or "",
+        fallback="unknown",
+    )[:128]
 
 
 def _auth_session_limit() -> int:

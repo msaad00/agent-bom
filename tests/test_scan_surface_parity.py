@@ -162,6 +162,7 @@ def test_default_cli_scan_surfaces_combination():
     from click.testing import CliRunner
 
     from agent_bom.cli import main
+    from agent_bom.graph.builder import build_unified_graph_from_report
 
     agents, brs = _seeded_estate()
     pkg = agents[0].mcp_servers[0].packages[0]
@@ -173,6 +174,10 @@ def test_default_cli_scan_surfaces_combination():
         patch("agent_bom.cli.agents.extract_packages", return_value=[pkg]),
         patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=None),
         patch("agent_bom.vex.is_vex_suppressed", return_value=False),
+        patch(
+            "agent_bom.graph.builder.build_unified_graph_from_report",
+            wraps=build_unified_graph_from_report,
+        ) as build_graph,
     ):
         # No --context-graph flag — the default surface.
         result = runner.invoke(
@@ -187,6 +192,10 @@ def test_default_cli_scan_surfaces_combination():
     payload = json.loads(result.output[result.output.index("{") :])
     cats = _categories_from_json(payload)
     assert "COMBINATION" in cats, f"default CLI dropped graph-derived category; got {cats}"
+    # Graph-derived findings and dependency reachability share the same graph
+    # projection; rebuilding the report graph makes scan completion scale with
+    # the serialized output size rather than with useful topology work.
+    assert build_graph.call_count == 1
 
 
 @pytest.mark.asyncio

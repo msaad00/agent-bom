@@ -2204,11 +2204,17 @@ def scan(
     # and MCP surfaces (all three call one shared build+attach helper). The
     # unified stream (report.to_findings()) is the single source of truth for the
     # toxic COMBINATION count, so the printed count can never contradict it.
+    _dependency_reachability = None
     if agents:
         from agent_bom.cli._tenant import resolve_cli_tenant_id as _resolve_cli_tenant_id
         from agent_bom.graph.scan_findings import surface_graph_derived_findings
 
-        surface_graph_derived_findings(report, scan_id=_scan_id, tenant_id=_resolve_cli_tenant_id())
+        _dependency_reachability = surface_graph_derived_findings(
+            report,
+            scan_id=_scan_id,
+            tenant_id=_resolve_cli_tenant_id(),
+            include_dependency_reachability=True,
+        )
         if not quiet:
             # Non-zero counts here are bad news — warn, don't checkmark.
             _n_toxic = len(report.toxic_combination_findings_data or [])
@@ -2925,7 +2931,12 @@ def scan(
             resync_cve_findings_from_blast_radii,
         )
 
-        apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
+        apply_dependency_reachability_to_blast_radii(
+            blast_radii,
+            agents,
+            rescore=True,
+            reachability_report=_dependency_reachability,
+        )
         # Join AST function-level symbol reach to CVE affected-symbols so each
         # Python finding carries a function_reachable / package_reachable /
         # unreachable signal. No-op when no Python entrypoints were analysed.

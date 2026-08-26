@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agent_bom.graph.container import UnifiedGraph
+    from agent_bom.graph.dependency_reach import ReachabilityReport
     from agent_bom.models import AIBOMReport
 
 _logger = logging.getLogger(__name__)
@@ -140,16 +141,23 @@ def _rewrite_side_block_findings(report: "AIBOMReport", findings: list[Any]) -> 
         report.ciem_over_privilege_findings_data = ciem
 
 
-def surface_graph_derived_findings(report: "AIBOMReport", *, scan_id: str, tenant_id: str) -> None:
+def surface_graph_derived_findings(
+    report: "AIBOMReport",
+    *,
+    scan_id: str,
+    tenant_id: str,
+    include_dependency_reachability: bool = False,
+) -> "ReachabilityReport | None":
     """Build the unified graph from ``report`` and attach graph-derived findings.
 
     The single build+attach entry point shared by the CLI (default path), the API
     scan pipeline, and the MCP scan tool, so every scan surface emits the same
     graph-derived categories (``COMBINATION`` / ``CIEM_OVER_PRIVILEGE`` / ``NHI``).
 
-    The interim JSON and the throwaway graph are locals released when this returns,
-    so the surfacing graph never outlives the call. Best-effort: a graph-build or
-    surfacing failure is logged and swallowed — it must never fail the scan.
+    When ``include_dependency_reachability`` is true, compute and return the
+    structural reachability report from this same graph so callers do not
+    serialize and project the scan a second time. The interim JSON and graph are
+    released when this returns. Best-effort: failures are logged and swallowed.
     """
     try:
         from agent_bom.graph.builder import build_unified_graph_from_report
@@ -157,9 +165,21 @@ def surface_graph_derived_findings(report: "AIBOMReport", *, scan_id: str, tenan
 
         interim_json = to_json(report)
         graph = build_unified_graph_from_report(interim_json, scan_id=scan_id, tenant_id=tenant_id)
-        attach_graph_derived_findings(report, graph)
     except Exception as exc:  # noqa: BLE001 — never fail the scan on findings surfacing
         _logger.debug("graph-derived findings surfacing skipped: %s", exc)
+        return None
+
+    attach_graph_derived_findings(report, graph)
+    if not include_dependency_reachability:
+        return None
+
+    try:
+        from agent_bom.graph.dependency_reach import compute_dependency_reach
+
+        return compute_dependency_reach(graph)
+    except Exception as exc:  # noqa: BLE001 — best-effort enrichment
+        _logger.debug("dependency reachability reuse skipped: %s", exc)
+        return None
 
 
 __all__ = ["attach_graph_derived_findings", "surface_graph_derived_findings"]

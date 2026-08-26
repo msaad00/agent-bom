@@ -1505,20 +1505,45 @@ class AIBOMReport:
         secret findings are always appended so machine consumers (JSON/SARIF/CSV)
         see them, not just the console.
         """
-        from agent_bom.finding import blast_radius_to_finding
+        from agent_bom.finding import FindingType, blast_radius_to_finding
 
         # Keep explicit non-CVE findings even when the legacy blast-radius
         # projection is also present. API/VEX paths can update the projection
         # after the unified stream was built; dropping either side makes JSON
         # disagree with CSV/SARIF and hides policy findings from consumers.
         base = list(self.findings)
-        existing_ids = {getattr(f, "canonical_id", getattr(f, "id", None)) for f in base}
-        for br in self.blast_radii:
-            finding = blast_radius_to_finding(br)
-            finding_id = getattr(finding, "canonical_id", getattr(finding, "id", None))
-            if finding_id not in existing_ids:
-                base.append(finding)
-                existing_ids.add(finding_id)
+
+        def _materialized_cve_key(finding: "Finding") -> tuple[str, str, str, str, tuple[str, ...], tuple[str, ...]]:
+            evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
+            return (
+                str(finding.vulnerability_id or ""),
+                str(evidence.get("package_name") or ""),
+                str(evidence.get("package_version") or ""),
+                str(evidence.get("ecosystem") or ""),
+                tuple(sorted(finding.affected_agents or [])),
+                tuple(sorted(finding.affected_servers or [])),
+            )
+
+        materialized_cve_keys = sorted(_materialized_cve_key(finding) for finding in base if finding.finding_type is FindingType.CVE)
+        blast_radius_keys = sorted(
+            (
+                str(br.vulnerability.id or ""),
+                str(br.package.name or ""),
+                str(br.package.version or ""),
+                str(br.package.ecosystem or ""),
+                tuple(sorted(str(getattr(agent, "name", "") or "") for agent in br.affected_agents)),
+                tuple(sorted(str(getattr(server, "name", "") or "") for server in br.affected_servers)),
+            )
+            for br in self.blast_radii
+        )
+        if materialized_cve_keys != blast_radius_keys:
+            existing_ids = {getattr(f, "canonical_id", getattr(f, "id", None)) for f in base}
+            for br in self.blast_radii:
+                finding = blast_radius_to_finding(br)
+                finding_id = getattr(finding, "canonical_id", getattr(finding, "id", None))
+                if finding_id not in existing_ids:
+                    base.append(finding)
+                    existing_ids.add(finding_id)
         # Avoid double-counting if a dual-write path ever adds the same secret
         # finding, but do not suppress unrelated secret findings in the side block.
         existing_ids = {getattr(f, "canonical_id", getattr(f, "id", None)) for f in base}

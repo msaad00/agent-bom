@@ -844,6 +844,21 @@ def test_cve_findings_reuses_dual_write_projection():
     assert all(item.finding_type == FindingType.CVE for item in projected)
 
 
+def test_report_to_findings_reuses_dual_write_cve_projection(monkeypatch):
+    """The unified stream must not rebuild CVEs already materialized by scan."""
+    import agent_bom.finding as finding_module
+
+    report = _make_report_with_blast_radii(2)
+    report.findings = [finding_module.blast_radius_to_finding(br) for br in report.blast_radii]
+
+    def unexpected_conversion(_blast_radius):
+        raise AssertionError("materialized CVE projection was rebuilt")
+
+    monkeypatch.setattr(finding_module, "blast_radius_to_finding", unexpected_conversion)
+
+    assert report.to_findings() == report.findings
+
+
 def test_report_to_findings_merges_explicit_and_blast_radius_findings():
     """A report must expose CVEs and explicit policy findings together."""
     report = _make_report_with_blast_radii(1)

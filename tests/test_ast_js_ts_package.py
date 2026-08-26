@@ -8,12 +8,8 @@ from pathlib import Path
 
 
 def test_js_ts_parser_runtime_is_installed_by_the_base_package() -> None:
-    project = tomllib.loads(
-        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
-    )["project"]
-    dependencies = {
-        dependency.split(">=", 1)[0] for dependency in project["dependencies"]
-    }
+    project = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    dependencies = {dependency.split(">=", 1)[0] for dependency in project["dependencies"]}
 
     assert {
         "tree-sitter",

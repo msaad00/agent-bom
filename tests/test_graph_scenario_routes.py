@@ -268,7 +268,8 @@ def test_invalid_stored_operation_returns_unavailable_without_partial_applicatio
     assert body["available"] is False
     assert body["proposed"]["nodes"] == [] and body["proposed"]["edges"] == []
     assert body["difference"]["nodes_removed"] == []
-    assert "missing-node" in body["unavailable_reason"]
+    assert body["unavailable_reason"] == "An internal error occurred. Please contact support."
+    assert "missing-node" not in body["unavailable_reason"]
 
 
 def test_payload_cap_extra_fields_and_managed_trial_read_only(

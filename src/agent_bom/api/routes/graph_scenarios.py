@@ -733,7 +733,7 @@ async def compare_graph_scenario(
             },
             "difference": _empty_difference(),
             "available": False,
-            "unavailable_reason": sanitize_error(exc),
+            "unavailable_reason": sanitize_error(exc, generic=True),
             "base_status": status,
             "stale": stale,
         }

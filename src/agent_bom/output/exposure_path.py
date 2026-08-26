@@ -43,21 +43,12 @@ def exposure_path_for_finding(
     package_ref = f"pkg:{ecosystem}:{display_name}@{pkg_version or 'unknown'}"
     vuln_id = finding.cve_id or finding.title or finding.asset.name
     finding_ref = f"finding:{vuln_id}"
-    source_ref = _source_ref_for_finding(finding, display_name, pkg_version, ecosystem)
+    source_ref, server_refs = _primary_runtime_spine_for_finding(finding, package_ref)
     target_ref = finding_ref
-    server_refs = _server_refs_for_finding(finding)
     tool_refs = _tool_refs_for_finding(finding)
     credential_refs = _credential_refs_for_finding(finding)
-    nodes = _ordered_unique(
-        [
-            source_ref,
-            *server_refs[:3],
-            package_ref,
-            target_ref,
-            *tool_refs[:3],
-            *credential_refs[:3],
-        ]
-    )
+    hops = _ordered_unique([source_ref, *server_refs, package_ref, target_ref])
+    nodes = _ordered_unique([*hops, *tool_refs[:3], *credential_refs[:3]])
     relationships = _relationships_for_finding(
         finding,
         source_ref,
@@ -100,7 +91,7 @@ def exposure_path_for_finding(
         "severity": severity,
         "source": source_ref,
         "target": target_ref,
-        "hops": nodes,
+        "hops": hops,
         "relationships": relationships,
         "nodeIds": nodes,
         "edgeIds": [rel["id"] for rel in relationships],
@@ -240,6 +231,43 @@ def _source_ref_for_finding(
     return f"pkg:{ecosystem}:{package_name_value}@{package_version_value or 'unknown'}"
 
 
+def _primary_runtime_spine_for_finding(finding: Finding, package_ref: str) -> tuple[str, list[str]]:
+    """Choose one evidence-backed agent → MCP server spine for a finding.
+
+    Package, repository, image, SBOM, and AI-inventory wrappers reuse the
+    ``Agent``/``MCPServer`` storage shape, but they are not runtime MCP hops.
+    Treat them as finding context only. When several real MCP servers are
+    affected, select one observed agent/server association instead of splicing
+    every affected asset into a single path.
+    """
+
+    evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
+    surfaces = evidence.get("affected_server_surfaces")
+    if isinstance(surfaces, dict):
+        runtime_servers = [server for server in finding.affected_servers if str(surfaces.get(server) or "") == "mcp-server"]
+    else:
+        # Findings created before surface provenance was added retain their
+        # first server as a conservative legacy-compatible spine.
+        runtime_servers = list(finding.affected_servers[:1])
+
+    if not runtime_servers:
+        return package_ref, []
+
+    primary_server = runtime_servers[0]
+    links = evidence.get("agent_server_links")
+    if isinstance(links, list):
+        for link in links:
+            if not isinstance(link, dict) or str(link.get("server") or "") != primary_server:
+                continue
+            agent = str(link.get("agent") or "").strip()
+            if agent and agent in finding.affected_agents:
+                return f"agent:{agent}", [f"server:{primary_server}"]
+
+    if finding.affected_agents:
+        return f"agent:{finding.affected_agents[0]}", [f"server:{primary_server}"]
+    return f"server:{primary_server}", [f"server:{primary_server}"]
+
+
 def _server_refs(br: BlastRadius) -> list[str]:
     return [f"server:{_server_label(server)}" for server in br.affected_servers]
 
@@ -297,16 +325,18 @@ def _relationships_for_finding(
     def add(rel_type: str, source: str, target: str) -> None:
         rels.append({"id": f"{source}->{rel_type}->{target}", "type": rel_type, "source": source, "target": target})
 
-    for server_ref in server_refs[:3]:
-        add("uses", source_ref, server_ref)
+    for server_ref in server_refs[:1]:
+        if source_ref != server_ref:
+            add("uses", source_ref, server_ref)
         add("depends_on", server_ref, package_ref)
-    if not finding.affected_servers:
+    if not server_refs and source_ref != package_ref:
         add("depends_on", source_ref, package_ref)
     add("vulnerable_to", package_ref, finding_ref)
+    exposure_owner = server_refs[0] if server_refs else source_ref
     for tool_ref in tool_refs[:3]:
-        add("provides_tool", source_ref, tool_ref)
+        add("provides_tool", exposure_owner, tool_ref)
     for credential_ref in credential_refs[:3]:
-        add("exposes_credential", source_ref, credential_ref)
+        add("exposes_credential", exposure_owner, credential_ref)
     return rels
 
 

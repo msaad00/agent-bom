@@ -1519,9 +1519,32 @@ def blast_radius_to_finding(br: object) -> "Finding":
     vuln = br.vulnerability
     pkg = br.package
 
-    # Asset: primary server or package
-    if br.affected_servers:
-        primary_server = br.affected_servers[0]
+    affected_server_surfaces = {
+        server.name: getattr(getattr(server, "surface", None), "value", str(getattr(server, "surface", "")))
+        for server in br.affected_servers
+    }
+    affected_server_ids = {getattr(server, "stable_id", ""): server.name for server in br.affected_servers}
+    agent_server_links: list[dict[str, str]] = []
+    for agent in br.affected_agents:
+        for server in getattr(agent, "mcp_servers", []) or []:
+            server_name = affected_server_ids.get(getattr(server, "stable_id", ""))
+            if server_name:
+                agent_server_links.append(
+                    {
+                        "agent": getattr(agent, "name", str(agent)),
+                        "server": server_name,
+                    }
+                )
+
+    # Asset: a real MCP server when the vulnerable package is installed behind
+    # one; otherwise the package itself. Filesystem, SBOM, image, repository,
+    # and AI-inventory wrappers share the server-shaped storage model but must
+    # not be published as MCP server assets.
+    primary_server = next(
+        (server for server in br.affected_servers if getattr(server, "is_mcp_surface", False)),
+        None,
+    )
+    if primary_server is not None:
         from agent_bom.security import sanitize_launch_command
 
         asset = Asset(
@@ -1548,6 +1571,8 @@ def blast_radius_to_finding(br: object) -> "Finding":
         "package_dependency_scope": pkg.dependency_scope,
         "package_reachability_evidence": pkg.reachability_evidence,
         "affected_server_count": len(br.affected_servers),
+        "affected_server_surfaces": _sanitized_evidence_field(affected_server_surfaces),
+        "agent_server_links": _sanitized_evidence_field(agent_server_links),
         "exposed_credential_count": len(br.exposed_credentials),
         "exposed_tool_count": len(br.exposed_tools),
         "hop_depth": getattr(br, "hop_depth", 1),

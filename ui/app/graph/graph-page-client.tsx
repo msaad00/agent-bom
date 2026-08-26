@@ -82,6 +82,7 @@ import {
   RelationshipType,
   type UnifiedNode,
 } from "@/lib/graph-schema";
+import { resolveSnapshotAttackPathCount } from "@/lib/graph-snapshot-metrics";
 import {
   entityTypesForLayers,
   lineageNodeTypeForEntity,
@@ -1501,6 +1502,11 @@ function GraphPageInner() {
     rollupCanvasPending,
     rollupView,
   ]);
+  const snapshotAttackPathCount = resolveSnapshotAttackPathCount({
+    pageTotal: attackPathQueue?.pagination.total,
+    statsTotal: graphData?.stats.attack_path_count,
+    returnedPaths: flow.summary?.attackPaths ?? 0,
+  });
 
   useEffect(() => {
     if (initializedFocus || flow.agentNames.length === 0) return;
@@ -2015,11 +2021,6 @@ function GraphPageInner() {
   }, [baseDisplayNodes]);
 
   const compressedGroupCount = aggregatedClusterNodes.length;
-  const sourceNodeCount = rollupNavigationActive
-    ? (rollupView?.summary.total_nodes_source ??
-      rollupView?.summary.total_nodes ??
-      estateNodeCount)
-    : (graphData?.nodes.length ?? flow.nodes.length);
   const renderedNodeCount = displayNodes.length;
 
   const baseDisplayEdges = useMemo(() => {
@@ -2703,41 +2704,46 @@ function GraphPageInner() {
               compact
             />
             {flow.summary && (
-              <>
-                <MetricCard value={flow.summary.agents} label="agents" />
-                <MetricCard value={flow.summary.servers} label="servers" />
-                <MetricCard
-                  value={flow.summary.findings}
-                  label="findings"
-                  accent="orange"
-                />
-                <MetricCard
-                  value={flow.summary.critical}
-                  label="critical"
-                  accent="red"
-                />
-                <MetricCard
-                  value={flow.summary.attackPaths}
-                  label="paths"
-                  accent="blue"
-                />
-                {/* Spend is opt-in by data: a tenant with no ingested LLM cost
-                    sees the header exactly as before rather than a $0 tile. */}
+              <div
+                data-testid="graph-headline-metrics"
+                className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-xs text-[var(--text-secondary)]"
+              >
+                <span className="font-mono text-red-700 dark:text-red-200">
+                  {flow.summary.critical.toLocaleString()}
+                </span>{" "}
+                critical ·{" "}
+                <span className="font-mono text-orange-700 dark:text-orange-200">
+                  {flow.summary.findings.toLocaleString()}
+                </span>{" "}
+                findings ·{" "}
+                <span className="font-mono text-sky-700 dark:text-sky-200">
+                  {snapshotAttackPathCount.toLocaleString()}
+                </span>{" "}
+                snapshot paths
                 {flow.summary.costUsd30d > 0 && (
-                  <MetricCard
-                    value={flow.summary.costUsd30d}
-                    label="spend 30d"
-                    format="usd"
-                  />
+                  <>
+                    {" · "}
+                    <span className="font-mono text-[var(--foreground)]">
+                      {flow.summary.costUsd30d.toLocaleString(undefined, {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits:
+                          flow.summary.costUsd30d < 100 ? 2 : 0,
+                      })}
+                    </span>{" "}
+                    spend 30d
+                  </>
                 )}
                 {flow.summary.expensiveExposed > 0 && (
-                  <MetricCard
-                    value={flow.summary.expensiveExposed}
-                    label="expensive & exposed"
-                    accent="red"
-                  />
+                  <>
+                    {" · "}
+                    <span className="font-mono text-red-700 dark:text-red-200">
+                      {flow.summary.expensiveExposed.toLocaleString()}
+                    </span>{" "}
+                    expensive & exposed
+                  </>
                 )}
-              </>
+              </div>
             )}
 
             <select
@@ -2753,26 +2759,6 @@ function GraphPageInner() {
               ))}
             </select>
 
-            <GraphScenarioSelector
-              scenarios={scenarios}
-              selectedId={selectedScenarioId}
-              loading={loadingScenarios}
-              onSelect={(scenarioId) => {
-                setSelectedScenarioId(scenarioId);
-                setScenarioState("current");
-                if (!scenarioId) {
-                  setScenarioComparison(null);
-                  setScenarioError(null);
-                }
-              }}
-            />
-
-            <GraphEvidenceExportButton
-              scanId={selectedScanId || undefined}
-              filenamePrefix={
-                selectedScanId ? `scan-${selectedScanId}-graph` : undefined
-              }
-            />
             <FullscreenButton />
             {presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <GraphInteractionToolbar
               editing={presentation.editing}
@@ -2809,36 +2795,104 @@ function GraphPageInner() {
             </button>
           </form>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
-            <ViewPill
-              label="Scope"
-              value={filters.agentName ? filters.agentName : "all agents"}
-            />
-            <ViewPill label="View" value={graphScopeLabelForFilters(filters)} />
-            <ViewPill
-              label="Severity"
-              value={filters.severity ? `${filters.severity}+` : "all"}
-            />
-            {sourceNodeCount > 0 && !rollupCanvasOwnsPresentation && (
-              <span
-                data-testid="graph-compression-summary"
-                className="graph-chip-neutral"
-              >
-                {compressedGroupCount > 0
-                  ? `${compressedGroupCount} compressed groups`
-                  : `${renderedNodeCount}/${sourceNodeCount} nodes rendered`}
-              </span>
-            )}
-            {loadingGraph && (
-              <span className="graph-chip-sky-soft">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                refreshing
-              </span>
-            )}
-            <div className="ml-auto">
-              <GraphLensSwitcher variant="compact" legendItems={legendItems} />
+          {searchResults.length > 0 && (
+            <div className="mt-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/90 p-2">
+              <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                Search respects current entity scope
+                {filters.severity ? ` and ${filters.severity}+ severity` : ""}
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                {searchResults.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    data-testid={`graph-search-result-${result.id}`}
+                    onClick={() => void focusSearchResult(result)}
+                    className="graph-page-result"
+                  >
+                    <p className="truncate text-sm font-medium text-[var(--foreground)]">
+                      {result.label}
+                    </p>
+                    <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                      {String(result.entity_type)}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-[var(--text-tertiary)]">
+                      {result.severity && <span>{result.severity}</span>}
+                      <span>
+                        risk{" "}
+                        {typeof result.risk_score === "number" &&
+                        Number.isFinite(result.risk_score)
+                          ? result.risk_score.toFixed(1)
+                          : "N/A"}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          <details
+            data-testid="graph-evidence-controls"
+            open={Boolean(
+              selectedScenario ||
+                activeScopePreset === "assetDrift" ||
+                investigationMode ||
+                reachabilitySummary ||
+                loadingReachability ||
+                reachabilityError ||
+                blastRadius ||
+                loadingBlast ||
+                blastError,
+            )}
+            className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 group"
+          >
+            <summary className="graph-drawer-summary">
+              <div>
+                <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                  Evidence & controls
+                </span>
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                  {graphScopeLabelForFilters(filters)} ·{" "}
+                  {activeSnapshot
+                    ? `${activeSnapshot.node_count.toLocaleString()} nodes · ${activeSnapshot.edge_count.toLocaleString()} edges`
+                    : "Snapshot metadata unavailable"}
+                  {graphTruncated ? " · bounded canvas" : " · complete current scope"}
+                  {compressedGroupCount > 0
+                    ? ` · ${compressedGroupCount.toLocaleString()} grouped scopes`
+                    : ""}
+                </p>
+              </div>
+              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
+                show
+              </span>
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
+                hide
+              </span>
+            </summary>
+            <div className="space-y-3 border-t border-[var(--border-subtle)]/80 p-3">
+              <GraphLensSwitcher variant="compact" legendItems={legendItems} />
+              <div className="flex flex-wrap items-center gap-2">
+                <GraphScenarioSelector
+                  scenarios={scenarios}
+                  selectedId={selectedScenarioId}
+                  loading={loadingScenarios}
+                  onSelect={(scenarioId) => {
+                    setSelectedScenarioId(scenarioId);
+                    setScenarioState("current");
+                    if (!scenarioId) {
+                      setScenarioComparison(null);
+                      setScenarioError(null);
+                    }
+                  }}
+                />
+                <GraphEvidenceExportButton
+                  scanId={selectedScanId || undefined}
+                  filenamePrefix={
+                    selectedScanId ? `scan-${selectedScanId}-graph` : undefined
+                  }
+                />
+              </div>
 
           <GraphScenarioComparisonPanel
             scenario={selectedScenario}
@@ -2980,42 +3034,6 @@ function GraphPageInner() {
               />
             )}
 
-          {searchResults.length > 0 && (
-            <div className="mt-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/90 p-2">
-              <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                Search respects current entity scope
-                {filters.severity ? ` and ${filters.severity}+ severity` : ""}
-              </div>
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                {searchResults.map((result) => (
-                  <button
-                    key={result.id}
-                    type="button"
-                    data-testid={`graph-search-result-${result.id}`}
-                    onClick={() => void focusSearchResult(result)}
-                    className="graph-page-result"
-                  >
-                    <p className="truncate text-sm font-medium text-[var(--foreground)]">
-                      {result.label}
-                    </p>
-                    <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                      {String(result.entity_type)}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-[var(--text-tertiary)]">
-                      {result.severity && <span>{result.severity}</span>}
-                      <span>
-                        risk{" "}
-                        {typeof result.risk_score === "number" &&
-                        Number.isFinite(result.risk_score)
-                          ? result.risk_score.toFixed(1)
-                          : "N/A"}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-[var(--text-tertiary)]">
@@ -3533,12 +3551,13 @@ function GraphPageInner() {
         )}
           </div>
         </details>
+          </details>
+        </div>
       </div>
 
-      {/* A full viewport, not a letterbox. The header above accumulates to
-          ~600px on arrival, so a 68vh canvas left the graph as a ~300px strip
-          with most of the estate below the fold. The canvas is the content;
-          it gets a screen of its own. */}
+      {/* A full viewport, not a letterbox. Secondary evidence and controls stay
+          in the disclosure above so this canvas begins in the first viewport
+          and still gets a screen of its own. */}
       <div className="flex-1 flex relative min-h-[calc(100vh-3.5rem)]">
         <div className="flex-1 relative min-h-0 flex flex-col">
           {selectedAttackPath && (
@@ -3760,51 +3779,6 @@ async function quarantineAgentByLabel(label: string): Promise<string> {
   }
   await api.quarantineFleetAgent(match.agent_id);
   return match.agent_id;
-}
-
-function MetricCard({
-  value,
-  label,
-  accent = "zinc",
-  format = "count",
-}: {
-  value: number;
-  label: string;
-  accent?: "zinc" | "red" | "orange" | "blue";
-  format?: "count" | "usd";
-}) {
-  const accentClass =
-    accent === "red"
-      ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
-      : accent === "orange"
-        ? "border-orange-500/20 bg-orange-500/10 text-orange-700 dark:text-orange-200"
-        : accent === "blue"
-          ? "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200"
-          : "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]";
-
-  const rendered =
-    format === "usd"
-      ? value.toLocaleString(undefined, {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: value < 100 ? 2 : 0,
-        })
-      : value.toLocaleString();
-
-  return (
-    <div className={`rounded-xl border px-3 py-1.5 text-xs ${accentClass}`}>
-      <span className="font-mono text-[var(--foreground)]">{rendered}</span> {label}
-    </div>
-  );
-}
-
-function ViewPill({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1">
-      <span className="text-[var(--text-tertiary)]">{label}</span>
-      <span className="ml-1 text-[var(--text-secondary)]">{value}</span>
-    </span>
-  );
 }
 
 function ReachabilityDrillInPanel({

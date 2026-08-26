@@ -403,7 +403,12 @@ def build_js_ts_flow_findings(
     seen_edges: set[tuple[str, str, int]] = set()
     name_counts: dict[str, int] = {}
     same_module_names: dict[str, set[str]] = {}
+    seen_function_objects: set[int] = set()
     for function in functions.values():
+        object_id = id(function)
+        if object_id in seen_function_objects:
+            continue
+        seen_function_objects.add(object_id)
         name_counts[function.name] = name_counts.get(function.name, 0) + 1
         same_module_names.setdefault(function.module_name, set()).add(function.name)
 
@@ -508,26 +513,30 @@ def build_js_ts_flow_findings(
         if handler is None:
             continue
 
-        initial_tainted = set(handler.param_names)
-        if not initial_tainted:
+        initial_taint_origins: dict[str, set[str]] = {name: {name} for name in handler.param_names}
+        if not initial_taint_origins:
             for call_site in handler.call_sites:
                 for arg_names in call_site.argument_names:
-                    initial_tainted.update(name for name in arg_names if _js_ts_identifier_looks_untrusted(name))
-        if not initial_tainted:
+                    for name in arg_names:
+                        if _js_ts_identifier_looks_untrusted(name):
+                            initial_taint_origins.setdefault(name, set()).add(name)
+        if not initial_taint_origins:
             continue
 
-        taint_queue: list[tuple[str, list[str], frozenset[str]]] = [
-            (registration.handler_name, [registration.handler_name], frozenset(initial_tainted))
+        taint_queue: list[tuple[str, list[str], dict[str, set[str]]]] = [
+            (registration.handler_name, [registration.handler_name], initial_taint_origins)
         ]
-        visited_states: set[tuple[str, tuple[str, ...]]] = set()
+        visited_states: set[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]]] = set()
         while taint_queue:
-            current_name, path, tainted_params = taint_queue.pop(0)
-            visit_key = (current_name, tuple(sorted(tainted_params)))
+            current_name, path, taint_origins = taint_queue.pop(0)
+            visit_key = (
+                current_name,
+                tuple(sorted((name, tuple(sorted(origins))) for name, origins in taint_origins.items())),
+            )
             if visit_key in visited_states:
                 continue
             visited_states.add(visit_key)
             current = functions[current_name]
-            current_tainted = set(tainted_params)
             current_display_name = display_name(current_name)
             same_module = same_module_names.get(current.module_name, set())
 
@@ -543,11 +552,14 @@ def build_js_ts_flow_findings(
                     ):
                         continue
                     for name in arg_names:
-                        if (
-                            (name in current_tainted or _js_ts_identifier_looks_untrusted(name))
-                            and name not in call_site.guarded_names
-                            and name not in tainted_sources
-                        ):
+                        if name in call_site.guarded_names:
+                            continue
+                        origins = taint_origins.get(name)
+                        if origins:
+                            for origin in sorted(origins):
+                                if origin not in tainted_sources:
+                                    tainted_sources.append(origin)
+                        elif _js_ts_identifier_looks_untrusted(name) and name not in tainted_sources:
                             tainted_sources.append(name)
                 if not tainted_sources:
                     continue
@@ -625,7 +637,7 @@ def build_js_ts_flow_findings(
                     continue
 
                 callee = functions[callee_key]
-                tainted_callee_params: set[str] = set()
+                tainted_callee_origins: dict[str, set[str]] = {}
                 for index, arg_names in enumerate(call_site.argument_names):
                     if index >= len(callee.param_names):
                         break
@@ -637,13 +649,18 @@ def build_js_ts_flow_findings(
                         function_registry=functions,
                     ):
                         continue
-                    if any(
-                        (name in current_tainted or _js_ts_identifier_looks_untrusted(name)) and name not in call_site.guarded_names
-                        for name in arg_names
-                    ):
-                        tainted_callee_params.add(callee.param_names[index])
-                if tainted_callee_params:
-                    taint_queue.append((callee_key, path + [callee_key], frozenset(tainted_callee_params)))
+                    propagated_origins: set[str] = set()
+                    for name in arg_names:
+                        if name in call_site.guarded_names:
+                            continue
+                        if name in taint_origins:
+                            propagated_origins.update(taint_origins[name])
+                        elif _js_ts_identifier_looks_untrusted(name):
+                            propagated_origins.add(name)
+                    if propagated_origins:
+                        tainted_callee_origins.setdefault(callee.param_names[index], set()).update(propagated_origins)
+                if tainted_callee_origins:
+                    taint_queue.append((callee_key, path + [callee_key], tainted_callee_origins))
 
     return call_edges, findings
 
@@ -974,6 +991,8 @@ def _resolve_js_ts_external_dependency_symbol(function: JSTSFunction, call_name:
             package = _npm_package_from_module(fn_ref.module_name)
             if package is not None:
                 base = fn_ref.exported_name or alias
+                if base == "default":
+                    return package, fn_ref.module_name, tail.split(".", 1)[0]
                 return package, fn_ref.module_name, f"{base}.{tail}" if tail else base
         mod_ref = function.imported_module_refs.get(alias)
         if mod_ref is not None:
@@ -1003,7 +1022,12 @@ def build_js_ts_dependency_symbol_reach(
     adjacency: dict[str, set[str]] = {name: set() for name in functions}
     name_counts: dict[str, int] = {}
     same_module_names: dict[str, set[str]] = {}
+    seen_function_objects: set[int] = set()
     for function in functions.values():
+        object_id = id(function)
+        if object_id in seen_function_objects:
+            continue
+        seen_function_objects.add(object_id)
         name_counts[function.name] = name_counts.get(function.name, 0) + 1
         same_module_names.setdefault(function.module_name, set()).add(function.name)
 

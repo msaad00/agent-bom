@@ -32,6 +32,29 @@ function item(
 }
 
 describe("GraphRollupDecisionSurface", () => {
+  it("uses a compact full-width layout when one scope matches", () => {
+    render(
+      <GraphRollupDecisionSurface
+        items={[item("only-scope")]}
+        edges={[]}
+        onDrill={vi.fn()}
+        onInvestigate={vi.fn()}
+        onShowMap={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-rollup-decision-surface")).toHaveAttribute(
+      "data-layout",
+      "compact",
+    );
+    expect(screen.getByTestId("graph-rollup-card-grid")).toHaveClass(
+      "grid-cols-1",
+    );
+    expect(screen.getByTestId("graph-rollup-card-grid")).not.toHaveClass(
+      "flex-1",
+    );
+  });
+
   it("opens large estate levels as paged risk decisions instead of an unreadable canvas", () => {
     const critical = item("critical", {
       severity: "critical",

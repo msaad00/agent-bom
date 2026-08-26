@@ -65,6 +65,12 @@ dependencies = [
     # NOTE: stale pyopenssl suppressions were retired after snowflake-connector-python moved to a compatible range.
     # Tracked: https://github.com/msaad00/agent-bom/issues/930
     "cryptography>=50.0.0",  # CVE-2026-69247; required by audit chain, proxy response signing, and OIDC.
+    # JS/TS source analysis is part of the default scan path. Keep the parser
+    # runtime in the base package so clean PyPI installs do not silently fall
+    # back to regex-only coverage while advertising AST-backed findings.
+    "tree-sitter>=0.26.0",
+    "tree-sitter-javascript>=0.25.0",
+    "tree-sitter-typescript>=0.23.2",
 ]
 
 [project.optional-dependencies]

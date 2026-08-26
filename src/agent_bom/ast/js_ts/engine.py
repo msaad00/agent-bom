@@ -775,7 +775,11 @@ def _collect_functions(root: TreeSitterNode, source: bytes, analysis: JSTSAstAna
     for node in _iter_nodes(root):
         if node.type == "export_statement":
             default_child = next((child for child in node.named_children if child.type == "function_declaration"), None)
-            if default_child is not None:
+            # A function declaration may be either `export function` or
+            # `export default function`. Only the latter creates the module's
+            # default binding; treating every exported function as default
+            # duplicates registry entries and makes cross-file names ambiguous.
+            if default_child is not None and _node_text(node, source).lstrip().startswith("export default"):
                 name_node = default_child.child_by_field_name("name")
                 default_name = _identifier_like_text(name_node, source)
                 if default_name:

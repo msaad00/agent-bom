@@ -1534,16 +1534,14 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ``_no_auth_role`` and remains authoritative here.
         """
         from agent_bom.api.auth import Role
-        from agent_bom.rbac import _no_auth_role
+        from agent_bom.rbac import effective_no_auth_role
 
-        role = _no_auth_role()
+        role = effective_no_auth_role(credentials_configured=bool(self._api_key or get_key_store().has_keys()))
         # Combined mode: when credentials (a static API key or any stored keys)
         # are also configured, the anonymous fallback is strictly read-only —
         # otherwise NO_AUTH_ROLE=admin would hand an unauthenticated caller admin
         # (they could mint admin keys). NO_AUTH_ROLE elevation only applies to a
         # pure no-auth deployment with no credentials configured at all.
-        if role != Role.VIEWER and (self._api_key or get_key_store().has_keys()):
-            role = Role.VIEWER
         required = Role(self._required_role(request.method, request.url.path))
         if not self._role_allows(role, required):
             return JSONResponse(
@@ -1683,6 +1681,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             return Absent()
 
         from agent_bom.api.oidc import OIDCError, record_oidc_decode_failure, token_is_jwt_shaped
+        from agent_bom.api.shared_auth_state import AuthStateUnavailable
 
         try:
             # ``verify`` can fetch JWKS over the network (``urlopen`` in
@@ -1722,6 +1721,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     content={"detail": f"Forbidden — requires {required} role, OIDC session has {actual_role}"},
                 )
             )
+        except AuthStateUnavailable:
+            return Invalid(JSONResponse(status_code=503, content={"detail": "Authentication state unavailable"}))
         except OIDCError as exc:
             record_oidc_decode_failure()
             _logger.debug("OIDC verification failed: %s", sanitize_text(exc))
@@ -1879,10 +1880,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     async def _try_browser_session_auth(self, request: StarletteRequest, call_next: RequestResponseEndpoint, token: str) -> Response:
         from agent_bom.api.auth import Role, get_key_store
+        from agent_bom.api.shared_auth_state import AuthStateUnavailable
 
         try:
             payload = verify_browser_session_token(token)
             session_role = Role(str(payload.get("role", "")).lower())
+        except AuthStateUnavailable:
+            return JSONResponse(status_code=503, content={"detail": "Authentication state unavailable"})
         except (BrowserSessionError, ValueError):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid browser session"})
 

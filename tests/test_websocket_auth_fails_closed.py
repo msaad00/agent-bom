@@ -54,6 +54,7 @@ _AUTH_ENV = [
     "AGENT_BOM_SAML_SP_ACS_URL",
     "AGENT_BOM_TRUST_PROXY_AUTH",
     "AGENT_BOM_TRUST_PROXY_SECRET",
+    "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
 ]
 
 
@@ -61,12 +62,34 @@ _AUTH_ENV = [
 def _clean_auth_env(monkeypatch: pytest.MonkeyPatch):
     for name in _AUTH_ENV:
         monkeypatch.delenv(name, raising=False)
-    # Default: no runtime-issued keys. Individual cases override.
-    monkeypatch.setattr(proxy_routes, "_key_store_has_keys", lambda: False, raising=False)
+    from agent_bom.api.middleware import apply_auth_posture, derive_auth_posture
+
+    apply_auth_posture(derive_auth_posture(api_key_configured=False, allow_unauthenticated=False))
 
 
-def test_a_genuinely_unconfigured_deployment_still_streams() -> None:
-    """Local single-user dev must keep working — this is not a lockout."""
+def _apply_current_posture(*, api_key_configured: bool = False, allow_unauthenticated: bool = False) -> None:
+    from agent_bom.api.middleware import apply_auth_posture, derive_auth_posture
+
+    apply_auth_posture(
+        derive_auth_posture(
+            api_key_configured=api_key_configured,
+            allow_unauthenticated=allow_unauthenticated,
+        )
+    )
+
+
+def test_default_unconfigured_deployment_matches_http_auth_by_default() -> None:
+    """No credentials is not an implicit anonymous opt-in for WebSockets."""
+    from agent_bom.api.middleware import apply_auth_posture, derive_auth_posture
+
+    apply_auth_posture(derive_auth_posture(api_key_configured=False, allow_unauthenticated=False))
+    assert proxy_routes._ws_auth_required() is True
+
+
+def test_explicit_anonymous_posture_is_the_only_no_auth_websocket_mode() -> None:
+    from agent_bom.api.middleware import apply_auth_posture, derive_auth_posture
+
+    apply_auth_posture(derive_auth_posture(api_key_configured=False, allow_unauthenticated=True))
     assert proxy_routes._ws_auth_required() is False
 
 
@@ -75,11 +98,13 @@ def test_snowflake_oauth_alone_still_requires_auth(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_OAUTH_ACCOUNT_URL", "https://acme-prod.snowflakecomputing.com")
     monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_OAUTH_CLIENT_ID", "abom-client")
     monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_OAUTH_REDIRECT_URI", "https://abom.example/oauth/callback")
+    _apply_current_posture()
     assert proxy_routes._ws_auth_required() is True
 
 
 def test_an_api_key_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_API_KEY", "s3cret-key-value")
+    _apply_current_posture(api_key_configured=True)
     assert proxy_routes._ws_auth_required() is True
 
 
@@ -89,34 +114,71 @@ def test_saml_alone_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_SAML_IDP_X509_CERT", "MIIC-not-a-real-cert")
     monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://abom.example")
     monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://abom.example/acs")
+    _apply_current_posture()
     assert proxy_routes._ws_auth_required() is True
 
 
 def test_issued_api_keys_require_auth_even_with_no_env_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keys minted at runtime are a credential source with no env var."""
-    monkeypatch.setattr(proxy_routes, "_key_store_has_keys", lambda: True, raising=False)
+    _apply_current_posture(api_key_configured=True)
     assert proxy_routes._ws_auth_required() is True
 
 
 def test_a_key_store_error_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The original `except Exception: return False`, which opened an admin stream."""
+    """An unavailable applied posture must not open an admin stream."""
 
-    def _boom() -> bool:
+    import agent_bom.api.middleware as mw
+
+    def _boom() -> object:
         raise RuntimeError("connection pool exhausted")
 
-    monkeypatch.setattr(proxy_routes, "_key_store_has_keys", _boom, raising=False)
+    monkeypatch.setattr(mw, "get_auth_posture", _boom)
     assert proxy_routes._ws_auth_required() is True
 
 
 def test_a_posture_derivation_error_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Any failure to establish that auth is unnecessary must require auth."""
+    """The applied source of truth is the only posture the socket consumes."""
     import agent_bom.api.middleware as mw
 
     def _boom(**_kwargs: object) -> object:
         raise RuntimeError("posture derivation failed")
 
-    monkeypatch.setattr(mw, "derive_auth_posture", _boom)
+    monkeypatch.setattr(mw, "get_auth_posture", _boom)
     assert proxy_routes._ws_auth_required() is True
+
+
+@pytest.mark.asyncio
+async def test_explicit_anonymous_websocket_uses_no_auth_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Socket:
+        async def accept(self) -> None:
+            return None
+
+    monkeypatch.setattr(proxy_routes, "_ws_auth_required", lambda: False)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "viewer")
+    context = await proxy_routes._ws_accept_and_check_auth(_Socket())  # type: ignore[arg-type]
+    assert context is not None
+    assert context.role == "viewer"
+
+
+@pytest.mark.asyncio
+async def test_explicit_anonymous_websocket_clamps_role_when_credentials_exist(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Socket:
+        async def accept(self) -> None:
+            return None
+
+    class _Store:
+        @staticmethod
+        def has_keys() -> bool:
+            return True
+
+    import agent_bom.api.auth as auth_module
+
+    monkeypatch.setattr(proxy_routes, "_ws_auth_required", lambda: False)
+    monkeypatch.setattr(auth_module, "get_key_store", lambda: _Store())
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "admin")
+    context = await proxy_routes._ws_accept_and_check_auth(_Socket())  # type: ignore[arg-type]
+    assert context is not None
+    assert context.role == "viewer"
 
 
 def test_trusted_proxy_intent_requires_auth_even_when_misconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,3 +192,15 @@ def test_trusted_proxy_intent_requires_auth_even_when_misconfigured(monkeypatch:
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "short")
     assert proxy_routes._ws_auth_required() is True
+
+
+def test_websocket_runtime_role_rejects_inactive_scim_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent_bom.api.auth as auth_module
+    from agent_bom.api.auth import SCIMRoleResolution
+
+    monkeypatch.setattr(
+        auth_module,
+        "resolve_scim_user_role",
+        lambda *_args: SCIMRoleResolution(matched=True, active=False, user_id="user-1"),
+    )
+    assert proxy_routes._ws_runtime_role("tenant-a", "admin", "user@example.com") is None

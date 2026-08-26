@@ -587,6 +587,30 @@ def test_api_key_middleware_accepts_oidc_bearer_without_static_api_key(monkeypat
     }
 
 
+def test_api_key_middleware_reports_shared_replay_state_outage_as_503(monkeypatch):
+    from agent_bom.api.middleware import APIKeyMiddleware
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable
+
+    app = FastAPI()
+
+    @app.get("/secure")
+    async def secure():
+        return {"ok": True}
+
+    app.add_middleware(APIKeyMiddleware, api_key=None)
+    cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom", allow_default_tenant=True)
+    monkeypatch.setattr("agent_bom.api.oidc.OIDCConfig.from_env", lambda: cfg)
+    monkeypatch.setattr(
+        "agent_bom.api.oidc.verify_oidc_token",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AuthStateUnavailable("unavailable")),
+    )
+
+    client = TestClient(app)
+    response = client.get("/secure", headers={"Authorization": "Bearer eyJhbGciOiJSUzI1NiJ9.e30.signature"})
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Authentication state unavailable"}
+
+
 def test_middleware_oidc_failure_does_not_raise():
     """OIDCError is caught and falls through — does not propagate."""
     cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom")

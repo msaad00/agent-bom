@@ -393,6 +393,12 @@ def _reset_durable_store_singletons() -> None:
         set_cost_store(None)
     except Exception:
         pass
+    try:
+        from agent_bom.api.shared_auth_state import reset_auth_state_for_tests
+
+        reset_auth_state_for_tests()
+    except Exception:
+        pass
 
 
 # Auth-influencing env vars. ``configure_api`` re-derives whether the API key
@@ -415,6 +421,10 @@ _AUTH_ENV_VARS = (
     "AGENT_BOM_SCIM_BEARER_TOKENS_JSON",
     "AGENT_BOM_NO_AUTH_ROLE",
     "AGENT_BOM_DEMO_ESTATE",
+    "AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT",
+    "AGENT_BOM_CONTROL_PLANE_REPLICAS",
+    "AGENT_BOM_TRUSTED_PROXY_HOPS",
+    "AGENT_BOM_TRUSTED_PROXY_CIDRS",
 )
 
 _api_auth_runtime_fingerprint: tuple[tuple[str, str | None], ...] | None = None
@@ -467,6 +477,7 @@ def pytest_runtest_call(item: pytest.Item) -> None:
 
 
 _STORAGE_ENV_VARS = (
+    "AGENT_BOM_DB",
     "AGENT_BOM_POSTGRES_URL",
     "AGENT_BOM_POSTGRES_DSN",
     "AGENT_BOM_POSTGRES_MAINTENANCE_URL",

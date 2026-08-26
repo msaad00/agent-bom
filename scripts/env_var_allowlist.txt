@@ -509,8 +509,9 @@ AGENT_BOM_DOCKER_IMAGE  # runtime container image override used only to print th
 
 # Coarse per-IP rate-limit ceiling override; resolved at call-time with bounds-checking in middleware.global_ip_rate_limit_rpm().
 AGENT_BOM_GLOBAL_IP_RATE_LIMIT_RPM
-# Trusted reverse-proxy hop count for X-Forwarded-For parsing; resolved at call-time in routes/enterprise._trusted_proxy_hops().
+# Trusted reverse-proxy topology for X-Forwarded-For parsing; resolved at call-time in routes/enterprise.
 AGENT_BOM_TRUSTED_PROXY_HOPS
+AGENT_BOM_TRUSTED_PROXY_CIDRS
 
 AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS
 

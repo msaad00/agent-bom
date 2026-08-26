@@ -71,7 +71,7 @@ support data, see
 | OIDC bearer JWT | API callers with corporate IdP tokens | JWT tenant claim or tenant-bound issuer | JWT role claim / groups | issuer + audience verified; tenant defaults fail closed by default |
 | OIDC browser SSO | Dashboard users without a reverse-proxy identity bridge | same OIDC tenant claim contract | same OIDC role claim / groups | auth-code + PKCE; mints httpOnly session cookie; auth runtime mode `oidc_browser` |
 | SAML | enterprises that need SAML IdP compatibility | SAML attribute | SAML attribute | assertion is verified, then converted into a short-lived API key |
-| Trusted proxy | same-origin ingress or auth gateway in front of API | `X-Agent-Bom-Tenant-ID` | `X-Agent-Bom-Role` | only when `AGENT_BOM_TRUST_PROXY_AUTH=1`; preferred when present |
+| Trusted proxy | same-origin ingress or auth gateway in front of API | `X-Agent-Bom-Tenant-ID` | `X-Agent-Bom-Role` | enable `AGENT_BOM_TRUST_PROXY_AUTH=1`; set exact `AGENT_BOM_TRUSTED_PROXY_HOPS` and API-facing `AGENT_BOM_TRUSTED_PROXY_CIDRS` before forwarded addresses affect auth rate limits |
 | mTLS | proxy/gateway → API transport | n/a | n/a | not an identity path |
 
 ## RBAC model

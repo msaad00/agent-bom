@@ -199,12 +199,12 @@ def test_scim_revoke_matches_scim_subject_id(monkeypatch) -> None:
 
 
 def test_no_auth_role_defaults_to_admin_for_local_compatibility(monkeypatch) -> None:
-    monkeypatch.setattr("agent_bom.config.DEMO_ESTATE", False)
-    monkeypatch.setattr("agent_bom.config.NO_AUTH_ROLE", "admin")
+    monkeypatch.delenv("AGENT_BOM_DEMO_ESTATE", raising=False)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "admin")
     assert _no_auth_role() is RbacRole.ADMIN
 
 
 def test_demo_estate_clamps_no_auth_to_viewer(monkeypatch) -> None:
-    monkeypatch.setattr("agent_bom.config.DEMO_ESTATE", True)
-    monkeypatch.setattr("agent_bom.config.NO_AUTH_ROLE", "admin")
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "1")
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "admin")
     assert _no_auth_role() is RbacRole.VIEWER

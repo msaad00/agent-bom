@@ -131,3 +131,33 @@ def test_engine_failure_is_a_no_op(monkeypatch, reachable_setup) -> None:
     # Untouched.
     assert blast_radii[0].graph_reachable is None
     assert blast_radii[0].graph_reachable_from_agents == []
+
+
+def test_precomputed_reachability_skips_a_second_graph_projection(monkeypatch, reachable_setup) -> None:
+    from agent_bom.graph.scan_findings import surface_graph_derived_findings
+    from agent_bom.models import AIBOMReport
+
+    blast_radii, agents = reachable_setup
+    report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+    reachability = surface_graph_derived_findings(
+        report,
+        scan_id="shared-projection",
+        tenant_id="default",
+        include_dependency_reachability=True,
+    )
+    assert reachability is not None
+
+    def fail_if_rebuilt(*_args, **_kwargs):
+        raise AssertionError("dependency reachability rebuilt the report graph")
+
+    monkeypatch.setattr("agent_bom.graph.blast_reach.build_unified_graph_from_report", fail_if_rebuilt)
+
+    stamped = apply_dependency_reachability_to_blast_radii(
+        blast_radii,
+        agents,
+        rescore=True,
+        reachability_report=reachability,
+    )
+
+    assert stamped == 1
+    assert blast_radii[0].dependency_reachable is True

@@ -22,6 +22,7 @@ from agent_bom.graph.dependency_reach import compute_dependency_reach
 if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult
     from agent_bom.finding import Finding
+    from agent_bom.graph.dependency_reach import ReachabilityReport
     from agent_bom.models import Agent, BlastRadius, Package
 
 _logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ def apply_dependency_reachability_to_blast_radii(
     agents: list["Agent"],
     *,
     rescore: bool = True,
+    reachability_report: "ReachabilityReport | None" = None,
 ) -> int:
     """Stamp structural dependency-closure fields on each BlastRadius row.
 
@@ -65,16 +67,18 @@ def apply_dependency_reachability_to_blast_radii(
         return 0
 
     try:
-        # Build a minimal report dict — the engine only needs the topology
-        # the graph builder can reconstruct from agents + blast_radii. Using
-        # `to_json` here would couple us to the full output package and
-        # double-build the graph.
-        from agent_bom.models import AIBOMReport
-        from agent_bom.output import to_json
+        if reachability_report is None:
+            # Standalone callers retain the existing self-contained behavior.
+            # Scan surfaces that already projected the unified graph pass the
+            # precomputed report to avoid repeated serialization and building.
+            from agent_bom.models import AIBOMReport
+            from agent_bom.output import to_json
 
-        report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_id="reachability-scratch")
-        graph = build_unified_graph_from_report(to_json(report))
-        reach = compute_dependency_reach(graph)
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_id="reachability-scratch")
+            graph = build_unified_graph_from_report(to_json(report))
+            reach = compute_dependency_reach(graph)
+        else:
+            reach = reachability_report
     except Exception as exc:  # noqa: BLE001
         _logger.warning("Graph reachability surfacing skipped: %s", exc)
         return 0

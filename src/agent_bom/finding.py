@@ -1519,8 +1519,14 @@ def blast_radius_to_finding(br: object) -> "Finding":
     vuln = br.vulnerability
     pkg = br.package
 
+    def entity_name(entity: object) -> str:
+        """Return the cheap display name without eagerly rendering dataclasses."""
+
+        name = getattr(entity, "name", None)
+        return str(name) if name else str(entity)
+
     affected_server_surfaces = {
-        server.name: getattr(getattr(server, "surface", None), "value", str(getattr(server, "surface", "")))
+        server.name: str(getattr(getattr(server, "surface", None), "value", None) or getattr(server, "surface", ""))
         for server in br.affected_servers
     }
     affected_server_ids = {getattr(server, "stable_id", ""): server.name for server in br.affected_servers}
@@ -1531,7 +1537,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
             if server_name:
                 agent_server_links.append(
                     {
-                        "agent": getattr(agent, "name", str(agent)),
+                        "agent": entity_name(agent),
                         "server": server_name,
                     }
                 )
@@ -1763,9 +1769,9 @@ def blast_radius_to_finding(br: object) -> "Finding":
         ai_summary=getattr(br, "ai_summary", None),
         attack_vector_summary=getattr(br, "attack_vector_summary", None),
         affected_servers=[s.name for s in br.affected_servers],
-        affected_agents=[getattr(a, "name", str(a)) for a in br.affected_agents],
+        affected_agents=[entity_name(a) for a in br.affected_agents],
         exposed_credentials=list(br.exposed_credentials),
-        exposed_tools=[getattr(t, "name", str(t)) for t in br.exposed_tools],
+        exposed_tools=[entity_name(t) for t in br.exposed_tools],
     )
     return apply_hub_classification(finding)
 

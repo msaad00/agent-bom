@@ -266,8 +266,13 @@ def _exposure_related_locations(exposure_path: dict[str, Any]) -> list[dict]:
     """
 
     hops = [hop for hop in (exposure_path.get("hops") or []) if isinstance(hop, str) and hop]
+    # Side nodes (tools and credential references) remain outside the primary
+    # topology spine, but SARIF logical locations must retain the full bounded
+    # exposure context for viewers and downstream automation.
+    nodes = [node for node in (exposure_path.get("nodeIds") or []) if isinstance(node, str) and node]
+    locations = list(dict.fromkeys([*hops, *nodes]))
     related: list[dict] = []
-    for index, hop in enumerate(hops):
+    for index, hop in enumerate(locations):
         kind, _, name = hop.partition(":")
         related.append(
             {

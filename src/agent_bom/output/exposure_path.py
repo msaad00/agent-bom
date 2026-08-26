@@ -163,7 +163,11 @@ def exposure_path_chain(path: dict[str, Any], *, include_tool: bool = True) -> s
         if candidate and candidate not in spine:
             spine.append(candidate)
     if include_tool:
-        tool = first("tool:")
+        # Tools are side nodes provided by the selected server, not sequential
+        # topology hops after the finding. Preserve the established human chain
+        # without corrupting the primary graph spine.
+        nodes = [node for node in (path.get("nodeIds") or []) if node]
+        tool = first("tool:") or next((node for node in nodes if node.startswith("tool:")), None)
         if tool and tool not in spine:
             spine.append(tool)
     return " → ".join(_chain_token(hop) for hop in spine)

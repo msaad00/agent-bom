@@ -449,6 +449,27 @@ def test_blast_radius_to_finding_cve_type():
     assert finding.source == FindingSource.MCP_SCAN
 
 
+def test_blast_radius_to_finding_does_not_render_named_graph_entities():
+    """Named agents and tools must not recursively stringify their full graph."""
+    br = _make_blast_radius()
+
+    class NamedEntity:
+        def __init__(self, name, *, mcp_servers=None):
+            self.name = name
+            self.mcp_servers = mcp_servers or []
+
+        def __str__(self):
+            raise AssertionError("named graph entity was eagerly stringified")
+
+    br.affected_agents = [NamedEntity("test-agent")]
+    br.exposed_tools = [NamedEntity("test-tool")]
+
+    finding = blast_radius_to_finding(br)
+
+    assert finding.affected_agents == [br.affected_agents[0].name]
+    assert finding.exposed_tools == [br.exposed_tools[0].name]
+
+
 def test_blast_radius_to_finding_uses_sbom_source_for_non_mcp_surfaces():
     server = _make_server("sbom-package")
     server.surface = ServerSurface.SBOM

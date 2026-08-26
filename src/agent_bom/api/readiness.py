@@ -37,6 +37,11 @@ def evaluate_control_plane_readiness() -> ReadinessStatus:
                 conn.execute("SELECT 1")
         except Exception:  # noqa: BLE001 — readiness must not leak secrets
             return ReadinessStatus(ready=False, reason="database_unavailable")
+        from agent_bom.api.shared_auth_state import PostgresAuthState, get_auth_state
+
+        auth_state = get_auth_state()
+        if not isinstance(auth_state, PostgresAuthState) or not auth_state.is_available():
+            return ReadinessStatus(ready=False, reason="shared_auth_state_unavailable")
         return ReadinessStatus(ready=True)
 
     db_path = os.environ.get("AGENT_BOM_DB", "").strip() or default_state_db_path()

@@ -922,6 +922,22 @@ def test_auth_debug_reports_runtime_auth_modes(monkeypatch: pytest.MonkeyPatch) 
 # ─── /readyz drain behavior ──────────────────────────────────────────────────
 
 
+class _HealthyReadinessConnection:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def execute(self, _sql: str) -> None:
+        return None
+
+
+class _HealthyReadinessPool:
+    def connection(self) -> _HealthyReadinessConnection:
+        return _HealthyReadinessConnection()
+
+
 def test_readyz_green_by_default() -> None:
     _server_mod._shutting_down = False
     client = TestClient(app)
@@ -965,3 +981,19 @@ def test_readyz_red_when_postgres_unreachable(monkeypatch) -> None:
     status = evaluate_control_plane_readiness()
     assert not status.ready
     assert status.reason == "database_unavailable"
+
+
+def test_readyz_red_when_shared_auth_schema_is_unavailable(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://stub")
+    monkeypatch.setattr("agent_bom.api.postgres_common._get_pool", lambda: _HealthyReadinessPool())
+    monkeypatch.setattr("agent_bom.api.shared_auth_state.PostgresAuthState._ensure_schema", lambda _self: False)
+    from agent_bom.api.readiness import evaluate_control_plane_readiness
+    from agent_bom.api.shared_auth_state import reset_auth_state_for_tests
+
+    reset_auth_state_for_tests()
+    try:
+        status = evaluate_control_plane_readiness()
+    finally:
+        reset_auth_state_for_tests()
+    assert not status.ready
+    assert status.reason == "shared_auth_state_unavailable"

@@ -36,23 +36,25 @@ The contract is:
   rows; called opportunistically by route handlers. Returns the count
   of rows removed for observability.
 
-The Postgres backend is intentionally written so a connection failure
-falls back to the in-memory backend (with a ``WARNING`` log) rather
-than failing closed and breaking the auth loop. The fail-open here is
-narrow: any single replica still enforces the limit; only the
-cross-replica multiplier is lost during the outage.
+When Postgres is configured, shared-state failures fail closed. Replica-local
+fallback would multiply brute-force budgets, lose revocations, and permit one
+replay per replica precisely while the shared backend is unavailable.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from collections import deque
 from typing import Any, Protocol
 
 _logger = logging.getLogger(__name__)
+
+
+class AuthStateUnavailable(RuntimeError):  # noqa: N818 - predicate-style public auth contract
+    """Raised when configured shared auth state cannot prove cluster-wide truth."""
+
 
 # SQL strings are intentionally hardcoded (no f-strings, no user input)
 # so bandit's B608 SQLi detector does not match them. Schema names are
@@ -78,6 +80,7 @@ _SCHEMA_SQL = """
 """
 
 _INSERT_ATTEMPT_SQL = "INSERT INTO auth_session_attempts (key, attempted_at) VALUES (%s, NOW())"
+_LOCK_ATTEMPT_KEY_SQL = "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))"
 _DELETE_OLD_ATTEMPTS_SQL = "DELETE FROM auth_session_attempts WHERE attempted_at < NOW() - (%s::int * INTERVAL '1 second')"
 _COUNT_ATTEMPTS_SQL = (
     "SELECT COUNT(*) FROM auth_session_attempts WHERE key = %s AND attempted_at >= NOW() - (%s::int * INTERVAL '1 second')"
@@ -92,6 +95,7 @@ _CONSUME_REVOKED_SQL = (
     "INSERT INTO revoked_session_nonces (nonce, expires_at) VALUES (%s, TO_TIMESTAMP(%s)) ON CONFLICT (nonce) DO NOTHING RETURNING 1"
 )
 _CHECK_REVOKED_SQL = "SELECT 1 FROM revoked_session_nonces WHERE nonce = %s AND expires_at > TO_TIMESTAMP(%s)"
+_HEALTH_SQL = "SELECT 1 FROM revoked_session_nonces LIMIT 1"
 _REGISTER_NONCE_SQL = (
     "INSERT INTO revoked_session_nonces (nonce, expires_at) VALUES (%s, TO_TIMESTAMP(%s)) ON CONFLICT (nonce) DO NOTHING RETURNING 1"
 )
@@ -242,16 +246,17 @@ class PostgresAuthState:
     Each method opens a short-lived connection from the existing pool
     in :mod:`agent_bom.api.postgres_common`. Migrated deployments validate
     their schema marker on first use; isolated development pools retain the
-    explicit bootstrap path. Failures degrade to the in-memory fallback (with
-    a one-shot warning per process) rather than blocking the auth loop.
+    explicit bootstrap path. Failures are reported as
+    :class:`AuthStateUnavailable`; authentication callers must reject the
+    operation rather than substitute replica-local truth.
     """
 
     name = "postgres"
 
     def __init__(self) -> None:
-        self._fallback = InMemoryAuthState()
         self._schema_ready = False
-        self._fallback_warned = False
+        self._available = False
+        self._unavailable_warned = False
 
     def _ensure_schema(self) -> bool:
         if self._schema_ready:
@@ -267,47 +272,69 @@ class PostgresAuthState:
                         cur.execute(_SCHEMA_SQL)
                     conn.commit()
             self._schema_ready = True
+            self._available = True
+            self._unavailable_warned = False
             return True
         except Exception as exc:  # noqa: BLE001
-            self._warn_fallback("schema bootstrap", exc)
+            self._mark_unavailable("schema bootstrap", exc)
             return False
 
-    def _warn_fallback(self, context: str, exc: Exception) -> None:
-        if self._fallback_warned:
-            return
-        self._fallback_warned = True
-        _logger.warning(
-            "PostgresAuthState falling back to in-memory backend (%s): %s. Cross-replica enforcement is degraded until Postgres recovers.",
-            context,
-            exc,
-        )
+    def _mark_unavailable(self, context: str, _exc: Exception | None = None) -> AuthStateUnavailable:
+        self._schema_ready = False
+        self._available = False
+        if not self._unavailable_warned:
+            self._unavailable_warned = True
+            _logger.warning(
+                "Postgres shared auth state unavailable (%s); authentication operations will fail closed until it recovers.",
+                context,
+            )
+        return AuthStateUnavailable("Shared authentication state is unavailable")
+
+    def _require_schema(self) -> None:
+        if not self._ensure_schema():
+            raise self._mark_unavailable("schema readiness")
+
+    def is_available(self) -> bool:
+        """Return whether the shared schema can currently prove cluster-wide truth."""
+        if not self._ensure_schema():
+            return False
+        try:
+            from agent_bom.api.postgres_common import _get_pool
+
+            with _get_pool().connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_HEALTH_SQL)
+            self._available = True
+            self._unavailable_warned = False
+            return True
+        except Exception as exc:  # noqa: BLE001
+            self._mark_unavailable("health probe", exc)
+            return False
 
     def record_attempt(self, key: str, window_seconds: int, limit: int) -> bool:
-        if not self._ensure_schema():
-            return self._fallback.record_attempt(key, window_seconds, limit)
+        self._require_schema()
         try:
             from agent_bom.api.postgres_common import _get_pool
 
             pool = _get_pool()
             with pool.connection() as conn:
                 with conn.cursor() as cur:
+                    cur.execute(_LOCK_ATTEMPT_KEY_SQL, (f"auth-attempt:{key}",))
                     cur.execute(_INSERT_ATTEMPT_SQL, (key,))
                     cur.execute(_DELETE_OLD_ATTEMPTS_SQL, (window_seconds,))
                     cur.execute(_COUNT_ATTEMPTS_SQL, (key, window_seconds))
                     row = cur.fetchone()
                 conn.commit()
             count = int(row[0]) if row else 0
+            self._available = True
             return count <= limit
         except Exception as exc:  # noqa: BLE001
-            self._warn_fallback("record_attempt", exc)
-            return self._fallback.record_attempt(key, window_seconds, limit)
+            raise self._mark_unavailable("record_attempt", exc) from exc
 
     def revoke_nonce(self, nonce: str, expires_at: int) -> None:
         if not nonce:
             return
-        if not self._ensure_schema():
-            self._fallback.revoke_nonce(nonce, expires_at)
-            return
+        self._require_schema()
         try:
             from agent_bom.api.postgres_common import _get_pool
 
@@ -316,15 +343,14 @@ class PostgresAuthState:
                 with conn.cursor() as cur:
                     cur.execute(_UPSERT_REVOKED_SQL, (nonce, int(expires_at)))
                 conn.commit()
+            self._available = True
         except Exception as exc:  # noqa: BLE001
-            self._warn_fallback("revoke_nonce", exc)
-            self._fallback.revoke_nonce(nonce, expires_at)
+            raise self._mark_unavailable("revoke_nonce", exc) from exc
 
     def is_nonce_revoked(self, nonce: str, now: int | None = None) -> bool:
         if not nonce:
             return False
-        if not self._ensure_schema():
-            return self._fallback.is_nonce_revoked(nonce, now)
+        self._require_schema()
         try:
             from agent_bom.api.postgres_common import _get_pool
 
@@ -334,16 +360,15 @@ class PostgresAuthState:
                 with conn.cursor() as cur:
                     cur.execute(_CHECK_REVOKED_SQL, (nonce, moment))
                     row = cur.fetchone()
+            self._available = True
             return row is not None
         except Exception as exc:  # noqa: BLE001
-            self._warn_fallback("is_nonce_revoked", exc)
-            return self._fallback.is_nonce_revoked(nonce, now)
+            raise self._mark_unavailable("is_nonce_revoked", exc) from exc
 
     def consume_nonce_once(self, nonce: str, expires_at: int, now: int | None = None) -> bool:
         if not nonce:
             return False
-        if not self._ensure_schema():
-            return self._fallback.consume_nonce_once(nonce, expires_at, now)
+        self._require_schema()
         try:
             from agent_bom.api.postgres_common import _get_pool
 
@@ -355,16 +380,15 @@ class PostgresAuthState:
                     cur.execute(_CONSUME_REVOKED_SQL, (nonce, int(expires_at)))
                     row = cur.fetchone()
                 conn.commit()
+            self._available = True
             return row is not None
         except Exception as exc:  # noqa: BLE001
-            self._warn_fallback("consume_nonce_once", exc)
-            return self._fallback.consume_nonce_once(nonce, expires_at, now)
+            raise self._mark_unavailable("consume_nonce_once", exc) from exc
 
     def register_one_time_nonce(self, nonce: str, expires_at: int, now: int | None = None) -> bool:
         if not nonce:
             return False
-        if not self._ensure_schema():
-            return self._fallback.register_one_time_nonce(nonce, expires_at, now)
+        self._require_schema()
         try:
             from agent_bom.api.postgres_common import _get_pool
 
@@ -376,16 +400,15 @@ class PostgresAuthState:
                     cur.execute(_REGISTER_NONCE_SQL, (nonce, int(expires_at)))
                     row = cur.fetchone()
                 conn.commit()
+            self._available = True
             return row is not None
         except Exception as exc:  # noqa: BLE001
-            self._warn_fallback("register_one_time_nonce", exc)
-            return self._fallback.register_one_time_nonce(nonce, expires_at, now)
+            raise self._mark_unavailable("register_one_time_nonce", exc) from exc
 
     def redeem_one_time_nonce(self, nonce: str, now: int | None = None) -> bool:
         if not nonce:
             return False
-        if not self._ensure_schema():
-            return self._fallback.redeem_one_time_nonce(nonce, now)
+        self._require_schema()
         try:
             from agent_bom.api.postgres_common import _get_pool
 
@@ -396,14 +419,14 @@ class PostgresAuthState:
                     cur.execute(_REDEEM_NONCE_SQL, (nonce, moment))
                     row = cur.fetchone()
                 conn.commit()
+            self._available = True
             return row is not None
         except Exception as exc:  # noqa: BLE001
-            self._warn_fallback("redeem_one_time_nonce", exc)
-            return self._fallback.redeem_one_time_nonce(nonce, now)
+            raise self._mark_unavailable("redeem_one_time_nonce", exc) from exc
 
     def cleanup_expired(self, now: int | None = None) -> int:
         if not self._ensure_schema():
-            return self._fallback.cleanup_expired(now)
+            return 0
         try:
             from agent_bom.api.postgres_common import _get_pool
 
@@ -416,10 +439,11 @@ class PostgresAuthState:
                     cur.execute(_DELETE_EXPIRED_REVOKED_SQL)
                     nonces_removed = cur.rowcount
                 conn.commit()
+            self._available = True
             return int(attempts_removed or 0) + int(nonces_removed or 0)
         except Exception as exc:  # noqa: BLE001
-            self._warn_fallback("cleanup_expired", exc)
-            return self._fallback.cleanup_expired(now)
+            self._mark_unavailable("cleanup_expired", exc)
+            return 0
 
 
 # ── Selection ───────────────────────────────────────────────────────────────
@@ -429,7 +453,9 @@ _BACKEND_LOCK = threading.Lock()
 
 
 def _build_backend() -> AuthStateBackend:
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    from agent_bom.api.durable_store import postgres_configured
+
+    if postgres_configured():
         return PostgresAuthState()
     return InMemoryAuthState()
 
@@ -462,14 +488,22 @@ def set_auth_state_for_tests(backend: AuthStateBackend) -> None:
 def auth_state_posture() -> dict[str, Any]:
     """Operator-facing posture for the active backend (for /v1/auth/policy)."""
     backend = get_auth_state()
-    clustered_ok = isinstance(backend, PostgresAuthState)
-    cluster_mode_signal = bool(os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"))
+    from agent_bom.api.middleware import clustered_control_plane_required
+
+    available = backend.is_available() if isinstance(backend, PostgresAuthState) else True
+    clustered_ok = isinstance(backend, PostgresAuthState) and available
+    cluster_mode_signal = clustered_control_plane_required()
+    degraded = (isinstance(backend, PostgresAuthState) and not available) or (cluster_mode_signal and not clustered_ok)
     return {
         "backend": backend.name,
+        "available": available,
+        "degraded": degraded,
         "clustered_safe": clustered_ok,
         "cluster_mode_detected": cluster_mode_signal,
         "warning": (
-            "Auth attempt counter is process-local; under N replicas the brute-force budget is limit × N."
+            "Shared authentication state is unavailable; authentication operations fail closed."
+            if isinstance(backend, PostgresAuthState) and not available
+            else "Auth attempt counter is process-local; under N replicas the brute-force budget is limit × N."
             if cluster_mode_signal and not clustered_ok
             else ""
         ),

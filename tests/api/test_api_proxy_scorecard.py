@@ -22,6 +22,14 @@ from agent_bom.api.server import (
 from agent_bom.api.stores import set_idempotency_store
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
+
+def _require_websocket_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.server import configure_api
+
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None, allow_unauthenticated=False)
+
+
 # ── /v1/proxy/status ───────────────────────────────────────────────────────
 
 
@@ -71,6 +79,7 @@ def test_proxy_status_with_metrics():
 def test_proxy_metrics_websocket_rejects_query_token(monkeypatch):
     """WebSocket auth must not accept API keys in URL query strings."""
     monkeypatch.setenv("AGENT_BOM_API_KEY", "ws-secret")
+    _require_websocket_auth(monkeypatch)
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc:
@@ -85,6 +94,7 @@ def test_proxy_metrics_websocket_first_message_auth(monkeypatch):
     import agent_bom.api.routes.proxy as proxy_mod
 
     monkeypatch.setenv("AGENT_BOM_API_KEY", "ws-secret")
+    _require_websocket_auth(monkeypatch)
     push_proxy_metrics({"type": "proxy_summary", "total_tool_calls": 2, "total_blocked": 1})
     client = TestClient(app)
 
@@ -108,6 +118,7 @@ def test_proxy_metrics_websocket_rejects_unauthenticated_rbac_key_store(monkeypa
     _raw_key, viewer = create_api_key("viewer", Role.VIEWER, tenant_id="tenant-alpha")
     store.add(viewer)
     set_key_store(store)
+    _require_websocket_auth(monkeypatch)
     client = TestClient(app)
 
     try:
@@ -127,6 +138,7 @@ def test_proxy_metrics_websocket_rejects_unauthenticated_tenant_oidc(monkeypatch
         "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
         '{"tenant-alpha":{"issuer":"https://alpha.okta.example","audience":"agent-bom"}}',
     )
+    _require_websocket_auth(monkeypatch)
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc:
@@ -144,6 +156,7 @@ def test_proxy_metrics_websocket_rejects_unauthenticated_saml_only(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_SAML_IDP_X509_CERT", "-----BEGIN CERTIFICATE-----test-----END CERTIFICATE-----")
     monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://agent-bom.example.com/saml/metadata")
     monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://agent-bom.example.com/v1/auth/saml/login")
+    _require_websocket_auth(monkeypatch)
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc:
@@ -158,6 +171,7 @@ def test_proxy_metrics_websocket_rejects_weak_trusted_proxy_secret(monkeypatch):
     monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "short")
+    _require_websocket_auth(monkeypatch)
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc:
@@ -187,6 +201,7 @@ def test_proxy_metrics_websocket_uses_rbac_key_tenant(monkeypatch):
     raw_key, viewer = create_api_key("viewer", Role.VIEWER, tenant_id="tenant-beta")
     store.add(viewer)
     set_key_store(store)
+    _require_websocket_auth(monkeypatch)
     push_proxy_metrics({"type": "proxy_summary", "tenant_id": "tenant-alpha", "total_tool_calls": 41, "total_blocked": 9})
     push_proxy_metrics({"type": "proxy_summary", "tenant_id": "tenant-beta", "total_tool_calls": 3, "total_blocked": 1})
     client = TestClient(app)
@@ -218,6 +233,7 @@ def test_proxy_alerts_websocket_uses_rbac_key_tenant(monkeypatch):
     raw_key, viewer = create_api_key("viewer", Role.VIEWER, tenant_id="tenant-beta")
     store.add(viewer)
     set_key_store(store)
+    _require_websocket_auth(monkeypatch)
     client = TestClient(app)
 
     try:

@@ -25,8 +25,6 @@ from typing import Callable
 
 from fastapi import HTTPException, Request
 
-from agent_bom import config
-
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +41,7 @@ def _no_auth_role() -> Role:
     leaked ``viewer`` 403'd later unauth-admin tests). Reading the env each call
     is reload-immune and matches the runtime value (env is fixed per process).
     """
-    if config.DEMO_ESTATE:
+    if os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in {"1", "true", "yes", "on"}:
         return Role.VIEWER
     raw = os.environ.get("AGENT_BOM_NO_AUTH_ROLE", "viewer").strip().lower()
     if raw == "admin":
@@ -51,6 +49,14 @@ def _no_auth_role() -> Role:
     if raw == "analyst":
         return Role.ANALYST
     return Role.VIEWER
+
+
+def effective_no_auth_role(*, credentials_configured: bool) -> Role:
+    """Return the anonymous role after the combined-mode safety clamp."""
+    role = _no_auth_role()
+    if credentials_configured and role != Role.VIEWER:
+        return Role.VIEWER
+    return role
 
 
 class Role(str, Enum):

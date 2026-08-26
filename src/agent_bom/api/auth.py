@@ -18,6 +18,25 @@ from typing import Protocol
 from agent_bom.rbac import Role, role_rank
 
 
+def scopes_allow(granted_scopes: list[str], required_scope: str | None) -> bool:
+    """Return whether a scope set authorizes one requested scope.
+
+    An empty granted set is the legacy unrestricted representation. Callers
+    that delegate credentials must separately prevent a scoped parent from
+    minting that unrestricted representation.
+    """
+    if not required_scope or not granted_scopes:
+        return True
+    for scope in granted_scopes:
+        if scope == "*" or scope == required_scope:
+            return True
+        if scope.endswith(":*") and required_scope.startswith(scope[:-1]):
+            return True
+        if scope.endswith(".*") and required_scope.startswith(scope[:-1]):
+            return True
+    return False
+
+
 @dataclass
 class ApiKey:
     """Stored API key metadata (the raw key is never stored)."""
@@ -99,20 +118,7 @@ class ApiKey:
 
     def has_scope(self, required_scope: str | None) -> bool:
         """Check whether this key's scopes allow the requested action."""
-        if not required_scope:
-            return True
-        if not self.scopes:
-            return True
-        if any(scope in {"saml-session", "browser-session", "oidc-session"} for scope in self.scopes):
-            return True
-        for scope in self.scopes:
-            if scope == "*" or scope == required_scope:
-                return True
-            if scope.endswith(":*") and required_scope.startswith(scope[:-1]):
-                return True
-            if scope.endswith(".*") and required_scope.startswith(scope[:-1]):
-                return True
-        return False
+        return scopes_allow(self.scopes, required_scope)
 
     def to_dict(self) -> dict:
         current = datetime.now(timezone.utc)

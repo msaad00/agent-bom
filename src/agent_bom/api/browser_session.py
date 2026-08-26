@@ -130,10 +130,13 @@ def verify_browser_session_token(token: str) -> dict[str, Any]:
         raise BrowserSessionError("browser session is expired")
     nonce = str(payload.get("nonce") or "")
     if nonce:
-        from agent_bom.api.shared_auth_state import get_auth_state
+        from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
-        if get_auth_state().is_nonce_revoked(nonce):
-            raise BrowserSessionError("browser session has been revoked")
+        try:
+            if get_auth_state().is_nonce_revoked(nonce):
+                raise BrowserSessionError("browser session has been revoked")
+        except AuthStateUnavailable as exc:
+            raise AuthStateUnavailable("Shared authentication state is unavailable") from exc
     return payload
 
 

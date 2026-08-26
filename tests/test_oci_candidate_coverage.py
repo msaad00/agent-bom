@@ -117,6 +117,34 @@ def test_clean_oci_package_artifact_does_not_record_partial_coverage(tmp_path: P
     assert consume_coverage_warnings() == []
 
 
+def test_node_package_subpath_manifest_is_not_a_package_metadata_gap(tmp_path: Path) -> None:
+    """Node export-condition manifests beneath a package root are not packages."""
+    image_path = _docker_save_tar(
+        tmp_path,
+        "usr/lib/node_modules/nanoid/non-secure/package.json",
+        b'{"type":"module"}',
+    )
+
+    packages, _strategy = scan_oci(image_path)
+
+    assert packages == []
+    assert consume_coverage_warnings() == []
+
+
+def test_scoped_node_package_root_manifest_remains_inventory(tmp_path: Path) -> None:
+    """Scoped npm package roots remain candidates after subpath filtering."""
+    image_path = _docker_save_tar(
+        tmp_path,
+        "usr/lib/node_modules/@scope/example/package.json",
+        b'{"name":"@scope/example","version":"1.2.3"}',
+    )
+
+    packages, _strategy = scan_oci(image_path)
+
+    assert [(package.name, package.version, package.ecosystem) for package in packages] == [("@scope/example", "1.2.3", "npm")]
+    assert consume_coverage_warnings() == []
+
+
 def test_oci_coverage_warning_surfaces_in_scan_report(tmp_path: Path) -> None:
     image_path = _docker_save_tar(tmp_path, "app/broken.deps.json", b"{not-json")
     output_path = tmp_path / "report.json"

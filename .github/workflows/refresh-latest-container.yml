@@ -203,6 +203,7 @@ jobs:
         id: release
         run: |
           set -euo pipefail
+          MAIN_SHA=$(git rev-parse HEAD)
           git fetch --tags --force
           TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n1)
           if [ -z "$TAG" ]; then
@@ -212,7 +213,19 @@ jobs:
           VERSION="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
           git checkout "$TAG"
+
+      - name: Apply current UI runtime security overlay
+        run: |
+          set -euo pipefail
+          # UI application code stays pinned to the release tag. The floating
+          # image still absorbs reviewed base-image and runtime hardening from
+          # the default branch instead of rebuilding an old digest forever.
+          git checkout "${{ steps.release.outputs.main_sha }}" -- \
+            ui/Dockerfile \
+            .image-scan-ignore \
+            security/image-exceptions.yaml
 
       - name: Verify UI package version matches release tag
         run: |

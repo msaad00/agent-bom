@@ -293,6 +293,25 @@ class OCIParseResult:
 _PACKAGE_METADATA_WARNING_DETAIL = "Container package metadata could not be parsed; image inventory is incomplete."
 
 
+def is_node_package_manifest_path(member_path: str) -> bool:
+    """Return whether a path is an npm package-root manifest.
+
+    Packages may contain subpath ``package.json`` files for export conditions
+    (for example ``nanoid/non-secure/package.json``).  Those are not inventory
+    candidates and a missing name/version there is not incomplete coverage.
+    """
+    normalized = member_path.replace("\\", "/")
+    marker = "/node_modules/"
+    if marker not in normalized or not normalized.endswith("/package.json"):
+        return False
+    if normalized.count(marker) != 1:
+        return False
+    relative = normalized.split(marker, 1)[1].split("/")
+    if len(relative) == 2:
+        return not relative[0].startswith("@") and relative[1] == "package.json"
+    return len(relative) == 3 and relative[0].startswith("@") and relative[2] == "package.json"
+
+
 def _append_oci_warning(
     warnings: list[str],
     coverage_warnings: list[OCIInputWarning],
@@ -811,9 +830,7 @@ def _extract_packages_from_layer(
 
     # --- Node: node_modules/*/package.json ---
     for member_name in names:
-        if "/node_modules/" not in member_name or not member_name.endswith("package.json"):
-            continue
-        if member_name.count("/node_modules/") != 1:
+        if not is_node_package_manifest_path(member_name):
             continue
         if _is_deleted(member_name):
             continue

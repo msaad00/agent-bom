@@ -433,6 +433,33 @@ def _apply_distro_release_ambiguity(pkg: Any, vulns: list[Vulnerability]) -> Non
     )
 
 
+def _scope_advisory_to_package_release(vuln_data: dict, package: Package) -> dict | None:
+    """Keep only affected entries for the package's observed OS release.
+
+    OSV query responses are release-scoped, but their enriched advisory record
+    contains every distro branch.  Passing that full record to fix extraction
+    lets a Debian 14 fix appear actionable on Debian 12/13.  Preserve the
+    conservative unscoped behavior when release metadata is absent; otherwise
+    an explicitly different release is not evidence for this package.
+    """
+    if package.ecosystem.lower() not in {"deb", "apk"} or ambiguous_distro_releases(package):
+        return vuln_data
+    expected = {value.lower() for value in _resolve_osv_ecosystems(package, for_local_db=False)}
+    if not expected:
+        return vuln_data
+    expected_families = {value.split(":", 1)[0] for value in expected}
+    affected = list(vuln_data.get("affected", []))
+    same_family = [
+        entry for entry in affected if str(entry.get("package", {}).get("ecosystem", "")).lower().split(":", 1)[0] in expected_families
+    ]
+    if not same_family:
+        return vuln_data
+    release_entries = [entry for entry in same_family if str(entry.get("package", {}).get("ecosystem", "")).lower() in expected]
+    if not release_entries:
+        return None
+    return {**vuln_data, "affected": release_entries}
+
+
 def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
     """Return one or more OSV ecosystem identifiers for a package (live API path)."""
     return _resolve_osv_ecosystems(pkg, for_local_db=False)
@@ -848,7 +875,10 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
     vulns = []
     seen_ids: set[str] = set()
 
-    for vuln_data in vuln_data_list:
+    for raw_vuln_data in vuln_data_list:
+        vuln_data = _scope_advisory_to_package_release(raw_vuln_data, package)
+        if vuln_data is None:
+            continue
         vuln_id = vuln_data.get("id", "unknown")
 
         # Version-range filter: skip vulns that don't affect our version

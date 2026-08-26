@@ -36,6 +36,7 @@ from typing import Optional
 
 from agent_bom.config import _bool
 from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
+from agent_bom.oci_parser import is_node_package_manifest_path
 from agent_bom.package_utils import parse_debian_source_name
 from agent_bom.sbom import parse_cyclonedx
 from agent_bom.scanners.risk import cvss_to_severity, severity_from_label
@@ -549,7 +550,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
 
             # --- Node: node_modules/*/package.json ---
             for member_name in names:
-                if "/node_modules/" in member_name and member_name.endswith("package.json") and member_name.count("/node_modules/") == 1:
+                if is_node_package_manifest_path(member_name):
                     try:
                         member = tf.getmember(member_name)
                         f = tf.extractfile(member)

@@ -103,6 +103,53 @@ def test_build_vulnerabilities_reports_django_fix_not_jquery(monkeypatch):
     assert vulns[0].fixed_version == "2.2.2"
 
 
+def test_debian_fix_does_not_bleed_across_release_branches() -> None:
+    """A Debian 14 fix is not an available upgrade for Debian 12."""
+    advisory = {
+        "id": "DEBIAN-CVE-2026-6791",
+        "aliases": ["CVE-2026-6791"],
+        "summary": "glibc wordexp stack exhaustion",
+        "affected": [
+            {
+                "package": {"name": "glibc", "ecosystem": "Debian:12"},
+                "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}]}],
+            },
+            {
+                "package": {"name": "glibc", "ecosystem": "Debian:13"},
+                "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}]}],
+            },
+            {
+                "package": {"name": "glibc", "ecosystem": "Debian:14"},
+                "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "2.43-3"}]}],
+            },
+        ],
+    }
+    bookworm = Package(
+        name="libc6",
+        source_package="glibc",
+        version="2.36-9+deb12u14",
+        ecosystem="deb",
+        distro_name="debian",
+        distro_version="12",
+    )
+    forky = Package(
+        name="libc6",
+        source_package="glibc",
+        version="2.42-1",
+        ecosystem="deb",
+        distro_name="debian",
+        distro_version="14",
+    )
+
+    bookworm_vulns = build_vulnerabilities([advisory], bookworm)
+    forky_vulns = build_vulnerabilities([advisory], forky)
+
+    assert len(bookworm_vulns) == 1
+    assert bookworm_vulns[0].fixed_version is None
+    assert len(forky_vulns) == 1
+    assert forky_vulns[0].fixed_version == "2.43-3"
+
+
 # --- Defect 3: versions-list trailing-zero false negative ------------------
 
 

@@ -779,6 +779,19 @@ def test_refresh_latest_container_keeps_release_code_but_applies_runtime_securit
     assert "The application code and version stay pinned to the latest release tag" in workflow
 
 
+def test_refresh_latest_ui_applies_current_runtime_security_overlay():
+    """The floating UI image must absorb reviewed base-image updates from main."""
+    workflow = (ROOT / ".github" / "workflows" / "refresh-latest-container.yml").read_text()
+    ui_job = workflow.split("refresh-ui-latest:", 1)[1].split("refresh-collector-latest:", 1)[0]
+
+    assert "main_sha=$MAIN_SHA" in ui_job
+    assert "Apply current UI runtime security overlay" in ui_job
+    assert 'git checkout "${{ steps.release.outputs.main_sha }}" -- \\' in ui_job
+    assert "ui/Dockerfile \\" in ui_job
+    assert ".image-scan-ignore \\" in ui_job
+    assert "security/image-exceptions.yaml" in ui_job
+
+
 def test_refresh_latest_container_has_publish_budget_and_buildkit_cache():
     """Daily latest refresh should not rebuild multi-arch images from cold every run."""
     workflow = (ROOT / ".github" / "workflows" / "refresh-latest-container.yml").read_text()

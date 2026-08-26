@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Mapping
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
-from agent_bom.evidence.scan_run import vulnerability_coverage_incomplete
+from agent_bom.evidence.scan_run import vulnerability_coverage_caveat, vulnerability_coverage_incomplete
 from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.scorecard import summarize_scorecard_coverage
 from agent_bom.vex import active_blast_radii
@@ -559,6 +559,10 @@ def compute_posture_scorecard(
             summary = f"Weak best-practice/config posture ({grade}, {total_score}%) — this grade is driven by " + " and ".join(drivers)
         else:
             summary = f"Weak best-practice/config posture ({grade}, {total_score}%) — immediate attention required"
+
+    coverage_caveat = vulnerability_coverage_caveat(report)
+    if coverage_caveat:
+        summary = f"{summary}. {coverage_caveat}."
 
     return PostureScorecard(
         grade=grade,

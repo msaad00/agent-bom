@@ -6,6 +6,7 @@ gate. A scan can execute completely and still return a non-zero policy verdict.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
@@ -191,6 +192,49 @@ def effective_scan_run(report: Any) -> ScanRun:
 # the run partial without invalidating the vulnerability verdict, so it must not
 # blank the posture grade.
 _VULN_COVERAGE_CODES = frozenset({"required_scanner_unavailable", "scanner_warning", "vulnerability_coverage_gap"})
+_UNRESOLVED_PACKAGE_WARNING = re.compile(r"^(?P<count>\d+) package\(s\) skipped due to unresolved versions$")
+_MAX_GRADEABLE_UNRESOLVED_RATIO = 0.05
+
+
+def _gradeable_unresolved_package_gap(report: Any, issue: ScanIssue) -> tuple[int, int] | None:
+    """Return ``(skipped, total)`` for a small, explicitly quantified gap.
+
+    A handful of unresolved package versions must remain visible and keep the
+    scan outcome partial, but it should not erase the evaluated posture of the
+    rest of a large inventory. The exception is deliberately narrow: only the
+    scanner's canonical warning is accepted, at least one package must have
+    been evaluated, and no more than five percent may be unresolved.
+    """
+    if issue.source != "vulnerability-data" or issue.code != "scanner_warning":
+        return None
+    match = _UNRESOLVED_PACKAGE_WARNING.fullmatch(issue.message)
+    if match is None:
+        return None
+    skipped = int(match.group("count"))
+    total = max(0, int(getattr(report, "total_packages", 0) or 0))
+    if skipped <= 0 or total <= skipped:
+        return None
+    if skipped / total > _MAX_GRADEABLE_UNRESOLVED_RATIO:
+        return None
+    return skipped, total
+
+
+def vulnerability_coverage_caveat(report: Any) -> str | None:
+    """Describe a small partial-version gap that remains gradeable."""
+    run = effective_scan_run(report)
+    gaps = [_gradeable_unresolved_package_gap(report, issue) for issue in run.issues if issue.affects_coverage]
+    gradeable = [gap for gap in gaps if gap is not None]
+    if not gradeable:
+        return None
+    skipped = sum(gap[0] for gap in gradeable)
+    total = max(gap[1] for gap in gradeable)
+    evaluated = max(0, total - skipped)
+    coverage_pct = evaluated / total * 100
+    noun = "package" if total == 1 else "packages"
+    return (
+        f"Partial vulnerability coverage: {evaluated}/{total} {noun} evaluated ({coverage_pct:.1f}%); "
+        f"{skipped} of {total} {noun} unresolved"
+    )
 
 
 def vulnerability_coverage_incomplete(report: Any) -> bool:
@@ -210,9 +254,14 @@ def vulnerability_coverage_incomplete(report: Any) -> bool:
     run = effective_scan_run(report)
     if run.outcome is ScanOutcome.FAILED:
         return True
-    return any(
-        issue.affects_coverage and (issue.code in _VULN_COVERAGE_CODES or issue.source == "vulnerability-data") for issue in run.issues
-    )
+    for issue in run.issues:
+        if not issue.affects_coverage:
+            continue
+        if _gradeable_unresolved_package_gap(report, issue) is not None:
+            continue
+        if issue.code in _VULN_COVERAGE_CODES or issue.source == "vulnerability-data":
+            return True
+    return False
 
 
 __all__ = [
@@ -222,5 +271,6 @@ __all__ = [
     "ScanScope",
     "ScanScopeStatus",
     "effective_scan_run",
+    "vulnerability_coverage_caveat",
     "vulnerability_coverage_incomplete",
 ]

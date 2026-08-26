@@ -346,3 +346,59 @@ def test_posture_still_grades_when_only_a_non_vuln_stage_degraded() -> None:
     scorecard = compute_posture_scorecard(report)
     assert scorecard.grade in {"A", "B", "C", "D", "F"}
     assert scorecard.no_data is False
+
+
+def _report_with_unresolved_package_warning(*, unresolved: int, total: int) -> AIBOMReport:
+    """Build a gradeable package inventory with a quantified coverage gap."""
+    from agent_bom.models import Agent, AgentType, MCPServer
+
+    packages = [Package(name=f"package-{index}", version="1.0.0", ecosystem="pypi") for index in range(total)]
+    return AIBOMReport(
+        agents=[
+            Agent(
+                name="cursor",
+                agent_type=AgentType.CUSTOM,
+                config_path="/tmp/mcp.json",
+                mcp_servers=[MCPServer(name="fs", packages=packages)],
+            )
+        ],
+        blast_radii=[],
+        scan_run=ScanRun(
+            issues=[
+                ScanIssue(
+                    code="scanner_warning",
+                    stage="scanning",
+                    source="vulnerability-data",
+                    message=f"{unresolved} package(s) skipped due to unresolved versions",
+                    severity="warning",
+                    affects_coverage=True,
+                )
+            ]
+        ),
+    )
+
+
+def test_posture_grades_a_small_quantified_version_gap_with_a_caveat() -> None:
+    """One unresolved package must not erase the evaluated posture of the other 99."""
+    scorecard = compute_posture_scorecard(_report_with_unresolved_package_warning(unresolved=1, total=100))
+
+    assert scorecard.grade in {"A", "B", "C", "D", "F"}
+    assert scorecard.no_data is False
+    assert "99.0%" in scorecard.summary
+    assert "1 of 100 package" in scorecard.summary
+
+
+def test_posture_withholds_grade_when_the_version_gap_is_material() -> None:
+    """The proportional exception must not turn a materially partial scan into a grade."""
+    scorecard = compute_posture_scorecard(_report_with_unresolved_package_warning(unresolved=6, total=100))
+
+    assert scorecard.grade == "N/A"
+    assert scorecard.no_data is True
+
+
+def test_posture_withholds_grade_when_no_package_was_evaluated() -> None:
+    """A quantified warning cannot manufacture coverage when every package was skipped."""
+    scorecard = compute_posture_scorecard(_report_with_unresolved_package_warning(unresolved=1, total=1))
+
+    assert scorecard.grade == "N/A"
+    assert scorecard.no_data is True

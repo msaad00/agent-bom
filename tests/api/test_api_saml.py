@@ -246,7 +246,10 @@ async def test_saml_login_mints_short_lived_api_key(isolated_key_store, monkeypa
     assert response["tenant_id"] == "tenant-alpha"
     assert response["subject"] == "alice@example.com"
     assert response["raw_key"].startswith("abom_")
-    assert isolated_key_store.verify(response["raw_key"]) is not None
+    session_key = isolated_key_store.verify(response["raw_key"])
+    assert session_key is not None
+    assert session_key.scopes == []
+    assert session_key.has_scope("privacy.data:delete") is True
 
 
 @pytest.mark.asyncio

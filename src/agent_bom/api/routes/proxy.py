@@ -981,7 +981,7 @@ def _ws_header_token(websocket: WebSocket) -> str:
 @dataclass(frozen=True)
 class _WebSocketAuthContext:
     tenant_id: str = "default"
-    role: str = "admin"
+    role: str = "viewer"
     auth_method: str = "no_auth"
 
 
@@ -996,10 +996,20 @@ def _role_allows(actual: str, required: str = "viewer") -> bool:
     return role_rank(actual_role) >= role_rank(required_role)
 
 
-def _key_store_has_keys() -> bool:
-    from agent_bom.api.auth import get_key_store
+def _ws_runtime_role(tenant_id: str, upstream_role: str, *subjects: object) -> str | None:
+    """Apply the same active SCIM lifecycle role resolution used by HTTP."""
+    from agent_bom.api.auth import Role, resolve_scim_user_role
 
-    return bool(get_key_store().has_keys())
+    try:
+        upstream = Role(str(upstream_role).strip().lower())
+    except ValueError:
+        return None
+    resolution = resolve_scim_user_role(tenant_id, *subjects)
+    if not resolution.matched:
+        return upstream.value
+    if not resolution.active or resolution.role is None:
+        return None
+    return resolution.role.value
 
 
 def _ws_auth_required() -> bool:
@@ -1008,44 +1018,25 @@ def _ws_auth_required() -> bool:
     ``APIKeyMiddleware`` is a ``BaseHTTPMiddleware`` and never runs on websocket
     scopes, so this gate is the only thing standing in front of
     ``/ws/proxy/metrics`` and ``/ws/proxy/alerts`` — and a negative answer here
-    accepts anonymously as ``role="admin"``. Two rules follow from that.
+    accepts anonymously with the configured no-auth role. Two rules follow
+    from that.
 
-    **Use the shared derivation, do not hand-roll a second one.** This used to
-    sweep the environment itself and missed Snowflake OAuth entirely, so a
-    Snowflake-OAuth-only deployment served both sockets anonymously while its
-    HTTP surface was authenticated. ``derive_auth_posture`` is the single
-    env-based derivation every other reader already consumes; a second,
-    narrower copy of the same question is how the two answers drifted apart.
+    **Use the applied shared posture, do not hand-roll a second one.** HTTP and
+    WebSocket callers must consume the same explicit anonymous opt-in. A
+    missing credential source is not itself permission to serve anonymously.
 
     **Fail closed.** The previous ``except Exception: return False`` turned a
     store outage into an anonymous admin stream — the moment a control plane is
     least able to afford one. An error means we could not establish that auth is
     unnecessary, which is not the same as establishing that it is.
 
-    This is not a lockout: a genuinely unconfigured single-user deployment still
-    streams, because the posture reports no sources and the key store is empty.
+    Explicit ``AGENT_BOM_ALLOW_UNAUTHENTICATED_API`` mode still streams with
+    the configured no-auth role (viewer by default).
     """
-    from agent_bom.api.middleware import derive_auth_posture
-    from agent_bom.api.secret_source import secret_is_configured
-
     try:
-        api_key_configured = (
-            secret_is_configured("AGENT_BOM_API_KEY") or secret_is_configured("AGENT_BOM_API_KEYS") or _key_store_has_keys()
-        )
-        posture = derive_auth_posture(
-            api_key_configured=api_key_configured,
-            allow_unauthenticated=False,
-        )
-        if posture.auth_configured:
-            return True
-        # `posture.trusted_proxy` reports whether trusted-proxy auth is
-        # *usable* — it is false for a misconfigured one (missing or weak
-        # secret). An operator who switched it on has asked for authentication,
-        # and a broken configuration is not an invitation to stream anonymously,
-        # so intent alone keeps the socket closed.
-        import os as _os
+        from agent_bom.api.middleware import get_auth_posture
 
-        return _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
+        return get_auth_posture().auth_required
     except Exception:
         _logger.warning("websocket auth posture unavailable; requiring authentication", exc_info=True)
         return True
@@ -1073,8 +1064,6 @@ def _ws_auth_from_trusted_proxy(websocket: WebSocket) -> _WebSocketAuthContext |
     if expected_issuer and not _hmac.compare_digest(presented_issuer, expected_issuer):
         return None
     role = websocket.headers.get("x-agent-bom-role", "").strip().lower()
-    if not _role_allows(role, "viewer"):
-        return None
     tenant_id = websocket.headers.get("x-agent-bom-tenant-id", "").strip()
     if not tenant_id:
         return None
@@ -1084,7 +1073,15 @@ def _ws_auth_from_trusted_proxy(websocket: WebSocket) -> _WebSocketAuthContext |
         tenant_id = validate_customer_tenant_id(tenant_id)
     except ReservedTenantIdError:
         return None
-    return _WebSocketAuthContext(tenant_id=tenant_id, role=role, auth_method="proxy_header")
+    subject = (
+        websocket.headers.get("x-forwarded-email", "").strip()
+        or websocket.headers.get("x-auth-request-email", "").strip()
+        or websocket.headers.get("x-agent-bom-subject", "").strip()
+    )
+    effective_role = _ws_runtime_role(tenant_id, role, subject)
+    if effective_role is None or not _role_allows(effective_role, "viewer"):
+        return None
+    return _WebSocketAuthContext(tenant_id=tenant_id, role=effective_role, auth_method="proxy_header")
 
 
 def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthContext | None:
@@ -1104,8 +1101,11 @@ def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthCon
 
     store = get_key_store()
     api_key = store.verify(token)
-    if api_key is not None and _role_allows(api_key.role.value, "viewer"):
-        return _WebSocketAuthContext(tenant_id=api_key.tenant_id, role=api_key.role.value, auth_method="api_key")
+    if api_key is not None:
+        subjects = (api_key.name.removeprefix("saml:"), api_key.name, api_key.scim_subject_id)
+        role = _ws_runtime_role(api_key.tenant_id, api_key.role.value, *subjects)
+        if role is not None and _role_allows(role, "viewer"):
+            return _WebSocketAuthContext(tenant_id=api_key.tenant_id, role=role, auth_method="api_key")
 
     # Direct ASGI imports may configure AGENT_BOM_API_KEYS after module import.
     # Mirror the env key fallback so WebSockets do not bypass RBAC-key auth
@@ -1128,8 +1128,17 @@ def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthCon
                 claims, oidc_role = oidc_cfg.verify(token)
             except OIDCError:
                 return None
-            if _role_allows(oidc_role, "viewer"):
-                return _WebSocketAuthContext(tenant_id=oidc_cfg.resolve_tenant(claims), role=oidc_role, auth_method="oidc")
+            tenant_id = oidc_cfg.resolve_tenant(claims)
+            role = _ws_runtime_role(
+                tenant_id,
+                oidc_role,
+                claims.get("email"),
+                claims.get("preferred_username"),
+                claims.get("upn"),
+                claims.get("sub"),
+            )
+            if role is not None and _role_allows(role, "viewer"):
+                return _WebSocketAuthContext(tenant_id=tenant_id, role=role, auth_method="oidc")
     return None
 
 
@@ -1146,8 +1155,13 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
 
     auth_required = _ws_auth_required()
     if not auth_required:
+        from agent_bom.api.auth import get_key_store
+        from agent_bom.api.secret_source import resolve_secret
+        from agent_bom.rbac import effective_no_auth_role
+
         await websocket.accept()
-        return _WebSocketAuthContext()  # local dev / single-user mode
+        credentials_configured = bool(resolve_secret("AGENT_BOM_API_KEY") or get_key_store().has_keys())
+        return _WebSocketAuthContext(role=effective_no_auth_role(credentials_configured=credentials_configured).value)
 
     if websocket.query_params.get("token"):
         await websocket.close(code=4001)

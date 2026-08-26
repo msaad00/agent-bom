@@ -106,15 +106,46 @@ def _trusted_proxy_hops() -> int:
     if not raw:
         return 0
     try:
-        return max(0, int(raw))
+        value = int(raw)
     except ValueError:
         return 0
+    return value if 1 <= value <= 32 else 0
 
 
-def _forwarded_for_trusted() -> bool:
-    """Honor X-Forwarded-For only when a trusted reverse proxy is declared."""
-    flag = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
-    return flag or _trusted_proxy_hops() > 0
+def _trusted_proxy_networks() -> tuple[Any, ...]:
+    """Return explicitly trusted transport-peer networks, or none on any error."""
+    from ipaddress import ip_network
+
+    raw = (os.environ.get("AGENT_BOM_TRUSTED_PROXY_CIDRS") or "").strip()
+    if not raw:
+        return ()
+    try:
+        return tuple(ip_network(part.strip(), strict=False) for part in raw.split(",") if part.strip())
+    except ValueError:
+        return ()
+
+
+def _auth_session_client_identity_posture() -> dict[str, Any]:
+    """Describe whether forwarded client identity is safely active."""
+    raw_hops = (os.environ.get("AGENT_BOM_TRUSTED_PROXY_HOPS") or "").strip()
+    raw_cidrs = (os.environ.get("AGENT_BOM_TRUSTED_PROXY_CIDRS") or "").strip()
+    hops = _trusted_proxy_hops()
+    networks = _trusted_proxy_networks()
+    active = bool(hops and networks)
+    warning = None
+    if raw_hops and not hops:
+        warning = "trusted_proxy_hops_invalid"
+    elif raw_cidrs and not networks:
+        warning = "trusted_proxy_cidrs_invalid"
+    elif bool(raw_hops) != bool(raw_cidrs):
+        warning = "trusted_proxy_topology_incomplete"
+    return {
+        "source": "forwarded_chain" if active else "transport_peer",
+        "forwarded_identity_active": active,
+        "trusted_proxy_hops": hops,
+        "trusted_proxy_network_count": len(networks),
+        "warning": warning,
+    }
 
 
 def _client_fingerprint(request: Request) -> str:
@@ -123,19 +154,31 @@ def _client_fingerprint(request: Request) -> str:
     Defaults to the transport peer (``request.client.host``) so a hostile
     client cannot reset its brute-force window by spoofing a fresh
     ``X-Forwarded-For`` value on every attempt. The forwarded chain is only
-    consulted when the deployment declares a trusted proxy via
-    ``AGENT_BOM_TRUST_PROXY_AUTH`` or an explicit ``AGENT_BOM_TRUSTED_PROXY_HOPS``
-    count; with a hop count we take the Nth-from-rightmost entry (the address
-    the trusted proxy appended), never the attacker-controlled leftmost one.
+    consulted only when the deployment declares both an explicit positive
+    ``AGENT_BOM_TRUSTED_PROXY_HOPS`` count and transport-peer CIDRs in
+    ``AGENT_BOM_TRUSTED_PROXY_CIDRS``. Trusted-proxy authentication proves
+    identity-header attestation, not the forwarded-address topology. For a
+    request received from an allowlisted proxy network, we take the
+    Nth-from-rightmost entry and fall back to the transport peer when the chain
+    is missing, malformed, oversized, or shorter than declared.
     """
     host = request.client.host if request.client else "unknown"
-    if _forwarded_for_trusted():
+    hops = _trusted_proxy_hops()
+    networks = _trusted_proxy_networks()
+    try:
+        from ipaddress import ip_address
+
+        peer = ip_address(host)
+    except ValueError:
+        peer = None
+    if hops > 0 and networks and peer is not None and any(peer in network for network in networks):
         forwarded = [part.strip() for part in (request.headers.get("x-forwarded-for") or "").split(",") if part.strip()]
-        hops = _trusted_proxy_hops()
-        if hops and len(forwarded) >= hops:
-            host = forwarded[-hops]
-        elif forwarded:
-            host = forwarded[0]
+        if hops <= len(forwarded) <= 32:
+            candidate = forwarded[-hops]
+            try:
+                host = str(ip_address(candidate))
+            except ValueError:
+                pass
     return (host or "unknown")[:128]
 
 
@@ -156,11 +199,15 @@ def _check_auth_session_rate_limit(request: Request) -> None:
     pre-PR-C path used (audit-5 PR-A landed a runtime warning for
     that gap; this PR closes it).
     """
-    from agent_bom.api.shared_auth_state import get_auth_state
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
     backend = get_auth_state()
     key = _client_fingerprint(request)
-    if not backend.record_attempt(key, window_seconds=60, limit=_auth_session_limit()):
+    try:
+        allowed = backend.record_attempt(key, window_seconds=60, limit=_auth_session_limit())
+    except AuthStateUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
+    if not allowed:
         raise HTTPException(status_code=429, detail="Too many browser session attempts")
 
 
@@ -187,7 +234,7 @@ def _saml_relay_nonce(relay_state: str) -> str:
 
 
 def _new_saml_relay_state() -> tuple[str, str]:
-    from agent_bom.api.shared_auth_state import get_auth_state
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
     backend = get_auth_state()
     ttl = _saml_relay_ttl_seconds()
@@ -195,8 +242,11 @@ def _new_saml_relay_state() -> tuple[str, str]:
     expires_at = now + ttl
     for _ in range(3):
         relay_state = secrets.token_urlsafe(32)
-        if backend.register_one_time_nonce(_saml_relay_nonce(relay_state), expires_at, now=now):
-            return relay_state, (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
+        try:
+            if backend.register_one_time_nonce(_saml_relay_nonce(relay_state), expires_at, now=now):
+                return relay_state, (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
+        except AuthStateUnavailable as exc:
+            raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
     raise HTTPException(status_code=503, detail="SAML relay_state issuance unavailable")
 
 
@@ -205,21 +255,29 @@ def _consume_saml_relay_state(relay_state: str | None) -> None:
         if _saml_idp_initiated_allowed():
             return
         raise HTTPException(status_code=401, detail="SAML relay_state required")
-    from agent_bom.api.shared_auth_state import get_auth_state
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
     backend = get_auth_state()
     now = int(time.time())
-    if not backend.redeem_one_time_nonce(_saml_relay_nonce(relay_state), now=now):
+    try:
+        redeemed = backend.redeem_one_time_nonce(_saml_relay_nonce(relay_state), now=now)
+    except AuthStateUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
+    if not redeemed:
         raise HTTPException(status_code=401, detail="Invalid or expired SAML relay_state")
 
 
 def _consume_saml_response_once(saml_response: str, *, ttl_seconds: int) -> None:
-    from agent_bom.api.shared_auth_state import get_auth_state
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
     digest = f"saml-response:{_relay_state_digest(saml_response)}"
     backend = get_auth_state()
     now = int(time.time())
-    if not backend.consume_nonce_once(digest, now + max(60, int(ttl_seconds)), now=now):
+    try:
+        consumed = backend.consume_nonce_once(digest, now + max(60, int(ttl_seconds)), now=now)
+    except AuthStateUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
+    if not consumed:
         raise HTTPException(status_code=401, detail="SAML assertion replay detected")
 
 
@@ -521,11 +579,10 @@ def _set_browser_session_cookie(
     )
 
 
-def _clear_browser_session_cookie(response: Response, request: Request) -> None:
-    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, revoke_browser_session_token
+def _delete_browser_session_cookies(response: Response, request: Request) -> None:
+    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
 
     secure = _session_cookie_secure(request)
-    revoke_browser_session_token(request.cookies.get(SESSION_COOKIE_NAME, ""))
     response.delete_cookie(
         SESSION_COOKIE_NAME,
         httponly=True,
@@ -540,6 +597,17 @@ def _clear_browser_session_cookie(response: Response, request: Request) -> None:
         samesite="strict",
         path="/",
     )
+
+
+def _clear_browser_session_cookie(response: Response, request: Request) -> None:
+    from agent_bom.api.browser_session import SESSION_COOKIE_NAME, revoke_browser_session_token
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable
+
+    try:
+        revoke_browser_session_token(request.cookies.get(SESSION_COOKIE_NAME, ""))
+    except AuthStateUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
+    _delete_browser_session_cookies(response, request)
 
 
 def _loopback_browser_origin(request: Request) -> bool:
@@ -670,22 +738,31 @@ async def create_browser_session(request: Request, response: Response, body: Bro
 
 
 @router.delete("/auth/session", tags=["enterprise"], status_code=204)
-async def delete_browser_session(request: Request, response: Response) -> None:
+async def delete_browser_session(request: Request, response: Response) -> Response:
     """Clear the same-origin browser session cookie."""
     from agent_bom.api.audit_log import log_action
 
-    _clear_browser_session_cookie(response, request)
+    try:
+        _clear_browser_session_cookie(response, request)
+    except HTTPException as exc:
+        if exc.status_code != 503:
+            raise
+        unavailable = JSONResponse(status_code=503, content={"detail": "Authentication state unavailable"})
+        _delete_browser_session_cookies(unavailable, request)
+        return unavailable
     tenant_id = getattr(request.state, "tenant_id", None) or "default"
     actor = getattr(request.state, "api_key_name", "") or "browser-session"
     log_action("auth.browser_session_cleared", actor=actor, resource="auth/session", tenant_id=tenant_id)
-    return None
+    response.status_code = 204
+    return response
 
 
 @router.post("/auth/keys", tags=["enterprise"], status_code=201)
 async def create_key(request: Request, req: CreateKeyRequest) -> dict:
     """Create a new API key. Returns the raw key once — store it securely."""
     from agent_bom.api.audit_log import log_action
-    from agent_bom.api.auth import Role, create_api_key, get_key_store, resolve_scim_subject_binding
+    from agent_bom.api.auth import Role, create_api_key, get_key_store, resolve_scim_subject_binding, scopes_allow
+    from agent_bom.rbac import role_rank
 
     tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or req.name
@@ -694,6 +771,21 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
         role = Role(req.role)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid role: {req.role}. Must be admin, analyst, or viewer")
+
+    caller_role_raw = str(getattr(request.state, "api_key_role", "admin") or "admin")
+    try:
+        caller_role = Role(caller_role_raw)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Caller role cannot delegate API keys")
+    if role_rank(role) > role_rank(caller_role):
+        raise HTTPException(status_code=403, detail="Cannot delegate an API key with a higher role than the caller")
+
+    caller_scopes = list(getattr(request.state, "api_key_scopes", []) or [])
+    if caller_scopes:
+        if not req.scopes:
+            raise HTTPException(status_code=403, detail="A scoped caller cannot create an unrestricted API key")
+        if any(not scopes_allow(caller_scopes, child_scope) for child_scope in req.scopes):
+            raise HTTPException(status_code=403, detail="Cannot delegate API key scopes outside the caller scope ceiling")
 
     try:
         raw_key, api_key = create_api_key(
@@ -888,6 +980,7 @@ async def auth_policy(request: Request) -> dict:
             ),
         },
         "rate_limit_runtime": rl_runtime,
+        "auth_session_client_identity": _auth_session_client_identity_posture(),
         "trusted_proxy_auth": get_trusted_proxy_auth_status(),
         "proxy_control_plane_mtls": describe_proxy_control_plane_mtls_posture(),
         "security_headers": describe_security_header_posture(),
@@ -1465,7 +1558,7 @@ def _oidc_login_nonce(state: str) -> str:
 
 
 def _new_oidc_login_state() -> str:
-    from agent_bom.api.shared_auth_state import get_auth_state
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
     backend = get_auth_state()
     ttl = int(os.environ.get("AGENT_BOM_OIDC_LOGIN_STATE_TTL_SECONDS") or "300")
@@ -1477,19 +1570,26 @@ def _new_oidc_login_state() -> str:
     expires_at = now + ttl
     for _ in range(3):
         state = secrets.token_urlsafe(32)
-        if backend.register_one_time_nonce(_oidc_login_nonce(state), expires_at, now=now):
-            return state
+        try:
+            if backend.register_one_time_nonce(_oidc_login_nonce(state), expires_at, now=now):
+                return state
+        except AuthStateUnavailable as exc:
+            raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
     raise HTTPException(status_code=503, detail="OIDC login state issuance unavailable")
 
 
 def _consume_oidc_login_state(state: str | None) -> None:
     if not state:
         raise HTTPException(status_code=401, detail="OIDC state required")
-    from agent_bom.api.shared_auth_state import get_auth_state
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
     backend = get_auth_state()
     now = int(time.time())
-    if not backend.redeem_one_time_nonce(_oidc_login_nonce(state), now=now):
+    try:
+        redeemed = backend.redeem_one_time_nonce(_oidc_login_nonce(state), now=now)
+    except AuthStateUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
+    if not redeemed:
         raise HTTPException(status_code=401, detail="Invalid or expired OIDC state")
 
 
@@ -1830,7 +1930,7 @@ def _snowflake_login_nonce(state: str) -> str:
 
 
 def _new_snowflake_login_state() -> str:
-    from agent_bom.api.shared_auth_state import get_auth_state
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
     backend = get_auth_state()
     ttl = int(os.environ.get("AGENT_BOM_OIDC_LOGIN_STATE_TTL_SECONDS") or "300")
@@ -1842,19 +1942,26 @@ def _new_snowflake_login_state() -> str:
     expires_at = now + ttl
     for _ in range(3):
         state = secrets.token_urlsafe(32)
-        if backend.register_one_time_nonce(_snowflake_login_nonce(state), expires_at, now=now):
-            return state
+        try:
+            if backend.register_one_time_nonce(_snowflake_login_nonce(state), expires_at, now=now):
+                return state
+        except AuthStateUnavailable as exc:
+            raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
     raise HTTPException(status_code=503, detail="Snowflake OAuth login state issuance unavailable")
 
 
 def _consume_snowflake_login_state(state: str | None) -> None:
     if not state:
         raise HTTPException(status_code=401, detail="Snowflake OAuth state required")
-    from agent_bom.api.shared_auth_state import get_auth_state
+    from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
     backend = get_auth_state()
     now = int(time.time())
-    if not backend.redeem_one_time_nonce(_snowflake_login_nonce(state), now=now):
+    try:
+        redeemed = backend.redeem_one_time_nonce(_snowflake_login_nonce(state), now=now)
+    except AuthStateUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Authentication state unavailable") from exc
+    if not redeemed:
         raise HTTPException(status_code=401, detail="Invalid or expired Snowflake OAuth state")
 
 
@@ -2041,7 +2148,11 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
         name=f"saml:{assertion.subject}",
         role=Role(assertion.role),
         expires_at=expires_at,
-        scopes=["saml-session"],
+        # Session provenance is already carried by the ``saml:`` name and
+        # auth_method. An empty scope list is the existing explicit
+        # role-governed representation; session marker strings must never act
+        # as operator-settable scope wildcards.
+        scopes=[],
         tenant_id=assertion.tenant_id,
         scim_subject_id=scim_subject_id,
         principal_id=scim_subject_id,

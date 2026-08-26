@@ -1031,6 +1031,84 @@ def test_api_key_middleware_rejects_revoked_browser_session(monkeypatch):
     assert resp.status_code == 401
 
 
+def test_browser_session_validation_fails_closed_when_shared_state_is_unavailable(monkeypatch):
+    from agent_bom.api.shared_auth_state import (
+        AuthStateUnavailable,
+        PostgresAuthState,
+        reset_auth_state_for_tests,
+        set_auth_state_for_tests,
+    )
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+    token, _csrf = create_browser_session_token(
+        subject="dashboard-user",
+        role="viewer",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session",
+        max_age_seconds=300,
+    )
+    backend = PostgresAuthState()
+    monkeypatch.setattr(backend, "_ensure_schema", lambda: False)
+    set_auth_state_for_tests(backend)
+    try:
+        with pytest.raises(AuthStateUnavailable):
+            from agent_bom.api.browser_session import verify_browser_session_token
+
+            verify_browser_session_token(token)
+    finally:
+        reset_auth_state_for_tests()
+
+
+def test_browser_logout_returns_503_when_shared_revocation_is_unavailable(monkeypatch):
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes import enterprise
+    from agent_bom.api.shared_auth_state import PostgresAuthState, reset_auth_state_for_tests, set_auth_state_for_tests
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+    token, _csrf = create_browser_session_token(
+        subject="dashboard-user",
+        role="viewer",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session",
+        max_age_seconds=300,
+    )
+    backend = PostgresAuthState()
+    monkeypatch.setattr(backend, "_ensure_schema", lambda: False)
+    set_auth_state_for_tests(backend)
+    monkeypatch.setattr(enterprise, "_session_cookie_secure", lambda _request: False)
+    request = SimpleNamespace(cookies={SESSION_COOKIE_NAME: token})
+    try:
+        with pytest.raises(HTTPException) as error:
+            enterprise._clear_browser_session_cookie(Response(), request)
+    finally:
+        reset_auth_state_for_tests()
+    assert error.value.status_code == 503
+    assert error.value.detail == "Authentication state unavailable"
+
+
+@pytest.mark.parametrize(
+    "factory_name",
+    ["_new_saml_relay_state", "_new_oidc_login_state", "_new_snowflake_login_state"],
+)
+def test_login_state_issuance_returns_503_when_shared_state_is_unavailable(monkeypatch, factory_name):
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes import enterprise
+    from agent_bom.api.shared_auth_state import PostgresAuthState, reset_auth_state_for_tests, set_auth_state_for_tests
+
+    backend = PostgresAuthState()
+    monkeypatch.setattr(backend, "_ensure_schema", lambda: False)
+    set_auth_state_for_tests(backend)
+    try:
+        with pytest.raises(HTTPException) as error:
+            getattr(enterprise, factory_name)()
+    finally:
+        reset_auth_state_for_tests()
+    assert error.value.status_code == 503
+    assert error.value.detail == "Authentication state unavailable"
+
+
 def test_api_key_middleware_health_exempt():
     """Health endpoint should be exempt from auth."""
     from starlette.applications import Starlette
@@ -1900,21 +1978,81 @@ def test_client_fingerprint_ignores_xff_without_trusted_proxy(monkeypatch):
 
     monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
     monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", raising=False)
     request = SimpleNamespace(headers={"x-forwarded-for": "9.9.9.9"}, client=SimpleNamespace(host="10.0.0.5"))
     assert enterprise._client_fingerprint(request) == "10.0.0.5"
 
 
-def test_client_fingerprint_honors_xff_with_trusted_hop_count(monkeypatch):
-    """A declared trusted-proxy hop count selects the proxy-appended address."""
+def test_client_fingerprint_honors_xff_with_trusted_proxy_topology(monkeypatch):
+    """A trusted transport peer plus hop count selects the proxy-appended address."""
     from agent_bom.api.routes import enterprise
 
     monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
     monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_HOPS", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", "10.0.0.0/24")
     request = SimpleNamespace(
         headers={"x-forwarded-for": "1.1.1.1, 2.2.2.2, 3.3.3.3"},
         client=SimpleNamespace(host="10.0.0.5"),
     )
     assert enterprise._client_fingerprint(request) == "3.3.3.3"
+
+
+def test_client_fingerprint_ignores_xff_from_peer_outside_trusted_networks(monkeypatch):
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_HOPS", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", "10.0.0.0/24")
+    request = SimpleNamespace(headers={"x-forwarded-for": "9.9.9.9"}, client=SimpleNamespace(host="203.0.113.10"))
+    assert enterprise._client_fingerprint(request) == "203.0.113.10"
+
+
+def test_client_fingerprint_does_not_trust_xff_from_proxy_auth_flag_alone(monkeypatch):
+    """Header attestation does not establish how many address hops are trusted."""
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", raising=False)
+    request = SimpleNamespace(headers={"x-forwarded-for": "9.9.9.9"}, client=SimpleNamespace(host="10.0.0.5"))
+    assert enterprise._client_fingerprint(request) == "10.0.0.5"
+
+
+def test_client_fingerprint_falls_back_when_forwarded_chain_is_too_short(monkeypatch):
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_HOPS", "2")
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", "10.0.0.0/24")
+    request = SimpleNamespace(headers={"x-forwarded-for": "9.9.9.9"}, client=SimpleNamespace(host="10.0.0.5"))
+    assert enterprise._client_fingerprint(request) == "10.0.0.5"
+
+
+@pytest.mark.parametrize(
+    "forwarded",
+    ["not-an-ip", ",".join(f"192.0.2.{index % 255}" for index in range(33))],
+)
+def test_client_fingerprint_rejects_malformed_or_oversized_forwarded_chain(monkeypatch, forwarded):
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_HOPS", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", "10.0.0.0/24")
+    request = SimpleNamespace(headers={"x-forwarded-for": forwarded}, client=SimpleNamespace(host="10.0.0.5"))
+    assert enterprise._client_fingerprint(request) == "10.0.0.5"
+
+
+@pytest.mark.parametrize(
+    ("peer", "cidrs", "forwarded", "expected"),
+    [
+        ("2001:db8::10", "2001:db8::/64", "2001:4860:4860::8888", "2001:4860:4860::8888"),
+        ("10.0.0.5", "10.0.0.0/24", ",".join(["192.0.2.1"] * 32), "192.0.2.1"),
+    ],
+)
+def test_client_fingerprint_accepts_bounded_ipv4_and_ipv6_proxy_chains(monkeypatch, peer, cidrs, forwarded, expected):
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_HOPS", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", cidrs)
+    request = SimpleNamespace(headers={"x-forwarded-for": forwarded}, client=SimpleNamespace(host=peer))
+    assert enterprise._client_fingerprint(request) == expected
 
 
 @pytest.mark.asyncio
@@ -1932,6 +2070,7 @@ async def test_auth_session_xff_spoof_does_not_reset_bruteforce_window(monkeypat
     reset_auth_state_for_tests()
     monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
     monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", raising=False)
     monkeypatch.setenv("AGENT_BOM_AUTH_SESSION_ATTEMPTS_PER_MINUTE", "1")
     monkeypatch.setenv("AGENT_BOM_API_KEY", "valid-key")
 
@@ -1939,6 +2078,35 @@ async def test_auth_session_xff_spoof_does_not_reset_bruteforce_window(monkeypat
         return SimpleNamespace(
             headers={"x-forwarded-for": spoofed_xff},
             client=SimpleNamespace(host="203.0.113.10"),
+        )
+
+    with pytest.raises(HTTPException) as first:
+        await enterprise.create_browser_session(make_request("1.1.1.1"), Response(), enterprise.BrowserSessionRequest(api_key="bad-1"))
+    assert first.value.status_code == 401
+
+    with pytest.raises(HTTPException) as second:
+        await enterprise.create_browser_session(make_request("2.2.2.2"), Response(), enterprise.BrowserSessionRequest(api_key="bad-2"))
+    assert second.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_auth_session_trusted_proxy_uses_proxy_appended_client_address(monkeypatch):
+    """Rotating attacker-controlled leftmost hops cannot mint fresh buckets."""
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes import enterprise
+    from agent_bom.api.shared_auth_state import reset_auth_state_for_tests
+
+    reset_auth_state_for_tests()
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_HOPS", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_CIDRS", "10.0.0.0/24")
+    monkeypatch.setenv("AGENT_BOM_AUTH_SESSION_ATTEMPTS_PER_MINUTE", "1")
+    monkeypatch.setenv("AGENT_BOM_API_KEY", "valid-key")
+
+    def make_request(attacker_hop: str):
+        return SimpleNamespace(
+            headers={"x-forwarded-for": f"{attacker_hop}, 198.51.100.20"},
+            client=SimpleNamespace(host="10.0.0.5"),
         )
 
     with pytest.raises(HTTPException) as first:

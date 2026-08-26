@@ -145,3 +145,14 @@ def test_demo_estate_clamps_pure_no_auth_admin_to_viewer(
     )
     assert denied.status_code == 403
     assert "anonymous access has viewer" in denied.json()["detail"]
+
+
+def test_demo_estate_clamp_uses_runtime_environment_not_stale_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_bom.rbac import Role, _no_auth_role
+
+    monkeypatch.setattr("agent_bom.config.DEMO_ESTATE", False)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "admin")
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "1")
+    assert _no_auth_role() is Role.VIEWER

@@ -17,6 +17,7 @@ import pytest
 
 from agent_bom.api.shared_auth_state import (
     AuthStateBackend,
+    AuthStateUnavailable,
     InMemoryAuthState,
     PostgresAuthState,
     auth_state_posture,
@@ -30,7 +31,9 @@ from agent_bom.api.shared_auth_state import (
 def _reset(monkeypatch):
     reset_auth_state_for_tests()
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.delenv("AGENT_BOM_DB", raising=False)
     monkeypatch.delenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", raising=False)
+    monkeypatch.delenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", raising=False)
     yield
     reset_auth_state_for_tests()
 
@@ -187,6 +190,11 @@ class TestBackendSelection:
         backend = get_auth_state()
         assert isinstance(backend, PostgresAuthState)
 
+    def test_canonical_db_url_selects_postgres(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AGENT_BOM_DB", "postgresql://stub")
+        reset_auth_state_for_tests()
+        assert isinstance(get_auth_state(), PostgresAuthState)
+
     def test_set_for_tests_overrides_selection(self) -> None:
         sentinel = InMemoryAuthState()
         set_auth_state_for_tests(sentinel)
@@ -213,24 +221,37 @@ class TestPosture:
 
     def test_posture_clean_when_postgres_backend_active(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://stub")
+        monkeypatch.setattr(PostgresAuthState, "is_available", lambda _self: True)
         reset_auth_state_for_tests()
         posture = auth_state_posture()
         assert posture["backend"] == "postgres"
         assert posture["clustered_safe"] is True
         assert posture["warning"] == ""
 
+    def test_posture_detects_replica_count_without_postgres(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+        posture = auth_state_posture()
+        assert posture["cluster_mode_detected"] is True
+        assert posture["degraded"] is True
+
+    def test_posture_does_not_treat_false_shared_flag_as_cluster(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", "false")
+        posture = auth_state_posture()
+        assert posture["cluster_mode_detected"] is False
+        assert posture["degraded"] is False
+
 
 # ── Postgres backend (driver isolation: schema bootstrap fall-through) ────
 
 
-class TestPostgresFallback:
-    """When Postgres is configured but unreachable, fall back to in-memory.
+class TestPostgresFailureBoundary:
+    """When Postgres is configured, an outage must fail closed.
 
     A real-Postgres integration test lives in test_postgres_integration.py
     so this suite stays runnable without a live database.
     """
 
-    def test_record_attempt_falls_back_when_pool_unreachable(
+    def test_record_attempt_fails_closed_when_pool_unreachable(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://stub")
@@ -244,14 +265,107 @@ class TestPostgresFallback:
             raise RuntimeError("no-such-host: simulated pool failure")
 
         monkeypatch.setattr("agent_bom.api.postgres_common._get_pool", _explode)
-        with caplog.at_level("WARNING"):
-            for _ in range(3):
-                assert backend.record_attempt("k", window_seconds=60, limit=5) is True
-        assert backend._fallback_warned is True
-        assert len(backend._fallback._attempts["k"]) == 3
+        with caplog.at_level("WARNING"), pytest.raises(AuthStateUnavailable):
+            backend.record_attempt("k", window_seconds=60, limit=5)
         messages = [record.message for record in caplog.records]
         if messages:
-            assert any("falling back to in-memory backend" in message for message in messages)
+            assert any("shared auth state unavailable" in message for message in messages)
+            assert all("no-such-host" not in message for message in messages)
+
+    def test_replay_and_revocation_checks_fail_closed_when_pool_unreachable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        backend = PostgresAuthState()
+        monkeypatch.setattr(backend, "_ensure_schema", lambda: False)
+        for operation in (
+            lambda: backend.is_nonce_revoked("nonce"),
+            lambda: backend.consume_nonce_once("nonce", int(time.time()) + 60),
+            lambda: backend.register_one_time_nonce("nonce", int(time.time()) + 60),
+            lambda: backend.redeem_one_time_nonce("nonce"),
+            lambda: backend.revoke_nonce("nonce", int(time.time()) + 60),
+        ):
+            with pytest.raises(AuthStateUnavailable):
+                operation()
+
+    def test_posture_reports_unavailable_postgres_as_not_cluster_safe(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        backend = PostgresAuthState()
+        monkeypatch.setattr(backend, "_ensure_schema", lambda: False)
+        set_auth_state_for_tests(backend)
+        posture = auth_state_posture()
+        assert posture["available"] is False
+        assert posture["clustered_safe"] is False
+        assert posture["degraded"] is True
+
+    def test_live_health_probe_invalidates_cached_schema(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def execute(self, _sql: str) -> None:
+                raise PermissionError("auth table denied")
+
+        class _Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def cursor(self):
+                return _Cursor()
+
+        class _Pool:
+            def connection(self):
+                return _Connection()
+
+        backend = PostgresAuthState()
+        backend._schema_ready = True
+        monkeypatch.setattr("agent_bom.api.postgres_common._get_pool", lambda: _Pool())
+        assert backend.is_available() is False
+        assert backend._schema_ready is False
+
+    def test_attempt_counter_locks_the_fingerprint_before_counting(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        statements: list[str] = []
+
+        class _Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def execute(self, sql: str, _params=None) -> None:
+                statements.append(" ".join(sql.split()).lower())
+
+            def fetchone(self):
+                return (1,)
+
+        class _Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def cursor(self):
+                return _Cursor()
+
+            def commit(self) -> None:
+                return None
+
+        class _Pool:
+            def connection(self):
+                return _Connection()
+
+        backend = PostgresAuthState()
+        monkeypatch.setattr(backend, "_ensure_schema", lambda: True)
+        monkeypatch.setattr("agent_bom.api.postgres_common._get_pool", lambda: _Pool())
+        assert backend.record_attempt("client", window_seconds=60, limit=1) is True
+        lock_at = next(i for i, sql in enumerate(statements) if "pg_advisory_xact_lock" in sql)
+        insert_at = next(i for i, sql in enumerate(statements) if sql.startswith("insert into auth_session_attempts"))
+        count_at = next(i for i, sql in enumerate(statements) if sql.startswith("select count"))
+        assert lock_at < insert_at < count_at
 
 
 def test_protocol_implementations_match_contract() -> None:

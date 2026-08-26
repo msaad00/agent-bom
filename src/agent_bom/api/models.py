@@ -1019,6 +1019,15 @@ class CreateKeyRequest(BaseModel):
     # every key keyed to its principal_id.
     principal_id: str | None = None
 
+    @field_validator("scopes")
+    @classmethod
+    def reject_reserved_session_markers(cls, scopes: list[str]) -> list[str]:
+        reserved = {"saml-session", "browser-session", "oidc-session"}
+        rejected = sorted(reserved.intersection(scopes))
+        if rejected:
+            raise ValueError(f"reserved session marker cannot be used as an API key scope: {', '.join(rejected)}")
+        return scopes
+
 
 class RotateKeyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")

@@ -456,7 +456,16 @@ AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER=x-forwarded-client-cert
 AGENT_BOM_TRUST_PROXY_AUTH=1
 AGENT_BOM_TRUST_PROXY_AUTH_SECRET=<32+ byte shared attestation secret>
 AGENT_BOM_TRUST_PROXY_AUTH_ISSUER=edge-envoy
+AGENT_BOM_TRUSTED_PROXY_HOPS=1
+AGENT_BOM_TRUSTED_PROXY_CIDRS=10.0.10.0/24,10.0.11.0/24
 ```
+
+Set `AGENT_BOM_TRUSTED_PROXY_HOPS` to the exact number of trusted forwarding
+hops and `AGENT_BOM_TRUSTED_PROXY_CIDRS` to the API-facing proxy subnet CIDRs.
+Both are required before auth rate limits use `X-Forwarded-For`; direct peers
+outside those networks and short, malformed, or oversized chains fall back to
+the transport peer. `/v1/auth/policy` reports the effective client-identity
+source and any incomplete or invalid topology warning.
 
 `GET /v1/auth/policy` exposes `proxy_control_plane_mtls` with one of three
 honest states:

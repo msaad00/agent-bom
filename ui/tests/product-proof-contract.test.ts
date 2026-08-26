@@ -61,6 +61,46 @@ describe("product proof capture contract", () => {
     expect(source).toContain("/6\\/6 stages complete/i");
   });
 
+  it("locks current and proposed Investigation Canvas proof to both audited viewports", () => {
+    expect(source).toContain('path: "investigation-canvas-current-1512x811.png"');
+    expect(source).toContain('path: "investigation-canvas-proposed-1568x780.png"');
+    expect(source).toContain('page: "/security-graph?lens=estate&rollup=1&capture=1"');
+    expect(source).toContain(
+      'page: `/security-graph?lens=estate&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`',
+    );
+    expect(source).toContain('newCapturePage("dark", { width: 1512, height: 811 })');
+    expect(source).toContain('newCapturePage("light", { width: 1568, height: 780 })');
+    expect(source).toContain('data-testid="graph-rollup-decision-surface"');
+    expect(source).toContain('data-testid="graph-rollup-relationship-completeness"');
+    expect(source).toContain("top_level: graph.nodes.slice(0, 30)");
+    expect(source).toContain('data-testid="graph-rollup-card-grid"');
+    expect(source).toContain('page.route("**/v1/graph/scenarios"');
+    expect(source).toContain('page.route(`**/v1/graph/scenarios/${SCENARIO_ID}/comparison?**`');
+    expect(source).toContain("Proposed scenario — not observed or deployed");
+    expect(source).toContain('section[aria-label="Scenario comparison"]:has-text');
+    expect(source).not.toContain('section[aria-label="Architecture scenario"]:has-text');
+  });
+
+  it("pins the legacy attack-path proof to its explicit canonical lens", () => {
+    expect(source).toContain('page: "/security-graph?lens=attack-path&capture=1"');
+    expect(source).toContain(
+      'await capture(page, "/security-graph?lens=attack-path&capture=1", "security-graph-live.png"',
+    );
+    expect(source).not.toContain('"/security-graph?capture=1"');
+  });
+
+  it("keeps the base graph fixture from swallowing graph subroutes", () => {
+    expect(source).toContain('page.route((url) => url.pathname === "/v1/graph"');
+    expect(source).not.toContain('page.route("**/v1/graph?**"');
+  });
+
+  it("pins lineage proof through shareable URL filters rather than secondary controls", () => {
+    expect(source).toContain('/graph?capture=1&scan=${SCAN_ID}&agent=developer-copilot&vulnOnly=1');
+    expect(source).toContain('getByRole("heading", { name: "Lineage Graph" })');
+    expect(source).not.toContain('hasText: "Advanced controls"');
+    expect(source).not.toContain('getByRole("option", { name: "developer-copilot"');
+  });
+
   it("mocks the overview trend request instead of reaching an absent backend", () => {
     expect(source).toContain('page.route("**/v1/trends?**"');
     expect(source).toContain('scan_id: "scan-proof-baseline"');

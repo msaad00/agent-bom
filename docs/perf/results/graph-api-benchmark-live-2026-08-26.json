@@ -1,0 +1,279 @@
+{
+  "base_url": "http://127.0.0.1:8429",
+  "commands": {
+    "dry_run": "uv run python scripts/run_graph_api_benchmark.py --dry-run",
+    "live": "AGENT_BOM_API_TOKEN=... uv run python scripts/run_graph_api_benchmark.py --base-url http://127.0.0.1:8000 --scan-id <scan> --old-scan-id <old> --new-scan-id <new>"
+  },
+  "evidence_status": "measured_api_client_wall_clock",
+  "execution": {
+    "auth_mode": "bearer_token",
+    "graph_backend": "sqlite"
+  },
+  "gaps": [
+    "Client-side timings include local network and client JSON transfer time.",
+    "Server-side DB plans are measured separately by scripts/run_graph_postgres_explain.py."
+  ],
+  "generated_at": "2026-08-26T04:07:26.629216+00:00",
+  "owner_issue": 2145,
+  "repeat": 10,
+  "request_plan": [
+    {
+      "method": "GET",
+      "name": "graph_default_payload",
+      "path": "/v1/graph",
+      "query": {
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_limit_5000_payload",
+      "path": "/v1/graph",
+      "query": {
+        "limit": "5000",
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_search",
+      "path": "/v1/graph/search",
+      "query": {
+        "entity_types": "package,vulnerability",
+        "limit": "50",
+        "q": "langchain",
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "node_detail",
+      "path": "/v1/graph/node/pkg:go:langchain@1.0.0",
+      "query": {
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "attack_path_drilldown",
+      "path": "/v1/graph/paths",
+      "query": {
+        "limit": "100",
+        "max_depth": "4",
+        "scan_id": "graph-benchmark-estate-current",
+        "source_id": "agent:agent-00000"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_diff",
+      "path": "/v1/graph/diff",
+      "query": {
+        "new": "graph-benchmark-estate-current",
+        "old": "graph-benchmark-estate-old"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_history",
+      "path": "/v1/graph/history",
+      "query": {
+        "limit": "50"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_evidence_manifest",
+      "path": "/v1/graph/evidence-manifest",
+      "query": {
+        "baseline_scan_id": "graph-benchmark-estate-old",
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "json": {
+        "direction": "both",
+        "include_attack_paths": true,
+        "max_depth": 3,
+        "max_edges": 5000,
+        "max_nodes": 500,
+        "roots": [
+          "agent:agent-00000"
+        ],
+        "scan_id": "graph-benchmark-estate-current",
+        "timeout_ms": 2500,
+        "traversable_only": true
+      },
+      "method": "POST",
+      "name": "bounded_traversal",
+      "path": "/v1/graph/query",
+      "query": {}
+    }
+  ],
+  "results": [
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 626.598,
+        "mean_ms": 197.571,
+        "p50_ms": 148.762,
+        "p95_ms": 626.598,
+        "p99_ms": 626.598,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "graph_default_payload",
+      "path": "/v1/graph",
+      "response_bytes_last": 1727852,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 712.286,
+        "mean_ms": 606.886,
+        "p50_ms": 614.96,
+        "p95_ms": 712.286,
+        "p99_ms": 712.286,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "graph_limit_5000_payload",
+      "path": "/v1/graph",
+      "response_bytes_last": 15091553,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 60.393,
+        "mean_ms": 54.317,
+        "p50_ms": 53.378,
+        "p95_ms": 60.393,
+        "p99_ms": 60.393,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "graph_search",
+      "path": "/v1/graph/search",
+      "response_bytes_last": 47712,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 59.667,
+        "mean_ms": 54.399,
+        "p50_ms": 52.809,
+        "p95_ms": 59.667,
+        "p99_ms": 59.667,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "node_detail",
+      "path": "/v1/graph/node/pkg:go:langchain@1.0.0",
+      "response_bytes_last": 2449,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 163.433,
+        "mean_ms": 154.345,
+        "p50_ms": 153.878,
+        "p95_ms": 163.433,
+        "p99_ms": 163.433,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "attack_path_drilldown",
+      "path": "/v1/graph/paths",
+      "response_bytes_last": 167351,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 844.555,
+        "mean_ms": 726.912,
+        "p50_ms": 705.522,
+        "p95_ms": 844.555,
+        "p99_ms": 844.555,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "graph_diff",
+      "path": "/v1/graph/diff",
+      "response_bytes_last": 1509626,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 64.848,
+        "mean_ms": 53.319,
+        "p50_ms": 51.484,
+        "p95_ms": 64.848,
+        "p99_ms": 64.848,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "graph_history",
+      "path": "/v1/graph/history",
+      "response_bytes_last": 491,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 1033.756,
+        "mean_ms": 875.225,
+        "p50_ms": 875.897,
+        "p95_ms": 1033.756,
+        "p99_ms": 1033.756,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "graph_evidence_manifest",
+      "path": "/v1/graph/evidence-manifest",
+      "response_bytes_last": 1204,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 145.345,
+        "mean_ms": 123.936,
+        "p50_ms": 120.76,
+        "p95_ms": 145.345,
+        "p99_ms": 145.345,
+        "samples": 10
+      },
+      "method": "POST",
+      "name": "bounded_traversal",
+      "path": "/v1/graph/query",
+      "response_bytes_last": 1172759,
+      "status_counts": {
+        "200": 10
+      }
+    }
+  ],
+  "schema_version": 1,
+  "tenant_id": "default"
+}

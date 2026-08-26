@@ -47,6 +47,18 @@ def request_plan(*, scan_id: str, old_scan_id: str, new_scan_id: str, source_nod
     scan_param = {"scan_id": scan_id} if scan_id else {}
     return [
         {
+            "name": "graph_default_payload",
+            "method": "GET",
+            "path": "/v1/graph",
+            "query": scan_param,
+        },
+        {
+            "name": "graph_limit_5000_payload",
+            "method": "GET",
+            "path": "/v1/graph",
+            "query": {**scan_param, "limit": "5000"},
+        },
+        {
             "name": "graph_search",
             "method": "GET",
             "path": "/v1/graph/search",
@@ -166,6 +178,7 @@ def run_live(
 
 
 def generate(args: argparse.Namespace) -> dict[str, Any]:
+    token = args.token or os.environ.get("AGENT_BOM_API_TOKEN", "")
     operations = request_plan(
         scan_id=args.scan_id,
         old_scan_id=args.old_scan_id,
@@ -180,6 +193,10 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
         "base_url": args.base_url,
         "tenant_id": args.tenant_id,
         "repeat": args.repeat,
+        "execution": {
+            "auth_mode": "not_exercised" if args.dry_run else ("bearer_token" if token else "unauthenticated"),
+            "graph_backend": args.graph_backend,
+        },
         "request_plan": operations,
         "commands": {
             "dry_run": "uv run python scripts/run_graph_api_benchmark.py --dry-run",
@@ -203,7 +220,7 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
         base_url=args.base_url,
         operations=operations,
         repeat=args.repeat,
-        token=args.token or os.environ.get("AGENT_BOM_API_TOKEN", ""),
+        token=token,
         tenant_id=args.tenant_id,
         timeout=args.timeout,
     )
@@ -219,6 +236,11 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://127.0.0.1:8000", help="Running agent-bom API base URL.")
     parser.add_argument("--tenant-id", default="default", help="Tenant header to send.")
     parser.add_argument("--token", default="", help="Bearer token. Defaults to AGENT_BOM_API_TOKEN.")
+    parser.add_argument(
+        "--graph-backend",
+        default="unspecified",
+        help="Graph backend label recorded in the artifact (for example sqlite or postgres).",
+    )
     parser.add_argument("--scan-id", default="graph-benchmark-estate-current", help="Scan ID for latest/single-snapshot requests.")
     parser.add_argument("--old-scan-id", default="graph-benchmark-estate-old", help="Old scan ID for /v1/graph/diff.")
     parser.add_argument("--new-scan-id", default="graph-benchmark-estate-current", help="New scan ID for /v1/graph/diff.")

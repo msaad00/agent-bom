@@ -1,7 +1,7 @@
 {
   "release_version": "0.102.0",
-  "captured_at": "2026-08-25T05:26:24.612Z",
-  "source_commit": "e6c613cd52a71ca49e89a83fdc358811ea9fe3d8",
+  "captured_at": "2026-08-26T08:17:28.377Z",
+  "source_commit": "633d633e9154474a27d0ba8cfae0631b7fc32d84",
   "source_tree": "clean",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No customer or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
@@ -35,7 +35,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.102.0",
-      "sha256": "sha256:3d5900ce6d72cfc42c3fca3dc87dc779d45dd0ce71be6f7663871c14ec993ffb"
+      "sha256": "sha256:faba070cb356937bbbc8bae265c875c91010b0ad8d1faf0d0b4d104c352d1317"
     },
     {
       "presentation": "dark desktop",
@@ -88,34 +88,50 @@
     {
       "presentation": "dark desktop",
       "path": "security-graph-live.png",
-      "page": "/security-graph?capture=1",
+      "page": "/security-graph?lens=attack-path&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.102.0",
-      "sha256": "sha256:58ff3d6abbdf9155953e3690b816aac8258890766dc1945ad0beba5e5986609c"
+      "sha256": "sha256:cb7a494e2d398be1241de2429552bcebedcc8035c5364018b95e96b445406b31"
     },
     {
       "presentation": "light desktop",
       "path": "security-graph-light-live.png",
-      "page": "/security-graph?capture=1",
+      "page": "/security-graph?lens=attack-path&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.102.0",
-      "sha256": "sha256:d3f30e1c12e7dafd27f10fe5f8188765e584d850a67815b4f3011407694a1fd7"
+      "sha256": "sha256:059c7d152ba780436430226ddf50d849dd0937608820e65d6a202911f274fd27"
     },
     {
       "presentation": "dark mobile",
       "path": "security-graph-mobile-live.png",
-      "page": "/security-graph?capture=1",
+      "page": "/security-graph?lens=attack-path&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.102.0",
-      "sha256": "sha256:78128b88be65a5f6fb658599c44e429f7934efa51c62831d9eb99b824c34573e"
+      "sha256": "sha256:0e0b97dd55a9b0df3a5b2fafc570379c77e9771e3519f98241c9a47672419991"
+    },
+    {
+      "presentation": "dark desktop 1512x811",
+      "path": "investigation-canvas-current-1512x811.png",
+      "page": "/security-graph?lens=estate&rollup=1&capture=1",
+      "scope": "Observed current-state Investigation Canvas at the audited 1512 by 811 viewport",
+      "visible_version": "0.102.0",
+      "sha256": "sha256:c2489c5968e07879f509a31f09e226f7a112399dfc4e4cf1a100f988fac85f6d"
+    },
+    {
+      "presentation": "light desktop 1568x780",
+      "path": "investigation-canvas-proposed-1568x780.png",
+      "page": "/security-graph?lens=estate&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
+      "scope": "Clearly modeled proposed-state comparison at the audited 1568 by 780 viewport",
+      "visible_version": "0.102.0",
+      "sha256": "sha256:35b0ddcf8972b017980dabca8c82d747c0cb47d3ff45ab744e41075193f37c25"
     },
     {
       "presentation": "dark desktop",
       "path": "lineage-graph-live.png",
-      "page": "/graph?capture=1&scan=scan-proof-ai-platform",
-      "scope": "Focused filtered attack-path lineage across agent, MCP, package, and finding nodes",
+      "page": "/graph?capture=1&scan=scan-proof-ai-platform&agent=developer-copilot&vulnOnly=1",
+      "scope": "URL-pinned developer-copilot vulnerable-path lineage across agent, MCP, package, and finding nodes",
       "visible_version": "0.102.0",
-      "sha256": "sha256:278f874125e46d904fb200feafc869cb8b0e07aade02a29bb3830bf13389829b"
+      "sha256": "sha256:133ff2c5a85ac676aab7e6bf3c4fcc800847716d9e2a47a4bf32cae9bab5ae45"
     },
     {
       "presentation": "dark desktop",
@@ -123,7 +139,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
       "visible_version": "0.102.0",
-      "sha256": "sha256:4aa88c5f0787e1ef590bca2c5ba4497c77a3fd85698d10d0f8e83b7232915696"
+      "sha256": "sha256:5f4e11d6494053f9b5131d52891b1bd32399497b048ad0954c5fc3be4605a4b6"
     },
     {
       "presentation": "dark desktop",
@@ -147,7 +163,7 @@
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
       "visible_version": "0.102.0",
-      "sha256": "sha256:504287d115ef3dde0f4e86c31872e3de3cee6e7392faf559e53c21b0140831bb"
+      "sha256": "sha256:a8e36b051e6f853fc1b57324d7558781371986cfecfc3b3ec5c7ccc57fd5268c"
     },
     {
       "presentation": "dark desktop",

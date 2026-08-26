@@ -17,6 +17,7 @@ Raw result artifacts:
 - `docs/perf/results/graph-benchmark-store-load-live-2026-05-13.json`
 - `docs/perf/results/graph-benchmark-postgres-load-live-2026-05-13.json`
 - `docs/perf/results/graph-api-benchmark-live-2026-05-13.json`
+- `docs/perf/results/graph-api-benchmark-live-2026-08-26.json`
 - `docs/perf/results/postgres-graph-explain-live-2026-05-13.json`
 - `docs/perf/results/postgres-graph-explain-live-2026-05-13/*.sql`
 - `docs/perf/results/postgres-graph-explain-live-2026-05-13/plans/*.txt`
@@ -53,9 +54,13 @@ Covered by the checked-in evidence:
   operator-pushed source labels
 - SQLite graph-store load for old/current snapshots with 11,242 current edges,
   10,479 current nodes, and 291 materialized attack paths
-- API request plan for `/v1/graph/search`, `/v1/graph/node/{id}`,
+- API request plan for the default `/v1/graph` response and its explicit
+  `limit=5000` ceiling before `/v1/graph/search`, `/v1/graph/node/{id}`,
   `/v1/graph/paths`, `/v1/graph/diff`, and `/v1/graph/query`
 - local loopback API p50/p95/p99 client timings for each request above
+- exact response bytes for the last successful sample of both graph payload
+  sizes; these measurements describe the tested snapshot and do not raise the
+  API ceiling
 - Docker Postgres graph-store load for the same old/current snapshots
 - Postgres `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plan artifacts for node
   search, node detail, attack-path drilldown, graph diff, and bounded traversal
@@ -97,6 +102,11 @@ deterministic estate shape on Docker `postgres:16-alpine`, using a local Docker
 `psql` wrapper with 30 samples per query family. These are client wall-clock
 timings and include process/client overhead; pair them with the
 `EXPLAIN ANALYZE` artifacts before making deployment SLO claims.
+
+The 2026-08-26 API artifact reloaded the same deterministic 250-agent estate
+into SQLite and called an authenticated loopback API 10 times per operation.
+It adds exact response-byte measurements for the default 500-row graph request
+and the existing explicit `limit=5000` request. It does not change that ceiling.
 
 ## Commands
 
@@ -153,6 +163,24 @@ uv run python scripts/run_graph_api_benchmark.py \
   --detail-node pkg:go:langchain@1.0.0 \
   --repeat 10 \
   --output docs/perf/results/graph-api-benchmark-live-2026-05-13.json
+```
+
+Re-run the authenticated default-versus-ceiling payload measurement against
+that same loaded SQLite store:
+
+```bash
+AGENT_BOM_API_TOKEN='<local benchmark key>' \
+uv run python scripts/run_graph_api_benchmark.py \
+  --base-url http://127.0.0.1:8429 \
+  --tenant-id default \
+  --graph-backend sqlite \
+  --scan-id graph-benchmark-estate-current \
+  --old-scan-id graph-benchmark-estate-old \
+  --new-scan-id graph-benchmark-estate-current \
+  --source-node agent:agent-00000 \
+  --detail-node pkg:go:langchain@1.0.0 \
+  --repeat 10 \
+  --output docs/perf/results/graph-api-benchmark-live-2026-08-26.json
 ```
 
 Export retained graph evidence from the local graph store without a running API:
@@ -286,6 +314,7 @@ must be added as new checked-in artifacts before product copy can claim them.
 | `graph-benchmark-estate-live-2026-05-13.json` | generated | 250-agent estate with 604 servers, 3,475 tools, and 5,958 package instances |
 | `graph-benchmark-store-load-live-2026-05-13.json` | measured load | SQLite graph store loaded old/current snapshots; current has 10,479 nodes, 11,242 edges, 291 attack paths |
 | `graph-api-benchmark-live-2026-05-13.json` | measured API | loopback API p50/p95/p99 client timings across five graph hot paths |
+| `graph-api-benchmark-live-2026-08-26.json` | measured API | authenticated loopback timings and exact default versus `limit=5000` response bytes |
 | `graph-benchmark-postgres-load-live-2026-05-13.json` | measured load | Docker Postgres graph store loaded the same old/current snapshots |
 | `postgres-graph-explain-live-2026-05-13.json` | measured plan | five Postgres `EXPLAIN ANALYZE` runs returned successfully with plan files |
 | `graph-benchmark-postgres-load-live-2026-07-01.json` | measured load | Docker Postgres graph store loaded the same old/current snapshots after schema bootstrap hardening |
@@ -300,6 +329,13 @@ API client timings from `graph-api-benchmark-live-2026-05-13.json`:
 | attack-path drilldown | 10 | 1625.596 | 2146.839 | 2146.839 |
 | graph diff | 10 | 208.873 | 338.559 | 338.559 |
 | bounded traversal | 10 | 828.342 | 1179.635 | 1179.635 |
+
+Payload measurements from `graph-api-benchmark-live-2026-08-26.json`:
+
+| Operation | Rows requested | Samples | HTTP 200 | Response bytes | p50 ms | p95 ms |
+|---|---:|---:|---:|---:|---:|---:|
+| graph default payload | 500 | 10 | 10 | 1,727,852 | 148.762 | 626.598 |
+| graph explicit ceiling | 5,000 | 10 | 10 | 15,091,553 | 614.960 | 712.286 |
 
 Top-level Postgres plan times from
 `postgres-graph-explain-live-2026-05-13/plans/*.txt`:

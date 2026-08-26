@@ -134,6 +134,24 @@ describe("GraphLensSwitcher", () => {
     );
   });
 
+  it("preserves the snapshot-pinned scenario across canonical lenses", () => {
+    pathname = "/security-graph";
+    params = new URLSearchParams({
+      scan: "scan-123",
+      scenario: "scenario-private-endpoint",
+      state: "proposed",
+      lens: "estate",
+      rollup: "1",
+    });
+    render(<GraphLensSwitcher variant="compact" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /cloud/i }));
+
+    expect(push).toHaveBeenCalledWith(
+      "/security-graph?scan=scan-123&scenario=scenario-private-endpoint&state=proposed&lens=cloud",
+    );
+  });
+
   it("does not carry a canonical snapshot claim into specialized scan views", () => {
     pathname = "/security-graph";
     params = new URLSearchParams({ scan: "scan-123", node: "asset-1" });

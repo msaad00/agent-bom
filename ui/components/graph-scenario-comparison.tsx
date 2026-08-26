@@ -383,7 +383,7 @@ function tabClass(active: boolean, disabled: boolean): string {
   return [
     "rounded-lg border px-3 py-1.5 text-xs font-medium transition",
     active
-      ? "border-sky-400/50 bg-sky-500/15 text-sky-100"
+      ? "border-sky-400/50 bg-sky-500/15 text-sky-800 dark:text-sky-100"
       : "border-[var(--border-subtle)] bg-[var(--background)]/70 text-[var(--text-secondary)]",
     disabled ? "cursor-not-allowed opacity-45" : "hover:border-sky-400/40",
   ].join(" ");
@@ -435,7 +435,7 @@ export function GraphScenarioComparisonPanel({
     >
       <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-300">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-700 dark:text-violet-300">
             Architecture scenario · revision {scenario.revision}
           </p>
           <p className="mt-1 truncate text-sm font-medium text-[var(--foreground)]">
@@ -502,7 +502,7 @@ export function GraphScenarioComparisonPanel({
             {proposedVisible && (
               <div
                 role="status"
-                className="mb-3 flex items-start gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-100"
+                className="mb-3 flex items-start gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-900 dark:text-violet-100"
               >
                 <FlaskConical className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
@@ -514,7 +514,7 @@ export function GraphScenarioComparisonPanel({
             )}
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-3">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-300">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
                   Current · observed
                 </p>
                 <p className="mt-1 text-sm text-[var(--foreground)]">
@@ -523,7 +523,7 @@ export function GraphScenarioComparisonPanel({
                 </p>
               </div>
               <div className="rounded-xl border border-violet-400/20 bg-violet-500/5 p-3">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-violet-300">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-violet-700 dark:text-violet-300">
                   Proposed · modeled
                 </p>
                 <p className="mt-1 text-sm text-[var(--foreground)]">
@@ -552,7 +552,7 @@ export function GraphScenarioComparisonPanel({
                   ))}
                 </div>
                 <div className="rounded-xl border border-sky-400/20 bg-sky-500/5 p-3 text-xs text-[var(--text-secondary)]">
-                  <span className="font-medium text-sky-200">
+                  <span className="font-medium text-sky-700 dark:text-sky-200">
                     {comparison.difference.touched_observed_path_count} touched observed paths
                   </span>
                   {comparison.difference.touched_observed_path_ids.length > 0 && (

@@ -34,6 +34,8 @@ def test_api_request_plan_covers_issue_2145_hot_paths() -> None:
 
     names = {operation["name"] for operation in operations}
     assert names == {
+        "graph_default_payload",
+        "graph_limit_5000_payload",
         "graph_search",
         "node_detail",
         "attack_path_drilldown",
@@ -41,6 +43,20 @@ def test_api_request_plan_covers_issue_2145_hot_paths() -> None:
         "graph_history",
         "graph_evidence_manifest",
         "bounded_traversal",
+    }
+    default_payload = next(operation for operation in operations if operation["name"] == "graph_default_payload")
+    ceiling_payload = next(operation for operation in operations if operation["name"] == "graph_limit_5000_payload")
+    assert default_payload == {
+        "name": "graph_default_payload",
+        "method": "GET",
+        "path": "/v1/graph",
+        "query": {"scan_id": "new-scan"},
+    }
+    assert ceiling_payload == {
+        "name": "graph_limit_5000_payload",
+        "method": "GET",
+        "path": "/v1/graph",
+        "query": {"scan_id": "new-scan", "limit": "5000"},
     }
     assert any(operation["path"] == "/v1/graph/search" for operation in operations)
     assert any(operation["path"].startswith("/v1/graph/node/") for operation in operations)
@@ -169,7 +185,9 @@ def test_graph_benchmark_scripts_write_dry_run_artifacts(tmp_path: Path) -> None
     assert store_load["snapshots"]["graph-benchmark-estate-current"]["total_edges"] > 0
     assert store_load["benchmark_nodes"]["source_node"].startswith("agent:")
     assert store_load["benchmark_nodes"]["detail_node"]
-    assert json.loads(api_output.read_text())["evidence_status"] == "scaffold_validated_not_measured"
+    api_plan = json.loads(api_output.read_text())
+    assert api_plan["evidence_status"] == "scaffold_validated_not_measured"
+    assert api_plan["execution"] == {"auth_mode": "not_exercised", "graph_backend": "unspecified"}
     explain = json.loads(explain_summary.read_text())
     assert explain["evidence_status"] == "explain_sql_scaffold_not_measured"
     assert (explain_dir / "node_search.sql").exists()

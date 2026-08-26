@@ -5,14 +5,35 @@
     "live": "AGENT_BOM_API_TOKEN=... uv run python scripts/run_graph_api_benchmark.py --base-url http://127.0.0.1:8000 --scan-id <scan> --old-scan-id <old> --new-scan-id <new>"
   },
   "evidence_status": "scaffold_validated_not_measured",
+  "execution": {
+    "auth_mode": "not_exercised",
+    "graph_backend": "unspecified"
+  },
   "gaps": [
     "Dry-run does not start the API, authenticate, or measure network/server latency.",
     "Live results must record the API auth mode, tenant, graph backend, and scan IDs used."
   ],
-  "generated_at": "2026-06-22T20:27:27.707780+00:00",
+  "generated_at": "2026-08-26T04:06:58.658849+00:00",
   "owner_issue": 2145,
   "repeat": 20,
   "request_plan": [
+    {
+      "method": "GET",
+      "name": "graph_default_payload",
+      "path": "/v1/graph",
+      "query": {
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_limit_5000_payload",
+      "path": "/v1/graph",
+      "query": {
+        "limit": "5000",
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
     {
       "method": "GET",
       "name": "graph_search",

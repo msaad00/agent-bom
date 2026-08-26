@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GraphScenarioAuthoring } from "@/components/graph-scenario-comparison";
+import {
+  GraphScenarioAuthoring,
+  GraphScenarioComparisonPanel,
+} from "@/components/graph-scenario-comparison";
 import { ApiConflictError } from "@/lib/api";
+import type { GraphScenarioComparisonResponse } from "@/lib/api-types";
 
 const { createGraphScenario, updateGraphScenario } = vi.hoisted(() => ({
   createGraphScenario: vi.fn(),
@@ -31,10 +35,70 @@ const savedScenario = {
   updated_at: "2026-08-25T00:00:00Z",
 };
 
+const comparison: GraphScenarioComparisonResponse = {
+  schema: "graph.scenario-comparison.v1",
+  scenario: savedScenario,
+  current: { scan_id: "scan-1", node_count: 31, edge_count: 32 },
+  proposed: {
+    modeled: true,
+    node_count: 32,
+    edge_count: 31,
+    nodes: [],
+    edges: [],
+  },
+  difference: {
+    nodes_added: [],
+    nodes_removed: [],
+    nodes_changed: [],
+    edges_added: [],
+    edges_removed: [],
+    touched_observed_path_count: 0,
+    touched_observed_path_ids: [],
+  },
+  available: true,
+};
+
 describe("GraphScenarioAuthoring", () => {
   beforeEach(() => {
     createGraphScenario.mockReset();
     updateGraphScenario.mockReset();
+  });
+
+  it("keeps modeled-state labels readable in light and dark themes", () => {
+    render(
+      <GraphScenarioComparisonPanel
+        scenario={savedScenario}
+        comparison={comparison}
+        state="proposed"
+        loading={false}
+        error={null}
+        attackPathLens={false}
+        baseSnapshotAvailable
+        onStateChange={vi.fn()}
+        onSwitchBase={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveClass(
+      "text-violet-900",
+      "dark:text-violet-100",
+    );
+    expect(screen.getByText(/Architecture scenario · revision/)).toHaveClass(
+      "text-violet-700",
+      "dark:text-violet-300",
+    );
+    expect(screen.getByText("Current · observed")).toHaveClass(
+      "text-emerald-700",
+      "dark:text-emerald-300",
+    );
+    expect(screen.getByText("Proposed · modeled")).toHaveClass(
+      "text-violet-700",
+      "dark:text-violet-300",
+    );
+    expect(screen.getByRole("tab", { name: "Proposed" })).toHaveClass(
+      "text-sky-800",
+      "dark:text-sky-100",
+    );
   });
 
   it("creates a typed snapshot-pinned scenario without a raw JSON editor", async () => {

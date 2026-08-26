@@ -18,6 +18,7 @@ const RELEASE_VERSION = UI_PACKAGE.version;
 const CREATED_AT = "2026-06-03T20:30:00Z";
 const SCAN_ID = "scan-proof-ai-platform";
 const PREVIOUS_SCAN_ID = "scan-proof-ai-platform-prev";
+const SCENARIO_ID = "scenario-private-service-endpoint";
 const CAPTURE_THEME = process.env.CAPTURE_THEME === "light" ? "light" : "dark";
 
 const baseUrlFromEnv = process.env.CAPTURE_BASE_URL;
@@ -236,6 +237,101 @@ function buildGraph() {
 }
 
 const graph = buildGraph();
+
+function graphScenario() {
+  return {
+    scenario_id: SCENARIO_ID,
+    tenant_id: "default",
+    base_scan_id: SCAN_ID,
+    revision: 1,
+    name: "Private service endpoint",
+    description: "Replace public service access with a private endpoint and remove the credential-bearing edge.",
+    assumptions: ["The private endpoint policy is deployed with least privilege."],
+    changes: [],
+    created_by: "platform-security",
+    created_at: CREATED_AT,
+    updated_at: CREATED_AT,
+  };
+}
+
+function graphScenarioComparison() {
+  const proposedNode = node(
+    `proposal:${SCENARIO_ID}:private-endpoint`,
+    "cloud_resource",
+    "Private service endpoint",
+    "none",
+    0,
+    {
+      evidence_state: "proposed",
+      observed: false,
+      deployed: false,
+      scenario_id: SCENARIO_ID,
+      scenario_revision: 1,
+      assumption: "The private endpoint policy is deployed with least privilege.",
+    },
+  );
+  proposedNode.status = "proposed";
+  const removedEdge = "server:github->cred:github:exposes_cred";
+  return {
+    schema: "graph.scenario-comparison.v1",
+    available: true,
+    base_status: "available",
+    stale: false,
+    scenario: graphScenario(),
+    current: {
+      scan_id: SCAN_ID,
+      node_count: graph.nodes.length,
+      edge_count: graph.edges.length,
+      completeness: {
+        status: "complete",
+        complete: true,
+        sampled: false,
+        truncated: false,
+        returned: graph.nodes.length,
+        total: graph.nodes.length,
+      },
+    },
+    proposed: {
+      scan_id: SCAN_ID,
+      node_count: graph.nodes.length + 1,
+      edge_count: graph.edges.length - 1,
+      modeled: true,
+      nodes: [...graph.nodes, proposedNode],
+      edges: graph.edges.filter((item) => item.id !== removedEdge),
+      completeness: {
+        status: "complete",
+        complete: true,
+        sampled: false,
+        truncated: false,
+        returned: graph.nodes.length + 1,
+        total: graph.nodes.length + 1,
+      },
+    },
+    difference: {
+      nodes_added: [proposedNode.id],
+      nodes_removed: [],
+      nodes_changed: ["server:github"],
+      edges_added: [],
+      edges_removed: [removedEdge],
+      touched_observed_path_count: 1,
+      touched_observed_path_ids: ["user:contractor->cve:next"],
+    },
+    comparison: {
+      observed_path_count: graph.attack_paths.length,
+      modeled_path_count: graph.attack_paths.length - 1,
+      path_delta: -1,
+      risk_delta: -1.8,
+    },
+    completeness: {
+      status: "complete",
+      complete: true,
+      sampled: false,
+      truncated: false,
+      returned: graph.nodes.length + 1,
+      total: graph.nodes.length + 1,
+    },
+  };
+}
 
 function contextGraph() {
   const nodes = [
@@ -1699,13 +1795,21 @@ async function installRoutes(page) {
   });
   await page.route("**/v1/graph/views/fix-first?**", (route) => fulfill(route, fixFirstView()));
   await page.route("**/v1/graph/presets**", (route) => fulfill(route, []));
+  await page.route(`**/v1/graph/scenarios/${SCENARIO_ID}/comparison?**`, (route) =>
+    fulfill(route, graphScenarioComparison()),
+  );
+  await page.route("**/v1/graph/scenarios", (route) => fulfill(route, {
+    schema: "graph.scenarios.v1",
+    count: 1,
+    scenarios: [graphScenario()],
+  }));
   await page.route("**/v1/graph/rollup?**", (route) => fulfill(route, {
     scan_id: SCAN_ID,
     tenant_id: "default",
     created_at: CREATED_AT,
     mode: "rollup",
     filters: { min_severity: "high" },
-    top_level: graph.nodes.slice(0, 6).map((node) => ({
+    top_level: graph.nodes.slice(0, 30).map((node) => ({
       id: node.id,
       label: node.label,
       entity_type: node.entity_type,
@@ -1727,9 +1831,32 @@ async function installRoutes(page) {
     })),
     summary: {
       total_nodes: graph.nodes.length,
+      total_nodes_source: graph.nodes.length,
       total_edges: graph.edges.length,
-      container_count: 6,
+      container_count: 30,
       severity_counts: graph.stats.severity_counts,
+    },
+    edges: [
+      {
+        source: graph.nodes[0].id,
+        target: graph.nodes[1].id,
+        count: 1,
+        relationships: ["hosts"],
+      },
+    ],
+    completeness: {
+      returned: 30,
+      total: 30,
+      truncated: false,
+      reason: "",
+    },
+    edge_count_metadata: {
+      definition: "aggregated non-containment relationship rows between returned containers",
+      source_total: 1,
+      returned: 1,
+      truncated: false,
+      source_truncated: false,
+      reason: "",
     },
   }));
   await page.route("**/v1/graph/attack-paths?**", (route) => fulfill(route, graphResponseWithPagination()));
@@ -1793,7 +1920,9 @@ async function installRoutes(page) {
       impact: { node_id: selected.id, affected_nodes: [], affected_by_type: {}, affected_count: 0, max_depth_reached: 0 },
     });
   });
-  await page.route("**/v1/graph?**", (route) => fulfill(route, graphResponseWithPagination()));
+  await page.route((url) => url.pathname === "/v1/graph", (route) =>
+    fulfill(route, graphResponseWithPagination()),
+  );
   await page.route("**/v1/findings?**", (route) => {
     const findings = buildFindings();
     return fulfill(route, {
@@ -2106,9 +2235,6 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     if (urlPath.includes("capture=1")) {
       await page.locator("#demo-estate-watermark").waitFor({ state: "visible", timeout: 30_000 });
     }
-    if (options.readySelector) {
-      await page.locator(options.readySelector).first().waitFor({ state: "visible", timeout: 30_000 });
-    }
     await page.evaluate(async () => {
       await document.fonts.ready;
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -2151,6 +2277,11 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     }
     if (networkErrors.length > 0) {
       throw new Error(`Network errors on ${urlPath}: ${networkErrors.join(" | ")}`);
+    }
+    if (options.readySelector) {
+      // Recheck at the last possible moment. URL/state synchronization can
+      // remount graph surfaces after their first ready signal.
+      await page.locator(options.readySelector).first().waitFor({ state: "visible", timeout: 30_000 });
     }
     await page.screenshot({ path: path.join(captureOutputDir, filename), fullPage: false });
     console.log(`captured ${filename}`);
@@ -2219,26 +2350,38 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "security-graph-live.png",
-      page: "/security-graph?capture=1",
+      page: "/security-graph?lens=attack-path&capture=1",
       scope: "Prioritized attack path with graph evidence export and remediation handoff",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
       path: "security-graph-light-live.png",
-      page: "/security-graph?capture=1",
+      page: "/security-graph?lens=attack-path&capture=1",
       scope: "Prioritized attack path in the light theme",
       presentation: "light desktop",
     },
     {
       path: "security-graph-mobile-live.png",
-      page: "/security-graph?capture=1",
+      page: "/security-graph?lens=attack-path&capture=1",
       scope: "Prioritized attack path at a 390 by 844 viewport",
       presentation: "dark mobile",
     },
     {
+      path: "investigation-canvas-current-1512x811.png",
+      page: "/security-graph?lens=estate&rollup=1&capture=1",
+      scope: "Observed current-state Investigation Canvas at the audited 1512 by 811 viewport",
+      presentation: "dark desktop 1512x811",
+    },
+    {
+      path: "investigation-canvas-proposed-1568x780.png",
+      page: `/security-graph?lens=estate&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`,
+      scope: "Clearly modeled proposed-state comparison at the audited 1568 by 780 viewport",
+      presentation: "light desktop 1568x780",
+    },
+    {
       path: "lineage-graph-live.png",
-      page: `/graph?capture=1&scan=${SCAN_ID}`,
-      scope: "Focused filtered attack-path lineage across agent, MCP, package, and finding nodes",
+      page: `/graph?capture=1&scan=${SCAN_ID}&agent=developer-copilot&vulnOnly=1`,
+      scope: "URL-pinned developer-copilot vulnerable-path lineage across agent, MCP, package, and finding nodes",
     },
     {
       path: "context-map-live.png",
@@ -2430,7 +2573,7 @@ async function main() {
       minGraphEdges: 3,
     });
     await page.setViewportSize({ width: 1440, height: 980 });
-    await capture(page, "/security-graph?capture=1", "security-graph-live.png", async (securityGraphPage) => {
+    await capture(page, "/security-graph?lens=attack-path&capture=1", "security-graph-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });
@@ -2439,25 +2582,99 @@ async function main() {
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: 'section[aria-label="Selected exposure path graph"]',
     });
-    await capture(page, `/graph?capture=1&scan=${SCAN_ID}`, "lineage-graph-live.png", async (lineagePage) => {
-      const advancedControls = lineagePage
-        .locator("details")
-        .filter({ has: lineagePage.getByText("Advanced controls", { exact: true }) })
-        .first();
-      await advancedControls.locator(":scope > summary").click();
-      const viewControls = advancedControls.locator("details").first();
-      await viewControls.locator(":scope > summary").click();
-      await lineagePage.getByRole("option", { name: "developer-copilot", exact: true }).click();
-      await lineagePage.waitForFunction(() => document.body.innerText.includes("Scopedeveloper-copilot"));
-      const attackPathQueue = lineagePage
-        .locator("details")
-        .filter({ has: lineagePage.getByText("Attack paths", { exact: true }) })
-        .last();
-      await attackPathQueue.locator(":scope > summary").click();
-      await attackPathQueue.getByRole("button").filter({ hasText: "DEMO-VULN-21441" }).first().click();
-      await lineagePage.getByText(/Focused attack path/i).waitFor({ state: "visible", timeout: 10_000 });
-      await attackPathQueue.locator(":scope > summary").click();
-      await advancedControls.locator(":scope > summary").click();
+    const currentCanvasPage = await newCapturePage("dark", { width: 1512, height: 811 });
+    await capture(
+      currentCanvasPage,
+      "/security-graph?lens=estate&rollup=1&capture=1",
+      "investigation-canvas-current-1512x811.png",
+      async (canvasPage) => {
+        await canvasPage.waitForLoadState("networkidle");
+        await canvasPage.getByRole("heading", { name: "Investigation Canvas" }).waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+        await canvasPage.locator('[data-testid="graph-rollup-decision-surface"]').waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+        await canvasPage.locator('[data-testid="graph-rollup-relationship-completeness"]').waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+        await canvasPage.locator('[data-testid="graph-rollup-card-grid"] article').first().waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+        await canvasPage.waitForTimeout(500);
+        await canvasPage.locator('[data-testid="graph-rollup-decision-surface"]').waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+      },
+      {
+        awaitResponses: [
+          (response) => new URL(response.url()).pathname === "/v1/graph/rollup" && response.ok(),
+        ],
+        expectedText: ["Investigation Canvas", "Risk-prioritized scopes", "aggregated relationship rows"],
+        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/rollup", "/v1/graph/scenarios"],
+        readySelector: '[data-testid="graph-rollup-decision-surface"]',
+        assertNoHorizontalOverflow: true,
+      },
+    );
+    await currentCanvasPage.close();
+
+    const proposedCanvasPage = await newCapturePage("light", { width: 1568, height: 780 });
+    await capture(
+      proposedCanvasPage,
+      `/security-graph?lens=estate&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`,
+      "investigation-canvas-proposed-1568x780.png",
+      async (canvasPage) => {
+        await canvasPage.waitForLoadState("networkidle");
+        await canvasPage.getByText("Proposed scenario — not observed or deployed", { exact: false }).waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+        await canvasPage.getByText("Current · observed", { exact: true }).waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+        await canvasPage.getByText("Proposed · modeled", { exact: true }).waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+        await canvasPage.locator(".react-flow__node:visible").first().waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
+      },
+      {
+        awaitResponses: [
+          (response) =>
+            new URL(response.url()).pathname === `/v1/graph/scenarios/${SCENARIO_ID}/comparison` &&
+            response.ok(),
+        ],
+        expectedText: [
+          "Investigation Canvas",
+        ],
+        expectedApiPaths: [
+          "/v1/graph/snapshots",
+          "/v1/graph/scenarios",
+          `/v1/graph/scenarios/${SCENARIO_ID}/comparison`,
+        ],
+        readySelector:
+          'section[aria-label="Scenario comparison"]:has-text("Proposed scenario — not observed or deployed"):has-text("Current · observed"):has-text("Proposed · modeled")',
+        minGraphNodes: 3,
+        minGraphEdges: 1,
+        assertNoHorizontalOverflow: true,
+      },
+    );
+    await proposedCanvasPage.close();
+    await capture(page, `/graph?capture=1&scan=${SCAN_ID}&agent=developer-copilot&vulnOnly=1`, "lineage-graph-live.png", async (lineagePage) => {
+      await lineagePage.getByRole("heading", { name: "Lineage Graph" }).waitFor({
+        state: "visible",
+        timeout: 10_000,
+      });
+      await lineagePage.locator(".react-flow__node:visible").first().waitFor({ state: "visible", timeout: 10_000 });
       await fitReactFlow(lineagePage);
       await lineagePage.locator(".react-flow__controls-zoomout").first().click({ force: true });
       await scrollTo(lineagePage, 140);
@@ -2592,7 +2809,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
-    await capture(lightPage, "/security-graph?capture=1", "security-graph-light-live.png", async (securityGraphPage) => {
+    await capture(lightPage, "/security-graph?lens=attack-path&capture=1", "security-graph-light-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });
@@ -2613,7 +2830,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
-    await capture(mobilePage, "/security-graph?capture=1", "security-graph-mobile-live.png", async (securityGraphPage) => {
+    await capture(mobilePage, "/security-graph?lens=attack-path&capture=1", "security-graph-mobile-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });

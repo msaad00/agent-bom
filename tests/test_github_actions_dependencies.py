@@ -123,6 +123,7 @@ jobs:
     steps:
       - uses: ${{ matrix.owner }}/action@v1
       - uses: owner/action@${{ matrix.ref }}
+      - uses: -/-/!/-/!/-/!/-/!/-/!/-/!@v1
 """,
     )
 

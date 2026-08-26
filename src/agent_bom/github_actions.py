@@ -72,7 +72,7 @@ _AI_RUN_PATTERNS = [
 _PIP_RE = re.compile(r"pip\s+install\s+([^\n&;]+)", re.IGNORECASE)
 _NPM_RE = re.compile(r"npm\s+(?:install|i)\s+([^\n&;]+)", re.IGNORECASE)
 _FULL_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
-_REMOTE_ACTION_PREFIX_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[^\s]+)*$")
+_REMOTE_ACTION_COMPONENT_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 # NOTE: These are *ecosystem-specific* package lists for detecting AI SDK
 # installs in GitHub Actions workflow run-steps.  They are intentionally
@@ -229,6 +229,14 @@ def _extract_used_action_references(content: str) -> list[tuple[str, int]]:
     return references
 
 
+def _is_remote_action_locator(locator: str) -> bool:
+    """Validate a static ``owner/repository[/path]`` locator in linear time."""
+    components = locator.split("/")
+    return len(components) >= 2 and all(
+        component not in {"", ".", ".."} and _REMOTE_ACTION_COMPONENT_RE.fullmatch(component) for component in components
+    )
+
+
 def _parse_remote_action_reference(reference: str) -> tuple[str, str, str] | None:
     """Parse one evidence-backed remote action or reusable-workflow locator.
 
@@ -247,7 +255,7 @@ def _parse_remote_action_reference(reference: str) -> tuple[str, str, str] | Non
         revision = ""
     locator = locator.strip()
     revision = revision.strip()
-    if "${{" in locator or not _REMOTE_ACTION_PREFIX_RE.fullmatch(locator):
+    if "${{" in locator or not _is_remote_action_locator(locator):
         return None
 
     ecosystem = "github-action-workflow" if "/.github/workflows/" in locator else "github-action"

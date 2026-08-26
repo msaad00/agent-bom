@@ -1504,6 +1504,16 @@ async def scan_packages(
     # Inventory-only ecosystems do not have advisory sources. Exclude them from
     # local DB coverage accounting as well as live OSV queries so offline scans
     # do not misreport a deliberate inventory artifact as incomplete SCA.
+    non_osv_packages = [p for p in packages if p.ecosystem.lower() in _NON_OSV_ECOSYSTEMS]
+    for package in non_osv_packages:
+        _logger.debug(
+            "Skipping package %s/%s: ecosystem %r is not OSV-queryable (handled by other pipeline)",
+            package.ecosystem,
+            package.name,
+            package.ecosystem,
+        )
+    if non_osv_packages:
+        _bump_scan_perf("skipped_non_osv_ecosystems", len(non_osv_packages))
     scannable = [p for p in packages if not _is_unresolved_version(p.version) and p.ecosystem.lower() not in _NON_OSV_ECOSYSTEMS]
 
     # Warn about packages that could not be resolved — no silent failures

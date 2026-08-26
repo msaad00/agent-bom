@@ -2,7 +2,24 @@
 
 from __future__ import annotations
 
+import tomllib
 import warnings
+from pathlib import Path
+
+
+def test_js_ts_parser_runtime_is_installed_by_the_base_package() -> None:
+    project = tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
+    dependencies = {
+        dependency.split(">=", 1)[0] for dependency in project["dependencies"]
+    }
+
+    assert {
+        "tree-sitter",
+        "tree-sitter-javascript",
+        "tree-sitter-typescript",
+    }.issubset(dependencies)
 
 
 def test_package_exposes_facade_entry_points():

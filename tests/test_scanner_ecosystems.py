@@ -337,7 +337,17 @@ def test_non_osv_ecosystems_not_empty():
     """_NON_OSV_ECOSYSTEMS must cover docker and other known non-queryable ecosystems."""
     from agent_bom.scanners import _NON_OSV_ECOSYSTEMS
 
-    for eco in ("docker", "container", "container-image", "ollama", "smithery", "sast", "unknown"):
+    for eco in (
+        "docker",
+        "container",
+        "container-image",
+        "github-action",
+        "github-action-workflow",
+        "ollama",
+        "smithery",
+        "sast",
+        "unknown",
+    ):
         assert eco in _NON_OSV_ECOSYSTEMS, f"Expected {eco!r} in _NON_OSV_ECOSYSTEMS"
 
 
@@ -364,3 +374,27 @@ async def test_docker_ecosystem_skipped_at_debug_not_warning(caplog):
     # Should emit a DEBUG skip message
     debug_msgs = [r for r in caplog.records if r.levelno == logging.DEBUG and "not OSV-queryable" in r.message]
     assert debug_msgs, "Expected a DEBUG skip message for docker ecosystem"
+
+
+@pytest.mark.asyncio
+async def test_github_action_inventory_skips_offline_advisory_coverage(monkeypatch):
+    """Inventory-only action coordinates are not an offline SCA coverage gap."""
+    from agent_bom.scanners import scan_packages
+
+    package = Package(
+        name="actions/checkout",
+        version="0123456789abcdef0123456789abcdef01234567",
+        ecosystem="github-action",
+    )
+    monkeypatch.setattr("agent_bom.scanners.offline_mode", True)
+
+    warnings: list[str] = []
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db") as local_scan,
+        patch("agent_bom.scanners.record_scan_warning", side_effect=warnings.append),
+    ):
+        count = await scan_packages([package])
+
+    assert count == 0
+    local_scan.assert_not_called()
+    assert warnings == []

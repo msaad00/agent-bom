@@ -1268,10 +1268,11 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         if effective_gha_path:
             pipeline.update_step("discovery", f"Scanning GitHub Actions: {effective_gha_path}")
-            from agent_bom.github_actions import scan_github_actions
+            from agent_bom.github_actions import attach_github_action_packages, discover_github_action_packages, scan_github_actions
 
             gha_agents, gha_warnings = scan_github_actions(effective_gha_path)
             agents.extend(gha_agents)
+            attach_github_action_packages(agents, effective_gha_path, discover_github_action_packages(effective_gha_path))
             warnings_all.extend(gha_warnings)
 
         for ap in effective_agent_projects:
@@ -1790,6 +1791,12 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         _apply_tenant_workflow_metadata(report, tenant_id=job.tenant_id or "default")
         report_json = to_json(report)
+        if req.no_scan and any(
+            result is not None for result in (skill_audit_data, iac_findings_data, repo_ai_inventory_data, repo_sast_data)
+        ):
+            # Adding inventory evidence must not erase the established status
+            # of a static-findings-only repository scan.
+            report_json["status"] = "findings_only"
         result_document, document_note = _rendered_result_document(job, report)
         with lock:
             job.result = report_json

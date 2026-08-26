@@ -1,6 +1,7 @@
 """GitHub Actions workflow scanner for agent-bom.
 
 Scans ``.github/workflows/*.yml`` files to discover:
+- **Action and reusable-workflow dependencies** declared by ``uses:``
 - **AI API credentials** exposed as ``env:`` variables or ``secrets:`` references
 - **AI SDK usage** in ``run:`` steps (openai, anthropic, langchain, etc.)
 - **Third-party AI actions** (e.g. ``openai/openai-github-action``)
@@ -17,9 +18,10 @@ there are no extra dependencies.
 
 Usage::
 
-    from agent_bom.github_actions import scan_github_actions
+    from agent_bom.github_actions import discover_github_action_packages, scan_github_actions
 
     agents, warnings = scan_github_actions("/path/to/repo")
+    packages = discover_github_action_packages("/path/to/repo")
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, ServerSurface, TransportType
 
 # ─── AI-related env var name patterns ────────────────────────────────────────
 
@@ -70,6 +72,7 @@ _AI_RUN_PATTERNS = [
 _PIP_RE = re.compile(r"pip\s+install\s+([^\n&;]+)", re.IGNORECASE)
 _NPM_RE = re.compile(r"npm\s+(?:install|i)\s+([^\n&;]+)", re.IGNORECASE)
 _FULL_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
+_REMOTE_ACTION_PREFIX_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[^\s]+)*$")
 
 # NOTE: These are *ecosystem-specific* package lists for detecting AI SDK
 # installs in GitHub Actions workflow run-steps.  They are intentionally
@@ -213,6 +216,51 @@ def _strip_yaml_scalar(value: str) -> str:
     return scalar
 
 
+def _extract_used_action_references(content: str) -> list[tuple[str, int]]:
+    """Return ``uses:`` scalar values with their one-based source lines."""
+    references: list[tuple[str, int]] = []
+    for line_number, raw_line in enumerate(content.splitlines(), start=1):
+        uses_match = re.match(r"\s*-?\s*uses\s*:\s*(.+)", raw_line)
+        if uses_match is None:
+            continue
+        scalar = _strip_yaml_scalar(uses_match.group(1))
+        if scalar:
+            references.append((scalar, line_number))
+    return references
+
+
+def _parse_remote_action_reference(reference: str) -> tuple[str, str, str] | None:
+    """Parse one evidence-backed remote action or reusable-workflow locator.
+
+    Local actions and Docker step images are execution inputs but not GitHub
+    repository dependencies. Dynamic owners/repositories cannot be assigned an
+    honest identity, so they are omitted; a static locator with a dynamic ref
+    remains useful inventory with explicitly unknown resolution confidence.
+    """
+    scalar = _strip_yaml_scalar(reference)
+    if not scalar or scalar.startswith(("./", "../", "docker://")):
+        return None
+
+    locator, separator, revision = scalar.rpartition("@")
+    if not separator:
+        locator = scalar
+        revision = ""
+    locator = locator.strip()
+    revision = revision.strip()
+    if "${{" in locator or not _REMOTE_ACTION_PREFIX_RE.fullmatch(locator):
+        return None
+
+    ecosystem = "github-action-workflow" if "/.github/workflows/" in locator else "github-action"
+    return ecosystem, locator, revision or "unknown"
+
+
+def _workflow_files(repo: Path) -> list[Path]:
+    workflows_dir = repo / ".github" / "workflows"
+    if not workflows_dir.is_dir():
+        return []
+    return sorted((*workflows_dir.glob("*.yml"), *workflows_dir.glob("*.yaml")))
+
+
 def _workflow_hardening_warnings(content: str, filename: str, used_actions: list[str]) -> list[str]:
     """Return conservative pipeline-security warnings for one workflow.
 
@@ -268,6 +316,152 @@ def _workflow_hardening_warnings(content: str, filename: str, used_actions: list
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 
+def discover_github_action_packages(repo_path: str) -> list[Package]:
+    """Inventory remote action and reusable-workflow dependencies.
+
+    The returned coordinates preserve the declared Git ref without pretending
+    that a mutable tag, branch, or expression is a resolved release. Repeated
+    coordinates collapse to one package while retaining each workflow location
+    as bounded version evidence.
+    """
+    repo = Path(repo_path).expanduser().resolve()  # lgtm[py/path-injection]
+    if not repo.is_dir():
+        return []
+
+    packages: dict[tuple[str, str, str], Package] = {}
+    for workflow_path in _workflow_files(repo):
+        try:
+            content = workflow_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        source_file = workflow_path.relative_to(repo).as_posix()
+        for raw_reference, line_number in _extract_used_action_references(content):
+            parsed = _parse_remote_action_reference(raw_reference)
+            if parsed is None:
+                continue
+            ecosystem, name, version = parsed
+            key = (ecosystem, name, version)
+            evidence = {
+                "type": "command_pin" if version != "unknown" else "unknown",
+                "source_file": source_file,
+                "line": line_number,
+                "parser": "github_actions",
+            }
+            existing = packages.get(key)
+            if existing is not None:
+                if evidence not in existing.version_evidence:
+                    existing.version_evidence.append(evidence)
+                continue
+
+            exact_pin = bool(_FULL_COMMIT_SHA_RE.fullmatch(version))
+            dynamic_ref = "${{" in version
+            version_source = "command_pin" if version != "unknown" else "unknown"
+            confidence = "exact" if exact_pin else ("unknown" if dynamic_ref or version == "unknown" else "low")
+            floating = not exact_pin
+            floating_reason: str | None = None
+            if floating:
+                floating_reason = (
+                    "GitHub Actions expression reference is resolved only at workflow runtime"
+                    if dynamic_ref
+                    else "GitHub Actions tag or branch references are mutable"
+                )
+
+            packages[key] = Package(
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                version_source=version_source,
+                declared_version=None if version == "unknown" else version,
+                resolved_version=version if exact_pin else None,
+                version_confidence=confidence,
+                version_evidence=[evidence],
+                floating_reference=floating,
+                floating_reference_reason=floating_reason,
+                discovery_provenance={
+                    "source_type": "local_discovery",
+                    "observed_via": ["github_actions"],
+                    "source": "github-actions",
+                    "collector": "github_actions",
+                    "resource_type": ecosystem,
+                    "resource_name": name,
+                    "location": source_file,
+                    "confidence": confidence,
+                    "version_source": version_source,
+                },
+            )
+
+    return list(packages.values())
+
+
+def attach_github_action_packages(agents: list[Agent], repo_path: str | Path, packages: list[Package]) -> None:
+    """Attach workflow dependencies to one repository inventory container."""
+    if not packages:
+        return
+
+    repo_root = Path(repo_path).expanduser().resolve()
+    project_agent: Agent | None = None
+    for candidate in agents:
+        if candidate.source != "project":
+            continue
+        try:
+            candidate_root = Path(candidate.config_path).expanduser().resolve()
+        except (OSError, RuntimeError, TypeError, ValueError):
+            continue
+        if candidate_root == repo_root:
+            project_agent = candidate
+            break
+
+    if project_agent is None:
+        project_agent = Agent(
+            name=f"project:{repo_root.name or str(repo_root)}",
+            agent_type=AgentType.CUSTOM,
+            config_path=str(repo_root),
+            source="project",
+            mcp_servers=[],
+            discovery_provenance={
+                "source_type": "local_discovery",
+                "observed_via": ["github_actions"],
+                "source": "github-actions",
+                "collector": "github_actions",
+                "resource_type": "repository",
+                "resource_name": repo_root.name,
+                "location": str(repo_root),
+                "confidence": "high",
+            },
+        )
+        agents.append(project_agent)
+
+    action_server = next((server for server in project_agent.mcp_servers if server.name == "github-actions"), None)
+    if action_server is None:
+        action_server = MCPServer(
+            name="github-actions",
+            command="github-actions",
+            args=[],
+            transport=TransportType.STDIO,
+            packages=[],
+            config_path=str(repo_root / ".github" / "workflows"),
+            surface=ServerSurface.OTHER,
+            discovery_provenance={
+                "source_type": "local_discovery",
+                "observed_via": ["github_actions"],
+                "source": "github-actions",
+                "collector": "github_actions",
+                "resource_type": "workflow_dependency_inventory",
+                "resource_name": "github-actions",
+                "location": ".github/workflows",
+                "confidence": "high",
+            },
+        )
+        project_agent.mcp_servers.append(action_server)
+
+    known_package_ids = {package.stable_id for package in action_server.packages}
+    for package in packages:
+        if package.stable_id in known_package_ids:
+            continue
+        action_server.packages.append(package)
+        known_package_ids.add(package.stable_id)
+
+
 def scan_github_actions(repo_path: str) -> tuple[list[Agent], list[str]]:
     """Scan GitHub Actions workflows in a repository for AI usage and credential exposure.
 
@@ -291,12 +485,7 @@ def scan_github_actions(repo_path: str) -> tuple[list[Agent], list[str]]:
     repo = Path(repo_path).expanduser().resolve()  # lgtm[py/path-injection]
     if not repo.is_dir():
         return [], [f"Not a directory: {repo_path}"]
-    workflows_dir = repo / ".github" / "workflows"
-
-    if not workflows_dir.is_dir():
-        return [], []
-
-    workflow_files = sorted(list(workflows_dir.glob("*.yml")) + list(workflows_dir.glob("*.yaml")))
+    workflow_files = _workflow_files(repo)
     if not workflow_files:
         return [], []
 

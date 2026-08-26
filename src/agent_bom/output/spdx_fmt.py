@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from agent_bom.asset_provenance import package_version_provenance
+from agent_bom.asset_provenance import package_discovery_provenance, package_version_provenance
 from agent_bom.checksums import integrity_verdict, integrity_verdict_statements, spdx3_verified_using
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
@@ -185,6 +185,12 @@ def to_spdx(report: AIBOMReport) -> dict:
                             "type": "Annotation",
                             "annotationType": "other",
                             "subject": pkg_id,
+                            "statement": f"agent-bom:ecosystem={pkg.ecosystem}",
+                        },
+                        {
+                            "type": "Annotation",
+                            "annotationType": "other",
+                            "subject": pkg_id,
                             "statement": f"agent-bom:version-provenance-source={version_provenance.get('version_source', 'unknown')}",
                         },
                         {
@@ -194,6 +200,18 @@ def to_spdx(report: AIBOMReport) -> dict:
                             "statement": f"agent-bom:version-provenance-confidence={version_provenance.get('confidence', 'unknown')}",
                         },
                     ]
+                    discovery_provenance = package_discovery_provenance(pkg)
+                    for field_name in ("source_type", "collector", "resource_type", "location"):
+                        value = (discovery_provenance or {}).get(field_name)
+                        if value:
+                            pkg_annotations.append(
+                                {
+                                    "type": "Annotation",
+                                    "annotationType": "other",
+                                    "subject": pkg_id,
+                                    "statement": f"agent-bom:discovery-provenance-{field_name.replace('_', '-')}={value}",
+                                }
+                            )
                     if pkg.is_malicious:
                         # Surface the malicious flag so a MAL- package is
                         # distinguishable from an ordinary library in the SBOM.

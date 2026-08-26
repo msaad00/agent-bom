@@ -297,6 +297,8 @@ _NON_OSV_ECOSYSTEMS: frozenset[str] = frozenset(
         "docker",  # Image stubs from MCP configs / docker-compose / running containers
         "container",  # GPU infra image refs (cuda-toolkit, cudnn)
         "container-image",  # CoreWeave / Nebius pod images
+        "github-action",  # Remote GitHub Action repository references
+        "github-action-workflow",  # Remote reusable-workflow references
         "ollama",  # Ollama model names — no OSV advisory DB
         "smithery",  # Smithery MCP marketplace stubs
         "mcp-registry",  # MCP Registry stubs
@@ -1499,11 +1501,13 @@ async def scan_packages(
                 _logger.warning("Transitive resolution failed, scanning direct dependencies only: %s", exc)
                 _emit_scan_warning("transitive dependency resolution failed")
 
-    # SAST packages already carry vulns from Semgrep — skip OSV query for them
-    scannable = [p for p in packages if not _is_unresolved_version(p.version) and p.ecosystem.lower() != "sast"]
+    # Inventory-only ecosystems do not have advisory sources. Exclude them from
+    # local DB coverage accounting as well as live OSV queries so offline scans
+    # do not misreport a deliberate inventory artifact as incomplete SCA.
+    scannable = [p for p in packages if not _is_unresolved_version(p.version) and p.ecosystem.lower() not in _NON_OSV_ECOSYSTEMS]
 
     # Warn about packages that could not be resolved — no silent failures
-    still_unresolved = [p for p in packages if _is_unresolved_version(p.version) and p.ecosystem.lower() != "sast"]
+    still_unresolved = [p for p in packages if _is_unresolved_version(p.version) and p.ecosystem.lower() not in _NON_OSV_ECOSYSTEMS]
     if still_unresolved:
         names = ", ".join(f"{p.name}@{p.version}" for p in still_unresolved[:10])
         suffix = f" (+{len(still_unresolved) - 10} more)" if len(still_unresolved) > 10 else ""

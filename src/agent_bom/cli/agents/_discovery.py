@@ -792,18 +792,24 @@ def run_local_discovery(
 
     # Step 1f: GitHub Actions scan (--gha)
     if not skill_only and gha_path:
-        from agent_bom.github_actions import scan_github_actions
+        from agent_bom.github_actions import attach_github_action_packages, discover_github_action_packages, scan_github_actions
 
         con.print(f"\n[bold blue]Scanning GitHub Actions workflows in {gha_path}...[/bold blue]\n")
         gha_agents, gha_warnings = scan_github_actions(gha_path)
+        gha_packages = discover_github_action_packages(gha_path)
         for w in gha_warnings:
             con.print(f"  [yellow]⚠[/yellow] {w}")
-        if gha_agents:
+        if gha_agents or gha_packages:
             cred_count = sum(len(s.credential_names) for a in gha_agents for s in a.mcp_servers)
-            con.print(f"  [green]✓[/green] {len(gha_agents)} workflow(s) with AI usage, {cred_count} credential(s) detected")
+            con.print(
+                f"  [green]✓[/green] {len(gha_agents)} workflow(s) with AI usage, "
+                f"{len(gha_packages)} action/reusable-workflow dependency(ies), "
+                f"{cred_count} credential(s) detected"
+            )
             ctx.agents.extend(gha_agents)
+            attach_github_action_packages(ctx.agents, gha_path, gha_packages)
         else:
-            con.print("  [dim]  No AI-using workflows found[/dim]")
+            con.print("  [dim]  No remote action dependencies or AI-using workflows found[/dim]")
 
     # Step 1g: Python agent framework scan (--agent-project)
     if not skill_only and agent_projects:

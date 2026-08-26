@@ -32,6 +32,20 @@ def test_run_scan_sync_clones_repo_url_and_cleans_up(monkeypatch: pytest.MonkeyP
     cloned = tmp_path / "cloned-repo"
     cloned.mkdir()
     (cloned / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+    workflow_dir = cloned / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_dir.joinpath("ci.yml").write_text(
+        """name: CI
+on: push
+permissions: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567
+""",
+        encoding="utf-8",
+    )
     clone_calls: list[str] = []
     cleanup_calls: list[str] = []
 
@@ -86,3 +100,13 @@ def test_run_scan_sync_clones_repo_url_and_cleans_up(monkeypatch: pytest.MonkeyP
     assert job.result.get("iac_findings", {}).get("total") == 1
     assert job.result.get("sast", {}).get("execution_status") == "clean"
     assert job.result.get("status") == "findings_only"
+    action_packages = [
+        package
+        for agent in job.result["agents"]
+        for server in agent["mcp_servers"]
+        for package in server["packages"]
+        if package["ecosystem"] == "github-action"
+    ]
+    assert [(package["name"], package["version"]) for package in action_packages] == [
+        ("actions/checkout", "0123456789abcdef0123456789abcdef01234567")
+    ]

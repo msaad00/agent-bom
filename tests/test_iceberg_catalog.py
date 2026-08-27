@@ -207,9 +207,9 @@ def test_round_trip_against_fake_catalog() -> None:
     table = fake.tables["lake.cves"]
     # Schema handed to Iceberg is the same additively versioned schema emitted
     # by the flat Parquet artifact.
-    assert len(table.schema()) == 38
+    assert len(table.schema()) == 40
     assert table.schema().names[0] == "cve_id"
-    assert table.schema().names[-3:] == ["owner", "sla_due_at", "lifecycle_status"]
+    assert table.schema().names[-3:] == ["lifecycle_status", "symbol_reachability_reason", "runtime_dependency_chain"]
     assert len(table.appended) == 1
     assert table.appended[0].num_rows == 1
     assert result == {
@@ -259,7 +259,7 @@ def test_existing_additive_table_schema_is_evolved_before_append() -> None:
     assert len(legacy.appended) == 1
 
 
-def test_real_pyiceberg_catalog_evolves_v2_and_commits_v3_snapshot(tmp_path) -> None:
+def test_real_pyiceberg_catalog_evolves_v2_and_commits_v4_snapshot(tmp_path) -> None:
     pytest.importorskip("pyiceberg")
     from pyiceberg.catalog.memory import InMemoryCatalog
 
@@ -280,7 +280,7 @@ def test_real_pyiceberg_catalog_evolves_v2_and_commits_v3_snapshot(tmp_path) -> 
     )
 
     table = catalog.load_table(f"{DEFAULT_NAMESPACE}.{DEFAULT_TABLE}")
-    assert len(table.schema().fields) == 38
+    assert len(table.schema().fields) == 40
     assert table.scan().to_arrow().num_rows == 1
     assert result["rows"] == 1
     assert result["snapshot_id"] is not None

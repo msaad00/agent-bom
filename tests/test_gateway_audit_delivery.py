@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -147,9 +150,7 @@ async def test_gateway_audit_delivers_at_most_500_events_in_order(tmp_path: Path
 
     assert await sink.flush_once() is True
     assert [len(batch) for batch in delivered] == [500, 1]
-    assert [event_id for batch in delivered for event_id in batch] == [
-        f"event-{index:04d}" for index in range(501)
-    ]
+    assert [event_id for batch in delivered for event_id in batch] == [f"event-{index:04d}" for index in range(501)]
     assert sink._delivery_state.store.read_spillover() == []
 
 
@@ -389,6 +390,121 @@ async def test_gateway_audit_retries_the_same_durable_event_after_503(tmp_path: 
     assert sink.health()["status"] == "healthy"
 
 
+def test_tool_call_requires_remote_durable_ack_before_upstream_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upstream_calls = 0
+
+    async def sender(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise RuntimeError("control plane unavailable")
+
+    async def upstream_caller(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"side_effect": True}}
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        None,
+        tenant_id="default",
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=sender,
+    )
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),
+        policy={},
+        audit_sink=sink,
+        upstream_caller=upstream_caller,
+    )
+
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/mcp/filesystem",
+            json={
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "tools/call",
+                "params": {"name": "write_file", "arguments": {"path": "/tmp/output"}},
+            },
+        )
+
+    assert response.status_code == 503
+    assert upstream_calls == 0
+    assert sink.health()["backlog_bytes"] > 0, response.text
+
+
+def test_post_forward_result_audit_capacity_failure_returns_completed_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import agent_bom.gateway_server as gateway_module
+
+    upstream_calls = 0
+
+    async def sender(payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        count = len(payload["alerts"])
+        return {
+            "accepted_alert_count": count,
+            "duplicate_alert_count": 0,
+            "durable_accepted_count": count,
+            "durable_duplicate_count": 0,
+            "durable_conflict_count": 0,
+        }
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        None,
+        tenant_id="default",
+        spill_path=spill,
+        dlq_path=dlq,
+        max_spillover_bytes=10_000,
+        max_dlq_bytes=1,
+        sender=sender,
+    )
+
+    async def upstream_caller(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        # Reproduce a concurrent capacity loss after pre-execution admission.
+        sink._delivery_state.store.max_spillover_bytes = sink._delivery_state.store.spillover_size_bytes() + 1
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"email": "person@example.com"}}
+
+    monkeypatch.setattr(
+        gateway_module,
+        "scan_tool_response",
+        lambda *_args, **_kwargs: [SimpleNamespace(blocked=False, scanner="pii", rule_id="email")],
+    )
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),
+        policy={},
+        audit_sink=sink,
+        upstream_caller=upstream_caller,
+        dlp_enabled=True,
+        dlp_mode="audit",
+    )
+
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/mcp/filesystem",
+            json={
+                "jsonrpc": "2.0",
+                "id": 13,
+                "method": "tools/call",
+                "params": {"name": "write_file", "arguments": {}},
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"] == {"email": "person@example.com"}
+    assert response.headers["x-agent-bom-audit-delivery"] == "degraded"
+    assert upstream_calls == 1
+    assert sink.health()["accepting_events"] is False
+
+
 @pytest.mark.asyncio
 async def test_gateway_audit_restart_loads_and_delivers_sanitized_backlog(tmp_path: Path) -> None:
     spill, dlq = _paths(tmp_path)
@@ -602,6 +718,140 @@ def test_relay_builds_local_durable_audit_when_remote_sink_is_not_configured(
     assert entries[0].details["tool"] == "write_file"
 
 
+def test_local_audit_key_survives_subprocess_restart_and_concurrent_open(tmp_path: Path) -> None:
+    db_path = tmp_path / "runtime-audit" / "gateway-local-audit.db"
+    script = """
+import asyncio
+import json
+import sys
+from pathlib import Path
+from agent_bom.api.audit_log import SQLiteAuditLog
+from agent_bom.gateway_server import LocalGatewayAuditSink
+
+db_path = Path(sys.argv[1])
+mode = sys.argv[2]
+if mode == "append":
+    asyncio.run(LocalGatewayAuditSink(db_path)({
+        "action": "gateway.tool_call",
+        "tenant_id": "tenant-a",
+        "upstream": "filesystem",
+        "event_id": sys.argv[3],
+    }))
+else:
+    store = SQLiteAuditLog(str(db_path), hmac_key=LocalGatewayAuditSink.load_key(db_path))
+    print(json.dumps({
+        "count": store.count(tenant_id="tenant-a"),
+        "integrity": store.verify_integrity(tenant_id="tenant-a"),
+    }))
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).parents[1] / "src")
+    for name in (
+        "AGENT_BOM_AUDIT_HMAC_KEY",
+        "AGENT_BOM_AUDIT_HMAC_KEY_FILE",
+        "AGENT_BOM_REQUIRE_AUDIT_HMAC",
+        "AGENT_BOM_ENV",
+        "AGENT_BOM_DEPLOYMENT_ENV",
+        "ENVIRONMENT",
+    ):
+        env.pop(name, None)
+
+    first = subprocess.run(
+        [sys.executable, "-c", script, str(db_path), "append", "event-1"],
+        cwd=Path(__file__).parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert first.returncode == 0, first.stderr
+    writers = [
+        subprocess.Popen(
+            [sys.executable, "-c", script, str(db_path), "append", event_id],
+            cwd=Path(__file__).parents[1],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for event_id in ("event-2", "event-3")
+    ]
+    for writer in writers:
+        _stdout, stderr = writer.communicate(timeout=30)
+        assert writer.returncode == 0, stderr
+
+    verified = subprocess.run(
+        [sys.executable, "-c", script, str(db_path), "verify", "unused"],
+        cwd=Path(__file__).parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert verified.returncode == 0, verified.stderr
+    payload = json.loads(verified.stdout.strip().splitlines()[-1])
+    assert payload == {"count": 3, "integrity": [3, 0]}
+    key_path = db_path.with_suffix(".hmac.key")
+    assert key_path.is_file()
+    assert key_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_existing_local_audit_db_fails_closed_if_key_is_missing(tmp_path: Path) -> None:
+    from agent_bom.gateway_server import LocalGatewayAuditSink
+
+    db_path = tmp_path / "runtime-audit" / "gateway-local-audit.db"
+    sink = LocalGatewayAuditSink(db_path)
+    key_path = db_path.with_suffix(".hmac.key")
+    assert key_path.is_file()
+    key_path.unlink()
+
+    with pytest.raises(ValueError, match="key is missing"):
+        LocalGatewayAuditSink(db_path)
+
+    assert sink.health()["durable"] is True
+
+
+def test_local_audit_initialization_failure_degrades_health_and_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", "/proc/agent-bom-audit-unwritable")
+    upstream_calls = 0
+
+    async def upstream_caller(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"side_effect": True}}
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),
+        policy={},
+        audit_sink=None,
+        upstream_caller=upstream_caller,
+    )
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        health = client.get("/healthz")
+        readiness = client.get("/readyz")
+        tool_call = client.post(
+            "/mcp/filesystem",
+            json={
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "tools/call",
+                "params": {"name": "write_file", "arguments": {}},
+            },
+        )
+
+    assert health.status_code == 200
+    assert health.json()["status"] == "degraded"
+    assert health.json()["audit_delivery"]["durable"] is False
+    assert readiness.status_code == 503
+    assert readiness.json()["ready"] is False
+    assert tool_call.status_code == 503
+    assert upstream_calls == 0
+
+
 def test_relay_does_not_execute_tool_if_durable_audit_sink_becomes_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -696,8 +946,8 @@ async def test_gateway_health_truthfully_reports_delivery_degradation_without_se
         readiness = client.get("/readyz")
 
     assert response.status_code == 200
-    assert readiness.status_code == 200
-    assert readiness.json()["ready"] is True
+    assert readiness.status_code == 503
+    assert readiness.json()["ready"] is False
     payload = response.json()
     assert payload["status"] == "degraded"
     assert payload["audit_delivery"]["status"] == "degraded"

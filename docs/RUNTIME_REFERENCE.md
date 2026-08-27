@@ -11,11 +11,12 @@ For policy-layer ordering inside a single tool-call see
 
 The standalone gateway exposes separate liveness and admission signals.
 `/healthz` reports delivery degradation and bounded backlog details. `/readyz`
-continues returning 200 while the local audit spool is durable, observable, and
-accepting events, even if the remote control plane is temporarily unavailable;
-it returns 503 when persistence cannot be observed, the bounded backlog cannot
-accept another event, or shutdown has begun. This keeps degraded delivery
-truthful without removing a safely spooling gateway from service.
+returns 200 only while the configured audit path can admit tool execution. A
+control-plane gateway therefore becomes unready when the remote durable
+acknowledgement is unavailable, even though its bounded local spool retains the
+event for retry. A local-only gateway remains ready while its restart-stable
+SQLite audit store is writable. Persistence failure, a full bounded backlog, or
+shutdown returns 503.
 
 ### Runtime doc set
 

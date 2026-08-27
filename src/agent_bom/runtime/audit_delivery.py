@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import stat
+import sys
 import threading
 import time
 import uuid
@@ -35,6 +36,20 @@ _DEFAULT_MIN_DLQ_BYTES = 1024 * 1024
 _STORE_LOCKS: dict[tuple[str, str], threading.RLock] = {}
 _STORE_LOCKS_GUARD = threading.Lock()
 _ACTIVE_CLAIMS: set[str] = set()
+
+
+def canonical_runtime_state_path(path: Path) -> Path:
+    """Resolve only macOS's fixed ``/tmp`` alias without following arbitrary links."""
+
+    expanded = Path(path).expanduser()
+    if sys.platform == "darwin" and expanded.is_absolute():
+        try:
+            relative = expanded.relative_to("/tmp")
+        except ValueError:
+            pass
+        else:
+            return Path("/private/tmp") / relative
+    return expanded
 
 
 @dataclass(frozen=True)
@@ -118,8 +133,8 @@ class AuditSpilloverStore:
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        self.spill_path = Path(self.spill_path)
-        self.dlq_path = Path(self.dlq_path)
+        self.spill_path = canonical_runtime_state_path(Path(self.spill_path))
+        self.dlq_path = canonical_runtime_state_path(Path(self.dlq_path))
         if self.max_spillover_bytes < 1:
             raise ValueError("max_spillover_bytes must be greater than zero")
         if self.max_dlq_bytes is None:
@@ -189,6 +204,63 @@ class AuditSpilloverStore:
         except FileNotFoundError:
             return
         cls._validate_single_link_regular(stat_result)
+
+    @classmethod
+    def load_or_create_private_key(cls, path: Path, *, size: int = 32, create: bool = True) -> bytes:
+        """Atomically load or create a private fixed-size key beside durable state."""
+
+        key_path = canonical_runtime_state_path(path)
+        parent_fd = cls._safe_parent_fd(key_path)
+        read_flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            read_flags |= os.O_NOFOLLOW
+        if hasattr(os, "O_CLOEXEC"):
+            read_flags |= os.O_CLOEXEC
+        try:
+            try:
+                fd = os.open(key_path.name, read_flags, dir_fd=parent_fd)
+            except FileNotFoundError:
+                if not create:
+                    raise ValueError("runtime audit key is missing for existing durable state") from None
+                create_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                if hasattr(os, "O_NOFOLLOW"):
+                    create_flags |= os.O_NOFOLLOW
+                if hasattr(os, "O_CLOEXEC"):
+                    create_flags |= os.O_CLOEXEC
+                key = os.urandom(size)
+                try:
+                    fd = os.open(key_path.name, create_flags, 0o600, dir_fd=parent_fd)
+                except FileExistsError:
+                    fd = os.open(key_path.name, read_flags, dir_fd=parent_fd)
+                else:
+                    try:
+                        os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
+                        with os.fdopen(fd, "wb") as handle:
+                            fd = -1
+                            handle.write(key)
+                            handle.flush()
+                            os.fsync(handle.fileno())
+                        os.fsync(parent_fd)
+                        return key
+                    finally:
+                        if fd >= 0:
+                            os.close(fd)
+            try:
+                file_stat = os.fstat(fd)
+                cls._validate_single_link_regular(file_stat)
+                if stat.S_IMODE(file_stat.st_mode) & 0o077:
+                    raise ValueError("runtime audit key permissions must be owner-only")
+                with os.fdopen(fd, "rb") as handle:
+                    fd = -1
+                    key = handle.read(size + 1)
+            finally:
+                if fd >= 0:
+                    os.close(fd)
+            if len(key) != size:
+                raise ValueError("runtime audit key has an invalid length")
+            return key
+        finally:
+            os.close(parent_fd)
 
     @contextmanager
     def _exclusive(self) -> Iterator[None]:
@@ -281,9 +353,7 @@ class AuditSpilloverStore:
             if self._size_bytes(self.spill_path) == 0:
                 return None
             parent_fd = self._safe_parent_fd(self.spill_path)
-            claim_path = self.spill_path.with_name(
-                f"{self.spill_path.name}.claim-{time.time_ns():020d}-{os.getpid()}-{uuid.uuid4().hex}"
-            )
+            claim_path = self.spill_path.with_name(f"{self.spill_path.name}.claim-{time.time_ns():020d}-{os.getpid()}-{uuid.uuid4().hex}")
             try:
                 os.rename(
                     self.spill_path.name,
@@ -537,4 +607,5 @@ __all__ = [
     "AuditSpilloverClaim",
     "AuditSpilloverStore",
     "audit_delivery_paths",
+    "canonical_runtime_state_path",
 ]

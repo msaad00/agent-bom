@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import sys
 import threading
 import time
 from pathlib import Path
@@ -23,6 +24,7 @@ from agent_bom.runtime.audit_delivery import (
     AuditDeliveryState,
     AuditSpilloverStore,
     audit_delivery_paths,
+    canonical_runtime_state_path,
 )
 
 
@@ -219,9 +221,7 @@ def test_second_store_does_not_recover_a_live_claim(tmp_path: Path) -> None:
 def test_restart_load_recovers_an_unregistered_claim(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.append_events([{"event_id": "crash-recovery"}])
-    orphan = store.spill_path.with_name(
-        f"{store.spill_path.name}.claim-{time.time_ns():020d}-{os.getpid()}-orphan"
-    )
+    orphan = store.spill_path.with_name(f"{store.spill_path.name}.claim-{time.time_ns():020d}-{os.getpid()}-orphan")
     store.spill_path.rename(orphan)
 
     restarted = _store(tmp_path)
@@ -235,6 +235,7 @@ def test_two_store_instances_share_one_bound_lock(tmp_path: Path, monkeypatch: p
     first = AuditSpilloverStore(spill, dlq, max_spillover_bytes=90, max_dlq_bytes=90)
     second = AuditSpilloverStore(spill, dlq, max_spillover_bytes=90, max_dlq_bytes=90)
     original_size = AuditSpilloverStore._size_bytes
+
     def synchronized_size(path: Path) -> int:
         size = original_size(path)
         if path == spill:
@@ -322,6 +323,28 @@ def test_hardlinked_lock_file_is_rejected_without_mutating_target(tmp_path: Path
         store.append_events([{"event_id": "must-not-lock"}])
 
     assert victim.read_text(encoding="utf-8") == "unchanged\n"
+
+
+def test_private_key_rejects_symlink_and_hardlink_aliases(tmp_path: Path) -> None:
+    victim = tmp_path / "victim.key"
+    victim.write_bytes(b"v" * 32)
+
+    symlink_key = tmp_path / "symlink.key"
+    symlink_key.symlink_to(victim)
+    with pytest.raises((OSError, ValueError)):
+        AuditSpilloverStore.load_or_create_private_key(symlink_key)
+
+    hardlink_key = tmp_path / "hardlink.key"
+    os.link(victim, hardlink_key)
+    with pytest.raises(ValueError, match="single-link regular file"):
+        AuditSpilloverStore.load_or_create_private_key(hardlink_key)
+
+    assert victim.read_bytes() == b"v" * 32
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS fixed /tmp alias only")
+def test_macos_fixed_tmp_alias_is_canonicalized_without_general_symlink_following() -> None:
+    assert canonical_runtime_state_path(Path("/tmp/agent-bom/audit")) == Path("/private/tmp/agent-bom/audit")
 
 
 def test_state_dir_paths_are_stable_and_do_not_embed_identity(tmp_path: Path) -> None:

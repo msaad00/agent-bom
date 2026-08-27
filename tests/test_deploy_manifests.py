@@ -590,15 +590,14 @@ def test_helm_gateway_renders_runtime_replica_truth_and_recreate_persistence() -
 
     def _gateway_deployment(documents: list[dict]) -> dict:
         return next(
-            doc
-            for doc in documents
-            if doc.get("kind") == "Deployment" and doc.get("metadata", {}).get("name", "").endswith("-gateway")
+            doc for doc in documents if doc.get("kind") == "Deployment" and doc.get("metadata", {}).get("name", "").endswith("-gateway")
         )
 
     replicated = _gateway_deployment(
         _render(
             "gateway.enabled=true",
             "gateway.replicas=2",
+            "gateway.controlPlaneDiscovery.url=https://control.example.test",
             "gateway.runtimeRateLimitPerTenantPerMinute=10",
         )
     )
@@ -611,6 +610,7 @@ def test_helm_gateway_renders_runtime_replica_truth_and_recreate_persistence() -
             "gateway.enabled=true",
             "gateway.autoscaling.enabled=true",
             "gateway.autoscaling.maxReplicas=7",
+            "gateway.controlPlaneDiscovery.url=https://control.example.test",
             "gateway.runtimeRateLimitPerTenantPerMinute=10",
         )
     )
@@ -628,6 +628,27 @@ def test_helm_gateway_renders_runtime_replica_truth_and_recreate_persistence() -
     assert persistent["spec"]["strategy"] == {"type": "Recreate"}
     persistent_env = {item["name"]: item["value"] for item in persistent["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert persistent_env["AGENT_BOM_GATEWAY_REPLICAS"] == "1"
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_helm_gateway_rejects_local_only_ephemeral_audit_state() -> None:
+    result = subprocess.run(
+        [
+            "helm",
+            "template",
+            "abom",
+            str(HELM_DIR),
+            "--set",
+            "gateway.enabled=true",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "local-only gateway audit requires gateway.persistence.enabled=true" in result.stderr
 
 
 @pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")

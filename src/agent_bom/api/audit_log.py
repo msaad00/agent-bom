@@ -227,11 +227,11 @@ class AuditEntry:
     def _canonical_details_json(self) -> str:
         return json.dumps(self.details or {}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
-    def _legacy_hmac(self) -> str:
+    def _legacy_hmac(self, hmac_key: bytes | None = None) -> str:
         payload = f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|{self.action}|{self.actor}|{self.resource}"
-        return hmac.new(_HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
+        return hmac.new(hmac_key or _HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
 
-    def compute_hmac(self) -> str:
+    def compute_hmac(self, hmac_key: bytes | None = None) -> str:
         """Compute HMAC-SHA256 signature for tamper detection (chain-hashed)."""
         payload = (
             f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|"
@@ -239,16 +239,16 @@ class AuditEntry:
         )
         # lgtm[py/weak-sensitive-data-hashing] HMAC-SHA256 authenticates an
         # already-sanitized audit record; it does not derive or store passwords.
-        return hmac.new(_HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
+        return hmac.new(hmac_key or _HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
 
-    def sign(self) -> None:
+    def sign(self, hmac_key: bytes | None = None) -> None:
         """Sign this entry."""
-        self.hmac_signature = self.compute_hmac()
+        self.hmac_signature = self.compute_hmac(hmac_key)
 
-    def verify(self) -> bool:
+    def verify(self, hmac_key: bytes | None = None) -> bool:
         """Verify HMAC signature."""
-        return hmac.compare_digest(self.hmac_signature, self.compute_hmac()) or hmac.compare_digest(
-            self.hmac_signature, self._legacy_hmac()
+        return hmac.compare_digest(self.hmac_signature, self.compute_hmac(hmac_key)) or hmac.compare_digest(
+            self.hmac_signature, self._legacy_hmac(hmac_key)
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -351,13 +351,13 @@ def _entry_tenant(entry: AuditEntry) -> str:
     return str((entry.details or {}).get("tenant_id") or "default")
 
 
-def _verify_audit_chain(entries: list[AuditEntry]) -> tuple[int, int]:
+def _verify_audit_chain(entries: list[AuditEntry], hmac_key: bytes | None = None) -> tuple[int, int]:
     """Verify HMAC chain from genesis (``prev_signature`` must start at ``""``)."""
     verified = 0
     tampered = 0
     prev_sig = ""
     for entry in entries:
-        if entry.prev_signature != prev_sig or not entry.verify():
+        if entry.prev_signature != prev_sig or not entry.verify(hmac_key):
             tampered += 1
         else:
             verified += 1
@@ -374,9 +374,10 @@ class _AuditChainCheckpoint:
 def _verify_audit_chain_with_checkpoint(
     entries: list[AuditEntry],
     checkpoint: _AuditChainCheckpoint | None,
+    hmac_key: bytes | None = None,
 ) -> tuple[int, int]:
     """Verify chain integrity and detect tail truncation via signed checkpoint."""
-    verified, tampered = _verify_audit_chain(entries)
+    verified, tampered = _verify_audit_chain(entries, hmac_key)
     if checkpoint is None:
         return verified, tampered
     if not entries:
@@ -467,8 +468,9 @@ class InMemoryAuditLog:
 class SQLiteAuditLog:
     """SQLite-backed append-only audit log."""
 
-    def __init__(self, db_path: str = "agent_bom_audit.db") -> None:
+    def __init__(self, db_path: str = "agent_bom_audit.db", *, hmac_key: bytes | None = None) -> None:
         self._db_path = db_path
+        self._hmac_key = hmac_key
         self._local = threading.local()
         self._last_sig_by_tenant: dict[str, str] = defaultdict(str)
         self._append_lock = threading.Lock()
@@ -680,7 +682,7 @@ class SQLiteAuditLog:
                 if prev_sig is None or prev_sig == "":
                     prev_sig = self._latest_signature_for_tenant(tenant_id)
                 entry.prev_signature = prev_sig
-                entry.sign()
+                entry.sign(self._hmac_key)
                 try:
                     self._conn.execute(
                         "INSERT INTO audit_log"
@@ -813,7 +815,7 @@ class SQLiteAuditLog:
         fetch_limit = total if total else limit
         entries = self._list_entries_chronological(limit=fetch_limit, tenant_id=tenant_id)
         checkpoint = self._get_checkpoint(tenant_key)
-        return _verify_audit_chain_with_checkpoint(entries, checkpoint)
+        return _verify_audit_chain_with_checkpoint(entries, checkpoint, self._hmac_key)
 
 
 # ── Module-level singleton ──

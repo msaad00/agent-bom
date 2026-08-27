@@ -312,13 +312,15 @@ gateway:
     # Optional URL for --from-control-plane discovery.
     # Example: https://agent-bom.internal.example.com
     url: ""
-  # Writable local state for the bounded gateway audit backlog. The default
-  # uses the pod's /tmp emptyDir and survives container restarts in that pod.
+  # Writable local retry state. With control-plane discovery, tools/call is
+  # forwarded only after the control plane durably acknowledges admission, so
+  # this pod-local cache never substitutes for canonical evidence. A gateway
+  # without a control-plane URL must enable the PVC-backed mode below.
   stateDir: /tmp/agent-bom
-  # Opt-in pod-rescheduling durability. Claims are process-owned, so the chart
-  # deliberately requires one replica, disables both HPA modes, and uses a
-  # Recreate rollout when a PVC is used. Scale-out needs a shared lease
-  # implementation that is not shipped.
+  # Pod-rescheduling durability for a local-only gateway. Claims and the local
+  # HMAC chain are process-owned, so the chart requires one replica, disables
+  # both HPA modes, and uses a Recreate rollout when a PVC is used. Scale-out
+  # needs a shared lease implementation that is not shipped.
   persistence:
     enabled: false
     existingClaim: ""

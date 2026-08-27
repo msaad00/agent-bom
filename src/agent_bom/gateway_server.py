@@ -89,6 +89,7 @@ from agent_bom.runtime.audit_delivery import (
     AuditSpilloverClaim,
     AuditSpilloverStore,
     audit_delivery_paths,
+    canonical_runtime_state_path,
 )
 from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
 from agent_bom.runtime.gateway_events import (
@@ -122,6 +123,7 @@ _GATEWAY_AUDIT_DLQ_BYTES = 64 * 1024 * 1024
 
 class GatewayAuditDeliveryUnavailableError(RuntimeError):
     """The gateway could not durably retain a runtime audit event."""
+
 
 # Lazy singleton so disabled deploys don't pay the import cost of the
 # visual detector (Pillow/pytesseract). Built on first use when
@@ -1293,15 +1295,14 @@ class ControlPlaneAuditSink:
         self._worker: asyncio.Task[None] | None = None
         self._closed = False
         self._persistence_available = True
+        self._remote_ack_available = True
 
     @staticmethod
     def _batch_idempotency_key(session_id: str, events: list[dict[str, Any]]) -> str:
         event_identities = [
             str(event.get("event_id"))
             if event.get("event_id")
-            else hashlib.sha256(
-                json.dumps(event, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode("utf-8")
-            ).hexdigest()
+            else hashlib.sha256(json.dumps(event, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode("utf-8")).hexdigest()
             for event in events
         ]
         material = json.dumps([session_id, event_identities], separators=(",", ":"), ensure_ascii=True)
@@ -1334,7 +1335,7 @@ class ControlPlaneAuditSink:
             headers["Authorization"] = f"Bearer {self._token}"
         return headers
 
-    async def __call__(self, event: dict[str, Any]) -> None:
+    async def _persist_and_flush(self, event: dict[str, Any], *, require_remote_ack: bool) -> None:
         async with self._lock:
             try:
                 if not self._persistence_available:
@@ -1357,10 +1358,21 @@ class ControlPlaneAuditSink:
                 self._persistence_available = False
                 raise GatewayAuditDeliveryUnavailableError("durable audit backlog is full")
             self._persistence_available = True
+            flushed = False
             if not self._delivery_state.controller.is_circuit_open():
                 flushed = await self._flush_locked()
-                if not flushed and not self._persistence_available:
-                    raise GatewayAuditDeliveryUnavailableError("durable audit backlog is unavailable")
+            if not flushed and not self._persistence_available:
+                raise GatewayAuditDeliveryUnavailableError("durable audit backlog is unavailable")
+            if require_remote_ack and not flushed:
+                raise GatewayAuditDeliveryUnavailableError("control-plane durable acknowledgement is unavailable")
+
+    async def __call__(self, event: dict[str, Any]) -> None:
+        await self._persist_and_flush(event, require_remote_ack=False)
+
+    async def admit_before_tool_execution(self, event: dict[str, Any]) -> None:
+        """Require the control plane to durably acknowledge before execution."""
+
+        await self._persist_and_flush(event, require_remote_ack=True)
 
     async def _flush_locked(self) -> bool:
         try:
@@ -1394,9 +1406,11 @@ class ControlPlaneAuditSink:
                 self._persistence_available = False
                 logger.error("Gateway audit persistence unavailable while retaining a failed delivery")
             self._delivery_state.controller.record_failure()
+            self._remote_ack_available = False
             logger.warning("Gateway audit push failed; retained for retry (error_type=%s)", type(exc).__name__)
             return False
         self._persistence_available = True
+        self._remote_ack_available = True
         self._delivery_state.controller.record_success()
         return True
 
@@ -1452,7 +1466,12 @@ class ControlPlaneAuditSink:
                 "dropped_events": self._delivery_state.store.dropped_events,
             }
             backlog_observable = False
-        accepting_events = self._persistence_available and not bool(health["dlq_bytes"]) and not bool(health["dropped_events"])
+        accepting_events = (
+            self._persistence_available
+            and self._remote_ack_available
+            and not bool(health["dlq_bytes"])
+            and not bool(health["dropped_events"])
+        )
         if not accepting_events:
             health["status"] = "degraded"
         return {
@@ -1460,6 +1479,7 @@ class ControlPlaneAuditSink:
             "durable": self._persistence_available and backlog_observable,
             "accepting_events": accepting_events,
             "backlog_observable": backlog_observable,
+            "remote_acknowledgement_available": self._remote_ack_available,
             "retry_worker_running": self._worker is not None and not self._worker.done() and not self._closed,
             **health,
         }
@@ -1471,12 +1491,21 @@ class LocalGatewayAuditSink:
     def __init__(self, db_path: Path) -> None:
         from agent_bom.api.audit_log import SQLiteAuditLog
 
+        db_path = canonical_runtime_state_path(db_path)
         parent_fd = AuditSpilloverStore._safe_parent_fd(db_path)
         os.close(parent_fd)
         AuditSpilloverStore._validate_existing_path(db_path)
-        self._store = SQLiteAuditLog(str(db_path))
+        self._hmac_key = self.load_key(db_path, create=not db_path.exists())
+        self._store = SQLiteAuditLog(str(db_path), hmac_key=self._hmac_key)
         self._available = True
         self.db_path = db_path
+
+    @staticmethod
+    def load_key(db_path: Path, *, create: bool = False) -> bytes:
+        return AuditSpilloverStore.load_or_create_private_key(
+            canonical_runtime_state_path(db_path).with_suffix(".hmac.key"),
+            create=create,
+        )
 
     async def __call__(self, event: dict[str, Any]) -> None:
         from agent_bom.api.audit_log import AuditEntry, sanitize_audit_details
@@ -1503,6 +1532,9 @@ class LocalGatewayAuditSink:
             logger.error("Gateway local audit persistence unavailable (error_type=%s)", type(exc).__name__)
             raise GatewayAuditDeliveryUnavailableError("local durable audit store is unavailable") from None
 
+    async def admit_before_tool_execution(self, event: dict[str, Any]) -> None:
+        await self(event)
+
     def health(self) -> dict[str, str | int | bool]:
         return {
             "configured": True,
@@ -1511,6 +1543,30 @@ class LocalGatewayAuditSink:
             "durable": self._available,
             "accepting_events": self._available,
             "backlog_observable": True,
+            "retry_worker_running": False,
+            "backlog_bytes": 0,
+            "dropped_events": 0,
+        }
+
+
+class UnavailableGatewayAuditSink:
+    """Fail-closed health surface retained when local audit setup fails."""
+
+    async def __call__(self, _event: dict[str, Any]) -> None:
+        raise GatewayAuditDeliveryUnavailableError("local durable audit store is unavailable")
+
+    async def admit_before_tool_execution(self, event: dict[str, Any]) -> None:
+        await self(event)
+
+    @staticmethod
+    def health() -> dict[str, str | int | bool]:
+        return {
+            "configured": True,
+            "mode": "unavailable",
+            "status": "degraded",
+            "durable": False,
+            "accepting_events": False,
+            "backlog_observable": False,
             "retry_worker_running": False,
             "backlog_bytes": 0,
             "dropped_events": 0,
@@ -1625,6 +1681,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             settings.audit_sink = build_local_gateway_audit_sink()
         except Exception as exc:  # noqa: BLE001 - relay remains fail-closed below
             logger.error("Gateway local audit initialization failed (error_type=%s)", type(exc).__name__)
+            settings.audit_sink = UnavailableGatewayAuditSink()
     if settings.enable_visual_leak_detection and settings.require_visual_leak_detection_ready:
         from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
 
@@ -3441,7 +3498,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             )
         if _forward_is_tool_call and settings.audit_sink is not None:
             try:
-                await settings.audit_sink(
+                admission = getattr(settings.audit_sink, "admit_before_tool_execution", settings.audit_sink)
+                await admission(
                     {
                         "action": "gateway.tool_call",
                         "upstream": upstream.name,
@@ -3475,6 +3533,29 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     status_code=503,
                     headers=rate_limit_headers or None,
                 )
+
+        post_forward_audit_degraded = False
+
+        async def _audit_after_forward(event: dict[str, Any]) -> None:
+            """Never turn a completed upstream side effect into an ambiguous 500."""
+
+            nonlocal post_forward_audit_degraded
+            if settings.audit_sink is None:
+                return
+            try:
+                await settings.audit_sink(event)
+            except Exception as exc:  # noqa: BLE001 - outcome is already produced
+                post_forward_audit_degraded = True
+                record_gateway_relay(upstream.name, "audit_unavailable")
+                logger.error(
+                    "Gateway post-forward audit degraded (error_type=%s)",
+                    type(exc).__name__,
+                )
+
+        def _post_forward_headers(headers: dict[str, str]) -> dict[str, str]:
+            if post_forward_audit_degraded:
+                headers["X-Agent-BOM-Audit-Delivery"] = "degraded"
+            return headers
 
         # Forward to the upstream with bounded W3C trace headers and JSON-RPC
         # `_meta` so both HTTP-aware and JSON-RPC-aware upstreams can stitch
@@ -3592,7 +3673,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     if alerts:
                         record_gateway_relay(upstream.name, "visual_leak_redacted")
                         if settings.audit_sink is not None:
-                            await settings.audit_sink(
+                            await _audit_after_forward(
                                 {
                                     "action": "gateway.visual_leak_blocked",
                                     "upstream": upstream.name,
@@ -3652,7 +3733,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         tool=str(tool_name_for_dlp),
                         data_action="pii_redacted",
                     )
-                await settings.audit_sink(
+                await _audit_after_forward(
                     {
                         "action": "gateway.dlp_result",
                         "upstream": upstream.name,
@@ -3682,7 +3763,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         },
                     },
                     status_code=200,
-                    headers=rate_limit_headers or None,
+                    headers=_post_forward_headers(dict(rate_limit_headers)) or None,
                 )
             if result_redacted:
                 upstream_response["result"] = _redact_obj_pii(upstream_response.get("result"))
@@ -3695,13 +3776,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "method": message.get("method"),
                 "tool": None,
             }
-            await settings.audit_sink(forward_audit_event)
+            await _audit_after_forward(forward_audit_event)
         response_headers = dict(rate_limit_headers)
         response_headers["traceparent"] = str(trace_meta["traceparent"])
         if trace_meta["tracestate"]:
             response_headers["tracestate"] = str(trace_meta["tracestate"])
         if trace_meta["baggage"]:
             response_headers["baggage"] = str(trace_meta["baggage"])
+        _post_forward_headers(response_headers)
         return JSONResponse(upstream_response, headers=response_headers or None)
 
     return app

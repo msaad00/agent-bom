@@ -78,9 +78,10 @@ function applicability(
 
 export function complianceFrameworkSummaries(
   data: ComplianceResponse,
-  hasMcp: boolean,
 ): ComplianceFrameworkSummary[] {
   const s = data.summary;
+  const hasMcp = Boolean(data.has_mcp_context);
+  const hasAgent = Boolean(data.has_agent_context);
   const overlay = (outputKey: string): boolean =>
     data.framework_kinds[outputKey] === "applicability";
   return [
@@ -101,7 +102,7 @@ export function complianceFrameworkSummaries(
           "owasp-agentic", "OWASP Agentic Top 10", "Agentic",
           { applicable: s.owasp_agentic_applicable, notApplicable: s.owasp_agentic_not_applicable },
           data.owasp_agentic_top10.length,
-          { disabled: !hasMcp, disabledReason: "Requires agent + MCP context" },
+          { disabled: !hasAgent, disabledReason: "Requires agent scan context" },
         )
       : scored("owasp-agentic", "OWASP Agentic Top 10", "Agentic", {}, data.owasp_agentic_top10.length),
     scored("eu-ai-act", "EU AI Act", "EU AI", { pass: s.eu_ai_act_pass, warn: s.eu_ai_act_warn, fail: s.eu_ai_act_fail }, data.eu_ai_act.length),

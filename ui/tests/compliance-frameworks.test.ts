@@ -125,23 +125,31 @@ function sampleCompliance(overrides: Partial<ComplianceResponse> = {}): Complian
 
 describe("complianceFrameworkSummaries", () => {
   it("builds framework cards with MCP disabled when context is missing", () => {
-    const frameworks = complianceFrameworkSummaries(
-      sampleCompliance({ has_mcp_context: false }),
-      false,
-    );
+    const frameworks = complianceFrameworkSummaries(sampleCompliance({ has_mcp_context: false }));
     const mcp = frameworks.find((framework) => framework.id === "owasp-mcp");
     expect(mcp?.disabled).toBe(true);
     expect(mcp?.disabledReason).toMatch(/MCP/i);
   });
 
   it("uses the serialized framework kind and never scores OWASP risk catalogs", () => {
-    const frameworks = complianceFrameworkSummaries(sampleCompliance(), true);
+    const frameworks = complianceFrameworkSummaries(sampleCompliance());
     const llm = frameworks.find((framework) => framework.id === "owasp-llm");
     expect(llm?.kind).toBe("applicability");
     expect(llm?.pass).toBe(0);
     expect(llm?.fail).toBe(0);
     expect(llm?.applicable).toBe(3);
     expect(compliancePassRate(llm!)).toBe(30);
+  });
+
+  it("shows agentic evidence without requiring MCP context", () => {
+    const frameworks = complianceFrameworkSummaries(
+      sampleCompliance({ has_mcp_context: false, has_agent_context: true }),
+    );
+    const mcp = frameworks.find((framework) => framework.id === "owasp-mcp");
+    const agentic = frameworks.find((framework) => framework.id === "owasp-agentic");
+
+    expect(mcp?.disabled).toBe(true);
+    expect(agentic?.disabled).toBe(false);
   });
 });
 

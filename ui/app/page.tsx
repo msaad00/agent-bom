@@ -510,8 +510,7 @@ function buildComplianceSnapshot(
   compliance: ComplianceResponse | null,
 ): OverviewComplianceSnapshot | null {
   if (!compliance) return null;
-  const hasMcp = Boolean(compliance.has_mcp_context);
-  const frameworks = complianceFrameworkSummaries(compliance, hasMcp)
+  const frameworks = complianceFrameworkSummaries(compliance)
     .filter((framework) => !framework.disabled)
     .map((framework) => ({
       id: framework.id,

@@ -54,6 +54,14 @@ _lock = threading.Lock()
 _entries: dict[str, _Entry] = {}
 _kev_entries: dict[str, _KevEntry] = {}
 _framework_entries: dict[str, _FrameworkEntry] = {}
+_evidence_versions: dict[str, int] = {}
+
+
+def evidence_version(tenant_id: str) -> int:
+    """Return the tenant-scoped mutation generation for overview keys."""
+
+    with _lock:
+        return _evidence_versions.get(tenant_id, 0)
 
 
 def get_cached_severity(tenant_id: str) -> dict[str, int] | None:
@@ -138,6 +146,7 @@ def invalidate_tenant(tenant_id: str) -> None:
         _entries.pop(tenant_id, None)
         _kev_entries.pop(tenant_id, None)
         _framework_entries.pop(tenant_id, None)
+        _evidence_versions[tenant_id] = _evidence_versions.get(tenant_id, 0) + 1
 
 
 def reset_hub_overview_cache() -> None:
@@ -146,3 +155,4 @@ def reset_hub_overview_cache() -> None:
         _entries.clear()
         _kev_entries.clear()
         _framework_entries.clear()
+        _evidence_versions.clear()

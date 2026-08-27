@@ -220,6 +220,20 @@ def _result_has_runtime_signals(result: dict[str, Any]) -> bool:
     )
 
 
+def _result_evidence_context(result: dict[str, Any]) -> tuple[bool, bool, set[str]]:
+    """Derive MCP and agent context once from canonical scan evidence."""
+
+    sources = {str(source) for source in result.get("scan_sources", []) if source}
+    blast = [row for row in result.get("blast_radius", []) if isinstance(row, dict)]
+    has_mcp = bool(result.get("has_mcp_context")) or any(
+        row.get("affected_servers") or row.get("owasp_mcp_tags") for row in blast
+    )
+    has_agent = bool(result.get("has_agent_context")) or any(
+        row.get("affected_agents") or row.get("owasp_agentic_tags") for row in blast
+    )
+    return has_mcp, has_agent, sources
+
+
 def _tenant_has_proxy_alerts(tenant_id: str) -> bool:
     """Return True when the in-process proxy-alert ring buffer holds any
     alerts for ``tenant_id``.
@@ -259,9 +273,10 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
             continue
         scan_count += 1
         result = cast(dict[str, Any], job.result)
-        has_mcp_context = has_mcp_context or bool(result.get("has_mcp_context"))
-        has_agent_context = has_agent_context or bool(result.get("has_agent_context"))
-        scan_sources.update(str(src) for src in result.get("scan_sources", []) if src)
+        result_has_mcp, result_has_agent, result_sources = _result_evidence_context(result)
+        has_mcp_context = has_mcp_context or result_has_mcp
+        has_agent_context = has_agent_context or result_has_agent
+        scan_sources.update(result_sources)
         has_runtime_signals = has_runtime_signals or _result_has_runtime_signals(result)
 
     fleet_agents = _get_fleet_store().list_by_tenant(tenant_id)
@@ -466,12 +481,10 @@ async def get_compliance(
         if latest_scan is None or (job.completed_at and job.completed_at > latest_scan):
             latest_scan = job.completed_at
         # Detect scan context from result metadata
-        if job.result.get("has_mcp_context"):
-            has_mcp_context = True
-        if job.result.get("has_agent_context"):
-            has_agent_context = True
-        for src in job.result.get("scan_sources", []):
-            all_scan_sources.add(src)
+        result_has_mcp, result_has_agent, result_sources = _result_evidence_context(job.result)
+        has_mcp_context = has_mcp_context or result_has_mcp
+        has_agent_context = has_agent_context or result_has_agent
+        all_scan_sources.update(result_sources)
 
     def _build_controls(
         catalog: dict[str, str],

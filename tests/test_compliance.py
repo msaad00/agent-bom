@@ -181,6 +181,31 @@ def test_compliance_can_scope_posture_to_a_selected_scan():
     assert llm02["findings"] == 0
 
 
+def test_agentic_context_is_inferred_from_canonical_agent_evidence_without_mcp() -> None:
+    _clear_jobs()
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-AGENT-ONLY",
+                "severity": "high",
+                "affected_agents": ["cursor"],
+                "affected_servers": [],
+                "owasp_agentic_tags": ["ASI04"],
+            }
+        ],
+        result_extra={"has_mcp_context": False, "has_agent_context": False},
+    )
+
+    data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    assert data["has_mcp_context"] is False
+    assert data["has_agent_context"] is True
+    agentic = next(control for control in data["owasp_agentic_top10"] if control["code"] == "ASI04")
+    assert agentic["status"] == "applicable"
+    assert agentic["findings"] == 1
+    _clear_jobs()
+
+
 def test_fedramp_rest_and_narrative_reconcile_namespaced_scanner_tags():
     """The REST score and narrative must join the same emitted FedRAMP tag."""
     _clear_jobs()

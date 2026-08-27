@@ -114,7 +114,7 @@ function demoEstateCompliance(): ComplianceResponse {
 
 describe("compliance tiles reconcile with the headline", () => {
   const data = demoEstateCompliance();
-  const rows = complianceFrameworkSummaries(data, true);
+  const rows = complianceFrameworkSummaries(data);
 
   it("never renders a framework count the API does not send", () => {
     for (const row of rows) {

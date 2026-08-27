@@ -110,9 +110,11 @@ def _overview_cache_ttl() -> float:
 
 
 def _overview_fingerprint(
+    tenant_id: str,
     jobs: list[Any],
     hub_severity: dict[str, int],
     hub_failing_frameworks: set[str] | None = None,
+    hub_evidence_version: int = 0,
 ) -> str:
     """Cheap change-detector over job metadata + hub current-state — no fold.
 
@@ -127,11 +129,40 @@ def _overview_fingerprint(
     for job in jobs:
         stamp = getattr(job, "completed_at", None) or getattr(job, "updated_at", None) or getattr(job, "created_at", None) or ""
         status = getattr(job, "status", "")
-        parts.append(f"{getattr(job, 'job_id', '')}|{getattr(status, 'value', status)}|{stamp}")
+        raw_result = getattr(job, "result", None)
+        result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
+        raw_scan_run = result.get("scan_run")
+        scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
+        evidence_identity = (
+            result.get("scan_id") or scan_run.get("scan_id") or getattr(job, "job_id", "")
+        )
+        evidence_version = (
+            result.get("generated_at")
+            or result.get("scan_timestamp")
+            or scan_run.get("generated_at")
+            or result.get("schema_version")
+            or ""
+        )
+        parts.append(
+            f"{tenant_id}|{getattr(job, 'tenant_id', tenant_id)}|{getattr(job, 'job_id', '')}|"
+            f"{getattr(status, 'value', status)}|{stamp}|{evidence_identity}|{evidence_version}"
+        )
     parts.sort()
     hub_part = "|".join(f"{k}={int(hub_severity.get(k, 0) or 0)}" for k in sorted(hub_severity))
     framework_part = "|".join(sorted(hub_failing_frameworks or set()))
-    digest = hashlib.sha256(("\x1e".join(parts) + "\x1d" + hub_part + "\x1d" + framework_part).encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(
+        (
+            tenant_id
+            + "\x1f"
+            + "\x1e".join(parts)
+            + "\x1d"
+            + hub_part
+            + "\x1d"
+            + framework_part
+            + "\x1d"
+            + str(hub_evidence_version)
+        ).encode("utf-8")
+    ).hexdigest()
     return f"{len(jobs)}:{digest}"
 
 
@@ -1110,10 +1141,19 @@ def _build_overview(request: Request) -> dict[str, Any]:
     """
     tenant_id = _tenant_id(request)
     jobs = _get_store().list_all(tenant_id=tenant_id)
+    from agent_bom.api import hub_overview_cache
+
+    hub_evidence_version = hub_overview_cache.evidence_version(tenant_id)
     hub_severity = _hub_severity_snapshot(request)
     hub_failing_frameworks = _hub_failing_frameworks_snapshot(request)
 
-    fingerprint = _overview_fingerprint(jobs, hub_severity, hub_failing_frameworks)
+    fingerprint = _overview_fingerprint(
+        tenant_id,
+        jobs,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_version,
+    )
     cached = _overview_cache_get(tenant_id, fingerprint)
     if cached is not None:
         return cached

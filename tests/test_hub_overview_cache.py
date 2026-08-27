@@ -149,6 +149,20 @@ def test_store_add_and_clear_invalidate_overview_cache():
     assert hub_overview_cache.get_cached_severity("acme") is None
 
 
+def test_store_evidence_version_changes_for_same_shape_refresh_and_is_tenant_scoped():
+    from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore
+
+    store = InMemoryComplianceHubStore()
+    initial = hub_overview_cache.evidence_version("acme")
+    store.add("acme", [{"id": "f-1", "severity": "high", "is_kev": False}])
+    first = hub_overview_cache.evidence_version("acme")
+    store.add("acme", [{"id": "f-1", "severity": "high", "is_kev": True}])
+    refreshed = hub_overview_cache.evidence_version("acme")
+
+    assert initial != first != refreshed
+    assert hub_overview_cache.evidence_version("other") == initial
+
+
 # ── Live Postgres: cache-hit latency is bounded as rows grow ─────────────────
 
 pg_only = pytest.mark.skipif(

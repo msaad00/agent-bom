@@ -155,6 +155,7 @@ function CompliancePageContent() {
   } | null>(null);
 
   const hasMcp = data?.has_mcp_context ?? false;
+  const hasAgent = data?.has_agent_context ?? false;
 
   const detailSections = useMemo(() => {
     if (!data) return [];
@@ -195,9 +196,9 @@ function CompliancePageContent() {
         id: "owasp-agentic",
         title: "OWASP Agentic Top 10",
         subtitle: "2026 Edition",
-        controls: hasMcp ? data.owasp_agentic_top10 : [],
+        controls: hasAgent ? data.owasp_agentic_top10 : [],
         catalog: OWASP_AGENTIC_TOP10,
-        emptyMessage: "Agentic controls appear after a scan with agent and MCP context.",
+        emptyMessage: "Agentic controls appear after a scan with agent context.",
       },
       {
         id: "eu-ai-act",
@@ -275,11 +276,11 @@ function CompliancePageContent() {
         emptyMessage: undefined,
       },
     ];
-  }, [data, hasMcp]);
+  }, [data, hasAgent, hasMcp]);
 
   const frameworks = useMemo(
-    () => (data ? complianceFrameworkSummaries(data, hasMcp) : []),
-    [data, hasMcp],
+    () => (data ? complianceFrameworkSummaries(data) : []),
+    [data],
   );
 
   const visibleFrameworks = useMemo(

@@ -208,7 +208,9 @@ else:
 def _hmac_sha256_hex(signing_key: bytes, payload: bytes) -> str:
     """Authenticate an audit payload; this is a MAC, not password hashing."""
 
-    return hmac.new(signing_key, payload, hashlib.sha256).hexdigest()  # lgtm[py/weak-sensitive-data-hashing]
+    # lgtm[py/weak-sensitive-data-hashing] HMAC-SHA256 is a message
+    # authentication code over audit records, not a password derivation hash.
+    return hmac.new(signing_key, payload, hashlib.sha256).hexdigest()
 
 
 @dataclass

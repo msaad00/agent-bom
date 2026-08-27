@@ -281,6 +281,31 @@ def test_direct_symlink_parent_is_rejected(tmp_path: Path) -> None:
         store.append_events([{"event_id": "symlink-parent"}])
 
 
+def test_hardlinked_spill_file_is_rejected_without_mutating_target(tmp_path: Path) -> None:
+    victim = tmp_path / "victim.jsonl"
+    victim.write_text('{"private":"unchanged"}\n', encoding="utf-8")
+    store = _store(tmp_path)
+    os.link(victim, store.spill_path)
+
+    with pytest.raises(ValueError, match="single-link regular file"):
+        store.append_events([{"event_id": "must-not-append"}])
+
+    assert victim.read_text(encoding="utf-8") == '{"private":"unchanged"}\n'
+
+
+def test_hardlinked_lock_file_is_rejected_without_mutating_target(tmp_path: Path) -> None:
+    victim = tmp_path / "victim.lock"
+    victim.write_text("unchanged\n", encoding="utf-8")
+    store = _store(tmp_path)
+    lock_path = store.spill_path.with_name(f".{store.spill_path.name}.lock")
+    os.link(victim, lock_path)
+
+    with pytest.raises(ValueError, match="single-link regular file"):
+        store.append_events([{"event_id": "must-not-lock"}])
+
+    assert victim.read_text(encoding="utf-8") == "unchanged\n"
+
+
 def test_state_dir_paths_are_stable_and_do_not_embed_identity(tmp_path: Path) -> None:
     identity = "https://user:secret@control.example.test/default/proxy-a"
 

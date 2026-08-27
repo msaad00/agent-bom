@@ -1129,7 +1129,9 @@ def test_relay_upstream_error_surfaces_as_502_and_is_audited() -> None:
     )
     assert resp.status_code == 502
     assert resp.json()["detail"] == "upstream error: An internal error occurred. Please contact support."
-    assert audit_events == [
+    assert audit_events[0]["event_type"] == "gateway.tool_call.allowed"
+    assert audit_events[0]["tool"] == "read_file"
+    assert audit_events[1:] == [
         {
             "action": "gateway.upstream_error",
             "upstream": "filesystem",
@@ -1163,7 +1165,9 @@ def test_relay_upstream_timeout_surfaces_as_502_and_is_audited() -> None:
     )
     assert resp.status_code == 502
     assert resp.json()["detail"] == "upstream error: timeout"
-    assert audit_events == [
+    assert audit_events[0]["event_type"] == "gateway.tool_call.allowed"
+    assert audit_events[0]["tool"] == "read_file"
+    assert audit_events[1:] == [
         {
             "action": "gateway.upstream_error",
             "upstream": "filesystem",
@@ -1335,7 +1339,9 @@ def test_relay_returns_503_when_managed_circuit_is_open() -> None:
     assert resp.status_code == 503
     assert resp.headers["retry-after"] == "12"
     assert resp.json()["detail"] == "upstream circuit open"
-    assert audit_events == [
+    assert audit_events[0]["event_type"] == "gateway.tool_call.allowed"
+    assert audit_events[0]["tool"] == "read_file"
+    assert audit_events[1:] == [
         {
             "action": "gateway.upstream_circuit_open",
             "upstream": "filesystem",

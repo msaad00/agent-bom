@@ -148,6 +148,21 @@ class AuditSpilloverStore:
             flags |= os.O_NOFOLLOW
         return os.open(parent, flags)
 
+    @staticmethod
+    def _validate_single_link_regular(stat_result: os.stat_result) -> None:
+        """Reject special files and aliases to files outside the backlog."""
+
+        if not stat.S_ISREG(stat_result.st_mode) or stat_result.st_nlink != 1:
+            raise ValueError("runtime audit backlog path must be a single-link regular file")
+
+    @classmethod
+    def _validate_existing_path(cls, path: Path) -> None:
+        try:
+            stat_result = path.lstat()
+        except FileNotFoundError:
+            return
+        cls._validate_single_link_regular(stat_result)
+
     @contextmanager
     def _exclusive(self) -> Iterator[None]:
         """Serialize bounds/rotation across store objects and processes."""
@@ -158,26 +173,27 @@ class AuditSpilloverStore:
             lock_flags = os.O_RDWR | os.O_CREAT
             if hasattr(os, "O_NOFOLLOW"):
                 lock_flags |= os.O_NOFOLLOW
-            lock_fd = os.open(lock_name, lock_flags, 0o600, dir_fd=parent_fd)
             try:
-                os.fchmod(lock_fd, stat.S_IRUSR | stat.S_IWUSR)
-                if fcntl is not None:
-                    fcntl.flock(lock_fd, fcntl.LOCK_EX)
-                yield
+                lock_fd = os.open(lock_name, lock_flags, 0o600, dir_fd=parent_fd)
+                try:
+                    self._validate_single_link_regular(os.fstat(lock_fd))
+                    if fcntl is not None:
+                        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                    yield
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    os.close(lock_fd)
             finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                os.close(lock_fd)
                 os.close(parent_fd)
 
-    @staticmethod
-    def _size_bytes(path: Path) -> int:
+    @classmethod
+    def _size_bytes(cls, path: Path) -> int:
         try:
             stat_result = path.lstat()
         except FileNotFoundError:
             return 0
-        if stat.S_ISLNK(stat_result.st_mode):
-            raise ValueError("runtime audit backlog path must not be a symlink")
+        cls._validate_single_link_regular(stat_result)
         return stat_result.st_size
 
     def spillover_size_bytes(self) -> int:
@@ -327,10 +343,11 @@ class AuditSpilloverStore:
             _ACTIVE_CLAIMS.discard(os.path.abspath(claim.path))
             return destination
 
-    @staticmethod
-    def _reject_symlink(path: Path) -> None:
-        if path.is_symlink():
-            raise ValueError("runtime audit backlog path must not be a symlink")
+    @classmethod
+    def _reject_symlink(cls, path: Path) -> None:
+        """Compatibility name for validating any existing backlog path."""
+
+        cls._validate_existing_path(path)
 
     def _claim_paths_locked(self) -> list[Path]:
         parent_fd = self._safe_parent_fd(self.spill_path)
@@ -346,29 +363,42 @@ class AuditSpilloverStore:
             raise ValueError("runtime audit spillover claim does not belong to this store")
 
     def _read_events_locked(self, path: Path) -> list[dict[str, Any]]:
-        self._reject_symlink(path)
         events: list[dict[str, Any]] = []
-        with path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning(
-                        "Skipping malformed runtime audit spillover record",
-                    )
-                    continue
-                if isinstance(payload, dict):
-                    events.append(payload)
+        for line in self._read_bytes_locked(path).decode("utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning(
+                    "Skipping malformed runtime audit spillover record",
+                )
+                continue
+            if isinstance(payload, dict):
+                events.append(payload)
         return events
 
     def _read_bytes_locked(self, path: Path) -> bytes:
-        self._reject_symlink(path)
-        if not path.exists():
-            return b""
-        return path.read_bytes()
+        parent_fd = self._safe_parent_fd(path)
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            try:
+                fd = os.open(path.name, flags, dir_fd=parent_fd)
+            except FileNotFoundError:
+                return b""
+            try:
+                self._validate_single_link_regular(os.fstat(fd))
+                with os.fdopen(fd, "rb") as handle:
+                    fd = -1
+                    return handle.read()
+            finally:
+                if fd >= 0:
+                    os.close(fd)
+        finally:
+            os.close(parent_fd)
 
     def _recover_orphan_claims_locked(self) -> None:
         claims = [path for path in self._claim_paths_locked() if self._claim_is_orphaned(path)]
@@ -399,25 +429,15 @@ class AuditSpilloverStore:
         return False
 
     def _append_lines_locked(self, path: Path, lines: list[str]) -> None:
-        parent_fd = self._safe_parent_fd(path)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        fd = os.open(path.name, flags, 0o600, dir_fd=parent_fd)
-        try:
-            os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
-            with os.fdopen(fd, "a", encoding="utf-8") as handle:
-                fd = -1
-                for line in lines:
-                    handle.write(line + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-        finally:
-            if fd >= 0:
-                os.close(fd)
-            os.close(parent_fd)
+        existing = self._read_bytes_locked(path)
+        appended = b"".join((line + "\n").encode("utf-8") for line in lines)
+        # Replace a private temporary inode instead of writing into an existing
+        # inode. Even if a hostile same-user process races a new hardlink after
+        # validation, the external inode is never mutated.
+        self._atomic_write_locked(path, existing + appended)
 
     def _atomic_write_locked(self, path: Path, content: bytes) -> None:
+        self._validate_existing_path(path)
         parent_fd = self._safe_parent_fd(path)
         temp_name = f".{path.name}.tmp-{uuid.uuid4().hex}"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL

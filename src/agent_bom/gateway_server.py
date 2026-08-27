@@ -3347,6 +3347,48 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     }
                 )
 
+        # Durably admit an authorized tool call before any upstream side effect.
+        # Readiness can remove an unhealthy pod from service, but it cannot
+        # protect an in-flight/direct request. Persisting the authorization here
+        # makes a full/unavailable audit backlog fail closed before execution.
+        _forward_is_tool_call = is_tools_call(message)
+        if _forward_is_tool_call and settings.audit_sink is not None:
+            try:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.tool_call",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "method": message.get("method"),
+                        "tool": extract_tool_name(message),
+                        "source_agent": source_agent,
+                        **_typed_runtime_event(
+                            GatewayRuntimeEventType.TOOL_CALL_ALLOWED,
+                            decision="allow",
+                            policy_source=resolved_policy_source,
+                            tool=extract_tool_name(message) or "",
+                        ),
+                    }
+                )
+            except GatewayAuditDeliveryUnavailableError:
+                record_gateway_relay(upstream.name, "audit_unavailable")
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "error": {
+                            "code": -32003,
+                            "message": "Gateway audit persistence unavailable",
+                            "data": {
+                                "reason": "Tool call was not executed because durable audit admission failed",
+                                "policy_source": "audit_delivery",
+                            },
+                        },
+                    },
+                    status_code=503,
+                    headers=rate_limit_headers or None,
+                )
+
         # Forward to the upstream with bounded W3C trace headers and JSON-RPC
         # `_meta` so both HTTP-aware and JSON-RPC-aware upstreams can stitch
         # the same end-to-end trace.
@@ -3558,29 +3600,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             if result_redacted:
                 upstream_response["result"] = _redact_obj_pii(upstream_response.get("result"))
 
-        if settings.audit_sink is not None:
-            _forward_is_tool_call = is_tools_call(message)
+        if settings.audit_sink is not None and not _forward_is_tool_call:
             forward_audit_event: dict[str, Any] = {
-                "action": "gateway.tool_call" if _forward_is_tool_call else "gateway.message",
+                "action": "gateway.message",
                 "upstream": upstream.name,
                 "tenant_id": tenant_id,
                 "method": message.get("method"),
-                "tool": extract_tool_name(message) if _forward_is_tool_call else None,
+                "tool": None,
             }
-            # Only an actual tools/call is an authorized tool invocation. JSON-RPC
-            # handshake / discovery traffic (initialize, tools/list, notifications)
-            # is forwarded too but must not be tagged TOOL_CALL_ALLOWED, or the live
-            # feed would inflate calls_today / tool_calls_authorized with
-            # non-invocation messages.
-            if _forward_is_tool_call:
-                forward_audit_event.update(
-                    _typed_runtime_event(
-                        GatewayRuntimeEventType.TOOL_CALL_ALLOWED,
-                        decision="allow",
-                        policy_source=resolved_policy_source,
-                        tool=extract_tool_name(message) or "",
-                    )
-                )
             await settings.audit_sink(forward_audit_event)
         response_headers = dict(rate_limit_headers)
         response_headers["traceparent"] = str(trace_meta["traceparent"])

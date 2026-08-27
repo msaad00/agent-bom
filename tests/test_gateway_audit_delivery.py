@@ -492,6 +492,55 @@ async def test_gateway_audit_fails_closed_when_bounded_persistence_is_full(tmp_p
     assert health["dropped_events"] == 1
 
 
+def test_relay_does_not_execute_tool_when_audit_persistence_is_already_full(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An allowed tool must be durably audited before its upstream side effect."""
+
+    monkeypatch.setenv("AGENT_BOM_TENANT_ID", "tenant-a")
+    upstream_calls = 0
+
+    async def upstream_caller(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    async def sender(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise AssertionError("a poisoned backlog must not reach the transport")
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        None,
+        tenant_id="tenant-a",
+        spill_path=spill,
+        dlq_path=dlq,
+        max_spillover_bytes=1,
+        max_dlq_bytes=2_000,
+        sender=sender,
+    )
+    assert sink._delivery_state.store.append_events([_event("poison")]) == "dlq"
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),
+        policy={},
+        audit_sink=sink,
+        upstream_caller=upstream_caller,
+    )
+    message = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {"name": "read_file", "arguments": {}},
+    }
+
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        response = client.post("/mcp/filesystem", json=message)
+
+    assert response.status_code == 503
+    assert upstream_calls == 0
+
+
 @pytest.mark.asyncio
 async def test_gateway_health_truthfully_reports_delivery_degradation_without_secrets(
     tmp_path: Path,

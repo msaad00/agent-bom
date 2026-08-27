@@ -835,6 +835,89 @@ def test_posture_counts_reconcile_with_overview_headline() -> None:
     get_compliance_hub_store().clear("default")
 
 
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_overview_uses_newest_current_snapshot_independent_of_store_order(
+    tmp_path,
+    reverse_put_order: bool,
+) -> None:
+    """Severity, KEV, framework failures and top risk share newest-wins truth."""
+    from agent_bom.api.routes.overview import _reset_overview_cache
+    from agent_bom.api.server import ScanJob, ScanRequest, set_job_store
+    from agent_bom.api.store import SQLiteJobStore
+
+    def _job(job_id: str, generated_at: str, finding: dict) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=generated_at,
+            request=ScanRequest(repo_url="https://example.test/acme/service.git"),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = generated_at
+        job.result = {
+            "generated_at": generated_at,
+            "scan_sources": ["repo_tree"],
+            "findings": [finding],
+            "agents": [],
+        }
+        return job
+
+    old = _job(
+        "old-critical",
+        "2026-08-20T00:00:00Z",
+        {
+            "id": "same-finding",
+            "severity": "critical",
+            "is_kev": True,
+            "applicable_frameworks": ["soc2"],
+        },
+    )
+    new = _job(
+        "new-low",
+        "2026-08-21T00:00:00Z",
+        {
+            "id": "same-finding",
+            "severity": "low",
+            "is_kev": False,
+            "applicable_frameworks": [],
+        },
+    )
+    jobs = [new, old] if reverse_put_order else [old, new]
+
+    snapshots = []
+    try:
+        stores = (
+            InMemoryJobStore(),
+            SQLiteJobStore(str(tmp_path / f"overview-order-{reverse_put_order}.db")),
+        )
+        for store in stores:
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            _reset_overview_cache()
+            response = TestClient(app).get("/v1/overview", headers=_AUTH_HEADERS)
+            assert response.status_code == 200, response.text
+            data = response.json()
+            snapshots.append(
+                {
+                    "severity": data["domains"]["vuln"]["detail"]["severity"],
+                    "kev": data["headline"]["kev"],
+                    "top_risks": data["top_risks"],
+                    "compliance_failing": next(
+                        row["count"] for row in data["posture"]["breakdown"] if row["driver"] == "compliance"
+                    ),
+                }
+            )
+    finally:
+        _clear_jobs()
+
+    assert snapshots[0] == snapshots[1]
+    assert snapshots[0]["severity"] == {"critical": 0, "high": 0, "medium": 0, "low": 1, "unrated": 0}
+    assert snapshots[0]["kev"] == 0
+    assert snapshots[0]["compliance_failing"] == 0
+    assert [row["severity"] for row in snapshots[0]["top_risks"]] == ["low"]
+
+
 def test_overview_compliance_failing_moves_grade() -> None:
     """A failing compliance framework feeds the exec grade (was hardcoded 0) (#3962)."""
     _clear_jobs()

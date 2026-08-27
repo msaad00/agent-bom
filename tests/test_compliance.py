@@ -182,6 +182,25 @@ def test_compliance_can_scope_posture_to_a_selected_scan():
     assert llm02["findings"] == 0
 
 
+def test_compliance_can_scope_posture_to_report_scan_id():
+    """Persisted job ids and report scan ids are both supported selectors."""
+    _clear_jobs()
+    _add_done_job(
+        [{"vulnerability_id": "CVE-REPORT", "severity": "critical", "owasp_tags": ["LLM01"]}],
+        job_id="job-wrapper",
+        result_extra={"scan_id": "report-scan-id"},
+    )
+
+    response = TestClient(app).get("/v1/compliance?scan_id=report-scan-id", headers=_AUTH_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["scan_count"] == 1
+    llm01 = next(control for control in data["owasp_llm_top10"] if control["code"] == "LLM01")
+    assert llm01["findings"] == 1
+    _clear_jobs()
+
+
 def test_agentic_context_is_inferred_from_canonical_agent_evidence_without_mcp() -> None:
     _clear_jobs()
     _add_done_job(
@@ -319,6 +338,82 @@ def test_newest_unified_finding_occurrence_wins_independent_of_backend_order(
         _clear_jobs()
 
     assert results == [("not_evaluated", 0), ("not_evaluated", 0)]
+
+
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_newest_empty_scan_retires_absent_findings_only_in_same_scope(
+    tmp_path: Path,
+    reverse_put_order: bool,
+) -> None:
+    """A successful empty re-scan is authoritative evidence, not missing data.
+
+    The latest completed scan for one target scope replaces that scope's prior
+    finding set even when the replacement set is empty.  Evidence from another
+    target scope remains current.  Selection is independent of backend return
+    order (in-memory insertion order versus SQLite newest-first order).
+    """
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    def _job(
+        job_id: str,
+        *,
+        repo_url: str,
+        generated_at: str,
+        findings: list[dict],
+    ) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=generated_at,
+            request=ScanRequest(repo_url=repo_url),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = generated_at
+        job.result = {
+            "generated_at": generated_at,
+            "scan_sources": ["repo_tree"],
+            "findings": findings,
+        }
+        return job
+
+    old_scope_a = _job(
+        "scope-a-old",
+        repo_url="https://example.test/acme/a.git",
+        generated_at="2026-08-20T00:00:00Z",
+        findings=[{"id": "a-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+    )
+    new_scope_a = _job(
+        "scope-a-new-empty",
+        repo_url="https://example.test/acme/a.git",
+        generated_at="2026-08-21T00:00:00Z",
+        findings=[],
+    )
+    scope_b = _job(
+        "scope-b-current",
+        repo_url="https://example.test/acme/b.git",
+        generated_at="2026-08-20T12:00:00Z",
+        findings=[{"id": "b-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+    )
+    jobs = [new_scope_a, scope_b, old_scope_a] if reverse_put_order else [old_scope_a, scope_b, new_scope_a]
+
+    results = []
+    try:
+        stores = (
+            InMemoryJobStore(),
+            SQLiteJobStore(str(tmp_path / f"empty-scope-{reverse_put_order}.db")),
+        )
+        for store in stores:
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
+            results.append((cc71["status"], cc71["findings"]))
+    finally:
+        _clear_jobs()
+
+    # Scope A's old finding is retired by its empty successor; scope B remains.
+    assert results == [("fail", 1), ("fail", 1)]
 
 
 def test_unified_finding_authority_uses_stable_job_id_tie_break() -> None:

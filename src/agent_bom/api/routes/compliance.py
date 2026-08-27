@@ -229,54 +229,14 @@ def _result_compliance_evidence(result: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in (result.get("blast_radius") or []) if isinstance(row, dict)]
 
 
-def _normalized_evidence_timestamp(*values: Any) -> str:
-    """Return the first valid timestamp in UTC-sortable form.
+def _compliance_evidence_authority_key(job: Any, _row: dict[str, Any]) -> tuple[str, str, str]:
+    """Compatibility wrapper around the canonical scan authority key."""
 
-    Stored reports are expected to use ISO-8601, but legacy imports can carry
-    malformed values. Those cannot outrank a later valid observation; callers
-    therefore fall through to the next authoritative timestamp.
-    """
+    from agent_bom.api.findings_current import scan_evidence_authority_key
 
-    for value in values:
-        raw = str(value or "").strip()
-        if not raw:
-            continue
-        try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except ValueError:
-            continue
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc).isoformat()
-    return ""
-
-
-def _compliance_evidence_authority_key(job: Any, row: dict[str, Any]) -> tuple[str, str, str]:
-    """Deterministic newest-wins key for one canonical finding occurrence.
-
-    The report's evidence timestamp is authoritative when present, followed by
-    the persisted job completion time. ``job_id`` is a stable final tie-break,
-    making the winner independent of InMemory/SQLite/Postgres iteration order.
-    """
-
-    raw_result = getattr(job, "result", None)
-    result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
-    raw_scan_run = result.get("scan_run")
-    scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
-    completed_at = _normalized_evidence_timestamp(
-        getattr(job, "completed_at", None),
-        getattr(job, "created_at", None),
-    )
-    evidence_at = _normalized_evidence_timestamp(
-        result.get("generated_at"),
-        result.get("scan_timestamp"),
-        scan_run.get("generated_at"),
-        row.get("observed_at"),
-        row.get("last_seen"),
-        row.get("scan_completed_at"),
-        completed_at,
-    )
-    return evidence_at, completed_at, str(getattr(job, "job_id", ""))
+    # Kept as a compatibility seam for callers/tests; scan-level authority is
+    # canonicalized in findings_current and shared with Overview/Findings.
+    return scan_evidence_authority_key(job)
 
 
 def _result_evidence_context(result: dict[str, Any]) -> tuple[bool, bool, set[str]]:
@@ -520,6 +480,10 @@ async def get_compliance(
             if job.job_id == scan_id or result_scan_id == scan_id:
                 matching_jobs.append(job)
         tenant_jobs = matching_jobs
+
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    tenant_jobs = list(current_scan_jobs(tenant_jobs, since=None, scan_id=scan_id))
 
     # Collect the unified findings spine (legacy blast-radius fallback) from all
     # completed scans, deduped by canonical occurrence identity across re-scans.
@@ -2355,12 +2319,13 @@ def _compound_issue_count(tenant_jobs: list[Any]) -> int:
     correlation that lives in ``blast_radius`` (not a raw severity count).
     Deduped by vulnerability id across scans.
     """
+    from agent_bom.api.findings_current import current_scan_jobs
+
     seen_ids: set[str] = set()
     compound = 0
-    for job in tenant_jobs:
-        if job.status != JobStatus.DONE or not job.result:
-            continue
-        for b in job.result.get("blast_radius", []):
+    for job in current_scan_jobs(tenant_jobs, since=None, scan_id=None):
+        result = cast(dict[str, Any], job.result)
+        for b in result.get("blast_radius", []):
             vid = b.get("vulnerability_id", "")
             if vid in seen_ids:
                 continue

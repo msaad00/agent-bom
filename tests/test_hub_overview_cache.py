@@ -193,6 +193,42 @@ def test_revision_tag_rejects_a_late_stale_cache_write():
     assert hub_overview_cache.get_cached_severity("acme", revision=1) is None
 
 
+@pytest.mark.parametrize("missing_component", ["revision", "severity", "kev"])
+def test_posture_counts_fails_closed_when_revisioned_component_is_unavailable(monkeypatch, missing_component):
+    """The nav count endpoint must not turn a partial hub read into clean zeros."""
+    from fastapi import HTTPException
+
+    class _RevisionStore:
+        def overview_evidence_revision(self, tenant_id: str) -> int:
+            assert tenant_id == "acme"
+            if missing_component == "revision":
+                raise RuntimeError("revision store unavailable")
+            return 7
+
+    store = _RevisionStore()
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+
+    def _severity(request, **kwargs):
+        if missing_component == "severity" and kwargs.get("strict"):
+            overview._raise_hub_overview_unavailable()
+        return {"critical": 1}
+
+    def _kev(request, **kwargs):
+        if missing_component == "kev" and kwargs.get("strict"):
+            overview._raise_hub_overview_unavailable()
+        return 0
+
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", _severity)
+    monkeypatch.setattr(overview, "_hub_kev_snapshot", _kev)
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="acme"), headers={})
+    with pytest.raises(HTTPException) as raised:
+        overview.exec_severity_counts(request, [])
+    assert raised.value.status_code == 503
+    assert raised.value.headers == {"Retry-After": "1"}
+
+
 def test_sqlite_overview_revision_is_shared_across_processes(tmp_path):
     from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore
 

@@ -426,7 +426,7 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("Compliance 0%")).toBeInTheDocument();
     expect(screen.getByText("CIS Controls v8")).toBeInTheDocument();
     // The percentage always carries the denominator it was computed over.
-    expect(screen.getByText(/0% of 10 evaluated controls · 1 framework need attention/i)).toBeInTheDocument();
+    expect(screen.getByText(/0% of 10 evaluated controls · 1 framework needs attention/i)).toBeInTheDocument();
     expect(screen.queryByText(/coverage appears after the first completed scan/i)).not.toBeInTheDocument();
   });
 
@@ -485,6 +485,36 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/Not evaluated · 0\/65 controls/i)).toBeInTheDocument();
     // The unevaluated framework must not claim any pass count.
     expect(screen.queryByText(/0\/65 pass/i)).not.toBeInTheDocument();
+  });
+
+  it("computes compliance totals and failures before limiting the visible cards", () => {
+    const frameworks = Array.from({ length: 9 }, (_, index) => ({
+      id: `framework-${index + 1}`,
+      label: `Framework ${index + 1}`,
+      kind: "scored" as const,
+      pass: index === 8 ? 0 : 1,
+      warn: 0,
+      fail: index === 8 ? 1 : 0,
+      total: 1,
+    }));
+
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        compliance={{
+          overallScore: 88,
+          overallStatus: "fail",
+          evaluatedControls: 9,
+          totalControls: 9,
+          frameworks,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/1 framework needs attention/i)).toBeInTheDocument();
+    expect(within(screen.getByTestId("overview-compliance-snapshot")).getByText("9", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Framework 8")).toBeInTheDocument();
+    expect(screen.queryByText("Framework 9")).not.toBeInTheDocument();
   });
 
   it("renders the score breakdown explainer from weighted inputs (#3940)", () => {

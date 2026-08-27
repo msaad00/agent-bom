@@ -2918,9 +2918,11 @@ def _list_findings_impl(
     # re-scanning a project emits the same finding ``id`` under a fresh
     # ``scan_id``, and the in-memory store retains every completed job. Without
     # deduping, ``total`` inflated by one full copy per re-scan (Postgres reads
-    # ``hub_findings_current`` which already dedupes). Iterate jobs oldest-first
-    # so the latest occurrence of each finding id wins; ``?scan_id=`` still
-    # returns that scan's rows verbatim.
+    # ``hub_findings_current`` which already dedupes). The shared current-scan
+    # selector first chooses the newest successful snapshot per target scope —
+    # including an empty snapshot, which retires that scope's absent findings —
+    # then resolves any cross-scope identity overlap by evidence time.
+    # ``?scan_id=`` still returns that scan's rows verbatim.
     from agent_bom.api.findings_current import current_scan_findings
 
     scope_filters = _canonical_scope_filters(

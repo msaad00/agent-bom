@@ -657,9 +657,10 @@ function ComplianceSnapshotPanel({
   hasScanEvidence?: boolean | undefined;
   defaultOpen?: boolean | undefined;
 }) {
-  const frameworks = (compliance?.frameworks ?? []).slice(0, 8);
+  const allFrameworks = compliance?.frameworks ?? [];
+  const frameworks = allFrameworks.slice(0, 8);
   const evidenceReady = hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance);
-  const failing = evidenceReady ? frameworks.filter((item) => item.kind === "scored" && item.fail > 0).length : 0;
+  const failing = evidenceReady ? allFrameworks.filter((item) => item.kind === "scored" && item.fail > 0).length : 0;
   const statusTone =
     !evidenceReady
       ? "text-[color:var(--text-tertiary)]"
@@ -680,12 +681,12 @@ function ComplianceSnapshotPanel({
       defaultOpen={defaultOpen}
       subtitle={
         evidenceReady
-          ? `${Math.round(compliance.overallScore)}% of ${compliance.evaluatedControls} evaluated control${compliance.evaluatedControls === 1 ? "" : "s"} · ${failing} framework${failing === 1 ? "" : "s"} need attention`
+          ? `${Math.round(compliance.overallScore)}% of ${compliance.evaluatedControls} evaluated control${compliance.evaluatedControls === 1 ? "" : "s"} · ${failing} framework${failing === 1 ? " needs" : "s need"} attention`
           : hasScanEvidence
             ? "No evaluated framework coverage is available for completed scans"
             : "Framework coverage appears after the first completed scan"
       }
-      count={evidenceReady && frameworks.length > 0 ? frameworks.length : undefined}
+      count={evidenceReady && allFrameworks.length > 0 ? allFrameworks.length : undefined}
       scrollMaxHeight="16rem"
       data-testid="overview-compliance-snapshot"
       actions={

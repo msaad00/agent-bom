@@ -39,7 +39,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 from urllib.parse import urlencode
 
 import anyio.to_thread
@@ -111,7 +111,7 @@ _overview_inflight: dict[str, _OverviewFlight] = {}
 _HUB_SNAPSHOT_MAX_ATTEMPTS = 3
 
 
-def _raise_hub_overview_unavailable() -> None:
+def _raise_hub_overview_unavailable() -> NoReturn:
     raise HTTPException(
         status_code=503,
         detail="Overview evidence is temporarily unavailable; retry the request.",
@@ -542,22 +542,30 @@ def _estate_rollup(jobs: list[Any]) -> dict[str, Any]:
     unique_packages = 0
     latest_scan_at: str | None = None
 
+    from agent_bom.api import time_window
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    # Operational counters describe job history. Evidence-bearing posture below
+    # is folded only from the newest successful snapshot per target scope.
     for job in jobs:
         status = getattr(job, "status", None)
         if status == JobStatus.FAILED:
             failed_count += 1
         elif status == JobStatus.RUNNING:
             running_count += 1
-        if status != JobStatus.DONE or not job.result:
+        if status != JobStatus.DONE or not isinstance(getattr(job, "result", None), dict):
             continue
         scan_count += 1
         done_count += 1
-        result = cast(dict[str, Any], job.result)
-
         created = getattr(job, "created_at", None)
         created_str = str(created) if created is not None else None
         if created_str and (latest_scan_at is None or created_str > latest_scan_at):
             latest_scan_at = created_str
+
+    since = time_window.window_since_iso(time_window.normalize_window_days(None))
+    evidence_jobs = current_scan_jobs(jobs, since=since, scan_id=None)
+    for job in evidence_jobs:
+        result = cast(dict[str, Any], job.result)
 
         for src in result.get("scan_sources", []) or []:
             if src:
@@ -667,9 +675,10 @@ def _row_lenses(row: dict[str, Any]) -> set[str]:
 
 def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:
     """Letter grade + score from the latest completed scan (same as /v1/posture)."""
-    for job in jobs:
-        if job.status != JobStatus.DONE or not job.result:
-            continue
+    from agent_bom.api.findings_current import current_scan_jobs, scan_evidence_authority_key
+
+    current_jobs = current_scan_jobs(jobs, since=None, scan_id=None)
+    for job in sorted(current_jobs, key=scan_evidence_authority_key, reverse=True):
         result = cast(dict[str, Any], job.result)
         scorecard = result.get("posture_scorecard")
         if isinstance(scorecard, dict) and scorecard:
@@ -1088,8 +1097,16 @@ def exec_severity_counts(request: Request, jobs: list[Any]) -> dict[str, int]:
     snapshot; a caller that already holds them should use
     ``_reconciled_exec_counts`` directly to avoid a second pass.
     """
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
     estate = _estate_rollup(jobs)
-    return _reconciled_exec_counts(_exec_estate(estate, jobs), _hub_severity_snapshot(request), _hub_kev_snapshot(request))
+    hub_snapshot = _capture_hub_overview_snapshot(
+        request,
+        get_compliance_hub_store(),
+        include_details=False,
+        require_revision=True,
+    )
+    return _reconciled_exec_counts(_exec_estate(estate, jobs), hub_snapshot.severity, hub_snapshot.kev)
 
 
 def _exec_posture(
@@ -1192,7 +1209,13 @@ async def get_overview(request: Request) -> dict[str, Any]:
         ) from exc
 
 
-def _capture_hub_overview_snapshot(request: Request, hub_store: Any) -> _HubOverviewSnapshot:
+def _capture_hub_overview_snapshot(
+    request: Request,
+    hub_store: Any,
+    *,
+    include_details: bool = True,
+    require_revision: bool = False,
+) -> _HubOverviewSnapshot:
     """Read all hub inputs under one durable tenant revision.
 
     Each aggregate is independently bounded/indexed, so no cross-backend
@@ -1205,24 +1228,37 @@ def _capture_hub_overview_snapshot(request: Request, hub_store: Any) -> _HubOver
     tenant_id = _tenant_id(request)
     revision_reader = getattr(hub_store, "overview_evidence_revision", None)
     if not callable(revision_reader):
+        if require_revision:
+            _raise_hub_overview_unavailable()
         return _HubOverviewSnapshot(
             severity=_hub_severity_snapshot(request),
-            failing_frameworks=_hub_failing_frameworks_snapshot(request),
+            failing_frameworks=(_hub_failing_frameworks_snapshot(request) if include_details else set()),
             kev=_hub_kev_snapshot(request),
-            top_risks=_hub_top_risks(request),
+            top_risks=(_hub_top_risks(request) if include_details else []),
             revision=None,
         )
 
+    def _read_revision() -> int:
+        try:
+            return int(revision_reader(tenant_id))
+        except HTTPException:
+            raise
+        except Exception:
+            _logger.debug("hub overview revision read failed", exc_info=False)
+            _raise_hub_overview_unavailable()
+
     for _attempt in range(_HUB_SNAPSHOT_MAX_ATTEMPTS):
-        revision = int(revision_reader(tenant_id))
+        revision = _read_revision()
         snapshot = _HubOverviewSnapshot(
             severity=_hub_severity_snapshot(request, revision=revision, strict=True),
-            failing_frameworks=_hub_failing_frameworks_snapshot(request, revision=revision, strict=True),
+            failing_frameworks=(
+                _hub_failing_frameworks_snapshot(request, revision=revision, strict=True) if include_details else set()
+            ),
             kev=_hub_kev_snapshot(request, revision=revision, strict=True),
-            top_risks=_hub_top_risks(request, strict=True),
+            top_risks=(_hub_top_risks(request, strict=True) if include_details else []),
             revision=revision,
         )
-        if int(revision_reader(tenant_id)) == revision:
+        if _read_revision() == revision:
             return snapshot
 
     raise HTTPException(

@@ -156,7 +156,16 @@ def test_unknown_field_on_a_write_is_rejected_and_named(method: str, path: str, 
 BODY_TENANT_WRITES = [
     pytest.param("POST", "/v1/credentials", {"display_name": "c", "provider": "aws", "external_ref": "env:X"}, id="credentials"),
     pytest.param("POST", "/v1/schedules", {"name": "s", "cron_expression": "0 0 * * *"}, id="schedules"),
-    pytest.param("POST", "/v1/sources", {"display_name": "s", "kind": "scan.repo"}, id="sources"),
+    pytest.param(
+        "POST",
+        "/v1/sources",
+        {
+            "display_name": "s",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://github.com/example/repo"}},
+        },
+        id="sources",
+    ),
     pytest.param("POST", "/v1/exceptions", {"vuln_id": "CVE-2024-1", "package_name": "p"}, id="exceptions"),
     pytest.param(
         "POST",

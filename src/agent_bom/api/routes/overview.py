@@ -58,6 +58,7 @@ from agent_bom.graph.severity import (
     severity_display_bucket,
 )
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter(
     dependencies=[
@@ -837,8 +838,11 @@ def _hub_failing_frameworks_snapshot(request: Request) -> set[str]:
             return set()
         since = time_window.window_since_iso(time_window.normalize_window_days(None))
         counts = counter(tenant_id, origin="bulk_ingest", since=since, status="open") or {}
-    except Exception:  # pragma: no cover - hub store optional
-        _logger.debug("hub framework snapshot failed", exc_info=True)
+    except Exception as exc:  # pragma: no cover - hub store optional
+        _logger.debug(
+            "hub framework snapshot failed: %s",
+            sanitize_text(sanitize_error(exc, generic=True)),
+        )
         return set()
     normalized = {str(slug): int(count or 0) for slug, count in counts.items() if slug and int(count or 0) > 0}
     hub_overview_cache.set_cached_failing_frameworks(tenant_id, normalized)

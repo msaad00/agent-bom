@@ -98,6 +98,25 @@ def test_failing_framework_snapshot_is_memoised_and_invalidated(monkeypatch):
     assert store.calls == 2
 
 
+def test_failing_framework_snapshot_sanitizes_store_exception(monkeypatch, caplog):
+    secret = "AKIAIOSFODNN7EXAMPLE"
+
+    class _FailingStore:
+        def current_failing_framework_slug_counts(self, tenant_id: str, **filters) -> dict[str, int]:
+            raise RuntimeError(f"token={secret} path=/private/customer/tenant.db")
+
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: _FailingStore())
+
+    with caplog.at_level("DEBUG", logger=overview._logger.name):
+        assert overview._hub_failing_frameworks_snapshot(_request("acme")) == set()
+
+    record = next(record for record in caplog.records if record.message.startswith("hub framework snapshot failed"))
+    assert record.exc_info is None
+    assert secret not in caplog.text
+    assert "/private/customer/tenant.db" not in caplog.text
+
+
 def test_ttl_zero_disables_cache(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_HUB_OVERVIEW_CACHE_TTL_SECONDS", "0")
     store = _CountingStore({"critical": 1, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0})

@@ -27,8 +27,10 @@ from agent_bom.event_normalization import build_agentic_identity_graph_projectio
 from agent_bom.runtime import audit_delivery as _audit_delivery
 
 AuditDeliveryController = _audit_delivery.AuditDeliveryController
+AuditDeliveryPaths = _audit_delivery.AuditDeliveryPaths
 AuditDeliveryState = _audit_delivery.AuditDeliveryState
 AuditSpilloverStore = _audit_delivery.AuditSpilloverStore
+audit_delivery_paths = _audit_delivery.audit_delivery_paths
 
 logger = logging.getLogger(__name__)
 

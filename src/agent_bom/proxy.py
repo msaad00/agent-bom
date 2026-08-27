@@ -64,8 +64,10 @@ ProxyMetricsServer = _proxy_audit.ProxyMetricsServer
 ReplayDetector = _proxy_audit.ReplayDetector
 RotatingAuditLog = _proxy_audit.RotatingAuditLog
 AuditDeliveryController = _proxy_audit.AuditDeliveryController
+AuditDeliveryPaths = _proxy_audit.AuditDeliveryPaths
 AuditDeliveryState = _proxy_audit.AuditDeliveryState
 AuditSpilloverStore = _proxy_audit.AuditSpilloverStore
+audit_delivery_paths = _proxy_audit.audit_delivery_paths
 _truncate_args = _proxy_audit._truncate_args
 compute_payload_hash = _proxy_audit.compute_payload_hash
 compute_response_hmac = _proxy_audit.compute_response_hmac
@@ -406,6 +408,18 @@ def _sanitize_for_log(value: object) -> str:
 def _generate_proxy_source_id() -> str:
     hostname = platform.node() or "unknown"
     return hashlib.sha256(hostname.encode()).hexdigest()[:12]
+
+
+def _proxy_audit_delivery_paths(
+    control_plane_url: str,
+    tenant_id: str,
+    source_id: str,
+) -> AuditDeliveryPaths:
+    """Resolve restart-stable, secret-free proxy audit backlog paths."""
+
+    state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
+    identity = "\x00".join((control_plane_url.rstrip("/"), tenant_id, source_id))
+    return audit_delivery_paths(state_dir, surface="proxy", identity=identity)
 
 
 def _control_plane_headers(token: str | None, etag: str | None = None) -> dict[str, str]:
@@ -1285,16 +1299,21 @@ async def run_proxy(
         max_audit_buffer_bytes,
         int(os.environ.get("AGENT_BOM_PROXY_AUDIT_SPILLOVER_MAX_BYTES", str(max_audit_buffer_bytes * 8))),
     )
+    stable_audit_paths = _proxy_audit_delivery_paths(
+        control_plane_url or "local",
+        control_plane_tenant_id,
+        control_plane_source_id,
+    )
     audit_spill_path = Path(
         os.environ.get(
             "AGENT_BOM_PROXY_AUDIT_SPILLOVER_PATH",
-            str(Path(tempfile.gettempdir()) / f"agent-bom-proxy-audit-{control_plane_session_id}.jsonl"),
+            str(stable_audit_paths.spill_path),
         )
     )
     audit_dlq_path = Path(
         os.environ.get(
             "AGENT_BOM_PROXY_AUDIT_DLQ_PATH",
-            str(Path(tempfile.gettempdir()) / f"agent-bom-proxy-audit-{control_plane_session_id}.dlq.jsonl"),
+            str(stable_audit_paths.dlq_path),
         )
     )
     audit_delivery = AuditDeliveryController(
@@ -1407,15 +1426,14 @@ async def run_proxy(
             return True
         async with audit_lock:
             alerts = list(audit_buffer)
-            in_memory_bytes = audit_buffer_bytes
-            spillover_alerts = audit_spillover.read_spillover()
+            spillover_claim = audit_spillover.claim_spillover()
             audit_buffer.clear()
             audit_buffer_bytes = 0
             _sync_audit_metrics()
+        spillover_alerts = spillover_claim.events if spillover_claim else []
         combined_alerts = spillover_alerts + alerts
         if not combined_alerts and summary is None:
             return True
-        spillover_had_data = bool(spillover_alerts)
         try:
             await _push_proxy_audit_batch(
                 control_plane_url,
@@ -1429,13 +1447,19 @@ async def run_proxy(
             metrics.record_audit_push_failure()
             logger.warning("Proxy audit push failed: %s", sanitize_text(exc))
             async with audit_lock:
-                audit_buffer[:0] = alerts
-                audit_buffer_bytes += in_memory_bytes
+                if spillover_claim is not None:
+                    destination = audit_spillover.restore_claim(spillover_claim, alerts)
+                else:
+                    destination = audit_spillover.append_events(alerts)
+                if destination == "dlq":
+                    logger.error("Proxy audit retry backlog exceeded the spill limit; persisted the batch to the bounded DLQ")
+                elif destination == "dropped":
+                    logger.error("Proxy audit spillover and DLQ are full; a failed delivery batch was dropped")
                 _sync_audit_metrics()
             return False
         else:
-            if spillover_had_data:
-                audit_spillover.clear_spillover()
+            if spillover_claim is not None:
+                audit_spillover.acknowledge_claim(spillover_claim)
             _sync_audit_metrics()
             return True
 

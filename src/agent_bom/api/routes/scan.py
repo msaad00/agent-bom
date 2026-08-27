@@ -33,6 +33,7 @@ import json
 import logging
 import math
 import os
+import sys
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
@@ -1276,7 +1277,10 @@ def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str,
 
     findings = result.get("findings")
     envelope = {key: value for key, value in result.items() if key != "findings"}
-    sanitized = sanitize_sensitive_payload(envelope, max_str_len=10_000)
+    # This is the explicit full-result endpoint.  Redact sensitive content but
+    # do not silently truncate legitimate evidence; callers that only need a
+    # bounded polling envelope use ``/{job_id}/status`` instead.
+    sanitized = sanitize_sensitive_payload(envelope, max_str_len=sys.maxsize)
     if not isinstance(sanitized, dict):
         return {"document_type": "AI-BOM", "redaction_error": "scan result sanitizer returned a non-object payload"}
     redacted = cast(dict[str, Any], fail_closed_cis_result(sanitized))

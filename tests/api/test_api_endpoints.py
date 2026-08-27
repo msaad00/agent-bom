@@ -632,6 +632,9 @@ def test_get_scan_status_omits_large_result_payload():
 
     assert full.status_code == 200
     assert status.status_code == 200
+    full_body = full.json()
+    assert len(full_body["result"]["agents"][0]["payload"]) == 250_000
+    assert len(full_body["result"]["blast_radius"][0]["payload"]) == 250_000
     body = status.json()
     assert body["job_id"] == "job-large-result"
     assert body["status"] == "done"

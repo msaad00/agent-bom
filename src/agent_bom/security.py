@@ -224,8 +224,20 @@ _VALUE_CREDENTIAL_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----"),  # Private keys
     re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}"),  # JWTs
     re.compile(r"xox[bpsar]-[A-Za-z0-9-]{10,}"),  # Slack tokens
-    re.compile(r"\w+://[^:]+:[^@]+@"),  # Connection strings with embedded credentials
 ]
+
+# Keep credential-bearing connection URLs on a literal-prefixed fast path.
+# Putting an unbounded scheme expression in ``_VALUE_CREDENTIAL_PATTERNS``
+# makes regex search backtrack from every character of a non-URL model payload,
+# turning a linear redaction pass into minutes of CPU time.
+_CONNECTION_CREDENTIAL_RE = re.compile(r"://[^:\s/@]+:[^@\s/]+@")
+
+
+def _contains_value_credential(value: str) -> bool:
+    return any(pattern.search(value) for pattern in _VALUE_CREDENTIAL_PATTERNS) or (
+        "://" in value and _CONNECTION_CREDENTIAL_RE.search(value) is not None
+    )
+
 
 # Base64 alphabet (standard + URL-safe)
 _B64_RE = re.compile(r"^[A-Za-z0-9+/\-_]+=*$")
@@ -277,7 +289,7 @@ def _is_obfuscated_credential(value: str) -> bool:
             if any(re.search(p, decoded_lower) for p in SENSITIVE_PATTERNS):
                 return True
             # Decoded text matches a known credential value pattern
-            if any(p.search(decoded) for p in _VALUE_CREDENTIAL_PATTERNS):
+            if _contains_value_credential(decoded):
                 return True
         except (ValueError, UnicodeDecodeError, binascii.Error):
             pass  # Not valid base64 — fall through to entropy check
@@ -334,7 +346,7 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
         else:
             str_value = str(value)
             # Scan values for plaintext credential patterns (catches custom-named vars)
-            if any(p.search(str_value) for p in _VALUE_CREDENTIAL_PATTERNS):
+            if _contains_value_credential(str_value):
                 sanitized[key] = "***REDACTED***"
             # Detect obfuscated secrets: base64-encoded values and high-entropy strings
             elif _is_obfuscated_credential(str_value):
@@ -490,6 +502,8 @@ def sanitize_text(value: object, max_len: int = 1000) -> str:
     text = re.sub(r"https?://[^\s\"'<>]+", lambda match: str(sanitize_url(match.group(0)) or ""), text)
     for pattern in _VALUE_CREDENTIAL_PATTERNS:
         text = pattern.sub("<redacted>", text)
+    if "://" in text:
+        text = _CONNECTION_CREDENTIAL_RE.sub("://<redacted>@", text)
     # The pattern list carries AWS access key *ids* but nothing for the 40-char
     # secret access key, so the harmless half was redacted while the dangerous
     # half was printed verbatim. Anything the shapes above miss is caught by the
@@ -543,8 +557,13 @@ def text_requires_redaction(value: object) -> bool:
     text = str(value)
     if "http://" in text.lower() or "https://" in text.lower():
         return True
-    if _EMAIL_RE.search(text) or any(pattern.search(text) for pattern in _VALUE_CREDENTIAL_PATTERNS):
+    if _EMAIL_RE.search(text) or _contains_value_credential(text):
         return True
+    # The keyed-value grammar cannot match without an assignment delimiter.
+    # Avoid starting its bounded-key regex at every character of large plain
+    # model/output strings.
+    if "=" not in text and ":" not in text:
+        return False
     return any(
         env_key_is_credential(match.group("key")) and _is_credential_material(match.group("value"))
         for match in _TEXT_KEY_VALUE_RE.finditer(text)

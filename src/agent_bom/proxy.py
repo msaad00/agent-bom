@@ -64,6 +64,7 @@ ProxyMetricsServer = _proxy_audit.ProxyMetricsServer
 ReplayDetector = _proxy_audit.ReplayDetector
 RotatingAuditLog = _proxy_audit.RotatingAuditLog
 AuditDeliveryController = _proxy_audit.AuditDeliveryController
+AuditDeliveryState = _proxy_audit.AuditDeliveryState
 AuditSpilloverStore = _proxy_audit.AuditSpilloverStore
 _truncate_args = _proxy_audit._truncate_args
 compute_payload_hash = _proxy_audit.compute_payload_hash
@@ -1316,16 +1317,18 @@ async def run_proxy(
         dlq_path=audit_dlq_path,
         max_spillover_bytes=max_audit_spillover_bytes,
     )
+    audit_delivery_state = AuditDeliveryState(controller=audit_delivery, store=audit_spillover)
 
     def _event_size_bytes(payload: dict) -> int:
         return len(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
 
     def _sync_audit_metrics() -> None:
-        metrics.set_audit_buffer_bytes(audit_buffer_bytes)
-        metrics.set_audit_spillover_bytes(audit_spillover.spillover_size_bytes())
-        metrics.set_audit_dlq_bytes(audit_spillover.dlq_size_bytes())
-        metrics.set_audit_push_backoff_seconds(audit_delivery.current_backoff_seconds())
-        metrics.set_audit_circuit_open(audit_delivery.is_circuit_open())
+        health = audit_delivery_state.health(buffer_bytes=audit_buffer_bytes)
+        metrics.set_audit_buffer_bytes(int(health["buffer_bytes"]))
+        metrics.set_audit_spillover_bytes(int(health["spillover_bytes"]))
+        metrics.set_audit_dlq_bytes(int(health["dlq_bytes"]))
+        metrics.set_audit_push_backoff_seconds(int(health["backoff_seconds"]))
+        metrics.set_audit_circuit_open(bool(health["circuit_open"]))
 
     async def _queue_control_plane_alert(alert_payload: dict) -> None:
         nonlocal audit_buffer_bytes
@@ -1341,6 +1344,10 @@ async def run_proxy(
                         "Proxy audit spillover exceeded %s bytes; diverting alert backlog to DLQ %s",
                         max_audit_spillover_bytes,
                         audit_dlq_path,
+                    )
+                elif destination == "dropped":
+                    logger.error(
+                        "Proxy audit spillover and DLQ are full; dropping one sanitized audit event",
                     )
                 else:
                     logger.warning(

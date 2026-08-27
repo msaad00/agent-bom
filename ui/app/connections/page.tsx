@@ -348,7 +348,7 @@ const SOURCE_KIND_OPTIONS: KindOption[] = [
     value: "connector.cloud_read_only",
     label: "Cloud API connector",
     mode: "Read-only connector",
-    detail: "Use a named backend connector to read approved cloud APIs with customer-managed credentials.",
+    detail: "Use a named backend connector with credentials configured on the self-hosted control plane.",
   },
   {
     value: "connector.registry",
@@ -1187,7 +1187,7 @@ function ConnectionsHub() {
       description: formState.description.trim(),
       owner: formState.owner.trim(),
       enabled: true,
-      credential_mode: selected.mode === "Read-only connector" ? "reference" : "none",
+      credential_mode: "none",
     };
 
     if (!payload.display_name) {

@@ -132,9 +132,12 @@ after the original local source store path. The logical entity remains
 
 Credential references store customer-managed credential metadata such as a
 role ARN, secret-manager path, workload-identity name, owner, scope, and health
-state. They do not store credential material. Sources may point at a
-`credential_ref_id`; the API validates tenant ownership before a source can be
-created, tested, or run with that reference.
+state. They do not store or resolve credential material. Push/runtime source
+registrations may point at a `credential_ref_id` for governance attribution;
+the API validates tenant ownership. Runnable sources reject these metadata-only
+references instead of silently launching without them. Use a brokered cloud
+connection or configure the named connector on the self-hosted control plane
+when a scan needs credentials.
 
 ### Audit chain vs policy audit
 

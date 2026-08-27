@@ -846,6 +846,51 @@ describe("ConnectionsPage — Connect segment", () => {
     );
   });
 
+  it("registers backend connectors without claiming a credential-reference binding", async () => {
+    navState.search = "?tab=sources";
+    apiMock.listConnectors.mockResolvedValue({ connectors: ["jira"] });
+    apiMock.getConnectorHealth.mockResolvedValue({
+      connector: "jira",
+      state: "healthy",
+      message: "ready",
+      api_version: null,
+    });
+    apiMock.createSource.mockResolvedValue({
+      ...SOURCE_RECORD,
+      kind: "connector.registry",
+      connector_name: "jira",
+      credential_mode: "none",
+    });
+    render(<ConnectionsPage />);
+
+    fireEvent.change(await screen.findByPlaceholderText("Payments monorepo"), {
+      target: { value: "Jira evidence" },
+    });
+    const kind = screen.getByRole("combobox", { name: "Kind" });
+    fireEvent.change(kind, {
+      target: { value: "connector.registry" },
+    });
+    await waitFor(() => expect(kind).toHaveValue("connector.registry"));
+    const connector = await screen.findByRole("combobox", { name: "Connector name" });
+    await screen.findByRole("option", { name: "jira" });
+    fireEvent.change(connector, {
+      target: { value: "jira" },
+    });
+    await waitFor(() => expect(connector).toHaveValue("jira"));
+    fireEvent.click(screen.getByRole("button", { name: "Register source" }));
+
+    await waitFor(() =>
+      expect(apiMock.createSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          display_name: "Jira evidence",
+          kind: "connector.registry",
+          connector_name: "jira",
+          credential_mode: "none",
+        }),
+      ),
+    );
+  });
+
   it("filters the gallery by category and free-text search", async () => {
     render(<ConnectionsPage />);
     await waitForConnectTab();

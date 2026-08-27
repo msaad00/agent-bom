@@ -71,7 +71,7 @@ def test_source_crud_and_role_enforcement(source_client: TestClient) -> None:
             "kind": "connector.cloud_read_only",
             "owner": "platform-security",
             "connector_name": "jira",
-            "credential_mode": "reference",
+            "credential_mode": "none",
             "description": "Read-only cloud discovery source",
         },
     )
@@ -343,7 +343,7 @@ def test_credential_reference_rejects_secret_material(source_client: TestClient)
     assert create.status_code == 422
 
 
-def test_source_with_credential_reference_requires_same_tenant_ref(source_client: TestClient) -> None:
+def test_runnable_source_rejects_missing_or_metadata_only_credential_reference(source_client: TestClient) -> None:
     missing_ref = source_client.post(
         "/v1/sources",
         headers=ANALYST_HEADERS,
@@ -379,6 +379,54 @@ def test_source_with_credential_reference_requires_same_tenant_ref(source_client
             "config": {"scan_request": {"connectors": ["jira"], "format": "json"}},
         },
     )
+    assert create.status_code == 409
+    assert create.json()["detail"] == (
+        "credential_ref is governance metadata and is not an executable credential binding; "
+        "use a brokered cloud connection or server-configured connector credentials"
+    )
+
+
+def test_source_rejects_reference_mode_without_reference(source_client: TestClient) -> None:
+    create = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Jira source",
+            "kind": "connector.registry",
+            "connector_name": "jira",
+            "credential_mode": "reference",
+            "config": {"scan_request": {"format": "json"}},
+        },
+    )
+
+    assert create.status_code == 422
+    assert create.json()["detail"] == "credential_mode=reference requires credential_ref"
+
+
+def test_push_source_may_retain_metadata_only_credential_reference(source_client: TestClient) -> None:
+    credential = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Producer workload identity",
+            "provider": "generic",
+            "mode": "external_ref",
+            "external_ref": "workload-identity/producer",
+        },
+    )
+    credential_ref_id = credential.json()["credential_ref_id"]
+
+    create = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Trace producer",
+            "kind": "ingest.trace_push",
+            "credential_mode": "reference",
+            "credential_ref": credential_ref_id,
+        },
+    )
+
     assert create.status_code == 201
     assert create.json()["credential_ref"] == credential_ref_id
 
@@ -401,7 +449,7 @@ def test_connector_source_test_updates_health(source_client: TestClient, monkeyp
             "display_name": "Snowflake lake",
             "kind": "connector.warehouse",
             "connector_name": "slack",
-            "credential_mode": "reference",
+            "credential_mode": "none",
         },
     )
     source_id = create.json()["source_id"]

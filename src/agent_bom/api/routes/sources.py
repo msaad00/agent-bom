@@ -75,14 +75,27 @@ def _source_for_request(request: Request, source_id: str) -> SourceRecord:
 
 
 def _validate_credential_ref(request: Request, source: SourceRecord) -> None:
+    credential_mode = (source.credential_mode or "none").strip().lower()
     if not source.credential_ref:
+        if credential_mode == "reference":
+            raise HTTPException(status_code=422, detail="credential_mode=reference requires credential_ref")
         return
+    if credential_mode != "reference":
+        raise HTTPException(status_code=422, detail="credential_ref requires credential_mode=reference")
     tenant_id = _tenant_id(request)
     credential = _get_credential_ref_store().get(source.credential_ref, tenant_id=tenant_id)
     if credential is None or credential.tenant_id != tenant_id:
         raise HTTPException(status_code=409, detail="Source credential_ref is not available in this tenant")
     if not credential.enabled or credential.status in (CredentialRefStatus.DISABLED, CredentialRefStatus.RETIRED):
         raise HTTPException(status_code=409, detail="Source credential_ref is disabled or retired")
+    if source.kind in _RUNNABLE_SOURCE_KINDS:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "credential_ref is governance metadata and is not an executable credential binding; "
+                "use a brokered cloud connection or server-configured connector credentials"
+            ),
+        )
 
 
 def _apply_update(source: SourceRecord, body: SourceUpdate) -> SourceRecord:

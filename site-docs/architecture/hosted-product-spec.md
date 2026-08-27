@@ -115,10 +115,13 @@ clarity, and source-to-evidence provenance.
 | `GET /v1/sources/{source_id}` | load one source |
 | `PUT /v1/sources/{source_id}` | update metadata, scope, labels, ownership |
 | `DELETE /v1/sources/{source_id}` | disable or remove a source |
-| `POST /v1/sources/{source_id}/test` | validate credentials and connectivity |
+| `POST /v1/sources/{source_id}/test` | validate stored scan configuration and connector health |
 | `POST /v1/sources/{source_id}/run` | trigger a job now |
 | `GET /v1/sources/{source_id}/jobs` | show source-linked job history |
-| `GET /v1/sources/{source_id}/evidence` | show evidence and provenance linked to the source, where evidence indexing is enabled |
+
+Source-linked evidence is currently reached through the job records returned by
+`GET /v1/sources/{source_id}/jobs` and the existing job export routes. There is
+no separate source-evidence endpoint.
 
 ### Credential reference routes
 
@@ -127,8 +130,13 @@ clarity, and source-to-evidence provenance.
 | `POST /v1/credentials` | create a credential reference |
 | `GET /v1/credentials` | list references without exposing secrets |
 | `GET /v1/credentials/{credential_ref_id}` | show status, provider, scope, last validation |
-| `POST /v1/credentials/{credential_ref_id}/test` | validate connectivity or role assumption |
+| `POST /v1/credentials/{credential_ref_id}/test` | validate reference shape and, for supported providers, the control plane's default identity reachability |
 | `DELETE /v1/credentials/{credential_ref_id}` | retire the reference |
+
+Credential references are metadata records, not executable secret bindings.
+The test route does not assume a referenced role or resolve secret material.
+Runnable sources therefore use brokered cloud connections or connector
+credentials configured on the self-hosted control plane.
 
 ## Worker and connector contract
 
@@ -142,7 +150,7 @@ Each queued job should include:
 - `source_id`
 - `job_type`
 - `requested_by`
-- `credential_ref_id` when needed
+- an executable brokered connection or server-side connector configuration when credentials are needed
 - `scope`
 - `policy_bindings`
 - `trace_id`

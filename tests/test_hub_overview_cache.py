@@ -9,8 +9,10 @@ to the store's live ``severity_breakdown`` truth.
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -18,6 +20,12 @@ import pytest
 
 from agent_bom.api import hub_overview_cache
 from agent_bom.api.routes import overview
+
+
+def _sqlite_revision_child(db_path: str) -> None:
+    from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore
+
+    SQLiteComplianceHubStore(db_path).add("acme", [{"id": "f-child", "severity": "high"}])
 
 
 @pytest.fixture(autouse=True)
@@ -46,8 +54,8 @@ def test_snapshot_memoised_and_counts_match_store(monkeypatch):
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
 
-    first = overview._hub_severity_snapshot(_request("acme"))
-    second = overview._hub_severity_snapshot(_request("acme"))
+    first = overview._hub_severity_snapshot(_request("acme"), revision=0)
+    second = overview._hub_severity_snapshot(_request("acme"), revision=0)
 
     # Second read is a cache hit — the O(n) GROUP BY ran once.
     assert store.calls == 1
@@ -63,13 +71,13 @@ def test_ingest_invalidates_snapshot(monkeypatch):
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
 
-    overview._hub_severity_snapshot(_request("acme"))
+    overview._hub_severity_snapshot(_request("acme"), revision=0)
     assert store.calls == 1
 
     # A hub-ledger mutation invalidates the cache; the next read recomputes.
     store.counts = {"critical": 9, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
     hub_overview_cache.invalidate_tenant("acme")
-    refreshed = overview._hub_severity_snapshot(_request("acme"))
+    refreshed = overview._hub_severity_snapshot(_request("acme"), revision=1)
     assert store.calls == 2
     assert refreshed["critical"] == 9
 
@@ -90,11 +98,11 @@ def test_failing_framework_snapshot_is_memoised_and_invalidated(monkeypatch):
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
 
-    assert overview._hub_failing_frameworks_snapshot(_request("acme")) == {"soc2", "iso-27001"}
-    assert overview._hub_failing_frameworks_snapshot(_request("acme")) == {"soc2", "iso-27001"}
+    assert overview._hub_failing_frameworks_snapshot(_request("acme"), revision=0) == {"soc2", "iso-27001"}
+    assert overview._hub_failing_frameworks_snapshot(_request("acme"), revision=0) == {"soc2", "iso-27001"}
     assert store.calls == 1
     hub_overview_cache.invalidate_tenant("acme")
-    overview._hub_failing_frameworks_snapshot(_request("acme"))
+    overview._hub_failing_frameworks_snapshot(_request("acme"), revision=1)
     assert store.calls == 2
 
 
@@ -122,8 +130,8 @@ def test_ttl_zero_disables_cache(monkeypatch):
     store = _CountingStore({"critical": 1, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0})
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
-    overview._hub_severity_snapshot(_request("acme"))
-    overview._hub_severity_snapshot(_request("acme"))
+    overview._hub_severity_snapshot(_request("acme"), revision=0)
+    overview._hub_severity_snapshot(_request("acme"), revision=0)
     # TTL<=0 disables memoisation entirely (every read recomputes).
     assert store.calls == 2
 
@@ -153,14 +161,39 @@ def test_store_evidence_version_changes_for_same_shape_refresh_and_is_tenant_sco
     from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore
 
     store = InMemoryComplianceHubStore()
-    initial = hub_overview_cache.evidence_version("acme")
+    initial = store.overview_evidence_revision("acme")
     store.add("acme", [{"id": "f-1", "severity": "high", "is_kev": False}])
-    first = hub_overview_cache.evidence_version("acme")
+    first = store.overview_evidence_revision("acme")
     store.add("acme", [{"id": "f-1", "severity": "high", "is_kev": True}])
-    refreshed = hub_overview_cache.evidence_version("acme")
+    refreshed = store.overview_evidence_revision("acme")
 
     assert initial != first != refreshed
-    assert hub_overview_cache.evidence_version("other") == initial
+    assert store.overview_evidence_revision("other") == initial
+
+
+def test_revision_tag_rejects_a_late_stale_cache_write():
+    hub_overview_cache.set_cached_severity("acme", {"critical": 1}, revision=0)
+    assert hub_overview_cache.get_cached_severity("acme", revision=1) is None
+
+
+def test_sqlite_overview_revision_is_shared_across_processes(tmp_path):
+    from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore
+
+    db_path = str(tmp_path / "hub.db")
+    store = SQLiteComplianceHubStore(db_path)
+    before = store.overview_evidence_revision("acme")
+    process = multiprocessing.get_context("spawn").Process(target=_sqlite_revision_child, args=(db_path,))
+    process.start()
+    process.join(timeout=15)
+    assert process.exitcode == 0
+    assert store.overview_evidence_revision("acme") > before
+
+
+def test_postgres_overview_revision_contract_is_shared_and_rls_scoped():
+    source = (Path(__file__).parents[1] / "src/agent_bom/api/postgres_compliance_hub.py").read_text()
+    assert "CREATE TABLE IF NOT EXISTS hub_overview_revisions" in source
+    assert '_ensure_tenant_rls(conn, "hub_overview_revisions", "tenant_id")' in source
+    assert "ON CONFLICT (tenant_id) DO UPDATE SET revision" in source
 
 
 # ── Live Postgres: cache-hit latency is bounded as rows grow ─────────────────

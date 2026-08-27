@@ -220,16 +220,25 @@ def _result_has_runtime_signals(result: dict[str, Any]) -> bool:
     )
 
 
+def _result_compliance_evidence(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the canonical unified spine, with blast-radius legacy fallback."""
+
+    findings = [row for row in (result.get("findings") or []) if isinstance(row, dict)]
+    if findings:
+        return findings
+    return [row for row in (result.get("blast_radius") or []) if isinstance(row, dict)]
+
+
 def _result_evidence_context(result: dict[str, Any]) -> tuple[bool, bool, set[str]]:
     """Derive MCP and agent context once from canonical scan evidence."""
 
     sources = {str(source) for source in result.get("scan_sources", []) if source}
-    blast = [row for row in result.get("blast_radius", []) if isinstance(row, dict)]
+    evidence = _result_compliance_evidence(result)
     has_mcp = bool(result.get("has_mcp_context")) or any(
-        row.get("affected_servers") or row.get("owasp_mcp_tags") for row in blast
+        row.get("affected_servers") or row.get("owasp_mcp_tags") for row in evidence
     )
     has_agent = bool(result.get("has_agent_context")) or any(
-        row.get("affected_agents") or row.get("owasp_agentic_tags") for row in blast
+        row.get("affected_agents") or row.get("owasp_agentic_tags") for row in evidence
     )
     return has_mcp, has_agent, sources
 
@@ -464,8 +473,10 @@ async def get_compliance(
                 matching_jobs.append(job)
         tenant_jobs = matching_jobs
 
-    # Collect blast_radius entries from all completed scans
+    # Collect the unified findings spine (legacy blast-radius fallback) from all
+    # completed scans, deduped by canonical occurrence identity across re-scans.
     all_blast: list[dict] = []
+    seen_occurrences: set[str] = set()
     latest_scan: str | None = None
     scan_count = 0
     has_mcp_context = False
@@ -476,8 +487,13 @@ async def get_compliance(
         if job.status != JobStatus.DONE or not job.result:
             continue
         scan_count += 1
-        br_list = job.result.get("blast_radius", [])
-        all_blast.extend(br_list)
+        for row in _result_compliance_evidence(job.result):
+            occurrence_id = str(row.get("id") or row.get("canonical_id") or "")
+            if occurrence_id and occurrence_id in seen_occurrences:
+                continue
+            if occurrence_id:
+                seen_occurrences.add(occurrence_id)
+            all_blast.append(row)
         if latest_scan is None or (job.completed_at and job.completed_at > latest_scan):
             latest_scan = job.completed_at
         # Detect scan context from result metadata

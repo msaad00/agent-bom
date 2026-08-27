@@ -455,11 +455,12 @@ def _fold_findings(
     is critical/high marks each of its ``applicable_frameworks`` as failing
     (feeds the exec grade's compliance driver, #3962).
     """
-    from agent_bom.compliance_coverage import normalize_framework_slug
+    from agent_bom.compliance_coverage import normalize_framework_slug, scored_framework_slugs
 
     added = 0
     kev = 0
     credential_exposed = 0
+    scored_slugs = scored_framework_slugs()
     for row in findings:
         if not isinstance(row, dict):
             continue
@@ -481,8 +482,9 @@ def _fold_findings(
             credential_exposed += 1
         if bucket in ("critical", "high"):
             for slug in row.get("applicable_frameworks") or []:
-                if slug:
-                    failing_frameworks.add(normalize_framework_slug(str(slug)))
+                canonical = normalize_framework_slug(str(slug)) if slug else ""
+                if canonical in scored_slugs:
+                    failing_frameworks.add(canonical)
         top_risks.append(_finding_top_risk(row))
     return added, kev, credential_exposed
 
@@ -759,7 +761,7 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
     }
 
 
-def _hub_severity_snapshot(request: Request) -> dict[str, int]:
+def _hub_severity_snapshot(request: Request, *, revision: int | None = None) -> dict[str, int]:
     """Per-severity counts of hub-ingested findings (POST /v1/findings/bulk).
 
     Reads the CURRENT-STATE table (``hub_findings_current``) with the SAME
@@ -784,7 +786,7 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
     # and reconciles with the findings API by construction (wave-2 residual #3).
     from agent_bom.api import hub_overview_cache
 
-    cached = hub_overview_cache.get_cached_severity(tenant_id)
+    cached = hub_overview_cache.get_cached_severity(tenant_id, revision=revision) if revision is not None else None
     if cached is not None:
         return cached
     try:
@@ -811,11 +813,12 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
         return empty
     for key, value in counts.items():
         empty[str(key).lower()] = empty.get(str(key).lower(), 0) + int(value or 0)
-    hub_overview_cache.set_cached_severity(tenant_id, empty)
+    if revision is not None:
+        hub_overview_cache.set_cached_severity(tenant_id, empty, revision=revision)
     return empty
 
 
-def _hub_kev_snapshot(request: Request) -> int:
+def _hub_kev_snapshot(request: Request, *, revision: int | None = None) -> int:
     """Count of hub-ingested findings flagged CISA-KEV (same window/origin as the
     severity snapshot).
 
@@ -829,7 +832,7 @@ def _hub_kev_snapshot(request: Request) -> int:
     from agent_bom.api import hub_overview_cache
 
     tenant_id = _tenant_id(request)
-    cached = hub_overview_cache.get_cached_kev(tenant_id)
+    cached = hub_overview_cache.get_cached_kev(tenant_id, revision=revision) if revision is not None else None
     if cached is not None:
         return cached
     try:
@@ -845,11 +848,12 @@ def _hub_kev_snapshot(request: Request) -> int:
     except Exception:  # pragma: no cover - hub store optional
         _logger.debug("hub kev snapshot failed", exc_info=False)
         return 0
-    hub_overview_cache.set_cached_kev(tenant_id, count)
+    if revision is not None:
+        hub_overview_cache.set_cached_kev(tenant_id, count, revision=revision)
     return count
 
 
-def _hub_failing_frameworks_snapshot(request: Request) -> set[str]:
+def _hub_failing_frameworks_snapshot(request: Request, *, revision: int | None = None) -> set[str]:
     """Distinct framework mappings on live high/critical hub findings.
 
     Uses the same tenant, bulk-ingest origin, open lifecycle, and default window
@@ -860,7 +864,11 @@ def _hub_failing_frameworks_snapshot(request: Request) -> set[str]:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     tenant_id = _tenant_id(request)
-    cached = hub_overview_cache.get_cached_failing_frameworks(tenant_id)
+    cached = (
+        hub_overview_cache.get_cached_failing_frameworks(tenant_id, revision=revision)
+        if revision is not None
+        else None
+    )
     if cached is not None:
         return set(cached)
     try:
@@ -875,8 +883,16 @@ def _hub_failing_frameworks_snapshot(request: Request) -> set[str]:
             sanitize_text(sanitize_error(exc, generic=True)),
         )
         return set()
-    normalized = {str(slug): int(count or 0) for slug, count in counts.items() if slug and int(count or 0) > 0}
-    hub_overview_cache.set_cached_failing_frameworks(tenant_id, normalized)
+    from agent_bom.compliance_coverage import normalize_framework_slug, scored_framework_slugs
+
+    scored_slugs = scored_framework_slugs()
+    normalized: dict[str, int] = {}
+    for slug, count in counts.items():
+        canonical = normalize_framework_slug(str(slug)) if slug else ""
+        if canonical in scored_slugs and int(count or 0) > 0:
+            normalized[canonical] = normalized.get(canonical, 0) + int(count or 0)
+    if revision is not None:
+        hub_overview_cache.set_cached_failing_frameworks(tenant_id, normalized, revision=revision)
     return set(normalized)
 
 
@@ -1141,18 +1157,26 @@ def _build_overview(request: Request) -> dict[str, Any]:
     """
     tenant_id = _tenant_id(request)
     jobs = _get_store().list_all(tenant_id=tenant_id)
-    from agent_bom.api import hub_overview_cache
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
-    hub_evidence_version = hub_overview_cache.evidence_version(tenant_id)
-    hub_severity = _hub_severity_snapshot(request)
-    hub_failing_frameworks = _hub_failing_frameworks_snapshot(request)
+    hub_store = get_compliance_hub_store()
+    revision_reader = getattr(hub_store, "overview_evidence_revision", None)
+    hub_evidence_version = int(revision_reader(tenant_id)) if callable(revision_reader) else None
+    hub_severity = _hub_severity_snapshot(request, revision=hub_evidence_version)
+    hub_failing_frameworks = _hub_failing_frameworks_snapshot(request, revision=hub_evidence_version)
+    # A mutation racing either query advances the durable revision. Retry once;
+    # revision-tagged cache entries ensure a late old write can never be reused.
+    if callable(revision_reader) and int(revision_reader(tenant_id)) != hub_evidence_version:
+        hub_evidence_version = int(revision_reader(tenant_id))
+        hub_severity = _hub_severity_snapshot(request, revision=hub_evidence_version)
+        hub_failing_frameworks = _hub_failing_frameworks_snapshot(request, revision=hub_evidence_version)
 
     fingerprint = _overview_fingerprint(
         tenant_id,
         jobs,
         hub_severity,
         hub_failing_frameworks,
-        hub_evidence_version,
+        hub_evidence_version or 0,
     )
     cached = _overview_cache_get(tenant_id, fingerprint)
     if cached is not None:
@@ -1171,12 +1195,12 @@ def _build_overview(request: Request) -> dict[str, Any]:
             return flight.payload
         # The leader failed or overran its budget. Recompute rather than serve
         # nothing — correctness beats de-duplication.
-        payload = _compose_overview(request, tenant_id, jobs, hub_severity, hub_failing_frameworks)
+        payload = _compose_overview(request, tenant_id, jobs, hub_severity, hub_failing_frameworks, hub_evidence_version)
         _overview_cache_put(tenant_id, fingerprint, payload)
         return payload
 
     try:
-        payload = _compose_overview(request, tenant_id, jobs, hub_severity, hub_failing_frameworks)
+        payload = _compose_overview(request, tenant_id, jobs, hub_severity, hub_failing_frameworks, hub_evidence_version)
         _overview_cache_put(tenant_id, fingerprint, payload)
         flight.payload = payload
         return payload
@@ -1193,12 +1217,13 @@ def _compose_overview(
     jobs: list[Any],
     hub_severity: dict[str, int],
     hub_failing_frameworks: set[str],
+    hub_evidence_revision: int | None = None,
 ) -> dict[str, Any]:
     """Fold the estate into the overview payload (the O(estate) hot path)."""
     estate = _estate_rollup(jobs)
     exec_estate = _exec_estate(estate, jobs)
     coverage = estate["coverage"]
-    hub_kev = _hub_kev_snapshot(request)
+    hub_kev = _hub_kev_snapshot(request, revision=hub_evidence_revision)
     posture = _exec_posture(
         request,
         _posture_snapshot(jobs),

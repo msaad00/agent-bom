@@ -856,6 +856,59 @@ def test_overview_hub_frameworks_move_compliance_driver_and_dedupe_scan_overlap(
     store.clear("default")
 
 
+def test_overview_applicability_overlays_never_count_as_failing_frameworks() -> None:
+    """Risk/technique applicability must not become a compliance failure."""
+    _clear_jobs()
+    _reset_score_config()
+    _add_done_job(
+        [],
+        result_extra={
+            "findings": [
+                {
+                    "id": "overlay-critical",
+                    "security_domain": "aispm",
+                    "severity": "critical",
+                    "applicable_frameworks": ["owasp-agentic", "atlas", "attack"],
+                },
+                {
+                    "id": "scored-critical",
+                    "security_domain": "cspm",
+                    "severity": "critical",
+                    "applicable_frameworks": ["soc2"],
+                },
+            ]
+        },
+    )
+
+    data = client_get_overview()
+    row = next(item for item in data["posture"]["breakdown"] if item["driver"] == "compliance")
+    assert row["count"] == 1
+    _clear_jobs()
+
+
+def test_overview_hub_applicability_overlays_do_not_move_compliance_driver() -> None:
+    _clear_jobs()
+    _reset_score_config()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    store = get_compliance_hub_store()
+    finding = {
+        "id": "hub-overlay",
+        "severity": "critical",
+        "origin": "bulk_ingest",
+        "applicable_frameworks": ["owasp-mcp", "owasp-agentic", "atlas"],
+    }
+    store.add("default", [finding])
+    store.upsert_current_batch(
+        "default", [finding], observed_at=_recent_stamp(), batch_id="hub-overlay", source="connector"
+    )
+
+    data = client_get_overview()
+    row = next(item for item in data["posture"]["breakdown"] if item["driver"] == "compliance")
+    assert row["count"] == 0
+    store.clear("default")
+
+
 def test_overview_sheds_with_429_when_backpressure_opens(monkeypatch) -> None:
     """/v1/overview offloads store work off the event loop and sheds under overload (#3963)."""
     import time

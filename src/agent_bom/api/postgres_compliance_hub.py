@@ -14,6 +14,7 @@ from typing import Any
 
 from agent_bom.api.compliance_hub_store import (
     _LEDGER_ORDINAL_SENTINEL,
+    _SCHEMA_VERSION,
     RECONCILE_ABSENT_CHUNK,
     FindingCursorPage,
     FindingPage,
@@ -65,6 +66,14 @@ def _invalidate_overview_severity(tenant_id: str) -> None:
     from agent_bom.api import hub_overview_cache
 
     hub_overview_cache.invalidate_tenant(tenant_id)
+
+
+def _bump_overview_revision_postgres(conn: Any, tenant_id: str) -> None:
+    conn.execute(
+        """INSERT INTO hub_overview_revisions (tenant_id, revision) VALUES (%s, 1)
+        ON CONFLICT (tenant_id) DO UPDATE SET revision = hub_overview_revisions.revision + 1""",
+        (tenant_id,),
+    )
 
 
 def _migrate_lifecycle_observations_l2_postgres(conn: Any) -> None:
@@ -368,7 +377,7 @@ class PostgresComplianceHubStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "compliance_hub"):
+            if not ensure_postgres_schema_version(conn, "compliance_hub", _SCHEMA_VERSION):
                 return
             _ensure_backfill_marker_table(conn)
             conn.execute(
@@ -390,6 +399,11 @@ class PostgresComplianceHubStore:
                     PRIMARY KEY (tenant_id, finding_id)
                 )
                 """
+            )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS hub_overview_revisions (
+                tenant_id TEXT PRIMARY KEY, revision BIGINT NOT NULL DEFAULT 0
+                )"""
             )
             conn.execute(
                 "ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0"
@@ -508,6 +522,7 @@ class PostgresComplianceHubStore:
                 "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan ON compliance_hub_findings(tenant_id, scan_id) WHERE scan_id <> ''"
             )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
+            _ensure_tenant_rls(conn, "hub_overview_revisions", "tenant_id")
             from agent_bom.api.finding_lifecycle import (
                 _CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES,
                 _CURRENT_LIFECYCLE_POSTGRES_DDL,
@@ -736,6 +751,8 @@ class PostgresComplianceHubStore:
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         with _tenant_connection(self._pool) as conn:
             new_rows = self._write_ledger_batch(conn, tenant_id, findings)
+            if findings:
+                _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
         _invalidate_overview_severity(tenant_id)
         return self._bump_tenant_total(tenant_id, new_rows)
@@ -781,6 +798,7 @@ class PostgresComplianceHubStore:
                     observed_at=observed_at,
                     scope_source=source,
                 )
+            _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
         _invalidate_overview_severity(tenant_id)
         from agent_bom.api.findings_count_cache import invalidate_tenant
@@ -1014,6 +1032,14 @@ class PostgresComplianceHubStore:
             counts[canonical] = counts.get(canonical, 0) + int(count)
         return counts
 
+    def overview_evidence_revision(self, tenant_id: str) -> int:
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                "SELECT revision FROM hub_overview_revisions WHERE tenant_id = %s",
+                (tenant_id,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
     def count(self, tenant_id: str) -> int:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
@@ -1030,6 +1056,7 @@ class PostgresComplianceHubStore:
             )
             conn.execute("DELETE FROM hub_findings_current WHERE tenant_id = %s", (tenant_id,))
             conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = %s", (tenant_id,))
+            _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
         removed = cur.rowcount or 0
         self._reset_ingest_stats(tenant_id)
@@ -1058,7 +1085,11 @@ class PostgresComplianceHubStore:
                 batch_id=batch_id,
                 source=source,
             )
+            if findings:
+                _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
+        if findings:
+            _invalidate_overview_severity(tenant_id)
 
     def _write_current_batch(
         self,
@@ -1489,7 +1520,11 @@ class PostgresComplianceHubStore:
                 observed_at=observed_at,
                 scope_source=scope_source,
             )
+            if total:
+                _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
+        if total:
+            _invalidate_overview_severity(tenant_id)
         return total
 
     def _reconcile_current_absent_conn(

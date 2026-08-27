@@ -260,6 +260,9 @@ def test_postgres_atomic_store_invalidates_cached_finding_totals(monkeypatch):
     )
 
     class _Connection:
+        def execute(self, _sql, _params=None):
+            return None
+
         def commit(self) -> None:
             return None
 

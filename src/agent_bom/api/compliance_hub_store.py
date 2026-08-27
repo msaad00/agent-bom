@@ -573,6 +573,10 @@ class ComplianceHubStore(Protocol):
         """Count framework mappings on live current high/critical findings."""
         ...
 
+    def overview_evidence_revision(self, tenant_id: str) -> int:
+        """Return the durable tenant mutation revision used by Overview caches."""
+        ...
+
     def clear(self, tenant_id: str) -> int:
         """Remove all findings for a tenant. Returns the number removed."""
         ...
@@ -1061,14 +1065,21 @@ class InMemoryComplianceHubStore:
         self._slots: dict[str, dict[str, int]] = {}
         self._current: dict[str, dict[str, dict[str, Any]]] = {}
         self._current_observations: dict[str, set[tuple[str, str]]] = {}
+        self._overview_revisions: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def _invalidate_ingest_caches(self, tenant_id: str) -> None:
         from agent_bom.api import hub_overview_cache
         from agent_bom.api.findings_count_cache import invalidate_tenant
 
+        with self._lock:
+            self._overview_revisions[tenant_id] = self._overview_revisions.get(tenant_id, 0) + 1
         invalidate_tenant(tenant_id)
         hub_overview_cache.invalidate_tenant(tenant_id)
+
+    def overview_evidence_revision(self, tenant_id: str) -> int:
+        with self._lock:
+            return self._overview_revisions.get(tenant_id, 0)
 
     def _add_locked(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         """Append the batch to the ledger. Caller MUST hold ``self._lock``."""
@@ -1267,11 +1278,7 @@ class InMemoryComplianceHubStore:
             self._current.pop(tenant_id, None)
             self._current_observations.pop(tenant_id, None)
         if removed:
-            from agent_bom.api import hub_overview_cache
-            from agent_bom.api.findings_count_cache import invalidate_tenant
-
-            invalidate_tenant(tenant_id)
-            hub_overview_cache.invalidate_tenant(tenant_id)
+            self._invalidate_ingest_caches(tenant_id)
         return removed
 
     def _upsert_current_locked(
@@ -1334,6 +1341,8 @@ class InMemoryComplianceHubStore:
                 batch_id=batch_id,
                 source=source,
             )
+        if clean:
+            self._invalidate_ingest_caches(tenant_id)
 
     def _ledger_payload_map(self, tenant_id: str, finding_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
         slots = self._slots.get(tenant_id, {})
@@ -1522,18 +1531,22 @@ class InMemoryComplianceHubStore:
         scope_source: str | None = None,
     ) -> int:
         with self._lock:
-            return self._reconcile_locked(
+            updated = self._reconcile_locked(
                 tenant_id,
                 present_canonical_ids=present_canonical_ids,
                 observed_at=observed_at,
                 scope_source=scope_source,
             )
+        if updated:
+            self._invalidate_ingest_caches(tenant_id)
+        return updated
 
 
 # ─── SQLite backend ─────────────────────────────────────────────────────────
 
 # Default name surfaced in the openapi description; set when AGENT_BOM_DB is wired.
 _SCHEMA_KEY = "compliance_hub"
+_SCHEMA_VERSION = 2
 
 
 def _frameworks_csv(payload: dict[str, Any]) -> str:
@@ -1548,6 +1561,22 @@ def _now_utc_iso() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _ensure_overview_revision_sqlite(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS hub_overview_revisions (
+        tenant_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0
+        )"""
+    )
+
+
+def _bump_overview_revision_sqlite(conn: sqlite3.Connection, tenant_id: str) -> None:
+    conn.execute(
+        """INSERT INTO hub_overview_revisions (tenant_id, revision) VALUES (?, 1)
+        ON CONFLICT(tenant_id) DO UPDATE SET revision = revision + 1""",
+        (tenant_id,),
+    )
 
 
 # Rows in ``hub_findings_current`` with no resolvable ledger ``ordinal`` sort
@@ -1735,7 +1764,7 @@ class SQLiteComplianceHubStore:
     def _init_db(self) -> None:
         from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 
-        ensure_sqlite_schema_version(self._conn, _SCHEMA_KEY)
+        ensure_sqlite_schema_version(self._conn, _SCHEMA_KEY, _SCHEMA_VERSION)
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS compliance_hub_findings (
@@ -1761,6 +1790,7 @@ class SQLiteComplianceHubStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
         self._ensure_scale_indexes()
         _ensure_current_lifecycle_sqlite(self._conn)
+        _ensure_overview_revision_sqlite(self._conn)
         ensure_sqlite_reference_tables(self._conn)
         self._conn.commit()
 
@@ -1977,6 +2007,13 @@ class SQLiteComplianceHubStore:
         invalidate_tenant(tenant_id)
         hub_overview_cache.invalidate_tenant(tenant_id)
 
+    def overview_evidence_revision(self, tenant_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT revision FROM hub_overview_revisions WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchone()
+        return int(row[0]) if row else 0
+
     def _ledger_insert_no_commit(self, tenant_id: str, findings: list[dict[str, Any]]) -> tuple[int, int, int]:
         """Append the batch to the ledger WITHOUT committing.
 
@@ -2059,8 +2096,10 @@ class SQLiteComplianceHubStore:
                 if tenant_id in self._finding_count_by_tenant:
                     return self._finding_count_by_tenant[tenant_id]
             return self.count(tenant_id)
-        new_rows, next_ord, num_rows = self._ledger_insert_no_commit(tenant_id, findings)
-        self._conn.commit()
+        with self._conn:
+            new_rows, next_ord, num_rows = self._ledger_insert_no_commit(tenant_id, findings)
+            if num_rows:
+                _bump_overview_revision_sqlite(self._conn, tenant_id)
         if num_rows:
             self._invalidate_ingest_caches(tenant_id)
         return self._commit_ledger_stats(tenant_id, next_ord, num_rows, new_rows)
@@ -2108,6 +2147,7 @@ class SQLiteComplianceHubStore:
                     observed_at=observed_at,
                     scope_source=source,
                 )
+            _bump_overview_revision_sqlite(conn, tenant_id)
         self._invalidate_ingest_caches(tenant_id)
         new_total = self._commit_ledger_stats(tenant_id, next_ord, num_rows, new_rows)
         return new_total, reconciled
@@ -2359,13 +2399,14 @@ class SQLiteComplianceHubStore:
         return int(row[0]) if row else 0
 
     def clear(self, tenant_id: str) -> int:
-        cur = self._conn.execute(
-            "DELETE FROM compliance_hub_findings WHERE tenant_id = ?",
-            (tenant_id,),
-        )
-        self._conn.execute("DELETE FROM hub_findings_current WHERE tenant_id = ?", (tenant_id,))
-        self._conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = ?", (tenant_id,))
-        self._conn.commit()
+        with self._conn:
+            cur = self._conn.execute(
+                "DELETE FROM compliance_hub_findings WHERE tenant_id = ?",
+                (tenant_id,),
+            )
+            self._conn.execute("DELETE FROM hub_findings_current WHERE tenant_id = ?", (tenant_id,))
+            self._conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = ?", (tenant_id,))
+            _bump_overview_revision_sqlite(self._conn, tenant_id)
         removed = cur.rowcount or 0
         self._reset_ingest_stats(tenant_id)
         if removed:
@@ -2409,14 +2450,18 @@ class SQLiteComplianceHubStore:
         batch_id: str,
         source: str = "",
     ) -> None:
-        self._upsert_current_no_commit(
-            tenant_id,
-            findings,
-            observed_at=observed_at,
-            batch_id=batch_id,
-            source=source,
-        )
-        self._conn.commit()
+        with self._conn:
+            self._upsert_current_no_commit(
+                tenant_id,
+                findings,
+                observed_at=observed_at,
+                batch_id=batch_id,
+                source=source,
+            )
+            if findings:
+                _bump_overview_revision_sqlite(self._conn, tenant_id)
+        if findings:
+            self._invalidate_ingest_caches(tenant_id)
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
@@ -2664,13 +2709,17 @@ class SQLiteComplianceHubStore:
         observed_at: str,
         scope_source: str | None = None,
     ) -> int:
-        total = self._reconcile_current_absent_no_commit(
-            tenant_id,
-            present_canonical_ids=present_canonical_ids,
-            observed_at=observed_at,
-            scope_source=scope_source,
-        )
-        self._conn.commit()
+        with self._conn:
+            total = self._reconcile_current_absent_no_commit(
+                tenant_id,
+                present_canonical_ids=present_canonical_ids,
+                observed_at=observed_at,
+                scope_source=scope_source,
+            )
+            if total:
+                _bump_overview_revision_sqlite(self._conn, tenant_id)
+        if total:
+            self._invalidate_ingest_caches(tenant_id)
         return total
 
 

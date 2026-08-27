@@ -36,42 +36,35 @@ def _ttl_seconds() -> float:
 class _Entry:
     counts: dict[str, int]
     expires_at: float
+    revision: int | None = None
 
 
 @dataclass(frozen=True)
 class _KevEntry:
     count: int
     expires_at: float
+    revision: int | None = None
 
 
 @dataclass(frozen=True)
 class _FrameworkEntry:
     counts: dict[str, int]
     expires_at: float
+    revision: int | None = None
 
 
 _lock = threading.Lock()
 _entries: dict[str, _Entry] = {}
 _kev_entries: dict[str, _KevEntry] = {}
 _framework_entries: dict[str, _FrameworkEntry] = {}
-_evidence_versions: dict[str, int] = {}
-
-
-def evidence_version(tenant_id: str) -> int:
-    """Return the tenant-scoped mutation generation for overview keys."""
-
-    with _lock:
-        return _evidence_versions.get(tenant_id, 0)
-
-
-def get_cached_severity(tenant_id: str) -> dict[str, int] | None:
+def get_cached_severity(tenant_id: str, *, revision: int | None = None) -> dict[str, int] | None:
     ttl = _ttl_seconds()
     if ttl <= 0:
         return None
     now = time.monotonic()
     with _lock:
         entry = _entries.get(tenant_id)
-        if entry is None or entry.expires_at <= now:
+        if entry is None or entry.expires_at <= now or (revision is not None and entry.revision != revision):
             if entry is not None:
                 _entries.pop(tenant_id, None)
             return None
@@ -80,16 +73,16 @@ def get_cached_severity(tenant_id: str) -> dict[str, int] | None:
         return dict(entry.counts)
 
 
-def set_cached_severity(tenant_id: str, counts: dict[str, int]) -> None:
+def set_cached_severity(tenant_id: str, counts: dict[str, int], *, revision: int | None = None) -> None:
     ttl = _ttl_seconds()
     if ttl <= 0:
         return
     now = time.monotonic()
     with _lock:
-        _entries[tenant_id] = _Entry(counts=dict(counts), expires_at=now + ttl)
+        _entries[tenant_id] = _Entry(counts=dict(counts), expires_at=now + ttl, revision=revision)
 
 
-def get_cached_kev(tenant_id: str) -> int | None:
+def get_cached_kev(tenant_id: str, *, revision: int | None = None) -> int | None:
     """Return the memoised hub KEV count, or ``None`` on miss/disabled TTL.
 
     Shares the severity histogram's invalidation contract (every hub mutation
@@ -101,43 +94,48 @@ def get_cached_kev(tenant_id: str) -> int | None:
     now = time.monotonic()
     with _lock:
         entry = _kev_entries.get(tenant_id)
-        if entry is None or entry.expires_at <= now:
+        if entry is None or entry.expires_at <= now or (revision is not None and entry.revision != revision):
             if entry is not None:
                 _kev_entries.pop(tenant_id, None)
             return None
         return entry.count
 
 
-def set_cached_kev(tenant_id: str, count: int) -> None:
+def set_cached_kev(tenant_id: str, count: int, *, revision: int | None = None) -> None:
     ttl = _ttl_seconds()
     if ttl <= 0:
         return
     now = time.monotonic()
     with _lock:
-        _kev_entries[tenant_id] = _KevEntry(count=int(count), expires_at=now + ttl)
+        _kev_entries[tenant_id] = _KevEntry(count=int(count), expires_at=now + ttl, revision=revision)
 
 
-def get_cached_failing_frameworks(tenant_id: str) -> dict[str, int] | None:
+def get_cached_failing_frameworks(tenant_id: str, *, revision: int | None = None) -> dict[str, int] | None:
     ttl = _ttl_seconds()
     if ttl <= 0:
         return None
     now = time.monotonic()
     with _lock:
         entry = _framework_entries.get(tenant_id)
-        if entry is None or entry.expires_at <= now:
+        if entry is None or entry.expires_at <= now or (revision is not None and entry.revision != revision):
             if entry is not None:
                 _framework_entries.pop(tenant_id, None)
             return None
         return dict(entry.counts)
 
 
-def set_cached_failing_frameworks(tenant_id: str, counts: dict[str, int]) -> None:
+def set_cached_failing_frameworks(
+    tenant_id: str,
+    counts: dict[str, int],
+    *,
+    revision: int | None = None,
+) -> None:
     ttl = _ttl_seconds()
     if ttl <= 0:
         return
     now = time.monotonic()
     with _lock:
-        _framework_entries[tenant_id] = _FrameworkEntry(counts=dict(counts), expires_at=now + ttl)
+        _framework_entries[tenant_id] = _FrameworkEntry(counts=dict(counts), expires_at=now + ttl, revision=revision)
 
 
 def invalidate_tenant(tenant_id: str) -> None:
@@ -146,7 +144,6 @@ def invalidate_tenant(tenant_id: str) -> None:
         _entries.pop(tenant_id, None)
         _kev_entries.pop(tenant_id, None)
         _framework_entries.pop(tenant_id, None)
-        _evidence_versions[tenant_id] = _evidence_versions.get(tenant_id, 0) + 1
 
 
 def reset_hub_overview_cache() -> None:
@@ -155,4 +152,3 @@ def reset_hub_overview_cache() -> None:
         _entries.clear()
         _kev_entries.clear()
         _framework_entries.clear()
-        _evidence_versions.clear()

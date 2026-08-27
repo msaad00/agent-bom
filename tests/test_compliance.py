@@ -206,6 +206,58 @@ def test_agentic_context_is_inferred_from_canonical_agent_evidence_without_mcp()
     _clear_jobs()
 
 
+def test_unified_findings_drive_agentic_and_mcp_applicability_without_blast_duplicates() -> None:
+    _clear_jobs()
+    _add_done_job(
+        [],
+        result_extra={
+            "has_mcp_context": False,
+            "has_agent_context": False,
+            "findings": [
+                {
+                    "id": "agent-occurrence",
+                    "severity": "high",
+                    "affected_agents": ["cursor"],
+                    "owasp_agentic_tags": ["ASI04"],
+                },
+                {
+                    "id": "mcp-occurrence",
+                    "severity": "high",
+                    "affected_servers": ["payments"],
+                    "owasp_mcp_tags": ["MCP04"],
+                },
+            ],
+        },
+    )
+
+    data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    assert data["has_agent_context"] is True
+    assert data["has_mcp_context"] is True
+    agentic = next(control for control in data["owasp_agentic_top10"] if control["code"] == "ASI04")
+    mcp = next(control for control in data["owasp_mcp_top10"] if control["code"] == "MCP04")
+    assert (agentic["status"], agentic["findings"]) == ("applicable", 1)
+    assert (mcp["status"], mcp["findings"]) == ("applicable", 1)
+    _clear_jobs()
+
+
+def test_unified_finding_occurrence_is_not_double_counted_across_scans() -> None:
+    _clear_jobs()
+    finding = {
+        "id": "same-occurrence",
+        "severity": "high",
+        "affected_agents": ["cursor"],
+        "owasp_agentic_tags": ["ASI04"],
+    }
+    _add_done_job([], job_id="scan-a", result_extra={"findings": [finding]})
+    _add_done_job([], job_id="scan-b", result_extra={"findings": [dict(finding)]})
+
+    data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+    agentic = next(control for control in data["owasp_agentic_top10"] if control["code"] == "ASI04")
+    assert agentic["findings"] == 1
+    _clear_jobs()
+
+
 def test_fedramp_rest_and_narrative_reconcile_namespaced_scanner_tags():
     """The REST score and narrative must join the same emitted FedRAMP tag."""
     _clear_jobs()

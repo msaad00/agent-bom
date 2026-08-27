@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from agent_bom.output.finding_views import cve_findings, severity_value, topology_package_key
+from agent_bom.output.finding_views import cve_findings, severity_value, topology_package_key, with_output_sanitizer_cache
 from agent_bom.output.html._common import _esc
 from agent_bom.output.html.scripts import (
     SCALE_REPORT_SCRIPT,
@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
 
 
+@with_output_sanitizer_cache
 def to_html(
     report: "AIBOMReport",
     blast_radii: list["BlastRadius"] | None = None,
@@ -84,21 +85,21 @@ def to_html(
             f'<div class="sec-title">&#x26a0;&#xfe0f; Vulnerabilities'
             f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(findings)}</sup>'
             f"</div>"
-            f'<div class="panel">{_vuln_table(report, blast_radii)}</div>'
+            f'<div class="panel">{_vuln_table(report, blast_radii, findings=findings)}</div>'
             f"</section>"
             f'<section id="exposure-paths">'
             f'<div class="sec-title">&#x1f9ed; Exposure Paths'
             f'<sup style="font-size:.65rem;color:#475569;margin-left:6px;font-weight:400">'
             f"ranked investigation briefs from blast-radius evidence"
             f"</sup></div>"
-            f'<div class="panel exposure-paths">{_exposure_path_section(report, blast_radii)}</div>'
+            f'<div class="panel exposure-paths">{_exposure_path_section(report, blast_radii, findings=findings)}</div>'
             f"</section>"
             f'<section id="blast">'
             f'<div class="sec-title">&#x1f4a5; Blast Radius'
             f'<sup style="font-size:.65rem;color:#475569;margin-left:6px;font-weight:400">'
             f"risk = CVSS + agents + creds + tools + KEV/EPSS boosts (max 10)"
             f"</sup></div>"
-            f'<div class="panel">{_blast_table(report, blast_radii)}</div>'
+            f'<div class="panel">{_blast_table(report, blast_radii, findings=findings)}</div>'
             f"</section>"
             f'<section id="remediation">'
             f'<div class="sec-title">&#x1f527; Remediation Plan</div>'

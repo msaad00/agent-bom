@@ -23,8 +23,11 @@ SCAN_DOCUMENT_FORMATS: tuple[str, ...] = ("json", "cyclonedx", "sarif", "spdx", 
 
 def to_text(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = None) -> str:
     """Tab-separated plain text for piping to grep/awk."""
+    from agent_bom.output.finding_views import sanitize_output_text
+
+    safe = sanitize_output_text
     lines = [
-        f"agent-bom {report.tool_version}",
+        f"agent-bom {safe(report.tool_version)}",
         f"agents={report.total_agents} servers={report.total_servers} "
         f"packages={report.total_packages} vulnerabilities={report.total_vulnerabilities}",
         "",
@@ -33,7 +36,7 @@ def to_text(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     for agent in report.agents:
         for server in agent.mcp_servers:
             for pkg in server.packages:
-                lines.append(f"{agent.name}\t{server.name}\t{pkg.ecosystem}\t{pkg.name}\t{pkg.version}")
+                lines.append("\t".join(safe(value) for value in (agent.name, server.name, pkg.ecosystem, pkg.name, pkg.version)))
 
     if blast_radii:
         lines.append("")
@@ -41,8 +44,8 @@ def to_text(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         for br in blast_radii:
             vuln = br.vulnerability
             lines.append(
-                f"{vuln.id}\t{vuln.severity.value}\t{br.package.name}@{br.package.version}\t"
-                f"{vuln.fixed_version or '-'}\t{len(br.affected_agents)}\t{len(br.exposed_credentials)}"
+                f"{safe(vuln.id)}\t{safe(vuln.severity.value)}\t{safe(br.package.name)}@{safe(br.package.version)}\t"
+                f"{safe(vuln.fixed_version or '-')}\t{len(br.affected_agents)}\t{len(br.exposed_credentials)}"
             )
 
     return "\n".join(lines) + "\n"

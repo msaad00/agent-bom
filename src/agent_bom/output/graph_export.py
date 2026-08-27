@@ -24,6 +24,9 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Union
 
+from agent_bom.output.finding_views import sanitize_output_text, with_output_sanitizer_cache
+from agent_bom.security import sanitize_sensitive_payload
+
 # ── Internal graph representation ──────────────────────────────────────────────
 
 
@@ -97,6 +100,46 @@ def _compact_attributes(attributes: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(attributes, dict):
         return {}
     return {key: value for key, value in attributes.items() if value not in (None, "", [], {})}
+
+
+def _sanitized_graph(graph: DepGraph) -> DepGraph:
+    """Project a graph into an outbound-safe copy without mutating analysis state."""
+    safe = DepGraph()
+    id_map: dict[str, str] = {}
+    used_ids: set[str] = set()
+
+    for node in graph.nodes:
+        candidate = sanitize_output_text(node.id)
+        if candidate in used_ids:
+            suffix = 2
+            while f"{candidate}#{suffix}" in used_ids:
+                suffix += 1
+            candidate = f"{candidate}#{suffix}"
+        used_ids.add(candidate)
+        id_map[node.id] = candidate
+
+        attributes = sanitize_sensitive_payload(node.attributes, max_str_len=10_000)
+        safe.add_node(
+            candidate,
+            sanitize_output_text(node.label),
+            sanitize_output_text(node.kind),
+            sanitize_output_text(node.severity),
+            attributes=attributes if isinstance(attributes, dict) else {},
+        )
+
+    for edge in graph.edges:
+        source = id_map.get(edge.source)
+        target = id_map.get(edge.target)
+        if source is None or target is None:
+            continue
+        evidence = sanitize_sensitive_payload(edge.evidence, max_str_len=10_000)
+        safe.add_edge(
+            source,
+            target,
+            sanitize_output_text(edge.kind),
+            evidence=evidence if isinstance(evidence, dict) else {},
+        )
+    return safe
 
 
 def _credential_names_from_server(server: dict[str, Any]) -> list[str]:
@@ -387,9 +430,10 @@ _DOT_SHAPES: dict[str, str] = {
 
 def _dot_id(raw: str) -> str:
     """Sanitize a node ID for DOT format."""
-    return '"' + raw.replace('"', '\\"') + '"'
+    return '"' + raw.replace("\\", "\\\\").replace('"', '\\"').replace("\r", " ").replace("\n", " ") + '"'
 
 
+@with_output_sanitizer_cache
 def to_dot(graph: DepGraph, title: str = "agent-bom dependency graph") -> str:
     """Render a :class:`DepGraph` as Graphviz DOT source.
 
@@ -402,8 +446,10 @@ def to_dot(graph: DepGraph, title: str = "agent-bom dependency graph") -> str:
     Returns:
         DOT-format string.
     """
+    graph = _sanitized_graph(graph)
+    safe_title = sanitize_output_text(title).replace("\r", " ").replace("\n", " ")
     lines = [
-        f"// {title}",
+        f"// {safe_title}",
         "digraph dependency_graph {",
         '    graph [rankdir=LR fontname="Helvetica" bgcolor="#0d1117"]',
         '    node [style=filled fontname="Helvetica" fontcolor="#e6edf3" fontsize=10]',
@@ -488,6 +534,7 @@ def _mermaid_priority_nodes(graph: DepGraph) -> list[_Node]:
     )
 
 
+@with_output_sanitizer_cache
 def to_mermaid(
     graph: DepGraph,
     *,
@@ -509,6 +556,7 @@ def to_mermaid(
     Returns:
         Mermaid flowchart string.
     """
+    graph = _sanitized_graph(graph)
     if max_nodes is not None and max_nodes < 1:
         raise ValueError("max_nodes must be at least 1 or None")
     if max_edges is not None and max_edges < 1:
@@ -594,6 +642,7 @@ def to_mermaid(
     return "\n".join(lines)
 
 
+@with_output_sanitizer_cache
 def to_json(graph: DepGraph) -> dict:
     """Return a JSON-serialisable representation of the graph.
 
@@ -603,6 +652,7 @@ def to_json(graph: DepGraph) -> dict:
     Returns:
         Dict with ``nodes``, ``edges``, and ``stats`` keys.
     """
+    graph = _sanitized_graph(graph)
     return {
         "nodes": [
             {
@@ -668,6 +718,7 @@ def _xml_escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&apos;")
 
 
+@with_output_sanitizer_cache
 def to_graphml(graph: DepGraph) -> str:
     """Render a :class:`DepGraph` as GraphML with AIBOM-typed attributes.
 
@@ -682,6 +733,7 @@ def to_graphml(graph: DepGraph) -> str:
     Returns:
         GraphML XML string.
     """
+    graph = _sanitized_graph(graph)
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<graphml xmlns="http://graphml.graphdrawing.org/xmlns"',
@@ -728,6 +780,7 @@ def to_graphml(graph: DepGraph) -> str:
     return "\n".join(lines)
 
 
+@with_output_sanitizer_cache
 def to_cypher(graph: DepGraph) -> str:
     """Render a :class:`DepGraph` as Neo4j Cypher import statements.
 
@@ -746,6 +799,7 @@ def to_cypher(graph: DepGraph) -> str:
     Returns:
         Cypher script string.
     """
+    graph = _sanitized_graph(graph)
     lines = [
         "// AIBOM graph import — generated by agent-bom",
         "// Node labels: Provider, AIAgent, MCPServer, Package, Vulnerability",

@@ -2,14 +2,55 @@
 
 from __future__ import annotations
 
-from typing import Any
+from contextvars import ContextVar
+from functools import wraps
+from typing import Any, Callable, ParamSpec, TypeVar
 
 from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
 from agent_bom.finding import Finding, FindingType, blast_radius_to_finding
 from agent_bom.graph.severity import normalize_severity
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.security import sanitize_log_label, sanitize_text, text_requires_redaction
 
 _MACHINE_EXPORT_TYPES = (FindingType.CVE, FindingType.MALICIOUS_PACKAGE)
+_OUTPUT_SANITIZER_CACHE_LIMIT = 262_144
+_OUTPUT_SANITIZER_CACHE: ContextVar[dict[str, str] | None] = ContextVar("agent_bom_output_sanitizer_cache", default=None)
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def with_output_sanitizer_cache(func: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Give one render a bounded, request-local redaction cache.
+
+    Reports repeat package, agent, and advisory labels across many cells. The
+    cache avoids running the same secret/PII detectors thousands of times while
+    remaining concurrency-safe and releasing all input strings after the render.
+    """
+
+    @wraps(func)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        if _OUTPUT_SANITIZER_CACHE.get() is not None:
+            return func(*args, **kwargs)
+        token = _OUTPUT_SANITIZER_CACHE.set({})
+        try:
+            return func(*args, **kwargs)
+        finally:
+            _OUTPUT_SANITIZER_CACHE.reset(token)
+
+    return wrapper
+
+
+def sanitize_output_text(value: object) -> str:
+    """Redact one exported string without imposing the log-label length cap."""
+    text = str(value)
+    cache = _OUTPUT_SANITIZER_CACHE.get()
+    if cache is not None and text in cache:
+        return cache[text]
+    max_len = max(1_000, len(text))
+    sanitized = sanitize_text(text, max_len=max_len) if text_requires_redaction(text) else sanitize_log_label(text, max_len=max_len)
+    if cache is not None and len(cache) < _OUTPUT_SANITIZER_CACHE_LIMIT:
+        cache[text] = sanitized
+    return sanitized
 
 
 def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:

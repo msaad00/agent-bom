@@ -612,7 +612,7 @@ class ProtectionEngine:
         # Cross-agent lateral movement — feed HIGH alerts into correlation buffer
         lateral_alerts = self._correlator.detect_lateral_movement()
         for la in lateral_alerts:
-            logger.warning("Cross-agent lateral movement: %s", la.get("message", ""))
+            logger.warning("Cross-agent lateral movement: %s", sanitize_text(la.get("message", ""), max_len=500))
             self._correlation_buffer.append(
                 _CorrelationEntry(
                     timestamp=time.monotonic(),

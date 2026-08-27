@@ -21,6 +21,7 @@ import re
 from typing import TYPE_CHECKING
 
 from agent_bom.graph.severity import severity_rank
+from agent_bom.output.finding_views import sanitize_output_text
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
@@ -33,7 +34,7 @@ def _sanitize_id(text: str) -> str:
 
 def _sanitize_label(text: str) -> str:
     """Sanitize a string for use as a Mermaid node label."""
-    return text.replace('"', "'").replace("\n", " ")[:80]
+    return sanitize_output_text(text).replace('"', "'").replace("\n", " ")[:80]
 
 
 class _MermaidIds:
@@ -312,7 +313,7 @@ def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius] | N
         task_id += 1
 
         for finding in pkg_findings:
-            vuln_id = finding.cve_id or finding.title
+            vuln_id = sanitize_output_text(finding.cve_id or finding.title)
 
             # Determine discovery date
             discover_date = evidence(finding, "published_at", None) or evidence(finding, "nvd_published", None)
@@ -326,7 +327,7 @@ def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius] | N
 
             # Fixed version milestone
             if finding.fixed_version:
-                lines.append(f"    Fix → {finding.fixed_version} :active, t{task_id}, after {prev_id}, 1d")
+                lines.append(f"    Fix → {sanitize_output_text(finding.fixed_version)} :active, t{task_id}, after {prev_id}, 1d")
                 prev_id = f"t{task_id}"
                 task_id += 1
 

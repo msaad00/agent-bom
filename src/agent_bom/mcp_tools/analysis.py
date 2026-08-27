@@ -204,7 +204,9 @@ async def context_graph_impl(
             sampled=paths_truncated,
             reason=("multi-source path budget reached; request a source_agent for exhaustive local traversal" if paths_truncated else ""),
         )
-        return _truncate_response(json.dumps(result, indent=2, default=str))
+        from agent_bom.output.interop_security import sanitize_linked_document
+
+        return _truncate_response(json.dumps(sanitize_linked_document(result), indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP tool error")
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc)

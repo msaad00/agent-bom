@@ -1285,11 +1285,14 @@ def to_sarif(
         run["taxonomies"] = taxonomies
         run["tool"]["extensions"] = _taxonomies_as_tool_extensions(taxonomies)
 
-    return {
+    document = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
         "version": "2.1.0",
         "runs": [run],
     }
+    from agent_bom.output.interop_security import sanitize_linked_document
+
+    return sanitize_linked_document(document)
 
 
 def export_sarif(

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -31,8 +32,9 @@ from agent_bom.output.finding_views import (
     package_ecosystem,
     package_name,
     package_version,
+    sanitize_output_text,
 )
-from agent_bom.security import sanitize_command_args
+from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 console = Console()
 
@@ -556,8 +558,10 @@ def print_agent_tree(report: AIBOMReport) -> None:
         if total_creds:
             stats_parts.append(f"{total_creds} credential{'s' if total_creds != 1 else ''}")
 
-        agent_tree = Tree(f"\U0001f916 Agent: [bold]{agent.name}[/bold] ({agent.agent_type.value}){status_str}")
-        agent_tree.add(f"[dim]{agent.config_path}[/dim]")
+        agent_name = escape(sanitize_output_text(agent.name))
+        agent_type = escape(sanitize_output_text(agent.agent_type.value))
+        agent_tree = Tree(f"\U0001f916 Agent: [bold]{agent_name}[/bold] ({agent_type}){status_str}")
+        agent_tree.add(f"[dim]{escape(sanitize_path_label(agent.config_path))}[/dim]")
         sep = " \u00b7 "
         agent_tree.add(f"[dim]{sep.join(stats_parts)}[/dim]")
 
@@ -578,17 +582,18 @@ def print_agent_tree(report: AIBOMReport) -> None:
 
             registry_indicator = " [green]✓ registry[/green]" if server.registry_verified else " [dim]unknown registry[/dim]"
 
-            server_args = sanitize_command_args(server.args[:2])
+            server_name = escape(sanitize_output_text(server.name))
+            launch = escape(sanitize_launch_command(server.command or "", server.args[:2]))
             server_branch = agent_tree.add(
-                f"\U0001f50c MCP Server: [bold cyan]{server.name}[/bold cyan] "
-                f"({server.command} {' '.join(server_args)})"
+                f"\U0001f50c MCP Server: [bold cyan]{server_name}[/bold cyan] "
+                f"({launch})"
                 f"{vuln_indicator}{cred_indicator}{priv_indicator}{registry_indicator}"
             )
 
             if server.tools:
                 tools_branch = server_branch.add(f"[dim]\U0001f527 Tools ({len(server.tools)})[/dim]")
                 for tool in server.tools[:10]:  # Limit display
-                    tools_branch.add(f"[dim]{tool.name}[/dim]")
+                    tools_branch.add(f"[dim]{escape(sanitize_output_text(tool.name))}[/dim]")
                 if len(server.tools) > 10:
                     tools_branch.add(f"[dim]...and {len(server.tools) - 10} more[/dim]")
 
@@ -610,7 +615,10 @@ def print_agent_tree(report: AIBOMReport) -> None:
                     if pkg.scorecard_score is not None:
                         sc_color = "green" if pkg.scorecard_score >= 7.0 else "yellow" if pkg.scorecard_score >= 4.0 else "red"
                         sc_str = f" [{sc_color}]SC:{pkg.scorecard_score:.1f}[/{sc_color}]"
-                    pkg_branch.add(f"{pkg.name}@{pkg.version} [{pkg.ecosystem}]{sc_str}{vuln_str}")
+                    pkg_branch.add(
+                        f"{escape(sanitize_output_text(pkg.name))}@{escape(sanitize_output_text(pkg.version))} "
+                        f"[{escape(sanitize_output_text(pkg.ecosystem))}]{sc_str}{vuln_str}"
+                    )
 
                 # Show transitive packages grouped by depth (limit display)
                 if transitive_pkgs:
@@ -620,15 +628,18 @@ def print_agent_tree(report: AIBOMReport) -> None:
                         if pkg.has_vulnerabilities:
                             vuln_str = f" [red]({len(pkg.vulnerabilities)} vuln(s))[/red]"
                         indent = "  " * pkg.dependency_depth
-                        parent_str = f" ← {pkg.parent_package}" if pkg.parent_package else ""
-                        transitive_branch.add(f"[dim]{indent}{pkg.name}@{pkg.version}{parent_str}{vuln_str}[/dim]")
+                        parent_str = f" ← {escape(sanitize_output_text(pkg.parent_package))}" if pkg.parent_package else ""
+                        transitive_branch.add(
+                            f"[dim]{indent}{escape(sanitize_output_text(pkg.name))}@"
+                            f"{escape(sanitize_output_text(pkg.version))}{parent_str}{vuln_str}[/dim]"
+                        )
                     if len(transitive_pkgs) > 20:
                         transitive_branch.add(f"[dim]...and {len(transitive_pkgs) - 20} more[/dim]")
 
             if server.has_credentials:
                 cred_branch = server_branch.add("[yellow]\U0001f511 Credentials[/yellow]")
                 for cred in server.credential_names:
-                    cred_branch.add(f"[yellow]{cred}[/yellow]")
+                    cred_branch.add(f"[yellow]{escape(sanitize_output_text(cred))}[/yellow]")
 
         _console().print(agent_tree)
         _console().print()
@@ -670,7 +681,7 @@ def print_blast_radius(report: AIBOMReport, fixable_only: bool = False) -> None:
         sev = finding_severity(finding)
         sev_style = SEVERITY_TEXT.get(sev, "white")
         if finding.fixed_version:
-            fix = f"[green]✓ {finding.fixed_version}[/green]"
+            fix = f"[green]✓ {escape(sanitize_output_text(finding.fixed_version))}[/green]"
         else:
             fix = "[red dim]No fix[/red dim]"
 
@@ -699,8 +710,9 @@ def print_blast_radius(report: AIBOMReport, fixable_only: bool = False) -> None:
         blast_display = "/".join(blast_parts) if blast_parts else "—"
 
         # Vulnerability: ID + package on two lines
-        vuln_id = finding.cve_id or finding.id
-        vuln_display = f"{vuln_id}\n[dim]{package_name(finding)}@{package_version(finding)}[/dim]"
+        vuln_id = escape(sanitize_output_text(finding.cve_id or finding.id))
+        package_label = escape(f"{sanitize_output_text(package_name(finding))}@{sanitize_output_text(package_version(finding))}")
+        vuln_display = f"{vuln_id}\n[dim]{package_label}[/dim]"
 
         # Threats column: actual framework tag IDs per finding
         threat_lines = []
@@ -825,35 +837,41 @@ def print_attack_flow_tree(report: AIBOMReport) -> None:
         cve_tree = Tree(" · ".join(root_parts))
 
         # Package node
-        pkg_label = f"{package_name(finding)}@{package_version(finding)} ({package_ecosystem(finding)})"
+        pkg_label = escape(
+            f"{sanitize_output_text(package_name(finding))}@{sanitize_output_text(package_version(finding))} "
+            f"({sanitize_output_text(package_ecosystem(finding))})"
+        )
         pkg_branch = cve_tree.add(f"[dim]{pkg_label}[/dim]")
 
         # Server branches
-        for server_name in finding.affected_servers:
+        for raw_server_name in finding.affected_servers:
+            server_name = escape(sanitize_output_text(raw_server_name))
             srv_branch = pkg_branch.add(f"\U0001f50c [bold cyan]{server_name}[/bold cyan] [dim](MCP Server)[/dim]")
 
             # Agents
-            for agent_name in finding.affected_agents:
+            for raw_agent_name in finding.affected_agents:
+                agent_name = escape(sanitize_output_text(raw_agent_name))
                 srv_branch.add(f"\U0001f916 [green]{agent_name}[/green] [dim](Agent)[/dim]")
 
             # Credentials
             for cred in finding.exposed_credentials:
-                srv_branch.add(f"[yellow]🔑 {cred}[/yellow]")
+                srv_branch.add(f"[yellow]🔑 {escape(sanitize_output_text(cred))}[/yellow]")
 
             # Tools (compact, max 5 per line)
             if finding.exposed_tools:
-                tool_names = finding.exposed_tools[:5]
+                tool_names = [escape(sanitize_output_text(tool)) for tool in finding.exposed_tools[:5]]
                 extra = f" +{len(finding.exposed_tools) - 5}" if len(finding.exposed_tools) > 5 else ""
                 srv_branch.add(f"[dim]🔧 {', '.join(tool_names)}{extra}[/dim]")
 
         # If no servers, still show agents/creds/tools under package
         if not finding.affected_servers:
-            for agent_name in finding.affected_agents:
+            for raw_agent_name in finding.affected_agents:
+                agent_name = escape(sanitize_output_text(raw_agent_name))
                 pkg_branch.add(f"\U0001f916 [green]{agent_name}[/green] [dim](Agent)[/dim]")
             for cred in finding.exposed_credentials:
-                pkg_branch.add(f"[yellow]🔑 {cred}[/yellow]")
+                pkg_branch.add(f"[yellow]🔑 {escape(sanitize_output_text(cred))}[/yellow]")
             if finding.exposed_tools:
-                tool_names = finding.exposed_tools[:5]
+                tool_names = [escape(sanitize_output_text(tool)) for tool in finding.exposed_tools[:5]]
                 extra = f" +{len(finding.exposed_tools) - 5}" if len(finding.exposed_tools) > 5 else ""
                 pkg_branch.add(f"[dim]🔧 {', '.join(tool_names)}{extra}[/dim]")
 
@@ -1492,6 +1510,10 @@ def print_remediation_plan(report: AIBOMReport) -> None:
         return
 
     plan = build_remediation_plan(all_cve)
+    from agent_bom.security import sanitize_sensitive_payload
+
+    sanitized_plan = sanitize_sensitive_payload(plan, max_str_len=10_000)
+    plan = sanitized_plan if isinstance(sanitized_plan, list) else []
     # A malicious package sets fix=None to signal REMOVAL (not a version bump),
     # so it must be pulled out of the fix-based buckets. Without this it lands in
     # the "no fix yet — monitor upstream for patches" bucket, which tells the user

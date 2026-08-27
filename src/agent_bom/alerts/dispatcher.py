@@ -16,12 +16,13 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from agent_bom.event_normalization import build_runtime_alert_relationships
+from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
 logger = logging.getLogger(__name__)
 
 
 def _escape_slack_text(value: object) -> str:
-    text = str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    text = sanitize_text(value, max_len=3000).replace("\r", " ").replace("\n", " ").replace("\t", " ")
     text = re.sub(r"[*~`]", "", text)
     text = re.sub(r"_{2,}", "", text)
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")[:3000]
@@ -112,7 +113,7 @@ class SlackChannel:
             payload = _build_slack_payload(alert)
             return await send_slack_payload(self.webhook_url, payload)
         except Exception:
-            logger.exception("Slack channel delivery failed")
+            logger.error("Slack channel delivery failed")
             return False
 
 
@@ -223,7 +224,7 @@ class WebhookChannel:
                     client,
                     "POST",
                     self.url,
-                    json=alert,
+                    json=sanitize_sensitive_payload(alert, max_str_len=3_000),
                     headers={"Content-Type": "application/json", **self.headers},
                     max_retries=0,
                 )
@@ -233,7 +234,7 @@ class WebhookChannel:
 
             # The webhook URL can itself be the secret (Slack-style incoming
             # webhooks embed the token in the path), so never log it verbatim.
-            logger.exception("Webhook channel delivery failed for %s", redact_secret_url(self.url))
+            logger.error("Webhook channel delivery failed for %s", redact_secret_url(self.url))
             return False
 
 
@@ -264,7 +265,7 @@ class ClickHouseChannel:
             self._get_store().record_event(alert)
             return True
         except Exception:
-            logger.exception("ClickHouse channel delivery failed")
+            logger.error("ClickHouse channel delivery failed")
             return False
 
 
@@ -330,6 +331,8 @@ class AlertDispatcher:
         if "ts" not in alert_dict:
             alert_dict["ts"] = datetime.now(timezone.utc).isoformat()
         alert_dict = _normalize_alert_event(alert_dict)
+        sanitized = sanitize_sensitive_payload(alert_dict, max_str_len=3_000)
+        alert_dict = sanitized if isinstance(sanitized, dict) else {"message": "Alert payload redacted", "severity": "info"}
 
         successes = 0
         for ch in self._channels:
@@ -340,7 +343,7 @@ class AlertDispatcher:
                 else:
                     self._stats.total_channel_failures += 1
             except Exception:
-                logger.exception("Channel %s failed", type(ch).__name__)
+                logger.error("Channel %s failed", type(ch).__name__)
                 self._stats.total_channel_failures += 1
 
         self._stats.total_dispatched += 1

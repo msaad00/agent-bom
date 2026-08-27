@@ -19,13 +19,17 @@ from agent_bom.output.finding_views import (
     package_version,
     ranked_cve_findings,
     reachability_label,
+    sanitize_output_text,
     severity_counts,
     severity_value,
     unified_findings,
+    with_output_sanitizer_cache,
     workflow_status,
 )
+from agent_bom.security import sanitize_sensitive_payload
 
 
+@with_output_sanitizer_cache
 def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Convert an AIBOMReport to Markdown string."""
     brs = blast_radii or report.blast_radii
@@ -53,7 +57,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
         lines.append("")
         lines.append("This report does not represent complete coverage; a low or zero finding count is not a clean bill of health.")
         for issue in scan_run.issues:
-            lines.append(f"- **{issue.source}**: {issue.message}")
+            lines.append(f"- **{sanitize_output_text(issue.source)}**: {sanitize_output_text(issue.message)}")
         lines.append("")
     lines.append("| Metric | Count |")
     lines.append("|--------|-------|")
@@ -91,7 +95,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
         lines.append("|----------|------|-------|---------|--------|")
         for finding in sorted(policy_findings, key=lambda f: _finding_sev_order(f.severity)):
             asset = _md_cell(finding.asset.name or finding.asset.identifier or "-")
-            location = f"<br>`{finding.asset.location}`" if finding.asset.location else ""
+            location = f"<br>`{_md_cell(finding.asset.location)}`" if finding.asset.location else ""
             title = _md_cell(finding.title or finding.description or finding.finding_type.value)
             source = finding.source.value
             lines.append(
@@ -104,20 +108,21 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
             lines.append("## High-Risk Policy Findings")
             lines.append("")
             for finding in high_policy_findings:
-                title = finding.title or finding.finding_type.value
+                title = _md_cell(finding.title or finding.finding_type.value)
                 lines.append(f"### {title}")
                 lines.append("")
                 lines.append(f"- **Severity**: {finding.severity.upper()}")
                 lines.append(f"- **Type**: {finding.finding_type.value}")
-                lines.append(f"- **Asset**: {finding.asset.name}")
+                lines.append(f"- **Asset**: {_md_cell(finding.asset.name)}")
                 if finding.asset.location:
-                    lines.append(f"- **Location**: `{finding.asset.location}`")
+                    lines.append(f"- **Location**: `{_md_cell(finding.asset.location)}`")
                 if finding.description:
-                    lines.append(f"- **Description**: {finding.description}")
+                    lines.append(f"- **Description**: {sanitize_output_text(finding.description)}")
                 if finding.remediation_guidance:
-                    lines.append(f"- **Remediation**: {finding.remediation_guidance}")
+                    lines.append(f"- **Remediation**: {sanitize_output_text(finding.remediation_guidance)}")
                 if finding.evidence:
-                    evidence_text = ", ".join(f"{key}={value}" for key, value in finding.evidence.items() if value is not None)
+                    safe_evidence = sanitize_sensitive_payload(finding.evidence, max_str_len=10_000)
+                    evidence_text = ", ".join(f"{key}={value}" for key, value in safe_evidence.items() if value is not None)
                     if evidence_text:
                         lines.append(f"- **Evidence**: {evidence_text}")
                 lines.append("")
@@ -139,10 +144,11 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
             cwe = _md_cell(", ".join(finding.cwe_ids) if finding.cwe_ids else "-")
             tags = _md_cell(", ".join(framework_qualified_finding_tags(finding)) or "-")
             source = _md_cell(evidence(finding, "severity_source", "-") or "-")
-            fix = finding.fixed_version or "-"
+            fix = _md_cell(finding.fixed_version or "-")
             agents = str(len(finding.affected_agents))
             lines.append(
-                f"| {sev_badge} | {vuln_id} | {package_name(finding)} | {package_version(finding) or '-'} | {fix} | {cvss} | "
+                f"| {sev_badge} | {_md_cell(vuln_id)} | {_md_cell(package_name(finding))} | "
+                f"{_md_cell(package_version(finding) or '-')} | {fix} | {cvss} | "
                 f"{epss} | {kev} | {reach} | {cwe} | {tags} | {source} | {agents} |"
             )
 
@@ -157,23 +163,23 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
         lines.append("")
         for finding in critical_high:
             vuln_id = finding.cve_id or finding.id
-            lines.append(f"### {vuln_id} — {package_name(finding)}@{package_version(finding) or '?'}")
+            lines.append(f"### {_md_cell(vuln_id)} — {_md_cell(package_name(finding))}@{_md_cell(package_version(finding) or '?')}")
             lines.append("")
             if finding.description:
-                lines.append(f"> {finding.description}")
+                lines.append(f"> {sanitize_output_text(finding.description)}")
                 lines.append("")
             lines.append(f"- **Severity**: {severity_value(finding).upper()}")
             if finding.owner:
-                lines.append(f"- **Owner**: {finding.owner}")
+                lines.append(f"- **Owner**: {sanitize_output_text(finding.owner)}")
             sla_due = finding.to_dict().get("sla_due_at")
             if sla_due:
-                lines.append(f"- **SLA due**: {sla_due}")
+                lines.append(f"- **SLA due**: {sanitize_output_text(sla_due)}")
             status = workflow_status(finding)
             if status:
-                lines.append(f"- **Workflow status**: {status}")
+                lines.append(f"- **Workflow status**: {sanitize_output_text(status)}")
             severity_source = evidence(finding, "severity_source", "")
             if severity_source:
-                lines.append(f"- **Severity source**: {severity_source}")
+                lines.append(f"- **Severity source**: {sanitize_output_text(severity_source)}")
             if finding.cvss_score is not None:
                 lines.append(f"- **CVSS**: {finding.cvss_score}")
             if finding.epss_score is not None:
@@ -185,22 +191,22 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
                 lines.append("- **KEV**: Yes (CISA Known Exploited)")
             kev_date_added = evidence(finding, "kev_date_added", "")
             if kev_date_added:
-                lines.append(f"- **KEV date added**: {kev_date_added}")
+                lines.append(f"- **KEV date added**: {sanitize_output_text(kev_date_added)}")
             kev_due_date = evidence(finding, "kev_due_date", "")
             if kev_due_date:
-                lines.append(f"- **KEV due date**: {kev_due_date}")
+                lines.append(f"- **KEV due date**: {sanitize_output_text(kev_due_date)}")
             if finding.fixed_version:
-                lines.append(f"- **Fix**: Upgrade to {finding.fixed_version}")
+                lines.append(f"- **Fix**: Upgrade to {sanitize_output_text(finding.fixed_version)}")
             if finding.cwe_ids:
-                lines.append(f"- **CWE**: {', '.join(finding.cwe_ids)}")
+                lines.append(f"- **CWE**: {sanitize_output_text(', '.join(finding.cwe_ids))}")
             reach_label, reach_state = reachability_label(finding)
             reach_suffix = " (code reachability not evaluated)" if reach_state == "unknown" else ""
             lines.append(f"- **Reachability**: {reach_label}{reach_suffix}")
             compliance_tags = ", ".join(framework_qualified_finding_tags(finding))
             if compliance_tags:
-                lines.append(f"- **Compliance tags**: {compliance_tags}")
+                lines.append(f"- **Compliance tags**: {sanitize_output_text(compliance_tags)}")
             if finding.affected_agents:
-                lines.append(f"- **Affected agents**: {', '.join(finding.affected_agents)}")
+                lines.append(f"- **Affected agents**: {sanitize_output_text(', '.join(finding.affected_agents))}")
             if finding.exposed_credentials:
                 lines.append(f"- **Exposed credentials**: {len(finding.exposed_credentials)}")
             lines.append("")
@@ -272,7 +278,7 @@ def _severity_text(sev: str) -> str:
 
 def _md_cell(value: object) -> str:
     """Escape Markdown table separators without hiding human-readable context."""
-    return str(value).replace("|", "\\|")
+    return sanitize_output_text(value).replace("|", "\\|")
 
 
 def _exposure_path_section(report: AIBOMReport, blast_radii: list[BlastRadius] | None) -> list[str]:

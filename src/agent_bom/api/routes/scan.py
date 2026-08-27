@@ -980,7 +980,10 @@ def _context_graph_payload(result: dict[str, Any], *, agent: str | None, scan_id
 
     payload = to_serializable(graph, paths, risks)
     payload["stats"]["lateral_paths_truncated"] = paths_truncated
-    return _attach_unified_graph_view(payload, result, scan_id=scan_id, tenant_id=tenant_id)
+    attached = _attach_unified_graph_view(payload, result, scan_id=scan_id, tenant_id=tenant_id)
+    from agent_bom.output.interop_security import sanitize_linked_document
+
+    return sanitize_linked_document(attached)
 
 
 def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit: int) -> dict | str | PlainTextResponse:
@@ -1191,7 +1194,7 @@ def _inventory_packages_from_agents(agents: list[dict[str, Any]]) -> list[dict[s
 
 def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
     """Build a lightweight summary payload for list surfaces."""
-    from agent_bom.security import sanitize_sensitive_payload
+    from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
     result = job.result if isinstance(job.result, dict) else {}
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
@@ -1219,16 +1222,16 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "created_at": job.created_at,
         "completed_at": job.completed_at,
         "request": request_payload if isinstance(request_payload, dict) else {},
-        "summary": summary,
-        "aggregation": aggregation,
+        "summary": sanitize_sensitive_payload(summary),
+        "aggregation": sanitize_sensitive_payload(aggregation),
         "scan_timestamp": scan_timestamp,
         "generated_at": generated_at,
-        "scan_run": scan_run,
+        "scan_run": sanitize_sensitive_payload(scan_run),
         "scan_outcome": (scan_run or {}).get("outcome"),
         "warning_count": warning_count,
-        "warnings_preview": [str(item) for item in warnings[:3]],
+        "warnings_preview": sanitize_sensitive_payload(warnings[:3]),
         "pushed": bool(result.get("pushed")),
-        "error": job.error,
+        "error": sanitize_text(job.error, max_len=1_000) if job.error else None,
     }
 
 
@@ -1265,13 +1268,18 @@ async def _load_job_for_request(request: Request, job_id: str) -> ScanJob:
 
 
 def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Drop replay-only fields from top-level scan findings before API return."""
+    """Redact the complete scan envelope and drop replay-only finding fields."""
     if not isinstance(result, dict):
         return result
     from agent_bom.cloud.cis_remediation import fail_closed_cis_result
+    from agent_bom.security import sanitize_sensitive_payload
 
-    redacted = cast(dict[str, Any], fail_closed_cis_result(result))
     findings = result.get("findings")
+    envelope = {key: value for key, value in result.items() if key != "findings"}
+    sanitized = sanitize_sensitive_payload(envelope, max_str_len=10_000)
+    if not isinstance(sanitized, dict):
+        return {"document_type": "AI-BOM", "redaction_error": "scan result sanitizer returned a non-object payload"}
+    redacted = cast(dict[str, Any], fail_closed_cis_result(sanitized))
     if not isinstance(findings, list):
         return redacted
     from agent_bom.finding_scope import safe_finding_response_payload
@@ -1597,7 +1605,7 @@ async def get_attack_flow(
     blast_radius = job.result.get("blast_radius", [])
     agents_data = job.result.get("agents", [])
 
-    return build_attack_flow(
+    payload = build_attack_flow(
         blast_radius,
         agents_data,
         cve=cve,
@@ -1605,6 +1613,9 @@ async def get_attack_flow(
         framework=framework,
         agent_name=agent,
     )
+    from agent_bom.output.interop_security import sanitize_linked_document
+
+    return sanitize_linked_document(payload)
 
 
 @router.get("/scan/{job_id}/context-graph", tags=["scan"])

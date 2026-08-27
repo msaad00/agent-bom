@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from agent_bom.output.finding_views import sanitize_output_text
+
 _SEV_COLOR = {
     "critical": "#dc2626",
     "high": "#ea580c",
@@ -27,4 +29,4 @@ def _sev_badge(sev: str) -> str:
 
 
 def _esc(s: object) -> str:
-    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    return sanitize_output_text(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")

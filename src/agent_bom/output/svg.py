@@ -16,7 +16,7 @@ import html
 from typing import TYPE_CHECKING
 
 from agent_bom.asset_provenance import package_version_provenance
-from agent_bom.output.finding_views import cve_findings, severity_value, topology_package_key
+from agent_bom.output.finding_views import cve_findings, sanitize_output_text, severity_value, topology_package_key
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
@@ -346,12 +346,12 @@ def to_svg(
             ctype = item.get("type", color_key)
             colors = _COLORS.get(ctype, _COLORS.get(color_key, ("#333", "#f5f5f5", "#999")))
             text_color, bg_color, border_color = colors
-            label = html.escape(item["label"][:28])
+            label = html.escape(sanitize_output_text(item["label"])[:28])
             version_attrs = ""
             version_provenance = item.get("version_provenance")
             if isinstance(version_provenance, dict):
-                source = html.escape(str(version_provenance.get("version_source", "unknown")), quote=True)
-                confidence = html.escape(str(version_provenance.get("confidence", "unknown")), quote=True)
+                source = html.escape(sanitize_output_text(version_provenance.get("version_source", "unknown")), quote=True)
+                confidence = html.escape(sanitize_output_text(version_provenance.get("confidence", "unknown")), quote=True)
                 version_attrs = f' data-version-source="{source}" data-version-confidence="{confidence}"'
 
             parts.append(

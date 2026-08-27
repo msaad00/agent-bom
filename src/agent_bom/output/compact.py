@@ -400,6 +400,8 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     when MCP agent context is available. Falls back to a clean vuln table for
     scan types without agent context (image, check, iac, CI/CD).
     """
+    from rich.markup import escape
+
     from agent_bom.output import _sev_badge, console
     from agent_bom.output.finding_views import (
         active_cve_findings,
@@ -410,7 +412,11 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         is_package_direct,
         package_name,
         package_version,
+        sanitize_output_text,
     )
+
+    def safe(value: object) -> str:
+        return escape(sanitize_output_text(value))
 
     active_findings = active_cve_findings(report)
     if not active_findings:
@@ -467,7 +473,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
 
     for finding in shown:
         forward_fix = _forward_fix_version(finding)
-        fix = f"[green]{forward_fix}[/green]" if forward_fix else "[dim]no fix[/dim]"
+        fix = f"[green]{safe(forward_fix)}[/green]" if forward_fix else "[dim]no fix[/dim]"
         _exploit_level = exploit_likelihood_value(finding)
         if finding.is_kev:
             kev = " [red bold]KEV[/red bold]"
@@ -484,13 +490,15 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
             epss_style = "red bold" if epss_pct >= 70 else "yellow" if epss_pct >= 30 else "dim"
             epss_display = f"[{epss_style}]{epss_pct}%[/{epss_style}]"
 
-        pkg_display = f"{package_name(finding)}@{package_version(finding)}" + ("" if is_package_direct(finding) else " [dim]T[/dim]")
-        vuln_id = finding.cve_id or finding.id
+        pkg_display = f"{safe(package_name(finding))}@{safe(package_version(finding))}" + (
+            "" if is_package_direct(finding) else " [dim]T[/dim]"
+        )
+        vuln_id = safe(finding.cve_id or finding.id)
 
         if has_blast_context:
-            agent_names = list(finding.affected_agents)
-            cred_names = list(finding.exposed_credentials)
-            server_names = list(finding.affected_servers)
+            agent_names = [safe(value) for value in finding.affected_agents]
+            cred_names = [safe(value) for value in finding.exposed_credentials]
+            server_names = [safe(value) for value in finding.affected_servers]
             chain_parts: list[str] = []
             if agent_names:
                 name = agent_names[0][:16]
@@ -552,26 +560,26 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         for finding in critical_findings[:5]:
             sev = finding_severity(finding)
             style = sev_style_map.get(sev, "white")
-            summary = finding.description or ""
+            summary = safe(finding.description or "")
             if len(summary) > 80:
                 summary = summary[:77] + "..."
             sev_label = sev.value.upper()
-            pkg_ref = f"{package_name(finding)}@{package_version(finding)}"
-            vuln_id = finding.cve_id or finding.id
+            pkg_ref = f"{safe(package_name(finding))}@{safe(package_version(finding))}"
+            vuln_id = safe(finding.cve_id or finding.id)
             console.print(f"\n  [{style}]{vuln_id}[/{style}] · {pkg_ref} · [{style}]{sev_label}[/{style}]")
             if summary:
                 console.print(f"  {summary}")
             forward_fix = _forward_fix_version(finding)
             if forward_fix:
-                console.print(f"  Fix: [green]upgrade to ≥ {forward_fix}[/green]")
+                console.print(f"  Fix: [green]upgrade to ≥ {safe(forward_fix)}[/green]")
             if has_blast_context and (finding.affected_agents or finding.exposed_credentials):
-                agent_str = ", ".join(finding.affected_agents[:3])
-                cred_str = ", ".join(finding.exposed_credentials[:3])
+                agent_str = ", ".join(safe(value) for value in finding.affected_agents[:3])
+                cred_str = ", ".join(safe(value) for value in finding.exposed_credentials[:3])
                 blast_parts = []
                 if agent_str:
                     blast_parts.append(agent_str)
                 if finding.affected_servers:
-                    blast_parts.append(", ".join(finding.affected_servers[:2]))
+                    blast_parts.append(", ".join(safe(value) for value in finding.affected_servers[:2]))
                 if cred_str:
                     blast_parts.append(f"[yellow]{cred_str}[/yellow]")
                 if blast_parts:
@@ -605,6 +613,10 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5, page: int = 1
         return
 
     plan = build_remediation_plan(cve_rows)
+    from agent_bom.security import sanitize_sensitive_payload
+
+    sanitized_plan = sanitize_sensitive_payload(plan, max_str_len=10_000)
+    plan = sanitized_plan if isinstance(sanitized_plan, list) else []
     fixable = [p for p in plan if p["fix"]]
     if not fixable:
         return

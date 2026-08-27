@@ -17,6 +17,7 @@ from agent_bom.output.finding_views import (
     package_name,
     package_version,
     ranked_cve_findings,
+    sanitize_output_text,
     severity_value,
     workflow_status,
 )
@@ -31,7 +32,7 @@ _WRAP_WIDTH = 92
 
 
 def _sanitize_text(value: object) -> str:
-    text = str(value)
+    text = sanitize_output_text(value)
     replacements = {
         "\u2014": "-",
         "\u2013": "-",

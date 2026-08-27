@@ -533,6 +533,24 @@ def _is_credential_material(value: str) -> bool:
     return not (_CREDENTIAL_IDENTIFIER_VALUE_RE.match(value) and env_key_is_credential(value))
 
 
+def text_requires_redaction(value: object) -> bool:
+    """Return whether canonical free-text redaction would alter sensitive data.
+
+    Renderers use this exact predicate for their fast path. It intentionally
+    shares the central patterns and credential-key classifier so a duplicated
+    heuristic cannot drift into a redaction bypass.
+    """
+    text = str(value)
+    if "http://" in text.lower() or "https://" in text.lower():
+        return True
+    if _EMAIL_RE.search(text) or any(pattern.search(text) for pattern in _VALUE_CREDENTIAL_PATTERNS):
+        return True
+    return any(
+        env_key_is_credential(match.group("key")) and _is_credential_material(match.group("value"))
+        for match in _TEXT_KEY_VALUE_RE.finditer(text)
+    )
+
+
 def _looks_sensitive_value(value: str) -> bool:
     return sanitize_env_vars({"ARG": value}).get("ARG") == "***REDACTED***"
 
@@ -603,7 +621,17 @@ def _key_looks_sensitive(key: object) -> bool:
 # labels and set-dedups them, collapsing distinct credentials into one phantom
 # node and inventing cross-agent ``reaches_tool``/``exposes_cred`` edges.  Only
 # the VALUE of a credential is sensitive, and values are never carried here.
-_CREDENTIAL_IDENTIFIER_KEYS = frozenset({"credential_env_vars", "credential_env_var", "credential_names", "credential_refs"})
+_CREDENTIAL_IDENTIFIER_KEYS = frozenset(
+    {
+        "credential_env_vars",
+        "credential_env_var",
+        "credential_names",
+        "credential_refs",
+        "credentials_exposed",
+        "exposed_credentials",
+        "exposed_credential_names",
+    }
+)
 
 
 def _key_is_credential_identifier(key: object) -> bool:
@@ -704,6 +732,10 @@ def _sanitize_sensitive_string(value: str, *, key: object | None, max_str_len: i
         return sanitize_path_label(value)
     if _looks_like_path_value(value):
         return sanitize_path_label(value)
+    if not text_requires_redaction(value) and (
+        len(value.strip()) < _HIGH_ENTROPY_MIN_LEN or any(character.isspace() for character in value)
+    ):
+        return sanitize_log_label(value, max_len=max_str_len)
     if _looks_sensitive_value(value):
         return "***REDACTED***"
     return sanitize_text(value, max_len=max_str_len)

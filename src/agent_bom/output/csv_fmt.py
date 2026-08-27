@@ -20,6 +20,7 @@ from agent_bom.output.finding_views import (
     package_version,
     severity_value,
     unified_export_findings,
+    with_output_sanitizer_cache,
     workflow_status,
 )
 
@@ -82,6 +83,7 @@ def _verdict_cell(finding: Finding, key: str) -> str:
     return str(value)
 
 
+@with_output_sanitizer_cache
 def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Convert an AIBOMReport to CSV string with UTF-8 BOM."""
     findings = unified_export_findings(report, blast_radii)
@@ -162,6 +164,9 @@ def _excel_safe_cell(value: object) -> object:
     """
     if not isinstance(value, str):
         return value
+    from agent_bom.output.finding_views import sanitize_output_text
+
+    value = sanitize_output_text(value)
     stripped = value.lstrip(" \t\r\n")
     if stripped.startswith(("=", "+", "-", "@")):
         return "'" + value

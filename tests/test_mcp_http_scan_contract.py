@@ -6,6 +6,7 @@ from agent_bom.api.models import ScanJob, ScanRequest
 from agent_bom.api.pipeline import _now, _run_scan_sync
 from agent_bom.api.stores import _COMPACTED_RESULT_MARKER
 from agent_bom.mcp_tools.scanning import scan_impl
+from agent_bom.models import Agent, AgentType
 
 _CONTRACT_KEYS = ("agents", "blast_radii", "blast_radius", "status", "vulnerabilities", "warnings")
 
@@ -86,3 +87,25 @@ async def test_mcp_scan_no_agent_shape_matches_http_scan(monkeypatch):
         assert result["vulnerabilities"] == []
         assert result["blast_radius"] == result["blast_radii"] == []
         assert result["warnings"] == []
+
+
+@pytest.mark.asyncio
+async def test_mcp_default_scan_redacts_secret_pii_and_credential_urls():
+    secret = "ghp_" + "a" * 36
+    email = "alice.sentinel@example.invalid"
+    credential_url = "postgresql://admin:sentinel-password@db.internal/prod"
+
+    async def _pipeline(*_args, **_kwargs):
+        agent = Agent(
+            name=secret,
+            agent_type=AgentType.CUSTOM,
+            config_path=credential_url,
+            source=email,
+        )
+        return [agent], [], [f"{email} {secret} {credential_url}"], []
+
+    rendered = await scan_impl(_run_scan_pipeline=_pipeline, _truncate_response=_truncate)
+
+    assert secret not in rendered
+    assert email not in rendered
+    assert credential_url not in rendered

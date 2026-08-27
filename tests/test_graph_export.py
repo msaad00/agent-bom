@@ -204,6 +204,41 @@ def test_credential_to_tool_reaches_edges_export_with_evidence():
         os.unlink(path)
 
 
+def test_all_graph_serializers_redact_secret_pii_and_credential_urls():
+    secret = "ghp_" + "a" * 36
+    email = "alice.sentinel@example.invalid"
+    credential_url = "postgresql://admin:sentinel-password@db.internal/prod"
+    graph = DepGraph()
+    graph.add_node(
+        f"agent:{secret}",
+        f"{email} {secret}",
+        "agent",
+        attributes={"connection_url": credential_url, "owner": email},
+    )
+    graph.add_node("tool:safe", "safe tool", "tool")
+    graph.add_edge(
+        f"agent:{secret}",
+        "tool:safe",
+        "reaches_tool",
+        evidence={"secret_value": secret, "callback": credential_url},
+    )
+
+    rendered = (
+        json.dumps(to_json(graph)),
+        to_dot(graph),
+        to_mermaid(graph),
+        to_graphml(graph),
+        to_cypher(graph),
+    )
+    for output in rendered:
+        assert secret not in output
+        assert email not in output
+        assert credential_url not in output
+
+    # Outbound projection must not mutate the graph used for internal analysis.
+    assert secret in graph.nodes[0].id
+
+
 def test_same_env_var_name_stays_scoped_to_each_exported_server():
     data = _make_scan_json(
         [

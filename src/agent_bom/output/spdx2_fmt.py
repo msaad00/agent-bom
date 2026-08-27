@@ -224,7 +224,9 @@ def to_spdx2(report: AIBOMReport, version: str = "2.3") -> dict:
         "relationships": relationships,
         "documentDescribes": described_ids,
     }
-    return document
+    from agent_bom.output.interop_security import sanitize_linked_document
+
+    return sanitize_linked_document(document)
 
 
 def export_spdx2(report: AIBOMReport, output_path: str, version: str = "2.3") -> None:

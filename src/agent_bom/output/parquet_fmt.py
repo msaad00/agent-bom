@@ -17,9 +17,11 @@ from agent_bom.output.finding_views import (
     package_ecosystem,
     package_name,
     package_version,
+    sanitize_output_text,
     severity_value,
     unified_export_findings,
 )
+from agent_bom.security import sanitize_sensitive_payload
 
 # Lake/Parquet schema version. v1 = the CVE+malicious 28-column table; v2 added
 # unified finding identity; v3 appends scan provenance, source/asset identity,
@@ -88,7 +90,7 @@ def _require_pyarrow():
 
 def _row_dict(finding, report: AIBOMReport) -> dict[str, Any]:
     workflow = finding.to_dict()
-    return {
+    row = {
         "cve_id": finding.cve_id or finding.id,
         "package": package_name(finding),
         "version": package_version(finding),
@@ -120,7 +122,7 @@ def _row_dict(finding, report: AIBOMReport) -> dict[str, Any]:
         "finding_type": finding.finding_type.value,
         "finding_id": finding.id,
         "title": finding.title or None,
-        "scan_id": report.scan_id or None,
+        "scan_id": sanitize_output_text(report.scan_id) or None,
         "generated_at": report.generated_at.isoformat(),
         "source": finding.source.value,
         "asset_identifier": finding.asset.identifier or None,
@@ -130,6 +132,8 @@ def _row_dict(finding, report: AIBOMReport) -> dict[str, Any]:
         "symbol_reachability_reason": evidence(finding, "symbol_reachability_reason", "") or None,
         "runtime_dependency_chain": ";".join(evidence(finding, "runtime_dependency_chain", []) or []) or None,
     }
+    sanitized = sanitize_sensitive_payload(row, max_str_len=10_000)
+    return sanitized if isinstance(sanitized, dict) else {}
 
 
 def to_arrow_table(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None):

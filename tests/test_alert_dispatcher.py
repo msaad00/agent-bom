@@ -1,6 +1,8 @@
 """Tests for alert pipeline — dispatcher, channels, and scan alert generation."""
 
 import asyncio
+import json
+from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 from agent_bom.alerts.dispatcher import (
@@ -102,6 +104,29 @@ def test_slack_payload_escapes_untrusted_mrkdwn():
     assert "agentone" in rendered
 
 
+def test_slack_payload_redacts_secret_pii_and_credential_urls():
+    secret = "ghp_" + "a" * 36
+    email = "alice.sentinel@example.invalid"
+    credential_url = "postgresql://admin:sentinel-password@db.internal/prod"
+    payload = _build_slack_payload(
+        {
+            "severity": "high",
+            "message": f"Exposed {secret} for {email}",
+            "detector": "sentinel",
+            "details": {
+                "affected_agents": [email],
+                "credentials_exposed": [secret],
+                "fixed_version": credential_url,
+            },
+        }
+    )
+
+    rendered = json.dumps(payload)
+    assert secret not in rendered
+    assert email not in rendered
+    assert credential_url not in rendered
+
+
 # ─── WebhookChannel ──────────────────────────────────────────────────────────
 
 
@@ -141,6 +166,47 @@ def test_webhook_channel_failure_does_not_log_secret_url(caplog, monkeypatch):
     assert urlsplit(redacted_urls[-1]).hostname == "hooks.slack.example.com"
 
 
+def test_webhook_channel_redacts_payload_before_delivery(monkeypatch):
+    import agent_bom.http_client as http_client
+    import agent_bom.security as security
+
+    secret = "ghp_" + "a" * 36
+    email = "alice.sentinel@example.invalid"
+    credential_url = "postgresql://admin:sentinel-password@db.internal/prod"
+    captured: dict = {}
+
+    class _ClientContext:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def _request(*args, **kwargs):
+        captured.update(kwargs["json"])
+        return SimpleNamespace(status_code=204)
+
+    monkeypatch.setattr(security, "validate_url", lambda *a, **k: None)
+    monkeypatch.setattr(http_client, "create_client", lambda **kwargs: _ClientContext())
+    monkeypatch.setattr(http_client, "request_with_retry", _request)
+
+    channel = WebhookChannel("https://example.test/hook")
+    result = asyncio.run(
+        channel.send(
+            {
+                "message": f"Exposed {secret}",
+                "details": {"email": email, "connection_url": credential_url},
+            }
+        )
+    )
+
+    assert result is True
+    rendered = json.dumps(captured)
+    assert secret not in rendered
+    assert email not in rendered
+    assert credential_url not in rendered
+
+
 # ─── AlertDispatcher ─────────────────────────────────────────────────────────
 
 
@@ -156,6 +222,43 @@ def test_dispatcher_dispatch_stores_in_memory():
     assert count == 1
     assert d.alert_count() == 1
     assert d.list_alerts()[0]["message"] == "test"
+
+
+def test_dispatcher_redacts_alert_before_history_and_channels():
+    secret = "ghp_" + "a" * 36
+    email = "alice.sentinel@example.invalid"
+    credential_url = "postgresql://admin:sentinel-password@db.internal/prod"
+    dispatcher = AlertDispatcher()
+
+    asyncio.run(
+        dispatcher.dispatch(
+            {
+                "severity": "high",
+                "message": f"Exposed {secret}",
+                "details": {"email": email, "connection_url": credential_url},
+            }
+        )
+    )
+
+    rendered = json.dumps(dispatcher.list_alerts())
+    assert secret not in rendered
+    assert email not in rendered
+    assert credential_url not in rendered
+
+
+def test_dispatcher_channel_exception_does_not_leak_exception_text(caplog):
+    secret = "ghp_" + "a" * 36
+
+    class _FailingChannel:
+        async def send(self, alert: dict) -> bool:
+            raise RuntimeError(f"delivery failed with {secret}")
+
+    dispatcher = AlertDispatcher()
+    dispatcher.add_channel(_FailingChannel())
+    with caplog.at_level("ERROR"):
+        asyncio.run(dispatcher.dispatch({"severity": "high", "message": "test"}))
+
+    assert secret not in caplog.text
 
 
 def test_dispatcher_dispatch_adds_timestamp():

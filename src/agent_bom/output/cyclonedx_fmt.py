@@ -958,7 +958,9 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             }
         ]
 
-    return cdx
+    from agent_bom.output.interop_security import sanitize_linked_document
+
+    return sanitize_linked_document(cdx)
 
 
 def export_cyclonedx(report: AIBOMReport, output_path: str) -> None:

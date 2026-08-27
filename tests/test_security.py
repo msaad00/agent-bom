@@ -460,6 +460,23 @@ def test_sanitize_sensitive_payload_preserves_safe_shape():
     assert result == {"package": "express", "version": "4.18.2", "count": 2}
 
 
+def test_sanitize_sensitive_payload_preserves_credential_identifiers_but_not_values():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    secret = "ghp_" + "a" * 36
+    result = sanitize_sensitive_payload(
+        {
+            "credentials_exposed": ["OPENAI_API_KEY", secret],
+            "exposed_credentials": 1,
+        }
+    )
+
+    assert result == {
+        "credentials_exposed": ["OPENAI_API_KEY", "***REDACTED***"],
+        "exposed_credentials": 1,
+    }
+
+
 def test_sanitize_sensitive_payload_preserves_structured_graph_edge_ids():
     from agent_bom.security import sanitize_sensitive_payload
 

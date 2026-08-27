@@ -394,7 +394,9 @@ async def _scan_impl_inner(
 
         if scan_warnings:
             result["warnings"] = scan_warnings
-        return _truncate_response(json.dumps(result, indent=2, default=str))
+        from agent_bom.output.json_fmt import redact_json_payload
+
+        return _truncate_response(json.dumps(redact_json_payload(result), indent=2, default=str))
     except Exception as exc:
         from agent_bom.scanners import IncompleteScanError
 

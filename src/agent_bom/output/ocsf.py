@@ -39,6 +39,11 @@ _ANALYTIC_TYPE: dict[str, str] = {
 }
 
 
+def _sanitize_ocsf_event(event: dict[str, Any]) -> dict[str, Any]:
+    sanitized = sanitize_sensitive_payload(event, max_str_len=10_000)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
 def alert_to_ocsf(alert: dict, product_version: str = "") -> dict[str, Any]:
     """Convert an agent-bom runtime alert to OCSF v1.1 Security Finding.
 
@@ -62,51 +67,53 @@ def alert_to_ocsf(alert: dict, product_version: str = "") -> dict[str, Any]:
         if safe_provenance:
             safe_details["discovery_provenance"] = safe_provenance
 
-    return {
-        # OCSF metadata
-        "class_uid": 2001,  # Security Finding
-        "class_name": "Security Finding",
-        "category_uid": 2,  # Findings
-        "category_name": "Findings",
-        "severity_id": _SEVERITY_MAP.get(severity, 1),
-        "severity": severity.capitalize(),
-        "activity_id": 1,  # Create
-        "activity_name": "Create",
-        "type_uid": 200101,  # Security Finding: Create
-        "status_id": 1,  # New
-        "status": "New",
-        "time": int(time.time() * 1000),
-        "message": alert.get("message", ""),
-        # Finding details
-        "finding_info": {
-            "title": alert.get("message", ""),
-            "uid": f"{detector}:{details.get('tool', 'unknown')}:{alert.get('ts', '')}",
-            "types": [detector],
-            "analytic": {
-                "type": _ANALYTIC_TYPE.get(detector, "Other"),
-                "name": detector,
-                "uid": detector,
+    return _sanitize_ocsf_event(
+        {
+            # OCSF metadata
+            "class_uid": 2001,  # Security Finding
+            "class_name": "Security Finding",
+            "category_uid": 2,  # Findings
+            "category_name": "Findings",
+            "severity_id": _SEVERITY_MAP.get(severity, 1),
+            "severity": severity.capitalize(),
+            "activity_id": 1,  # Create
+            "activity_name": "Create",
+            "type_uid": 200101,  # Security Finding: Create
+            "status_id": 1,  # New
+            "status": "New",
+            "time": int(time.time() * 1000),
+            "message": alert.get("message", ""),
+            # Finding details
+            "finding_info": {
+                "title": alert.get("message", ""),
+                "uid": f"{detector}:{details.get('tool', 'unknown')}:{alert.get('ts', '')}",
+                "types": [detector],
+                "analytic": {
+                    "type": _ANALYTIC_TYPE.get(detector, "Other"),
+                    "name": detector,
+                    "uid": detector,
+                },
             },
-        },
-        # Resource (the MCP tool being analyzed)
-        "resources": [
-            {
-                "type": "Other",
-                "name": details.get("tool", "unknown") if isinstance(details, dict) else "unknown",
-                "data": {k: v for k, v in safe_details.items() if k != "tool"},
-            }
-        ],
-        # Product metadata
-        "metadata": {
-            "product": {
-                "name": "agent-bom",
-                "vendor_name": "agent-bom",
-                "version": product_version,
+            # Resource (the MCP tool being analyzed)
+            "resources": [
+                {
+                    "type": "Other",
+                    "name": details.get("tool", "unknown") if isinstance(details, dict) else "unknown",
+                    "data": {k: v for k, v in safe_details.items() if k != "tool"},
+                }
+            ],
+            # Product metadata
+            "metadata": {
+                "product": {
+                    "name": "agent-bom",
+                    "vendor_name": "agent-bom",
+                    "version": product_version,
+                },
+                "version": "1.1.0",
+                "profiles": ["security_control"],
             },
-            "version": "1.1.0",
-            "profiles": ["security_control"],
-        },
-    }
+        }
+    )
 
 
 def alerts_to_ocsf(alerts: list[dict], product_version: str = "") -> list[dict]:
@@ -197,39 +204,41 @@ def finding_to_ocsf(finding: "Finding", product_version: str = "") -> dict[str, 
     if suppression:
         unmapped["suppression"] = suppression
 
-    return {
-        "class_uid": 2001,  # Security Finding
-        "class_name": "Security Finding",
-        "category_uid": 2,  # Findings
-        "category_name": "Findings",
-        "severity_id": _SEVERITY_MAP.get(severity, 1),
-        "severity": severity.capitalize(),
-        "activity_id": 1,  # Create
-        "activity_name": "Create",
-        "type_uid": 200101,  # Security Finding: Create
-        "status_id": status_id,
-        "status": status,
-        "time": int(time.time() * 1000),
-        "message": finding.title or finding.description or finding.finding_type.value,
-        "finding_info": finding_info,
-        "resources": [
-            {
-                "type": finding.asset.asset_type,
-                "name": finding.asset.name,
-                "uid": finding.asset.stable_id,
-            }
-        ],
-        "metadata": {
-            "product": {
-                "name": "agent-bom",
-                "vendor_name": "agent-bom",
-                "version": product_version,
+    return _sanitize_ocsf_event(
+        {
+            "class_uid": 2001,  # Security Finding
+            "class_name": "Security Finding",
+            "category_uid": 2,  # Findings
+            "category_name": "Findings",
+            "severity_id": _SEVERITY_MAP.get(severity, 1),
+            "severity": severity.capitalize(),
+            "activity_id": 1,  # Create
+            "activity_name": "Create",
+            "type_uid": 200101,  # Security Finding: Create
+            "status_id": status_id,
+            "status": status,
+            "time": int(time.time() * 1000),
+            "message": finding.title or finding.description or finding.finding_type.value,
+            "finding_info": finding_info,
+            "resources": [
+                {
+                    "type": finding.asset.asset_type,
+                    "name": finding.asset.name,
+                    "uid": finding.asset.stable_id,
+                }
+            ],
+            "metadata": {
+                "product": {
+                    "name": "agent-bom",
+                    "vendor_name": "agent-bom",
+                    "version": product_version,
+                },
+                "version": "1.1.0",
+                "profiles": ["security_control"],
             },
-            "version": "1.1.0",
-            "profiles": ["security_control"],
-        },
-        "unmapped": unmapped,
-    }
+            "unmapped": unmapped,
+        }
+    )
 
 
 def findings_to_ocsf(findings: "list[Finding]", product_version: str = "") -> list[dict]:

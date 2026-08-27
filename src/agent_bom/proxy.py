@@ -44,7 +44,13 @@ from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_li
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
-from agent_bom.security import redact_secret_url, require_recognized_launcher, sanitize_text, validate_arguments
+from agent_bom.security import (
+    redact_secret_url,
+    require_recognized_launcher,
+    sanitize_sensitive_payload,
+    sanitize_text,
+    validate_arguments,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -783,7 +789,7 @@ async def _send_webhook(url: str, payload: dict) -> None:
         import httpx
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)) as client:
-            await client.post(url, json=payload)
+            await client.post(url, json=sanitize_sensitive_payload(payload, max_str_len=3_000))
     except Exception:  # noqa: BLE001
         logger.debug("Failed to send webhook to %s", redact_secret_url(url))
 
@@ -846,7 +852,7 @@ async def _proxy_sse_server(
         for alert in alerts:
             alert_dict = alert.to_dict()
             runtime_alerts.append(alert_dict)
-            logger.warning("Runtime alert: %s", alert_dict.get("message", "runtime alert"))
+            logger.warning("Runtime alert: %s", sanitize_text(alert_dict.get("message", "runtime alert")))
             if log_f:
                 write_audit_record(log_f, alert_dict)
                 log_f.flush()
@@ -1500,7 +1506,7 @@ async def run_proxy(
         for alert in alerts:
             alert_dict = alert.to_dict()
             runtime_alerts.append(alert_dict)
-            logger.warning("Runtime alert: %s", alert.message)
+            logger.warning("Runtime alert: %s", sanitize_text(alert_dict.get("message", "runtime alert")))
             if log_f:
                 write_audit_record(log_f, alert_dict)
                 log_f.flush()

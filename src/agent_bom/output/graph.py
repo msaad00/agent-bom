@@ -1056,7 +1056,7 @@ def _graph_priority_summary(findings: list["Finding"], *, collapse_cves: bool = 
 
 
 def _json_for_script(value: object, *, indent: int = 2) -> str:
-    """Serialize data for a JavaScript block without allowing HTML breakout."""
+    """Serialize already-projected data without allowing HTML breakout."""
     return (
         json.dumps(value, indent=indent)
         .replace("&", r"\u0026")
@@ -1065,6 +1065,73 @@ def _json_for_script(value: object, *, indent: int = 2) -> str:
         .replace("\u2028", r"\u2028")
         .replace("\u2029", r"\u2029")
     )
+
+
+def sanitize_graph_elements(elements: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Redact Cytoscape elements while preserving distinct node coordinates."""
+    from agent_bom.output.finding_views import sanitize_output_text
+    from agent_bom.security import sanitize_sensitive_payload
+
+    id_map: dict[str, str] = {}
+    used_ids: set[str] = set()
+
+    def safe_id(raw: object) -> str:
+        original = str(raw)
+        existing = id_map.get(original)
+        if existing is not None:
+            return existing
+        candidate = sanitize_output_text(original)
+        if candidate in used_ids:
+            suffix = 2
+            while f"{candidate}#{suffix}" in used_ids:
+                suffix += 1
+            candidate = f"{candidate}#{suffix}"
+        id_map[original] = candidate
+        used_ids.add(candidate)
+        return candidate
+
+    for element in elements:
+        data = element.get("data")
+        if isinstance(data, dict) and "source" not in data and "target" not in data and "id" in data:
+            safe_id(data["id"])
+
+    projected: list[dict[str, Any]] = []
+    for element in elements:
+        data = element.get("data")
+        if not isinstance(data, dict):
+            continue
+        safe_data: dict[str, Any] = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                safe_data[key] = sanitize_output_text(value)
+            elif isinstance(value, dict | list | tuple):
+                safe_data[key] = sanitize_sensitive_payload(value, key=key, max_str_len=10_000)
+            else:
+                safe_data[key] = value
+        if "source" in data or "target" in data:
+            if "source" in data:
+                safe_data["source"] = safe_id(data["source"])
+            if "target" in data:
+                safe_data["target"] = safe_id(data["target"])
+        elif "id" in data:
+            safe_data["id"] = safe_id(data["id"])
+        projected.append({**element, "data": safe_data})
+    return projected, id_map
+
+
+def _sanitize_graph_reference_payload(value: object, id_map: dict[str, str]) -> object:
+    """Sanitize graph side-panel data and remap its node references."""
+    from agent_bom.security import sanitize_sensitive_payload
+
+    sanitized = sanitize_sensitive_payload(value, max_str_len=10_000)
+    if not isinstance(value, list) or not isinstance(sanitized, list):
+        return sanitized
+    projected: list[object] = []
+    for raw, safe in zip(value, sanitized, strict=False):
+        if isinstance(raw, dict) and isinstance(safe, dict) and "nodeId" in raw:
+            safe["nodeId"] = id_map.get(str(raw["nodeId"]), safe.get("nodeId"))
+        projected.append(safe)
+    return projected
 
 
 def _graph_overview(findings: list["Finding"]) -> dict[str, int]:
@@ -1116,7 +1183,7 @@ def export_graph_html(
 
     findings = cve_findings(report, blast_radii)
     policy_findings = _graph_policy_findings(report)
-    elements = build_graph_elements(report, blast_radii, include_cve_nodes=False, collapse_cves=True)
+    elements, graph_id_map = sanitize_graph_elements(build_graph_elements(report, blast_radii, include_cve_nodes=False, collapse_cves=True))
     elements_json = _json_for_script(elements)
 
     total_agents = len(report.agents)
@@ -1124,11 +1191,12 @@ def export_graph_html(
     total_pkgs = sum(a.total_packages for a in report.agents)
     total_vulns = len(findings)
     all_findings = findings + policy_findings
-    top_risks_json = _json_for_script(_graph_priority_summary(all_findings, collapse_cves=True))
+    top_risks = _sanitize_graph_reference_payload(_graph_priority_summary(all_findings, collapse_cves=True), graph_id_map)
+    top_risks_json = _json_for_script(top_risks)
     # The severity chips reconcile with the unified stream: CVE findings plus
     # the graph-derived categories the finding nodes carry.
     overview_json = _json_for_script(_graph_overview(all_findings))
-    category_findings_json = _json_for_script(
+    category_findings = _sanitize_graph_reference_payload(
         [
             {
                 "nodeId": f"finding:{finding.id}",
@@ -1139,7 +1207,9 @@ def export_graph_html(
             }
             for finding in policy_findings
         ],
+        graph_id_map,
     )
+    category_findings_json = _json_for_script(category_findings)
 
     html_content = _GRAPH_HTML_TEMPLATE.format(
         vendor_scripts=_vendor_script_tags(),
@@ -1208,7 +1278,9 @@ def _vendor_script_tags() -> str:
 
 
 def _html_escape(value: object) -> str:
-    return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    from agent_bom.output.finding_views import sanitize_output_text
+
+    return sanitize_output_text(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 def _to_offline_graph_html(

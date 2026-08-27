@@ -174,7 +174,10 @@ def _digest(data: bytes) -> str:
 
 
 def _json_bytes(value: object) -> bytes:
-    return json.dumps(value, indent=2, sort_keys=True, default=str).encode("utf-8")
+    from agent_bom.security import sanitize_sensitive_payload
+
+    sanitized = sanitize_sensitive_payload(value, max_str_len=10_000)
+    return json.dumps(sanitized, indent=2, sort_keys=True, default=str).encode("utf-8")
 
 
 def export_compliance_bundle(

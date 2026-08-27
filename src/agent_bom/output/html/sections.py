@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
@@ -92,7 +91,10 @@ def _chart_data(findings: list["Finding"]) -> str:
     blast_scores = [round(float(finding.risk_score or 0.0), 2) for finding in top10]
     blast_colors = [_SEV_COLOR.get(severity_value(finding), "#6b7280") for finding in top10]
 
-    return json.dumps(
+    from agent_bom.output.graph import _json_for_script
+    from agent_bom.security import sanitize_sensitive_payload
+
+    chart = sanitize_sensitive_payload(
         {
             "sev": {
                 "labels": [k.capitalize() for k in sev_counts],
@@ -104,24 +106,26 @@ def _chart_data(findings: list["Finding"]) -> str:
                 "scores": blast_scores,
                 "colors": blast_colors,
             },
-        }
+        },
+        max_str_len=10_000,
     )
+    return _json_for_script(chart)
 
 
 def _cytoscape_elements(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
     """Build Cytoscape element list using the shared graph builder."""
-    from agent_bom.output.graph import build_graph_elements
+    from agent_bom.output.graph import _json_for_script, build_graph_elements, sanitize_graph_elements
 
-    elements = build_graph_elements(report, blast_radii, include_cve_nodes=True)
-    return json.dumps(elements)
+    elements, _ = sanitize_graph_elements(build_graph_elements(report, blast_radii, include_cve_nodes=True))
+    return _json_for_script(elements, indent=None)
 
 
 def _attack_flow_elements(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
     """Build attack flow element list showing CVE → impact propagation."""
-    from agent_bom.output.graph import build_attack_flow_elements
+    from agent_bom.output.graph import _json_for_script, build_attack_flow_elements, sanitize_graph_elements
 
-    elements = build_attack_flow_elements(report, blast_radii)
-    return json.dumps(elements)
+    elements, _ = sanitize_graph_elements(build_attack_flow_elements(report, blast_radii))
+    return _json_for_script(elements, indent=None)
 
 
 # ─── HTML sections ────────────────────────────────────────────────────────────
@@ -230,8 +234,13 @@ def _summary_cards(report: "AIBOMReport", findings: list["Finding"], policy_find
     )
 
 
-def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
-    findings = cve_findings(report, blast_radii)
+def _vuln_table(
+    report: "AIBOMReport",
+    blast_radii: list["BlastRadius"],
+    *,
+    findings: list["Finding"] | None = None,
+) -> str:
+    findings = findings if findings is not None else cve_findings(report, blast_radii)
     if not findings:
         return '<div class="empty-state">&#x2705; No vulnerabilities found in scanned packages.</div>'
 
@@ -408,8 +417,13 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
     )
 
 
-def _blast_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
-    findings = cve_findings(report, blast_radii)
+def _blast_table(
+    report: "AIBOMReport",
+    blast_radii: list["BlastRadius"],
+    *,
+    findings: list["Finding"] | None = None,
+) -> str:
+    findings = findings if findings is not None else cve_findings(report, blast_radii)
     if not findings:
         return ""
     sorted_findings = sorted(findings, key=lambda finding: float(finding.risk_score or 0.0), reverse=True)
@@ -454,8 +468,17 @@ def _blast_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str
     )
 
 
-def _exposure_path_section(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
-    findings = ranked_cve_findings(report, blast_radii)
+def _exposure_path_section(
+    report: "AIBOMReport",
+    blast_radii: list["BlastRadius"],
+    *,
+    findings: list["Finding"] | None = None,
+) -> str:
+    findings = (
+        sorted(findings, key=lambda finding: float(finding.risk_score or 0.0), reverse=True)[:10]
+        if findings is not None
+        else ranked_cve_findings(report, blast_radii)
+    )
     if not findings:
         return ""
     cards = []

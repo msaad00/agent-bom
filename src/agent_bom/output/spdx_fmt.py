@@ -348,10 +348,13 @@ def to_spdx(report: AIBOMReport) -> dict:
     # Canonical JSON-LD: a single flat @graph holding the CreationInfo blank node,
     # the SpdxDocument root, and every element + relationship.
     graph: list[dict[str, Any]] = [creation_info, spdx_document, *elements, *relationships]
-    return {
+    document = {
         "@context": SPDX_3_CONTEXT,
         "@graph": graph,
     }
+    from agent_bom.output.interop_security import sanitize_linked_document
+
+    return sanitize_linked_document(document)
 
 
 def export_spdx(report: AIBOMReport, output_path: str) -> None:

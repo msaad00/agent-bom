@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
-from agent_bom.api.routes.scan import _redact_scan_result_for_response
+from agent_bom.api.routes.scan import _job_summary_payload, _redact_scan_result_for_response
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store, set_job_store
 from agent_bom.finding_scope import safe_finding_response_payload
@@ -74,6 +74,18 @@ def test_full_scan_job_and_findings_list_share_the_canonical_safe_projection() -
         {"framework": "soc2", "control": "CC6.1", "source": "scanner"},
     ]
     assert safe_finding_response_payload({**finding, "asset": {"stable_id": "asset-only"}})["asset"] == {"stable_id": "asset-only"}
+
+
+def test_full_scan_job_and_findings_list_redact_shaped_secret_text() -> None:
+    secret = "ghp_" + "a" * 36
+    finding = {**_finding(), "title": f"leaked token {secret}", "description": f"secret={secret}"}
+
+    list_projection = safe_finding_response_payload(finding)
+    result_projection = _redact_scan_result_for_response({"findings": [finding]})
+
+    assert result_projection is not None
+    assert secret not in json.dumps(list_projection)
+    assert secret not in json.dumps(result_projection)
 
 
 def test_unified_finding_drives_compliance_narrative_without_placeholder_entities() -> None:
@@ -149,6 +161,53 @@ def test_scan_job_model_keeps_the_same_result_summary_contract() -> None:
     assert projected is not job.result
     assert job.result["findings"][0]["asset"]["location"] == "/Users/example/.config/mcp.json"
     assert projected["summary"] == job.result["summary"]
+
+
+def test_full_scan_response_redacts_sensitive_top_level_side_blocks() -> None:
+    secret = "ghp_" + "a" * 36
+    email = "alice.sentinel@example.invalid"
+    credential_url = "postgresql://admin:sentinel-password@db.internal/prod"
+    durable = {
+        "scan_id": "scan-1",
+        "findings": [],
+        "executive_summary": f"Exposed {secret}",
+        "trust_assessment": {
+            "owner_email": email,
+            "connection_url": credential_url,
+        },
+    }
+
+    projected = _redact_scan_result_for_response(durable)
+
+    assert projected is not None
+    rendered = json.dumps(projected)
+    assert secret not in rendered
+    assert email not in rendered
+    assert credential_url not in rendered
+    assert secret in durable["executive_summary"]
+
+
+def test_scan_status_summary_redacts_warning_and_summary_payloads() -> None:
+    secret = "ghp_" + "a" * 36
+    email = "alice.sentinel@example.invalid"
+    job = ScanJob(
+        job_id="scan-1",
+        tenant_id="tenant-a",
+        status=JobStatus.DONE,
+        created_at="2026-08-17T12:00:00Z",
+        completed_at="2026-08-17T12:05:00Z",
+        request=ScanRequest(),
+        error=f"provider returned {secret}",
+        result={
+            "summary": {"detail": f"Contact {email}"},
+            "warnings": [f"Credential {secret}"],
+        },
+    )
+
+    rendered = json.dumps(_job_summary_payload(job))
+
+    assert secret not in rendered
+    assert email not in rendered
 
 
 def test_compliance_endpoint_reads_the_current_persisted_finding_queue() -> None:

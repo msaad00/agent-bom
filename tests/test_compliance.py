@@ -7,10 +7,11 @@ from dataclasses import fields
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from starlette.testclient import TestClient
 
-from agent_bom.api.server import JobStatus, _get_store, app
-from agent_bom.api.store import InMemoryJobStore
+from agent_bom.api.server import JobStatus, _get_store, app, set_job_store
+from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import BlastRadius
@@ -256,6 +257,85 @@ def test_unified_finding_occurrence_is_not_double_counted_across_scans() -> None
     agentic = next(control for control in data["owasp_agentic_top10"] if control["code"] == "ASI04")
     assert agentic["findings"] == 1
     _clear_jobs()
+
+
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_newest_unified_finding_occurrence_wins_independent_of_backend_order(
+    tmp_path: Path,
+    reverse_put_order: bool,
+) -> None:
+    """The authoritative occurrence is selected by evidence time, not store order.
+
+    In-memory jobs retain insertion order while SQLite returns newest-created
+    jobs first. A re-scan that clears a mapped high finding must therefore
+    produce the same control posture on both backends.
+    """
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    def _job(job_id: str, *, generated_at: str, completed_at: str, finding: dict) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=completed_at,
+            request=ScanRequest(),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = completed_at
+        job.result = {"generated_at": generated_at, "findings": [finding]}
+        return job
+
+    old = _job(
+        "scan-old",
+        generated_at="2026-08-20T00:00:00Z",
+        # A delayed persistence completion must not outrank fresher evidence.
+        completed_at="2026-08-22T00:01:00Z",
+        finding={
+            "id": "same-occurrence",
+            "severity": "critical",
+            "soc2_tags": ["CC7.1"],
+        },
+    )
+    newest = _job(
+        "scan-new",
+        generated_at="2026-08-21T00:00:00Z",
+        completed_at="2026-08-21T00:01:00Z",
+        finding={
+            "id": "same-occurrence",
+            "severity": "low",
+            "soc2_tags": [],
+        },
+    )
+    jobs = [newest, old] if reverse_put_order else [old, newest]
+    results = []
+    try:
+        for store in (InMemoryJobStore(), SQLiteJobStore(str(tmp_path / f"jobs-{reverse_put_order}.db"))):
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
+            results.append((cc71["status"], cc71["findings"]))
+    finally:
+        _clear_jobs()
+
+    assert results == [("not_evaluated", 0), ("not_evaluated", 0)]
+
+
+def test_unified_finding_authority_uses_stable_job_id_tie_break() -> None:
+    """Equal evidence/completion timestamps have one deterministic winner."""
+    from agent_bom.api.routes import compliance as route
+
+    row = {"id": "same-occurrence"}
+    common = {
+        "status": JobStatus.DONE,
+        "completed_at": "2026-08-21T00:01:00Z",
+        "created_at": "2026-08-21T00:00:00Z",
+        "result": {"generated_at": "2026-08-21T00:00:30Z"},
+    }
+    job_a = SimpleNamespace(job_id="scan-a", **common)
+    job_z = SimpleNamespace(job_id="scan-z", **common)
+
+    assert route._compliance_evidence_authority_key(job_z, row) > route._compliance_evidence_authority_key(job_a, row)
 
 
 def test_fedramp_rest_and_narrative_reconcile_namespaced_scanner_tags():

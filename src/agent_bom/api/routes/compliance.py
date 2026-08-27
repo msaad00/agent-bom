@@ -229,14 +229,62 @@ def _result_compliance_evidence(result: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in (result.get("blast_radius") or []) if isinstance(row, dict)]
 
 
+def _normalized_evidence_timestamp(*values: Any) -> str:
+    """Return the first valid timestamp in UTC-sortable form.
+
+    Stored reports are expected to use ISO-8601, but legacy imports can carry
+    malformed values. Those cannot outrank a later valid observation; callers
+    therefore fall through to the next authoritative timestamp.
+    """
+
+    for value in values:
+        raw = str(value or "").strip()
+        if not raw:
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat()
+    return ""
+
+
+def _compliance_evidence_authority_key(job: Any, row: dict[str, Any]) -> tuple[str, str, str]:
+    """Deterministic newest-wins key for one canonical finding occurrence.
+
+    The report's evidence timestamp is authoritative when present, followed by
+    the persisted job completion time. ``job_id`` is a stable final tie-break,
+    making the winner independent of InMemory/SQLite/Postgres iteration order.
+    """
+
+    raw_result = getattr(job, "result", None)
+    result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
+    raw_scan_run = result.get("scan_run")
+    scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
+    completed_at = _normalized_evidence_timestamp(
+        getattr(job, "completed_at", None),
+        getattr(job, "created_at", None),
+    )
+    evidence_at = _normalized_evidence_timestamp(
+        result.get("generated_at"),
+        result.get("scan_timestamp"),
+        scan_run.get("generated_at"),
+        row.get("observed_at"),
+        row.get("last_seen"),
+        row.get("scan_completed_at"),
+        completed_at,
+    )
+    return evidence_at, completed_at, str(getattr(job, "job_id", ""))
+
+
 def _result_evidence_context(result: dict[str, Any]) -> tuple[bool, bool, set[str]]:
     """Derive MCP and agent context once from canonical scan evidence."""
 
     sources = {str(source) for source in result.get("scan_sources", []) if source}
     evidence = _result_compliance_evidence(result)
-    has_mcp = bool(result.get("has_mcp_context")) or any(
-        row.get("affected_servers") or row.get("owasp_mcp_tags") for row in evidence
-    )
+    has_mcp = bool(result.get("has_mcp_context")) or any(row.get("affected_servers") or row.get("owasp_mcp_tags") for row in evidence)
     has_agent = bool(result.get("has_agent_context")) or any(
         row.get("affected_agents") or row.get("owasp_agentic_tags") for row in evidence
     )
@@ -476,7 +524,7 @@ async def get_compliance(
     # Collect the unified findings spine (legacy blast-radius fallback) from all
     # completed scans, deduped by canonical occurrence identity across re-scans.
     all_blast: list[dict] = []
-    seen_occurrences: set[str] = set()
+    authoritative_occurrences: dict[str, tuple[tuple[str, str, str], dict[str, Any]]] = {}
     latest_scan: str | None = None
     scan_count = 0
     has_mcp_context = False
@@ -489,11 +537,13 @@ async def get_compliance(
         scan_count += 1
         for row in _result_compliance_evidence(job.result):
             occurrence_id = str(row.get("id") or row.get("canonical_id") or "")
-            if occurrence_id and occurrence_id in seen_occurrences:
+            if not occurrence_id:
+                all_blast.append(row)
                 continue
-            if occurrence_id:
-                seen_occurrences.add(occurrence_id)
-            all_blast.append(row)
+            authority = _compliance_evidence_authority_key(job, row)
+            current = authoritative_occurrences.get(occurrence_id)
+            if current is None or authority > current[0]:
+                authoritative_occurrences[occurrence_id] = (authority, row)
         if latest_scan is None or (job.completed_at and job.completed_at > latest_scan):
             latest_scan = job.completed_at
         # Detect scan context from result metadata
@@ -501,6 +551,8 @@ async def get_compliance(
         has_mcp_context = has_mcp_context or result_has_mcp
         has_agent_context = has_agent_context or result_has_agent
         all_scan_sources.update(result_sources)
+
+    all_blast.extend(row for _authority, row in authoritative_occurrences.values())
 
     def _build_controls(
         catalog: dict[str, str],

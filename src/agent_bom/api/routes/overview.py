@@ -96,7 +96,19 @@ class _OverviewFlight:
     payload: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class _HubOverviewSnapshot:
+    """One revision-consistent view of every hub-derived Overview component."""
+
+    severity: dict[str, int]
+    failing_frameworks: set[str]
+    kev: int
+    top_risks: list[dict[str, Any]]
+    revision: int | None
+
+
 _overview_inflight: dict[str, _OverviewFlight] = {}
+_HUB_SNAPSHOT_MAX_ATTEMPTS = 3
 
 
 def _overview_cache_ttl() -> float:
@@ -133,15 +145,9 @@ def _overview_fingerprint(
         result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
         raw_scan_run = result.get("scan_run")
         scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
-        evidence_identity = (
-            result.get("scan_id") or scan_run.get("scan_id") or getattr(job, "job_id", "")
-        )
+        evidence_identity = result.get("scan_id") or scan_run.get("scan_id") or getattr(job, "job_id", "")
         evidence_version = (
-            result.get("generated_at")
-            or result.get("scan_timestamp")
-            or scan_run.get("generated_at")
-            or result.get("schema_version")
-            or ""
+            result.get("generated_at") or result.get("scan_timestamp") or scan_run.get("generated_at") or result.get("schema_version") or ""
         )
         parts.append(
             f"{tenant_id}|{getattr(job, 'tenant_id', tenant_id)}|{getattr(job, 'job_id', '')}|"
@@ -151,17 +157,9 @@ def _overview_fingerprint(
     hub_part = "|".join(f"{k}={int(hub_severity.get(k, 0) or 0)}" for k in sorted(hub_severity))
     framework_part = "|".join(sorted(hub_failing_frameworks or set()))
     digest = hashlib.sha256(
-        (
-            tenant_id
-            + "\x1f"
-            + "\x1e".join(parts)
-            + "\x1d"
-            + hub_part
-            + "\x1d"
-            + framework_part
-            + "\x1d"
-            + str(hub_evidence_version)
-        ).encode("utf-8")
+        (tenant_id + "\x1f" + "\x1e".join(parts) + "\x1d" + hub_part + "\x1d" + framework_part + "\x1d" + str(hub_evidence_version)).encode(
+            "utf-8"
+        )
     ).hexdigest()
     return f"{len(jobs)}:{digest}"
 
@@ -864,11 +862,7 @@ def _hub_failing_frameworks_snapshot(request: Request, *, revision: int | None =
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     tenant_id = _tenant_id(request)
-    cached = (
-        hub_overview_cache.get_cached_failing_frameworks(tenant_id, revision=revision)
-        if revision is not None
-        else None
-    )
+    cached = hub_overview_cache.get_cached_failing_frameworks(tenant_id, revision=revision) if revision is not None else None
     if cached is not None:
         return set(cached)
     try:
@@ -905,10 +899,11 @@ def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> lis
     ``_estate_rollup`` walks scan jobs only, so a connector/bulk-ingested estate
     rendered an empty top-risk strip even with a million open findings that DO
     move the grade + headline (via ``_hub_severity_snapshot``). This folds the
-    hub finding spine into the strip. It reads a single bounded page ordered by
-    the materialised ``severity_rank`` (index-backed on the SQL backends), so it
-    stays sub-linear at million-row scale — it never hydrates the whole ledger
-    (mirrors the #3963 rule that the overview must not fold every hub payload).
+    hub finding spine into the strip. It reads a single bounded CURRENT-STATE
+    page with the same bulk-ingest origin, open lifecycle, and default window as
+    the headline. The materialised ``severity_rank`` ordering is index-backed on
+    SQL backends, so it stays sub-linear at million-row scale and never revives
+    resolved/aged ledger history in a live executive surface.
 
     Sorting by severity, NOT ``effective_reach``: the bulk/connector payload this
     targets carries only severity + CVSS, so ``compute_effective_reach_score`` is
@@ -923,13 +918,21 @@ def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> lis
     if limit <= 0:
         return []
     try:
+        from agent_bom.api import time_window
         from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
         store = get_compliance_hub_store()
-        page = store.list_page(
+        list_current = getattr(store, "list_current_page", None)
+        if not callable(list_current):
+            return []
+        since = time_window.window_since_iso(time_window.normalize_window_days(None))
+        page = list_current(
             _tenant_id(request),
             limit=limit,
             sort="severity",
+            origin="bulk_ingest",
+            since=since,
+            status="open",
             include_total=False,
         )
     except Exception:  # pragma: no cover - hub store optional
@@ -1145,6 +1148,46 @@ async def get_overview(request: Request) -> dict[str, Any]:
         ) from exc
 
 
+def _capture_hub_overview_snapshot(request: Request, hub_store: Any) -> _HubOverviewSnapshot:
+    """Read all hub inputs under one durable tenant revision.
+
+    Each aggregate is independently bounded/indexed, so no cross-backend
+    transaction spans the read. The durable revision supplies optimistic
+    snapshot isolation instead: every component is captured between two equal
+    revision reads. A continuously mutating tenant gets a bounded retry error
+    rather than an impossible hybrid posture cached as truth.
+    """
+
+    tenant_id = _tenant_id(request)
+    revision_reader = getattr(hub_store, "overview_evidence_revision", None)
+    if not callable(revision_reader):
+        return _HubOverviewSnapshot(
+            severity=_hub_severity_snapshot(request),
+            failing_frameworks=_hub_failing_frameworks_snapshot(request),
+            kev=_hub_kev_snapshot(request),
+            top_risks=_hub_top_risks(request),
+            revision=None,
+        )
+
+    for _attempt in range(_HUB_SNAPSHOT_MAX_ATTEMPTS):
+        revision = int(revision_reader(tenant_id))
+        snapshot = _HubOverviewSnapshot(
+            severity=_hub_severity_snapshot(request, revision=revision),
+            failing_frameworks=_hub_failing_frameworks_snapshot(request, revision=revision),
+            kev=_hub_kev_snapshot(request, revision=revision),
+            top_risks=_hub_top_risks(request),
+            revision=revision,
+        )
+        if int(revision_reader(tenant_id)) == revision:
+            return snapshot
+
+    raise HTTPException(
+        status_code=503,
+        detail="Overview evidence changed during read; retry the request.",
+        headers={"Retry-After": "1"},
+    )
+
+
 def _build_overview(request: Request) -> dict[str, Any]:
     """Synchronous overview composition (runs in a worker thread, #3963).
 
@@ -1160,16 +1203,10 @@ def _build_overview(request: Request) -> dict[str, Any]:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     hub_store = get_compliance_hub_store()
-    revision_reader = getattr(hub_store, "overview_evidence_revision", None)
-    hub_evidence_version = int(revision_reader(tenant_id)) if callable(revision_reader) else None
-    hub_severity = _hub_severity_snapshot(request, revision=hub_evidence_version)
-    hub_failing_frameworks = _hub_failing_frameworks_snapshot(request, revision=hub_evidence_version)
-    # A mutation racing either query advances the durable revision. Retry once;
-    # revision-tagged cache entries ensure a late old write can never be reused.
-    if callable(revision_reader) and int(revision_reader(tenant_id)) != hub_evidence_version:
-        hub_evidence_version = int(revision_reader(tenant_id))
-        hub_severity = _hub_severity_snapshot(request, revision=hub_evidence_version)
-        hub_failing_frameworks = _hub_failing_frameworks_snapshot(request, revision=hub_evidence_version)
+    hub_snapshot = _capture_hub_overview_snapshot(request, hub_store)
+    hub_evidence_version = hub_snapshot.revision
+    hub_severity = hub_snapshot.severity
+    hub_failing_frameworks = hub_snapshot.failing_frameworks
 
     fingerprint = _overview_fingerprint(
         tenant_id,
@@ -1195,12 +1232,30 @@ def _build_overview(request: Request) -> dict[str, Any]:
             return flight.payload
         # The leader failed or overran its budget. Recompute rather than serve
         # nothing — correctness beats de-duplication.
-        payload = _compose_overview(request, tenant_id, jobs, hub_severity, hub_failing_frameworks, hub_evidence_version)
+        payload = _compose_overview(
+            request,
+            tenant_id,
+            jobs,
+            hub_severity,
+            hub_failing_frameworks,
+            hub_evidence_version,
+            hub_kev=hub_snapshot.kev,
+            hub_top_risks=hub_snapshot.top_risks,
+        )
         _overview_cache_put(tenant_id, fingerprint, payload)
         return payload
 
     try:
-        payload = _compose_overview(request, tenant_id, jobs, hub_severity, hub_failing_frameworks, hub_evidence_version)
+        payload = _compose_overview(
+            request,
+            tenant_id,
+            jobs,
+            hub_severity,
+            hub_failing_frameworks,
+            hub_evidence_version,
+            hub_kev=hub_snapshot.kev,
+            hub_top_risks=hub_snapshot.top_risks,
+        )
         _overview_cache_put(tenant_id, fingerprint, payload)
         flight.payload = payload
         return payload
@@ -1218,12 +1273,16 @@ def _compose_overview(
     hub_severity: dict[str, int],
     hub_failing_frameworks: set[str],
     hub_evidence_revision: int | None = None,
+    *,
+    hub_kev: int | None = None,
+    hub_top_risks: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Fold the estate into the overview payload (the O(estate) hot path)."""
     estate = _estate_rollup(jobs)
     exec_estate = _exec_estate(estate, jobs)
     coverage = estate["coverage"]
-    hub_kev = _hub_kev_snapshot(request, revision=hub_evidence_revision)
+    if hub_kev is None:
+        hub_kev = _hub_kev_snapshot(request, revision=hub_evidence_revision)
     posture = _exec_posture(
         request,
         _posture_snapshot(jobs),
@@ -1262,7 +1321,9 @@ def _compose_overview(
     # Fold hub-ingested findings into the exec top-risk strip so a
     # connector/bulk-ingested estate (scan jobs alone) no longer renders an empty
     # strip while a million open findings drive the grade (P0 #1).
-    top_risks = _merge_top_risks(estate["top_risks"], _hub_top_risks(request))
+    if hub_top_risks is None:
+        hub_top_risks = _hub_top_risks(request)
+    top_risks = _merge_top_risks(estate["top_risks"], hub_top_risks)
 
     domains = {
         "cloud": {

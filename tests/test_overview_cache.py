@@ -54,7 +54,15 @@ def _install(monkeypatch, jobs, hub_severity=None):
     monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: dict(hub_state))
     calls = {"n": 0}
 
-    def _fake_compose(request, tenant_id, jobs_arg, hub_severity, hub_failing_frameworks, hub_evidence_revision=None):
+    def _fake_compose(
+        request,
+        tenant_id,
+        jobs_arg,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_revision=None,
+        **kwargs,
+    ):
         calls["n"] += 1
         return {"schema_version": "overview.v1", "tenant_id": tenant_id, "job_count": len(jobs_arg)}
 
@@ -70,7 +78,15 @@ def test_hub_ingest_invalidates_cache(monkeypatch):
     monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: dict(hub))
     calls = {"n": 0}
 
-    def _fake_compose(request, tenant_id, jobs_arg, hub_severity, hub_failing_frameworks, hub_evidence_revision=None):
+    def _fake_compose(
+        request,
+        tenant_id,
+        jobs_arg,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_revision=None,
+        **kwargs,
+    ):
         calls["n"] += 1
         return {"hub_critical": hub_severity.get("critical", 0)}
 

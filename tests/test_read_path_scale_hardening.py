@@ -182,7 +182,13 @@ def test_overview_concurrent_misses_share_one_fold(monkeypatch) -> None:
     barrier_held = {"ok": True}
 
     def _slow_compose(
-        request, tenant_id, jobs, hub_severity, hub_failing_frameworks, hub_evidence_revision=None
+        request,
+        tenant_id,
+        jobs,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_revision=None,
+        **kwargs,
     ):
         with folds_lock:
             folds["n"] += 1
@@ -236,7 +242,13 @@ def test_overview_singleflight_follower_recomputes_when_leader_fails(monkeypatch
     calls = {"n": 0}
 
     def _flaky_compose(
-        request, tenant_id, jobs, hub_severity, hub_failing_frameworks, hub_evidence_revision=None
+        request,
+        tenant_id,
+        jobs,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_revision=None,
+        **kwargs,
     ):
         calls["n"] += 1
         if calls["n"] == 1:

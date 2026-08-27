@@ -206,6 +206,128 @@ def test_sqlite_overview_revision_is_shared_across_processes(tmp_path):
     assert store.overview_evidence_revision("acme") > before
 
 
+@pytest.mark.parametrize("mutation_point", ["kev", "top_risks"])
+def test_hub_snapshot_retries_when_late_component_mutates_revision(monkeypatch, mutation_point):
+    """No response may combine components from two committed hub revisions."""
+
+    class _RevisionStore:
+        revision = 0
+
+        def overview_evidence_revision(self, tenant_id: str) -> int:
+            assert tenant_id == "acme"
+            return self.revision
+
+    store = _RevisionStore()
+    state = {
+        "severity": {"critical": 1, "high": 0},
+        "frameworks": {"soc2"},
+        "kev": 0,
+        "top_risks": [{"vulnerability_id": "old"}],
+    }
+    mutated = False
+
+    def _mutate_once() -> None:
+        nonlocal mutated
+        if mutated:
+            return
+        mutated = True
+        state.update(
+            severity={"critical": 0, "high": 1},
+            frameworks={"iso-27001"},
+            kev=1,
+            top_risks=[{"vulnerability_id": "new"}],
+        )
+        store.revision += 1
+
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: dict(state["severity"]))
+    monkeypatch.setattr(
+        overview,
+        "_hub_failing_frameworks_snapshot",
+        lambda request, **kwargs: set(state["frameworks"]),
+    )
+
+    def _kev(request, **kwargs):
+        if mutation_point == "kev":
+            _mutate_once()
+        return state["kev"]
+
+    def _top_risks(request, **kwargs):
+        if mutation_point == "top_risks":
+            _mutate_once()
+        return list(state["top_risks"])
+
+    monkeypatch.setattr(overview, "_hub_kev_snapshot", _kev)
+    monkeypatch.setattr(overview, "_hub_top_risks", _top_risks)
+
+    snapshot = overview._capture_hub_overview_snapshot(object(), store)
+
+    assert snapshot.revision == 1
+    assert snapshot.severity == {"critical": 0, "high": 1}
+    assert snapshot.failing_frameworks == {"iso-27001"}
+    assert snapshot.kev == 1
+    assert snapshot.top_risks == [{"vulnerability_id": "new"}]
+
+
+def test_hub_snapshot_observes_cross_process_sqlite_mutation(monkeypatch, tmp_path):
+    """A mutation committed by another process invalidates an in-flight read."""
+    from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore
+
+    db_path = str(tmp_path / "hub-snapshot.db")
+    store = SQLiteComplianceHubStore(db_path)
+    original_kev = overview._hub_kev_snapshot
+    launched = False
+
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+
+    def _kev_with_process_mutation(request, **kwargs):
+        nonlocal launched
+        if not launched:
+            launched = True
+            process = multiprocessing.get_context("spawn").Process(target=_sqlite_revision_child, args=(db_path,))
+            process.start()
+            process.join(timeout=15)
+            assert process.exitcode == 0
+        return original_kev(request, **kwargs)
+
+    monkeypatch.setattr(overview, "_hub_kev_snapshot", _kev_with_process_mutation)
+    snapshot = overview._capture_hub_overview_snapshot(object(), store)
+
+    assert launched is True
+    assert snapshot.revision == store.overview_evidence_revision("acme")
+
+
+def test_unstable_hub_snapshot_fails_bounded_without_overview_cache_write(monkeypatch):
+    """Continuous mutation returns retryable failure, never a cached hybrid."""
+    from fastapi import HTTPException
+
+    class _ChurningStore:
+        revision = 0
+
+        def overview_evidence_revision(self, tenant_id: str) -> int:
+            self.revision += 1
+            return self.revision
+
+    writes = []
+    store = _ChurningStore()
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr(overview, "_get_store", lambda: SimpleNamespace(list_all=lambda tenant_id: []))
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: {})
+    monkeypatch.setattr(overview, "_hub_failing_frameworks_snapshot", lambda request, **kwargs: set())
+    monkeypatch.setattr(overview, "_hub_kev_snapshot", lambda request, **kwargs: 0)
+    monkeypatch.setattr(overview, "_hub_top_risks", lambda request, **kwargs: [])
+    monkeypatch.setattr(overview, "_overview_cache_put", lambda *args, **kwargs: writes.append(args))
+
+    with pytest.raises(HTTPException) as raised:
+        overview._build_overview(object())
+
+    assert raised.value.status_code == 503
+    assert raised.value.headers == {"Retry-After": "1"}
+    assert writes == []
+
+
 def test_postgres_overview_revision_contract_is_shared_and_rls_scoped():
     source = (Path(__file__).parents[1] / "src/agent_bom/api/postgres_compliance_hub.py").read_text()
     assert "CREATE TABLE IF NOT EXISTS hub_overview_revisions" in source

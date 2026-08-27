@@ -1120,13 +1120,44 @@ jobs:
           needs.changes.outputs.graph_performance == 'true'
         run: uv run pytest tests/graph/test_store_backed_build_wiring.py -q -m graph_performance
 
+  output-scale-performance:
+    name: Output scale performance
+    runs-on: ubuntu-latest
+    # Wall-clock assertions need an isolated, uninstrumented process. Running
+    # them inside the four-worker Python 3.11 coverage lane measures shared
+    # runner contention instead of exporter latency (issue #4968).
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    needs: changes
+    if: >-
+      !cancelled() && (
+        github.event_name != 'pull_request' ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.python == 'true'
+      )
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev --extra api --extra mcp-server
+
+      - name: Run measured output scale assertions
+        run: >-
+          uv run pytest tests/test_release_output_scale_contract.py -q
+          --tb=short --durations=10 -m output_performance -p no:randomly
+
   test:
     name: Test (Python 3.13)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
-    needs: [changes, test-smoke, test-pr-shard, test-main, graph-performance]
+    needs: [changes, test-smoke, test-pr-shard, test-main, graph-performance, output-scale-performance]
     if: ${{ !cancelled() }}
     steps:
       - name: Require every applicable correctness lane
@@ -1135,9 +1166,10 @@ jobs:
           PR_SHARDS_RESULT: ${{ needs.test-pr-shard.result }}
           MAIN_RESULT: ${{ needs.test-main.result }}
           GRAPH_RESULT: ${{ needs.graph-performance.result }}
+          OUTPUT_SCALE_RESULT: ${{ needs.output-scale-performance.result }}
         run: |
           set -euo pipefail
-          for result in "$SMOKE_RESULT" "$PR_SHARDS_RESULT" "$MAIN_RESULT" "$GRAPH_RESULT"; do
+          for result in "$SMOKE_RESULT" "$PR_SHARDS_RESULT" "$MAIN_RESULT" "$GRAPH_RESULT" "$OUTPUT_SCALE_RESULT"; do
             case "$result" in
               success|skipped) ;;
               *) echo "Required correctness lane ended with: $result" >&2; exit 1 ;;

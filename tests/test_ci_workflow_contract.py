@@ -229,6 +229,37 @@ def test_measured_graph_heap_assertion_has_dedicated_conditional_job() -> None:
     assert "-m graph_performance" in nightly
 
 
+def test_output_scale_budgets_run_in_a_dedicated_uninstrumented_lane() -> None:
+    """Wall-clock budgets must not share coverage/xdist CPU with the full suite."""
+
+    jobs = _ci()["jobs"]
+    scale_job = jobs["output-scale-performance"]
+    run = next(step["run"] for step in scale_job["steps"] if step.get("name") == "Run measured output scale assertions")
+    setup = next(step for step in scale_job["steps"] if step.get("uses") == "./.github/actions/setup-python")
+
+    assert setup["with"]["python-version"] == "3.11"
+    assert scale_job["needs"] == "changes"
+    assert "github.event_name != 'pull_request'" in scale_job["if"]
+    assert "needs.changes.outputs.python == 'true'" in scale_job["if"]
+    assert "tests/test_release_output_scale_contract.py" in run
+    assert "-m output_performance" in run
+    assert "--cov" not in run
+    assert " -n " not in run
+
+    main_run = next(step["run"] for step in jobs["test-main"]["steps"] if step.get("name") == "Run full correctness suite")
+    assert "not slow" in main_run
+
+    required = jobs["test"]
+    assert "output-scale-performance" in required["needs"]
+    required_run = next(step["run"] for step in required["steps"] if step.get("name") == "Require every applicable correctness lane")
+    assert "OUTPUT_SCALE_RESULT" in required_run
+    assert '"$OUTPUT_SCALE_RESULT"' in required_run
+
+    scale_test = (ROOT / "tests" / "test_release_output_scale_contract.py").read_text(encoding="utf-8")
+    assert "pytest.mark.slow" in scale_test
+    assert "pytest.mark.output_performance" in scale_test
+
+
 def test_security_reuses_typescript_install_for_build() -> None:
     text = CI_WORKFLOW.read_text(encoding="utf-8")
     security = text.split("  # 2. Linting + Type Checking", 1)[0]

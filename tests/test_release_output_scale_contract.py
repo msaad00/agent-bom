@@ -25,6 +25,8 @@ from agent_bom.models import Agent, AgentType, AIBOMReport, BlastRadius, MCPServ
 from agent_bom.output import to_csv, to_cyclonedx, to_html, to_markdown, to_spdx
 from agent_bom.output.spdx2_fmt import to_spdx2
 
+pytestmark = [pytest.mark.slow, pytest.mark.output_performance]
+
 _ITEM_COUNT = 2_000
 _SECRET = "ghp_" + "s" * 36
 _EMAIL = "scale.sentinel@example.invalid"

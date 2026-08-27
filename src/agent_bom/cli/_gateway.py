@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import cast
@@ -22,6 +21,7 @@ from agent_bom.cli._common import read_json_file_for_cli
 from agent_bom.cli._grouped_help import SuggestingGroup
 from agent_bom.cli._runtime_status import emit_runtime_status_strip
 from agent_bom.cli._server import _is_loopback_host
+from agent_bom.cli._tenant import resolve_cli_tenant_id_strict
 
 logger = logging.getLogger(__name__)
 
@@ -548,7 +548,7 @@ def serve_cmd(
         build_control_plane_audit_sink(
             control_plane_url,
             control_plane_token,
-            tenant_id=os.environ.get("AGENT_BOM_TENANT_ID", "default"),
+            tenant_id=resolve_cli_tenant_id_strict(),
             source_id="gateway",
         )
         if control_plane_url

@@ -205,6 +205,12 @@ else:
     )
 
 
+def _hmac_sha256_hex(signing_key: bytes, payload: bytes) -> str:
+    """Authenticate an audit payload; this is a MAC, not password hashing."""
+
+    return hmac.new(signing_key, payload, hashlib.sha256).hexdigest()  # lgtm[py/weak-sensitive-data-hashing]
+
+
 @dataclass
 class AuditEntry:
     """Single audit log entry."""
@@ -229,7 +235,7 @@ class AuditEntry:
 
     def _legacy_hmac(self, hmac_key: bytes | None = None) -> str:
         payload = f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|{self.action}|{self.actor}|{self.resource}"
-        return hmac.new(hmac_key or _HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
+        return _hmac_sha256_hex(hmac_key or _HMAC_KEY, payload.encode())
 
     def compute_hmac(self, hmac_key: bytes | None = None) -> str:
         """Compute HMAC-SHA256 signature for tamper detection (chain-hashed)."""
@@ -237,9 +243,7 @@ class AuditEntry:
             f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|"
             f"{self.action}|{self.actor}|{self.resource}|{self._canonical_details_json()}"
         )
-        # lgtm[py/weak-sensitive-data-hashing] HMAC-SHA256 authenticates an
-        # already-sanitized audit record; it does not derive or store passwords.
-        return hmac.new(hmac_key or _HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
+        return _hmac_sha256_hex(hmac_key or _HMAC_KEY, payload.encode())
 
     def sign(self, hmac_key: bytes | None = None) -> None:
         """Sign this entry."""
@@ -266,7 +270,7 @@ class AuditEntry:
 
 def sign_export_payload(payload: bytes) -> str:
     """Sign an exported audit payload so downstream consumers can verify it."""
-    return hmac.new(_HMAC_KEY, payload, hashlib.sha256).hexdigest()
+    return _hmac_sha256_hex(_HMAC_KEY, payload)
 
 
 def verify_export_payload(payload: bytes, signature: str) -> bool:

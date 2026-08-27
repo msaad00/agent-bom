@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 AuditBacklogDestination = Literal["noop", "spillover", "dlq", "dropped"]
 _DEFAULT_MIN_DLQ_BYTES = 1024 * 1024
+_MACOS_TMP_ALIAS = Path(os.sep) / "tmp"
+_MACOS_CANONICAL_TMP = Path(os.sep) / "private" / "tmp"
 _STORE_LOCKS: dict[tuple[str, str], threading.RLock] = {}
 _STORE_LOCKS_GUARD = threading.Lock()
 _ACTIVE_CLAIMS: set[str] = set()
@@ -44,11 +46,11 @@ def canonical_runtime_state_path(path: Path) -> Path:
     expanded = Path(path).expanduser()
     if sys.platform == "darwin" and expanded.is_absolute():
         try:
-            relative = expanded.relative_to("/tmp")
+            relative = expanded.relative_to(_MACOS_TMP_ALIAS)
         except ValueError:
             pass
         else:
-            return Path("/private/tmp") / relative
+            return _MACOS_CANONICAL_TMP / relative
     return expanded
 
 

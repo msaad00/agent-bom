@@ -76,6 +76,17 @@ def test_healthz_lists_configured_upstreams() -> None:
         "status": "ok",
         "upstreams": ["filesystem", "jira"],
         "auth": {"incoming_token_required": False},
+        "audit_delivery": {
+            "configured": True,
+            "mode": "local_hmac_sqlite",
+            "status": "healthy",
+            "durable": True,
+            "accepting_events": True,
+            "backlog_observable": True,
+            "retry_worker_running": False,
+            "backlog_bytes": 0,
+            "dropped_events": 0,
+        },
         "upstream_runtime": {
             "pooled_http_client": True,
             "circuit_breaker_enabled": True,

@@ -6,11 +6,13 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from starlette.testclient import TestClient
 
+from agent_bom.api.auth import Role
 from agent_bom.gateway_server import (
     GatewayAuditDeliveryUnavailableError,
     GatewaySettings,
@@ -539,6 +541,128 @@ def test_relay_does_not_execute_tool_when_audit_persistence_is_already_full(
 
     assert response.status_code == 503
     assert upstream_calls == 0
+
+
+def test_relay_builds_local_durable_audit_when_remote_sink_is_not_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_TENANT_ID", "tenant-a")
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    upstream_calls = 0
+
+    class _TenantKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str) -> SimpleNamespace | None:
+            if raw_key != "tenant-a-key":
+                return None
+            return SimpleNamespace(
+                tenant_id="tenant-a",
+                role=Role.ANALYST,
+                scopes=["gateway:relay"],
+                has_scope=lambda required: required == "gateway:relay",
+            )
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _TenantKeyStore())
+
+    async def upstream_caller(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"side_effect": True}}
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),
+        policy={},
+        audit_sink=None,
+        upstream_caller=upstream_caller,
+    )
+    message = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {"name": "write_file", "arguments": {"path": "/tmp/output"}},
+    }
+
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        response = client.post("/mcp/filesystem", headers={"X-API-Key": "tenant-a-key"}, json=message)
+
+    assert response.status_code == 200
+    assert upstream_calls == 1
+    db_path = tmp_path / "runtime-audit" / "gateway-local-audit.db"
+    assert db_path.is_file()
+    assert settings.audit_sink is not None
+    from agent_bom.api.audit_log import SQLiteAuditLog
+
+    entries = SQLiteAuditLog(str(db_path)).list_entries(tenant_id="tenant-a", limit=10)
+    assert len(entries) == 1
+    assert entries[0].action == "gateway.tool_call"
+    assert entries[0].details["decision"] == "allow"
+    assert entries[0].details["tool"] == "write_file"
+
+
+def test_relay_does_not_execute_tool_if_durable_audit_sink_becomes_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_TENANT_ID", "tenant-a")
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    upstream_calls = 0
+
+    async def upstream_caller(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"side_effect": True}}
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),
+        policy={},
+        audit_sink=None,
+        upstream_caller=upstream_caller,
+    )
+    app = create_gateway_app(settings)
+    settings.audit_sink = None
+    message = {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {"name": "write_file", "arguments": {"path": "/tmp/output"}},
+    }
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/mcp/filesystem", json=message)
+
+    assert response.status_code == 503
+    assert upstream_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_malformed_backlog_is_retained_and_blocks_new_audit_admission(tmp_path: Path) -> None:
+    sent: list[dict[str, Any]] = []
+
+    async def sender(payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        sent.extend(payload["alerts"])
+        return {}
+
+    spill, dlq = _paths(tmp_path)
+    spill.parent.mkdir(parents=True, exist_ok=True)
+    spill.write_text("{not-json}\n", encoding="utf-8")
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        None,
+        tenant_id="tenant-a",
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=sender,
+    )
+
+    assert await sink.flush_once() is False
+    assert sent == []
+    assert any(spill.parent.glob(f"{spill.name}.claim-*"))
+    assert sink.health()["accepting_events"] is False
+    with pytest.raises(GatewayAuditDeliveryUnavailableError, match="unavailable"):
+        await sink(_event("after-corruption"))
 
 
 @pytest.mark.asyncio

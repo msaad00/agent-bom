@@ -105,7 +105,7 @@ from agent_bom.runtime.gateway_relay_contract import (
 )
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 from agent_bom.runtime.profile_resolution import ProfileResolutionCode
-from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
@@ -1337,6 +1337,8 @@ class ControlPlaneAuditSink:
     async def __call__(self, event: dict[str, Any]) -> None:
         async with self._lock:
             try:
+                if not self._persistence_available:
+                    raise GatewayAuditDeliveryUnavailableError("durable audit backlog is unavailable")
                 event = canonicalize_gateway_enforcement_event(ensure_gateway_event_identity(event))
                 event_tenant = str(event.get("tenant_id") or "")
                 if event_tenant != self._tenant_id:
@@ -1356,7 +1358,9 @@ class ControlPlaneAuditSink:
                 raise GatewayAuditDeliveryUnavailableError("durable audit backlog is full")
             self._persistence_available = True
             if not self._delivery_state.controller.is_circuit_open():
-                await self._flush_locked()
+                flushed = await self._flush_locked()
+                if not flushed and not self._persistence_available:
+                    raise GatewayAuditDeliveryUnavailableError("durable audit backlog is unavailable")
 
     async def _flush_locked(self) -> bool:
         try:
@@ -1461,6 +1465,65 @@ class ControlPlaneAuditSink:
         }
 
 
+class LocalGatewayAuditSink:
+    """HMAC-chained local durability for gateways without a control plane."""
+
+    def __init__(self, db_path: Path) -> None:
+        from agent_bom.api.audit_log import SQLiteAuditLog
+
+        parent_fd = AuditSpilloverStore._safe_parent_fd(db_path)
+        os.close(parent_fd)
+        AuditSpilloverStore._validate_existing_path(db_path)
+        self._store = SQLiteAuditLog(str(db_path))
+        self._available = True
+        self.db_path = db_path
+
+    async def __call__(self, event: dict[str, Any]) -> None:
+        from agent_bom.api.audit_log import AuditEntry, sanitize_audit_details
+
+        if not self._available:
+            raise GatewayAuditDeliveryUnavailableError("local durable audit store is unavailable")
+        identified = canonicalize_gateway_enforcement_event(ensure_gateway_event_identity(event))
+        sanitized = sanitize_sensitive_payload(identified)
+        if not isinstance(sanitized, dict):
+            self._available = False
+            raise GatewayAuditDeliveryUnavailableError("local durable audit event is invalid")
+        action = str(sanitized.get("action") or sanitized.get("event_type") or "gateway.runtime")[:256]
+        upstream = str(sanitized.get("upstream") or "gateway")[:200]
+        entry = AuditEntry(
+            action=action,
+            actor="gateway",
+            resource=f"upstream/{upstream}",
+            details=sanitize_audit_details(sanitized),
+        )
+        try:
+            await asyncio.to_thread(self._store.append, entry)
+        except Exception as exc:  # noqa: BLE001 - local audit failure is fail-closed
+            self._available = False
+            logger.error("Gateway local audit persistence unavailable (error_type=%s)", type(exc).__name__)
+            raise GatewayAuditDeliveryUnavailableError("local durable audit store is unavailable") from None
+
+    def health(self) -> dict[str, str | int | bool]:
+        return {
+            "configured": True,
+            "mode": "local_hmac_sqlite",
+            "status": "healthy" if self._available else "degraded",
+            "durable": self._available,
+            "accepting_events": self._available,
+            "backlog_observable": True,
+            "retry_worker_running": False,
+            "backlog_bytes": 0,
+            "dropped_events": 0,
+        }
+
+
+def build_local_gateway_audit_sink(*, state_dir: Path | None = None) -> LocalGatewayAuditSink:
+    """Build the default durable audit path for a standalone local gateway."""
+
+    root = state_dir or Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
+    return LocalGatewayAuditSink(root / "runtime-audit" / "gateway-local-audit.db")
+
+
 def build_control_plane_audit_sink(
     base_url: str,
     token: str | None,
@@ -1557,6 +1620,11 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     Separating app construction from CLI entry point keeps the server
     testable end-to-end via ``TestClient(create_gateway_app(settings))``.
     """
+    if settings.audit_sink is None:
+        try:
+            settings.audit_sink = build_local_gateway_audit_sink()
+        except Exception as exc:  # noqa: BLE001 - relay remains fail-closed below
+            logger.error("Gateway local audit initialization failed (error_type=%s)", type(exc).__name__)
     if settings.enable_visual_leak_detection and settings.require_visual_leak_detection_ready:
         from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
 
@@ -1811,8 +1879,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 **visual_leak_runtime_health(),
                 "required": settings.require_visual_leak_detection_ready,
             }
-        if isinstance(settings.audit_sink, ControlPlaneAuditSink):
-            audit_delivery_health = settings.audit_sink.health()
+        audit_health = getattr(settings.audit_sink, "health", None)
+        if callable(audit_health):
+            audit_delivery_health = audit_health()
             health["audit_delivery"] = audit_delivery_health
             if audit_delivery_health["status"] != "healthy":
                 health["status"] = "degraded"
@@ -3352,6 +3421,24 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # protect an in-flight/direct request. Persisting the authorization here
         # makes a full/unavailable audit backlog fail closed before execution.
         _forward_is_tool_call = is_tools_call(message)
+        if _forward_is_tool_call and settings.audit_sink is None:
+            record_gateway_relay(upstream.name, "audit_unavailable")
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32003,
+                        "message": "Gateway audit persistence unavailable",
+                        "data": {
+                            "reason": "Tool call was not executed because no durable audit sink is configured",
+                            "policy_source": "audit_delivery",
+                        },
+                    },
+                },
+                status_code=503,
+                headers=rate_limit_headers or None,
+            )
         if _forward_is_tool_call and settings.audit_sink is not None:
             try:
                 await settings.audit_sink(

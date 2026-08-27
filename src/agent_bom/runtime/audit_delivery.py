@@ -137,16 +137,43 @@ class AuditSpilloverStore:
 
     @staticmethod
     def _safe_parent_fd(path: Path) -> int:
+        """Open/create every parent component without following symlinks."""
+
         parent = path.parent
-        parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if parent.is_symlink():
-            raise ValueError("runtime audit backlog parent directory must not be a symlink")
         flags = os.O_RDONLY
         if hasattr(os, "O_DIRECTORY"):
             flags |= os.O_DIRECTORY
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
-        return os.open(parent, flags)
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+
+        parts = parent.parts
+        if ".." in parts:
+            raise ValueError("runtime audit backlog parent must not contain parent traversal")
+        current_fd = os.open(os.sep if parent.is_absolute() else ".", flags)
+        components = parts[1:] if parent.is_absolute() else parts
+        try:
+            for component in components:
+                if component in {"", "."}:
+                    continue
+                try:
+                    os.mkdir(component, mode=0o700, dir_fd=current_fd)
+                except FileExistsError:
+                    pass
+                try:
+                    next_fd = os.open(component, flags, dir_fd=current_fd)
+                except OSError as exc:
+                    raise ValueError("runtime audit backlog parent must not contain symlink ancestors") from exc
+                if not stat.S_ISDIR(os.fstat(next_fd).st_mode):
+                    os.close(next_fd)
+                    raise ValueError("runtime audit backlog parent must contain directories only")
+                os.close(current_fd)
+                current_fd = next_fd
+            return current_fd
+        except Exception:
+            os.close(current_fd)
+            raise
 
     @staticmethod
     def _validate_single_link_regular(stat_result: os.stat_result) -> None:
@@ -268,7 +295,15 @@ class AuditSpilloverStore:
                 _ACTIVE_CLAIMS.add(os.path.abspath(claim_path))
             finally:
                 os.close(parent_fd)
-            return AuditSpilloverClaim(path=claim_path, events=self._read_events_locked(claim_path))
+            try:
+                events = self._read_events_locked(claim_path)
+            except Exception:
+                # Keep the poisoned segment on disk for operator recovery, but
+                # do not leave an in-process active marker that masks it from
+                # orphan recovery and health checks forever.
+                _ACTIVE_CLAIMS.discard(os.path.abspath(claim_path))
+                raise
+            return AuditSpilloverClaim(path=claim_path, events=events)
 
     def acknowledge_claim(self, claim: AuditSpilloverClaim) -> None:
         """Delete only the segment a successful send actually delivered."""
@@ -370,13 +405,11 @@ class AuditSpilloverStore:
                 continue
             try:
                 payload = json.loads(line)
-            except json.JSONDecodeError:
-                logger.warning(
-                    "Skipping malformed runtime audit spillover record",
-                )
-                continue
-            if isinstance(payload, dict):
-                events.append(payload)
+            except json.JSONDecodeError as exc:
+                raise ValueError("runtime audit backlog contains a malformed record") from exc
+            if not isinstance(payload, dict):
+                raise ValueError("runtime audit backlog contains a non-object record")
+            events.append(payload)
         return events
 
     def _read_bytes_locked(self, path: Path) -> bytes:

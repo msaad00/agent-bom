@@ -277,8 +277,26 @@ def test_direct_symlink_parent_is_rejected(tmp_path: Path) -> None:
         max_dlq_bytes=4096,
     )
 
-    with pytest.raises(ValueError, match="parent directory must not be a symlink"):
+    with pytest.raises(ValueError, match="must not contain symlink ancestors"):
         store.append_events([{"event_id": "symlink-parent"}])
+
+
+def test_symlinked_parent_ancestor_is_rejected_without_creating_external_state(tmp_path: Path) -> None:
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(victim, target_is_directory=True)
+    store = AuditSpilloverStore(
+        spill_path=alias / "nested" / "spill.jsonl",
+        dlq_path=alias / "nested" / "dlq.jsonl",
+        max_spillover_bytes=4096,
+        max_dlq_bytes=4096,
+    )
+
+    with pytest.raises(ValueError, match="must not contain symlink ancestors"):
+        store.append_events([{"event_id": "symlink-ancestor"}])
+
+    assert not (victim / "nested").exists()
 
 
 def test_hardlinked_spill_file_is_rejected_without_mutating_target(tmp_path: Path) -> None:

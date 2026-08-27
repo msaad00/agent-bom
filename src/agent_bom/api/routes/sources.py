@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
+from urllib.parse import urlsplit
 
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -20,11 +21,37 @@ from agent_bom.api.models import (
     SourceStatus,
     SourceUpdate,
 )
-from agent_bom.api.routes.scan import enqueue_scan_job
+from agent_bom.api.routes.scan import _sanitize_scan_request_paths, enqueue_scan_job
 from agent_bom.api.stores import _get_credential_ref_store, _get_source_store, _get_store
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 
 router = APIRouter()
+
+_RUNNABLE_SOURCE_KINDS = frozenset(
+    {
+        SourceKind.SCAN_REPO,
+        SourceKind.SCAN_IMAGE,
+        SourceKind.SCAN_IAC,
+        SourceKind.SCAN_CLOUD,
+        SourceKind.SCAN_MCP_CONFIG,
+        SourceKind.INGEST_ARTIFACT_IMPORT,
+        SourceKind.CONNECTOR_CLOUD_READ_ONLY,
+        SourceKind.CONNECTOR_REGISTRY,
+        SourceKind.CONNECTOR_WAREHOUSE,
+    }
+)
+
+
+def _safe_validation_errors(exc: ValidationError) -> list[dict[str, object]]:
+    """Return actionable validation metadata without echoing config values."""
+    return [
+        {
+            "type": error.get("type", "value_error"),
+            "loc": list(error.get("loc", ())),
+            "msg": error.get("msg", "Invalid scan request"),
+        }
+        for error in exc.errors()
+    ]
 
 
 def _now() -> str:
@@ -59,6 +86,9 @@ def _validate_credential_ref(request: Request, source: SourceRecord) -> None:
 
 
 def _apply_update(source: SourceRecord, body: SourceUpdate) -> SourceRecord:
+    # Stores may return a live object reference. Validate a detached candidate
+    # so a rejected update cannot mutate the persisted source in place.
+    source = source.model_copy(deep=True)
     for field in (
         "display_name",
         "description",
@@ -79,6 +109,59 @@ def _apply_update(source: SourceRecord, body: SourceUpdate) -> SourceRecord:
     elif source.status == SourceStatus.DISABLED:
         source.status = SourceStatus.CONFIGURED
     return source
+
+
+def _require_source_target(source: SourceRecord, request: ScanRequest) -> None:
+    """Reject a runnable source that would otherwise launch a default scan."""
+    has_target = True
+    required = ""
+    if source.kind == SourceKind.SCAN_REPO:
+        has_target = bool(
+            (request.repo_url or "").strip() or request.agent_projects or request.gha_path or request.sbom or request.filesystem_paths
+        )
+        required = "repo_url, agent_projects, gha_path, sbom, or filesystem_paths"
+    elif source.kind == SourceKind.SCAN_IMAGE:
+        has_target = bool(request.images)
+        required = "images"
+    elif source.kind == SourceKind.SCAN_IAC:
+        has_target = bool((request.repo_url or "").strip() or request.tf_dirs or request.k8s)
+        required = "repo_url, tf_dirs, or k8s"
+    elif source.kind == SourceKind.SCAN_CLOUD:
+        has_target = bool(request.connectors or request.inventory)
+        required = "connectors or inventory"
+    elif source.kind == SourceKind.SCAN_MCP_CONFIG:
+        has_target = bool((request.repo_url or "").strip() or request.inventory or request.agent_projects or request.discover_host)
+        required = "repo_url, inventory, agent_projects, or discover_host"
+    elif source.kind == SourceKind.INGEST_ARTIFACT_IMPORT:
+        has_target = bool(request.inventory or request.sbom or request.external_scan or request.vex)
+        required = "inventory, sbom, external_scan, or vex"
+
+    if not has_target:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{source.kind.value} source requires {required} in config.scan_request",
+        )
+
+
+def _validate_source_repo_url(request: ScanRequest) -> ScanRequest:
+    """Reject unsafe stored repo targets without performing network I/O."""
+    if not request.repo_url:
+        return request
+    repo_url = request.repo_url.strip()
+    try:
+        parts = urlsplit(repo_url)
+        safe = (
+            parts.scheme in {"http", "https"}
+            and bool(parts.hostname)
+            and parts.username is None
+            and parts.password is None
+            and not any(ord(char) < 0x20 or char.isspace() for char in repo_url)
+        )
+    except ValueError:
+        safe = False
+    if not safe:
+        raise HTTPException(status_code=422, detail="repo_url must be an HTTP(S) URL without embedded credentials")
+    return request.model_copy(update={"repo_url": repo_url})
 
 
 def _request_for_source(source: SourceRecord) -> ScanRequest:
@@ -104,9 +187,15 @@ def _request_for_source(source: SourceRecord) -> ScanRequest:
         raise HTTPException(status_code=409, detail="Runtime sources are audited by proxy/gateway traffic, not by direct scan jobs")
 
     try:
-        return ScanRequest.model_validate(config)
+        request = ScanRequest.model_validate(config)
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        raise HTTPException(status_code=422, detail=_safe_validation_errors(exc)) from exc
+    request = _validate_source_repo_url(request)
+    _require_source_target(source, request)
+    # Source runs enqueue directly rather than entering POST /v1/scan. Apply
+    # the identical local-path jail before either Test or Run can accept the
+    # source configuration.
+    return _sanitize_scan_request_paths(request)
 
 
 @router.post("/sources", tags=["sources"], status_code=201)
@@ -132,6 +221,8 @@ async def create_source(request: Request, body: SourceCreate) -> dict:
         updated_at=now,
     )
     _validate_credential_ref(request, source)
+    if source.kind in _RUNNABLE_SOURCE_KINDS:
+        _request_for_source(source)
     _get_source_store().put(source)
     log_action(
         "source.create",
@@ -176,6 +267,8 @@ async def get_source(request: Request, source_id: str) -> dict:
 async def update_source(request: Request, source_id: str, body: SourceUpdate) -> dict:
     source = _apply_update(_source_for_request(request, source_id), body)
     _validate_credential_ref(request, source)
+    if source.kind in _RUNNABLE_SOURCE_KINDS:
+        _request_for_source(source)
     _get_source_store().put(source)
     log_action(
         "source.update",

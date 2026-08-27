@@ -9,6 +9,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.credential_store import InMemoryCredentialRefStore
+from agent_bom.api.models import SourceKind, SourceRecord
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore
@@ -117,6 +118,96 @@ def test_source_create_rejects_mismatched_tenant(source_client: TestClient) -> N
     )
     assert resp.status_code == 403
     assert "tenant_id in the request body must match the authenticated tenant" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_target"),
+    [
+        ("scan.repo", "repo_url, agent_projects, gha_path, sbom, or filesystem_paths"),
+        ("scan.image", "images"),
+        ("scan.iac", "repo_url, tf_dirs, or k8s"),
+        ("scan.cloud", "connectors or inventory"),
+        ("scan.mcp_config", "repo_url, inventory, agent_projects, or discover_host"),
+        ("ingest.artifact_import", "inventory, sbom, external_scan, or vex"),
+    ],
+)
+def test_runnable_source_create_rejects_empty_scan_target(
+    source_client: TestClient,
+    kind: str,
+    expected_target: str,
+) -> None:
+    response = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={"display_name": f"Empty {kind}", "kind": kind},
+    )
+
+    assert response.status_code == 422
+    assert f"{kind} source requires {expected_target}" in response.json()["detail"]
+
+
+def test_legacy_empty_runnable_source_cannot_test_or_enqueue(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SourceRecord(
+        source_id="legacy-empty-repo",
+        tenant_id="tenant-alpha",
+        display_name="Legacy empty repo",
+        kind=SourceKind.SCAN_REPO,
+    )
+    _stores._source_store.put(source)
+
+    def _must_not_enqueue(**kwargs):
+        raise AssertionError("an empty source must not enqueue an all-default scan")
+
+    monkeypatch.setattr("agent_bom.api.routes.sources.enqueue_scan_job", _must_not_enqueue)
+
+    tested = source_client.post(f"/v1/sources/{source.source_id}/test", headers=ANALYST_HEADERS)
+    run = source_client.post(f"/v1/sources/{source.source_id}/run", headers=ANALYST_HEADERS)
+
+    assert tested.status_code == 422
+    assert run.status_code == 422
+    assert "scan.repo source requires repo_url, agent_projects, gha_path, sbom, or filesystem_paths" in tested.json()["detail"]
+    assert "scan.repo source requires repo_url, agent_projects, gha_path, sbom, or filesystem_paths" in run.json()["detail"]
+
+
+def test_source_config_uses_the_api_local_path_jail(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "disabled")
+
+    response = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unsafe local IaC source",
+            "kind": "scan.iac",
+            "config": {"scan_request": {"tf_dirs": ["/private/tenant-secret"]}},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Local filesystem scans are disabled"
+    assert "/private/tenant-secret" not in response.text
+
+
+def test_source_repo_target_rejects_embedded_credentials_without_persisting(source_client: TestClient) -> None:
+    response = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unsafe repository",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://operator:secret-value@example.com/repo"}},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "repo_url must be an HTTP(S) URL without embedded credentials"
+    assert "secret-value" not in response.text
+    assert source_client.get("/v1/sources", headers=VIEWER_HEADERS).json()["count"] == 0
 
 
 def test_credential_reference_crud_and_tenant_isolation(source_client: TestClient) -> None:
@@ -285,7 +376,7 @@ def test_source_with_credential_reference_requires_same_tenant_ref(source_client
             "kind": "scan.cloud",
             "credential_mode": "reference",
             "credential_ref": credential_ref_id,
-            "config": {"scan_request": {"inventory": "agents.json", "format": "json"}},
+            "config": {"scan_request": {"connectors": ["jira"], "format": "json"}},
         },
     )
     assert create.status_code == 201
@@ -344,7 +435,7 @@ def test_viewer_cannot_test_or_run_sources(source_client: TestClient, monkeypatc
         json={
             "display_name": "Repo scan source",
             "kind": "scan.repo",
-            "config": {"scan_request": {"inventory": "agents.json", "format": "json"}},
+            "config": {"scan_request": {"repo_url": "https://github.com/example/repo", "format": "json"}},
         },
     )
     source_id = created.json()["source_id"]
@@ -381,7 +472,7 @@ def test_running_source_queues_source_linked_job(source_client: TestClient, monk
         json={
             "display_name": "Repo scan source",
             "kind": "scan.repo",
-            "config": {"scan_request": {"inventory": "agents.json", "format": "json"}},
+            "config": {"scan_request": {"repo_url": "https://github.com/example/repo", "format": "json"}},
         },
     )
     source_id = created.json()["source_id"]
@@ -391,6 +482,10 @@ def test_running_source_queues_source_linked_job(source_client: TestClient, monk
     run_body = run.json()
     assert run_body["source_id"] == source_id
     assert run_body["status"] == "pending"
+
+    job = _stores._store.get(run_body["job_id"], tenant_id="tenant-alpha")
+    assert job is not None
+    assert job.request.repo_url == "https://github.com/example/repo"
 
     source = source_client.get(f"/v1/sources/{source_id}", headers=VIEWER_HEADERS).json()
     assert source["last_job_id"] == run_body["job_id"]
@@ -405,7 +500,7 @@ def test_running_source_queues_source_linked_job(source_client: TestClient, monk
 
 
 def test_source_run_rejects_unknown_scan_request_fields(source_client: TestClient) -> None:
-    created = source_client.post(
+    response = source_client.post(
         "/v1/sources",
         headers=ANALYST_HEADERS,
         json={
@@ -414,12 +509,8 @@ def test_source_run_rejects_unknown_scan_request_fields(source_client: TestClien
             "config": {"scan_request": {"project_path": "."}},
         },
     )
-    source_id = created.json()["source_id"]
-
-    resp = source_client.post(f"/v1/sources/{source_id}/run", headers=ANALYST_HEADERS)
-
-    assert resp.status_code == 422
-    body = resp.json()
+    assert response.status_code == 422
+    body = response.json()
     assert "project_path" in str(body)
     assert "extra_forbidden" in str(body)
 

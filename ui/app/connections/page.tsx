@@ -407,6 +407,7 @@ function kindOption(kind: SourceKind | string): KindOption | undefined {
 const DEFAULT_FORM_STATE: FormState = {
   display_name: "",
   kind: "scan.repo",
+  target: "",
   description: "",
   owner: "",
   connector_name: "",
@@ -415,9 +416,57 @@ const DEFAULT_FORM_STATE: FormState = {
 interface FormState {
   display_name: string;
   kind: SourceKind;
+  target: string;
   description: string;
   owner: string;
   connector_name: string;
+}
+
+interface SourceTargetSpec {
+  label: string;
+  placeholder: string;
+  requiredMessage: string;
+  help: string;
+}
+
+function sourceTargetSpec(kind: SourceKind): SourceTargetSpec | null {
+  switch (kind) {
+    case "scan.repo":
+      return {
+        label: "Repository URL",
+        placeholder: "https://github.com/org/repository",
+        requiredMessage: "Repository URL is required for a repo scan source.",
+        help: "Agent-Bom shallow-clones this public HTTP(S) repository and statically scans the returned tree.",
+      };
+    case "scan.image":
+      return {
+        label: "Container image",
+        placeholder: "ghcr.io/org/app:v1",
+        requiredMessage: "Container image is required for an image scan source.",
+        help: "Use an immutable tag or digest when repeatable snapshot comparison matters.",
+      };
+    case "scan.iac":
+      return {
+        label: "IaC repository URL",
+        placeholder: "https://github.com/org/infrastructure",
+        requiredMessage: "Repository URL is required for an IaC scan source.",
+        help: "The queued job scans Terraform and Kubernetes files in this repository without executing repository code.",
+      };
+    case "scan.mcp_config":
+      return {
+        label: "Configuration repository URL",
+        placeholder: "https://github.com/org/agent-configs",
+        requiredMessage: "Repository URL is required for an MCP configuration source.",
+        help: "Use a repository containing the MCP and agent configuration that the control plane should inspect.",
+      };
+    default:
+      return null;
+  }
+}
+
+function scanRequestForSourceTarget(kind: SourceKind, target: string): Record<string, unknown> {
+  if (kind === "scan.image") return { images: [target] };
+  return { repo_url: target };
 }
 
 const SCHEDULABLE_KINDS = new Set<SourceKind>([
@@ -536,7 +585,7 @@ const CONNECTOR_CATALOG: CatalogConnector[] = [
     id: "mcp",
     category: "ai",
     label: "MCP configs",
-    tagline: "Local MCP configuration scan",
+    tagline: "Repository MCP configuration scan",
     icon: Plug,
     keywords: "model context protocol mcp servers tools aispm",
     action: { type: "source", sourceKind: "scan.mcp_config" },
@@ -989,7 +1038,7 @@ function ConnectionsHub() {
   const handleRegisterSource = useCallback(
     (kind: SourceKind) => {
       if (!canManageSources) return;
-      setFormState((current) => ({ ...current, kind }));
+      setFormState((current) => ({ ...current, kind, target: "" }));
       setCreateNonce((n) => n + 1);
       setTab("sources");
     },
@@ -1119,7 +1168,11 @@ function ConnectionsHub() {
   }
 
   function updateForm<K extends keyof FormState>(field: K, value: FormState[K]) {
-    setFormState((current) => ({ ...current, [field]: value }));
+    setFormState((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "kind" ? { target: "" } : {}),
+    }));
   }
 
   async function handleCreateSource(event: React.FormEvent<HTMLFormElement>) {
@@ -1139,6 +1192,21 @@ function ConnectionsHub() {
 
     if (!payload.display_name) {
       setFormMessage("Display name is required.");
+      return;
+    }
+    const targetSpec = sourceTargetSpec(formState.kind);
+    if (targetSpec) {
+      const target = formState.target.trim();
+      if (!target) {
+        setFormMessage(targetSpec.requiredMessage);
+        return;
+      }
+      payload.config = { scan_request: scanRequestForSourceTarget(formState.kind, target) };
+    } else if (formState.kind === "scan.cloud") {
+      setFormMessage("Cloud accounts use the read-only cloud account connection workflow.");
+      return;
+    } else if (formState.kind === "ingest.artifact_import") {
+      setFormMessage("Artifact sources require an API-side inventory, SBOM, external_scan, or VEX path.");
       return;
     }
     if (selected.mode === "Read-only connector") {
@@ -1794,6 +1862,7 @@ function SourcesSegment(props: SourcesSegmentProps) {
   } = props;
 
   const selectedKind = kindOption(formState.kind) ?? SOURCE_KIND_OPTIONS[0]!;
+  const targetSpec = sourceTargetSpec(formState.kind);
 
   return (
     <div className="space-y-5">
@@ -1988,6 +2057,25 @@ function SourcesSegment(props: SourcesSegmentProps) {
                       </option>
                     ))}
                   </select>
+                </label>
+              ) : null}
+
+              {targetSpec ? (
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                    {targetSpec.label}
+                  </span>
+                  <input
+                    value={formState.target}
+                    onChange={(event) => onUpdateForm("target", event.target.value)}
+                    aria-label={targetSpec.label}
+                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                    placeholder={targetSpec.placeholder}
+                    autoComplete="off"
+                  />
+                  <span className="mt-1.5 block text-xs leading-5 text-[color:var(--text-secondary)]">
+                    {targetSpec.help}
+                  </span>
                 </label>
               ) : null}
 

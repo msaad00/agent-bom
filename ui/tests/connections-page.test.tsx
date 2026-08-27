@@ -815,6 +815,37 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(replaceMock).toHaveBeenCalledWith("/connections?tab=sources");
   });
 
+  it("requires and persists the repository target when registering a runnable source", async () => {
+    navState.search = "?tab=sources";
+    apiMock.createSource.mockResolvedValue({
+      ...SOURCE_RECORD,
+      config: { scan_request: { repo_url: "https://github.com/acme/payments" } },
+    });
+    render(<ConnectionsPage />);
+    fireEvent.change(await screen.findByPlaceholderText("Payments monorepo"), {
+      target: { value: "Payments monorepo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Register source" }));
+
+    expect(await screen.findByText("Repository URL is required for a repo scan source.")).toBeInTheDocument();
+    expect(apiMock.createSource).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Repository URL" }), {
+      target: { value: "https://github.com/acme/payments" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Register source" }));
+
+    await waitFor(() =>
+      expect(apiMock.createSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          display_name: "Payments monorepo",
+          kind: "scan.repo",
+          config: { scan_request: { repo_url: "https://github.com/acme/payments" } },
+        }),
+      ),
+    );
+  });
+
   it("filters the gallery by category and free-text search", async () => {
     render(<ConnectionsPage />);
     await waitForConnectTab();

@@ -41,7 +41,11 @@ def sanitize_linked_document(document: dict[str, Any]) -> dict[str, Any]:
 
     def sanitize(value: object) -> object:
         if isinstance(value, str):
-            return sanitize_output_text(value)
+            # References and definitions must use the same collision-safe
+            # projection.  Applying the map here avoids building a fully
+            # sanitized document and then walking the whole structure again
+            # solely to restore linked identifiers.
+            return id_map.get(value, sanitize_output_text(value))
         if isinstance(value, dict):
             return {str(key): sanitize(item) for key, item in value.items()}
         if isinstance(value, list):
@@ -51,19 +55,4 @@ def sanitize_linked_document(document: dict[str, Any]) -> dict[str, Any]:
         return value
 
     sanitized_document = sanitize(document)
-    if not isinstance(sanitized_document, dict):
-        return {}
-
-    def restore(raw: object, safe: object) -> object:
-        if isinstance(raw, str) and raw in id_map:
-            return id_map[raw]
-        if isinstance(raw, dict) and isinstance(safe, dict):
-            return {key: restore(value, safe.get(key)) for key, value in raw.items() if key in safe}
-        if isinstance(raw, list) and isinstance(safe, list):
-            return [restore(raw_item, safe_item) for raw_item, safe_item in zip(raw, safe, strict=False)]
-        if isinstance(raw, tuple) and isinstance(safe, tuple):
-            return tuple(restore(raw_item, safe_item) for raw_item, safe_item in zip(raw, safe, strict=False))
-        return safe
-
-    restored = restore(document, sanitized_document)
-    return restored if isinstance(restored, dict) else {}
+    return sanitized_document if isinstance(sanitized_document, dict) else {}

@@ -718,7 +718,7 @@ async def compare_graph_scenario(
             exact_edge_count=current["edge_count"],
             attack_paths=paths_result[2],
         )
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError):
         return {
             "schema": _COMPARISON_SCHEMA,
             "scenario": {**_public_scenario(scenario), "base_status": status},
@@ -733,7 +733,7 @@ async def compare_graph_scenario(
             },
             "difference": _empty_difference(),
             "available": False,
-            "unavailable_reason": sanitize_error(exc, generic=True),
+            "unavailable_reason": "The proposed graph scenario is invalid.",
             "base_status": status,
             "stale": stale,
         }

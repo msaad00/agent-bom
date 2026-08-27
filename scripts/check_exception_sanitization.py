@@ -21,6 +21,10 @@ Forbidden patterns (on the scanned trees):
   3. ``logger.<level>(f"...{exc}...")`` — raw exception interpolated into a log
      f-string. Use lazy ``%s`` formatting with a sanitized value:
      ``logger.warning("...: %s", sanitize_text(exc))``.
+  4. A caught exception object used anywhere in an API route's returned
+     response payload. Return a fixed external message instead. This
+     intentionally avoids relying on custom sanitizer modeling in static
+     analyzers such as CodeQL.
 
 Only the bare exception token (``{exc}``, ``{e}``, ``{err}``, ``{error}``,
 ``{ex}`` and their ``{exc!r}`` / ``{exc:...}`` forms) is flagged. Attribute
@@ -36,6 +40,7 @@ Exit 0 = clean. Exit 1 = a violation. Pure stdlib so it runs anywhere in CI.
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -118,6 +123,44 @@ def _scan_line(line: str) -> str | None:
     return None
 
 
+def _scan_returned_exception_flows(text: str, label: str) -> list[str]:
+    """Flag caught exception objects that flow into a returned payload.
+
+    ``sanitize_error(exc, generic=True)`` is safe at runtime, but external
+    static analyzers cannot necessarily prove that a project-local sanitizer
+    returns a constant. Keeping the exception object out of a response return
+    entirely gives both runtime and static-analysis proof of the boundary.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+
+    lines = text.splitlines()
+    violations: list[str] = []
+    for handler in (node for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler)):
+        if not handler.name:
+            continue
+        for node in ast.walk(handler):
+            if not isinstance(node, ast.Return) or node.value is None:
+                continue
+            uses = [
+                child
+                for child in ast.walk(node.value)
+                if isinstance(child, ast.Name) and child.id == handler.name
+            ]
+            if not uses:
+                continue
+            start = max(1, node.lineno)
+            end = min(len(lines), getattr(node, "end_lineno", node.lineno))
+            if any(PRAGMA in lines[index - 1] for index in range(start, end + 1)):
+                continue
+            violations.append(
+                f"{label}:{uses[0].lineno}: caught exception flows into returned response payload — return a fixed external message"
+            )
+    return violations
+
+
 def scan_text(text: str, label: str) -> list[str]:
     """Scan a blob of source. Used by the test-suite to feed deliberate samples."""
     violations: list[str] = []
@@ -127,6 +170,8 @@ def scan_text(text: str, label: str) -> list[str]:
         reason = _scan_line(line)
         if reason:
             violations.append(f"{label}:{lineno}: {reason}")
+    if label == "sample.py" or label.startswith("src/agent_bom/api/routes/"):
+        violations.extend(_scan_returned_exception_flows(text, label))
     return violations
 
 

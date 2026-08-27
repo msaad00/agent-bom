@@ -70,6 +70,21 @@ def test_flags_logger_fstring_exc() -> None:
         assert "log f-string" in out[0]
 
 
+def test_flags_exception_flow_into_returned_payload_even_through_custom_sanitizer() -> None:
+    source = """
+try:
+    build_response()
+except ValueError as exc:
+    return {
+        "available": False,
+        "unavailable_reason": sanitize_error(exc, generic=True),
+    }
+"""
+    out = GUARD.scan_text(source, "sample.py")
+    assert len(out) == 1
+    assert "returned response payload" in out[0]
+
+
 # ---------------------------------------------------------------------------
 # Safe patterns are NOT flagged.
 # ---------------------------------------------------------------------------

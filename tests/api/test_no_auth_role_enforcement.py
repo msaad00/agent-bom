@@ -95,7 +95,11 @@ def test_pure_no_auth_analyst_uses_the_route_role_matrix(
 
     created = pure_no_auth_client.post(
         "/v1/sources",
-        json={"display_name": "repo", "kind": "scan.repo"},
+        json={
+            "display_name": "repo",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://github.com/example/repo"}},
+        },
     )
     assert created.status_code == 201
     source_id = created.json()["source_id"]
@@ -123,7 +127,11 @@ def test_pure_no_auth_admin_can_use_protected_source_mutations(
     assert session["role"] == "admin"
     created = pure_no_auth_client.post(
         "/v1/sources",
-        json={"display_name": "repo", "kind": "scan.repo"},
+        json={
+            "display_name": "repo",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://github.com/example/repo"}},
+        },
     )
     assert created.status_code == 201
     assert pure_no_auth_client.delete(f"/v1/sources/{created.json()['source_id']}").status_code == 204

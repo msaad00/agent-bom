@@ -441,6 +441,30 @@ def test_overview_hub_kev_finding_moves_exec_kev_count() -> None:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     get_compliance_hub_store().clear("default")
+
+
+def test_overview_resolved_hub_kev_does_not_inflate_live_headline() -> None:
+    """The executive KEV count uses the same open lifecycle basis as findings."""
+    _clear_jobs()
+    from datetime import datetime, timezone
+
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    store = get_compliance_hub_store()
+    store.clear("default")
+    _ingest_hub_findings([{"finding_id": "K-resolved", "severity": "critical", "is_kev": True}])
+    store.reconcile_current_absent(
+        "default",
+        present_canonical_ids=set(),
+        observed_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    client = TestClient(app)
+    assert client.get("/v1/findings", headers=_AUTH_HEADERS).json()["total"] == 0
+    assert client.get("/v1/overview", headers=_AUTH_HEADERS).json()["headline"]["kev"] == 0
+    assert client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()["kev"] == 0
+
+    store.clear("default")
     _ingest_hub_findings(
         [
             {"finding_id": "K-1", "severity": "high", "title": "kev bug", "is_kev": True},

@@ -546,10 +546,11 @@ class ComplianceHubStore(Protocol):
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> int:
         """Count CURRENT-STATE findings flagged CISA-KEV, matching the drill.
 
-        Same tenant + ``origin`` + ``since`` read-window predicates as
+        Same tenant + ``origin`` + ``since`` read-window + lifecycle predicates as
         :meth:`current_severity_breakdown`, so the exec KEV headline reconciles
         with the KEV rows /v1/findings shows. The KEV flag lives in the finding
         payload (inline, or in the CVE-intel reference for CVE findings), so the
@@ -1236,10 +1237,11 @@ class InMemoryComplianceHubStore:
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> int:
         with self._lock:
             rows = [dict(r) for r in self._current.get(tenant_id, {}).values()]
-        rows = _filter_current_rows(rows, severity=None, scan_id=None, origin=origin, since=since)
+        rows = _filter_current_rows(rows, severity=None, scan_id=None, origin=origin, since=since, status=status)
         # Current-state rows keep an overlay-only payload; the KEV flag lives in
         # the ledger payload, so hydrate first (same source the drill reads).
         rows = self._hydrate_current_rows(tenant_id, rows)
@@ -1273,11 +1275,12 @@ class InMemoryComplianceHubStore:
     def clear(self, tenant_id: str) -> int:
         with self._lock:
             removed = len(self._by_tenant.get(tenant_id, []))
+            had_current = bool(self._current.get(tenant_id))
             self._by_tenant[tenant_id] = []
             self._slots[tenant_id] = {}
             self._current.pop(tenant_id, None)
             self._current_observations.pop(tenant_id, None)
-        if removed:
+        if removed or had_current:
             self._invalidate_ingest_caches(tenant_id)
         return removed
 
@@ -2281,8 +2284,9 @@ class SQLiteComplianceHubStore:
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> int:
-        # Same tenant/since/origin predicates as ``current_severity_breakdown``.
+        # Same tenant/since/origin/status predicates as ``current_severity_breakdown``.
         # The KEV flag is not a current-state column (the overlay keeps only
         # sort/filter scalars), so resolve it from the current payload, the joined
         # ledger payload, and the CVE-intel reference — the exact places the drill
@@ -2295,6 +2299,10 @@ class SQLiteComplianceHubStore:
         if origin is not None:
             where.append("c.origin = ?")
             params.append(origin)
+        status_sql, status_params = status_sql_predicate(status)
+        if status_sql:
+            where.append(status_sql.replace("status", "c.status", 1))
+            params.extend(status_params)
         where_sql = " AND ".join(where)
         kev_cond = " OR ".join(_kev_json_cond_sqlite(col) for col in ("c.payload", "l.payload", "i.payload"))
         row = self._conn.execute(

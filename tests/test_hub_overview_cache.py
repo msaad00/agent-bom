@@ -171,6 +171,23 @@ def test_store_evidence_version_changes_for_same_shape_refresh_and_is_tenant_sco
     assert store.overview_evidence_revision("other") == initial
 
 
+def test_in_memory_clear_advances_revision_for_current_only_evidence():
+    from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore
+
+    store = InMemoryComplianceHubStore()
+    store.upsert_current_batch(
+        "acme",
+        [{"id": "current-only", "severity": "high", "origin": "bulk_ingest"}],
+        observed_at="2026-08-27T00:00:00Z",
+        batch_id="batch-1",
+        source="connector",
+    )
+    before_clear = store.overview_evidence_revision("acme")
+
+    assert store.clear("acme") == 0
+    assert store.overview_evidence_revision("acme") > before_clear
+
+
 def test_revision_tag_rejects_a_late_stale_cache_write():
     hub_overview_cache.set_cached_severity("acme", {"critical": 1}, revision=0)
     assert hub_overview_cache.get_cached_severity("acme", revision=1) is None

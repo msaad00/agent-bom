@@ -934,8 +934,9 @@ class PostgresComplianceHubStore:
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> int:
-        # Same tenant/since/origin predicates as ``current_severity_breakdown``.
+        # Same tenant/since/origin/status predicates as ``current_severity_breakdown``.
         # The KEV flag is not a current-state column, so resolve it from the
         # current payload, the joined ledger payload, and the CVE-intel reference
         # — the same places the drill hydrates it — so the exec KEV count
@@ -948,6 +949,10 @@ class PostgresComplianceHubStore:
         if origin is not None:
             where.append("c.origin = %s")
             params.append(origin)
+        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
+        if status_sql:
+            where.append(status_sql.replace("status", "c.status", 1))
+            params.extend(status_params)
         where_sql = " AND ".join(where)
         kev_cond = " OR ".join(_kev_json_cond_postgres(col) for col in ("c.payload", "l.payload", "i.payload"))
         with _tenant_connection(self._pool) as conn:

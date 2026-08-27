@@ -844,7 +844,7 @@ def _hub_kev_snapshot(request: Request, *, revision: int | None = None) -> int:
         if not callable(counter):
             return 0
         since = time_window.window_since_iso(time_window.normalize_window_days(None))
-        count = int(counter(tenant_id, origin="bulk_ingest", since=since) or 0)
+        count = int(counter(tenant_id, origin="bulk_ingest", since=since, status="open") or 0)
     except Exception:  # pragma: no cover - hub store optional
         _logger.debug("hub kev snapshot failed", exc_info=False)
         return 0

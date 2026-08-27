@@ -495,6 +495,23 @@ class TestCurrentKevCount:
         assert store.current_kev_count("t1", origin="bulk_ingest", since=since) == 1
         assert store.current_kev_count("t3", origin="bulk_ingest", since=since) == 0
 
+    def test_resolved_kev_does_not_inflate_open_exec_count(self, store) -> None:
+        now = _now()
+        recent = (now - timedelta(days=1)).isoformat()
+        kev = {"id": "resolved-kev", "severity": "critical", "origin": "bulk_ingest", "is_kev": True}
+        store.add("t1", [kev])
+        store.upsert_current_batch("t1", [kev], observed_at=recent, batch_id="b1", source="test")
+        store.reconcile_current_absent(
+            "t1",
+            present_canonical_ids=set(),
+            observed_at=recent,
+        )
+
+        from agent_bom.api import time_window
+
+        since = time_window.window_since_iso(90, now=now)
+        assert store.current_kev_count("t1", origin="bulk_ingest", since=since, status="open") == 0
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # P3 — ordinal keyset does not dup/drop

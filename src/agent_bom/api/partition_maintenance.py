@@ -470,7 +470,7 @@ def run_partition_retention(
     try:
         from agent_bom.api.postgres_common import _maintenance_connection, bypass_tenant_rls
     except Exception:  # noqa: BLE001 — no Postgres driver available
-        logger.debug("partition retention skipped: postgres_common unavailable", exc_info=True)
+        logger.debug("partition retention skipped: postgres_common unavailable", exc_info=False)
         return {}
 
     for spec in active:
@@ -481,5 +481,5 @@ def run_partition_retention(
                 if created or dropped:
                     results[spec.table] = (created, dropped)
         except Exception:  # noqa: BLE001 — retention must stay fail-open
-            logger.debug("partition retention skipped for %s", spec.table, exc_info=True)
+            logger.debug("partition retention skipped for %s", spec.table, exc_info=False)
     return results

@@ -189,7 +189,7 @@ class RuntimeIncidentSink:
                 handle.write(line + "\n")
             return True
         except (OSError, TypeError, ValueError):
-            logger.debug("Could not emit runtime incident feedback (non-fatal)", exc_info=True)
+            logger.debug("Could not emit runtime incident feedback (non-fatal)", exc_info=False)
             return False
 
 
@@ -207,7 +207,7 @@ def load_incident_records(path: str | os.PathLike[str] | None) -> list[RuntimeIn
     try:
         text = resolved.read_text(encoding="utf-8")
     except OSError:
-        logger.debug("Could not read runtime incident feedback file (non-fatal)", exc_info=True)
+        logger.debug("Could not read runtime incident feedback file (non-fatal)", exc_info=False)
         return []
     for line in text.splitlines():
         stripped = line.strip()

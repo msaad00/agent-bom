@@ -2038,7 +2038,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 issuer=presented_issuer or None,
             )
         except Exception:  # pragma: no cover - audit side effects must not block auth
-            _logger.exception("Failed to record trusted proxy authentication audit event")
+            _logger.error("Failed to record trusted proxy authentication audit event")
         return await self._call_with_tenant_context(request, call_next)
 
     async def _call_with_tenant_context(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:

@@ -177,7 +177,7 @@ class PostgresAuditLog:
                 "(pre-existing chain forks?); appends will retry but forks cannot "
                 "be rejected at the DB until the existing rows are reconciled",
                 _AUDIT_FORK_GUARD_INDEX,
-                exc_info=True,
+                exc_info=False,
             )
 
     def _hydrate_checkpoints(self) -> None:

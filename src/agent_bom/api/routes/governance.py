@@ -27,7 +27,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ async def governance_report(days: int = 30) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        _logger.exception("Request failed")
+        _logger.error("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
@@ -158,7 +158,7 @@ async def governance_findings(
     except HTTPException:
         raise
     except Exception as exc:
-        _logger.exception("Request failed")
+        _logger.error("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
@@ -176,7 +176,7 @@ def _runtime_activity_events(tenant_id: str, *, days: int, sources: list[dict[st
     try:
         records = get_runtime_event_store().list_observations(tenant_id, limit=_ACTIVITY_EVENT_LIMIT)
     except Exception as exc:  # a runtime-store outage must not sink the whole timeline
-        _logger.warning("Runtime activity source unavailable: %s", exc)
+        _logger.warning("Runtime activity source unavailable: %s", sanitize_text(exc))
         sources.append({"source": "runtime", "status": "unavailable", "event_count": 0, "detail": sanitize_error(exc)})
         return []
 
@@ -227,7 +227,7 @@ def _snowflake_activity_events(*, days: int, sources: list[dict[str, Any]]) -> l
     try:
         timeline = cast(dict[str, Any], discover_activity(provider="snowflake", days=days).to_dict())
     except Exception as exc:  # one provider failing must not fail the request
-        _logger.warning("Snowflake activity source unavailable: %s", exc)
+        _logger.warning("Snowflake activity source unavailable: %s", sanitize_text(exc))
         sources.append({"source": "snowflake", "status": "unavailable", "event_count": 0, "detail": sanitize_error(exc)})
         return []
 
@@ -300,7 +300,7 @@ async def activity_timeline(request: Request, days: int = 30) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        _logger.exception("Request failed")
+        _logger.error("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
@@ -339,7 +339,7 @@ async def cortex_telemetry(hours: int = 24) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        _logger.exception("Request failed")
+        _logger.error("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
@@ -369,7 +369,7 @@ async def cortex_agent_telemetry(name: str, hours: int = 24) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        _logger.exception("Request failed")
+        _logger.error("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
@@ -417,7 +417,7 @@ async def cortex_health() -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        _logger.exception("Request failed")
+        _logger.error("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 

@@ -52,7 +52,7 @@ async def list_assets(
             "mttr_days": mttr,
         }
     except Exception:
-        _logger.exception("Failed to list assets")
+        _logger.error("Failed to list assets")
         return {
             "schema_version": "vulnerability-assets.v1",
             "scope": _ASSET_SCOPE,
@@ -82,7 +82,7 @@ async def get_asset_stats(request: Request) -> dict:
             "mttr_days": mttr,
         }
     except Exception:
-        _logger.exception("Failed to get asset stats")
+        _logger.error("Failed to get asset stats")
         return {
             "schema_version": "vulnerability-assets.stats.v1",
             "scope": _ASSET_SCOPE,

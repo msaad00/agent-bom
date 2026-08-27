@@ -465,7 +465,7 @@ def _record_pinecone_coverage_gap(reason: str, detail: str) -> None:
             ).to_dict()
         )
     except Exception:  # noqa: BLE001 — coverage evidence is supplementary; never fail discovery
-        logger.debug("Could not record Pinecone coverage warning", exc_info=True)
+        logger.debug("Could not record Pinecone coverage warning", exc_info=False)
 
 
 def check_pinecone(api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> list[PineconeIndexResult]:

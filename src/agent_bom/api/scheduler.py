@@ -152,7 +152,7 @@ async def scheduler_loop(
                 return conn
             pool.putconn(conn)
         except Exception:
-            logger.exception("Failed to acquire scheduler leader lock")
+            logger.error("Failed to acquire scheduler leader lock")
         return None
 
     try:
@@ -196,14 +196,14 @@ async def scheduler_loop(
                             finally:
                                 reset_current_tenant(tenant_token)
                     except Exception:
-                        logger.exception("Failed to trigger scheduled scan: %s", schedule.name)
+                        logger.error("Failed to trigger scheduled scan: %s", schedule.name)
 
                 # Success — reset backoff counter
                 consecutive_failures = 0
             except Exception:
                 consecutive_failures += 1
                 backoff = min(interval_seconds * (2**consecutive_failures), max_backoff)
-                logger.exception(
+                logger.error(
                     "Scheduler loop error (attempt %d, next retry in %ds)",
                     consecutive_failures,
                     backoff,
@@ -220,4 +220,4 @@ async def scheduler_loop(
                 leader_conn.execute("SELECT pg_advisory_unlock(%s)", (_SCHEDULER_LEADER_LOCK_ID,))
                 _get_pool().putconn(leader_conn)
             except Exception:
-                logger.exception("Failed to release scheduler leader lock")
+                logger.error("Failed to release scheduler leader lock")

@@ -851,7 +851,7 @@ def _default_tenant_id(details: dict[str, object]) -> str:
         if current:
             return str(current)
     except Exception:
-        logger.debug("Audit tenant fallback unavailable", exc_info=True)
+        logger.debug("Audit tenant fallback unavailable", exc_info=False)
     return "default"
 
 
@@ -979,4 +979,4 @@ def log_action(action: str, actor: str = "system", resource: str = "", **details
             }
         )
     except Exception:
-        logger.debug("Audit analytics sync skipped", exc_info=True)
+        logger.debug("Audit analytics sync skipped", exc_info=False)

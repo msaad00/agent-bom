@@ -86,7 +86,7 @@ async def get_runtime_blueprint_drift(request: Request, blueprint_id: str) -> di
                 },
             )
     except Exception:  # noqa: BLE001
-        logger.warning("drift incident persistence failed", exc_info=True)
+        logger.warning("drift incident persistence failed", exc_info=False)
     return result
 
 
@@ -189,5 +189,5 @@ def _promote_accepted_drift(tenant_id: str, incident: Any, blueprint_id_override
             "version_id": version.version_id,
         }
     except Exception:  # noqa: BLE001
-        logger.warning("drift-accept blueprint promotion failed", exc_info=True)
+        logger.warning("drift-accept blueprint promotion failed", exc_info=False)
         return None

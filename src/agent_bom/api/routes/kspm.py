@@ -148,7 +148,7 @@ async def run_cluster_posture(
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("KSPM cluster posture failed")
+        _logger.error("KSPM cluster posture failed")
         raise HTTPException(status_code=500, detail="KSPM cluster posture failed; see server logs.") from exc
 
     cluster_ref = f"{result.transport or 'unknown'}:{'all' if scope.all_namespaces else scope.namespace}"

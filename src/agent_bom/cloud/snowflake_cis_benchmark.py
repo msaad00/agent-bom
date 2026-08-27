@@ -26,6 +26,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from agent_bom.security import sanitize_text
+
 from .aws_cis_benchmark import CheckStatus, CISCheckResult
 from .base import CloudDiscoveryError
 from .normalization import coerce_truthy as _sf_truthy
@@ -861,7 +863,7 @@ def run_benchmark(
                 check_result = check_fn(cursor)
                 report.checks.append(check_result)
             except Exception as exc:
-                logger.warning("CIS Snowflake check %s failed: %s", check_id, exc)
+                logger.warning("CIS Snowflake check %s failed: %s", check_id, sanitize_text(exc))
                 # Own-worded catalog title only — never docstring-derived text,
                 # which would reproduce the copyrighted CIS house-style title.
                 error_metadata = _CHECK_ERROR_METADATA.get(check_id)

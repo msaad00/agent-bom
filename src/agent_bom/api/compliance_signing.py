@@ -38,6 +38,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Final
 
+from agent_bom.security import sanitize_text
+
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
@@ -206,7 +208,7 @@ def _load_ed25519_signer() -> _Ed25519Signer | None:
         _signer_init_error = str(exc)
         logger.error(
             "AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM is set but could not be parsed: %s — falling back to HMAC",
-            exc,
+            sanitize_text(exc),
         )
         return None
 

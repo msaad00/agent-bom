@@ -23,6 +23,7 @@ from typing import Any
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.security import sanitize_text
 
 from .base import CloudDiscoveryError
 from .normalization import (
@@ -408,7 +409,7 @@ def _resolve_account_id(session: Any) -> str | None:
     try:
         identity = session.client("sts").get_caller_identity()
     except Exception as exc:
-        logger.debug("Could not resolve AWS account ID via STS: %s", exc)
+        logger.debug("Could not resolve AWS account ID via STS: %s", sanitize_text(exc))
         return None
     account_id = str(identity.get("Account", "")).strip()
     return account_id or None
@@ -852,7 +853,7 @@ def _extract_tools_from_schema(action_group_detail: dict) -> list[MCPTool]:
                         )
                     )
     except (json.JSONDecodeError, TypeError) as exc:
-        logger.warning("Failed to parse OpenAPI spec for Lambda tool extraction: %s", exc)
+        logger.warning("Failed to parse OpenAPI spec for Lambda tool extraction: %s", sanitize_text(exc))
 
     return tools
 

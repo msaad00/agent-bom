@@ -1153,7 +1153,7 @@ def _export_audit_to_otlp(record: Any) -> None:
 
         export_governance_audit_record(record)
     except Exception:  # noqa: BLE001 — export must never abort cleanup
-        _lifecycle_logger.debug("governance audit OTLP export skipped", exc_info=True)
+        _lifecycle_logger.debug("governance audit OTLP export skipped", exc_info=False)
 
 
 def _emit_audit(record_kwargs: dict[str, Any], audit_log: Any) -> None:
@@ -1172,7 +1172,7 @@ def _emit_audit(record_kwargs: dict[str, Any], audit_log: Any) -> None:
             "check the governance_audit_log backend (SQLite path writable / disk space)",
             record_kwargs.get("action"),
             record_kwargs.get("target_id"),
-            exc_info=True,
+            exc_info=False,
         )
 
 
@@ -1200,7 +1200,7 @@ def cleanup_expired_grants(
         _lifecycle_logger.warning(
             "JIT-grant cleanup could not list grants; the identity store may be "
             "unreachable (check AGENT_BOM_POSTGRES_URL / DB connectivity). Skipping this tick.",
-            exc_info=True,
+            exc_info=False,
         )
         return {"expired": 0, "pruned": 0, "errors": 1}
 
@@ -1258,7 +1258,7 @@ def cleanup_expired_grants(
             _lifecycle_logger.warning("skipping JIT grant %s with unparseable timestamps", grant.grant_id)
         except Exception:  # noqa: BLE001 — one bad write must not abort the sweep
             errors += 1
-            _lifecycle_logger.warning("failed to clean up JIT grant %s; continuing", grant.grant_id, exc_info=True)
+            _lifecycle_logger.warning("failed to clean up JIT grant %s; continuing", grant.grant_id, exc_info=False)
 
     return {"expired": expired, "pruned": pruned, "errors": errors}
 
@@ -1292,7 +1292,7 @@ def deprovision_dormant_identities(
         _lifecycle_logger.warning(
             "dormant-identity sweep could not list identities; the identity store may be "
             "unreachable (check DB connectivity). Skipping this tick.",
-            exc_info=True,
+            exc_info=False,
         )
         return {"revoked": 0, "errors": 1, "disabled": 0}
 
@@ -1343,7 +1343,7 @@ def deprovision_dormant_identities(
             _lifecycle_logger.warning("skipping identity %s with unparseable last_used_at", identity.identity_id)
         except Exception:  # noqa: BLE001
             errors += 1
-            _lifecycle_logger.warning("failed to deprovision identity %s; continuing", identity.identity_id, exc_info=True)
+            _lifecycle_logger.warning("failed to deprovision identity %s; continuing", identity.identity_id, exc_info=False)
 
     return {"revoked": revoked, "errors": errors, "disabled": 0}
 
@@ -1373,7 +1373,7 @@ def flag_rotation_due_identities(
     except Exception:  # noqa: BLE001
         _lifecycle_logger.warning(
             "rotation-due sweep could not list identities; the identity store may be unreachable. Skipping this tick.",
-            exc_info=True,
+            exc_info=False,
         )
         return {"flagged": 0, "errors": 1}
 
@@ -1418,7 +1418,7 @@ def flag_rotation_due_identities(
             _lifecycle_logger.warning("skipping identity %s with unparseable issued_at", identity.identity_id)
         except Exception:  # noqa: BLE001
             errors += 1
-            _lifecycle_logger.warning("failed to flag identity %s for rotation; continuing", identity.identity_id, exc_info=True)
+            _lifecycle_logger.warning("failed to flag identity %s for rotation; continuing", identity.identity_id, exc_info=False)
 
     return {"flagged": flagged, "errors": errors}
 
@@ -1441,17 +1441,17 @@ def run_nhi_lifecycle_cleanup(
     try:
         result["grants"] = cleanup_expired_grants(store, now=now, audit_log=audit_log)
     except Exception:  # noqa: BLE001
-        _lifecycle_logger.warning("JIT-grant cleanup sweep failed wholesale; continuing", exc_info=True)
+        _lifecycle_logger.warning("JIT-grant cleanup sweep failed wholesale; continuing", exc_info=False)
         result["grants"] = {"expired": 0, "pruned": 0, "errors": 1}
     try:
         result["dormant"] = deprovision_dormant_identities(store, now=now, dormant_days=dormant_days, audit_log=audit_log)
     except Exception:  # noqa: BLE001
-        _lifecycle_logger.warning("dormant-identity sweep failed wholesale; continuing", exc_info=True)
+        _lifecycle_logger.warning("dormant-identity sweep failed wholesale; continuing", exc_info=False)
         result["dormant"] = {"revoked": 0, "errors": 1, "disabled": 0}
     try:
         result["rotation"] = flag_rotation_due_identities(store, now=now, rotation_days=rotation_days, audit_log=audit_log)
     except Exception:  # noqa: BLE001
-        _lifecycle_logger.warning("rotation-due sweep failed wholesale; continuing", exc_info=True)
+        _lifecycle_logger.warning("rotation-due sweep failed wholesale; continuing", exc_info=False)
         result["rotation"] = {"flagged": 0, "errors": 1}
     return result
 

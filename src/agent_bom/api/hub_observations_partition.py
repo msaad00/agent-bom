@@ -546,7 +546,7 @@ def run_hub_observations_retention(*, retention_days: int | None = None) -> int:
                 if partitioned:
                     _alert_observation_partition_runway(runway_end, provisioning_failed=True)
                 else:
-                    logger.error("hub observations retention failed on a legacy unpartitioned table", exc_info=True)
+                    logger.error("hub observations retention failed on a legacy unpartitioned table", exc_info=False)
                 return 0
             if partitioned:
                 _alert_observation_partition_runway(observation_runway_end(conn), provisioning_failed=False)
@@ -556,7 +556,7 @@ def run_hub_observations_retention(*, retention_days: int | None = None) -> int:
             "hub observations partition maintenance could not open a maintenance connection; "
             "the %s partition runway cannot be checked or extended",
             OBSERVATIONS_TABLE,
-            exc_info=True,
+            exc_info=False,
         )
         return 0
 

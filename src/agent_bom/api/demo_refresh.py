@@ -30,4 +30,4 @@ def demo_daily_evidence_dependency() -> None:
 
         refresh_demo_daily_evidence()
     except Exception:  # noqa: BLE001 - a demo refresh must never fail a request
-        _logger.warning("demo estate daily evidence refresh skipped", exc_info=True)
+        _logger.warning("demo estate daily evidence refresh skipped", exc_info=False)

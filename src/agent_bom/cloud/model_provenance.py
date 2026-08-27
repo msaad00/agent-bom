@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_bom.security import sanitize_text
+
 logger = logging.getLogger(__name__)
 
 # Ollama manifest directory — module-level so tests can patch it
@@ -355,7 +357,7 @@ def _get_ollama_manifest_api(host: str, model_name: str) -> dict | None:
             return data
     except (OSError, json.JSONDecodeError) as exc:
         _safe_name = model_name.replace("\n", "").replace("\r", "") if model_name else ""
-        logger.debug("Could not fetch Ollama model info for %s: %s", _safe_name, exc)
+        logger.debug("Could not fetch Ollama model info for %s: %s", _safe_name, sanitize_text(exc))
     return None
 
 

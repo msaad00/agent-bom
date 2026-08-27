@@ -14,6 +14,7 @@ import os
 from agent_bom import http_client
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.security import sanitize_text
 
 from .base import CloudDiscoveryError
 from .normalization import build_cloud_origin, build_package_purl
@@ -96,7 +97,7 @@ def discover(
 
                     container_sbom = scan_container_image(image).to_dict()
                 except Exception as exc:  # noqa: BLE001
-                    logger.debug("Container SBOM scan skipped for %s: %s", image, exc)
+                    logger.debug("Container SBOM scan skipped for %s: %s", image, sanitize_text(exc))
 
             server = MCPServer(
                 name=f"vastai:{label}",

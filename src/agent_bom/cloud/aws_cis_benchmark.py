@@ -61,6 +61,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable
 
+from agent_bom.security import sanitize_text
+
 from .aws_inventory import is_access_denied_error
 from .base import CloudDiscoveryError
 
@@ -1067,7 +1069,7 @@ def _check_2_1_2(s3_client: Any) -> CISCheckResult:
                 denied.append(name)
             else:
                 # Skip buckets we can't access (cross-region, deleted, etc.)
-                logger.debug("Could not check encryption for bucket %s: %s", name, exc)
+                logger.debug("Could not check encryption for bucket %s: %s", name, sanitize_text(exc))
 
     if unencrypted:
         result.status = CheckStatus.FAIL
@@ -1111,7 +1113,7 @@ def _check_2_1_3(s3_client: Any) -> CISCheckResult:
         except Exception as exc:
             if is_access_denied_error(exc):
                 denied.append(name)
-            logger.debug("Could not check MFA Delete for bucket %s: %s", name, exc)
+            logger.debug("Could not check MFA Delete for bucket %s: %s", name, sanitize_text(exc))
 
     if no_mfa_delete:
         result.status = CheckStatus.FAIL
@@ -1156,7 +1158,7 @@ def _check_2_1_4(s3_client: Any) -> CISCheckResult:
             # Skip inaccessible buckets (permissions, deleted, etc.)
             if is_access_denied_error(exc):
                 denied.append(name)
-            logger.debug("Could not check versioning for bucket %s: %s", name, exc)
+            logger.debug("Could not check versioning for bucket %s: %s", name, sanitize_text(exc))
 
     if unversioned:
         result.status = CheckStatus.FAIL
@@ -1195,7 +1197,7 @@ def _check_2_2_1(ec2_client: Any) -> CISCheckResult:
             result.evidence = "EBS volume encryption is enabled by default."
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-        logger.debug("Could not check EBS default encryption: %s (%s)", exc, error_code)
+        logger.debug("Could not check EBS default encryption: %s (%s)", sanitize_text(exc), error_code)
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check EBS encryption default: {error_code or exc}"
     return result
@@ -1296,7 +1298,7 @@ def _check_2_4_1(kms_client: Any) -> CISCheckResult:
                 if is_access_denied_error(exc):
                     denied.append(key_id)
                     continue
-                logger.debug("Could not check rotation for key %s: %s", key_id, exc)
+                logger.debug("Could not check rotation for key %s: %s", key_id, sanitize_text(exc))
 
     if no_rotation:
         result.status = CheckStatus.FAIL
@@ -1489,7 +1491,7 @@ def _check_3_6(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
             # Skip inaccessible buckets
             if is_access_denied_error(exc):
                 denied.append(bucket_name)
-            logger.debug("Could not check logging for bucket %s: %s", bucket_name, exc)
+            logger.debug("Could not check logging for bucket %s: %s", bucket_name, sanitize_text(exc))
 
     if no_logging:
         result.status = CheckStatus.FAIL
@@ -1552,7 +1554,7 @@ def _check_3_3(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
             if is_access_denied_error(exc):
                 denied.append(bucket_name)
                 continue
-            logger.debug("Could not check bucket policy for %s: %s", bucket_name, exc)
+            logger.debug("Could not check bucket policy for %s: %s", bucket_name, sanitize_text(exc))
 
     if public_buckets:
         result.status = CheckStatus.FAIL
@@ -1851,7 +1853,7 @@ def _check_4_3(logs_client: Any, cloudwatch_client: Any) -> CISCheckResult:
                 result.evidence = "A root account usage metric filter exists, but no CloudWatch alarm targets its metric."
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-        logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
+        logger.debug("Could not check metric filters: %s (%s)", sanitize_text(exc), error_code)
         result.status = CheckStatus.ERROR
         result.evidence = _safe_error_evidence("Could not query metric filters and alarms.", error_code)
     return result
@@ -1905,7 +1907,7 @@ def _check_4_4(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResul
             result.evidence = "Metric filter for IAM policy changes exists."
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-        logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
+        logger.debug("Could not check metric filters: %s (%s)", sanitize_text(exc), error_code)
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
     if result.status is CheckStatus.PASS:
@@ -1965,7 +1967,7 @@ def _check_4_5(logs_client: Any, cloudtrail_client: Any, cloudwatch_client: Any 
             result.evidence = "Metric filter for CloudTrail configuration changes exists."
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-        logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
+        logger.debug("Could not check metric filters: %s (%s)", sanitize_text(exc), error_code)
         result.status = CheckStatus.ERROR
         result.evidence = _safe_error_evidence("Could not query metric filters.", error_code)
     if result.status is CheckStatus.PASS:
@@ -2799,7 +2801,7 @@ def _check_5_1(ec2_client: Any) -> CISCheckResult:
                         break
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-        logger.debug("Could not check NACLs: %s (%s)", exc, error_code)
+        logger.debug("Could not check NACLs: %s (%s)", sanitize_text(exc), error_code)
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query Network ACLs: {error_code or exc}"
         return result
@@ -2853,7 +2855,7 @@ def _check_5_4(ec2_client: Any) -> CISCheckResult:
             result.evidence = "All VPC peering routes use specific CIDR ranges."
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-        logger.debug("Could not check route tables: %s (%s)", exc, error_code)
+        logger.debug("Could not check route tables: %s (%s)", sanitize_text(exc), error_code)
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query route tables: {error_code or exc}"
     return result
@@ -2998,7 +3000,7 @@ def run_benchmark(
         account_id = sts.get_caller_identity()["Account"]
     except Exception as exc:
         # Account ID lookup is non-fatal; continue with empty value
-        logger.debug("Could not get AWS account ID: %s", exc)
+        logger.debug("Could not get AWS account ID: %s", sanitize_text(exc))
 
     report = CISBenchmarkReport(
         region=resolved_region,
@@ -3045,7 +3047,7 @@ def run_benchmark(
                 )
             )
         except Exception as exc:
-            logger.warning("CIS check %s failed: %s", check_id, exc)
+            logger.warning("CIS check %s failed: %s", check_id, sanitize_text(exc))
             report.checks.append(
                 CISCheckResult(
                     check_id=check_id,
@@ -3390,7 +3392,7 @@ def run_all_account_benchmarks(
     try:
         account_ids = aws_organizations.list_member_account_ids(profile, force=True, session=session)
     except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade, not crash
-        logger.warning("AWS org account enumeration failed: %s", sanitize_discovery_warning(exc))
+        logger.warning("AWS org account enumeration failed: %s", sanitize_text(sanitize_discovery_warning(exc)))
         account_ids = []
 
     if not account_ids:

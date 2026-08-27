@@ -8,6 +8,7 @@ import zipfile
 from typing import Any
 
 from agent_bom.models import Package
+from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ def packages_from_zip_bytes(data: bytes, *, ecosystem: str) -> list[Package]:
 
                 return _parse_node_packages_from_zip(zf)
     except Exception as exc:  # noqa: BLE001 — malformed archives degrade to empty
-        logger.debug("Could not parse serverless zip (%s): %s", ecosystem, exc)
+        logger.debug("Could not parse serverless zip (%s): %s", ecosystem, sanitize_text(exc))
     return []
 
 

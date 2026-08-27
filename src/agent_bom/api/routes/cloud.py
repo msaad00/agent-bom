@@ -51,7 +51,7 @@ from agent_bom.cloud.runtime_workload_evidence import (
 from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
 from agent_bom.config import CLOUD_CIS_TIMEOUT_SECONDS
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_log_label
+from agent_bom.security import sanitize_log_label, sanitize_text
 
 router = APIRouter(tags=["cloud"])
 _logger = logging.getLogger(__name__)
@@ -360,7 +360,7 @@ async def cloud_inventory(
     except Exception as exc:  # noqa: BLE001
         # Full diagnostics go to the server log only; the client gets a generic
         # message so no exception/stack detail is exposed over REST.
-        _logger.exception("Cloud inventory failed")
+        _logger.error("Cloud inventory failed")
         raise HTTPException(status_code=500, detail="Cloud inventory failed; see server logs.") from exc
 
 
@@ -541,7 +541,7 @@ async def cloud_cis_benchmark(
         raise
     except Exception as exc:  # noqa: BLE001
         # Full diagnostics to the server log only; client gets a generic message.
-        _logger.exception("Cloud CIS benchmark failed")
+        _logger.error("Cloud CIS benchmark failed")
         raise HTTPException(status_code=500, detail="Cloud CIS benchmark failed; see server logs.") from exc
 
 
@@ -908,7 +908,7 @@ async def cloud_runtime_evidence_ingest(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("Runtime evidence ingest failed")
+        _logger.error("Runtime evidence ingest failed")
         raise HTTPException(status_code=500, detail="Runtime evidence ingest failed; see server logs.") from exc
 
 
@@ -1029,7 +1029,7 @@ async def cloud_side_scan_trigger(
         # The specific cause is logged server-side; the external response stays
         # generic so no exception detail reaches the caller (CodeQL:
         # information-exposure-through-an-exception).
-        _logger.info("cloud_side_scan disabled for tenant %s: %s", sanitize_log_label(tenant_id), sanitize_log_label(exc))
+        _logger.info("cloud_side_scan disabled for tenant %s: %s", sanitize_log_label(tenant_id), sanitize_text(sanitize_log_label(exc)))
         return {
             "status": "disabled",
             "execution_id": execution_id,
@@ -1048,7 +1048,7 @@ async def cloud_side_scan_trigger(
             "cloud_side_scan unavailable for %s tenant %s: %s",
             sanitize_log_label(provider),
             sanitize_log_label(tenant_id),
-            sanitize_log_label(exc),
+            sanitize_text(sanitize_log_label(exc)),
         )
         return {
             "status": "unavailable",
@@ -1067,7 +1067,7 @@ async def cloud_side_scan_trigger(
         raise
     except Exception as exc:  # noqa: BLE001
         # The executor still ran guaranteed teardown; do not leak internals.
-        _logger.exception("Cloud side-scan execution failed")
+        _logger.error("Cloud side-scan execution failed")
         raise HTTPException(
             status_code=500, detail="Cloud side-scan failed; see server logs. Temporary resource teardown still ran."
         ) from exc

@@ -308,4 +308,4 @@ def _emit_decision_event(tenant_id: str, event_type: str, version: dict[str, Any
             },
         )
     except Exception:  # noqa: BLE001
-        logger.warning("blueprint decision event emit failed", exc_info=True)
+        logger.warning("blueprint decision event emit failed", exc_info=False)

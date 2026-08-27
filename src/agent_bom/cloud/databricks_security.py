@@ -28,6 +28,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_bom.security import sanitize_text
+
 from .aws_cis_benchmark import CheckStatus, CISCheckResult
 from .base import CloudDiscoveryError
 
@@ -99,7 +101,7 @@ def _safe(func: Any, *args: Any, **kwargs: Any) -> Any:
     try:
         return func(*args, **kwargs)
     except Exception as exc:
-        logger.debug("Databricks API call failed: %s", exc)
+        logger.debug("Databricks API call failed: %s", sanitize_text(exc))
         return None
 
 

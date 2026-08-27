@@ -290,10 +290,10 @@ def emit_governance_event(
                 target_outbox.enqueue(event, destination)
                 enqueued += 1
             except Exception:  # noqa: BLE001
-                logger.warning("webhook enqueue failed for subscription %s", sub.subscription_id, exc_info=True)
+                logger.warning("webhook enqueue failed for subscription %s", sub.subscription_id, exc_info=False)
         return enqueued
     except Exception:  # noqa: BLE001
-        logger.warning("governance webhook emit failed for %s", event_type, exc_info=True)
+        logger.warning("governance webhook emit failed for %s", event_type, exc_info=False)
         return 0
 
 

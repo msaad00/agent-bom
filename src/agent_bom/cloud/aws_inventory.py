@@ -42,6 +42,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
+from agent_bom.security import sanitize_text
 
 from .aws import (
     _account_id_from_arn,
@@ -781,7 +782,7 @@ def discover_all_account_inventories(
     try:
         account_ids = aws_organizations.list_member_account_ids(profile, force=True, session=session)
     except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade, not crash
-        logger.warning("AWS org account enumeration failed: %s", sanitize_discovery_warning(exc))
+        logger.warning("AWS org account enumeration failed: %s", sanitize_text(sanitize_discovery_warning(exc)))
         account_ids = []
 
     if not account_ids:
@@ -824,7 +825,7 @@ def discover_all_account_inventories(
             try:
                 payloads.append(future.result())
             except Exception as exc:  # noqa: BLE001 — one account's failure must not sink the rest
-                logger.warning("AWS inventory failed for account %s: %s", account_id, sanitize_discovery_warning(exc))
+                logger.warning("AWS inventory failed for account %s: %s", account_id, sanitize_text(sanitize_discovery_warning(exc)))
                 payloads.append(
                     {
                         **_empty_payload(region=""),

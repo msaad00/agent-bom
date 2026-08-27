@@ -117,7 +117,7 @@ class DistributedScanWorker:
             try:
                 await asyncio.to_thread(self._tick)
             except Exception:  # noqa: BLE001
-                _logger.exception("Distributed scan worker tick failed id=%s", self._worker_id)
+                _logger.error("Distributed scan worker tick failed id=%s", self._worker_id)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._poll)
             except asyncio.TimeoutError:
@@ -147,7 +147,7 @@ class DistributedScanWorker:
                 # Could not hand off locally (e.g. executor draining): drop the
                 # claim so another tick/replica can reclaim it after lease expiry.
                 self._inflight.discard(job.job_id)
-                _logger.exception("Failed to submit claimed job=%s; will be reclaimed", job.job_id)
+                _logger.error("Failed to submit claimed job=%s; will be reclaimed", job.job_id)
                 break
 
     def _on_complete(self, job_id: str) -> None:
@@ -155,4 +155,4 @@ class DistributedScanWorker:
         try:
             self._store.complete_dispatch(job_id)
         except Exception:  # noqa: BLE001
-            _logger.exception("Failed to clear dispatch row job=%s", job_id)
+            _logger.error("Failed to clear dispatch row job=%s", job_id)

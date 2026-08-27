@@ -34,6 +34,7 @@ from agent_bom.cloud.normalization import build_package_purl
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 from agent_bom.scanners.firmware_advisory import check_firmware_advisories
+from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -390,7 +391,7 @@ def discover_docker_gpu_containers() -> tuple[list[GpuContainer], list[str]]:
                     )
                 )
         except Exception as exc:  # noqa: BLE001
-            logger.debug("Error parsing container info: %s", exc)
+            logger.debug("Error parsing container info: %s", sanitize_text(exc))
             continue
 
     return containers, warnings
@@ -698,7 +699,7 @@ def discover_k8s_gpu_nodes(
                 )
             )
         except Exception as exc:  # noqa: BLE001
-            logger.debug("Error parsing K8s node: %s", exc)
+            logger.debug("Error parsing K8s node: %s", sanitize_text(exc))
             continue
 
     return nodes, warnings
@@ -809,7 +810,7 @@ async def scan_gpu_infra(
         try:
             dcgm_endpoints = await probe_dcgm_from_containers(docker_containers)
         except Exception as exc:  # noqa: BLE001
-            logger.debug("DCGM probe error: %s", exc)
+            logger.debug("DCGM probe error: %s", sanitize_text(exc))
             all_warnings.append(f"DCGM probe skipped: {exc}")
 
     # Driver CVE checks — runs against every K8s GPU node by vendor

@@ -1810,7 +1810,7 @@ def _enrich_loaded_graph_runtime_evidence(graph: Any, tenant_id: str) -> Any:
         index = RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id)
         enrich_graph_workload_runtime_evidence(graph, index)
     except Exception:  # noqa: BLE001 — investigation reads must not fail closed on enrich
-        logger.debug("workload runtime evidence load enrich skipped", exc_info=True)
+        logger.debug("workload runtime evidence load enrich skipped", exc_info=False)
     return graph
 
 
@@ -1887,7 +1887,7 @@ def _ensure_attack_campaigns(graph: UnifiedGraph, paths: list[AttackPath] | None
             result = compute_partitioned_campaigns(graph)
             graph.attack_campaigns = list(result.campaigns)
     except Exception:  # noqa: BLE001 — campaigns are additive; never break investigation reads
-        logger.debug("attack campaign serve-path materialisation skipped", exc_info=True)
+        logger.debug("attack campaign serve-path materialisation skipped", exc_info=False)
 
 
 def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) -> dict[str, Any]:
@@ -1967,7 +1967,7 @@ def _overlay_filter_and_respond(
 
             apply_governance_overlay(graph, tenant_id=tenant)
         except Exception:  # noqa: BLE001
-            logger.warning("governance overlay failed", exc_info=True)
+            logger.warning("governance overlay failed", exc_info=False)
     filtered = graph.filtered_view(filters)
     return _filtered_graph_response(filtered, offset=offset, limit=limit)
 
@@ -4401,5 +4401,5 @@ async def get_graph_rollup(
         raise
     except Exception as exc:  # noqa: BLE001
         # Never leak internal exception detail in the response (CodeQL lesson).
-        logger.warning("graph rollup failed", exc_info=True)
+        logger.warning("graph rollup failed", exc_info=False)
         raise HTTPException(status_code=500, detail="Failed to compute graph roll-up") from exc

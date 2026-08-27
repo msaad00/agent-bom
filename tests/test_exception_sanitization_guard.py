@@ -70,6 +70,54 @@ def test_flags_logger_fstring_exc() -> None:
         assert "log f-string" in out[0]
 
 
+def test_flags_caught_exception_passed_to_lazy_logger_formatting() -> None:
+    source = """
+try:
+    connect()
+except RuntimeError as exc:
+    logger.warning("connection failed: %s", exc)
+"""
+    out = GUARD.scan_text(source, "sample.py")
+    assert len(out) == 1
+    assert "lazy log argument" in out[0]
+
+
+def test_flags_logger_exception_implicit_traceback() -> None:
+    source = """
+try:
+    connect()
+except RuntimeError:
+    logger.exception("connection failed")
+"""
+    out = GUARD.scan_text(source, "sample.py")
+    assert len(out) == 1
+    assert "logger.exception" in out[0]
+
+    outside_handler = GUARD.scan_text('logger.exception("connection failed")\n', "sample.py")
+    assert len(outside_handler) == 1
+    assert "logger.exception" in outside_handler[0]
+
+
+def test_flags_explicit_raw_exc_info() -> None:
+    for statement in (
+        'logger.error("connection failed", exc_info=True)',
+        'logger.error("connection failed", exc_info=exc)',
+    ):
+        source = f"""
+try:
+    connect()
+except RuntimeError as exc:
+    {statement}
+"""
+        out = GUARD.scan_text(source, "sample.py")
+        assert len(out) == 1, statement
+        assert "exc_info" in out[0]
+
+    outside_handler = GUARD.scan_text('logger.error("worker failed", exc_info=(kind, failure, traceback))\n', "sample.py")
+    assert len(outside_handler) == 1
+    assert "exc_info" in outside_handler[0]
+
+
 def test_flags_exception_flow_into_returned_payload_even_through_custom_sanitizer() -> None:
     source = """
 try:
@@ -94,15 +142,37 @@ def test_allows_sanitized_and_structured_forms() -> None:
     raise HTTPException(status_code=400, detail=f"bad: {sanitize_error(exc)}") from exc
     raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
     logger.warning("failed: %s", sanitize_text(exc))
+    logger.error("failed without exception detail")
+    logger.error("failed without traceback", exc_info=False)
     raise HTTPException(status_code=409, detail=f"Cannot approve exception in {exc.status.value} state")
     return JSONResponse(status_code=429, content=exc.to_dict())
     """
     assert GUARD.scan_text(safe, "sample.py") == []
 
 
+def test_allows_sanitized_logging_inside_exception_handler() -> None:
+    source = """
+try:
+    connect()
+except RuntimeError as exc:
+    logger.warning("failed: %s", sanitize_text(exc))
+    logger.warning("failed in state: %s", exc.status.value)
+    logger.error("failed without traceback", exc_info=False)
+"""
+    assert GUARD.scan_text(source, "sample.py") == []
+
+
 def test_pragma_silences_a_vetted_line() -> None:
     line = "    raise HTTPException(status_code=422, detail=str(exc))  # exc-safe: value is a fixed enum\n"
     assert GUARD.scan_text(line, "sample.py") == []
+
+    source = """
+try:
+    connect()
+except FixedMessageError:
+    logger.exception("fixed library exception")  # exc-safe: exception type has constant text and no sensitive state
+"""
+    assert GUARD.scan_text(source, "sample.py") == []
 
 
 # ---------------------------------------------------------------------------

@@ -1163,5 +1163,5 @@ def ingest_scan_report_best_effort(
         ch_store.record_scan_metadata(metadata, tenant_id=tenant_id)
         return scan_id
     except Exception:
-        logger.debug("ClickHouse findings-ingest skipped (best-effort)", exc_info=True)
+        logger.debug("ClickHouse findings-ingest skipped (best-effort)", exc_info=False)
         return None

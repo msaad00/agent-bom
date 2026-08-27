@@ -14,6 +14,7 @@ import os
 
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.security import sanitize_text
 
 from .base import CloudDiscoveryError
 from .normalization import build_cloud_origin, build_package_purl
@@ -139,7 +140,7 @@ def _discover_registered_models(
                         run_packages = _extract_run_packages(client, run_id)
                         packages.extend(run_packages)
                     except (OSError, ValueError, KeyError) as exc:
-                        logger.debug("Failed to extract packages from MLflow run %s: %s", run_id, exc)
+                        logger.debug("Failed to extract packages from MLflow run %s: %s", run_id, sanitize_text(exc))
 
                 # Extract flavor from source path
                 flavor_packages = _extract_flavor_packages(source)
@@ -234,7 +235,7 @@ def _discover_experiments(
                     if run_id:
                         packages = _extract_run_packages(client, run_id)
             except (OSError, ValueError, KeyError) as exc:
-                logger.debug("Failed to extract packages from MLflow experiment %s: %s", exp_id, exc)
+                logger.debug("Failed to extract packages from MLflow experiment %s: %s", exp_id, sanitize_text(exc))
 
             server = MCPServer(
                 name=f"mlflow-exp:{exp_name}",
@@ -286,7 +287,7 @@ def _extract_run_packages(client, run_id: str) -> list[Package]:
                         packages.extend(_parse_requirements_txt(str(req_data)))
                 except (OSError, ValueError) as exc:
                     # requirements.txt may not exist for this artifact
-                    logger.debug("Could not read requirements.txt for run %s: %s", run_id, exc)
+                    logger.debug("Could not read requirements.txt for run %s: %s", run_id, sanitize_text(exc))
 
                 try:
                     conda_path = f"{path}/conda.yaml"
@@ -295,9 +296,9 @@ def _extract_run_packages(client, run_id: str) -> list[Package]:
                         packages.extend(_parse_conda_yaml(str(conda_data)))
                 except (OSError, ValueError) as exc:
                     # conda.yaml may not exist for this artifact
-                    logger.debug("Could not read conda.yaml for run %s: %s", run_id, exc)
+                    logger.debug("Could not read conda.yaml for run %s: %s", run_id, sanitize_text(exc))
     except (OSError, ValueError, KeyError) as exc:
-        logger.debug("Could not list artifacts for run %s: %s", run_id, exc)
+        logger.debug("Could not list artifacts for run %s: %s", run_id, sanitize_text(exc))
 
     return packages
 
@@ -395,6 +396,6 @@ def _parse_conda_yaml(content: str) -> list[Package]:
                         if name and not name.startswith("-"):
                             packages.append(Package(name=name, version="unknown", ecosystem="pypi"))
     except (ImportError, ValueError, KeyError) as exc:
-        logger.debug("Could not parse conda.yaml: %s", exc)
+        logger.debug("Could not parse conda.yaml: %s", sanitize_text(exc))
 
     return packages

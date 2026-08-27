@@ -67,7 +67,7 @@ from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpress
 from agent_bom.cloud.event_ingest import CloudChangeEvent, dispatch_change_event
 from agent_bom.config import CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 
 if TYPE_CHECKING:
     from agent_bom.api.models import ScanJob
@@ -385,7 +385,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
             _logger.error(
                 "Cloud connection scan-on-create enqueue failed connection=%s: %s",
                 record.id,
-                sanitize_error(exc, generic=True),
+                sanitize_text(sanitize_error(exc, generic=True)),
             )
 
     return record.to_public_dict()
@@ -509,7 +509,7 @@ async def ingest_connection_events(
                 _logger.warning(
                     "Connection event ingest dispatch failed for connection %s: %s",
                     record.id,
-                    sanitize_error(exc, generic=True),
+                    sanitize_text(sanitize_error(exc, generic=True)),
                 )
                 results.append(
                     {
@@ -556,7 +556,7 @@ async def ingest_connection_events(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("Connection events ingest failed")
+        _logger.error("Connection events ingest failed")
         raise HTTPException(
             status_code=500,
             detail=sanitize_error(exc, generic=True),
@@ -1188,7 +1188,7 @@ def _run_snowflake_connection_scan(
             _logger.warning(
                 "Snowflake estate sweep failed for connection %s; returning agent discovery + CIS only",
                 record.id,
-                exc_info=True,
+                exc_info=False,
             )
     finally:
         # The broker connection is this function's to close (discover / CIS /
@@ -1425,7 +1425,7 @@ def execute_queued_connection_scan(job: ScanJob) -> dict[str, Any]:
             "Cloud connection scan job failed connection=%s job=%s: %s",
             record.id,
             job.job_id,
-            sanitize_error(exc, generic=True),
+            sanitize_text(sanitize_error(exc, generic=True)),
         )
         log_action(
             "cloud_connection.scan",
@@ -1557,7 +1557,7 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
     except Exception as exc:  # noqa: BLE001 - broker failure
         detail = _safe_connection_detail(exc)
         _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
-        _logger.exception("Cloud connection test failed for connection %s", record.id)
+        _logger.error("Cloud connection test failed for connection %s", record.id)
         log_action(
             "cloud_connection.test",
             actor=actor,
@@ -1696,7 +1696,7 @@ async def scan_connection(
             _logger.error(
                 "Cloud connection scan reservation failed connection=%s: %s",
                 record.id,
-                sanitize_error(exc, generic=True),
+                sanitize_text(sanitize_error(exc, generic=True)),
             )
             raise HTTPException(status_code=503, detail="Cloud connection scan could not be queued.") from None
 
@@ -1716,7 +1716,7 @@ async def scan_connection(
             "Cloud connection scan dispatch failed connection=%s job=%s: %s",
             record.id,
             job.job_id,
-            sanitize_error(exc, generic=True),
+            sanitize_text(sanitize_error(exc, generic=True)),
         )
         raise HTTPException(status_code=503, detail="Cloud connection scan could not be queued.") from None
     log_action(

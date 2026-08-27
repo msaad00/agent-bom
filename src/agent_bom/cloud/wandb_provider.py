@@ -14,6 +14,7 @@ import os
 
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+from agent_bom.security import sanitize_text
 
 from .base import CloudDiscoveryError
 from .normalization import build_cloud_origin, build_package_purl
@@ -234,7 +235,7 @@ def _discover_artifacts(
                     agents.append(agent)
             except (ValueError, KeyError, AttributeError) as exc:
                 # Artifact type may not exist in this project
-                logger.debug("Could not list W&B artifacts of type %s: %s", art_type, exc)
+                logger.debug("Could not list W&B artifacts of type %s: %s", art_type, sanitize_text(exc))
 
     except Exception as exc:
         warnings.append(f"Could not list W&B artifacts: {exc}")

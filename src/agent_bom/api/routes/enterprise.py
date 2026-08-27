@@ -2559,12 +2559,12 @@ async def test_siem_connection(
         )
         return {"siem_type": siem_type, "healthy": healthy}
     except ValueError as exc:
-        _logger.info("Invalid SIEM test request: %s", sanitize_error(exc))
+        _logger.info("Invalid SIEM test request: %s", sanitize_text(sanitize_error(exc)))
         raise HTTPException(status_code=400, detail="Invalid SIEM connector request") from exc
     except Exception as exc:
-        _logger.exception(
+        _logger.error(
             "Unexpected error while testing SIEM connection: %s",
-            sanitize_error(exc),
+            sanitize_text(sanitize_error(exc)),
         )
         log_action(
             "siem.test",

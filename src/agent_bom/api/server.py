@@ -480,7 +480,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
                 set_analytics_store(base_store)
                 _logger.info("ClickHouse analytics store enabled without buffering")
         except Exception:
-            _logger.warning("ClickHouse analytics unavailable, using NullAnalyticsStore", exc_info=True)
+            _logger.warning("ClickHouse analytics unavailable, using NullAnalyticsStore", exc_info=False)
 
     # ── Rate-limit key rotation status ──
     try:
@@ -508,7 +508,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
                 _rl_status["age_days"],
             )
     except Exception:
-        _logger.debug("rate_limit_key_rotation status check skipped", exc_info=True)
+        _logger.debug("rate_limit_key_rotation status check skipped", exc_info=False)
 
     global _cleanup_task
     from agent_bom.api.scan_job_reconciliation import fail_orphaned_active_scan_jobs, reconcile_scan_jobs_active
@@ -518,7 +518,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         fail_orphaned_active_scan_jobs(store)
         reconcile_scan_jobs_active(store)
     except Exception:  # noqa: BLE001
-        _logger.debug("scan job metric startup reconciliation skipped", exc_info=True)
+        _logger.debug("scan job metric startup reconciliation skipped", exc_info=False)
 
     _cleanup_task = asyncio.create_task(_cleanup_loop())
 
@@ -627,7 +627,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
             _scan_worker = DistributedScanWorker(_scan_store)
             await _scan_worker.start()
     except Exception:  # noqa: BLE001
-        _logger.exception("Distributed scan worker failed to start; continuing single-node")
+        _logger.error("Distributed scan worker failed to start; continuing single-node")
         _scan_worker = None
 
     if os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in {"1", "true", "yes", "on"}:
@@ -636,7 +636,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
             await asyncio.to_thread(maybe_bootstrap_demo_estate)
         except Exception:  # noqa: BLE001
-            _logger.warning("demo estate bootstrap skipped", exc_info=True)
+            _logger.warning("demo estate bootstrap skipped", exc_info=False)
 
     yield
 
@@ -651,7 +651,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         try:
             await _scan_worker.stop()
         except Exception:  # noqa: BLE001
-            _logger.debug("scan worker stop skipped", exc_info=True)
+            _logger.debug("scan worker stop skipped", exc_info=False)
     if _scheduler_task:
         _scheduler_task.cancel()
     if _connection_scheduler_task:
@@ -689,7 +689,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         if _stores._analytics_store is not None and hasattr(_stores._analytics_store, "close"):
             _stores._analytics_store.close()
     except Exception:
-        _logger.debug("Analytics store close skipped", exc_info=True)
+        _logger.debug("Analytics store close skipped", exc_info=False)
 
 
 app = FastAPI(
@@ -1145,7 +1145,7 @@ async def _cleanup_tick() -> None:
         if demo_estate_enabled():
             await asyncio.to_thread(maybe_bootstrap_demo_estate)
     except Exception:  # noqa: BLE001
-        _logger.warning("demo estate cleanup-loop reseed skipped", exc_info=True)
+        _logger.warning("demo estate cleanup-loop reseed skipped", exc_info=False)
     # Tier-B replay-log TTL purge (#2261). Wrapped so a backend hiccup
     # never takes down the whole cleanup loop.
     try:
@@ -1155,7 +1155,7 @@ async def _cleanup_tick() -> None:
         if removed:
             _logger.info("proxy_replay_log cleanup removed %d expired rows", removed)
     except Exception:  # noqa: BLE001
-        _logger.debug("proxy_replay_log cleanup skipped", exc_info=True)
+        _logger.debug("proxy_replay_log cleanup skipped", exc_info=False)
     # Hub observations partition retention (#3463). Postgres-only; no-op on
     # SQLite and legacy unpartitioned tables. Fail-open like other cleanup
     # hooks so a backend hiccup never stops the loop.
@@ -1169,7 +1169,7 @@ async def _cleanup_tick() -> None:
                 dropped_partitions,
             )
     except Exception:  # noqa: BLE001
-        _logger.debug("hub observations retention skipped", exc_info=True)
+        _logger.debug("hub observations retention skipped", exc_info=False)
     # Generic partition maintenance for the other append-only tables (#3463):
     # ensure next partitions exist and roll over expired ones. Postgres-only;
     # a strict no-op on SQLite and on any table an operator has not converted
@@ -1186,7 +1186,7 @@ async def _cleanup_tick() -> None:
                 partitions_dropped,
             )
     except Exception:  # noqa: BLE001
-        _logger.debug("partition maintenance skipped", exc_info=True)
+        _logger.debug("partition maintenance skipped", exc_info=False)
     # NHI lifecycle enforcement (#nhi): expire lingering JIT grants, opt-in
     # dormant-identity deprovision, advisory token rotation-due flagging.
     # Backend-agnostic and fail-open — a store error logs and is skipped so
@@ -1222,7 +1222,7 @@ async def _cleanup_tick() -> None:
     except Exception:  # noqa: BLE001 — cleanup must never crash the loop
         _logger.warning(
             "nhi lifecycle cleanup skipped this tick; check the agent-identity store and governance audit-log backend connectivity",
-            exc_info=True,
+            exc_info=False,
         )
     # Managed-trial lifecycle: access is revoked at expiry, while data is
     # deleted only after the configured grace period. This hook is opt-in
@@ -1243,7 +1243,7 @@ async def _cleanup_tick() -> None:
     except Exception:  # noqa: BLE001 — lifecycle cleanup remains retryable
         _logger.warning(
             "managed-trial lifecycle cleanup skipped this tick; check the lifecycle and tenant stores",
-            exc_info=True,
+            exc_info=False,
         )
     # Unstick jobs that have been RUNNING for too long
     try:

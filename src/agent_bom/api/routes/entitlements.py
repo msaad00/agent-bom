@@ -27,7 +27,7 @@ def _audit_entitlement_read(request: Request, *, resource: str, details: dict[st
             )
         )
     except Exception:
-        _logger.exception("Failed to append entitlement audit entry")
+        _logger.error("Failed to append entitlement audit entry")
 
 
 @router.get("/entitlements", tags=["enterprise"])

@@ -216,7 +216,7 @@ def _consume_continuous_events(
     try:
         consume(record, **kwargs)
     except Exception:  # noqa: BLE001 - one bad consume never sinks the tick
-        logger.exception(
+        logger.error(
             "Continuous event drain failed for connection %s (provider=%s)",
             record.id,
             record.provider,
@@ -234,7 +234,7 @@ def _select_continuous_drain_targets(store: ConnectionStore) -> list[CloudConnec
     try:
         candidates = store.list_continuous()
     except Exception:  # noqa: BLE001 - a store outage never sinks the tick
-        logger.exception("Listing continuous cloud connections failed")
+        logger.error("Listing continuous cloud connections failed")
         return []
 
     targets: list[CloudConnectionRecord] = []
@@ -247,7 +247,7 @@ def _select_continuous_drain_targets(store: ConnectionStore) -> list[CloudConnec
             if not enabled():
                 continue
         except Exception:  # noqa: BLE001 - defensive; never sink the tick
-            logger.exception(
+            logger.error(
                 "Continuous event-ingest enabled check failed for connection %s",
                 record.id,
             )
@@ -272,7 +272,7 @@ def describe_idle_scheduler(store: ConnectionStore) -> str | None:
         if store.list_schedulable():
             return None
     except Exception:  # noqa: BLE001 - the idle check never sinks the tick
-        logger.exception("Listing schedulable cloud connections for the scheduler idle check failed")
+        logger.error("Listing schedulable cloud connections for the scheduler idle check failed")
         return None
     if _select_continuous_drain_targets(store):
         return None
@@ -326,11 +326,11 @@ async def _gather_isolated(
             raise result
         if isinstance(result, BaseException):
             logger.error(
-                "Connection scheduler %s failed for connection %s (provider=%s)",
+                "Connection scheduler %s failed for connection %s (provider=%s): %s",
                 activity,
                 record.id,
                 record.provider,
-                exc_info=result,
+                sanitize_text(result),
             )
 
 
@@ -414,7 +414,7 @@ def _persist_scan_outcome(
             **details,
         )
     except Exception:  # noqa: BLE001 - persistence failure never sinks the tick
-        logger.exception("Persisting the scheduled scan outcome failed for connection %s", record.id)
+        logger.error("Persisting the scheduled scan outcome failed for connection %s", record.id)
         return False
     return outcome in {"success", "accepted"}
 
@@ -464,7 +464,7 @@ def execute_connection_scan(record: CloudConnectionRecord) -> bool:
             scan_id=job.job_id,
         )
     except Exception:  # noqa: BLE001 - contract: this function never raises
-        logger.exception(
+        logger.error(
             "Scheduled cloud connection scan bookkeeping failed for connection %s",
             record.id,
         )
@@ -542,7 +542,7 @@ async def connection_scheduler_loop(
         except Exception:
             consecutive_failures += 1
             backoff = min(interval * (2**consecutive_failures), max_backoff)
-            logger.exception(
+            logger.error(
                 "Connection scheduler loop error (attempt %d, next retry in %ds)",
                 consecutive_failures,
                 backoff,

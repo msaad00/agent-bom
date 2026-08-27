@@ -12,6 +12,8 @@ import logging
 import os
 from typing import Any
 
+from agent_bom.security import sanitize_text
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 30  # seconds
@@ -121,7 +123,7 @@ class ClickHouseClient:
                 # modern ClickHouse. Older clusters may return a transient
                 # error on repeat runs; log and continue so ensure_tables
                 # stays safe to call on every process start.
-                logger.debug("ClickHouse migration skipped (%s): %s", exc, migration.split("\n", 1)[0])
+                logger.debug("ClickHouse migration skipped (%s): %s", sanitize_text(exc), migration.split("\n", 1)[0])
         self.execute("INSERT INTO control_plane_schema_versions (component, version) VALUES ('analytics', 1)")
         logger.info("ClickHouse analytics tables ensured in database '%s'", self.database)
 

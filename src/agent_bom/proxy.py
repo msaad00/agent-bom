@@ -347,7 +347,7 @@ async def _maybe_block_on_firewall(
             "firewall evaluator raised; allowing call (source=%s, target=%s): %s",
             source_agent,
             target_agent,
-            exc,
+            sanitize_text(exc),
         )
         return None
 
@@ -1374,7 +1374,7 @@ async def run_proxy(
                         "Gateway policy fetch failed from %s; using cached bundle from %s: %s",
                         control_plane_url,
                         control_plane_policy_cache_path,
-                        exc,
+                        sanitize_text(exc),
                     )
                 else:
                     logger.error("Failed to load enabled gateway policies from %s: %s", control_plane_url, sanitize_text(exc))

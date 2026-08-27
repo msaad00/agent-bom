@@ -1038,7 +1038,7 @@ def _ws_auth_required() -> bool:
 
         return get_auth_posture().auth_required
     except Exception:
-        _logger.warning("websocket auth posture unavailable; requiring authentication", exc_info=True)
+        _logger.warning("websocket auth posture unavailable; requiring authentication", exc_info=False)
         return True
 
 

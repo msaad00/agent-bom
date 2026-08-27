@@ -91,7 +91,7 @@ from agent_bom.finding_scope import (
     FindingClass,
     canonical_finding_severity_filter,
 )
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -1430,7 +1430,7 @@ def enqueue_scan_job(
             _logger.error(
                 "Failed to persist scan dispatch failure job=%s: %s",
                 job.job_id,
-                sanitize_error(persist_exc, generic=True),
+                sanitize_text(sanitize_error(persist_exc, generic=True)),
             )
         _jobs_put(job.job_id, job, compact_terminal=True)
         try:
@@ -1440,7 +1440,7 @@ def enqueue_scan_job(
         _logger.error(
             "Scan dispatch failed job=%s: %s",
             job.job_id,
-            sanitize_error(exc, generic=True),
+            sanitize_text(sanitize_error(exc, generic=True)),
         )
         raise RuntimeError("Scan dispatch failed before execution.") from None
     return job
@@ -2773,7 +2773,7 @@ def _project_findings_reachability(
             )
         return projection.rows, warnings
     except Exception as exc:  # noqa: BLE001 — optional evidence must not fail the findings list
-        _logger.warning("Finding graph reachability projection skipped: %s", sanitize_error(exc))
+        _logger.warning("Finding graph reachability projection skipped: %s", sanitize_text(sanitize_error(exc)))
         warnings.append("Graph reachability evidence is unavailable for this page; unmatched findings remain unassessed.")
         return rows, warnings
 

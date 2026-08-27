@@ -40,6 +40,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_bom.security import sanitize_text
+
 from .aws_cis_benchmark import CheckStatus, CISCheckResult, finalize_read_coverage
 from .aws_inventory import is_access_denied_error
 from .base import CloudDiscoveryError
@@ -2222,7 +2224,7 @@ def _check_5_1(project_id: str) -> CISCheckResult:
                 # IAM check is best-effort per bucket
                 if is_access_denied_error(exc):
                     denied.append(bucket.name)
-                logger.debug("Could not check IAM policy for bucket %s: %s", bucket.name, exc)
+                logger.debug("Could not check IAM policy for bucket %s: %s", bucket.name, sanitize_text(exc))
 
         if public_buckets:
             result.status = CheckStatus.FAIL
@@ -2833,7 +2835,7 @@ def run_benchmark(
             try:
                 report.checks.append(check_fn())
             except Exception as exc:
-                logger.warning("GCP CIS check %s failed with exception: %s", check_id, exc)
+                logger.warning("GCP CIS check %s failed with exception: %s", check_id, sanitize_text(exc))
                 report.checks.append(
                     CISCheckResult(
                         check_id=check_id,
@@ -2893,7 +2895,7 @@ def run_all_project_benchmarks(
     try:
         project_ids = gcp_organizations.list_project_ids(resolved, force=True)
     except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade, not crash
-        logger.warning("GCP org project enumeration failed: %s", sanitize_discovery_warning(exc))
+        logger.warning("GCP org project enumeration failed: %s", sanitize_text(sanitize_discovery_warning(exc)))
         warnings.append(sanitize_discovery_warning(exc))
         project_ids = []
 

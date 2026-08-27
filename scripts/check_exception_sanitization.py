@@ -21,7 +21,11 @@ Forbidden patterns (on the scanned trees):
   3. ``logger.<level>(f"...{exc}...")`` — raw exception interpolated into a log
      f-string. Use lazy ``%s`` formatting with a sanitized value:
      ``logger.warning("...: %s", sanitize_text(exc))``.
-  4. A caught exception object used anywhere in an API route's returned
+  4. A caught exception passed as a lazy logger argument, implicit traceback
+     capture via ``logger.exception(...)``, or explicit raw ``exc_info``.
+     Shared log sinks receive exception messages and tracebacks, so use a fixed
+     log message or ``sanitize_text(exc)`` without traceback capture.
+  5. A caught exception object used anywhere in an API route's returned
      response payload. Return a fixed external message instead. This
      intentionally avoids relying on custom sanitizer modeling in static
      analyzers such as CodeQL.
@@ -89,8 +93,10 @@ _DETAIL_FSTRING = re.compile(r"""detail\s*=\s*f["']""")
 # logger.<level>(f"...": flagged only if the f-string carries a bare exc field.
 # Matches log / logger / _log / _logger / self.logger and similar names.
 _LOGGER_FSTRING = re.compile(
-    r"""\b\w*log\w*\.(?:debug|info|warning|error|exception|critical)\(\s*f["']""",
+    r"""\b\w*log\w*\.(?:debug|info|warning|error|critical)\(\s*f["']""",
 )
+
+_LOG_METHODS = frozenset({"debug", "info", "warning", "error", "exception", "critical"})
 
 
 def _iter_files() -> list[Path]:
@@ -157,6 +163,100 @@ def _scan_returned_exception_flows(text: str, label: str) -> list[str]:
     return violations
 
 
+def _logger_receiver_name(node: ast.expr) -> str:
+    """Return a dotted best-effort name for a logger receiver expression."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _logger_receiver_name(node.value)
+        return f"{prefix}.{node.attr}" if prefix else node.attr
+    return ""
+
+
+def _is_logger_call(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Attribute) or node.func.attr not in _LOG_METHODS:
+        return False
+    return "log" in _logger_receiver_name(node.func.value).lower()
+
+
+def _call_has_pragma(node: ast.Call, lines: list[str]) -> bool:
+    start = max(1, node.lineno)
+    end = min(len(lines), getattr(node, "end_lineno", node.lineno))
+    return any(PRAGMA in lines[index - 1] for index in range(start, end + 1))
+
+
+def _contains_raw_caught_exception(node: ast.AST, caught_name: str) -> bool:
+    """Return whether *node* carries the caught exception's raw value.
+
+    Access to a structured attribute such as ``exc.status.value`` remains
+    allowed, matching the response-flow contract. The central log sanitizer is
+    the only call allowed to consume the exception object directly.
+    """
+    if isinstance(node, ast.Name):
+        return node.id == caught_name
+    if isinstance(node, ast.Attribute):
+        return False
+    if isinstance(node, ast.Call):
+        name = ""
+        if isinstance(node.func, ast.Name):
+            name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            name = node.func.attr
+        if name == "sanitize_text":
+            return False
+    return any(_contains_raw_caught_exception(child, caught_name) for child in ast.iter_child_nodes(node))
+
+
+def _raw_exc_info(keyword: ast.keyword, caught_name: str | None) -> bool:
+    if keyword.arg != "exc_info":
+        return False
+    value = keyword.value
+    if isinstance(value, ast.Constant) and value.value in (False, None):
+        return False
+    if caught_name and _contains_raw_caught_exception(value, caught_name):
+        return True
+    # True, sys.exc_info(), exception tuples, and other dynamic expressions all
+    # attach an unsanitized traceback to the shared log record.
+    return True
+
+
+def _scan_exception_logging_flows(text: str, label: str) -> list[str]:
+    """Flag caught exceptions and tracebacks crossing shared logger boundaries."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+
+    lines = text.splitlines()
+    violations: dict[tuple[int, str], str] = {}
+    for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
+        if not _is_logger_call(call) or _call_has_pragma(call, lines):
+            continue
+        method = call.func.attr if isinstance(call.func, ast.Attribute) else ""
+        if method == "exception":
+            reason = "logger.exception captures a raw exception traceback — use logger.error with fixed or sanitized detail"
+        elif any(_raw_exc_info(keyword, None) for keyword in call.keywords):
+            reason = "raw exc_info attached to log record — remove traceback capture and sanitize any exception detail"
+        else:
+            continue
+        violations[(call.lineno, reason)] = f"{label}:{call.lineno}: {reason}"
+
+    for handler in (node for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler)):
+        caught_name = handler.name
+        for call in (node for node in ast.walk(handler) if isinstance(node, ast.Call)):
+            if not _is_logger_call(call) or _call_has_pragma(call, lines):
+                continue
+            method = call.func.attr if isinstance(call.func, ast.Attribute) else ""
+            if method == "exception" or any(_raw_exc_info(keyword, caught_name) for keyword in call.keywords):
+                continue
+            if caught_name and any(_contains_raw_caught_exception(argument, caught_name) for argument in call.args[1:]):
+                reason = "caught exception passed as a lazy log argument — wrap it with sanitize_text(exc)"
+            else:
+                continue
+            violations[(call.lineno, reason)] = f"{label}:{call.lineno}: {reason}"
+    return list(violations.values())
+
+
 def scan_text(text: str, label: str) -> list[str]:
     """Scan a blob of source. Used by the test-suite to feed deliberate samples."""
     violations: list[str] = []
@@ -166,6 +266,7 @@ def scan_text(text: str, label: str) -> list[str]:
         reason = _scan_line(line)
         if reason:
             violations.append(f"{label}:{lineno}: {reason}")
+    violations.extend(_scan_exception_logging_flows(text, label))
     if label == "sample.py" or label.startswith("src/agent_bom/api/routes/"):
         violations.extend(_scan_returned_exception_flows(text, label))
     return violations

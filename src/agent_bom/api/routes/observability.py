@@ -480,7 +480,7 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
 
         calls = parse_ml_api_spans(body)
     except Exception:  # noqa: BLE001
-        _logger.warning("LLM cost ingest skipped", exc_info=True)
+        _logger.warning("LLM cost ingest skipped", exc_info=False)
         return {"calls": 0, "cost_usd": 0.0}
 
     allocation = _allocation_for_spans(body)
@@ -538,7 +538,7 @@ def _screen_trace_content_events(body: dict, *, tenant_id: str) -> list[dict[str
     try:
         findings = screen_trace_content(body)
     except Exception:  # noqa: BLE001 — screening never blocks metadata ingest
-        _logger.warning("Trace content screening skipped", exc_info=True)
+        _logger.warning("Trace content screening skipped", exc_info=False)
         return []
     events: list[dict[str, Any]] = []
     for finding in findings:
@@ -561,7 +561,7 @@ def _screen_trace_content_events(body: dict, *, tenant_id: str) -> list[dict[str
         try:
             _get_analytics_store().record_events(events, tenant_id=tenant_id)
         except Exception:  # noqa: BLE001
-            _logger.warning("Trace content analytics sync skipped", exc_info=True)
+            _logger.warning("Trace content analytics sync skipped", exc_info=False)
         _persist_runtime_observations(events, tenant_id=tenant_id, source="otel_content")
     return events
 
@@ -589,7 +589,7 @@ async def ingest_traces(request: Request, body: dict, screen_content: bool | Non
         # parser exception text back to the client.
         raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("Request failed")
+        _logger.error("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
@@ -665,7 +665,7 @@ def _ingest_traces_sync(body: dict, tenant_id: str, screen: bool) -> dict:
         try:
             _get_analytics_store().record_events(analytics_events, tenant_id=tenant_id)
         except Exception:  # noqa: BLE001
-            _logger.warning("Trace analytics sync skipped", exc_info=True)
+            _logger.warning("Trace analytics sync skipped", exc_info=False)
         _persist_runtime_observations(analytics_events, tenant_id=tenant_id, source="otel")
 
     return {
@@ -773,7 +773,7 @@ def _nhi_by_credential_for_tenant(tenant_id: str) -> dict[str, list[dict[str, An
                             next_frontier.append(edge.target)
                 frontier = next_frontier
     except Exception:  # noqa: BLE001
-        _logger.warning("NHI credential resolution skipped", exc_info=True)
+        _logger.warning("NHI credential resolution skipped", exc_info=False)
         return out
     return out
 

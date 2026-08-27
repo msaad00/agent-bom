@@ -81,7 +81,7 @@ def _build_coverage(tenant_id: str, jobs: list[Any]) -> dict[str, Any]:
     try:
         hub_findings = store.list(tenant_id)
     except Exception:  # pragma: no cover - defensive: never fail coverage on a store hiccup
-        _logger.warning("hub store list failed for tenant coverage", exc_info=True)
+        _logger.warning("hub store list failed for tenant coverage", exc_info=False)
         hub_findings = []
     findings.extend(f for f in hub_findings if isinstance(f, dict))
     findings.extend(_native_coverage_findings(jobs))

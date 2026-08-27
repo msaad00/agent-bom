@@ -37,7 +37,7 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def request_scan_cancellation(job: ScanJob) -> JobStatus:
     try:
         _get_store().put(job)
     except Exception as persist_exc:  # noqa: BLE001
-        _logger.warning("Failed to persist cancel for job=%s: %s", job.job_id, sanitize_error(persist_exc))
+        _logger.warning("Failed to persist cancel for job=%s: %s", job.job_id, sanitize_text(sanitize_error(persist_exc)))
     _jobs_put(job.job_id, job, compact_terminal=False)
     return status
 
@@ -132,9 +132,9 @@ def _observe_scan_future(done_future: Future | Any) -> None:
     try:
         exc = done_future.exception()
         if exc is not None:
-            _logger.error("Unhandled API scan worker failure", exc_info=(type(exc), exc, exc.__traceback__))
+            _logger.error("Unhandled API scan worker failure: %s", sanitize_text(exc))
     except Exception:  # noqa: BLE001
-        _logger.exception("Failed to observe API scan worker completion")
+        _logger.error("Failed to observe API scan worker completion")
     finally:
         with _executor_lock:
             _executor_active_jobs = max(0, _executor_active_jobs - 1)
@@ -232,7 +232,7 @@ def submit_claimed_scan_job(job: ScanJob, on_complete: Any) -> None:
             try:
                 on_complete(job.job_id)
             except Exception:  # noqa: BLE001
-                _logger.exception("claimed scan on_complete callback failed job=%s", job.job_id)
+                _logger.error("claimed scan on_complete callback failed job=%s", job.job_id)
 
     future.add_done_callback(_done)
 
@@ -573,7 +573,7 @@ def _persist_graph_snapshot(
         if cost_records:
             graph_input = {**report_json, "llm_cost_records": cost_records}
     except Exception as exc:  # noqa: BLE001
-        _logger.debug("graph cost rollup skipped: %s", exc)
+        _logger.debug("graph cost rollup skipped: %s", sanitize_text(exc))
 
     # Store-backed producer (#4055/#4075): auto-on above the entity threshold
     # (or forced via AGENT_BOM_GRAPH_STORE_BACKED_BUILD). Builds into a per-build
@@ -601,7 +601,7 @@ def _persist_graph_snapshot(
 
             link_report_findings_to_graph(report_json, graph)
         except Exception as link_exc:  # noqa: BLE001 — never fail persist on FK stamping
-            _logger.debug("finding↔node persist linking skipped: %s", link_exc)
+            _logger.debug("finding↔node persist linking skipped: %s", sanitize_text(link_exc))
 
         # Annotate CWPP workload nodes with tenant-scoped runtime evidence before
         # persist so investigation loads see it without a second enrich pass.
@@ -616,7 +616,7 @@ def _persist_graph_snapshot(
             wl_index = RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id)
             enrich_graph_workload_runtime_evidence(graph, wl_index)
         except Exception as runtime_exc:  # noqa: BLE001 — never fail persist on enrich
-            _logger.debug("workload runtime evidence graph enrich skipped: %s", runtime_exc)
+            _logger.debug("workload runtime evidence graph enrich skipped: %s", sanitize_text(runtime_exc))
 
         from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
 
@@ -897,12 +897,12 @@ def _ast_result_for_symbol_reach(paths: Iterable[str]) -> Any | None:
             if not project_has_analyzable_sources(project):
                 continue
         except OSError as path_exc:
-            _logger.debug("AST symbol-reach path skipped for %s: %s", raw, sanitize_error(path_exc))
+            _logger.debug("AST symbol-reach path skipped for %s: %s", raw, sanitize_text(sanitize_error(path_exc)))
             continue
         try:
             result = analyze_project(project)
         except Exception as ast_exc:  # noqa: BLE001
-            _logger.debug("AST symbol-reach analysis skipped for %s: %s", raw, sanitize_error(ast_exc))
+            _logger.debug("AST symbol-reach analysis skipped for %s: %s", raw, sanitize_text(sanitize_error(ast_exc)))
             continue
         if merged is None:
             merged = result
@@ -936,7 +936,7 @@ def _apply_tenant_workflow_metadata(report: Any, *, tenant_id: str) -> None:
     try:
         owner_index = build_tenant_triage_owner_index(tenant_id)
     except Exception as exc:  # noqa: BLE001 - workflow metadata must not fail the scan artifact
-        _logger.warning("Finding owner enrichment unavailable: %s", sanitize_error(exc, generic=True))
+        _logger.warning("Finding owner enrichment unavailable: %s", sanitize_text(sanitize_error(exc, generic=True)))
         owner_index = {}
     observed_at = getattr(report, "generated_at", None)
     observed_text = observed_at.isoformat() if isinstance(observed_at, datetime) else str(observed_at or "")
@@ -979,7 +979,7 @@ def _rendered_result_document(job: ScanJob, report: Any, blast_radii: list | Non
 
         return render_scan_document(report, requested, blast_radii=blast_radii), None
     except Exception as exc:  # noqa: BLE001 — a formatting failure never fails the scan
-        _logger.warning("Rendering scan result as %s failed: %s", requested, sanitize_error(exc, generic=True))
+        _logger.warning("Rendering scan result as %s failed: %s", requested, sanitize_text(sanitize_error(exc, generic=True)))
         return None, f"Requested {requested} output could not be rendered; result carries AI-BOM JSON only"
 
 
@@ -1144,7 +1144,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 if freshness is None or freshness >= 1 or source_list:
                     sync_db(sources=source_list)
             except Exception as db_exc:  # noqa: BLE001
-                _logger.warning("API auto DB refresh failed: %s", sanitize_error(db_exc))
+                _logger.warning("API auto DB refresh failed: %s", sanitize_text(sanitize_error(db_exc)))
                 warnings_all.append(f"Auto DB refresh skipped: {sanitize_error(db_exc)}")
 
         # ── Discovery phase ──
@@ -1476,7 +1476,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                         pipeline.update_step("output", "Persisting unified graph...")
                         _persist_graph_snapshot(job, report_json, lock=lock)
                     except Exception as graph_exc:  # noqa: BLE001
-                        _logger.warning("Unified graph persistence failed: %s", sanitize_error(graph_exc, generic=True))
+                        _logger.warning("Unified graph persistence failed: %s", sanitize_text(sanitize_error(graph_exc, generic=True)))
                         _record_graph_persistence(job, status="failed", lock=lock)
                         with lock:
                             job.progress.append("Graph persistence failed; scan evidence remains available")
@@ -1587,7 +1587,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     try:
                         blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False, compliance_enabled=True)
                     except Exception as retry_exc:  # noqa: BLE001
-                        _logger.error("Scan retry also failed: %s", sanitize_error(retry_exc))
+                        _logger.error("Scan retry also failed: %s", sanitize_text(sanitize_error(retry_exc)))
                         from agent_bom.scanners.executor import ScannerDriverError, apply_registered_failure_mode
 
                         # Registry marks sca-vulnerability FAIL_CLOSED; honor that after retries.
@@ -1645,7 +1645,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             if suppression["suppressed"]:
                 warnings_all.append(f"{suppression['suppressed']} finding(s) suppressed by tenant feedback/rules")
         except Exception as exc:  # noqa: BLE001
-            _logger.warning("Tenant suppression-rule evaluation skipped: %s", sanitize_error(exc))
+            _logger.warning("Tenant suppression-rule evaluation skipped: %s", sanitize_text(sanitize_error(exc)))
             warnings_all.append("Tenant suppression-rule evaluation skipped")
 
         # ── Analysis phase ──
@@ -1676,7 +1676,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     with lock:
                         job.progress.append(f"Symbol reachability: stamped {sym_stamped} blast-radius row(s) with function-level evidence")
         except Exception as reach_exc:  # noqa: BLE001
-            _logger.warning("Reachability surfacing skipped: %s", sanitize_error(reach_exc))
+            _logger.warning("Reachability surfacing skipped: %s", sanitize_text(sanitize_error(reach_exc)))
         pipeline.complete_step("analysis", f"Computed {len(blast_radii)} blast radius entries", {"blast_radius": len(blast_radii)})
 
         # ── Output phase ──
@@ -1693,11 +1693,11 @@ def _run_scan_sync(job: ScanJob) -> None:
         try:
             report_findings.extend(evaluate_a2a_auth_posture(agents))
         except Exception as a2a_exc:  # noqa: BLE001
-            _logger.warning("A2A auth posture evaluation skipped: %s", sanitize_error(a2a_exc))
+            _logger.warning("A2A auth posture evaluation skipped: %s", sanitize_text(sanitize_error(a2a_exc)))
         try:
             report_findings.extend(evaluate_mcp_auth_posture(agents))
         except Exception as mcp_auth_exc:  # noqa: BLE001
-            _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_error(mcp_auth_exc))
+            _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_text(sanitize_error(mcp_auth_exc)))
         report = AIBOMReport(
             agents=agents,
             blast_radii=blast_radii,
@@ -1743,7 +1743,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             if _coverage_warnings:
                 report.coverage_warnings = _coverage_warnings
         except Exception as cov_exc:  # noqa: BLE001
-            _logger.debug("coverage-warning attach skipped: %s", sanitize_error(cov_exc))
+            _logger.debug("coverage-warning attach skipped: %s", sanitize_text(sanitize_error(cov_exc)))
 
         # Opt-in estate enrichment (cloud inventory + NHI discovery). Default
         # OFF: no-op and no network I/O unless the per-provider env flags are
@@ -1753,7 +1753,7 @@ def _run_scan_sync(job: ScanJob) -> None:
 
             enrich_report_with_estate_discovery(report)
         except Exception as enrich_exc:  # noqa: BLE001
-            _logger.warning("Estate enrichment skipped: %s", sanitize_error(enrich_exc))
+            _logger.warning("Estate enrichment skipped: %s", sanitize_text(sanitize_error(enrich_exc)))
 
         if req.ai_enrich:
             try:
@@ -1765,7 +1765,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     deterministic=req.ai_deterministic,
                 )
             except Exception as ai_exc:  # noqa: BLE001
-                _logger.warning("Advisory AI enrichment skipped: %s", sanitize_error(ai_exc, generic=True))
+                _logger.warning("Advisory AI enrichment skipped: %s", sanitize_text(sanitize_error(ai_exc, generic=True)))
                 with lock:
                     job.progress.append("Advisory AI enrichment skipped")
 
@@ -1787,7 +1787,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 tenant_id=job.tenant_id or "",
             )
         except Exception as gderiv_exc:  # noqa: BLE001
-            _logger.warning("Graph-derived findings surfacing skipped: %s", sanitize_error(gderiv_exc))
+            _logger.warning("Graph-derived findings surfacing skipped: %s", sanitize_text(sanitize_error(gderiv_exc)))
 
         _apply_tenant_workflow_metadata(report, tenant_id=job.tenant_id or "default")
         report_json = to_json(report)
@@ -1820,7 +1820,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 pipeline.update_step("output", "Persisting unified graph...")
                 _persist_graph_snapshot(job, report_json, lock=lock)
             except Exception as graph_exc:  # noqa: BLE001
-                _logger.warning("Unified graph persistence failed: %s", sanitize_error(graph_exc, generic=True))
+                _logger.warning("Unified graph persistence failed: %s", sanitize_text(sanitize_error(graph_exc, generic=True)))
                 _record_graph_persistence(job, status="failed", lock=lock)
                 with lock:
                     job.progress.append("Graph persistence failed; scan evidence remains available")
@@ -1838,7 +1838,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                         f"open={asset_diff['summary']['total_open']})"
                     )
             except Exception as asset_exc:  # noqa: BLE001
-                _logger.warning("Asset tracker persistence failed: %s", asset_exc)
+                _logger.warning("Asset tracker persistence failed: %s", sanitize_text(asset_exc))
                 with lock:
                     job.progress.append(f"Asset tracker skipped: {sanitize_error(asset_exc)}")
 
@@ -1854,7 +1854,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     with lock:
                         job.progress.append(f"Local analytics synced scan {recorded_scan_id}")
             except Exception as local_analytics_exc:  # noqa: BLE001
-                _logger.debug("Local analytics persistence skipped: %s", local_analytics_exc)
+                _logger.debug("Local analytics persistence skipped: %s", sanitize_text(local_analytics_exc))
         else:
             with lock:
                 job.progress.append("Result side-effect persistence skipped by request")
@@ -1898,7 +1898,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     analytics_store.record_compliance_control(control, tenant_id=tenant_id)
                 analytics_store.record_cis_benchmark_checks(analytics.cis_benchmark_checks, tenant_id=tenant_id)
             except Exception as analytics_exc:  # noqa: BLE001
-                _logger.warning("API ClickHouse analytics persistence failed: %s", analytics_exc)
+                _logger.warning("API ClickHouse analytics persistence failed: %s", sanitize_text(analytics_exc))
                 with lock:
                     job.progress.append(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
 
@@ -1964,7 +1964,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             # compliance/graph reads that load from the store. Reporting it as a
             # clean success would be a lie, so surface the failure on the job
             # the caller polls rather than swallowing it in a finally block.
-            _logger.error("Scan result persistence failed job=%s: %s", job.job_id, persist_exc)
+            _logger.error("Scan result persistence failed job=%s: %s", job.job_id, sanitize_text(persist_exc))
             with lock:
                 job.status = JobStatus.FAILED
                 job.error = f"result not persisted: {sanitize_error(persist_exc)}"
@@ -1985,7 +1985,7 @@ def _run_scan_sync(job: ScanJob) -> None:
 
                 refresh_batch_parent(job.parent_job_id, tenant_id=job.tenant_id or "default")
             except Exception:  # noqa: BLE001
-                _logger.exception("Failed to refresh scan batch parent job=%s child=%s", job.parent_job_id, job.job_id)
+                _logger.error("Failed to refresh scan batch parent job=%s child=%s", job.parent_job_id, job.job_id)
         _release_scan_memory()
         # Update operator-visible scan metrics. The active gauge feeds
         # the KEDA scaler in deploy/helm/agent-bom; the completion

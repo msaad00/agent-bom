@@ -16,6 +16,7 @@ from typing import Any
 
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+from agent_bom.security import sanitize_text
 
 from .base import CloudDiscoveryError
 from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_scope, build_cloud_timestamps, build_package_purl
@@ -554,7 +555,7 @@ def _discover_azure_functions(
                         )
                 except Exception as exc:
                     # Site config read is best-effort
-                    logger.debug("Could not read site config for function app %s: %s", app_name, exc)
+                    logger.debug("Could not read site config for function app %s: %s", app_name, sanitize_text(exc))
 
             from agent_bom.cloud.serverless_zip import extract_azure_function_packages
 
@@ -773,7 +774,7 @@ def _discover_ml_endpoints(
                             )
                     except Exception as exc:
                         # Deployment listing is best-effort
-                        logger.debug("Could not list deployments for endpoint %s: %s", ep_name, exc)
+                        logger.debug("Could not list deployments for endpoint %s: %s", ep_name, sanitize_text(exc))
 
                     server = MCPServer(
                         name=f"ml-endpoint:{ep_name}",

@@ -116,7 +116,7 @@ def _maybe_postgres_advisory_lock(tenant_id: str) -> Iterator[None]:
                 "tenant_quota_guard could not acquire Postgres advisory lock for tenant=%s in clustered mode: %s. "
                 "Refusing the request to avoid cross-replica quota overshoot.",
                 tenant_id,
-                exc,
+                sanitize_text(exc),
             )
             raise HTTPException(
                 status_code=503,
@@ -129,7 +129,7 @@ def _maybe_postgres_advisory_lock(tenant_id: str) -> Iterator[None]:
         _logger.warning(
             "tenant_quota_guard could not acquire Postgres advisory lock for tenant=%s: %s. Falling back to per-process serialisation.",
             tenant_id,
-            exc,
+            sanitize_text(exc),
         )
         yield
         return

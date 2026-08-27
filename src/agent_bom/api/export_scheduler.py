@@ -206,7 +206,7 @@ async def export_scheduler_loop(
         except Exception:
             consecutive_failures += 1
             backoff = min(interval * (2**consecutive_failures), max_backoff)
-            logger.exception("Export scheduler loop error (attempt %d, next retry in %ds)", consecutive_failures, backoff)
+            logger.error("Export scheduler loop error (attempt %d, next retry in %ds)", consecutive_failures, backoff)
             await asyncio.sleep(backoff)
             continue
         await asyncio.sleep(interval)

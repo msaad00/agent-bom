@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from agent_bom.baseline import TrendPoint
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
 _SEVERITIES = ("critical", "high", "medium", "low")
@@ -97,6 +97,6 @@ def record_scan_trend_best_effort(
 
         _get_trend_store().record(point)
     except Exception as exc:  # noqa: BLE001 - trend history must not fail a completed scan
-        _logger.warning("Posture trend persistence skipped: %s", sanitize_error(exc, generic=True))
+        _logger.warning("Posture trend persistence skipped: %s", sanitize_text(sanitize_error(exc, generic=True)))
         return False
     return True

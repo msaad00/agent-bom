@@ -12,6 +12,7 @@ from pathlib import Path
 
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package
+from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +158,7 @@ def _discover_via_api(host: str) -> list[dict] | None:
             data = resp.json()
             return data.get("models", [])
     except (ImportError, OSError) as exc:
-        logger.debug("Ollama httpx API probe failed: %s", exc)
+        logger.debug("Ollama httpx API probe failed: %s", sanitize_text(exc))
 
     # Fallback: try with sync httpx client (retry-capable)
     try:
@@ -171,7 +172,7 @@ def _discover_via_api(host: str) -> list[dict] | None:
             data = fallback_resp.json()
             return data.get("models", [])
     except (OSError, ValueError) as exc:
-        logger.debug("Ollama sync API probe failed: %s", exc)
+        logger.debug("Ollama sync API probe failed: %s", sanitize_text(exc))
 
     return None
 

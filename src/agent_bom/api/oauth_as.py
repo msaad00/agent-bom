@@ -156,7 +156,7 @@ class OAuthSigningKey:
                     "to an ephemeral key. Issued access tokens will not survive a restart or be shared "
                     "across replicas. Check that the value contains real newlines — a literal '\\n' "
                     "sequence is the usual cause when the key is pasted into a hosting dashboard.",
-                    exc_info=True,
+                    exc_info=False,
                 )
                 self._private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
                 self._ephemeral = True

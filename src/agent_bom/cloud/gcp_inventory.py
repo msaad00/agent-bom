@@ -42,6 +42,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
+from agent_bom.security import sanitize_text
 
 from .aws_inventory import dedupe_missing_permissions, record_discovery_failure
 from .gcp_authorization_collector import collect_gcp_authorization
@@ -201,7 +202,7 @@ def discover_all_project_inventories(credentials: Any = None, *, force: bool = F
 
         project_ids = gcp_organizations.list_project_ids(resolved, force=force)
     except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade
-        logger.warning("GCP org project enumeration failed: %s", sanitize_discovery_warning(exc))
+        logger.warning("GCP org project enumeration failed: %s", sanitize_text(sanitize_discovery_warning(exc)))
         project_ids = []
 
     if not project_ids:
@@ -228,7 +229,7 @@ def discover_all_project_inventories(credentials: Any = None, *, force: bool = F
                 logger.warning(
                     "GCP inventory failed for project %s: %s",
                     futures[future],
-                    sanitize_discovery_warning(exc),
+                    sanitize_text(sanitize_discovery_warning(exc)),
                 )
     return payloads
 

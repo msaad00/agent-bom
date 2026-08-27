@@ -56,7 +56,7 @@ from agent_bom.governance import (
     QueryHistoryRecord,
 )
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 
 from .aws_inventory import record_discovery_failure
 from .base import CloudDiscoveryError
@@ -114,7 +114,7 @@ def _record_snowflake_inventory_failure(
             ).to_dict()
         )
     except Exception:  # noqa: BLE001 — coverage evidence is supplementary; never fail discovery
-        logger.debug("Could not record Snowflake inventory coverage warning", exc_info=True)
+        logger.debug("Could not record Snowflake inventory coverage warning", exc_info=False)
 
 
 # Backwards-compatible aliases for the shared cloud helpers. Call sites and
@@ -1080,7 +1080,7 @@ def _describe_mcp_server_tools(
 
                             tools.append(MCPTool(name=tool_name, description=description))
                 except (ImportError, ValueError, KeyError, TypeError) as exc:
-                    logger.debug("Could not parse tool spec for MCP server: %s", exc)
+                    logger.debug("Could not parse tool spec for MCP server: %s", sanitize_text(exc))
 
     except Exception as exc:
         warnings.append(f"Could not describe MCP Server {server_name}: {sanitize_error(exc)}")

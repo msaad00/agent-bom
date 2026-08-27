@@ -571,7 +571,7 @@ class ProtectionEngine:
             )
             self._feedback_sink.emit(record)
         except Exception:  # pragma: no cover - belt-and-suspenders fail-safe
-            logger.debug("Runtime feedback emission failed (non-fatal)", exc_info=True)
+            logger.debug("Runtime feedback emission failed (non-fatal)", exc_info=False)
 
     # ── Deep defense internals ───────────────────────────────────────────
 

@@ -515,7 +515,7 @@ async def list_agents(
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:  # noqa: BLE001
-        _logger.warning("Agent discovery failed: %s", sanitize_error(exc, generic=True))
+        _logger.warning("Agent discovery failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
         raise HTTPException(status_code=500, detail=sanitize_error(exc, generic=True)) from exc
 
 
@@ -543,7 +543,7 @@ async def get_agent_mesh(request: Request) -> dict:
     try:
         return await anyio.to_thread.run_sync(_get_agent_mesh_impl, request)
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("Request failed")
+        _logger.error("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
@@ -602,7 +602,7 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("Agent detail failed")
+        _logger.error("Agent detail failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 

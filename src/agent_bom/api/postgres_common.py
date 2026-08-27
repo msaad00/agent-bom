@@ -90,7 +90,7 @@ def _audit_rls_bypass_activation(*, caller: str) -> None:
             source_field=caller,
         )
     except Exception:
-        logger.debug("Postgres tenant RLS bypass audit log write failed", exc_info=True)
+        logger.debug("Postgres tenant RLS bypass audit log write failed", exc_info=False)
 
 
 @contextmanager
@@ -491,7 +491,7 @@ def _guard_rls_capable_role(pool: ConnectionPool) -> None:
         # Best-effort probe: a transient connect error or a store mock without a
         # real role table must not mask the primary failure. A genuinely
         # RLS-bypassing role is still caught on the next successful pool use.
-        logger.debug("Postgres RLS role guard could not inspect role attributes", exc_info=True)
+        logger.debug("Postgres RLS role guard could not inspect role attributes", exc_info=False)
         return
 
     _rls_role_checked = True
@@ -542,7 +542,7 @@ def reset_pool() -> None:
             try:
                 close()
             except Exception:
-                logger.debug("Postgres pool close skipped during reset", exc_info=True)
+                logger.debug("Postgres pool close skipped during reset", exc_info=False)
     _pool = None
     _maintenance_pool = None
     _rls_role_checked = False

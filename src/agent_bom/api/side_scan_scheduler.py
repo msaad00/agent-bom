@@ -243,7 +243,7 @@ def run_scheduled_side_scan_once(
         logger.warning("Scheduled side-scan unavailable for %s target %s", target.provider, target.target_id)
         return {**base, "status": "unavailable"}
     except Exception:  # noqa: BLE001 - one bad target never raises to the loop
-        logger.exception("Scheduled side-scan failed for %s target %s", target.provider, target.target_id)
+        logger.error("Scheduled side-scan failed for %s target %s", target.provider, target.target_id)
         return {**base, "status": "failed"}
 
     record = get_side_scan_state_store(state_db_path=state_db_path).get(
@@ -288,7 +288,7 @@ async def schedule_provider_side_scans(
             try:
                 return await asyncio.to_thread(runner, target)
             except Exception:  # noqa: BLE001 - isolate a raising runner (e.g. injected fake)
-                logger.exception("Scheduled side-scan runner raised for target %s", target.target_id)
+                logger.error("Scheduled side-scan runner raised for target %s", target.target_id)
                 return {
                     "provider": target.provider,
                     "target_id": target.target_id,
@@ -325,7 +325,7 @@ async def side_scan_scheduler_loop(
         except Exception:
             consecutive_failures += 1
             backoff = min(interval * (2**consecutive_failures), max_backoff)
-            logger.exception(
+            logger.error(
                 "Side-scan scheduler loop error (attempt %d, next retry in %ds)",
                 consecutive_failures,
                 backoff,

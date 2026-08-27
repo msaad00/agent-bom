@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISCheckResult
+from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -519,7 +520,7 @@ def _check_ai_7_2() -> CISCheckResult:
                 if not digest:
                     unverifiable.append(f"{tag_path.parent.name}:{tag_path.name}")
             except Exception as exc:  # noqa: BLE001
-                logger.debug("Could not parse model manifest %s: %s", tag_path, exc)
+                logger.debug("Could not parse model manifest %s: %s", tag_path, sanitize_text(exc))
                 unverifiable.append(str(tag_path.name))
 
         if total == 0:
@@ -636,7 +637,7 @@ def run_benchmark(
             else:
                 result = check_fn()
         except Exception as exc:
-            logger.warning("AISVS check %s failed with exception: %s", check_id, exc)
+            logger.warning("AISVS check %s failed with exception: %s", check_id, sanitize_text(exc))
             result = CISCheckResult(
                 check_id=check_id,
                 title=f"Check {check_id}",

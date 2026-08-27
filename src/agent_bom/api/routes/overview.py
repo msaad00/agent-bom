@@ -661,7 +661,7 @@ def _runtime_snapshot(request: Request, jobs: list[Any]) -> dict[str, Any]:
 
         ctx = _derive_deployment_context(request, jobs)
     except Exception:  # pragma: no cover - defensive; degrade to empty signals
-        _logger.debug("deployment-context derivation failed", exc_info=True)
+        _logger.debug("deployment-context derivation failed", exc_info=False)
         ctx = {}
     active = sum(1 for key in ("has_gateway", "has_proxy", "has_traces", "has_mesh") if ctx.get(key))
     return {
@@ -690,7 +690,7 @@ def _cost_snapshot(request: Request) -> dict[str, Any]:
             "budget_configured": budget is not None,
         }
     except Exception:  # pragma: no cover - cost store optional
-        _logger.debug("cost snapshot failed", exc_info=True)
+        _logger.debug("cost snapshot failed", exc_info=False)
         return {"total_cost_usd": 0.0, "total_calls": 0, "agents": 0, "budget_configured": False}
 
 
@@ -703,7 +703,7 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
 
         identities = len(get_agent_identity_store().list(tenant_id, limit=1000))
     except Exception:  # pragma: no cover - identity store optional
-        _logger.debug("identity snapshot failed", exc_info=True)
+        _logger.debug("identity snapshot failed", exc_info=False)
 
     fleet_total = 0
     low_trust = 0
@@ -712,7 +712,7 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
         fleet_total = len(agents)
         low_trust = sum(1 for a in agents if float(getattr(a, "trust_score", 0.0) or 0.0) < 50)
     except Exception:  # pragma: no cover - fleet store optional
-        _logger.debug("fleet snapshot failed", exc_info=True)
+        _logger.debug("fleet snapshot failed", exc_info=False)
 
     return {
         "managed_identities": identities,
@@ -769,7 +769,7 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
                 return empty
             counts = breakdown(tenant_id) or {}
     except Exception:  # pragma: no cover - hub store optional
-        _logger.debug("hub severity snapshot failed", exc_info=True)
+        _logger.debug("hub severity snapshot failed", exc_info=False)
         return empty
     for key, value in counts.items():
         empty[str(key).lower()] = empty.get(str(key).lower(), 0) + int(value or 0)
@@ -805,7 +805,7 @@ def _hub_kev_snapshot(request: Request) -> int:
         since = time_window.window_since_iso(time_window.normalize_window_days(None))
         count = int(counter(tenant_id, origin="bulk_ingest", since=since) or 0)
     except Exception:  # pragma: no cover - hub store optional
-        _logger.debug("hub kev snapshot failed", exc_info=True)
+        _logger.debug("hub kev snapshot failed", exc_info=False)
         return 0
     hub_overview_cache.set_cached_kev(tenant_id, count)
     return count
@@ -848,7 +848,7 @@ def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> lis
             include_total=False,
         )
     except Exception:  # pragma: no cover - hub store optional
-        _logger.debug("hub top risks failed", exc_info=True)
+        _logger.debug("hub top risks failed", exc_info=False)
         return []
     rows = page[0] if isinstance(page, tuple) else page
     return [_finding_top_risk(row) for row in rows or [] if isinstance(row, dict)]
@@ -1007,7 +1007,7 @@ def _cloud_account_count(request: Request) -> int:
 
         return len(get_connection_store().list_for_tenant(_tenant_id(request)))
     except Exception:  # pragma: no cover - connection store optional
-        _logger.debug("cloud account snapshot failed", exc_info=True)
+        _logger.debug("cloud account snapshot failed", exc_info=False)
         return 0
 
 

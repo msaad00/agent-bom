@@ -50,7 +50,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 
 from .aws_cis_benchmark import CheckStatus, CISCheckResult, finalize_read_coverage
 from .aws_inventory import is_access_denied_error
@@ -1357,7 +1357,7 @@ def _check_3_10(storage_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(acct_name)
-                logger.debug("Could not check soft delete for %s: %s", acct_name, exc)
+                logger.debug("Could not check soft delete for %s: %s", acct_name, sanitize_text(exc))
 
         if failing:
             result.status = CheckStatus.FAIL
@@ -1654,7 +1654,7 @@ def _check_4_1_1(sql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check auditing for SQL server %s: %s", server_name, exc)
+                logger.debug("Could not check auditing for SQL server %s: %s", server_name, sanitize_text(exc))
 
         if failing:
             result.status = CheckStatus.FAIL
@@ -1745,7 +1745,7 @@ def _check_4_1_2(sql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check TDE for SQL server %s: %s", server_name, exc)
+                logger.debug("Could not check TDE for SQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"SQL servers without TDE configured: {', '.join(failing)}"
@@ -1797,7 +1797,7 @@ def _check_4_1_3(sql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check AD admin for SQL server %s: %s", server_name, exc)
+                logger.debug("Could not check AD admin for SQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"SQL servers without Azure AD admin: {', '.join(failing)}"
@@ -1850,7 +1850,7 @@ def _check_4_1_4(sql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check ATP for SQL server %s: %s", server_name, exc)
+                logger.debug("Could not check ATP for SQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"SQL servers without Advanced Threat Protection: {', '.join(failing)}"
@@ -2007,7 +2007,7 @@ def _check_4_2_3(mysql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check log_checkpoints for MySQL server %s: %s", server_name, exc)
+                logger.debug("Could not check log_checkpoints for MySQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"MySQL servers with log_checkpoints disabled: {', '.join(failing)}"
@@ -2091,7 +2091,7 @@ def _check_4_3_2(postgresql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check log_checkpoints for PostgreSQL server %s: %s", server_name, exc)
+                logger.debug("Could not check log_checkpoints for PostgreSQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_checkpoints disabled: {', '.join(failing)}"
@@ -2144,7 +2144,7 @@ def _check_4_3_3(postgresql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check log_connections for PostgreSQL server %s: %s", server_name, exc)
+                logger.debug("Could not check log_connections for PostgreSQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_connections disabled: {', '.join(failing)}"
@@ -2197,7 +2197,7 @@ def _check_4_3_4(postgresql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check log_disconnections for PostgreSQL server %s: %s", server_name, exc)
+                logger.debug("Could not check log_disconnections for PostgreSQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_disconnections disabled: {', '.join(failing)}"
@@ -2250,7 +2250,7 @@ def _check_4_3_5(postgresql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check connection_throttling for PostgreSQL server %s: %s", server_name, exc)
+                logger.debug("Could not check connection_throttling for PostgreSQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with connection_throttling disabled: {', '.join(failing)}"
@@ -2458,7 +2458,7 @@ def _check_5_2_1(postgresql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check log_connections for PostgreSQL server %s: %s", server_name, exc)
+                logger.debug("Could not check log_connections for PostgreSQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_connections off: {', '.join(failing)}"
@@ -2511,7 +2511,7 @@ def _check_5_2_2(postgresql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check log_disconnections for PostgreSQL server %s: %s", server_name, exc)
+                logger.debug("Could not check log_disconnections for PostgreSQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_disconnections off: {', '.join(failing)}"
@@ -2564,7 +2564,7 @@ def _check_5_2_3(postgresql_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(server_name)
-                logger.debug("Could not check connection_throttling for PostgreSQL server %s: %s", server_name, exc)
+                logger.debug("Could not check connection_throttling for PostgreSQL server %s: %s", server_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with connection_throttling off: {', '.join(failing)}"
@@ -3048,7 +3048,7 @@ def _check_8_1(kv_client: Any, subscription_id: str) -> CISCheckResult:
                 # vault is UNREADABLE, not compliant. Never let it fall through
                 # to PASS: a denied vault must not read as "keys have expiration".
                 denied.append(vault_name)
-                logger.debug("Could not enumerate keys in vault %s: %s", vault_name, exc)
+                logger.debug("Could not enumerate keys in vault %s: %s", vault_name, sanitize_text(exc))
 
         if failing_keys:
             result.status = CheckStatus.FAIL
@@ -3102,7 +3102,7 @@ def _check_8_2(kv_client: Any, subscription_id: str) -> CISCheckResult:
             except Exception as exc:
                 # Denied vault is UNREADABLE, not compliant — never fall through to PASS.
                 denied.append(vault_name)
-                logger.debug("Could not enumerate secrets in vault %s: %s", vault_name, exc)
+                logger.debug("Could not enumerate secrets in vault %s: %s", vault_name, sanitize_text(exc))
 
         if failing_secrets:
             result.status = CheckStatus.FAIL
@@ -3165,7 +3165,7 @@ def _check_8_3(kv_client: Any, subscription_id: str) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(vault_name)
-                logger.debug("Could not check recoverability for vault %s: %s", vault_name, exc)
+                logger.debug("Could not check recoverability for vault %s: %s", vault_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Key Vaults without full recoverability: {', '.join(failing[:10])}"
@@ -3232,7 +3232,7 @@ def _check_8_4(kv_client: Any, subscription_id: str) -> CISCheckResult:
             except Exception as exc:
                 # Denied RBAC vault is UNREADABLE, not compliant — never PASS.
                 denied.append(vault_name)
-                logger.debug("Could not enumerate keys in RBAC vault %s: %s", vault_name, exc)
+                logger.debug("Could not enumerate keys in RBAC vault %s: %s", vault_name, sanitize_text(exc))
         if failing_keys:
             result.status = CheckStatus.FAIL
             result.evidence = f"Keys without expiration in RBAC vaults: {', '.join(failing_keys[:10])}"
@@ -3301,7 +3301,7 @@ def _check_8_5(kv_client: Any, subscription_id: str) -> CISCheckResult:
             except Exception as exc:
                 # Denied RBAC vault is UNREADABLE, not compliant — never PASS.
                 denied.append(vault_name)
-                logger.debug("Could not enumerate secrets in RBAC vault %s: %s", vault_name, exc)
+                logger.debug("Could not enumerate secrets in RBAC vault %s: %s", vault_name, sanitize_text(exc))
         if failing_secrets:
             result.status = CheckStatus.FAIL
             result.evidence = f"Secrets without expiration in RBAC vaults: {', '.join(failing_secrets[:10])}"
@@ -3354,7 +3354,7 @@ def _check_8_6(kv_client: Any, subscription_id: str) -> CISCheckResult:
             except Exception as exc:
                 # Denied vault is UNREADABLE, not compliant — never PASS.
                 denied.append(vault_name)
-                logger.debug("Could not enumerate secrets in vault %s: %s", vault_name, exc)
+                logger.debug("Could not enumerate secrets in vault %s: %s", vault_name, sanitize_text(exc))
         if failing_secrets:
             result.status = CheckStatus.FAIL
             result.evidence = f"Secrets without content type: {', '.join(failing_secrets[:10])}"
@@ -3411,7 +3411,7 @@ def _check_8_7(kv_client: Any, subscription_id: str) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(vault_name)
-                logger.debug("Could not check private endpoints for vault %s: %s", vault_name, exc)
+                logger.debug("Could not check private endpoints for vault %s: %s", vault_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Key Vaults without private endpoints: {', '.join(failing)}"
@@ -3469,7 +3469,7 @@ def _check_9_1(webapp_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(app_name)
-                logger.debug("Could not check auth settings for app %s: %s", app_name, exc)
+                logger.debug("Could not check auth settings for app %s: %s", app_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Web apps without authentication enabled: {', '.join(failing[:10])}"
@@ -3557,7 +3557,7 @@ def _check_9_3(webapp_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(app_name)
-                logger.debug("Could not check TLS for app %s: %s", app_name, exc)
+                logger.debug("Could not check TLS for app %s: %s", app_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Web apps not using TLS 1.2+: {', '.join(failing[:10])}"
@@ -3676,7 +3676,7 @@ def _check_9_6(webapp_client: Any) -> CISCheckResult:
             except Exception as exc:
                 if is_access_denied_error(exc):
                     denied.append(app_name)
-                logger.debug("Could not check FTP state for app %s: %s", app_name, exc)
+                logger.debug("Could not check FTP state for app %s: %s", app_name, sanitize_text(exc))
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Web apps with FTP enabled: {', '.join(failing[:10])}"
@@ -3923,7 +3923,7 @@ def run_benchmark(
         try:
             report.checks.append(check_fn())
         except Exception as exc:
-            logger.warning("Azure CIS check %s failed with exception: %s", check_id, exc)
+            logger.warning("Azure CIS check %s failed with exception: %s", check_id, sanitize_text(exc))
             report.checks.append(
                 CISCheckResult(
                     check_id=check_id,

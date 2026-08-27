@@ -46,6 +46,8 @@ from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
+from agent_bom.security import sanitize_text
+
 logger = logging.getLogger(__name__)
 
 _JWKS_CACHE_TTL = 3600  # seconds — re-fetch public keys every hour
@@ -656,7 +658,7 @@ def describe_oidc_posture() -> dict[str, object]:
     except OIDCError as exc:
         from agent_bom.security import sanitize_error
 
-        logger.warning("OIDC posture config is invalid: %s", sanitize_error(exc))
+        logger.warning("OIDC posture config is invalid: %s", sanitize_text(sanitize_error(exc)))
         return {
             "supported": True,
             "configured": False,

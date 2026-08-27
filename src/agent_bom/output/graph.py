@@ -1055,7 +1055,7 @@ def _graph_priority_summary(findings: list["Finding"], *, collapse_cves: bool = 
     return priorities
 
 
-def _json_for_script(value: object, *, indent: int = 2) -> str:
+def _json_for_script(value: object, *, indent: int | None = 2) -> str:
     """Serialize already-projected data without allowing HTML breakout."""
     return (
         json.dumps(value, indent=indent)

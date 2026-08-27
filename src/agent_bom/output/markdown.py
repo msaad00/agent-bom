@@ -122,7 +122,11 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
                     lines.append(f"- **Remediation**: {sanitize_output_text(finding.remediation_guidance)}")
                 if finding.evidence:
                     safe_evidence = sanitize_sensitive_payload(finding.evidence, max_str_len=10_000)
-                    evidence_text = ", ".join(f"{key}={value}" for key, value in safe_evidence.items() if value is not None)
+                    evidence_text = (
+                        ", ".join(f"{key}={value}" for key, value in safe_evidence.items() if value is not None)
+                        if isinstance(safe_evidence, dict)
+                        else ""
+                    )
                     if evidence_text:
                         lines.append(f"- **Evidence**: {evidence_text}")
                 lines.append("")

@@ -15,7 +15,17 @@ from agent_bom.api.audit_log import InMemoryAuditLog, get_audit_log, set_audit_l
 from agent_bom.api.credential_store import InMemoryCredentialRefStore
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
 from agent_bom.api.graph_store import SQLiteGraphStore
-from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
+from agent_bom.api.models import (
+    FleetAgentUpdate,
+    JobStatus,
+    PushPayload,
+    ScanJob,
+    ScanRequest,
+    ScheduleCreate,
+    SourceKind,
+    SourceRecord,
+    StateUpdate,
+)
 from agent_bom.api.pipeline import _sync_scan_agents_to_fleet
 from agent_bom.api.policy_store import GatewayPolicy, InMemoryPolicyStore
 from agent_bom.api.routes import assets as asset_routes
@@ -26,6 +36,7 @@ from agent_bom.api.routes import observability as observability_routes
 from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.routes import schedules as schedule_routes
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
+from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import (
     _jobs,
@@ -35,6 +46,7 @@ from agent_bom.api.stores import (
     set_job_store,
     set_policy_store,
     set_schedule_store,
+    set_source_store,
     set_tenant_quota_store,
 )
 from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
@@ -288,6 +300,56 @@ async def test_schedule_create_rejects_invalid_cron(isolated_audit_log):
     assert exc.value.status_code == 422
     assert store.list_all(tenant_id="tenant-alpha") == []
     assert isolated_audit_log.list_entries() == []
+
+
+@pytest.mark.asyncio
+async def test_schedule_create_rejects_enabled_missing_source(isolated_audit_log):
+    schedule_store = InMemoryScheduleStore()
+    set_schedule_store(schedule_store)
+    set_source_store(InMemorySourceStore())
+
+    with pytest.raises(HTTPException) as exc:
+        await schedule_routes.create_schedule(
+            _request("tenant-alpha"),
+            ScheduleCreate(
+                name="orphaned-source",
+                cron_expression="0 */6 * * *",
+                scan_config={"source_id": "missing-source"},
+            ),
+        )
+
+    assert exc.value.status_code == 409
+    assert schedule_store.list_all(tenant_id="tenant-alpha") == []
+    assert isolated_audit_log.list_entries() == []
+
+
+@pytest.mark.asyncio
+async def test_schedule_create_accepts_enabled_runnable_source(isolated_audit_log):
+    schedule_store = InMemoryScheduleStore()
+    source_store = InMemorySourceStore()
+    set_schedule_store(schedule_store)
+    set_source_store(source_store)
+    source_store.put(
+        SourceRecord(
+            source_id="repo-source",
+            tenant_id="tenant-alpha",
+            display_name="Repository",
+            kind=SourceKind.SCAN_REPO,
+            config={"scan_request": {"repo_url": "https://example.com/acme/repo"}},
+        )
+    )
+
+    created = await schedule_routes.create_schedule(
+        _request("tenant-alpha"),
+        ScheduleCreate(
+            name="source-schedule",
+            cron_expression="0 */6 * * *",
+            scan_config={"source_id": "repo-source"},
+        ),
+    )
+
+    assert created["enabled"] is True
+    assert created["scan_config"] == {"source_id": "repo-source"}
 
 
 @pytest.mark.asyncio

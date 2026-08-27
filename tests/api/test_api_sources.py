@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from threading import Event, Thread
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi import HTTPException
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.credential_store import InMemoryCredentialRefStore
-from agent_bom.api.models import ScanJob, SourceKind, SourceRecord
+from agent_bom.api.models import CredentialRefRecord, ScanJob, SourceKind, SourceRecord
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
@@ -476,6 +479,31 @@ def test_credential_update_explicit_null_clears_nullable_lifecycle_fields(source
         assert cleared.json()[field] is None
 
 
+def test_credential_update_explicit_null_purges_legacy_secret_reference(source_client: TestClient) -> None:
+    legacy = CredentialRefRecord(
+        credential_ref_id="legacy-secret-reference",
+        tenant_id="tenant-alpha",
+        display_name="Legacy credential",
+        provider="github",
+        external_ref="ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890",
+        created_at="2026-08-27T00:00:00+00:00",
+        updated_at="2026-08-27T00:00:00+00:00",
+    )
+    _stores._credential_ref_store.put(legacy)
+
+    cleared = source_client.put(
+        "/v1/credentials/legacy-secret-reference",
+        headers=ANALYST_HEADERS,
+        json={"external_ref": None},
+    )
+
+    assert cleared.status_code == 200
+    assert cleared.json()["external_ref"] is None
+    persisted = _stores._credential_ref_store.get("legacy-secret-reference", tenant_id="tenant-alpha")
+    assert persisted is not None
+    assert persisted.external_ref is None
+
+
 def test_runnable_source_rejects_missing_or_metadata_only_credential_reference(source_client: TestClient) -> None:
     missing_ref = source_client.post(
         "/v1/sources",
@@ -848,6 +876,118 @@ def test_connector_source_test_sanitizes_health_message_before_response_and_pers
     assert "secret-token" not in fetched.text
 
 
+def test_source_test_cannot_resurrect_source_deleted_during_health_probe(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Jira health race",
+            "kind": "connector.registry",
+            "connector_name": "jira",
+        },
+    )
+    source_id = created.json()["source_id"]
+    health_started = Event()
+    release_health = Event()
+    outcomes: dict[str, Any] = {}
+    from agent_bom.api.routes import sources as source_routes
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-alpha", api_key_name="replica"))
+
+    def _blocking_health(connector_name):
+        health_started.set()
+        assert release_health.wait(timeout=5)
+        return ConnectorStatus(
+            connector=connector_name,
+            state=ConnectorHealthState.HEALTHY,
+            message="Connected",
+        )
+
+    def _test_source() -> None:
+        try:
+            outcomes["test"] = asyncio.run(source_routes.test_source(request, source_id))
+        except HTTPException as exc:
+            outcomes["test_error"] = exc
+
+    monkeypatch.setattr("agent_bom.connectors.check_connector_health", _blocking_health)
+    test_thread = Thread(target=_test_source)
+    test_thread.start()
+    assert health_started.wait(timeout=5)
+    asyncio.run(source_routes.delete_source(request, source_id))
+    release_health.set()
+    test_thread.join(timeout=5)
+
+    assert outcomes["test_error"].status_code == 404
+    assert _stores._source_store.get(source_id) is None
+
+
+def test_source_run_cannot_enqueue_or_resurrect_after_concurrent_delete(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Repository run race",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://example.com/acme/repo"}},
+        },
+    )
+    source_id = created.json()["source_id"]
+    request_started = Event()
+    release_request = Event()
+    outcomes: dict[str, Any] = {}
+    enqueued: list[str] = []
+    from agent_bom.api.routes import sources as source_routes
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-alpha", api_key_name="replica"))
+    original_request = source_routes._request_for_source
+    first_call = True
+
+    def _blocking_request(source):
+        nonlocal first_call
+        request_body = original_request(source)
+        if first_call:
+            first_call = False
+            request_started.set()
+            assert release_request.wait(timeout=5)
+        return request_body
+
+    def _fake_enqueue(**kwargs):
+        enqueued.append(kwargs["source_id"])
+        return ScanJob(
+            job_id="stale-run-job",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-08-27T00:00:00+00:00",
+            request=kwargs["request_body"],
+        )
+
+    def _run_source() -> None:
+        try:
+            outcomes["run"] = asyncio.run(source_routes.run_source(request, source_id))
+        except HTTPException as exc:
+            outcomes["run_error"] = exc
+
+    monkeypatch.setattr(source_routes, "_request_for_source", _blocking_request)
+    monkeypatch.setattr(source_routes, "enqueue_scan_job", _fake_enqueue)
+    run_thread = Thread(target=_run_source)
+    run_thread.start()
+    assert request_started.wait(timeout=5)
+    asyncio.run(source_routes.delete_source(request, source_id))
+    release_request.set()
+    run_thread.join(timeout=5)
+
+    assert outcomes["run_error"].status_code == 404
+    assert enqueued == []
+    assert _stores._source_store.get(source_id) is None
+
+
 def test_source_delete_removes_linked_schedules_for_same_tenant_only(source_client: TestClient) -> None:
     created = source_client.post(
         "/v1/sources",
@@ -921,7 +1061,15 @@ def test_running_source_queues_source_linked_job(source_client: TestClient, monk
     from agent_bom.api.models import ScanJob
     from agent_bom.api.stores import _get_store, _jobs_put
 
-    def _fake_enqueue(*, tenant_id: str, triggered_by: str, request_body, source_id: str | None = None) -> ScanJob:
+    def _fake_enqueue(
+        *,
+        tenant_id: str,
+        triggered_by: str,
+        request_body,
+        source_id: str | None = None,
+        quota_guarded: bool = False,
+    ) -> ScanJob:
+        assert quota_guarded is True
         job = ScanJob(
             job_id="job-source-1",
             tenant_id=tenant_id,

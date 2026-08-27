@@ -266,8 +266,6 @@ def value_looks_like_secret(value: object) -> bool:
     if _contains_value_credential(text):
         return True
     lowered = text.lower()
-    if lowered.startswith(_REFERENCE_SAFE_PREFIXES):
-        return False
     if "://" in text:
         try:
             parsed = urlsplit(text)
@@ -277,6 +275,8 @@ def value_looks_like_secret(value: object) -> bool:
         # credential reference has no reason to preserve either.
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             return True
+        return False
+    if lowered.startswith(_REFERENCE_SAFE_PREFIXES):
         return False
     return _looks_sensitive_value(text)
 

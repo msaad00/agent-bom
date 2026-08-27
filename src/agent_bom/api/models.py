@@ -848,7 +848,7 @@ class CredentialRefRecord(BaseModel):
     display_name: str
     provider: str
     mode: str = "external_ref"
-    external_ref: str
+    external_ref: str | None
     description: str = ""
     owner: str = ""
     scopes: list[str] = Field(default_factory=list)

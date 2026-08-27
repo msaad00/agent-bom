@@ -307,34 +307,45 @@ def _enqueue_scheduled_scan(
 
     if source_id:
         from agent_bom.api.routes.sources import _request_for_source, _validate_credential_ref_for_tenant
-        from agent_bom.api.tenant_quota import tenant_quota_guard
-
-        source = _get_source_store().get(source_id)
-        if source is None or source.tenant_id != resolved_tenant_id:
-            raise RuntimeError("Scheduled source is unavailable in this tenant")
-        if not source.enabled:
-            raise RuntimeError("Scheduled source is disabled")
-        _validate_credential_ref_for_tenant(resolved_tenant_id, source)
-        request_body = _request_for_source(source)
-        job = enqueue_scan_job(
-            tenant_id=resolved_tenant_id,
-            triggered_by=f"scheduler:source:{source_id}",
-            request_body=request_body,
-            source_id=source_id,
-            schedule_id=schedule_id,
+        from agent_bom.api.scan_batches import scan_request_targets
+        from agent_bom.api.tenant_quota import (
+            enforce_active_scan_quota,
+            enforce_retained_jobs_quota,
+            tenant_quota_guard,
         )
-        # The job is already durable. Reload under the shared lifecycle lock so
-        # a concurrent delete cannot be undone by writing the stale source back.
-        with tenant_quota_guard(resolved_tenant_id):
-            current = _get_source_store().get(source_id)
-            if current is not None and current.tenant_id == resolved_tenant_id:
-                from agent_bom.api.pipeline import _now
 
-                current.last_run_at = _now()
-                current.last_run_status = job.status.value
-                current.last_job_id = job.job_id
-                current.updated_at = _now()
-                _get_source_store().put(current)
+        with tenant_quota_guard(resolved_tenant_id):
+            if schedule_id:
+                schedule = _get_schedule_store().get(schedule_id, tenant_id=resolved_tenant_id)
+                scheduled_source_id = str(schedule.scan_config.get("source_id") or "") if schedule is not None else ""
+                if schedule is None or not schedule.enabled or scheduled_source_id != source_id:
+                    raise RuntimeError("Scheduled source is no longer active in this tenant")
+            source = _get_source_store().get(source_id)
+            if source is None or source.tenant_id != resolved_tenant_id:
+                raise RuntimeError("Scheduled source is unavailable in this tenant")
+            if not source.enabled:
+                raise RuntimeError("Scheduled source is disabled")
+            _validate_credential_ref_for_tenant(resolved_tenant_id, source)
+            request_body = _request_for_source(source)
+            target_count = len(scan_request_targets(request_body))
+            attempted_jobs = target_count + 1 if target_count > 1 else 1
+            enforce_active_scan_quota(resolved_tenant_id, attempted=attempted_jobs)
+            enforce_retained_jobs_quota(resolved_tenant_id, attempted=attempted_jobs)
+            job = enqueue_scan_job(
+                tenant_id=resolved_tenant_id,
+                triggered_by=f"scheduler:source:{source_id}",
+                request_body=request_body,
+                source_id=source_id,
+                schedule_id=schedule_id,
+                quota_guarded=True,
+            )
+            from agent_bom.api.pipeline import _now
+
+            source.last_run_at = _now()
+            source.last_run_status = job.status.value
+            source.last_job_id = job.job_id
+            source.updated_at = _now()
+            _get_source_store().put(source)
         return job.job_id
 
     request_payload = {key: value for key, value in scan_config.items() if key in ScanRequest.model_fields}

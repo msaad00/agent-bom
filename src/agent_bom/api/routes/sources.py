@@ -23,9 +23,10 @@ from agent_bom.api.models import (
     SourceUpdate,
 )
 from agent_bom.api.routes.scan import _sanitize_scan_request_paths, enqueue_scan_job
+from agent_bom.api.scan_batches import scan_request_targets
 from agent_bom.api.stores import _get_credential_ref_store, _get_schedule_store, _get_source_store, _get_store
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
-from agent_bom.api.tenant_quota import tenant_quota_guard
+from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.security import sanitize_text
 
 router = APIRouter()
@@ -340,7 +341,8 @@ async def delete_source(request: Request, source_id: str) -> None:
 
 @router.post("/sources/{source_id}/test", tags=["sources"])
 async def test_source(request: Request, source_id: str) -> dict:
-    source = _source_for_request(request, source_id)
+    tenant_id = _tenant_id(request)
+    source = _source_for_request(request, source_id).model_copy(deep=True)
     _validate_credential_ref(request, source)
     message = "Configuration recorded"
     status = SourceStatus.CONFIGURED
@@ -370,13 +372,19 @@ async def test_source(request: Request, source_id: str) -> dict:
         message = "Direct scan source is valid and can be launched from the control plane."
         status = SourceStatus.CONFIGURED
 
-    source.last_tested_at = _now()
-    source.last_test_status = status.value
-    source.last_test_message = message
-    if source.enabled:
-        source.status = status
-    source.updated_at = _now()
-    _get_source_store().put(source)
+    with tenant_quota_guard(tenant_id):
+        current = _source_for_request(request, source_id)
+        if current != source:
+            raise HTTPException(status_code=409, detail="Source changed while the health check was running; retry")
+        _validate_credential_ref_for_tenant(tenant_id, current)
+        current.last_tested_at = _now()
+        current.last_test_status = status.value
+        current.last_test_message = message
+        if current.enabled:
+            current.status = status
+        current.updated_at = _now()
+        _get_source_store().put(current)
+        source = current
     log_action(
         "source.test",
         actor=_actor(request),
@@ -394,21 +402,37 @@ async def test_source(request: Request, source_id: str) -> dict:
 
 @router.post("/sources/{source_id}/run", tags=["sources"], status_code=202)
 async def run_source(request: Request, source_id: str) -> dict:
-    source = _source_for_request(request, source_id)
+    tenant_id = _tenant_id(request)
+    source = _source_for_request(request, source_id).model_copy(deep=True)
     if not source.enabled:
         raise HTTPException(status_code=409, detail="Source is disabled")
     _validate_credential_ref(request, source)
-    job = enqueue_scan_job(
-        tenant_id=source.tenant_id,
-        triggered_by=f"{_actor(request)}:source:{source.source_id}",
-        request_body=_request_for_source(source),
-        source_id=source.source_id,
-    )
-    source.last_run_at = _now()
-    source.last_run_status = job.status.value
-    source.last_job_id = job.job_id
-    source.updated_at = _now()
-    _get_source_store().put(source)
+    _request_for_source(source)
+    with tenant_quota_guard(tenant_id):
+        current = _source_for_request(request, source_id)
+        if current != source:
+            raise HTTPException(status_code=409, detail="Source changed while the scan was being prepared; retry")
+        if not current.enabled:
+            raise HTTPException(status_code=409, detail="Source is disabled")
+        _validate_credential_ref_for_tenant(tenant_id, current)
+        request_body = _request_for_source(current)
+        target_count = len(scan_request_targets(request_body))
+        attempted_jobs = target_count + 1 if target_count > 1 else 1
+        enforce_active_scan_quota(tenant_id, attempted=attempted_jobs)
+        enforce_retained_jobs_quota(tenant_id, attempted=attempted_jobs)
+        job = enqueue_scan_job(
+            tenant_id=current.tenant_id,
+            triggered_by=f"{_actor(request)}:source:{current.source_id}",
+            request_body=request_body,
+            source_id=current.source_id,
+            quota_guarded=True,
+        )
+        current.last_run_at = _now()
+        current.last_run_status = job.status.value
+        current.last_job_id = job.job_id
+        current.updated_at = _now()
+        _get_source_store().put(current)
+        source = current
     log_action(
         "source.run",
         actor=_actor(request),

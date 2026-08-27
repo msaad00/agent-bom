@@ -178,23 +178,30 @@ async def scheduler_loop(
                             schedule_id=schedule.schedule_id,
                             tenant_id=schedule.tenant_id,
                         )
-                        schedule.last_run = now_iso
-                        schedule.last_job_id = job_id
-
                         # Compute next run
                         next_run = parse_cron_next(schedule.cron_expression, now)
-                        schedule.next_run = next_run.isoformat() if next_run else None
-                        schedule.updated_at = now_iso
-                        if not uses_postgres_store:
-                            schedule_store.put(schedule)
-                        else:
-                            from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+                        from agent_bom.api.tenant_quota import tenant_quota_guard
 
-                            tenant_token = set_current_tenant(schedule.tenant_id)
+                        with tenant_quota_guard(schedule.tenant_id):
+                            tenant_token = None
+                            if uses_postgres_store:
+                                from agent_bom.api.postgres_store import set_current_tenant
+
+                                tenant_token = set_current_tenant(schedule.tenant_id)
                             try:
-                                schedule_store.put(schedule)
+                                current = schedule_store.get(schedule.schedule_id, tenant_id=schedule.tenant_id)
+                                if current is None or not current.enabled:
+                                    continue
+                                current.last_run = now_iso
+                                current.last_job_id = job_id
+                                current.next_run = next_run.isoformat() if next_run else None
+                                current.updated_at = now_iso
+                                schedule_store.put(current)
                             finally:
-                                reset_current_tenant(tenant_token)
+                                if tenant_token is not None:
+                                    from agent_bom.api.postgres_store import reset_current_tenant
+
+                                    reset_current_tenant(tenant_token)
                     except Exception:
                         logger.error("Failed to trigger scheduled scan: %s", schedule.name)
 

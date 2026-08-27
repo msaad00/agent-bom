@@ -62,6 +62,7 @@ def _validate_external_ref(external_ref: str | None) -> None:
 def _apply_update(credential: CredentialRefRecord, body: CredentialRefUpdate) -> CredentialRefRecord:
     credential = credential.model_copy(deep=True)
     nullable_lifecycle_fields = {
+        "external_ref",
         "last_rotated_at",
         "expires_at",
         "rotation_interval_days",

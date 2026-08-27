@@ -1319,8 +1319,6 @@ def enqueue_scan_job(
     targets = scan_request_targets(request_body)
 
     if len(targets) > 1:
-        if quota_guarded:
-            raise ValueError("quota_guarded admission only supports one scan job")
         batch_id = str(uuid.uuid4())
         now = _now()
         parent_job_id = str(uuid.uuid4())
@@ -1360,11 +1358,16 @@ def enqueue_scan_job(
         )
 
         attempted_jobs = len(child_jobs) + 1
-        with tenant_quota_guard(
-            tenant_id,
-            lambda: enforce_active_scan_quota(tenant_id, attempted=attempted_jobs),
-            lambda: enforce_retained_jobs_quota(tenant_id, attempted=attempted_jobs),
-        ):
+        admission = (
+            contextlib.nullcontext()
+            if quota_guarded
+            else tenant_quota_guard(
+                tenant_id,
+                lambda: enforce_active_scan_quota(tenant_id, attempted=attempted_jobs),
+                lambda: enforce_retained_jobs_quota(tenant_id, attempted=attempted_jobs),
+            )
+        )
+        with admission:
             store.put(parent)
             _jobs_put(parent.job_id, parent)
             for child in child_jobs:

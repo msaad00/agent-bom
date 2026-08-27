@@ -111,6 +111,14 @@ _overview_inflight: dict[str, _OverviewFlight] = {}
 _HUB_SNAPSHOT_MAX_ATTEMPTS = 3
 
 
+def _raise_hub_overview_unavailable() -> None:
+    raise HTTPException(
+        status_code=503,
+        detail="Overview evidence is temporarily unavailable; retry the request.",
+        headers={"Retry-After": "1"},
+    )
+
+
 def _overview_cache_ttl() -> float:
     raw = os.environ.get("AGENT_BOM_OVERVIEW_CACHE_TTL_SECONDS")
     if raw is None:
@@ -759,7 +767,12 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
     }
 
 
-def _hub_severity_snapshot(request: Request, *, revision: int | None = None) -> dict[str, int]:
+def _hub_severity_snapshot(
+    request: Request,
+    *,
+    revision: int | None = None,
+    strict: bool = False,
+) -> dict[str, int]:
     """Per-severity counts of hub-ingested findings (POST /v1/findings/bulk).
 
     Reads the CURRENT-STATE table (``hub_findings_current``) with the SAME
@@ -802,12 +815,16 @@ def _hub_severity_snapshot(request: Request, *, revision: int | None = None) -> 
             since = time_window.window_since_iso(time_window.normalize_window_days(None))
             counts = current_breakdown(tenant_id, origin="bulk_ingest", since=since, status="open") or {}
         else:
+            if strict:
+                _raise_hub_overview_unavailable()
             breakdown = getattr(store, "severity_breakdown", None)
             if not callable(breakdown):
                 return empty
             counts = breakdown(tenant_id) or {}
     except Exception:  # pragma: no cover - hub store optional
         _logger.debug("hub severity snapshot failed", exc_info=False)
+        if strict:
+            _raise_hub_overview_unavailable()
         return empty
     for key, value in counts.items():
         empty[str(key).lower()] = empty.get(str(key).lower(), 0) + int(value or 0)
@@ -816,7 +833,12 @@ def _hub_severity_snapshot(request: Request, *, revision: int | None = None) -> 
     return empty
 
 
-def _hub_kev_snapshot(request: Request, *, revision: int | None = None) -> int:
+def _hub_kev_snapshot(
+    request: Request,
+    *,
+    revision: int | None = None,
+    strict: bool = False,
+) -> int:
     """Count of hub-ingested findings flagged CISA-KEV (same window/origin as the
     severity snapshot).
 
@@ -840,18 +862,27 @@ def _hub_kev_snapshot(request: Request, *, revision: int | None = None) -> int:
         store = get_compliance_hub_store()
         counter = getattr(store, "current_kev_count", None)
         if not callable(counter):
+            if strict:
+                _raise_hub_overview_unavailable()
             return 0
         since = time_window.window_since_iso(time_window.normalize_window_days(None))
         count = int(counter(tenant_id, origin="bulk_ingest", since=since, status="open") or 0)
     except Exception:  # pragma: no cover - hub store optional
         _logger.debug("hub kev snapshot failed", exc_info=False)
+        if strict:
+            _raise_hub_overview_unavailable()
         return 0
     if revision is not None:
         hub_overview_cache.set_cached_kev(tenant_id, count, revision=revision)
     return count
 
 
-def _hub_failing_frameworks_snapshot(request: Request, *, revision: int | None = None) -> set[str]:
+def _hub_failing_frameworks_snapshot(
+    request: Request,
+    *,
+    revision: int | None = None,
+    strict: bool = False,
+) -> set[str]:
     """Distinct framework mappings on live high/critical hub findings.
 
     Uses the same tenant, bulk-ingest origin, open lifecycle, and default window
@@ -868,6 +899,8 @@ def _hub_failing_frameworks_snapshot(request: Request, *, revision: int | None =
     try:
         counter = getattr(get_compliance_hub_store(), "current_failing_framework_slug_counts", None)
         if not callable(counter):
+            if strict:
+                _raise_hub_overview_unavailable()
             return set()
         since = time_window.window_since_iso(time_window.normalize_window_days(None))
         counts = counter(tenant_id, origin="bulk_ingest", since=since, status="open") or {}
@@ -876,6 +909,8 @@ def _hub_failing_frameworks_snapshot(request: Request, *, revision: int | None =
             "hub framework snapshot failed: %s",
             sanitize_text(sanitize_error(exc, generic=True)),
         )
+        if strict:
+            _raise_hub_overview_unavailable()
         return set()
     from agent_bom.compliance_coverage import normalize_framework_slug, scored_framework_slugs
 
@@ -893,7 +928,12 @@ def _hub_failing_frameworks_snapshot(request: Request, *, revision: int | None =
 _HUB_TOP_RISK_LIMIT = 10
 
 
-def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> list[dict[str, Any]]:
+def _hub_top_risks(
+    request: Request,
+    *,
+    limit: int = _HUB_TOP_RISK_LIMIT,
+    strict: bool = False,
+) -> list[dict[str, Any]]:
     """Top hub-ingested findings for the exec top-risk strip (P0 #1).
 
     ``_estate_rollup`` walks scan jobs only, so a connector/bulk-ingested estate
@@ -924,6 +964,8 @@ def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> lis
         store = get_compliance_hub_store()
         list_current = getattr(store, "list_current_page", None)
         if not callable(list_current):
+            if strict:
+                _raise_hub_overview_unavailable()
             return []
         since = time_window.window_since_iso(time_window.normalize_window_days(None))
         page = list_current(
@@ -937,6 +979,8 @@ def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> lis
         )
     except Exception:  # pragma: no cover - hub store optional
         _logger.debug("hub top risks failed", exc_info=False)
+        if strict:
+            _raise_hub_overview_unavailable()
         return []
     rows = page[0] if isinstance(page, tuple) else page
     return [_finding_top_risk(row) for row in rows or [] if isinstance(row, dict)]
@@ -1172,10 +1216,10 @@ def _capture_hub_overview_snapshot(request: Request, hub_store: Any) -> _HubOver
     for _attempt in range(_HUB_SNAPSHOT_MAX_ATTEMPTS):
         revision = int(revision_reader(tenant_id))
         snapshot = _HubOverviewSnapshot(
-            severity=_hub_severity_snapshot(request, revision=revision),
-            failing_frameworks=_hub_failing_frameworks_snapshot(request, revision=revision),
-            kev=_hub_kev_snapshot(request, revision=revision),
-            top_risks=_hub_top_risks(request),
+            severity=_hub_severity_snapshot(request, revision=revision, strict=True),
+            failing_frameworks=_hub_failing_frameworks_snapshot(request, revision=revision, strict=True),
+            kev=_hub_kev_snapshot(request, revision=revision, strict=True),
+            top_risks=_hub_top_risks(request, strict=True),
             revision=revision,
         )
         if int(revision_reader(tenant_id)) == revision:

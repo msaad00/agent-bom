@@ -328,6 +328,51 @@ def test_unstable_hub_snapshot_fails_bounded_without_overview_cache_write(monkey
     assert writes == []
 
 
+@pytest.mark.parametrize("failed_component", ["severity", "frameworks", "kev", "top_risks"])
+def test_hub_snapshot_fails_closed_when_an_authoritative_component_is_unavailable(
+    monkeypatch,
+    failed_component,
+):
+    """A partial store outage must not be rendered or cached as truthful zero."""
+    from fastapi import HTTPException
+
+    class _PartiallyUnavailableStore:
+        def overview_evidence_revision(self, tenant_id: str) -> int:
+            assert tenant_id == "acme"
+            return 7
+
+        def current_severity_breakdown(self, *args, **kwargs):
+            if failed_component == "severity":
+                raise RuntimeError("severity unavailable")
+            return {"critical": 1}
+
+        def current_failing_framework_slug_counts(self, *args, **kwargs):
+            if failed_component == "frameworks":
+                raise RuntimeError("frameworks unavailable")
+            return {"soc2": 1}
+
+        def current_kev_count(self, *args, **kwargs):
+            if failed_component == "kev":
+                raise RuntimeError("kev unavailable")
+            return 1
+
+        def list_current_page(self, *args, **kwargs):
+            if failed_component == "top_risks":
+                raise RuntimeError("top risks unavailable")
+            return ([{"id": "live", "severity": "critical"}], None)
+
+    store = _PartiallyUnavailableStore()
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+
+    with pytest.raises(HTTPException) as raised:
+        overview._capture_hub_overview_snapshot(object(), store)
+
+    assert raised.value.status_code == 503
+    assert raised.value.detail == "Overview evidence is temporarily unavailable; retry the request."
+    assert raised.value.headers == {"Retry-After": "1"}
+
+
 def test_postgres_overview_revision_contract_is_shared_and_rls_scoped():
     source = (Path(__file__).parents[1] / "src/agent_bom/api/postgres_compliance_hub.py").read_text()
     assert "CREATE TABLE IF NOT EXISTS hub_overview_revisions" in source

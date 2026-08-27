@@ -1,5 +1,14 @@
 {
   "$defs": {
+    "SourceCredentialMode": {
+      "description": "How a source's credential metadata is represented.\n\nOlder clients used ``credential_ref`` as the mode spelling. Normalize it\nto the canonical reference mode so it cannot bypass the reference-presence\nand execution checks in the source routes.",
+      "enum": [
+        "none",
+        "reference"
+      ],
+      "title": "SourceCredentialMode",
+      "type": "string"
+    },
     "SourceKind": {
       "enum": [
         "scan.repo",
@@ -55,9 +64,8 @@
       "type": "string"
     },
     "credential_mode": {
-      "default": "none",
-      "title": "Credential Mode",
-      "type": "string"
+      "$ref": "#/$defs/SourceCredentialMode",
+      "default": "none"
     },
     "credential_ref": {
       "anyOf": [

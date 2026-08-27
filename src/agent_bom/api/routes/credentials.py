@@ -16,7 +16,7 @@ from agent_bom.api.models import (
     CredentialRefStatus,
     CredentialRefUpdate,
 )
-from agent_bom.api.stores import _get_credential_ref_store
+from agent_bom.api.stores import _get_credential_ref_store, _get_source_store
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 
 router = APIRouter()
@@ -189,9 +189,24 @@ async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
 @router.delete("/credentials/{credential_ref_id}", tags=["credentials"], status_code=204)
 async def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
     credential = _credential_for_request(request, credential_ref_id)
-    _get_credential_ref_store().delete(credential_ref_id, tenant_id=credential.tenant_id)
+    attached_sources = [
+        source
+        for source in _get_source_store().list_all(tenant_id=credential.tenant_id)
+        if source.credential_ref == credential_ref_id
+    ]
+    if attached_sources:
+        count = len(attached_sources)
+        noun = "source" if count == 1 else "sources"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Credential reference is attached to {count} {noun}; detach it before retiring the reference",
+        )
+    credential.enabled = False
+    credential.status = CredentialRefStatus.RETIRED
+    credential.updated_at = _now()
+    _get_credential_ref_store().put(credential)
     log_action(
-        "credential_ref.delete",
+        "credential_ref.retire",
         actor=_actor(request),
         resource=f"credential/{credential_ref_id}",
         tenant_id=credential.tenant_id,

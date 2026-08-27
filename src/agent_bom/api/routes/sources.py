@@ -16,6 +16,7 @@ from agent_bom.api.models import (
     CredentialRefStatus,
     ScanRequest,
     SourceCreate,
+    SourceCredentialMode,
     SourceKind,
     SourceRecord,
     SourceStatus,
@@ -75,12 +76,12 @@ def _source_for_request(request: Request, source_id: str) -> SourceRecord:
 
 
 def _validate_credential_ref(request: Request, source: SourceRecord) -> None:
-    credential_mode = (source.credential_mode or "none").strip().lower()
+    credential_mode = source.credential_mode or SourceCredentialMode.NONE
     if not source.credential_ref:
-        if credential_mode == "reference":
+        if credential_mode == SourceCredentialMode.REFERENCE:
             raise HTTPException(status_code=422, detail="credential_mode=reference requires credential_ref")
         return
-    if credential_mode != "reference":
+    if credential_mode != SourceCredentialMode.REFERENCE:
         raise HTTPException(status_code=422, detail="credential_ref requires credential_mode=reference")
     tenant_id = _tenant_id(request)
     credential = _get_credential_ref_store().get(source.credential_ref, tenant_id=tenant_id)
@@ -102,6 +103,7 @@ def _apply_update(source: SourceRecord, body: SourceUpdate) -> SourceRecord:
     # Stores may return a live object reference. Validate a detached candidate
     # so a rejected update cannot mutate the persisted source in place.
     source = source.model_copy(deep=True)
+    nullable_fields = {"connector_name", "credential_ref"}
     for field in (
         "display_name",
         "description",
@@ -113,8 +115,10 @@ def _apply_update(source: SourceRecord, body: SourceUpdate) -> SourceRecord:
         "status",
         "config",
     ):
+        if field not in body.model_fields_set:
+            continue
         value = getattr(body, field)
-        if value is not None:
+        if value is not None or field in nullable_fields:
             setattr(source, field, value)
     source.updated_at = _now()
     if not source.enabled:

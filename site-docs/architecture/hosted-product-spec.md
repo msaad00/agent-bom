@@ -55,6 +55,14 @@ Every supported intake path should map to one of these `Source.kind` values:
 That keeps the UI model, job model, and audit model aligned even when the
 collection paths differ.
 
+The default named-connector catalog is Jira, ServiceNow, and Slack. The
+Connections UI registers those under the generic `connector.cloud_read_only`
+kind because the current connector registry does not expose a trustworthy
+registry/warehouse family discriminator. The `connector.registry` and
+`connector.warehouse` API values remain compatibility points for explicitly
+installed connectors; their names alone do not prove that such a connector is
+available.
+
 ## Backend model and storage expectations
 
 The control plane should persist these entities in the transactional backend
@@ -116,7 +124,7 @@ clarity, and source-to-evidence provenance.
 | `PUT /v1/sources/{source_id}` | update metadata, scope, labels, ownership |
 | `DELETE /v1/sources/{source_id}` | disable or remove a source |
 | `POST /v1/sources/{source_id}/test` | validate stored scan configuration and connector health |
-| `POST /v1/sources/{source_id}/run` | trigger a job now |
+| `POST /v1/sources/{source_id}/run` | trigger a job for direct-scan, artifact-import, or named-connector kinds; push/runtime kinds return `409` |
 | `GET /v1/sources/{source_id}/jobs` | show source-linked job history |
 
 Source-linked evidence is currently reached through the job records returned by
@@ -130,13 +138,18 @@ no separate source-evidence endpoint.
 | `POST /v1/credentials` | create a credential reference |
 | `GET /v1/credentials` | list references without exposing secrets |
 | `GET /v1/credentials/{credential_ref_id}` | show status, provider, scope, last validation |
+| `PUT /v1/credentials/{credential_ref_id}` | update reference metadata and lifecycle status |
 | `POST /v1/credentials/{credential_ref_id}/test` | validate reference shape and, for supported providers, the control plane's default identity reachability |
-| `DELETE /v1/credentials/{credential_ref_id}` | retire the reference |
+| `DELETE /v1/credentials/{credential_ref_id}` | retire an unreferenced record; returns `409` until attached sources are detached |
 
 Credential references are metadata records, not executable secret bindings.
 The test route does not assume a referenced role or resolve secret material.
 Runnable sources therefore use brokered cloud connections or connector
 credentials configured on the self-hosted control plane.
+`credential_mode` is canonicalized to `none` or `reference` (`credential_ref`
+is accepted as a legacy alias for `reference`). An explicit `null` on
+`SourceUpdate.credential_ref` detaches a reference; omitted fields remain
+unchanged.
 
 ## Worker and connector contract
 

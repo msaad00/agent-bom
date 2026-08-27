@@ -139,6 +139,14 @@ references instead of silently launching without them. Use a brokered cloud
 connection or configure the named connector on the self-hosted control plane
 when a scan needs credentials.
 
+Source credential modes are limited to `none` and `reference`; the legacy
+`credential_ref` spelling normalizes to `reference`. Detach a source with
+`PUT /v1/sources/{source_id}` and an explicit
+`{"credential_mode":"none","credential_ref":null}` before retiring the
+reference. The credential delete route returns `409` while any tenant source
+still points at it, then preserves the unreferenced record with `retired`
+status for audit history.
+
 ### Audit chain vs policy audit
 
 These are separate mechanisms:

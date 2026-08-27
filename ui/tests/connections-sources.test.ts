@@ -5,6 +5,7 @@ import {
   buildUnifiedRows,
   categoryCounts,
   filterUnifiedRows,
+  sourceSupportsDirectRun,
   sourceKindCategory,
   statusOptions,
 } from "@/lib/connections-sources";
@@ -57,6 +58,14 @@ function source(overrides: Partial<SourceRecord> = {}): SourceRecord {
 }
 
 describe("connections-sources merge model", () => {
+  it("keeps passive push/runtime sources outside the direct-run contract", () => {
+    expect(sourceSupportsDirectRun("scan.repo")).toBe(true);
+    expect(sourceSupportsDirectRun("connector.cloud_read_only")).toBe(true);
+    expect(sourceSupportsDirectRun("ingest.artifact_import")).toBe(true);
+    expect(sourceSupportsDirectRun("ingest.trace_push")).toBe(false);
+    expect(sourceSupportsDirectRun("runtime.gateway")).toBe(false);
+  });
+
   it("maps a cloud connection to a cloud-origin row with schedule + provider", () => {
     const rows = buildUnifiedRows([cloud()], []);
     expect(rows).toHaveLength(1);

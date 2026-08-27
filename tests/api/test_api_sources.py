@@ -9,7 +9,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.credential_store import InMemoryCredentialRefStore
-from agent_bom.api.models import SourceKind, SourceRecord
+from agent_bom.api.models import ScanJob, SourceKind, SourceRecord
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore
@@ -33,6 +33,11 @@ VIEWER_HEADERS = {
 }
 OTHER_TENANT_HEADERS = {
     "X-Agent-Bom-Role": "viewer",
+    "X-Agent-Bom-Tenant-ID": "tenant-beta",
+    "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
+}
+OTHER_TENANT_ANALYST_HEADERS = {
+    "X-Agent-Bom-Role": "analyst",
     "X-Agent-Bom-Tenant-ID": "tenant-beta",
     "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
 }
@@ -241,7 +246,10 @@ def test_credential_reference_crud_and_tenant_isolation(source_client: TestClien
 
     deleted = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
     assert deleted.status_code == 204
-    assert source_client.get("/v1/credentials", headers=VIEWER_HEADERS).json()["count"] == 0
+    retired = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=VIEWER_HEADERS)
+    assert retired.status_code == 200
+    assert retired.json()["status"] == "retired"
+    assert retired.json()["enabled"] is False
 
 
 def test_credential_rotation_posture_flags_stale_and_expiring_refs(source_client: TestClient) -> None:
@@ -374,7 +382,7 @@ def test_runnable_source_rejects_missing_or_metadata_only_credential_reference(s
         json={
             "display_name": "AWS source",
             "kind": "scan.cloud",
-            "credential_mode": "reference",
+            "credential_mode": " credential_ref ",
             "credential_ref": credential_ref_id,
             "config": {"scan_request": {"connectors": ["jira"], "format": "json"}},
         },
@@ -384,6 +392,62 @@ def test_runnable_source_rejects_missing_or_metadata_only_credential_reference(s
         "credential_ref is governance metadata and is not an executable credential binding; "
         "use a brokered cloud connection or server-configured connector credentials"
     )
+
+
+def test_source_credential_mode_is_canonical_and_cannot_bypass_reference_validation(
+    source_client: TestClient,
+) -> None:
+    aliased_reference = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Legacy credential mode",
+            "kind": "connector.cloud_read_only",
+            "connector_name": "jira",
+            "credential_mode": " credential_ref ",
+        },
+    )
+    assert aliased_reference.status_code == 422
+    assert aliased_reference.json()["detail"] == "credential_mode=reference requires credential_ref"
+
+    unknown_mode = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unknown credential mode",
+            "kind": "connector.cloud_read_only",
+            "connector_name": "jira",
+            "credential_mode": "secret_manager",
+        },
+    )
+    assert unknown_mode.status_code == 422
+
+
+def test_source_credential_reference_rejects_cross_tenant_attachment(source_client: TestClient) -> None:
+    credential = source_client.post(
+        "/v1/credentials",
+        headers=OTHER_TENANT_ANALYST_HEADERS,
+        json={
+            "display_name": "Tenant beta producer",
+            "provider": "generic",
+            "external_ref": "workload-identity/tenant-beta",
+            "tenant_id": "tenant-beta",
+        },
+    )
+    assert credential.status_code == 201
+
+    source = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Tenant alpha trace producer",
+            "kind": "ingest.trace_push",
+            "credential_mode": "reference",
+            "credential_ref": credential.json()["credential_ref_id"],
+        },
+    )
+    assert source.status_code == 409
+    assert source.json()["detail"] == "Source credential_ref is not available in this tenant"
 
 
 def test_source_rejects_reference_mode_without_reference(source_client: TestClient) -> None:
@@ -422,13 +486,99 @@ def test_push_source_may_retain_metadata_only_credential_reference(source_client
         json={
             "display_name": "Trace producer",
             "kind": "ingest.trace_push",
-            "credential_mode": "reference",
+            "credential_mode": " credential_ref ",
             "credential_ref": credential_ref_id,
         },
     )
 
     assert create.status_code == 201
+    assert create.json()["credential_mode"] == "reference"
     assert create.json()["credential_ref"] == credential_ref_id
+
+    referenced_delete = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
+    assert referenced_delete.status_code == 409
+    assert referenced_delete.json()["detail"] == (
+        "Credential reference is attached to 1 source; detach it before retiring the reference"
+    )
+
+    source_id = create.json()["source_id"]
+    cleared = source_client.put(
+        f"/v1/sources/{source_id}",
+        headers=ANALYST_HEADERS,
+        json={"credential_mode": "none", "credential_ref": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["credential_mode"] == "none"
+    assert cleared.json()["credential_ref"] is None
+
+    retired = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
+    assert retired.status_code == 204
+    credential_after_retire = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=VIEWER_HEADERS)
+    assert credential_after_retire.status_code == 200
+    assert credential_after_retire.json()["status"] == "retired"
+
+
+def test_legacy_runnable_source_can_clear_reference_before_test_and_run(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Legacy Jira credential",
+            "provider": "jira",
+            "external_ref": "vault/jira/legacy",
+        },
+    )
+    credential_ref_id = credential.json()["credential_ref_id"]
+    legacy = SourceRecord(
+        source_id="legacy-jira-source",
+        tenant_id="tenant-alpha",
+        display_name="Legacy Jira source",
+        kind=SourceKind.CONNECTOR_CLOUD_READ_ONLY,
+        connector_name="jira",
+        credential_mode="credential_ref",
+        credential_ref=credential_ref_id,
+    )
+    _stores._source_store.put(legacy)
+
+    blocked_test = source_client.post(f"/v1/sources/{legacy.source_id}/test", headers=ANALYST_HEADERS)
+    blocked_run = source_client.post(f"/v1/sources/{legacy.source_id}/run", headers=ANALYST_HEADERS)
+    assert blocked_test.status_code == 409
+    assert blocked_run.status_code == 409
+
+    cleared = source_client.put(
+        f"/v1/sources/{legacy.source_id}",
+        headers=ANALYST_HEADERS,
+        json={"credential_mode": "none", "credential_ref": None, "description": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["credential_ref"] is None
+    assert cleared.json()["description"] == ""
+
+    monkeypatch.setattr(
+        "agent_bom.connectors.check_connector_health",
+        lambda connector_name: ConnectorStatus(
+            connector=connector_name,
+            state=ConnectorHealthState.HEALTHY,
+            message="Connector can authenticate",
+            api_version=None,
+        ),
+    )
+    assert source_client.post(f"/v1/sources/{legacy.source_id}/test", headers=ANALYST_HEADERS).status_code == 200
+    monkeypatch.setattr(
+        "agent_bom.api.routes.sources.enqueue_scan_job",
+        lambda **kwargs: ScanJob(
+            job_id="legacy-source-job",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-08-27T00:00:00+00:00",
+            request=kwargs["request_body"],
+        ),
+    )
+    assert source_client.post(f"/v1/sources/{legacy.source_id}/run", headers=ANALYST_HEADERS).status_code == 202
 
 
 def test_connector_source_test_updates_health(source_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

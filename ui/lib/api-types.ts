@@ -2191,6 +2191,7 @@ export type SourceKind =
   | "runtime.gateway";
 
 export type SourceStatus = "configured" | "healthy" | "degraded" | "disabled";
+export type SourceCredentialMode = "none" | "reference";
 
 export interface SourceRecord {
   source_id: string;
@@ -2200,7 +2201,7 @@ export interface SourceRecord {
   description: string;
   owner: string;
   connector_name: string | null;
-  credential_mode: string;
+  credential_mode: SourceCredentialMode;
   credential_ref: string | null;
   enabled: boolean;
   status: SourceStatus;
@@ -2265,7 +2266,7 @@ export interface SourceCreateRequest {
   description?: string | undefined;
   owner?: string | undefined;
   connector_name?: string | null | undefined;
-  credential_mode?: string | undefined;
+  credential_mode?: SourceCredentialMode | undefined;
   credential_ref?: string | null | undefined;
   enabled?: boolean | undefined;
   config?: Record<string, unknown> | undefined;
@@ -2277,7 +2278,7 @@ export interface SourceUpdateRequest {
   description?: string | undefined;
   owner?: string | undefined;
   connector_name?: string | null | undefined;
-  credential_mode?: string | undefined;
+  credential_mode?: SourceCredentialMode | null | undefined;
   credential_ref?: string | null | undefined;
   enabled?: boolean | undefined;
   status?: SourceStatus | undefined;

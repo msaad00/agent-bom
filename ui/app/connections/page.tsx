@@ -29,9 +29,7 @@ import {
   GitBranch,
   Container,
   FileCode,
-  Database,
   Bot,
-  Package,
   Loader2,
   Activity,
   CalendarClock,
@@ -62,6 +60,7 @@ import {
   categoryCounts,
   filterUnifiedRows,
   SOURCE_CATEGORY_OPTIONS,
+  sourceSupportsDirectRun,
   statusOptions,
   type SourceCategory,
   type UnifiedSourceRow,
@@ -346,21 +345,9 @@ const SOURCE_KIND_OPTIONS: KindOption[] = [
   },
   {
     value: "connector.cloud_read_only",
-    label: "Cloud API connector",
+    label: "SaaS connector",
     mode: "Read-only connector",
-    detail: "Use a named backend connector with credentials configured on the self-hosted control plane.",
-  },
-  {
-    value: "connector.registry",
-    label: "Registry / package connector",
-    mode: "Read-only connector",
-    detail: "Attach registry-style connectors and run them as first-class sources.",
-  },
-  {
-    value: "connector.warehouse",
-    label: "Warehouse / lake connector",
-    mode: "Read-only connector",
-    detail: "Consume inventory or security-lake evidence from the customer’s existing data platform.",
+    detail: "Run one installed named connector using credentials configured on the self-hosted control plane.",
   },
   {
     value: "ingest.fleet_sync",
@@ -573,13 +560,13 @@ const CONNECTOR_CATALOG: CatalogConnector[] = [
     action: { type: "source", sourceKind: "scan.iac" },
   },
   {
-    id: "registry",
-    category: "code",
-    label: "Package registry",
-    tagline: "Read-only registry connector",
-    icon: Package,
-    keywords: "npm pypi maven artifactory ghcr registry connector",
-    action: { type: "source", sourceKind: "connector.registry" },
+    id: "saas-connector",
+    category: "data",
+    label: "SaaS connector",
+    tagline: "Installed Jira, ServiceNow, or Slack connector",
+    icon: Plug,
+    keywords: "jira servicenow slack saas automation connector",
+    action: { type: "source", sourceKind: "connector.cloud_read_only" },
   },
   {
     id: "mcp",
@@ -599,15 +586,6 @@ const CONNECTOR_CATALOG: CatalogConnector[] = [
     icon: Bot,
     keywords: "claude cursor mcp server skills cortex openclaw agent",
     action: { type: "coding-agent" },
-  },
-  {
-    id: "warehouse",
-    category: "data",
-    label: "Warehouse & lake",
-    tagline: "Snowflake, BigQuery read-only",
-    icon: Database,
-    keywords: "snowflake bigquery redshift databricks dspm data lake connector",
-    action: { type: "source", sourceKind: "connector.warehouse" },
   },
 ];
 
@@ -3199,10 +3177,16 @@ function SourceDrawer({
   const mode = option?.mode ?? "Direct scan";
   const isBusy = busySourceId === source.source_id;
   const schedulable = SCHEDULABLE_KINDS.has(source.kind);
+  const runnable = sourceSupportsDirectRun(source.kind);
+  const credentialContract =
+    source.credential_mode === "reference"
+      ? "Metadata only (not executable)"
+      : "Server configured or not required";
 
   const meta: [string, React.ReactNode][] = [
     ["Owner", source.owner || "Unassigned"],
-    ["Credential mode", source.credential_mode],
+    ["Credential contract", credentialContract],
+    ["Credential reference", source.credential_ref ? formatShortId(source.credential_ref) : "—"],
     ["Connector", source.connector_name || "—"],
     ["Enabled", source.enabled ? "Enabled" : "Disabled"],
     ["Last tested", formatWhen(source.last_tested_at)],
@@ -3230,7 +3214,12 @@ function SourceDrawer({
           </button>
           <button
             onClick={() => onSourceAction(source.source_id, "run")}
-            disabled={isBusy || !source.enabled || !canRunScans}
+            disabled={isBusy || !source.enabled || !canRunScans || !runnable}
+            title={
+              !runnable
+                ? "Push and runtime sources receive evidence externally and cannot run directly."
+                : undefined
+            }
             className="rounded-lg bg-[color:var(--accent)] px-3 py-2 text-xs font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             Run now

@@ -803,7 +803,7 @@ describe("ConnectionsPage — Connect segment", () => {
 
     // Non-cloud surfaces register in-hub (a button that jumps to the Sources tab).
     expect(screen.getByRole("button", { name: "Register Repositories" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Register Warehouse & lake" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Register SaaS connector" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Set up coding agent" })).toBeInTheDocument();
   });
 
@@ -857,7 +857,7 @@ describe("ConnectionsPage — Connect segment", () => {
     });
     apiMock.createSource.mockResolvedValue({
       ...SOURCE_RECORD,
-      kind: "connector.registry",
+      kind: "connector.cloud_read_only",
       connector_name: "jira",
       credential_mode: "none",
     });
@@ -868,9 +868,9 @@ describe("ConnectionsPage — Connect segment", () => {
     });
     const kind = screen.getByRole("combobox", { name: "Kind" });
     fireEvent.change(kind, {
-      target: { value: "connector.registry" },
+      target: { value: "connector.cloud_read_only" },
     });
-    await waitFor(() => expect(kind).toHaveValue("connector.registry"));
+    await waitFor(() => expect(kind).toHaveValue("connector.cloud_read_only"));
     const connector = await screen.findByRole("combobox", { name: "Connector name" });
     await screen.findByRole("option", { name: "jira" });
     fireEvent.change(connector, {
@@ -883,12 +883,22 @@ describe("ConnectionsPage — Connect segment", () => {
       expect(apiMock.createSource).toHaveBeenCalledWith(
         expect.objectContaining({
           display_name: "Jira evidence",
-          kind: "connector.registry",
+          kind: "connector.cloud_read_only",
           connector_name: "jira",
           credential_mode: "none",
         }),
       ),
     );
+  });
+
+  it("does not advertise unshipped registry or warehouse connector families", async () => {
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    expect(screen.getByRole("button", { name: "Register SaaS connector" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Register Package registry" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Register Warehouse & lake" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Snowflake, BigQuery read-only/i)).not.toBeInTheDocument();
   });
 
   it("filters the gallery by category and free-text search", async () => {
@@ -897,7 +907,7 @@ describe("ConnectionsPage — Connect segment", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
     expect(screen.queryByRole("button", { name: "Connect Amazon Web Services" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Register Warehouse & lake" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Register SaaS connector" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /^All/ }));
     fireEvent.change(screen.getByRole("searchbox", { name: "Search connectors" }), {
@@ -1374,6 +1384,35 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     expect(deleteButton).toBeDisabled();
     fireEvent.click(deleteButton);
     expect(apiMock.deleteSource).not.toHaveBeenCalled();
+  });
+
+  it("does not offer Run now for push-driven or runtime sources", async () => {
+    apiMock.listSources.mockResolvedValue({
+      schema_version: "sources.v1",
+      tenant_id: "tenant-acme",
+      count: 1,
+      sources: [
+        {
+          ...SOURCE_RECORD,
+          source_id: "src-push",
+          display_name: "Trace producer",
+          kind: "ingest.trace_push",
+          credential_mode: "reference",
+          credential_ref: "producer-workload",
+        },
+      ],
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Trace producer")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Trace producer" }));
+
+    expect(screen.getByText("Metadata only (not executable)")).toBeInTheDocument();
+    const run = screen.getByRole("button", { name: "Run now" });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute("title", "Push and runtime sources receive evidence externally and cannot run directly.");
+    fireEvent.click(run);
+    expect(apiMock.runSource).not.toHaveBeenCalled();
   });
 
   it("enables source deletion only for an Admin", async () => {

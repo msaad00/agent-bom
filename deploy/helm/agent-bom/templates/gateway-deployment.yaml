@@ -1,14 +1,14 @@
 {{- $profileEnforcement := .Values.gateway.profileEnforcement | default "off" -}}
 {{- $gatewayEnvFrom := .Values.gateway.envFrom -}}
 {{- $gatewayPersistence := .Values.gateway.persistence | default dict -}}
-{{- $gatewayRuntimeReplicas := int (.Values.gateway.replicas | default 2) -}}
+{{- $gatewayRuntimeReplicas := int (.Values.gateway.replicas | default 1) -}}
 {{- if or (.Values.gateway.autoscaling.enabled | default false) (.Values.gateway.autoscaling.keda.enabled | default false) -}}
 {{- $gatewayRuntimeReplicas = int (.Values.gateway.autoscaling.maxReplicas | default 2) -}}
 {{- end -}}
-{{- if and .Values.gateway.enabled (not (.Values.gateway.controlPlaneDiscovery.url | default "")) (not ($gatewayPersistence.enabled | default false)) -}}
-{{- fail "local-only gateway audit requires gateway.persistence.enabled=true and a restart-stable PVC" -}}
+{{- if and .Values.gateway.enabled (not ($gatewayPersistence.enabled | default false)) -}}
+{{- fail "gateway audit requires gateway.persistence.enabled=true and a restart-stable PVC, including control-plane-connected deployments" -}}
 {{- end -}}
-{{- if and .Values.gateway.enabled ($gatewayPersistence.enabled | default false) (ne (int (.Values.gateway.replicas | default 2)) 1) -}}
+{{- if and .Values.gateway.enabled ($gatewayPersistence.enabled | default false) (ne (int (.Values.gateway.replicas | default 1)) 1) -}}
 {{- fail "gateway persistence requires gateway.replicas=1 because durable delivery claims are process-owned" -}}
 {{- end -}}
 {{- if and .Values.gateway.enabled ($gatewayPersistence.enabled | default false) (or (.Values.gateway.autoscaling.enabled | default false) (.Values.gateway.autoscaling.keda.enabled | default false)) -}}
@@ -30,7 +30,7 @@ metadata:
     {{- include "agent-bom.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
 spec:
-  replicas: {{ .Values.gateway.replicas | default 2 }}
+  replicas: {{ .Values.gateway.replicas | default 1 }}
   {{- if ($gatewayPersistence.enabled | default false) }}
   strategy:
     type: Recreate

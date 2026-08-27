@@ -15,6 +15,12 @@
 
 gateway:
   enabled: true
+  replicas: 1
+  persistence:
+    enabled: true
+    # Provision this PVC before installing the example. It retains mandatory
+    # gateway audit outcomes across control-plane outages and pod reschedules.
+    existingClaim: agent-bom-gateway-audit
   env:
     - name: AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON
       value: |

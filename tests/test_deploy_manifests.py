@@ -579,7 +579,7 @@ def test_helm_gateway_persistent_audit_backlog_is_single_replica_and_pvc_bound()
 
 
 @pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
-def test_helm_gateway_renders_runtime_replica_truth_and_recreate_persistence() -> None:
+def test_helm_gateway_renders_restart_stable_single_writer_persistence() -> None:
     def _render(*sets: str) -> list[dict]:
         args = ["helm", "template", "abom", str(HELM_DIR)]
         for item in sets:
@@ -593,36 +593,13 @@ def test_helm_gateway_renders_runtime_replica_truth_and_recreate_persistence() -
             doc for doc in documents if doc.get("kind") == "Deployment" and doc.get("metadata", {}).get("name", "").endswith("-gateway")
         )
 
-    replicated = _gateway_deployment(
-        _render(
-            "gateway.enabled=true",
-            "gateway.replicas=2",
-            "gateway.controlPlaneDiscovery.url=https://control.example.test",
-            "gateway.runtimeRateLimitPerTenantPerMinute=10",
-        )
-    )
-    replicated_env = {item["name"]: item["value"] for item in replicated["spec"]["template"]["spec"]["containers"][0]["env"]}
-    assert replicated_env["AGENT_BOM_GATEWAY_REPLICAS"] == "2"
-    assert "strategy" not in replicated["spec"]
-
-    autoscaled = _gateway_deployment(
-        _render(
-            "gateway.enabled=true",
-            "gateway.autoscaling.enabled=true",
-            "gateway.autoscaling.maxReplicas=7",
-            "gateway.controlPlaneDiscovery.url=https://control.example.test",
-            "gateway.runtimeRateLimitPerTenantPerMinute=10",
-        )
-    )
-    autoscaled_env = {item["name"]: item["value"] for item in autoscaled["spec"]["template"]["spec"]["containers"][0]["env"]}
-    assert autoscaled_env["AGENT_BOM_GATEWAY_REPLICAS"] == "7"
-
     persistent = _gateway_deployment(
         _render(
             "gateway.enabled=true",
             "gateway.replicas=1",
             "gateway.persistence.enabled=true",
             "gateway.persistence.existingClaim=gateway-audit",
+            "gateway.controlPlaneDiscovery.url=https://control.example.test",
         )
     )
     assert persistent["spec"]["strategy"] == {"type": "Recreate"}
@@ -648,7 +625,30 @@ def test_helm_gateway_rejects_local_only_ephemeral_audit_state() -> None:
     )
 
     assert result.returncode != 0
-    assert "local-only gateway audit requires gateway.persistence.enabled=true" in result.stderr
+    assert "gateway audit requires gateway.persistence.enabled=true" in result.stderr
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_helm_gateway_rejects_remote_connected_ephemeral_audit_state() -> None:
+    result = subprocess.run(
+        [
+            "helm",
+            "template",
+            "abom",
+            str(HELM_DIR),
+            "--set",
+            "gateway.enabled=true",
+            "--set",
+            "gateway.controlPlaneDiscovery.url=https://control.example.test",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "gateway audit requires gateway.persistence.enabled=true" in result.stderr
 
 
 @pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")

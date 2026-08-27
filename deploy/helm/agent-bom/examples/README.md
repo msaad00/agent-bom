@@ -14,13 +14,13 @@ product split.
 | `enterprise-demo` | `eks-mcp-pilot-values.yaml` + `eks-enterprise-demo-overlay.yaml` | Focused pilot plus scheduled AWS estate inventory (IRSA, `AGENT_BOM_AWS_INVENTORY=1`) |
 | `byo-postgres` | `byo-postgres-values.yaml` | Overlay for operator-owned Postgres-compatible databases, including Snowflake Postgres candidates |
 | `production` | `eks-production-values.yaml` | Postgres-backed production EKS rollout with autoscaling, backup, and ExternalSecrets |
-| `keda-autoscaling` | `eks-production-values.yaml` + `eks-keda-values.yaml` + `gateway-upstreams.example.yaml` | Production overlay with KEDA-backed API and gateway autoscaling |
+| `keda-autoscaling` | `eks-production-values.yaml` + `eks-keda-values.yaml` | Production overlay with KEDA-backed control-plane API autoscaling |
 | `eks-vanilla` | `eks-vanilla-values.yaml` | Postgres-backed production EKS rollout with ALB, IRSA, Kubernetes Secrets, and no service mesh / ESO / cert-manager requirement |
 | `mesh-hardening` | `eks-istio-kyverno-values.yaml` | Overlay for Istio mTLS/authz and Kyverno policy-controller packaging |
 | `collector-mtls` | `collector-mtls-values.yaml` | Scanner fleet-sync push with client TLS + delegated control-plane mTLS posture env |
 | `oidc-discovery-shim` | `eks-mcp-pilot-values.yaml` + `gateway-upstreams.example.yaml` + `oidc-discovery-shim-values.yaml` | Gateway-hosted `/.well-known/openid-configuration` for legacy IdPs (MCP OAuth interop) |
 | `snowflake-backend` | `eks-snowflake-values.yaml` | Overlay for Snowflake governance and selected store parity, not a claim of full control-plane replacement |
-| `gateway-runtime` | `eks-mcp-pilot-values.yaml` + `gateway-upstreams.example.yaml` | Focused pilot plus central gateway rendering for shared MCP relay/policy |
+| `gateway-runtime` | `eks-mcp-pilot-values.yaml` + `gateway-upstreams.example.yaml` | Focused pilot plus one PVC-backed gateway writer for shared MCP relay/policy; pre-create the `agent-bom-gateway-audit` claim |
 | `control-plane-identity` | `control-plane-identity-values.yaml` | Keyless control-plane cloud identity (EKS IRSA / EC2-ECS instance role / AKS + GKE workload identity) that assumes read-only connect roles — zero static keys. See `docs/DEPLOY_PLATFORM.md` "Connect your cloud (zero keys)" |
 
 ## Validate the shipped profiles

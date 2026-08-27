@@ -3603,48 +3603,53 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             logger.warning("gateway upstream circuit open for %s", upstream.name)
             record_gateway_relay(upstream.name, "circuit_open")
             retry_after_header = str(int(exc.retry_after_seconds))
-            if settings.audit_sink is not None:
-                await settings.audit_sink(
-                    {
-                        "action": "gateway.upstream_circuit_open",
-                        "upstream": upstream.name,
-                        "tenant_id": tenant_id,
-                        "reason": "circuit_open",
-                        "retry_after_seconds": int(exc.retry_after_seconds),
-                    }
-                )
+            await _audit_after_forward(
+                {
+                    "action": "gateway.upstream_circuit_open",
+                    "upstream": upstream.name,
+                    "tenant_id": tenant_id,
+                    "reason": "circuit_open",
+                    "retry_after_seconds": int(exc.retry_after_seconds),
+                }
+            )
             raise HTTPException(
                 status_code=503,
                 detail="upstream circuit open",
-                headers={"Retry-After": retry_after_header},
+                headers=_post_forward_headers({"Retry-After": retry_after_header}),
             ) from exc
         except asyncio.TimeoutError as exc:
             logger.warning("gateway upstream call timed out for %s", upstream.name)
             record_gateway_relay(upstream.name, "upstream_timeout")
-            if settings.audit_sink is not None:
-                await settings.audit_sink(
-                    {
-                        "action": "gateway.upstream_error",
-                        "upstream": upstream.name,
-                        "tenant_id": tenant_id,
-                        "error": "timeout",
-                        "reason": "timeout",
-                    }
-                )
-            raise HTTPException(status_code=502, detail="upstream error: timeout") from exc
+            await _audit_after_forward(
+                {
+                    "action": "gateway.upstream_error",
+                    "upstream": upstream.name,
+                    "tenant_id": tenant_id,
+                    "error": "timeout",
+                    "reason": "timeout",
+                }
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="upstream error: timeout",
+                headers=_post_forward_headers({}),
+            ) from exc
         except Exception as exc:  # noqa: BLE001
             logger.error("gateway upstream call failed for %s", upstream.name)
             record_gateway_relay(upstream.name, "upstream_error")
-            if settings.audit_sink is not None:
-                await settings.audit_sink(
-                    {
-                        "action": "gateway.upstream_error",
-                        "upstream": upstream.name,
-                        "tenant_id": tenant_id,
-                        "error": _public_gateway_error(exc),
-                    }
-                )
-            raise HTTPException(status_code=502, detail=f"upstream error: {_public_gateway_error(exc)}") from exc
+            await _audit_after_forward(
+                {
+                    "action": "gateway.upstream_error",
+                    "upstream": upstream.name,
+                    "tenant_id": tenant_id,
+                    "error": _public_gateway_error(exc),
+                }
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"upstream error: {_public_gateway_error(exc)}",
+                headers=_post_forward_headers({}),
+            ) from exc
 
         record_gateway_relay(upstream.name, "forwarded")
 

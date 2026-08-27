@@ -26,6 +26,7 @@ from agent_bom.runtime.gateway_events import (
     GATEWAY_BLOCKED_EVENT_TYPES,
     GATEWAY_DATA_FILTER_EVENT_TYPES,
 )
+from agent_bom.runtime.profile_resolution import classify_profile_shadow_reason
 from agent_bom.storage.base import BackendKind, StorageSchema, TableSchema
 
 GATEWAY_ACTIVITY_SCHEMA_VERSION = 1
@@ -380,6 +381,9 @@ _SHADOW_REASON_MARKERS = (
 
 
 def _is_shadow_reason(reason_code: str) -> bool:
+    canonical = classify_profile_shadow_reason(reason_code)
+    if canonical is not None:
+        return canonical
     normalized = reason_code.lower()
     return any(marker in normalized for marker in _SHADOW_REASON_MARKERS)
 

@@ -92,6 +92,7 @@ from agent_bom.runtime.gateway_relay_contract import (
     relay_upstream_from_config,
 )
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
+from agent_bom.runtime.profile_resolution import ProfileResolutionCode
 from agent_bom.security import sanitize_error, sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -1789,6 +1790,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         token_scopes: set[str] = set()
         scoped_identity: Any = None
         managed_identity_lookup_unavailable = False
+        identity_failure_code = ""
         if identity_token:
             try:
                 from agent_bom.api.agent_identity_store import get_agent_identity_store, identity_for_token
@@ -1812,12 +1814,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             identity_verified = True
             if scoped_identity.tenant_id != tenant_id:
                 identity_invalid_reason = "managed identity tenant mismatch"
+                identity_failure_code = ProfileResolutionCode.TENANT_MISMATCH.value
             elif (
                 not scoped_identity.blueprint_id
                 and settings.drift_enforcement_mode == "enforce"
                 and not _gateway_allows_anonymous_agents(settings)
             ):
                 identity_invalid_reason = "managed identity has no role blueprint binding"
+                identity_failure_code = ProfileResolutionCode.PROFILE_INCOMPLETE.value
         elif as_claims is not None:
             source_agent = str(as_claims.get("sub") or "").strip() or ANONYMOUS
             token_present = True
@@ -1826,6 +1830,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             token_scopes = scopes_from_claims(as_claims)
         else:
             source_agent, token_present, identity_invalid_reason = check_caller_identity(message, current_policy)
+            if identity_invalid_reason is not None:
+                identity_failure_code = ProfileResolutionCode.IDENTITY_INVALID.value
             source_agent = source_agent or ANONYMOUS
             # "Verified" for inline mutual-auth: a resolved, non-anonymous caller
             # whose token was cryptographically checked — JWKS/OIDC-signed JWT or
@@ -1852,15 +1858,18 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             )
             if agent_revoked:
                 identity_invalid_reason = "agent identity revoked"
+                identity_failure_code = ProfileResolutionCode.IDENTITY_INACTIVE.value
             elif revocation_lookup_incomplete:
                 # A knowingly partial answer is not a negative. Revocation is an
                 # emergency control, so this denies on every listener — the
                 # loopback anonymous-agent allowance does not govern it.
                 identity_invalid_reason = "agent identity revocation status unavailable"
+                identity_failure_code = ProfileResolutionCode.IDENTITY_STORE_UNAVAILABLE.value
             elif revocation_lookup_failed and (
                 current_policy.get("require_agent_identity") or not _gateway_allows_anonymous_agents(settings)
             ):
                 identity_invalid_reason = "agent identity revocation status unavailable"
+                identity_failure_code = ProfileResolutionCode.IDENTITY_STORE_UNAVAILABLE.value
 
         identity_block_reason: str | None = None
         if identity_invalid_reason is not None:
@@ -1868,11 +1877,13 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         elif not token_present:
             if current_policy.get("require_agent_identity"):
                 identity_block_reason = "Identity required: no agent_identity token in _meta"
+                identity_failure_code = ProfileResolutionCode.MANAGED_IDENTITY_REQUIRED.value
             elif not _gateway_allows_anonymous_agents(settings):
                 identity_block_reason = (
                     "Anonymous agent caller denied on non-loopback listener; supply an agent_identity "
                     "token or set AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS for local development only"
                 )
+                identity_failure_code = ProfileResolutionCode.MANAGED_IDENTITY_REQUIRED.value
 
         # A role blueprint is not a client profile. Keep them distinct until a
         # canonical assignment resolves successfully.
@@ -1937,6 +1948,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                             GatewayRuntimeEventType.TOOL_CALL_BLOCKED,
                             decision="deny",
                             policy_source="identity",
+                            reason_code=identity_failure_code,
                         ),
                     }
                 )
@@ -1961,9 +1973,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         if runtime_profile_mode != "off":
             profile_failure_code = ""
             if managed_identity_lookup_unavailable:
-                profile_failure_code = "identity_store_unavailable"
+                profile_failure_code = ProfileResolutionCode.IDENTITY_STORE_UNAVAILABLE.value
             elif scoped_identity is None:
-                profile_failure_code = "managed_identity_required"
+                profile_failure_code = ProfileResolutionCode.MANAGED_IDENTITY_REQUIRED.value
             else:
                 profile_identity_id = str(getattr(scoped_identity, "identity_id", "") or "")
                 try:
@@ -1979,7 +1991,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         granted_scopes=token_scopes,
                     )
                 except Exception as exc:  # noqa: BLE001
-                    profile_failure_code = "profile_store_unavailable"
+                    profile_failure_code = ProfileResolutionCode.PROFILE_STORE_UNAVAILABLE.value
                     logger.warning("gateway runtime profile lookup unavailable: %s", sanitize_text(_public_gateway_error(exc)))
                 else:
                     if not resolution.resolved or resolution.profile is None:

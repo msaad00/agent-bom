@@ -406,6 +406,38 @@ def test_window_summary_counts_canonical_events_without_materializing_payloads(s
 
 
 @pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+@pytest.mark.parametrize(
+    "reason_code",
+    ["identity_invalid", "managed_identity_required", "tenant_mismatch", "profile_revoked"],
+)
+def test_window_summary_counts_canonical_unsanctioned_profile_block_as_shadow(store_kind: str, reason_code: str, tmp_path) -> None:
+    store = (
+        InMemoryGatewayActivityStore(max_events_per_tenant=20)
+        if store_kind == "memory"
+        else SQLiteGatewayActivityStore(str(tmp_path / "activity.db"), max_events_per_tenant=20)
+    )
+    store.append_batch(
+        [
+            _record(
+                "revoked-profile",
+                event_type="gateway.tool_call.blocked",
+                decision="deny",
+                reason_code=reason_code,
+            )
+        ]
+    )
+
+    summary = store.summarize_window(
+        "tenant-a",
+        start="2026-07-28T00:00:00+00:00",
+        end="2026-07-28T23:59:59+00:00",
+    )
+
+    assert summary.blocked == 1
+    assert summary.shadow_blocked == 1
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
 def test_cursor_ordinal_beyond_the_storage_range_is_a_bad_cursor_not_an_outage(store_kind: str, tmp_path) -> None:
     """A read client must not be able to make the ledger report itself down.
 

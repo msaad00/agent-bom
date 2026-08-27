@@ -18,6 +18,7 @@ import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -27,6 +28,8 @@ from starlette.testclient import TestClient
 
 import agent_bom.gateway_server as gateway_server
 from agent_bom.api.auth import Role
+from agent_bom.api.gateway_activity_store import InMemoryGatewayActivityStore, SQLiteGatewayActivityStore
+from agent_bom.api.routes.proxy import _gateway_activity_record_from_alert
 from agent_bom.api.tracing import parse_traceparent
 from agent_bom.gateway_server import GatewaySettings, GatewayUpstreamRelay, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
@@ -1668,7 +1671,8 @@ def test_relay_loopback_allows_anonymous_caller() -> None:
     assert resp.json()["result"] == {"ok": True}
 
 
-def test_relay_non_loopback_denies_anonymous_by_default(monkeypatch) -> None:
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_relay_non_loopback_denies_anonymous_by_default(monkeypatch, tmp_path, store_kind: str) -> None:
     _no_key_store(monkeypatch)
     audit_events: list[dict[str, Any]] = []
 
@@ -1692,6 +1696,31 @@ def test_relay_non_loopback_denies_anonymous_by_default(monkeypatch) -> None:
     assert audit_events[0]["event_type"] == "gateway.tool_call.blocked"
     assert audit_events[0]["decision"] == "deny"
     assert audit_events[0]["policy_source"] == "identity"
+    assert audit_events[0]["reason_code"] == "managed_identity_required"
+
+    received_at = datetime.now(timezone.utc)
+    record = _gateway_activity_record_from_alert(
+        audit_events[0],
+        tenant_id="default",
+        source_id="gateway-e2e",
+        session_id="session-e2e",
+        received_at=received_at,
+        request_trace_id="trace-e2e",
+    )
+    assert record is not None
+    store = (
+        InMemoryGatewayActivityStore(max_events_per_tenant=20)
+        if store_kind == "memory"
+        else SQLiteGatewayActivityStore(str(tmp_path / "activity.db"), max_events_per_tenant=20)
+    )
+    store.append_batch([record])
+    summary = store.summarize_window(
+        "default",
+        start=(received_at - timedelta(minutes=1)).isoformat(),
+        end=(received_at + timedelta(minutes=1)).isoformat(),
+    )
+    assert summary.blocked == 1
+    assert summary.shadow_blocked == 1
 
 
 def test_relay_non_loopback_allows_anonymous_with_opt_out_flag(monkeypatch) -> None:
@@ -1740,10 +1769,16 @@ def test_relay_invalid_token_always_fails_closed_on_loopback(monkeypatch) -> Non
     async def fake_caller(upstream, message, extra_headers):
         raise AssertionError("invalid-token caller must not relay upstream")
 
+    audit_events: list[dict[str, Any]] = []
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
     settings = GatewaySettings(
         registry=_simple_registry(),
         policy={"agent_tokens": {"good-token": "agent-a"}},
         upstream_caller=fake_caller,
+        audit_sink=audit_sink,
         allow_anonymous_agents=True,  # opt-out only governs MISSING identity, not invalid
     )
     client = TestClient(create_gateway_app(settings))
@@ -1752,6 +1787,7 @@ def test_relay_invalid_token_always_fails_closed_on_loopback(monkeypatch) -> Non
         json=_json_rpc("tools/call", name="read_file", arguments={}, _meta={"agent_identity": "forged-token"}),
     )
     _assert_identity_blocked(resp)
+    assert audit_events[0]["reason_code"] == "identity_invalid"
 
 
 def test_relay_valid_token_relays_on_non_loopback(monkeypatch) -> None:

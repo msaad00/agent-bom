@@ -21,7 +21,10 @@ PROFILE_SCHEMA_VERSION = "runtime.client.profile.v1"
 
 class ProfileResolutionCode(str, Enum):
     RESOLVED = "resolved"
+    IDENTITY_INVALID = "identity_invalid"
     IDENTITY_INACTIVE = "identity_inactive"
+    IDENTITY_STORE_UNAVAILABLE = "identity_store_unavailable"
+    MANAGED_IDENTITY_REQUIRED = "managed_identity_required"
     TENANT_MISMATCH = "tenant_mismatch"
     PROFILE_NOT_FOUND = "profile_not_found"
     PROFILE_REVOKED = "profile_revoked"
@@ -34,6 +37,53 @@ class ProfileResolutionCode(str, Enum):
     ENVIRONMENT_MISMATCH = "environment_mismatch"
     INSUFFICIENT_SCOPE = "insufficient_scope"
     TOOL_CONSTRAINT_CONFLICT = "tool_constraint_conflict"
+    PROFILE_STORE_UNAVAILABLE = "profile_store_unavailable"
+
+
+_UNSANCTIONED_PROFILE_REASON_CODES = frozenset(
+    {
+        ProfileResolutionCode.IDENTITY_INACTIVE.value,
+        ProfileResolutionCode.IDENTITY_INVALID.value,
+        ProfileResolutionCode.MANAGED_IDENTITY_REQUIRED.value,
+        ProfileResolutionCode.TENANT_MISMATCH.value,
+        ProfileResolutionCode.PROFILE_NOT_FOUND.value,
+        ProfileResolutionCode.PROFILE_REVOKED.value,
+        ProfileResolutionCode.PROFILE_DISABLED.value,
+        ProfileResolutionCode.PROFILE_EXPIRED.value,
+        ProfileResolutionCode.PROFILE_INCOMPLETE.value,
+        ProfileResolutionCode.ISSUER_MISMATCH.value,
+        ProfileResolutionCode.ENVIRONMENT_MISMATCH.value,
+    }
+)
+
+_NON_SHADOW_PROFILE_REASON_CODES = frozenset(
+    {
+        ProfileResolutionCode.RESOLVED.value,
+        ProfileResolutionCode.INSUFFICIENT_SCOPE.value,
+        ProfileResolutionCode.TOOL_CONSTRAINT_CONFLICT.value,
+        ProfileResolutionCode.BLUEPRINT_UNKNOWN.value,
+        ProfileResolutionCode.BLUEPRINT_MISMATCH.value,
+        # Operator-side lookup failures are degraded evidence, not shadow AI.
+        ProfileResolutionCode.IDENTITY_STORE_UNAVAILABLE.value,
+        ProfileResolutionCode.PROFILE_STORE_UNAVAILABLE.value,
+    }
+)
+
+
+def classify_profile_shadow_reason(reason_code: str) -> bool | None:
+    """Classify canonical profile reasons without inferring from free text.
+
+    ``None`` preserves the legacy compatibility boundary: callers may apply
+    marker inference only to old proxy-shaped events whose reason is not part
+    of the canonical profile contract.
+    """
+
+    normalized = str(reason_code or "").strip().lower()
+    if normalized in _UNSANCTIONED_PROFILE_REASON_CODES:
+        return True
+    if normalized in _NON_SHADOW_PROFILE_REASON_CODES:
+        return False
+    return None
 
 
 @dataclass(frozen=True)
@@ -223,5 +273,6 @@ __all__ = [
     "ProfileResolution",
     "ProfileResolutionCode",
     "ResolvedRuntimeProfile",
+    "classify_profile_shadow_reason",
     "resolve_runtime_profile",
 ]

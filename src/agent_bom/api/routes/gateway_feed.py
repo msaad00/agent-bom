@@ -55,7 +55,7 @@ from agent_bom.runtime.gateway_events import (
     GATEWAY_BLOCKED_EVENT_TYPES,
     GATEWAY_DATA_FILTER_EVENT_TYPES,
 )
-from agent_bom.runtime.profile_resolution import ProfileResolutionCode as _ProfileCode
+from agent_bom.runtime.profile_resolution import classify_profile_shadow_reason
 
 router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
 
@@ -185,38 +185,6 @@ _EVENT_TYPES = GATEWAY_ALLOWED_EVENT_TYPES | GATEWAY_BLOCKED_EVENT_TYPES | GATEW
 # refused to attribute this caller to a sanctioned profile".
 #
 # Codes are imported, never re-spelled here: one judgement, one implementation.
-_UNSANCTIONED_CLIENT_CODES = frozenset(
-    {
-        _ProfileCode.IDENTITY_INACTIVE.value,
-        _ProfileCode.TENANT_MISMATCH.value,
-        _ProfileCode.PROFILE_NOT_FOUND.value,
-        _ProfileCode.PROFILE_REVOKED.value,
-        _ProfileCode.PROFILE_DISABLED.value,
-        _ProfileCode.PROFILE_EXPIRED.value,
-        _ProfileCode.PROFILE_INCOMPLETE.value,
-        _ProfileCode.ISSUER_MISMATCH.value,
-        _ProfileCode.ENVIRONMENT_MISMATCH.value,
-        # Emitted by the gateway itself when no managed identity resolved at all.
-        "managed_identity_required",
-    }
-)
-
-# A block that is NOT a shadow-client verdict. Scope/constraint/blueprint denials
-# mean a *sanctioned* client exceeded its grant, and the ``*_unavailable`` codes
-# are operator-side outages — counting either as shadow AI would attribute our
-# own degradation, or an authorized caller, to an attacker.
-_SANCTIONED_OR_DEGRADED_CODES = frozenset(
-    {
-        _ProfileCode.RESOLVED.value,
-        _ProfileCode.INSUFFICIENT_SCOPE.value,
-        _ProfileCode.TOOL_CONSTRAINT_CONFLICT.value,
-        _ProfileCode.BLUEPRINT_UNKNOWN.value,
-        _ProfileCode.BLUEPRINT_MISMATCH.value,
-        "identity_store_unavailable",
-        "profile_store_unavailable",
-    }
-)
-
 _SHADOW_BLOCK_MARKERS = (
     "undeclared",
     "shadow",
@@ -390,11 +358,9 @@ def _is_shadow_block(alert: dict[str, Any]) -> bool:
     # Canonical profile enforcement wins outright when the gateway recorded it.
     # Only fall through to marker inference when no recognized code is present
     # (direct in-process alerts from a standalone proxy, and older records).
-    code = str(alert.get("reason_code") or "").strip().lower()
-    if code in _UNSANCTIONED_CLIENT_CODES:
-        return True
-    if code in _SANCTIONED_OR_DEGRADED_CODES:
-        return False
+    canonical = classify_profile_shadow_reason(str(alert.get("reason_code") or ""))
+    if canonical is not None:
+        return canonical
 
     details = alert.get("details")
     detail_reason = ""

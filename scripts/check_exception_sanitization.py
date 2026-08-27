@@ -144,11 +144,7 @@ def _scan_returned_exception_flows(text: str, label: str) -> list[str]:
         for node in ast.walk(handler):
             if not isinstance(node, ast.Return) or node.value is None:
                 continue
-            uses = [
-                child
-                for child in ast.walk(node.value)
-                if isinstance(child, ast.Name) and child.id == handler.name
-            ]
+            uses = [child for child in ast.walk(node.value) if isinstance(child, ast.Name) and child.id == handler.name]
             if not uses:
                 continue
             start = max(1, node.lineno)

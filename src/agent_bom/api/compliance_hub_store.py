@@ -562,6 +562,17 @@ class ComplianceHubStore(Protocol):
         """Return per-framework slug counts from denormalised CSV columns."""
         ...
 
+    def current_failing_framework_slug_counts(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, int]:
+        """Count framework mappings on live current high/critical findings."""
+        ...
+
     def clear(self, tenant_id: str) -> int:
         """Remove all findings for a tenant. Returns the number removed."""
         ...
@@ -1228,6 +1239,21 @@ class InMemoryComplianceHubStore:
             rows = list(self._by_tenant.get(tenant_id, []))
         rows = hydrate_finding_payloads_memory(tenant_id, rows)
         return _framework_slug_counts_from_rows(rows)
+
+    def current_failing_framework_slug_counts(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, int]:
+        with self._lock:
+            rows = [dict(r) for r in self._current.get(tenant_id, {}).values()]
+        rows = _filter_current_rows(rows, severity=None, scan_id=None, origin=origin, since=since, status=status)
+        rows = [row for row in rows if str(row.get("severity") or "").lower() in {"critical", "high"}]
+        hydrated = self._hydrate_current_rows(tenant_id, rows)
+        return _framework_slug_counts_from_rows(row.get("payload") or {} for row in hydrated)
 
     def count(self, tenant_id: str) -> int:
         with self._lock:
@@ -2275,6 +2301,54 @@ class SQLiteComplianceHubStore:
         for slug, n in rows:
             canonical = normalize_framework_slug(str(slug))
             counts[canonical] = counts.get(canonical, 0) + int(n)
+        return counts
+
+    def current_failing_framework_slug_counts(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, int]:
+        from agent_bom.compliance_coverage import normalize_framework_slug
+
+        where = ["c.tenant_id = ?", "LOWER(c.severity) IN ('critical', 'high')"]
+        params: list[Any] = [tenant_id]
+        if since:
+            where.append("c.last_seen >= ?")
+            params.append(since)
+        if origin is not None:
+            where.append("c.origin = ?")
+            params.append(origin)
+        status_sql, status_params = status_sql_predicate(status)
+        if status_sql:
+            where.append(status_sql.replace("status", "c.status", 1))
+            params.extend(status_params)
+        rows = self._conn.execute(
+            f"""
+            WITH RECURSIVE selected(csv) AS (
+                SELECT l.applicable_frameworks_csv
+                FROM hub_findings_current c
+                JOIN compliance_hub_findings l
+                  ON l.tenant_id = c.tenant_id AND l.finding_id = c.ledger_finding_id
+                WHERE {" AND ".join(where)} AND l.applicable_frameworks_csv <> ''
+            ), split(rest, token) AS (
+                SELECT csv || ',', '' FROM selected
+                UNION ALL
+                SELECT substr(rest, instr(rest, ',') + 1),
+                       substr(rest, 1, instr(rest, ',') - 1)
+                FROM split WHERE rest <> ''
+            )
+            SELECT TRIM(token), COUNT(*) FROM split
+            WHERE TRIM(token) <> '' GROUP BY TRIM(token)
+            """,  # nosec B608
+            params,
+        ).fetchall()
+        counts: dict[str, int] = {}
+        for slug, count in rows:
+            canonical = normalize_framework_slug(str(slug))
+            counts[canonical] = counts.get(canonical, 0) + int(count)
         return counts
 
     def count(self, tenant_id: str) -> int:

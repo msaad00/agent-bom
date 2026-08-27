@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields
+from pathlib import Path
 from types import SimpleNamespace
 
 from starlette.testclient import TestClient
@@ -178,6 +179,48 @@ def test_compliance_can_scope_posture_to_a_selected_scan():
     llm02 = next(control for control in data["owasp_llm_top10"] if control["code"] == "LLM02")
     assert llm01["findings"] == 1
     assert llm02["findings"] == 0
+
+
+def test_fedramp_rest_and_narrative_reconcile_namespaced_scanner_tags():
+    """The REST score and narrative must join the same emitted FedRAMP tag."""
+    _clear_jobs()
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2026-FEDRAMP",
+                "severity": "critical",
+                "package": "demo",
+                "fedramp_tags": ["FedRAMP-SI-10"],
+            }
+        ]
+    )
+    client = TestClient(app)
+
+    posture = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+    narrative = client.get("/v1/compliance/narrative/fedramp", headers=_AUTH_HEADERS).json()
+
+    rest_control = next(control for control in posture["fedramp"] if control["code"] == "SI-10")
+    narrative_framework = narrative["framework_narratives"][0]
+    assert rest_control["findings"] == 1
+    assert rest_control["status"] == "fail"
+    assert posture["summary"]["fedramp_fail"] == 1
+    assert {control["control_id"] for control in narrative_framework["failing_controls"]} == {"SI-10"}
+    _clear_jobs()
+
+
+def test_compliance_serializes_framework_kinds_for_every_framework():
+    """Clients must not infer whether a catalog is scored from its display name."""
+    _clear_jobs()
+    data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    assert data["framework_kinds"] == {
+        metadata.output_key: ("scored" if metadata.scored else "applicability") for metadata in TAG_MAPPED_FRAMEWORKS
+    }
+    serialized_fixture = json.loads((Path(__file__).parents[1] / "ui/tests/fixtures/compliance-overlay-response.json").read_text())
+    assert serialized_fixture["framework_kinds"] == data["framework_kinds"]
+    for output_key in ("owasp_llm_top10", "owasp_mcp_top10", "owasp_agentic_top10", "mitre_atlas"):
+        assert data["framework_kinds"][output_key] == "applicability"
+    _clear_jobs()
     _clear_jobs()
 
 

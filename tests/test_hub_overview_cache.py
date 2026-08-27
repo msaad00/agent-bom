@@ -74,6 +74,30 @@ def test_ingest_invalidates_snapshot(monkeypatch):
     assert refreshed["critical"] == 9
 
 
+def test_failing_framework_snapshot_is_memoised_and_invalidated(monkeypatch):
+    class _FrameworkStore:
+        calls = 0
+
+        def current_failing_framework_slug_counts(self, tenant_id: str, **filters) -> dict[str, int]:
+            self.calls += 1
+            assert tenant_id == "acme"
+            assert filters["origin"] == "bulk_ingest"
+            assert filters["status"] == "open"
+            assert filters["since"] is not None
+            return {"soc2": 2, "iso-27001": 1}
+
+    store = _FrameworkStore()
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+
+    assert overview._hub_failing_frameworks_snapshot(_request("acme")) == {"soc2", "iso-27001"}
+    assert overview._hub_failing_frameworks_snapshot(_request("acme")) == {"soc2", "iso-27001"}
+    assert store.calls == 1
+    hub_overview_cache.invalidate_tenant("acme")
+    overview._hub_failing_frameworks_snapshot(_request("acme"))
+    assert store.calls == 2
+
+
 def test_ttl_zero_disables_cache(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_HUB_OVERVIEW_CACHE_TTL_SECONDS", "0")
     store = _CountingStore({"critical": 1, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0})
@@ -96,8 +120,10 @@ def test_store_add_and_clear_invalidate_overview_cache():
     seed = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
 
     hub_overview_cache.set_cached_severity("acme", dict(seed))
+    hub_overview_cache.set_cached_failing_frameworks("acme", {"soc2": 1})
     store.add("acme", [{"id": "f-1", "severity": "critical", "source": "connector"}])
     assert hub_overview_cache.get_cached_severity("acme") is None
+    assert hub_overview_cache.get_cached_failing_frameworks("acme") is None
 
     hub_overview_cache.set_cached_severity("acme", dict(seed))
     store.clear("acme")

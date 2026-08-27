@@ -108,7 +108,11 @@ def _overview_cache_ttl() -> float:
         return _OVERVIEW_CACHE_TTL_SECONDS_DEFAULT
 
 
-def _overview_fingerprint(jobs: list[Any], hub_severity: dict[str, int]) -> str:
+def _overview_fingerprint(
+    jobs: list[Any],
+    hub_severity: dict[str, int],
+    hub_failing_frameworks: set[str] | None = None,
+) -> str:
     """Cheap change-detector over job metadata + hub current-state — no fold.
 
     Captures job identity, status and the freshest per-job timestamp so a new
@@ -125,7 +129,8 @@ def _overview_fingerprint(jobs: list[Any], hub_severity: dict[str, int]) -> str:
         parts.append(f"{getattr(job, 'job_id', '')}|{getattr(status, 'value', status)}|{stamp}")
     parts.sort()
     hub_part = "|".join(f"{k}={int(hub_severity.get(k, 0) or 0)}" for k in sorted(hub_severity))
-    digest = hashlib.sha256(("\x1e".join(parts) + "\x1d" + hub_part).encode("utf-8")).hexdigest()
+    framework_part = "|".join(sorted(hub_failing_frameworks or set()))
+    digest = hashlib.sha256(("\x1e".join(parts) + "\x1d" + hub_part + "\x1d" + framework_part).encode("utf-8")).hexdigest()
     return f"{len(jobs)}:{digest}"
 
 
@@ -588,6 +593,7 @@ def _estate_rollup(jobs: list[Any]) -> dict[str, Any]:
         "top_risks": top_risks[:10],
         "latest_scan_at": latest_scan_at,
         "compliance_failing": len(failing_frameworks),
+        "compliance_failing_frameworks": sorted(failing_frameworks),
     }
 
 
@@ -811,6 +817,34 @@ def _hub_kev_snapshot(request: Request) -> int:
     return count
 
 
+def _hub_failing_frameworks_snapshot(request: Request) -> set[str]:
+    """Distinct framework mappings on live high/critical hub findings.
+
+    Uses the same tenant, bulk-ingest origin, open lifecycle, and default window
+    as the hub severity headline. SQL backends aggregate their denormalized CSV
+    in-database, so Overview never hydrates the tenant ledger.
+    """
+    from agent_bom.api import hub_overview_cache, time_window
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    tenant_id = _tenant_id(request)
+    cached = hub_overview_cache.get_cached_failing_frameworks(tenant_id)
+    if cached is not None:
+        return set(cached)
+    try:
+        counter = getattr(get_compliance_hub_store(), "current_failing_framework_slug_counts", None)
+        if not callable(counter):
+            return set()
+        since = time_window.window_since_iso(time_window.normalize_window_days(None))
+        counts = counter(tenant_id, origin="bulk_ingest", since=since, status="open") or {}
+    except Exception:  # pragma: no cover - hub store optional
+        _logger.debug("hub framework snapshot failed", exc_info=True)
+        return set()
+    normalized = {str(slug): int(count or 0) for slug, count in counts.items() if slug and int(count or 0) > 0}
+    hub_overview_cache.set_cached_failing_frameworks(tenant_id, normalized)
+    return set(normalized)
+
+
 _HUB_TOP_RISK_LIMIT = 10
 
 
@@ -966,6 +1000,7 @@ def _exec_posture(
     estate: dict[str, Any],
     hub_severity: dict[str, int],
     hub_kev: int = 0,
+    hub_failing_frameworks: set[str] | None = None,
 ) -> dict[str, Any]:
     """Compute the configurable exec risk score from the honest estate counts.
 
@@ -986,6 +1021,11 @@ def _exec_posture(
     if scan_posture.get("grade") not in (None, "N/A"):
         floor = float(scan_posture.get("score") or 0.0)
     config = resolve_exec_score_config(_tenant_id(request))
+    scan_frameworks = estate.get("compliance_failing_frameworks")
+    if scan_frameworks is None:
+        compliance_failing = int(estate.get("compliance_failing", 0) or 0) + len(hub_failing_frameworks or set())
+    else:
+        compliance_failing = len(set(scan_frameworks) | set(hub_failing_frameworks or set()))
     return compute_exec_score(
         severity=combined,
         kev=int(estate.get("kev", 0) or 0) + int(hub_kev or 0),
@@ -993,7 +1033,7 @@ def _exec_posture(
         # Live count of failing compliance frameworks, accumulated in the same
         # estate rollup (#3962): a framework with a critical/high finding fails.
         # Cheap — no second control-by-control evaluation on this hot endpoint.
-        compliance_failing=int(estate.get("compliance_failing", 0) or 0),
+        compliance_failing=compliance_failing,
         config=config,
         floor_score=floor,
         floor_summary=str(scan_posture.get("summary") or "") or None,
@@ -1067,8 +1107,9 @@ def _build_overview(request: Request) -> dict[str, Any]:
     tenant_id = _tenant_id(request)
     jobs = _get_store().list_all(tenant_id=tenant_id)
     hub_severity = _hub_severity_snapshot(request)
+    hub_failing_frameworks = _hub_failing_frameworks_snapshot(request)
 
-    fingerprint = _overview_fingerprint(jobs, hub_severity)
+    fingerprint = _overview_fingerprint(jobs, hub_severity, hub_failing_frameworks)
     cached = _overview_cache_get(tenant_id, fingerprint)
     if cached is not None:
         return cached
@@ -1086,12 +1127,12 @@ def _build_overview(request: Request) -> dict[str, Any]:
             return flight.payload
         # The leader failed or overran its budget. Recompute rather than serve
         # nothing — correctness beats de-duplication.
-        payload = _compose_overview(request, tenant_id, jobs, hub_severity)
+        payload = _compose_overview(request, tenant_id, jobs, hub_severity, hub_failing_frameworks)
         _overview_cache_put(tenant_id, fingerprint, payload)
         return payload
 
     try:
-        payload = _compose_overview(request, tenant_id, jobs, hub_severity)
+        payload = _compose_overview(request, tenant_id, jobs, hub_severity, hub_failing_frameworks)
         _overview_cache_put(tenant_id, fingerprint, payload)
         flight.payload = payload
         return payload
@@ -1102,13 +1143,26 @@ def _build_overview(request: Request) -> dict[str, Any]:
         flight.event.set()
 
 
-def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_severity: dict[str, int]) -> dict[str, Any]:
+def _compose_overview(
+    request: Request,
+    tenant_id: str,
+    jobs: list[Any],
+    hub_severity: dict[str, int],
+    hub_failing_frameworks: set[str],
+) -> dict[str, Any]:
     """Fold the estate into the overview payload (the O(estate) hot path)."""
     estate = _estate_rollup(jobs)
     exec_estate = _exec_estate(estate, jobs)
     coverage = estate["coverage"]
     hub_kev = _hub_kev_snapshot(request)
-    posture = _exec_posture(request, _posture_snapshot(jobs), exec_estate, hub_severity, hub_kev)
+    posture = _exec_posture(
+        request,
+        _posture_snapshot(jobs),
+        exec_estate,
+        hub_severity,
+        hub_kev,
+        hub_failing_frameworks,
+    )
     runtime = _runtime_snapshot(request, jobs)
     cost = _cost_snapshot(request)
     identity = _identity_snapshot(request)

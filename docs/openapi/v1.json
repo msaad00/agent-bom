@@ -14216,7 +14216,7 @@
     },
     "/v1/compliance": {
       "get": {
-        "description": "Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,\nOWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.\n\nReturns per-control pass/warning/fail status and an overall compliance score.",
+        "description": "Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,\nOWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.\n\nReturns scored control posture plus applicability-only risk/technique\ncatalogs and an overall score derived only from the scored frameworks.",
         "operationId": "get_compliance_v1_compliance_get",
         "parameters": [
           {

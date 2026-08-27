@@ -54,20 +54,28 @@ function demoEstateCompliance(): ComplianceResponse {
   return {
     overall_score: 13.3,
     overall_status: "fail",
-    evaluated_controls: 150,
+    evaluated_controls: 126,
     total_controls: 195,
     coverage_pct: 76.9,
     scan_count: 1,
     latest_scan: "2026-08-09T00:00:00Z",
     has_mcp_context: true,
+    framework_kinds: {
+      owasp_llm_top10: "applicability", owasp_mcp_top10: "applicability",
+      owasp_agentic_top10: "applicability", mitre_atlas: "applicability",
+      nist_ai_rmf: "scored", eu_ai_act: "scored", nist_csf: "scored",
+      iso_27001: "scored", soc2: "scored", cis_controls: "scored",
+      cmmc: "scored", nist_800_53: "scored", fedramp: "scored", pci_dss: "scored",
+      mitre_attack: "applicability",
+    },
     summary: {
-      owasp_pass: 0, owasp_warn: 0, owasp_fail: 7,
-      owasp_mcp_pass: 0, owasp_mcp_warn: 0, owasp_mcp_fail: 8,
+      owasp_applicable: 7, owasp_not_applicable: 3,
+      owasp_mcp_applicable: 8, owasp_mcp_not_applicable: 2,
       // No atlas_pass / atlas_warn / atlas_fail: the server stopped sending them.
       atlas_applicable: 40, atlas_not_applicable: 25,
       attack_applicable: 27, attack_not_applicable: 664,
       nist_pass: 0, nist_warn: 0, nist_fail: 12,
-      owasp_agentic_pass: 0, owasp_agentic_warn: 0, owasp_agentic_fail: 9,
+      owasp_agentic_applicable: 9, owasp_agentic_not_applicable: 1,
       eu_ai_act_pass: 0, eu_ai_act_warn: 0, eu_ai_act_fail: 6,
       nist_csf_pass: 3, nist_csf_warn: 0, nist_csf_fail: 11,
       iso_27001_pass: 0, iso_27001_warn: 0, iso_27001_fail: 9,
@@ -138,14 +146,14 @@ describe("compliance tiles reconcile with the headline", () => {
   });
 
   it("leaves the independently scored catalog out of the aggregate", () => {
-    // 150 + the catalog's 16 is the 166 the tiles used to imply. The catalog
+    // 126 scored evaluations + the catalog's 16 is 142. The catalog
     // rescores the same CVE and CIS evidence the rows above already counted, so
     // adding it double-counts; it is an alternate VIEW of the estate, not more
     // of it.
     const totals = complianceScoredTotals(rows);
     const catalogEvaluated = data.summary.nist_800_53_catalog_evaluated ?? 0;
     expect(catalogEvaluated).toBeGreaterThan(0);
-    expect(totals.pass + totals.warn + totals.fail + catalogEvaluated).toBe(166);
+    expect(totals.pass + totals.warn + totals.fail + catalogEvaluated).toBe(142);
     expect(rows.map((row) => row.id)).not.toContain("nist-800-53-catalog");
   });
 });

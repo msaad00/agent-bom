@@ -435,9 +435,10 @@ async def get_compliance(
     """Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,
     OWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.
 
-    Returns per-control pass/warning/fail status and an overall compliance score.
+    Returns scored control posture plus applicability-only risk/technique
+    catalogs and an overall score derived only from the scored frameworks.
     """
-    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, control_key_for_tag
 
     tenant_jobs = _tenant_jobs(request)
     if scan_id:
@@ -503,7 +504,7 @@ async def get_compliance(
 
             for br in all_blast:
                 tags = br.get(tag_field, [])
-                if code in tags:
+                if any(control_key_for_tag(str(tag), catalog) == code for tag in tags):
                     findings += 1
                     sev = (br.get("severity") or "").lower()
                     if sev in sev_breakdown:
@@ -734,6 +735,10 @@ async def get_compliance(
         "has_mcp_context": has_mcp_context,
         "has_agent_context": has_agent_context,
         "scan_sources": sorted(all_scan_sources),
+        # Serialized measurement contract for every framework. Consumers must
+        # not infer this from labels: OWASP risk catalogs and MITRE technique
+        # catalogs are applicability overlays, never pass/fail controls.
+        "framework_kinds": {metadata.output_key: ("scored" if metadata.scored else "applicability") for metadata in TAG_MAPPED_FRAMEWORKS},
         "aisvs_benchmark": aisvs,
         "cis_foundations_benchmark": cis_foundations_line,
         "nist_800_53_catalog": nist_800_53_catalog_line,

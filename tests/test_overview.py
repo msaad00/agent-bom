@@ -809,6 +809,53 @@ def test_overview_compliance_failing_moves_grade() -> None:
     get_compliance_hub_store().clear("default")
 
 
+def test_overview_hub_frameworks_move_compliance_driver_and_dedupe_scan_overlap() -> None:
+    """Live high/critical hub mappings contribute once alongside scan mappings."""
+    _clear_jobs()
+    _reset_score_config()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    store = get_compliance_hub_store()
+    finding = {
+        "id": "hub-critical",
+        "severity": "critical",
+        "origin": "bulk_ingest",
+        "applicable_frameworks": ["soc2", "iso_27001", "SOC2"],
+    }
+    store.add("default", [finding])
+    store.upsert_current_batch(
+        "default",
+        [finding],
+        observed_at=_recent_stamp(),
+        batch_id="hub-frameworks",
+        source="connector",
+    )
+
+    hub_only = client_get_overview()
+    hub_row = next(row for row in hub_only["posture"]["breakdown"] if row["driver"] == "compliance")
+    assert hub_row["count"] == 2
+    assert hub_row["contribution"] > 0
+
+    _add_done_job(
+        [],
+        result_extra={
+            "findings": [
+                {
+                    "id": "scan-critical",
+                    "security_domain": "cspm",
+                    "severity": "critical",
+                    "applicable_frameworks": ["soc2"],
+                }
+            ]
+        },
+    )
+    combined = client_get_overview()
+    combined_row = next(row for row in combined["posture"]["breakdown"] if row["driver"] == "compliance")
+    assert combined_row["count"] == 2
+    _reset_score_config()
+    store.clear("default")
+
+
 def test_overview_sheds_with_429_when_backpressure_opens(monkeypatch) -> None:
     """/v1/overview offloads store work off the event loop and sheds under overload (#3963)."""
     import time

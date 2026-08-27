@@ -520,6 +520,9 @@ function buildComplianceSnapshot(
       warn: framework.warn,
       fail: framework.fail,
       total: framework.total,
+      kind: framework.kind,
+      ...(framework.applicable === undefined ? {} : { applicable: framework.applicable }),
+      ...(framework.notApplicable === undefined ? {} : { notApplicable: framework.notApplicable }),
     }));
   return {
     overallScore: compliance.overall_score,

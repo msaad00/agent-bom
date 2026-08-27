@@ -1,0 +1,29 @@
+{
+  "framework_kinds": {
+    "owasp_llm_top10": "applicability",
+    "owasp_mcp_top10": "applicability",
+    "owasp_agentic_top10": "applicability",
+    "nist_ai_rmf": "scored",
+    "nist_csf": "scored",
+    "nist_800_53": "scored",
+    "fedramp": "scored",
+    "mitre_atlas": "applicability",
+    "mitre_attack": "applicability",
+    "eu_ai_act": "scored",
+    "iso_27001": "scored",
+    "soc2": "scored",
+    "cis_controls": "scored",
+    "cmmc": "scored",
+    "pci_dss": "scored"
+  },
+  "summary": {
+    "owasp_applicable": 3,
+    "owasp_not_applicable": 7,
+    "owasp_mcp_applicable": 2,
+    "owasp_mcp_not_applicable": 8,
+    "owasp_agentic_applicable": 1,
+    "owasp_agentic_not_applicable": 9,
+    "atlas_applicable": 40,
+    "atlas_not_applicable": 25
+  }
+}

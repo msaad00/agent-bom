@@ -44,9 +44,16 @@ class _KevEntry:
     expires_at: float
 
 
+@dataclass(frozen=True)
+class _FrameworkEntry:
+    counts: dict[str, int]
+    expires_at: float
+
+
 _lock = threading.Lock()
 _entries: dict[str, _Entry] = {}
 _kev_entries: dict[str, _KevEntry] = {}
+_framework_entries: dict[str, _FrameworkEntry] = {}
 
 
 def get_cached_severity(tenant_id: str) -> dict[str, int] | None:
@@ -102,11 +109,35 @@ def set_cached_kev(tenant_id: str, count: int) -> None:
         _kev_entries[tenant_id] = _KevEntry(count=int(count), expires_at=now + ttl)
 
 
+def get_cached_failing_frameworks(tenant_id: str) -> dict[str, int] | None:
+    ttl = _ttl_seconds()
+    if ttl <= 0:
+        return None
+    now = time.monotonic()
+    with _lock:
+        entry = _framework_entries.get(tenant_id)
+        if entry is None or entry.expires_at <= now:
+            if entry is not None:
+                _framework_entries.pop(tenant_id, None)
+            return None
+        return dict(entry.counts)
+
+
+def set_cached_failing_frameworks(tenant_id: str, counts: dict[str, int]) -> None:
+    ttl = _ttl_seconds()
+    if ttl <= 0:
+        return
+    now = time.monotonic()
+    with _lock:
+        _framework_entries[tenant_id] = _FrameworkEntry(counts=dict(counts), expires_at=now + ttl)
+
+
 def invalidate_tenant(tenant_id: str) -> None:
     """Drop the cached histogram for a tenant after any hub-ledger mutation."""
     with _lock:
         _entries.pop(tenant_id, None)
         _kev_entries.pop(tenant_id, None)
+        _framework_entries.pop(tenant_id, None)
 
 
 def reset_hub_overview_cache() -> None:
@@ -114,3 +145,4 @@ def reset_hub_overview_cache() -> None:
     with _lock:
         _entries.clear()
         _kev_entries.clear()
+        _framework_entries.clear()

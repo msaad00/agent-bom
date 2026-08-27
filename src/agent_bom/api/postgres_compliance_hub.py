@@ -972,6 +972,48 @@ class PostgresComplianceHubStore:
             counts[canonical] = counts.get(canonical, 0) + int(n)
         return counts
 
+    def current_failing_framework_slug_counts(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, int]:
+        from agent_bom.compliance_coverage import normalize_framework_slug
+
+        where = ["c.tenant_id = %s", "LOWER(c.severity) IN ('critical', 'high')"]
+        params: list[Any] = [tenant_id]
+        if since:
+            where.append("c.last_seen >= %s")
+            params.append(since)
+        if origin is not None:
+            where.append("c.origin = %s")
+            params.append(origin)
+        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
+        if status_sql:
+            where.append(status_sql.replace("status", "c.status", 1))
+            params.extend(status_params)
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT TRIM(token), COUNT(*)
+                FROM hub_findings_current c
+                JOIN compliance_hub_findings l
+                  ON l.tenant_id = c.tenant_id AND l.finding_id = c.ledger_finding_id
+                CROSS JOIN LATERAL unnest(string_to_array(l.applicable_frameworks_csv, ',')) AS token
+                WHERE {" AND ".join(where)} AND l.applicable_frameworks_csv <> ''
+                GROUP BY TRIM(token)
+                HAVING TRIM(token) <> ''
+                """,  # nosec B608
+                tuple(params),
+            ).fetchall()
+        counts: dict[str, int] = {}
+        for slug, count in rows:
+            canonical = normalize_framework_slug(str(slug))
+            counts[canonical] = counts.get(canonical, 0) + int(count)
+        return counts
+
     def count(self, tenant_id: str) -> int:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(

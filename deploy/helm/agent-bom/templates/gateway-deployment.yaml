@@ -1,6 +1,10 @@
 {{- $profileEnforcement := .Values.gateway.profileEnforcement | default "off" -}}
 {{- $gatewayEnvFrom := .Values.gateway.envFrom -}}
 {{- $gatewayPersistence := .Values.gateway.persistence | default dict -}}
+{{- $gatewayRuntimeReplicas := int (.Values.gateway.replicas | default 2) -}}
+{{- if or (.Values.gateway.autoscaling.enabled | default false) (.Values.gateway.autoscaling.keda.enabled | default false) -}}
+{{- $gatewayRuntimeReplicas = int (.Values.gateway.autoscaling.maxReplicas | default 2) -}}
+{{- end -}}
 {{- if and .Values.gateway.enabled ($gatewayPersistence.enabled | default false) (ne (int (.Values.gateway.replicas | default 2)) 1) -}}
 {{- fail "gateway persistence requires gateway.replicas=1 because durable delivery claims are process-owned" -}}
 {{- end -}}
@@ -24,6 +28,10 @@ metadata:
     app.kubernetes.io/component: gateway
 spec:
   replicas: {{ .Values.gateway.replicas | default 2 }}
+  {{- if ($gatewayPersistence.enabled | default false) }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "agent-bom.name" . }}
@@ -116,6 +124,8 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 5
           env:
+            - name: AGENT_BOM_GATEWAY_REPLICAS
+              value: {{ $gatewayRuntimeReplicas | quote }}
             - name: AGENT_BOM_STATE_DIR
               {{- if ($gatewayPersistence.enabled | default false) }}
               value: {{ $gatewayPersistence.mountPath | default "/var/lib/agent-bom" | quote }}

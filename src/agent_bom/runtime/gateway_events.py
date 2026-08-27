@@ -94,11 +94,39 @@ _WARNED_ENFORCEMENT_ACTIONS = frozenset(
         "gateway.anomaly_warned",
         "gateway.drift_warned",
         "gateway.fleet_warned",
+        "gateway.firewall_warned",
         "gateway.graph_reachability_warned",
         "gateway.policy_warned",
     }
 )
-_OBSERVED_ENFORCEMENT_ACTIONS = frozenset({"gateway.firewall_decision", "gateway.identity_jit_grant_used"})
+_OBSERVED_ENFORCEMENT_ACTIONS = frozenset({"gateway.identity_jit_grant_used"})
+
+
+def ensure_gateway_event_identity(event: dict[str, Any]) -> dict[str, Any]:
+    """Assign one occurrence identity before an event enters durable delivery."""
+
+    identified = dict(event)
+    event_id = str(identified.get("event_id") or identified.get("decision_id") or f"gw_{uuid.uuid4().hex}")
+    identified["event_id"] = event_id
+    if not identified.get("decision_id"):
+        identified["decision_id"] = event_id
+    return identified
+
+
+def _positive_revision(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        revision = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, revision)
+
+
+def _policy_ids(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(dict.fromkeys(item for item in value if isinstance(item, str) and item))
 
 
 def canonicalize_gateway_enforcement_event(event: dict[str, Any]) -> dict[str, Any]:
@@ -107,7 +135,25 @@ def canonicalize_gateway_enforcement_event(event: dict[str, Any]) -> dict[str, A
     if str(event.get("event_type") or "") in GATEWAY_CANONICAL_EVENT_TYPES:
         return dict(event)
     action = str(event.get("action") or "")
-    if action == "gateway.drift_binding_unavailable":
+    if action == "gateway.firewall_blocked":
+        # This action is emitted only from the in-path tool relay. It therefore
+        # contributes to tool-call blocked KPIs rather than generic posture.
+        event_type = GatewayRuntimeEventType.TOOL_CALL_BLOCKED
+        decision = "deny"
+    elif action == "gateway.firewall_decision":
+        # The read-only decision endpoint may report enforce, dry-run, or allow.
+        # Canonical decisions stay binary; warnings are represented by event type.
+        effective_decision = str(event.get("effective_decision") or event.get("decision") or "allow")
+        if effective_decision == "deny":
+            event_type = GatewayRuntimeEventType.ENFORCEMENT_BLOCKED
+            decision = "deny"
+        elif effective_decision == "warn":
+            event_type = GatewayRuntimeEventType.ENFORCEMENT_WARNED
+            decision = "allow"
+        else:
+            event_type = GatewayRuntimeEventType.ENFORCEMENT_OBSERVED
+            decision = "allow"
+    elif action == "gateway.drift_binding_unavailable":
         blocked = str(event.get("enforcement_mode") or "") == "enforce"
         event_type = GatewayRuntimeEventType.ENFORCEMENT_BLOCKED if blocked else GatewayRuntimeEventType.ENFORCEMENT_WARNED
         decision = "deny" if blocked else "allow"
@@ -123,7 +169,7 @@ def canonicalize_gateway_enforcement_event(event: dict[str, Any]) -> dict[str, A
     else:
         return dict(event)
     reason_code = action.removeprefix("gateway.").replace(".", "_")
-    return build_gateway_runtime_event(
+    canonical = build_gateway_runtime_event(
         event_type,
         tenant_id=str(event.get("tenant_id") or "default"),
         agent_id=str(event.get("source_agent") or event.get("agent_id") or "anonymous"),
@@ -133,8 +179,19 @@ def canonicalize_gateway_enforcement_event(event: dict[str, Any]) -> dict[str, A
         decision=decision,
         policy_source=str(event.get("policy_source") or reason_code),
         trace_id=str(event.get("trace_id") or ""),
+        identity_id=str(event.get("identity_id") or ""),
+        profile_revision=_positive_revision(event.get("profile_revision")),
+        blueprint_id=str(event.get("blueprint_id") or ""),
+        blueprint_revision=_positive_revision(event.get("blueprint_revision")),
+        policy_ids=_policy_ids(event.get("policy_ids")),
         reason_code=reason_code,
+        policy_id=str(event.get("policy_id") or ""),
+        evidence_id=str(event.get("evidence_id") or ""),
     )
+    if event.get("event_id"):
+        canonical["event_id"] = str(event["event_id"])
+        canonical["decision_id"] = str(event.get("decision_id") or event["event_id"])
+    return canonical
 
 
 def build_gateway_runtime_event(
@@ -209,4 +266,5 @@ __all__ = [
     "GatewayRuntimeEventType",
     "build_gateway_runtime_event",
     "canonicalize_gateway_enforcement_event",
+    "ensure_gateway_event_identity",
 ]

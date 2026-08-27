@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+from agent_bom.rbac import Role
 
 
 def _registry() -> UpstreamRegistry:
@@ -97,6 +99,42 @@ def test_firewall_check_loads_file_and_denies(tmp_path: Path) -> None:
     assert event["effective_decision"] == "deny"
     assert event["source_agent"] == "cursor"
     assert event["target_agent"] == "snowflake-cli"
+
+
+def test_firewall_check_fails_closed_on_authenticated_policy_tenant_mismatch(tmp_path: Path, monkeypatch) -> None:
+    policy_path = _write_policy(
+        tmp_path / "fw.json",
+        tenant_id="tenant-alpha",
+        rules=[{"source": "cursor", "target": "snowflake-cli", "decision": "deny"}],
+    )
+
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key != "tenant-beta-key":
+                return None
+            return SimpleNamespace(tenant_id="tenant-beta", role=Role.ANALYST, has_scope=lambda _scope: True)
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    audit = _AuditCapture()
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        firewall_policy_path=policy_path,
+        audit_sink=audit,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+        response = client.post(
+            "/v1/firewall/check",
+            headers={"X-API-Key": "tenant-beta-key"},
+            json={"source_agent": "cursor", "target_agent": "snowflake-cli"},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "firewall policy is not bound to the authenticated tenant"
+    assert audit.events == []
 
 
 def test_firewall_check_dry_run_downgrades_deny_to_warn(tmp_path: Path) -> None:
@@ -300,6 +338,33 @@ def test_p1_20_firewall_check_requires_bearer_when_configured() -> None:
             headers={"Authorization": "Bearer s3cr3t"},
         )
         assert ok.status_code == 200
+
+
+def test_firewall_static_bearer_uses_configured_tenant_binding(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_TENANT_ID", "tenant-alpha")
+    policy_path = _write_policy(
+        tmp_path / "fw.json",
+        tenant_id="tenant-alpha",
+        rules=[{"source": "cursor", "target": "snowflake-cli", "decision": "deny"}],
+    )
+    audit = _AuditCapture()
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        bearer_token="s3cr3t",  # noqa: S106
+        firewall_policy_path=policy_path,
+        audit_sink=audit,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+        response = client.post(
+            "/v1/firewall/check",
+            headers={"Authorization": "Bearer s3cr3t"},
+            json={"source_agent": "cursor", "target_agent": "snowflake-cli"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["policy"]["tenant_id"] == "tenant-alpha"
+    assert audit.events[0]["tenant_id"] == "tenant-alpha"
 
 
 def test_p1_20_metrics_requires_bearer_when_configured() -> None:

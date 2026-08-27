@@ -9,6 +9,14 @@ single canonical version.
 For policy-layer ordering inside a single tool-call see
 `docs/POLICY_PRECEDENCE.md`. This page is the higher-level surface map.
 
+The standalone gateway exposes separate liveness and admission signals.
+`/healthz` reports delivery degradation and bounded backlog details. `/readyz`
+continues returning 200 while the local audit spool is durable, observable, and
+accepting events, even if the remote control plane is temporarily unavailable;
+it returns 503 when persistence cannot be observed, the bounded backlog cannot
+accept another event, or shutdown has begun. This keeps degraded delivery
+truthful without removing a safely spooling gateway from service.
+
 ### Runtime doc set
 
 This page is the canonical runtime surface map. The detail docs:

@@ -95,6 +95,7 @@ from agent_bom.runtime.gateway_events import (
     GatewayRuntimeEventType,
     build_gateway_runtime_event,
     canonicalize_gateway_enforcement_event,
+    ensure_gateway_event_identity,
 )
 from agent_bom.runtime.gateway_relay_contract import (
     MAX_GATEWAY_RELAY_MESSAGE_BYTES,
@@ -1091,12 +1092,16 @@ def _api_key_allows_gateway_relay(api_key: Any) -> tuple[bool, str]:
     return True, ""
 
 
+def _configured_gateway_tenant_id() -> str:
+    return os.environ.get("AGENT_BOM_TENANT_ID", "default").strip() or "default"
+
+
 def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -> tuple[str, str]:
     raw_token = _extract_request_token(request)
     if settings.bearer_token:
         if not raw_token or not _request_has_expected_token(request, settings.bearer_token):
             raise HTTPException(status_code=401, detail="gateway authentication required")
-        return "default", "static_gateway_token"
+        return _configured_gateway_tenant_id(), "static_gateway_token"
 
     # OAuth 2.1 broker: a standard MCP client presenting an AS-issued access
     # token in the Authorization header satisfies transport auth (the AS already
@@ -1105,7 +1110,7 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
     if settings.oauth_as is not None and raw_token:
         claims = settings.oauth_as.validate_token(raw_token)
         if claims is not None:
-            return "default", "oauth_as"
+            return _configured_gateway_tenant_id(), "oauth_as"
 
     try:
         store = get_key_store()
@@ -1127,7 +1132,7 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
             raise HTTPException(status_code=403, detail=reason)
         return api_key.tenant_id or "default", "api_key"
 
-    return "default", "none"
+    return _configured_gateway_tenant_id(), "none"
 
 
 def _inject_jsonrpc_trace_meta(
@@ -1332,7 +1337,7 @@ class ControlPlaneAuditSink:
     async def __call__(self, event: dict[str, Any]) -> None:
         async with self._lock:
             try:
-                event = canonicalize_gateway_enforcement_event(event)
+                event = canonicalize_gateway_enforcement_event(ensure_gateway_event_identity(event))
                 event_tenant = str(event.get("tenant_id") or "")
                 if event_tenant != self._tenant_id:
                     raise GatewayAuditDeliveryUnavailableError("audit credential is not bound to the event tenant")
@@ -1820,9 +1825,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         health = await healthz()
         audit_delivery = health.get("audit_delivery")
         ready = not isinstance(audit_delivery, dict) or (
-            audit_delivery.get("status") == "healthy"
-            and bool(audit_delivery.get("durable"))
+            bool(audit_delivery.get("durable"))
             and bool(audit_delivery.get("accepting_events"))
+            and bool(audit_delivery.get("backlog_observable"))
         )
         return JSONResponse(status_code=200 if ready else 503, content={"ready": ready, **health})
 
@@ -1847,6 +1852,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # gate the firewall-check endpoint, not just /mcp/{server}. Otherwise
         # the policy evaluator is reachable unauthenticated on shared
         # deployments and leaks every rule via the matched_rule field.
+        tenant_id = _configured_gateway_tenant_id()
         if _gateway_requires_auth(settings):
             tenant_id, auth_method = _authenticate_gateway_request(request, settings)
             request.state.tenant_id = tenant_id
@@ -1877,6 +1883,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             policy_source = firewall_state["source"]
             policy_loaded_at = firewall_state["last_loaded_at"]
             policy_load_failed = bool(firewall_state.get("load_failed"))
+        if policy.tenant_id is not None and policy.tenant_id != tenant_id:
+            raise HTTPException(status_code=403, detail="firewall policy is not bound to the authenticated tenant")
         if fail_closed and policy_load_failed and settings.firewall_policy_path is not None:
             result = FirewallEvaluation(
                 decision=FirewallDecision.DENY,
@@ -1914,7 +1922,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "loaded_at": policy_loaded_at,
                 "default_decision": policy.default_decision.value,
                 "enforcement_mode": policy.enforcement_mode.value,
-                "tenant_id": policy.tenant_id,
+                "tenant_id": tenant_id,
             },
         }
 
@@ -1931,7 +1939,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "source_roles": list(raw_source_roles),
                     "target_roles": list(raw_target_roles),
                     "matched_rule": response_payload["matched_rule"],
-                    "tenant_id": policy.tenant_id,
+                    "tenant_id": tenant_id,
                     "enforcement_mode": policy.enforcement_mode.value,
                     "timestamp": time.time(),
                 }
@@ -1962,7 +1970,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     async def relay(server_name: str, request: Request) -> JSONResponse:
         """Route an MCP JSON-RPC request to the named upstream after policy + audit."""
         trace_meta = make_request_trace(dict(request.headers))
-        tenant_id = "default"
+        tenant_id = _configured_gateway_tenant_id()
         auth_method = "none"
         if _gateway_requires_auth(settings):
             tenant_id, auth_method = _authenticate_gateway_request(request, settings)

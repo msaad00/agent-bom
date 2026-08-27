@@ -45,22 +45,73 @@ def _paths(tmp_path: Path) -> tuple[Path, Path]:
     return tmp_path / "gateway-audit.spill.jsonl", tmp_path / "gateway-audit.dlq.jsonl"
 
 
-def test_gateway_audit_eventless_idempotency_is_stable_without_colliding() -> None:
-    first = {"action": "gateway.rate_limited", "tenant_id": "tenant-a", "tool": "read_file"}
-    second = {"action": "gateway.budget_exceeded", "tenant_id": "tenant-a", "tool": "read_file"}
+@pytest.mark.asyncio
+async def test_gateway_audit_assigns_distinct_stable_ids_to_identical_event_occurrences(tmp_path: Path) -> None:
+    delivered: list[dict[str, Any]] = []
 
-    first_key = build_control_plane_audit_sink(
-        "https://control.example.test", None, tenant_id="tenant-a"
-    )._batch_idempotency_key("session", [first])
-    repeated_key = build_control_plane_audit_sink(
-        "https://control.example.test", None, tenant_id="tenant-a"
-    )._batch_idempotency_key("session", [first])
-    second_key = build_control_plane_audit_sink(
-        "https://control.example.test", None, tenant_id="tenant-a"
-    )._batch_idempotency_key("session", [second])
+    async def sender(payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        delivered.append(payload)
+        count = len(payload["alerts"])
+        return {
+            "accepted_alert_count": count,
+            "duplicate_alert_count": 0,
+            "durable_accepted_count": 0,
+            "durable_duplicate_count": 0,
+            "durable_conflict_count": 0,
+        }
 
-    assert first_key == repeated_key
-    assert first_key != second_key
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        None,
+        tenant_id="tenant-a",
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=sender,
+    )
+    occurrence = {"action": "gateway.upstream_error", "tenant_id": "tenant-a", "upstream": "filesystem"}
+
+    await sink(dict(occurrence))
+    await sink(dict(occurrence))
+
+    first, second = delivered
+    assert first["alerts"][0]["event_id"] != second["alerts"][0]["event_id"]
+    assert first["alerts"][0]["decision_id"] == first["alerts"][0]["event_id"]
+    assert second["alerts"][0]["decision_id"] == second["alerts"][0]["event_id"]
+    assert first["idempotency_key"] != second["idempotency_key"]
+
+
+@pytest.mark.asyncio
+async def test_gateway_audit_eventless_occurrence_keeps_identity_across_retry(tmp_path: Path) -> None:
+    attempts: list[dict[str, Any]] = []
+
+    async def sender(payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        attempts.append(payload)
+        if len(attempts) == 1:
+            raise RuntimeError("control plane unavailable")
+        return {
+            "accepted_alert_count": 1,
+            "duplicate_alert_count": 0,
+            "durable_accepted_count": 0,
+            "durable_duplicate_count": 0,
+            "durable_conflict_count": 0,
+        }
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        None,
+        tenant_id="tenant-a",
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=sender,
+    )
+
+    await sink({"action": "gateway.upstream_error", "tenant_id": "tenant-a", "upstream": "filesystem"})
+    assert await sink.flush_once() is True
+
+    assert attempts[0]["alerts"][0]["event_id"] == attempts[1]["alerts"][0]["event_id"]
+    assert attempts[0]["idempotency_key"] == attempts[1]["idempotency_key"]
 
 
 @pytest.mark.asyncio
@@ -183,7 +234,7 @@ async def test_gateway_audit_dlq_poison_keeps_later_events_fail_closed(tmp_path:
     ("action", "expected_type", "decision"),
     [
         ("gateway.a2a_mutual_auth_blocked", "gateway.enforcement.blocked", "deny"),
-        ("gateway.firewall_blocked", "gateway.enforcement.blocked", "deny"),
+        ("gateway.firewall_blocked", "gateway.tool_call.blocked", "deny"),
         ("gateway.rate_limited", "gateway.enforcement.blocked", "deny"),
         ("gateway.budget_exceeded", "gateway.enforcement.blocked", "deny"),
         ("gateway.anomaly_blocked", "gateway.enforcement.blocked", "deny"),
@@ -197,6 +248,7 @@ async def test_gateway_audit_dlq_poison_keeps_later_events_fail_closed(tmp_path:
         ("gateway.drift_warned", "gateway.enforcement.warned", "allow"),
         ("gateway.graph_reachability_warned", "gateway.enforcement.warned", "allow"),
         ("gateway.policy_warned", "gateway.enforcement.warned", "allow"),
+        ("gateway.firewall_warned", "gateway.enforcement.warned", "allow"),
         ("gateway.identity_jit_grant_used", "gateway.enforcement.observed", "allow"),
     ],
 )
@@ -242,6 +294,60 @@ async def test_gateway_audit_canonicalizes_enforcement_decisions_before_delivery
     assert delivered[0]["event_type"] == expected_type
     assert delivered[0]["decision"] == decision
     assert "authorization" not in delivered[0]
+
+
+@pytest.mark.asyncio
+async def test_gateway_audit_canonicalizes_actual_firewall_decision_and_preserves_provenance(tmp_path: Path) -> None:
+    delivered: list[dict[str, Any]] = []
+
+    async def sender(payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        delivered.extend(payload["alerts"])
+        return {
+            "accepted_alert_count": 1,
+            "duplicate_alert_count": 0,
+            "durable_accepted_count": 1,
+            "durable_duplicate_count": 0,
+            "durable_conflict_count": 0,
+        }
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        "token",
+        tenant_id="tenant-a",
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=sender,
+    )
+    await sink(
+        {
+            "action": "gateway.firewall_decision",
+            "tenant_id": "tenant-a",
+            "source_agent": "agent-a",
+            "target_agent": "filesystem",
+            "decision": "deny",
+            "effective_decision": "deny",
+            "identity_id": "identity-a",
+            "profile_id": "profile-a",
+            "profile_revision": 4,
+            "blueprint_id": "blueprint-a",
+            "blueprint_revision": 7,
+            "policy_ids": ["policy-a", "policy-b"],
+            "policy_id": "policy-a",
+            "evidence_id": "evidence-a",
+        }
+    )
+
+    event = delivered[0]
+    assert event["event_type"] == "gateway.enforcement.blocked"
+    assert event["decision"] == "deny"
+    assert event["identity_id"] == "identity-a"
+    assert event["profile_revision"] == 4
+    assert event["blueprint_id"] == "blueprint-a"
+    assert event["blueprint_revision"] == 7
+    assert event["policy_ids"] == ["policy-a", "policy-b"]
+    assert event["policy_id"] == "policy-a"
+    assert event["evidence_id"] == "evidence-a"
 
 
 @pytest.mark.asyncio
@@ -417,7 +523,8 @@ async def test_gateway_health_truthfully_reports_delivery_degradation_without_se
         readiness = client.get("/readyz")
 
     assert response.status_code == 200
-    assert readiness.status_code == 503
+    assert readiness.status_code == 200
+    assert readiness.json()["ready"] is True
     payload = response.json()
     assert payload["status"] == "degraded"
     assert payload["audit_delivery"]["status"] == "degraded"
@@ -440,6 +547,16 @@ def test_gateway_health_marks_inaccessible_persistence_non_durable() -> None:
     health = sink.health()
     assert health["durable"] is False
     assert health["accepting_events"] is False
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),
+        policy={},
+        audit_sink=sink,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+        readiness = client.get("/readyz")
+    assert readiness.status_code == 503
+    assert readiness.json()["ready"] is False
 
 
 def test_gateway_default_delivery_paths_are_restart_stable_and_secret_free(

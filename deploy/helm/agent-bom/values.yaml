@@ -316,8 +316,9 @@ gateway:
   # uses the pod's /tmp emptyDir and survives container restarts in that pod.
   stateDir: /tmp/agent-bom
   # Opt-in pod-rescheduling durability. Claims are process-owned, so the chart
-  # deliberately requires one replica and disables both HPA modes when a PVC
-  # is used. Scale-out needs a shared lease implementation that is not shipped.
+  # deliberately requires one replica, disables both HPA modes, and uses a
+  # Recreate rollout when a PVC is used. Scale-out needs a shared lease
+  # implementation that is not shipped.
   persistence:
     enabled: false
     existingClaim: ""

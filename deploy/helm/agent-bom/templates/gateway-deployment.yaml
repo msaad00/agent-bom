@@ -105,8 +105,10 @@ spec:
               port: http
             initialDelaySeconds: 2
             periodSeconds: 5
-          {{- with .Values.gateway.env }}
           env:
+            - name: AGENT_BOM_STATE_DIR
+              value: {{ .Values.gateway.stateDir | default "/tmp/agent-bom" | quote }}
+          {{- with .Values.gateway.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- with $gatewayEnvFrom }}

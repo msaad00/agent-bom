@@ -21,6 +21,9 @@ class GatewayRuntimeEventType(str, Enum):
     DLP_RESULT_REDACTED = "gateway.dlp.result_redacted"
     DLP_RESULT_BLOCKED = "gateway.dlp.result_blocked"
     VISUAL_REDACTED = "gateway.visual.redacted"
+    RUNTIME_PROFILE_WARNED = "gateway.runtime_profile.warned"
+    RUNTIME_PROFILE_DEV_BYPASS = "gateway.runtime_profile.dev_bypass"
+    RUNTIME_PROFILE_BLOCKED = "gateway.runtime_profile.blocked"
 
 
 GATEWAY_ALLOWED_EVENT_TYPES = frozenset({GatewayRuntimeEventType.TOOL_CALL_ALLOWED.value})
@@ -36,6 +39,22 @@ GATEWAY_DATA_FILTER_EVENT_TYPES = frozenset(
         GatewayRuntimeEventType.DLP_RESULT_REDACTED.value,
         GatewayRuntimeEventType.VISUAL_REDACTED.value,
     }
+)
+GATEWAY_PROFILE_EVENT_TYPES = frozenset(
+    {
+        GatewayRuntimeEventType.RUNTIME_PROFILE_WARNED.value,
+        GatewayRuntimeEventType.RUNTIME_PROFILE_DEV_BYPASS.value,
+        GatewayRuntimeEventType.RUNTIME_PROFILE_BLOCKED.value,
+    }
+)
+GATEWAY_DENIED_EVENT_TYPES = GATEWAY_BLOCKED_EVENT_TYPES | frozenset(
+    {GatewayRuntimeEventType.RUNTIME_PROFILE_BLOCKED.value}
+)
+GATEWAY_CANONICAL_EVENT_TYPES = (
+    GATEWAY_ALLOWED_EVENT_TYPES
+    | GATEWAY_BLOCKED_EVENT_TYPES
+    | GATEWAY_DATA_FILTER_EVENT_TYPES
+    | GATEWAY_PROFILE_EVENT_TYPES
 )
 
 
@@ -103,7 +122,10 @@ def build_gateway_runtime_event(
 __all__ = [
     "GATEWAY_ALLOWED_EVENT_TYPES",
     "GATEWAY_BLOCKED_EVENT_TYPES",
+    "GATEWAY_CANONICAL_EVENT_TYPES",
     "GATEWAY_DATA_FILTER_EVENT_TYPES",
+    "GATEWAY_DENIED_EVENT_TYPES",
+    "GATEWAY_PROFILE_EVENT_TYPES",
     "GatewayRuntimeEventType",
     "build_gateway_runtime_event",
 ]

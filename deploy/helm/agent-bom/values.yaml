@@ -312,6 +312,11 @@ gateway:
     # Optional URL for --from-control-plane discovery.
     # Example: https://agent-bom.internal.example.com
     url: ""
+  # Writable local state for the bounded gateway audit backlog. The default
+  # uses the pod's /tmp emptyDir and survives container restarts in that pod.
+  # For pod rescheduling durability, mount a PVC with extraVolumes /
+  # extraVolumeMounts and point stateDir at that mount.
+  stateDir: /tmp/agent-bom
   # Optional runtime policy JSON path (mounted via extraVolumes + extraVolumeMounts).
   policyPath: ""
   # In-process policy file reload interval; requires policyPath when > 0.

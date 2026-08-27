@@ -1,0 +1,272 @@
+"""Durable standalone-gateway audit delivery contracts."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+import pytest
+from starlette.testclient import TestClient
+
+from agent_bom.gateway_server import (
+    GatewayAuditDeliveryUnavailableError,
+    GatewaySettings,
+    _emit_gateway_governance_event,
+    build_control_plane_audit_sink,
+    create_gateway_app,
+)
+from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+from agent_bom.runtime.gateway_events import GatewayRuntimeEventType, build_gateway_runtime_event
+
+
+def _event(event_id: str = "gw_delivery_1", **overrides: object) -> dict[str, Any]:
+    event = build_gateway_runtime_event(
+        GatewayRuntimeEventType.TOOL_CALL_BLOCKED,
+        tenant_id="tenant-a",
+        agent_id="agent-a",
+        profile_id="profile-a",
+        upstream="filesystem",
+        tool="read_file",
+        decision="deny",
+        policy_source="runtime_profile",
+        trace_id="trace-a",
+        reason_code="profile_revoked",
+    )
+    event["event_id"] = event_id
+    event["decision_id"] = event_id
+    event.update(overrides)
+    return event
+
+
+def _paths(tmp_path: Path) -> tuple[Path, Path]:
+    return tmp_path / "gateway-audit.spill.jsonl", tmp_path / "gateway-audit.dlq.jsonl"
+
+
+@pytest.mark.asyncio
+async def test_gateway_audit_retries_the_same_durable_event_after_503(tmp_path: Path) -> None:
+    attempts: list[list[str]] = []
+
+    async def sender(payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        event_ids = [str(event["event_id"]) for event in payload["alerts"]]
+        attempts.append(event_ids)
+        if len(attempts) == 1:
+            raise RuntimeError("503 control plane temporarily unavailable")
+        return {
+            "accepted_alert_count": len(event_ids),
+            "duplicate_alert_count": 0,
+            "durable_accepted_count": len(event_ids),
+            "durable_duplicate_count": 0,
+            "durable_conflict_count": 0,
+        }
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        "token",
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=sender,
+    )
+
+    await sink(_event())
+    assert spill.exists()
+    assert sink.health()["status"] == "degraded"
+
+    assert await sink.flush_once() is True
+    assert attempts == [["gw_delivery_1"], ["gw_delivery_1"]]
+    assert not spill.exists()
+    assert sink.health()["status"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_gateway_audit_restart_loads_and_delivers_sanitized_backlog(tmp_path: Path) -> None:
+    spill, dlq = _paths(tmp_path)
+    secret = "sk-" + "gateway-restart-secret-value-1234567890"
+
+    async def unavailable(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise RuntimeError(f"503 token={secret} path=/private/runtime/audit")
+
+    first = build_control_plane_audit_sink(
+        "https://control.example.test",
+        secret,
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=unavailable,
+    )
+    await first(_event(api_token=secret, headers={"authorization": f"Bearer {secret}"}))
+    persisted = spill.read_text(encoding="utf-8")
+    assert secret not in persisted
+    await first.aclose()
+
+    delivered: list[dict[str, Any]] = []
+
+    async def recovered(payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        delivered.extend(payload["alerts"])
+        return {
+            "accepted_alert_count": len(payload["alerts"]),
+            "duplicate_alert_count": 0,
+            "durable_accepted_count": len(payload["alerts"]),
+            "durable_duplicate_count": 0,
+            "durable_conflict_count": 0,
+        }
+
+    restarted = build_control_plane_audit_sink(
+        "https://control.example.test",
+        secret,
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=recovered,
+    )
+    await restarted.start()
+    await restarted.aclose()
+
+    assert [event["event_id"] for event in delivered] == ["gw_delivery_1"]
+    assert secret not in json.dumps(delivered)
+    assert not spill.exists()
+
+
+@pytest.mark.asyncio
+async def test_gateway_audit_cancellation_restores_the_claimed_batch(tmp_path: Path) -> None:
+    entered = asyncio.Event()
+
+    async def pending(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        entered.set()
+        await asyncio.Future()
+        raise AssertionError("unreachable")
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        None,
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=pending,
+    )
+    sink._delivery_state.store.append_events([_event("gw_cancelled")])
+
+    delivery = asyncio.create_task(sink.flush_once())
+    await entered.wait()
+    delivery.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await delivery
+
+    recovered = sink._delivery_state.store.read_spillover()
+    assert [event["event_id"] for event in recovered] == ["gw_cancelled"]
+
+
+@pytest.mark.asyncio
+async def test_gateway_audit_fails_closed_when_bounded_persistence_is_full(tmp_path: Path) -> None:
+    async def sender(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise AssertionError("a non-durable event must never reach the transport")
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        None,
+        spill_path=spill,
+        dlq_path=dlq,
+        max_spillover_bytes=1,
+        max_dlq_bytes=1,
+        sender=sender,
+    )
+
+    with pytest.raises(GatewayAuditDeliveryUnavailableError, match="durable audit backlog is full"):
+        await sink(_event())
+
+    health = sink.health()
+    assert health["status"] == "degraded"
+    assert health["accepting_events"] is False
+    assert health["dropped_events"] == 1
+
+
+@pytest.mark.asyncio
+async def test_gateway_health_truthfully_reports_delivery_degradation_without_secrets(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = "gateway-health-secret-value-1234567890"
+
+    async def sender(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise RuntimeError(f"503 token={secret} path=/private/gateway/audit")
+
+    spill, dlq = _paths(tmp_path)
+    sink = build_control_plane_audit_sink(
+        "https://control.example.test",
+        secret,
+        spill_path=spill,
+        dlq_path=dlq,
+        sender=sender,
+    )
+    await sink(_event())
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),
+        policy={},
+        audit_sink=sink,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+        response = client.get("/healthz")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["audit_delivery"]["status"] == "degraded"
+    assert payload["audit_delivery"]["backlog_bytes"] > 0
+    assert secret not in response.text
+    assert "/private/gateway/audit" not in response.text
+    assert secret not in caplog.text
+    assert "/private/gateway/audit" not in caplog.text
+
+
+def test_gateway_default_delivery_paths_are_restart_stable_and_secret_free(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    secret = "gateway-token-must-not-enter-path"
+
+    first = build_control_plane_audit_sink(
+        "https://control.example.test",
+        secret,
+        source_id="gateway-a",
+    )
+    second = build_control_plane_audit_sink(
+        "https://control.example.test",
+        "rotated-token",
+        source_id="gateway-a",
+    )
+
+    first_store = first._delivery_state.store
+    second_store = second._delivery_state.store
+    assert first_store.spill_path == second_store.spill_path
+    assert first_store.dlq_path == second_store.dlq_path
+    assert first._session_id == second._session_id
+    assert first_store.spill_path.parent == tmp_path / "runtime-audit"
+    assert secret not in str(first_store.spill_path)
+
+
+def test_gateway_governance_emit_does_not_log_hostile_exception_content(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from agent_bom.api import webhook_store
+
+    opaque = "postgresql://audit:secret@db.internal/runtime"
+
+    def fail_emit(**_kwargs: object) -> None:
+        raise RuntimeError(f"{opaque} /private/tenant/audit.json")
+
+    monkeypatch.setattr(webhook_store, "emit_governance_event", fail_emit)
+    with caplog.at_level(logging.DEBUG):
+        _emit_gateway_governance_event(
+            "gateway.test",
+            tenant_id="tenant-a",
+            subject_id="agent-a",
+            payload={"safe": True},
+        )
+
+    assert opaque not in caplog.text
+    assert "/private/tenant/audit.json" not in caplog.text

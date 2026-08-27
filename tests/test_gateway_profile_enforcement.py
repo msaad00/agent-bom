@@ -221,6 +221,9 @@ def test_upstream_restriction_applies_to_non_tool_jsonrpc_messages() -> None:
     assert response.json()["error"]["data"]["reason_code"] == "upstream_not_allowed"
     assert calls == []
     assert all(event.get("event_type") != "gateway.tool_call.blocked" for event in audits)
+    profile_blocked = [event for event in audits if event.get("event_type") == "gateway.runtime_profile.blocked"]
+    assert len(profile_blocked) == 1
+    assert profile_blocked[0]["decision"] == "deny"
 
 
 def test_caller_environment_header_cannot_satisfy_operator_profile_environment() -> None:
@@ -258,6 +261,9 @@ def test_loopback_profile_bypass_requires_explicit_flag_and_is_audited() -> None
     assert len(calls) == 1
     bypass = [event for event in audits if event.get("action") == "gateway.runtime_profile_dev_bypass"]
     assert len(bypass) == 1
+    assert bypass[0]["event_type"] == "gateway.runtime_profile.dev_bypass"
+    assert bypass[0]["decision"] == "allow"
+    assert bypass[0]["decision_id"] == bypass[0]["event_id"]
     assert bypass[0]["reason_code"] == "profile_not_found"
     assert bypass[0]["development_mode"] is True
     allowed_events = [event for event in audits if event.get("event_type") == "gateway.tool_call.allowed"]
@@ -295,6 +301,9 @@ def test_warn_mode_audits_unsanctioned_profile_without_claiming_profile_attribut
     assert len(calls) == 1
     warned = [event for event in audits if event.get("action") == "gateway.runtime_profile_warned"]
     assert len(warned) == 1
+    assert warned[0]["event_type"] == "gateway.runtime_profile.warned"
+    assert warned[0]["decision"] == "allow"
+    assert warned[0]["decision_id"] == warned[0]["event_id"]
     assert warned[0]["reason_code"] == "profile_not_found"
     allowed = [event for event in audits if event.get("event_type") == "gateway.tool_call.allowed"]
     assert allowed[0]["profile_id"] == ""

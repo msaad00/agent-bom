@@ -493,6 +493,7 @@ def test_helm_gateway_service_account_defaults():
     assert gateway["profileEnforcement"] == "off"
     assert gateway["profileEnvironment"] == ""
     assert gateway["profileIssuer"] == "agent-bom"
+    assert gateway["stateDir"] == "/tmp/agent-bom"
 
 
 def test_helm_gateway_network_policy_defaults_to_explicit_egress_allowlist():
@@ -532,6 +533,8 @@ def test_helm_gateway_template_wires_control_plane_and_runtime_flags():
     assert "--profile-issuer" in template
     assert "$gatewayEnvFrom = .Values.controlPlane.api.envFrom" not in template
     assert "gateway profile enforcement requires gateway.envFrom" in template
+    assert "AGENT_BOM_STATE_DIR" in template
+    assert ".Values.gateway.stateDir" in template
 
 
 def test_helm_examples_do_not_ship_duplicate_sqlite_pilot_profile():

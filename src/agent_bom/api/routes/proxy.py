@@ -42,9 +42,8 @@ from agent_bom.api.models import ProxyAuditIngestRequest
 from agent_bom.api.stores import _get_idempotency_store
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.runtime.gateway_events import (
-    GATEWAY_ALLOWED_EVENT_TYPES,
-    GATEWAY_BLOCKED_EVENT_TYPES,
-    GATEWAY_DATA_FILTER_EVENT_TYPES,
+    GATEWAY_CANONICAL_EVENT_TYPES,
+    GATEWAY_DENIED_EVENT_TYPES,
 )
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
@@ -165,7 +164,7 @@ def _alert_visible_to_tenant(alert: dict, tenant_id: str) -> bool:
     return alert_tenant == tenant_id
 
 
-_CANONICAL_GATEWAY_EVENT_TYPES = GATEWAY_ALLOWED_EVENT_TYPES | GATEWAY_BLOCKED_EVENT_TYPES | GATEWAY_DATA_FILTER_EVENT_TYPES
+_CANONICAL_GATEWAY_EVENT_TYPES = GATEWAY_CANONICAL_EVENT_TYPES
 
 
 def _gateway_activity_record_from_alert(
@@ -211,7 +210,7 @@ def _gateway_activity_record_from_alert(
             raise ValueError("canonical gateway event requires a representable event_timestamp") from exc
     if not isinstance(event_timestamp, str) or not event_timestamp.strip():
         raise ValueError("canonical gateway event requires event_timestamp")
-    expected_decision = "deny" if event_type in GATEWAY_BLOCKED_EVENT_TYPES else "allow"
+    expected_decision = "deny" if event_type in GATEWAY_DENIED_EVENT_TYPES else "allow"
     agent_id = str(alert.get("agent_id") or alert.get("agent_name") or alert.get("source_agent") or source_id or "unknown")
     canonical: dict[str, Any] = {
         "schema_version": "gateway.runtime.event.v1",

@@ -28,6 +28,7 @@ from agent_bom.security import (
     validate_package_name,
     validate_path,
     validate_url,
+    value_looks_like_secret,
 )
 
 
@@ -42,6 +43,33 @@ def test_sanitize_log_label_strips_ansi_and_line_controls():
 
 def test_sanitize_log_label_bounds_length():
     assert sanitize_log_label("x" * 20, max_len=7) == "x" * 7
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "arn:aws:iam::123456789012:role/agent-bom-scanner",
+        "vault://team/agent-bom/production",
+        "aws-secretsmanager://production/agent-bom",
+        "workload-identity/scanner-production",
+        "credential-ref-production",
+    ],
+)
+def test_value_looks_like_secret_accepts_reference_identifiers(reference):
+    assert value_looks_like_secret(reference) is False
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+        "AKIAABCDEFGHIJKLMNOP",
+        "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890",
+        "postgresql://agent:super-secret@example.com/agent_bom",
+    ],
+)
+def test_value_looks_like_secret_rejects_credential_material(secret):
+    assert value_looks_like_secret(secret) is True
 
 
 # ---------------------------------------------------------------------------

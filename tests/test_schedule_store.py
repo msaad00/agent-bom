@@ -4,12 +4,16 @@ import asyncio
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+from agent_bom.api import stores as _stores
+from agent_bom.api.models import ScanJob, SourceKind, SourceRecord
 from agent_bom.api.schedule_store import (
     InMemoryScheduleStore,
     ScanSchedule,
     SQLiteScheduleStore,
 )
 from agent_bom.api.scheduler import parse_cron_next, validate_cron_expression
+from agent_bom.api.source_store import InMemorySourceStore
+from agent_bom.api.store import InMemoryJobStore
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +121,59 @@ class TestSQLiteScheduleStore:
     def test_delete_missing(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
         assert store.delete("nonexistent") is False
+
+
+def test_source_schedule_resolves_canonical_source_request_and_links_job(monkeypatch):
+    from agent_bom.api.server import _enqueue_scheduled_scan
+
+    source_store = InMemorySourceStore()
+    source_store.put(
+        SourceRecord(
+            source_id="source-repo",
+            tenant_id="tenant-alpha",
+            display_name="Repository",
+            kind=SourceKind.SCAN_REPO,
+            config={"scan_request": {"repo_url": "https://example.com/acme/repo"}},
+        )
+    )
+    old_source_store = _stores._source_store
+    old_job_store = _stores._store
+    _stores.set_source_store(source_store)
+    _stores.set_job_store(InMemoryJobStore())
+    captured = {}
+
+    def _fake_enqueue(**kwargs):
+        captured.update(kwargs)
+        return ScanJob(
+            job_id="scheduled-source-job",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            schedule_id=kwargs["schedule_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-08-27T00:00:00+00:00",
+            request=kwargs["request_body"],
+        )
+
+    monkeypatch.setattr("agent_bom.api.routes.scan.enqueue_scan_job", _fake_enqueue)
+    try:
+        job_id = _enqueue_scheduled_scan(
+            {"source_id": "source-repo"},
+            schedule_id="schedule-source",
+            tenant_id="tenant-alpha",
+        )
+    finally:
+        _stores._source_store = old_source_store
+        _stores._store = old_job_store
+
+    assert job_id == "scheduled-source-job"
+    assert captured["tenant_id"] == "tenant-alpha"
+    assert captured["source_id"] == "source-repo"
+    assert captured["schedule_id"] == "schedule-source"
+    assert captured["request_body"].repo_url == "https://example.com/acme/repo"
+    updated = source_store.get("source-repo")
+    assert updated is not None
+    assert updated.last_job_id == "scheduled-source-job"
+    assert updated.last_run_status == "pending"
 
     def test_list_all(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))

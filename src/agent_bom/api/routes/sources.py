@@ -23,8 +23,10 @@ from agent_bom.api.models import (
     SourceUpdate,
 )
 from agent_bom.api.routes.scan import _sanitize_scan_request_paths, enqueue_scan_job
-from agent_bom.api.stores import _get_credential_ref_store, _get_source_store, _get_store
+from agent_bom.api.stores import _get_credential_ref_store, _get_schedule_store, _get_source_store, _get_store
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
+from agent_bom.api.tenant_quota import tenant_quota_guard
+from agent_bom.security import sanitize_text
 
 router = APIRouter()
 
@@ -76,6 +78,10 @@ def _source_for_request(request: Request, source_id: str) -> SourceRecord:
 
 
 def _validate_credential_ref(request: Request, source: SourceRecord) -> None:
+    _validate_credential_ref_for_tenant(_tenant_id(request), source)
+
+
+def _validate_credential_ref_for_tenant(tenant_id: str, source: SourceRecord) -> None:
     credential_mode = source.credential_mode or SourceCredentialMode.NONE
     if not source.credential_ref:
         if credential_mode == SourceCredentialMode.REFERENCE:
@@ -83,7 +89,6 @@ def _validate_credential_ref(request: Request, source: SourceRecord) -> None:
         return
     if credential_mode != SourceCredentialMode.REFERENCE:
         raise HTTPException(status_code=422, detail="credential_ref requires credential_mode=reference")
-    tenant_id = _tenant_id(request)
     credential = _get_credential_ref_store().get(source.credential_ref, tenant_id=tenant_id)
     if credential is None or credential.tenant_id != tenant_id:
         raise HTTPException(status_code=409, detail="Source credential_ref is not available in this tenant")
@@ -237,10 +242,11 @@ async def create_source(request: Request, body: SourceCreate) -> dict:
         created_at=now,
         updated_at=now,
     )
-    _validate_credential_ref(request, source)
-    if source.kind in _RUNNABLE_SOURCE_KINDS:
-        _request_for_source(source)
-    _get_source_store().put(source)
+    with tenant_quota_guard(tenant_id):
+        _validate_credential_ref_for_tenant(tenant_id, source)
+        if source.kind in _RUNNABLE_SOURCE_KINDS:
+            _request_for_source(source)
+        _get_source_store().put(source)
     log_action(
         "source.create",
         actor=_actor(request),
@@ -282,11 +288,13 @@ async def get_source(request: Request, source_id: str) -> dict:
 
 @router.put("/sources/{source_id}", tags=["sources"])
 async def update_source(request: Request, source_id: str, body: SourceUpdate) -> dict:
-    source = _apply_update(_source_for_request(request, source_id), body)
-    _validate_credential_ref(request, source)
-    if source.kind in _RUNNABLE_SOURCE_KINDS:
-        _request_for_source(source)
-    _get_source_store().put(source)
+    tenant_id = _tenant_id(request)
+    with tenant_quota_guard(tenant_id):
+        source = _apply_update(_source_for_request(request, source_id), body)
+        _validate_credential_ref_for_tenant(tenant_id, source)
+        if source.kind in _RUNNABLE_SOURCE_KINDS:
+            _request_for_source(source)
+        _get_source_store().put(source)
     log_action(
         "source.update",
         actor=_actor(request),
@@ -300,14 +308,33 @@ async def update_source(request: Request, source_id: str, body: SourceUpdate) ->
 
 @router.delete("/sources/{source_id}", tags=["sources"], status_code=204)
 async def delete_source(request: Request, source_id: str) -> None:
-    source = _source_for_request(request, source_id)
-    _get_source_store().delete(source_id)
+    tenant_id = _tenant_id(request)
+    with tenant_quota_guard(tenant_id):
+        source = _source_for_request(request, source_id)
+        schedule_store = _get_schedule_store()
+        linked_schedules = [
+            schedule
+            for schedule in schedule_store.list_all(tenant_id=tenant_id)
+            if str(schedule.scan_config.get("source_id") or "") == source_id
+        ]
+        # Disable first so any backend failure after source removal remains
+        # fail-safe: a retained cleanup record cannot launch another scan.
+        for schedule in linked_schedules:
+            schedule.enabled = False
+            schedule.next_run = None
+            schedule.updated_at = _now()
+            schedule_store.put(schedule)
+        if not _get_source_store().delete(source_id):
+            raise HTTPException(status_code=409, detail="Source changed while it was being deleted; retry")
+        for schedule in linked_schedules:
+            schedule_store.delete(schedule.schedule_id, tenant_id=tenant_id)
     log_action(
         "source.delete",
         actor=_actor(request),
         resource=f"source/{source_id}",
         tenant_id=source.tenant_id,
         kind=source.kind.value,
+        linked_schedules=len(linked_schedules),
     )
 
 
@@ -331,7 +358,7 @@ async def test_source(request: Request, source_id: str) -> dict:
 
         connector_status = check_connector_health(source.connector_name)
         status = SourceStatus.HEALTHY if connector_status.state.value == "healthy" else SourceStatus.DEGRADED
-        message = connector_status.message
+        message = sanitize_text(connector_status.message)
     elif source.kind in (SourceKind.RUNTIME_PROXY, SourceKind.RUNTIME_GATEWAY):
         message = "Runtime source is configured. Health comes from proxy/gateway audit and alert streams."
         status = SourceStatus.CONFIGURED

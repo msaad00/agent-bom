@@ -1219,7 +1219,7 @@ function ConnectionsHub() {
     if (action === "delete") {
       const source = sourceById.get(sourceId);
       const label = source?.display_name || "this source";
-      if (!window.confirm(`Delete ${label}? Its registration and schedule links will be removed.`)) return;
+      if (!window.confirm(`Delete ${label}? Its registration and linked recurring schedules will be disabled and removed.`)) return;
     }
     setBusySourceId(sourceId);
     setFormMessage(null);
@@ -3178,6 +3178,7 @@ function SourceDrawer({
   const isBusy = busySourceId === source.source_id;
   const schedulable = SCHEDULABLE_KINDS.has(source.kind);
   const runnable = sourceSupportsDirectRun(source.kind);
+  const credentialBlocksRun = runnable && source.credential_mode === "reference";
   const credentialContract =
     source.credential_mode === "reference"
       ? "Metadata only (not executable)"
@@ -3214,10 +3215,12 @@ function SourceDrawer({
           </button>
           <button
             onClick={() => onSourceAction(source.source_id, "run")}
-            disabled={isBusy || !source.enabled || !canRunScans || !runnable}
+            disabled={isBusy || !source.enabled || !canRunScans || !runnable || credentialBlocksRun}
             title={
               !runnable
                 ? "Push and runtime sources receive evidence externally and cannot run directly."
+                : credentialBlocksRun
+                  ? "Credential references are governance metadata and cannot execute this source. Detach the reference first."
                 : undefined
             }
             className="rounded-lg bg-[color:var(--accent)] px-3 py-2 text-xs font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"

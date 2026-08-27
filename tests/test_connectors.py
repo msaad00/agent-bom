@@ -62,6 +62,46 @@ def test_check_health_unknown_connector():
         check_connector_health("nonexistent")
 
 
+@pytest.mark.parametrize(
+    ("module_name", "kwargs"),
+    [
+        (
+            "agent_bom.connectors.jira_connector",
+            {
+                "jira_url": "https://example.atlassian.net",
+                "email": "scanner@example.com",
+                "api_token": "jira-test-token",
+            },
+        ),
+        (
+            "agent_bom.connectors.servicenow_connector",
+            {
+                "instance_url": "https://example.service-now.com",
+                "token": "servicenow-test-token",
+            },
+        ),
+        (
+            "agent_bom.connectors.slack_connector",
+            {"bot_token": "xoxb-test-token-value"},
+        ),
+    ],
+)
+def test_connector_health_sanitizes_transport_exceptions(monkeypatch, module_name, kwargs):
+    module = __import__(module_name, fromlist=["health_check"])
+    leaked = "postgresql://agent:super-secret@example.com/agent_bom"
+
+    def failing_client(**_kwargs):
+        raise RuntimeError(leaked)
+
+    monkeypatch.setattr(module, "create_client", failing_client)
+
+    status = module.health_check(**kwargs)
+
+    assert status.state is ConnectorHealthState.UNREACHABLE
+    assert leaked not in status.message
+    assert "super-secret" not in status.message
+
+
 # ─── ConnectorStatus ─────────────────────────────────────────────────────────
 
 

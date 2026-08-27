@@ -1415,6 +1415,38 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     expect(apiMock.runSource).not.toHaveBeenCalled();
   });
 
+  it("does not offer Run now for a legacy runnable source with a metadata-only credential reference", async () => {
+    apiMock.listSources.mockResolvedValue({
+      schema_version: "sources.v1",
+      tenant_id: "tenant-acme",
+      count: 1,
+      sources: [
+        {
+          ...SOURCE_RECORD,
+          source_id: "src-legacy-ref",
+          display_name: "Legacy Jira source",
+          kind: "connector.cloud_read_only",
+          connector_name: "jira",
+          credential_mode: "reference",
+          credential_ref: "credential-ref-1",
+        },
+      ],
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Legacy Jira source")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Legacy Jira source" }));
+
+    const run = screen.getByRole("button", { name: "Run now" });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute(
+      "title",
+      "Credential references are governance metadata and cannot execute this source. Detach the reference first.",
+    );
+    fireEvent.click(run);
+    expect(apiMock.runSource).not.toHaveBeenCalled();
+  });
+
   it("enables source deletion only for an Admin", async () => {
     authState.role = "admin";
     authState.capabilities = ["inventory.read", "scan.run", "sources.manage", "keys.manage"];

@@ -314,9 +314,14 @@ gateway:
     url: ""
   # Writable local state for the bounded gateway audit backlog. The default
   # uses the pod's /tmp emptyDir and survives container restarts in that pod.
-  # For pod rescheduling durability, mount a PVC with extraVolumes /
-  # extraVolumeMounts and point stateDir at that mount.
   stateDir: /tmp/agent-bom
+  # Opt-in pod-rescheduling durability. Claims are process-owned, so the chart
+  # deliberately requires one replica and disables both HPA modes when a PVC
+  # is used. Scale-out needs a shared lease implementation that is not shipped.
+  persistence:
+    enabled: false
+    existingClaim: ""
+    mountPath: /var/lib/agent-bom
   # Optional runtime policy JSON path (mounted via extraVolumes + extraVolumeMounts).
   policyPath: ""
   # In-process policy file reload interval; requires policyPath when > 0.

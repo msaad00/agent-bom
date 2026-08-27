@@ -152,6 +152,9 @@ _EXPECTED_DECISIONS = {
     "gateway.runtime_profile.warned": "allow",
     "gateway.runtime_profile.dev_bypass": "allow",
     "gateway.runtime_profile.blocked": "deny",
+    "gateway.enforcement.warned": "allow",
+    "gateway.enforcement.observed": "allow",
+    "gateway.enforcement.blocked": "deny",
 }
 _ALLOWED_EVENT_FIELDS = frozenset(
     {

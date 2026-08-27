@@ -264,6 +264,31 @@ class AuditSpilloverStore:
                 claim.path.unlink()
             _ACTIVE_CLAIMS.discard(os.path.abspath(claim.path))
 
+    def acknowledge_claim_prefix(
+        self,
+        claim: AuditSpilloverClaim,
+        event_count: int,
+    ) -> AuditSpilloverClaim | None:
+        """Durably acknowledge an ordered prefix and retain the unsent tail."""
+
+        if event_count < 1 or event_count > len(claim.events):
+            raise ValueError("acknowledged event count is outside the claimed batch")
+        with self._exclusive():
+            self._validate_claim_path(claim.path)
+            self._reject_symlink(claim.path)
+            if not claim.path.exists():
+                _ACTIVE_CLAIMS.discard(os.path.abspath(claim.path))
+                return None
+            remaining = claim.events[event_count:]
+            if not remaining:
+                claim.path.unlink()
+                _ACTIVE_CLAIMS.discard(os.path.abspath(claim.path))
+                return None
+            encoded = self._encode_events(remaining)
+            payload = b"".join((line + "\n").encode("utf-8") for line in encoded)
+            self._atomic_write_locked(claim.path, payload)
+            return AuditSpilloverClaim(path=claim.path, events=[dict(event) for event in remaining])
+
     def restore_claim(
         self,
         claim: AuditSpilloverClaim,
@@ -301,12 +326,6 @@ class AuditSpilloverStore:
             claim.path.unlink()
             _ACTIVE_CLAIMS.discard(os.path.abspath(claim.path))
             return destination
-
-    def clear_spillover(self) -> None:
-        with self._exclusive():
-            self._reject_symlink(self.spill_path)
-            if self.spill_path.exists():
-                self.spill_path.unlink()
 
     @staticmethod
     def _reject_symlink(path: Path) -> None:

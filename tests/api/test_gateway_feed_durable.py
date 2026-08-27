@@ -210,6 +210,32 @@ def test_profile_posture_is_durable_without_inflating_tool_call_feed_or_kpis() -
     assert kpis.json()["blocked_today"] == 0
 
 
+def test_enforcement_posture_is_durable_without_inflating_tool_call_kpis() -> None:
+    client = TestClient(app)
+    tenant_id = "tenant-enforcement-posture"
+    ingest = client.post(
+        "/v1/proxy/audit",
+        headers=_headers(tenant_id, role="admin"),
+        json={
+            "source_id": "gateway-a",
+            "session_id": "session-a",
+            "alerts": [
+                _profile_event("evt-enforcement-warn", "gateway.enforcement.warned"),
+                _profile_event("evt-enforcement-observed", "gateway.enforcement.observed"),
+                _profile_event("evt-enforcement-block", "gateway.enforcement.blocked", decision="deny"),
+                _event("evt-allow", tool="read_file"),
+            ],
+        },
+    )
+    assert ingest.status_code == 200, ingest.text
+    assert ingest.json()["durable_accepted_count"] == 4
+
+    kpis = client.get("/v1/gateway/feed/kpis", headers=_headers(tenant_id))
+    assert kpis.status_code == 200, kpis.text
+    assert kpis.json()["tool_calls_authorized"] == 1
+    assert kpis.json()["blocked_today"] == 0
+
+
 def test_retention_marks_initial_backfill_partial_and_expires_old_cursor() -> None:
     store = InMemoryGatewayActivityStore(max_events_per_tenant=2)
     set_gateway_activity_store(store)

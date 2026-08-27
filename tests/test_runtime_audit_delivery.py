@@ -183,6 +183,21 @@ def test_failed_claim_restore_persists_in_memory_snapshot_before_new_appends(tmp
     ]
 
 
+def test_acknowledging_claim_prefix_leaves_only_ordered_remainder(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    events = [{"event_id": f"event-{index}"} for index in range(7)]
+    store.append_events(events)
+
+    claim = store.claim_spillover()
+    assert claim is not None
+    remainder = store.acknowledge_claim_prefix(claim, 5)
+
+    assert remainder is not None
+    assert [event["event_id"] for event in remainder.events] == ["event-5", "event-6"]
+    store.restore_claim(remainder)
+    assert store.read_spillover() == events[5:]
+
+
 def test_second_store_does_not_recover_a_live_claim(tmp_path: Path) -> None:
     first = _store(tmp_path)
     second = _store(tmp_path)

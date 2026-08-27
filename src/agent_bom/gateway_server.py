@@ -86,11 +86,16 @@ from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan
 from agent_bom.runtime.audit_delivery import (
     AuditDeliveryController,
     AuditDeliveryState,
+    AuditSpilloverClaim,
     AuditSpilloverStore,
     audit_delivery_paths,
 )
 from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
-from agent_bom.runtime.gateway_events import GatewayRuntimeEventType, build_gateway_runtime_event
+from agent_bom.runtime.gateway_events import (
+    GatewayRuntimeEventType,
+    build_gateway_runtime_event,
+    canonicalize_gateway_enforcement_event,
+)
 from agent_bom.runtime.gateway_relay_contract import (
     MAX_GATEWAY_RELAY_MESSAGE_BYTES,
     RelayForwardRequest,
@@ -1266,15 +1271,15 @@ class ControlPlaneAuditSink:
     def __init__(
         self,
         *,
-        audit_url: str,
         token: str | None,
+        tenant_id: str,
         source_id: str,
         session_id: str,
         delivery_state: AuditDeliveryState,
         sender: GatewayAuditSender,
     ) -> None:
-        self._audit_url = audit_url
         self._token = token
+        self._tenant_id = tenant_id
         self._source_id = source_id
         self._session_id = session_id
         self._delivery_state = delivery_state
@@ -1286,8 +1291,15 @@ class ControlPlaneAuditSink:
 
     @staticmethod
     def _batch_idempotency_key(session_id: str, events: list[dict[str, Any]]) -> str:
-        event_ids = [str(event.get("event_id") or "") for event in events]
-        material = json.dumps([session_id, event_ids], separators=(",", ":"), ensure_ascii=True)
+        event_identities = [
+            str(event.get("event_id"))
+            if event.get("event_id")
+            else hashlib.sha256(
+                json.dumps(event, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode("utf-8")
+            ).hexdigest()
+            for event in events
+        ]
+        material = json.dumps([session_id, event_identities], separators=(",", ":"), ensure_ascii=True)
         return "gateway-audit-" + hashlib.sha256(material.encode("utf-8")).hexdigest()
 
     @staticmethod
@@ -1320,7 +1332,16 @@ class ControlPlaneAuditSink:
     async def __call__(self, event: dict[str, Any]) -> None:
         async with self._lock:
             try:
+                event = canonicalize_gateway_enforcement_event(event)
+                event_tenant = str(event.get("tenant_id") or "")
+                if event_tenant != self._tenant_id:
+                    raise GatewayAuditDeliveryUnavailableError("audit credential is not bound to the event tenant")
+                if self._delivery_state.store.dlq_size_bytes() or self._delivery_state.store.dropped_events:
+                    self._persistence_available = False
+                    raise GatewayAuditDeliveryUnavailableError("durable audit backlog is full")
                 destination = self._delivery_state.store.append_events([event])
+            except GatewayAuditDeliveryUnavailableError:
+                raise
             except Exception as exc:  # noqa: BLE001 - local durability failure is fail-closed
                 self._persistence_available = False
                 logger.error("Gateway audit persistence unavailable (error_type=%s)", type(exc).__name__)
@@ -1342,26 +1363,30 @@ class ControlPlaneAuditSink:
         if claim is None:
             self._persistence_available = True
             return True
-        events = claim.events
-        if not events:
+        if not claim.events:
             self._delivery_state.store.acknowledge_claim(claim)
             return True
+        active_claim: AuditSpilloverClaim | None = claim
         try:
-            response = await self._sender(self._payload(events), self._headers())
-            self._validate_acknowledgement(events, response)
+            while active_claim is not None:
+                events = active_claim.events[:500]
+                response = await self._sender(self._payload(events), self._headers())
+                self._validate_acknowledgement(events, response)
+                active_claim = self._delivery_state.store.acknowledge_claim_prefix(active_claim, len(events))
         except asyncio.CancelledError:
-            self._delivery_state.store.restore_claim(claim)
+            if active_claim is not None:
+                self._delivery_state.store.restore_claim(active_claim)
             raise
         except Exception as exc:  # noqa: BLE001 - retained backlog is retried
             try:
-                self._delivery_state.store.restore_claim(claim)
+                if active_claim is not None:
+                    self._delivery_state.store.restore_claim(active_claim)
             except Exception:  # noqa: BLE001 - do not leak persistence exception details
                 self._persistence_available = False
                 logger.error("Gateway audit persistence unavailable while retaining a failed delivery")
             self._delivery_state.controller.record_failure()
             logger.warning("Gateway audit push failed; retained for retry (error_type=%s)", type(exc).__name__)
             return False
-        self._delivery_state.store.acknowledge_claim(claim)
         self._persistence_available = True
         self._delivery_state.controller.record_success()
         return True
@@ -1423,7 +1448,7 @@ class ControlPlaneAuditSink:
             health["status"] = "degraded"
         return {
             "configured": True,
-            "durable": True,
+            "durable": self._persistence_available and backlog_observable,
             "accepting_events": accepting_events,
             "backlog_observable": backlog_observable,
             "retry_worker_running": self._worker is not None and not self._worker.done() and not self._closed,
@@ -1435,6 +1460,7 @@ def build_control_plane_audit_sink(
     base_url: str,
     token: str | None,
     *,
+    tenant_id: str = "default",
     source_id: str = "gateway",
     session_id: str | None = None,
     spill_path: Path | None = None,
@@ -1446,7 +1472,10 @@ def build_control_plane_audit_sink(
     """Build the gateway's shared bounded control-plane audit delivery sink."""
 
     audit_url = base_url.rstrip("/") + "/v1/proxy/audit"
-    delivery_identity = f"{source_id}\0{audit_url}"
+    normalized_tenant_id = tenant_id.strip()
+    if not normalized_tenant_id:
+        raise ValueError("gateway audit tenant_id must not be empty")
+    delivery_identity = f"{source_id}\0{audit_url}\0{normalized_tenant_id}"
     active_session_id = session_id or "gateway-" + hashlib.sha256(delivery_identity.encode("utf-8")).hexdigest()[:20]
     state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
     stable_paths = audit_delivery_paths(
@@ -1474,8 +1503,8 @@ def build_control_plane_audit_sink(
     else:
         active_sender = sender
     return ControlPlaneAuditSink(
-        audit_url=audit_url,
         token=token,
+        tenant_id=normalized_tenant_id,
         source_id=source_id,
         session_id=active_session_id,
         delivery_state=AuditDeliveryState(controller=controller, store=store),
@@ -1783,6 +1812,19 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             if audit_delivery_health["status"] != "healthy":
                 health["status"] = "degraded"
         return health
+
+    @app.get("/readyz")
+    async def readyz() -> JSONResponse:
+        """Report whether configured durable audit delivery can accept work."""
+
+        health = await healthz()
+        audit_delivery = health.get("audit_delivery")
+        ready = not isinstance(audit_delivery, dict) or (
+            audit_delivery.get("status") == "healthy"
+            and bool(audit_delivery.get("durable"))
+            and bool(audit_delivery.get("accepting_events"))
+        )
+        return JSONResponse(status_code=200 if ready else 503, content={"ready": ready, **health})
 
     @app.post("/v1/firewall/check")
     async def firewall_check(request: Request) -> JSONResponse:

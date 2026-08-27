@@ -24,6 +24,9 @@ class GatewayRuntimeEventType(str, Enum):
     RUNTIME_PROFILE_WARNED = "gateway.runtime_profile.warned"
     RUNTIME_PROFILE_DEV_BYPASS = "gateway.runtime_profile.dev_bypass"
     RUNTIME_PROFILE_BLOCKED = "gateway.runtime_profile.blocked"
+    ENFORCEMENT_WARNED = "gateway.enforcement.warned"
+    ENFORCEMENT_OBSERVED = "gateway.enforcement.observed"
+    ENFORCEMENT_BLOCKED = "gateway.enforcement.blocked"
 
 
 GATEWAY_ALLOWED_EVENT_TYPES = frozenset({GatewayRuntimeEventType.TOOL_CALL_ALLOWED.value})
@@ -47,15 +50,91 @@ GATEWAY_PROFILE_EVENT_TYPES = frozenset(
         GatewayRuntimeEventType.RUNTIME_PROFILE_BLOCKED.value,
     }
 )
+GATEWAY_ENFORCEMENT_EVENT_TYPES = frozenset(
+    {
+        GatewayRuntimeEventType.ENFORCEMENT_WARNED.value,
+        GatewayRuntimeEventType.ENFORCEMENT_OBSERVED.value,
+        GatewayRuntimeEventType.ENFORCEMENT_BLOCKED.value,
+    }
+)
 GATEWAY_DENIED_EVENT_TYPES = GATEWAY_BLOCKED_EVENT_TYPES | frozenset(
-    {GatewayRuntimeEventType.RUNTIME_PROFILE_BLOCKED.value}
+    {
+        GatewayRuntimeEventType.RUNTIME_PROFILE_BLOCKED.value,
+        GatewayRuntimeEventType.ENFORCEMENT_BLOCKED.value,
+    }
 )
 GATEWAY_CANONICAL_EVENT_TYPES = (
     GATEWAY_ALLOWED_EVENT_TYPES
     | GATEWAY_BLOCKED_EVENT_TYPES
     | GATEWAY_DATA_FILTER_EVENT_TYPES
     | GATEWAY_PROFILE_EVENT_TYPES
+    | GATEWAY_ENFORCEMENT_EVENT_TYPES
 )
+
+_BLOCKED_ENFORCEMENT_ACTIONS = frozenset(
+    {
+        "gateway.a2a_mutual_auth_blocked",
+        "gateway.anomaly_blocked",
+        "gateway.budget_exceeded",
+        "gateway.conditional_access_blocked",
+        "gateway.firewall_blocked",
+        "gateway.fleet_blocked",
+        "gateway.graph_reachability_blocked",
+        "gateway.identity_blocked",
+        "gateway.oauth_scope_blocked",
+        "gateway.policy_blocked",
+        "gateway.policy_fail_closed",
+        "gateway.policy_quarantined",
+        "gateway.rate_limited",
+    }
+)
+_WARNED_ENFORCEMENT_ACTIONS = frozenset(
+    {
+        "gateway.a2a_mutual_auth_warned",
+        "gateway.anomaly_warned",
+        "gateway.drift_warned",
+        "gateway.fleet_warned",
+        "gateway.graph_reachability_warned",
+        "gateway.policy_warned",
+    }
+)
+_OBSERVED_ENFORCEMENT_ACTIONS = frozenset({"gateway.firewall_decision", "gateway.identity_jit_grant_used"})
+
+
+def canonicalize_gateway_enforcement_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Convert legacy enforcement actions to safe durable event metadata."""
+
+    if str(event.get("event_type") or "") in GATEWAY_CANONICAL_EVENT_TYPES:
+        return dict(event)
+    action = str(event.get("action") or "")
+    if action == "gateway.drift_binding_unavailable":
+        blocked = str(event.get("enforcement_mode") or "") == "enforce"
+        event_type = GatewayRuntimeEventType.ENFORCEMENT_BLOCKED if blocked else GatewayRuntimeEventType.ENFORCEMENT_WARNED
+        decision = "deny" if blocked else "allow"
+    elif action in _BLOCKED_ENFORCEMENT_ACTIONS:
+        event_type = GatewayRuntimeEventType.ENFORCEMENT_BLOCKED
+        decision = "deny"
+    elif action in _WARNED_ENFORCEMENT_ACTIONS:
+        event_type = GatewayRuntimeEventType.ENFORCEMENT_WARNED
+        decision = "allow"
+    elif action in _OBSERVED_ENFORCEMENT_ACTIONS:
+        event_type = GatewayRuntimeEventType.ENFORCEMENT_OBSERVED
+        decision = "allow"
+    else:
+        return dict(event)
+    reason_code = action.removeprefix("gateway.").replace(".", "_")
+    return build_gateway_runtime_event(
+        event_type,
+        tenant_id=str(event.get("tenant_id") or "default"),
+        agent_id=str(event.get("source_agent") or event.get("agent_id") or "anonymous"),
+        profile_id=str(event.get("profile_id") or ""),
+        upstream=str(event.get("upstream") or event.get("target_agent") or ""),
+        tool=str(event.get("tool") or event.get("method") or ""),
+        decision=decision,
+        policy_source=str(event.get("policy_source") or reason_code),
+        trace_id=str(event.get("trace_id") or ""),
+        reason_code=reason_code,
+    )
 
 
 def build_gateway_runtime_event(
@@ -125,7 +204,9 @@ __all__ = [
     "GATEWAY_CANONICAL_EVENT_TYPES",
     "GATEWAY_DATA_FILTER_EVENT_TYPES",
     "GATEWAY_DENIED_EVENT_TYPES",
+    "GATEWAY_ENFORCEMENT_EVENT_TYPES",
     "GATEWAY_PROFILE_EVENT_TYPES",
     "GatewayRuntimeEventType",
     "build_gateway_runtime_event",
+    "canonicalize_gateway_enforcement_event",
 ]

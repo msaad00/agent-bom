@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import cast
@@ -543,7 +544,16 @@ def serve_cmd(
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
 
-    audit_sink = build_control_plane_audit_sink(control_plane_url, control_plane_token, source_id="gateway") if control_plane_url else None
+    audit_sink = (
+        build_control_plane_audit_sink(
+            control_plane_url,
+            control_plane_token,
+            tenant_id=os.environ.get("AGENT_BOM_TENANT_ID", "default"),
+            source_id="gateway",
+        )
+        if control_plane_url
+        else None
+    )
 
     control_plane_policies: list[dict] = []
     if policy_bundle_path is not None:

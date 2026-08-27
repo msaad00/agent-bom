@@ -558,6 +558,24 @@ def test_helm_gateway_autoscaling_defaults():
     assert autoscaling["keda"]["prometheus"]["pressureRateThreshold"] == "1"
 
 
+def test_helm_gateway_persistent_audit_backlog_is_single_replica_and_pvc_bound():
+    values = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    persistence = values["gateway"]["persistence"]
+    template = (HELM_DIR / "templates" / "gateway-deployment.yaml").read_text()
+
+    assert persistence == {
+        "enabled": False,
+        "existingClaim": "",
+        "mountPath": "/var/lib/agent-bom",
+    }
+    assert "gateway persistence requires gateway.replicas=1" in template
+    assert "gateway persistence is incompatible with gateway autoscaling" in template
+    assert "gateway.persistence.existingClaim is required" in template
+    assert "persistentVolumeClaim" in template
+    assert "$gatewayPersistence.mountPath" in template
+    assert "path: /readyz" in template
+
+
 def test_helm_gateway_keda_template_suppresses_static_hpa():
     """Gateway KEDA must own autoscaling when enabled, not stack with a static HPA."""
     hpa_template = (HELM_DIR / "templates" / "gateway-hpa.yaml").read_text()

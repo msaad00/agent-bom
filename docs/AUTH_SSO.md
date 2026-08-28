@@ -20,21 +20,24 @@ this path is the fastest for a solo self-hoster.
 agent-bom auth setup-oidc
 ```
 
-Interactive on a terminal — it prompts for the provider, client ID/secret, and
-your deployment's base URL. Fully flag-driven for automation:
+Interactive on a terminal — it prompts for the provider, client ID, optional
+runtime secret-file path, and your deployment's base URL. Fully flag-driven for
+automation:
 
 ```bash
 agent-bom auth setup-oidc \
   --non-interactive \
   --provider google \
   --client-id  <client-id>.apps.googleusercontent.com \
-  --client-secret <client-secret> \
+  --client-secret-file /run/secrets/oidc_client_secret \
   --base-url https://abom.example.com \
   --write                      # write deploy/secrets/oidc.env (default path)
 ```
 
-It prints the provider-side steps, a copy-paste env block, and (with `--write`
-or an interactive confirmation) saves the block to `deploy/secrets/oidc.env`.
+It prints the provider-side steps, a copy-paste non-secret env block, and (with
+`--write` or an interactive confirmation) saves the block to
+`deploy/secrets/oidc.env`. The wizard never reads, prints, or writes a client
+secret value; confidential clients reference an operator-managed mounted file.
 
 > The redirect URI is always derived as `<base-url>/v1/auth/oidc/callback` — the
 > dashboard's OIDC callback route. It must be allowlisted at the IdP **exactly**.
@@ -47,14 +50,16 @@ or an interactive confirmation) saves the block to `deploy/secrets/oidc.env`.
 2. **Create Credentials → OAuth client ID → Application type: Web application.**
 3. Add an **Authorized redirect URI**, exactly:
    `https://<your-host>/v1/auth/oidc/callback`
-4. **Create**, then copy the **Client ID** and **Client secret**.
-5. Run the command with those values (issuer is preset to
-   `https://accounts.google.com`):
+4. **Create**, then copy the **Client ID**. Store the **Client secret** in your
+   secret manager and mount it read-only at a runtime path such as
+   `/run/secrets/oidc_client_secret`.
+5. Run the command with the client ID and runtime secret-file path (issuer is
+   preset to `https://accounts.google.com`):
 
    ```bash
    agent-bom auth setup-oidc --provider google \
      --client-id <id>.apps.googleusercontent.com \
-     --client-secret <secret> \
+     --client-secret-file /run/secrets/oidc_client_secret \
      --base-url https://<your-host> --write
    ```
 
@@ -66,7 +71,7 @@ Resulting env block:
 ```dotenv
 AGENT_BOM_OIDC_ISSUER=https://accounts.google.com
 AGENT_BOM_OIDC_CLIENT_ID=<id>.apps.googleusercontent.com
-AGENT_BOM_OIDC_CLIENT_SECRET=<secret>
+AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret
 AGENT_BOM_OIDC_REDIRECT_URI=https://<your-host>/v1/auth/oidc/callback
 AGENT_BOM_OIDC_AUDIENCE=<id>.apps.googleusercontent.com
 AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1
@@ -81,12 +86,14 @@ AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1
 
 ### Loading the env
 
-- **Docker Compose:** the `deploy/secrets/oidc.env` file is written mode `0644`
-  so the (non-root) API container can read it when mounted as an `env_file`.
-  Because it may contain a client secret, restrict the `deploy/secrets/`
-  directory and never commit it.
+- **Docker Compose:** load `deploy/secrets/oidc.env` as an `env_file`, then mount
+  the separately managed client-secret file read-only at the exact path named by
+  `AGENT_BOM_OIDC_CLIENT_SECRET_FILE`. The generated env file contains the path,
+  not the secret value.
 - **systemd / bare process:** export the variables into the API process
-  environment (an `EnvironmentFile=` works with the same dotenv file).
+  environment (an `EnvironmentFile=` works with the same dotenv file) and set
+  `AGENT_BOM_OIDC_CLIENT_SECRET_FILE` to a protected file readable by the API
+  service account.
 
 ---
 
@@ -106,14 +113,15 @@ discovery document under the issuer is what the wizard validates.
 agent-bom auth setup-oidc --provider generic \
   --issuer https://<org>.okta.com \
   --client-id <client-id> \
-  --client-secret <client-secret> \
+  --client-secret-file /run/secrets/oidc_client_secret \
   --base-url https://<your-host> \
   --role-claim groups \
   --tenant-claim org_id \
   --write
 ```
 
-- A **PKCE public client** (no secret) is supported — omit `--client-secret`.
+- A **PKCE public client** (no secret) is supported — omit
+  `--client-secret-file`.
 - `--role-claim` maps a JWT claim to an agent-bom role (default `agent_bom_role`;
   `roles`/`groups`/`permissions` arrays are also honored).
 - `--tenant-claim` maps a JWT claim to a tenant. When set, the wizard does **not**

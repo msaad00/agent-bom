@@ -17,6 +17,7 @@ Usage::
 
 from __future__ import annotations
 
+import socket
 import sys
 from collections import OrderedDict
 from pathlib import Path
@@ -152,18 +153,31 @@ def write_env_file(path: str | Path, block: str) -> Path:
 def check_issuer_connectivity(issuer: str) -> dict[str, object]:
     """Reuse the mechanism's discovery to confirm the issuer's endpoints resolve.
 
-    Returns a result dict; never raises. Reuses ``oidc.discover_oidc`` (the same
-    ``.well-known/openid-configuration`` fetch + validation the auth path uses)
-    so the wizard does not fork a second discovery fetcher. An unreachable issuer
-    is a warning (``reachable=False``), not a failure, so an offline operator can
-    still emit config.
+    Reuses ``oidc.discover_oidc`` (the same discovery fetch and URL-policy
+    validation as the auth path) so the wizard does not fork a second fetcher.
+    DNS/network failures become sanitized offline warnings. Security-policy
+    failures still raise so unsafe issuer URLs cannot be written as validated
+    setup output.
     """
     from agent_bom.api.oidc import OIDCError, discover_oidc
+    from agent_bom.security import SecurityError, sanitize_error, sanitize_text
+
+    offline = {"reachable": False, "complete": False}
 
     try:
         doc = discover_oidc(issuer)
+    except socket.gaierror:
+        return {**offline, "warning": "OIDC issuer hostname could not be resolved"}
+    except SecurityError as exc:
+        # validate_url deliberately uses SecurityError for both connectivity and
+        # policy denials. Only its canonical DNS-resolution outcome is offline;
+        # private, metadata, scheme, and rebinding denials remain fail-closed.
+        if not str(exc).startswith("Cannot resolve hostname:"):
+            raise
+        return {**offline, "warning": "OIDC issuer hostname could not be resolved"}
     except OIDCError as exc:
-        return {"reachable": False, "complete": False, "warning": str(exc)}
+        warning = sanitize_text(sanitize_error(exc)) or "OIDC issuer discovery failed"
+        return {**offline, "warning": warning}
     endpoints = {key: str(doc.get(key) or "").strip() for key in ("authorization_endpoint", "token_endpoint", "jwks_uri")}
     missing = [key for key, value in endpoints.items() if not value]
     result: dict[str, object] = {"reachable": True, "complete": not missing, **endpoints}

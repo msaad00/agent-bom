@@ -6,10 +6,12 @@ fork the OIDC mechanism. Discovery is always mocked here — no network.
 
 from __future__ import annotations
 
+import socket
 import stat
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import main
@@ -139,11 +141,55 @@ def test_connectivity_happy_path():
 def test_connectivity_unreachable_warns_not_raises():
     from agent_bom.api.oidc import OIDCError
 
-    with patch("agent_bom.api.oidc.discover_oidc", side_effect=OIDCError("Failed to fetch discovery")):
+    with patch(
+        "agent_bom.api.oidc.discover_oidc",
+        side_effect=OIDCError("Failed to fetch https://idp.example?client_secret=do-not-leak"),
+    ):
         result = check_issuer_connectivity("https://unreachable.example")
     assert result["reachable"] is False
     assert result["complete"] is False
     assert "Failed to fetch" in str(result["warning"])
+    assert "do-not-leak" not in str(result["warning"])
+
+
+def test_connectivity_dns_security_error_becomes_sanitized_offline_warning():
+    from agent_bom.security import SecurityError
+
+    with patch(
+        "agent_bom.api.oidc.discover_oidc",
+        side_effect=SecurityError("Cannot resolve hostname: secret-bearing-idp.invalid"),
+    ):
+        result = check_issuer_connectivity("https://secret-bearing-idp.invalid")
+
+    assert result == {
+        "reachable": False,
+        "complete": False,
+        "warning": "OIDC issuer hostname could not be resolved",
+    }
+
+
+def test_connectivity_raw_gaierror_becomes_sanitized_offline_warning():
+    with patch("agent_bom.api.oidc.discover_oidc", side_effect=socket.gaierror("resolver included secret-token")):
+        result = check_issuer_connectivity("https://unreachable.invalid")
+
+    assert result == {
+        "reachable": False,
+        "complete": False,
+        "warning": "OIDC issuer hostname could not be resolved",
+    }
+
+
+def test_connectivity_does_not_swallow_url_policy_security_error():
+    from agent_bom.security import SecurityError
+
+    with (
+        patch(
+            "agent_bom.api.oidc.discover_oidc",
+            side_effect=SecurityError("Cannot connect to private/reserved IP: 127.0.0.1"),
+        ),
+        pytest.raises(SecurityError, match="private/reserved"),
+    ):
+        check_issuer_connectivity("https://127.0.0.1")
 
 
 def test_connectivity_incomplete_when_endpoint_missing():
@@ -348,6 +394,67 @@ def test_cli_offline_issuer_warns_but_still_emits(tmp_path: Path):
     assert result.exit_code == 0, result.output
     assert "Could not reach issuer discovery" in result.output
     assert "AGENT_BOM_OIDC_ISSUER=https://accounts.google.com" in result.output
+
+
+def test_cli_dns_failure_warns_and_still_writes_non_secret_config(tmp_path: Path):
+    out = tmp_path / "oidc.env"
+    runner = CliRunner()
+    with patch("socket.getaddrinfo", side_effect=socket.gaierror("resolver failure with secret-token")):
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "generic",
+                "--issuer",
+                "https://unreachable.invalid",
+                "--client-id",
+                "cid",
+                "--base-url",
+                "https://abom.example.com",
+                "--write",
+                "--output",
+                str(out),
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    assert "Continuing offline" in result.output
+    assert "secret-token" not in result.output
+    assert "AGENT_BOM_OIDC_ISSUER=https://unreachable.invalid" in out.read_text(encoding="utf-8")
+
+
+def test_cli_unsafe_issuer_still_fails_closed_without_writing(tmp_path: Path):
+    from agent_bom.security import SecurityError
+
+    out = tmp_path / "must-not-exist.env"
+    result = CliRunner().invoke(
+        main,
+        [
+            "auth",
+            "setup-oidc",
+            "--non-interactive",
+            "--provider",
+            "generic",
+            "--issuer",
+            "https://127.0.0.1",
+            "--client-id",
+            "cid",
+            "--base-url",
+            "https://abom.example.com",
+            "--write",
+            "--output",
+            str(out),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, SecurityError)
+    assert "Continuing offline" not in result.output
+    assert not out.exists()
 
 
 def test_cli_interactive_prompts_and_confirms_write(tmp_path: Path):

@@ -236,9 +236,7 @@ async def delete_credential_ref(request: Request, credential_ref_id: str) -> Non
         if credential.status == CredentialRefStatus.RETIRED:
             return
         attached_sources = [
-            source
-            for source in _get_source_store().list_all(tenant_id=credential.tenant_id)
-            if source.credential_ref == credential_ref_id
+            source for source in _get_source_store().list_all(tenant_id=credential.tenant_id) if source.credential_ref == credential_ref_id
         ]
         if attached_sources:
             count = len(attached_sources)

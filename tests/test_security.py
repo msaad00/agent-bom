@@ -90,6 +90,13 @@ def test_value_looks_like_secret_rejects_credential_material(secret):
     assert value_looks_like_secret(secret) is True
 
 
+def test_embedded_sk_substring_in_resource_identifier_is_not_a_secret():
+    identifier = "aws:iam_role:100000000000:risk-production-posture-collector-123"
+
+    assert value_looks_like_secret(identifier) is False
+    assert security.sanitize_text(identifier) == identifier
+
+
 @pytest.mark.parametrize("depth", range(1, 7))
 def test_value_looks_like_secret_rejects_bounded_nested_encoding(depth):
     token = "ghp_" + "A" * 36

@@ -215,7 +215,9 @@ def validate_path(
 
 _VALUE_CREDENTIAL_PATTERNS = [
     re.compile(r"(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}", re.I),  # Stripe/service keys
-    re.compile(r"sk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{20,}"),  # OpenAI/Anthropic-style keys
+    # Require a token boundary so ordinary identifiers containing ``risk-``
+    # are not truncated from the embedded ``sk-`` onward.
+    re.compile(r"(?<![A-Za-z0-9])sk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{20,}"),  # OpenAI/Anthropic-style keys
     re.compile(r"hf_[A-Za-z0-9]{20,}"),  # Hugging Face tokens
     re.compile(r"AIza[A-Za-z0-9_-]{30,}"),  # Google API keys
     re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}"),  # GitHub tokens

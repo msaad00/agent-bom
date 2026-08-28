@@ -795,9 +795,7 @@ def test_push_source_may_retain_metadata_only_credential_reference(source_client
 
     referenced_delete = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
     assert referenced_delete.status_code == 409
-    assert referenced_delete.json()["detail"] == (
-        "Credential reference is attached to 1 source; detach it before retiring the reference"
-    )
+    assert referenced_delete.json()["detail"] == ("Credential reference is attached to 1 source; detach it before retiring the reference")
 
     source_id = create.json()["source_id"]
     cleared = source_client.put(

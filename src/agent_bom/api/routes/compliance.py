@@ -470,9 +470,13 @@ async def get_compliance(
     Returns scored control posture plus applicability-only risk/technique
     catalogs and an overall score derived only from the scored frameworks.
     """
+    return _build_compliance(_tenant_jobs(request), scan_id=scan_id)
+
+
+def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> dict[str, Any]:
+    """Build compliance truth from one caller-owned job-store snapshot."""
     from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, control_key_for_tag
 
-    tenant_jobs = _tenant_jobs(request)
     if scan_id:
         matching_jobs = []
         for job in tenant_jobs:
@@ -1756,7 +1760,8 @@ async def export_compliance_report(
     if since_dt >= until_dt:
         raise HTTPException(status_code=400, detail="since must be earlier than until")
 
-    full = await get_compliance(request)
+    raw_tenant_jobs = _tenant_jobs(request)
+    full = _build_compliance(raw_tenant_jobs)
     from agent_bom.compliance_coverage import framework_report_labels_by_slug
 
     framework_map = framework_report_labels_by_slug()
@@ -1772,7 +1777,9 @@ async def export_compliance_report(
     tenant_id = _tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
 
-    tenant_jobs = _tenant_jobs(request)
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    tenant_jobs = list(current_scan_jobs(raw_tenant_jobs, since=None, scan_id=None))
     blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
 
     from agent_bom.api.audit_log import get_audit_log, log_action
@@ -2035,7 +2042,8 @@ async def export_compliance_pack(
     if since_dt >= until_dt:
         raise HTTPException(status_code=400, detail="since must be earlier than until")
 
-    full = await get_compliance(request)
+    raw_tenant_jobs = _tenant_jobs(request)
+    full = _build_compliance(raw_tenant_jobs)
     from agent_bom.compliance_coverage import framework_report_labels_by_slug
 
     framework_map = framework_report_labels_by_slug()
@@ -2043,7 +2051,9 @@ async def export_compliance_pack(
     tenant_id = _tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
 
-    tenant_jobs = _tenant_jobs(request)
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    tenant_jobs = list(current_scan_jobs(raw_tenant_jobs, since=None, scan_id=None))
     blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
     completed_scan_count = sum(1 for job in tenant_jobs if job.status == JobStatus.DONE and bool(job.result))
 
@@ -2242,12 +2252,10 @@ async def get_posture_scorecard(request: Request) -> dict:
     breakdown covering vulnerability posture, credential hygiene, supply
     chain quality, compliance coverage, active exploitation, and configuration.
     """
-    latest_result = None
-    for job in _tenant_jobs(request):
-        if job.status != JobStatus.DONE or not job.result:
-            continue
-        latest_result = job.result
-        break  # list_all returns newest first
+    from agent_bom.api.findings_current import latest_current_scan_job
+
+    latest_job = latest_current_scan_job(_tenant_jobs(request))
+    latest_result = latest_job.result if latest_job is not None else None
 
     if latest_result is None:
         return {

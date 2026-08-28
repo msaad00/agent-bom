@@ -82,7 +82,6 @@ _SCAN_TARGET_FIELDS = (
     "scope_servers",
     "exclude_agents",
     "exclude_servers",
-    "min_severity",
     "dry_run",
     "no_scan",
 )
@@ -105,7 +104,12 @@ def _normalized_evidence_timestamp(*values: Any) -> str:
 
 
 def scan_evidence_authority_key(job: _ScanJobLike) -> tuple[str, str, str]:
-    """Deterministic newest-wins key for one completed scan snapshot."""
+    """Deterministic newest-wins key for one completed scan snapshot.
+
+    The stores do not yet persist one shared commit sequence. If evidence and
+    completion timestamps are exactly equal, ``job_id`` is therefore a stable
+    backend-independent tie-break, not a claim about commit chronology.
+    """
     raw_result = getattr(job, "result", None)
     result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
     raw_scan_run = result.get("scan_run")
@@ -236,11 +240,18 @@ def current_scan_findings(
     return [deduped[key][1] for key in sorted(deduped)]
 
 
+def latest_current_scan_job(jobs: Iterable[_ScanJobLike]) -> _ScanJobLike | None:
+    """Return the newest authoritative successful scan across current scopes."""
+    current = current_scan_jobs(jobs, since=None, scan_id=None)
+    return max(current, key=scan_evidence_authority_key, default=None)
+
+
 __all__ = [
     "current_scan_findings",
     "current_scan_jobs",
     "finding_identity",
     "job_in_window",
+    "latest_current_scan_job",
     "scan_evidence_authority_key",
     "scan_scope_key",
 ]

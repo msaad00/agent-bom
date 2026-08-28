@@ -675,10 +675,10 @@ def _row_lenses(row: dict[str, Any]) -> set[str]:
 
 def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:
     """Letter grade + score from the latest completed scan (same as /v1/posture)."""
-    from agent_bom.api.findings_current import current_scan_jobs, scan_evidence_authority_key
+    from agent_bom.api.findings_current import latest_current_scan_job
 
-    current_jobs = current_scan_jobs(jobs, since=None, scan_id=None)
-    for job in sorted(current_jobs, key=scan_evidence_authority_key, reverse=True):
+    job = latest_current_scan_job(jobs)
+    if job is not None:
         result = cast(dict[str, Any], job.result)
         scorecard = result.get("posture_scorecard")
         if isinstance(scorecard, dict) and scorecard:
@@ -701,7 +701,6 @@ def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:
                 "score": score,
                 "summary": f"{total} finding(s) from latest completed scan",
             }
-        break
     return {"grade": "N/A", "score": 0, "summary": "No completed scans available"}
 
 

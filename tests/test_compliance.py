@@ -416,6 +416,109 @@ def test_newest_empty_scan_retires_absent_findings_only_in_same_scope(
     assert results == [("fail", 1), ("fail", 1)]
 
 
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_min_severity_change_does_not_split_target_scope(
+    tmp_path: Path,
+    reverse_put_order: bool,
+) -> None:
+    """Result filtering is not target identity and cannot retain retired rows."""
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    def _job(job_id: str, *, at: str, min_severity: str, findings: list[dict]) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=at,
+            request=ScanRequest(
+                repo_url="https://example.test/acme/repo.git",
+                min_severity=min_severity,
+            ),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = at
+        job.result = {"generated_at": at, "scan_sources": ["repo_tree"], "findings": findings}
+        return job
+
+    old = _job(
+        "scope-old-low",
+        at="2026-08-20T00:00:00Z",
+        min_severity="low",
+        findings=[{"id": "retired-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+    )
+    newest = _job(
+        "scope-new-high-empty",
+        at="2026-08-21T00:00:00Z",
+        min_severity="high",
+        findings=[],
+    )
+    jobs = [newest, old] if reverse_put_order else [old, newest]
+
+    results = []
+    try:
+        stores = (
+            InMemoryJobStore(),
+            SQLiteJobStore(str(tmp_path / f"min-severity-scope-{reverse_put_order}.db")),
+        )
+        for store in stores:
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
+            results.append((cc71["status"], cc71["findings"]))
+    finally:
+        _clear_jobs()
+
+    assert results == [("not_evaluated", 0), ("not_evaluated", 0)]
+
+
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_posture_uses_canonical_newest_success_independent_of_store_order(
+    tmp_path: Path,
+    reverse_put_order: bool,
+) -> None:
+    """The primary posture API must not trust backend-specific list ordering."""
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    def _job(job_id: str, *, at: str, grade: str, score: int) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=at,
+            request=ScanRequest(repo_url="https://example.test/acme/repo.git"),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = at
+        job.result = {
+            "generated_at": at,
+            "summary": {"total_packages": 1},
+            "posture_scorecard": {"grade": grade, "score": score, "summary": job_id},
+        }
+        return job
+
+    old = _job("old-posture", at="2026-08-20T00:00:00Z", grade="F", score=10)
+    newest = _job("new-posture", at="2026-08-21T00:00:00Z", grade="A", score=95)
+    jobs = [newest, old] if reverse_put_order else [old, newest]
+
+    results = []
+    try:
+        stores = (
+            InMemoryJobStore(),
+            SQLiteJobStore(str(tmp_path / f"posture-order-{reverse_put_order}.db")),
+        )
+        for store in stores:
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            response = TestClient(app).get("/v1/posture", headers=_AUTH_HEADERS)
+            assert response.status_code == 200
+            results.append((response.json()["grade"], response.json()["summary"]))
+    finally:
+        _clear_jobs()
+
+    assert results == [("A", "new-posture"), ("A", "new-posture")]
+
+
 def test_unified_finding_authority_uses_stable_job_id_tie_break() -> None:
     """Equal evidence/completion timestamps have one deterministic winner."""
     from agent_bom.api.routes import compliance as route

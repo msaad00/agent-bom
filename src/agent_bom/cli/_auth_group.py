@@ -296,10 +296,7 @@ def setup_oidc_cmd(
         legacy_value = client_secret
         if legacy_value.startswith("@") and legacy_value[1:]:
             if client_secret_file:
-                raise OIDCSetupError(
-                    "Pass either --client-secret-file or deprecated "
-                    "--client-secret @<absolute-runtime-path>, not both."
-                )
+                raise OIDCSetupError("Pass either --client-secret-file or deprecated --client-secret @<absolute-runtime-path>, not both.")
             client_secret_file = legacy_value[1:]
             used_legacy_file_reference = True
         else:
@@ -403,8 +400,7 @@ def setup_oidc_cmd(
         con.print(f"  [green]Wrote[/green] {written} [dim]· mode 0644 (compose env_file readable)[/dim]")
         if "AGENT_BOM_OIDC_CLIENT_SECRET_FILE" in env:
             con.print(
-                "  [dim]The env file contains only a secret-file reference; "
-                "mount that file read-only at the configured runtime path.[/dim]"
+                "  [dim]The env file contains only a secret-file reference; mount that file read-only at the configured runtime path.[/dim]"
             )
     else:
         con.print(f"  [dim]Not written. Re-run with --write to save to {output_path}.[/dim]")

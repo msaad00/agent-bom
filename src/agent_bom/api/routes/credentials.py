@@ -234,6 +234,10 @@ async def delete_credential_ref(request: Request, credential_ref_id: str) -> Non
     with tenant_quota_guard(tenant_id):
         credential = _credential_for_request(request, credential_ref_id)
         if credential.status == CredentialRefStatus.RETIRED:
+            if value_looks_like_secret(credential.external_ref):
+                credential.external_ref = None
+                credential.updated_at = _now()
+                _get_credential_ref_store().put(credential)
             return
         attached_sources = [
             source for source in _get_source_store().list_all(tenant_id=credential.tenant_id) if source.credential_ref == credential_ref_id

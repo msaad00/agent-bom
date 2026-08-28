@@ -14,7 +14,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.credential_store import InMemoryCredentialRefStore
-from agent_bom.api.models import CredentialRefRecord, ScanJob, SourceKind, SourceRecord
+from agent_bom.api.models import CredentialRefRecord, CredentialRefStatus, ScanJob, SourceKind, SourceRecord
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
@@ -615,6 +615,45 @@ def test_credential_retirement_purges_legacy_secret_reference_at_rest(source_cli
     assert fetched.status_code == 200
     assert fetched.json()["external_ref"] is None
     assert secret not in fetched.text
+
+
+def test_repeated_credential_retirement_purges_legacy_secret_reference_at_rest(
+    source_client: TestClient,
+) -> None:
+    secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
+    legacy = CredentialRefRecord(
+        credential_ref_id="legacy-secret-already-retired",
+        tenant_id="tenant-alpha",
+        display_name="Legacy retired credential",
+        provider="github",
+        external_ref=secret,
+        enabled=False,
+        status=CredentialRefStatus.RETIRED,
+        created_at="2026-08-27T00:00:00+00:00",
+        updated_at="2026-08-27T00:00:00+00:00",
+    )
+    _stores._credential_ref_store.put(legacy)
+
+    retired = source_client.delete(
+        "/v1/credentials/legacy-secret-already-retired",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert retired.status_code == 204
+    persisted = _stores._credential_ref_store.get(
+        "legacy-secret-already-retired",
+        tenant_id="tenant-alpha",
+    )
+    assert persisted is not None
+    assert persisted.status == CredentialRefStatus.RETIRED
+    assert persisted.external_ref is None
+    assert (
+        secret
+        not in source_client.get(
+            "/v1/credentials/legacy-secret-already-retired",
+            headers=VIEWER_HEADERS,
+        ).text
+    )
 
 
 @pytest.mark.parametrize("depth", range(1, 7))

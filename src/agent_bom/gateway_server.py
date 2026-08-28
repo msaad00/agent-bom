@@ -1556,9 +1556,7 @@ class ControlPlaneAuditSink:
                 "durable": all(bool(item["durable"]) for item in all_health),
                 "accepting_events": all(bool(item["accepting_events"]) for item in all_health),
                 "backlog_observable": all(bool(item["backlog_observable"]) for item in all_health),
-                "remote_acknowledgement_available": all(
-                    bool(item["remote_acknowledgement_available"]) for item in all_health
-                ),
+                "remote_acknowledgement_available": all(bool(item["remote_acknowledgement_available"]) for item in all_health),
                 "retry_worker_running": all(bool(item["retry_worker_running"]) for item in all_health),
                 "buffer_bytes": sum(int(item["buffer_bytes"]) for item in all_health),
                 "spillover_bytes": sum(int(item["spillover_bytes"]) for item in all_health),

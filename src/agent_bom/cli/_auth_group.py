@@ -11,14 +11,16 @@ Usage::
 
     agent-bom auth setup-oidc                      # interactive wizard (TTY)
     agent-bom auth setup-oidc --provider google \\
-        --client-id … --client-secret … --base-url https://abom.example --write
+        --client-id … --client-secret-file /run/agent-bom/oidc/client_secret \\
+        --base-url https://abom.example --write
 """
 
 from __future__ import annotations
 
+import socket
 import sys
 from collections import OrderedDict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 import click
@@ -31,8 +33,8 @@ from agent_bom.cli._grouped_help import SuggestingGroup
 # it still matches ``API_V1_PREFIX + "/auth/oidc/callback"`` so drift is caught.
 OIDC_CALLBACK_PATH = "/v1/auth/oidc/callback"
 
-# Default env-file target. 0644 (see ``write_env_file``) because the compose
-# stack mounts this as an ``env_file`` read by a non-root container UID.
+# Default non-secret env-file target. The wizard emits only a secret-file
+# reference for confidential clients; it never puts a secret value in this file.
 DEFAULT_ENV_PATH = "deploy/secrets/oidc.env"
 
 _PROVIDER_ISSUERS = {
@@ -42,6 +44,30 @@ _PROVIDER_ISSUERS = {
 
 class OIDCSetupError(click.ClickException):
     """Raised for a user-correctable wizard configuration error."""
+
+
+def _normalize_runtime_secret_file_path(value: Optional[str]) -> str:
+    """Return one safe POSIX runtime file path, or reject without echoing it."""
+    if value is None or value == "":
+        return ""
+    if value != value.strip() or any(not char.isprintable() for char in value):
+        raise OIDCSetupError(
+            "Client secret file reference must be an absolute normalized runtime file path without traversal or control characters."
+        )
+    path = PurePosixPath(value)
+    components = value.split("/")
+    if (
+        not path.is_absolute()
+        or value.startswith("//")
+        or "" in components[1:]
+        or any(component in {".", ".."} for component in components)
+        or path.name == ""
+        or path.as_posix() != value
+    ):
+        raise OIDCSetupError(
+            "Client secret file reference must be an absolute normalized runtime file path without traversal or control characters."
+        )
+    return value
 
 
 def _stdin_is_tty() -> bool:
@@ -77,7 +103,7 @@ def build_oidc_env(
     issuer: str,
     client_id: str,
     redirect_uri: str,
-    client_secret: Optional[str] = None,
+    client_secret_file: Optional[str] = None,
     audience: Optional[str] = None,
     role_claim: Optional[str] = None,
     tenant_claim: Optional[str] = None,
@@ -107,9 +133,9 @@ def build_oidc_env(
     env: "OrderedDict[str, str]" = OrderedDict()
     env["AGENT_BOM_OIDC_ISSUER"] = issuer
     env["AGENT_BOM_OIDC_CLIENT_ID"] = client_id
-    secret = (client_secret or "").strip()
-    if secret:
-        env["AGENT_BOM_OIDC_CLIENT_SECRET"] = secret
+    secret_file = _normalize_runtime_secret_file_path(client_secret_file)
+    if secret_file:
+        env["AGENT_BOM_OIDC_CLIENT_SECRET_FILE"] = secret_file
     env["AGENT_BOM_OIDC_REDIRECT_URI"] = redirect_uri
     env["AGENT_BOM_OIDC_AUDIENCE"] = (audience or "").strip() or client_id
     role = (role_claim or "").strip()
@@ -134,12 +160,12 @@ def render_env_block(env: "OrderedDict[str, str]") -> str:
 
 
 def write_env_file(path: str | Path, block: str) -> Path:
-    """Write the env block to ``path`` with mode 0644.
+    """Write the non-secret env block to ``path`` with mode 0644.
 
-    0644 (not 0400) is deliberate: the compose stack mounts this file as an
-    ``env_file`` and the API container runs as a non-root UID that must read it
-    at start; owner-only bits break that mount. Protect the *directory*, not the
-    file bits. The caller must confirm before writing — this never runs silently.
+    The compose stack loads this file as an ``env_file``. Confidential clients
+    use ``AGENT_BOM_OIDC_CLIENT_SECRET_FILE`` to reference a separately mounted,
+    operator-managed secret; no secret value is written here. The caller must
+    confirm before writing — this never runs silently.
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -151,18 +177,31 @@ def write_env_file(path: str | Path, block: str) -> Path:
 def check_issuer_connectivity(issuer: str) -> dict[str, object]:
     """Reuse the mechanism's discovery to confirm the issuer's endpoints resolve.
 
-    Returns a result dict; never raises. Reuses ``oidc.discover_oidc`` (the same
-    ``.well-known/openid-configuration`` fetch + validation the auth path uses)
-    so the wizard does not fork a second discovery fetcher. An unreachable issuer
-    is a warning (``reachable=False``), not a failure, so an offline operator can
-    still emit config.
+    Reuses ``oidc.discover_oidc`` (the same discovery fetch and URL-policy
+    validation as the auth path) so the wizard does not fork a second fetcher.
+    DNS/network failures become sanitized offline warnings. Security-policy
+    failures still raise so unsafe issuer URLs cannot be written as validated
+    setup output.
     """
     from agent_bom.api.oidc import OIDCError, discover_oidc
+    from agent_bom.security import SecurityError, sanitize_error, sanitize_text
+
+    offline = {"reachable": False, "complete": False}
 
     try:
         doc = discover_oidc(issuer)
+    except socket.gaierror:
+        return {**offline, "warning": "OIDC issuer hostname could not be resolved"}
+    except SecurityError as exc:
+        # validate_url deliberately uses SecurityError for both connectivity and
+        # policy denials. Only its canonical DNS-resolution outcome is offline;
+        # private, metadata, scheme, and rebinding denials remain fail-closed.
+        if not str(exc).startswith("Cannot resolve hostname:"):
+            raise
+        return {**offline, "warning": "OIDC issuer hostname could not be resolved"}
     except OIDCError as exc:
-        return {"reachable": False, "complete": False, "warning": str(exc)}
+        warning = sanitize_text(sanitize_error(exc)) or "OIDC issuer discovery failed"
+        return {**offline, "warning": warning}
     endpoints = {key: str(doc.get(key) or "").strip() for key in ("authorization_endpoint", "token_endpoint", "jwks_uri")}
     missing = [key for key, value in endpoints.items() if not value]
     result: dict[str, object] = {"reachable": True, "complete": not missing, **endpoints}
@@ -186,7 +225,7 @@ def _provider_steps(provider: str, redirect_uri: str) -> list[str]:
         "Open your IdP's app/client registration (Okta, Entra ID, Auth0, Keycloak…).",
         "Create an OIDC/OAuth2 'Web application' client using the authorization-code flow.",
         f"Set the redirect/callback URI exactly to:  {redirect_uri}",
-        "Copy the issuer URL, client ID, and (for confidential clients) client secret.",
+        "Copy the issuer URL and client ID. Store any confidential-client secret in an operator-managed secret file.",
     ]
 
 
@@ -211,7 +250,12 @@ def auth_group() -> None:
 @click.option("--provider", type=click.Choice(["google", "generic"]), default=None, help="IdP preset (google fills the issuer).")
 @click.option("--issuer", default=None, help="OIDC issuer URL, e.g. https://accounts.google.com.")
 @click.option("--client-id", default=None, help="OAuth client ID from the IdP.")
-@click.option("--client-secret", default=None, help="OAuth client secret (omit for a PKCE public client).")
+@click.option(
+    "--client-secret-file",
+    default=None,
+    help="Runtime path to an operator-managed OAuth client-secret file (omit for a PKCE public client).",
+)
+@click.option("--client-secret", default=None, hidden=True)
 @click.option("--base-url", default=None, help="Deployment base URL; the redirect URI is derived from it.")
 @click.option("--redirect-uri", default=None, help="Override the derived redirect URI (must match the IdP allowlist).")
 @click.option("--audience", default=None, help="Expected JWT audience (defaults to the client ID).")
@@ -224,6 +268,7 @@ def setup_oidc_cmd(
     provider: Optional[str],
     issuer: Optional[str],
     client_id: Optional[str],
+    client_secret_file: Optional[str],
     client_secret: Optional[str],
     base_url: Optional[str],
     redirect_uri: Optional[str],
@@ -245,6 +290,21 @@ def setup_oidc_cmd(
 
     con = Console()
     interactive = (not non_interactive) and _stdin_is_tty()
+
+    used_legacy_file_reference = False
+    if client_secret is not None:
+        legacy_value = client_secret
+        if legacy_value.startswith("@") and legacy_value[1:]:
+            if client_secret_file:
+                raise OIDCSetupError("Pass either --client-secret-file or deprecated --client-secret @<absolute-runtime-path>, not both.")
+            client_secret_file = legacy_value[1:]
+            used_legacy_file_reference = True
+        else:
+            raise OIDCSetupError(
+                "Literal --client-secret input is no longer accepted because command arguments can leak. "
+                "Store the value in a protected file and pass its runtime path with --client-secret-file. "
+                "Released automation may migrate safely with --client-secret @<absolute-runtime-path>."
+            )
 
     if not provider:
         if interactive:
@@ -268,9 +328,14 @@ def setup_oidc_cmd(
     if not client_id:
         raise OIDCSetupError("Missing --client-id.")
 
-    # Client secret (optional; never echoed).
-    if client_secret is None and interactive:
-        client_secret = click.prompt("OAuth client secret (blank = PKCE public client)", default="", hide_input=True, show_default=False)
+    # Confidential-client secret reference (optional). The wizard never reads,
+    # prints, or writes the secret value itself.
+    if client_secret_file is None and interactive:
+        client_secret_file = click.prompt(
+            "OAuth client secret file at runtime (blank = PKCE public client)",
+            default="",
+            show_default=False,
+        )
 
     # Redirect URI (from base URL, or explicit override).
     if not redirect_uri:
@@ -289,7 +354,7 @@ def setup_oidc_cmd(
         issuer=issuer,
         client_id=client_id,
         redirect_uri=redirect_uri,
-        client_secret=client_secret,
+        client_secret_file=client_secret_file,
         audience=audience,
         role_claim=role_claim,
         tenant_claim=tenant_claim,
@@ -297,6 +362,11 @@ def setup_oidc_cmd(
 
     # Connectivity check (warn, never fail).
     con.print(f"\n  [bold]OIDC setup[/bold] [dim]· provider {provider} · issuer {issuer}[/dim]")
+    if used_legacy_file_reference:
+        con.print(
+            "  [yellow]Deprecated option[/yellow] [dim]· --client-secret @<absolute-runtime-path> is a file-reference migration shim; "
+            "use --client-secret-file on the next update.[/dim]"
+        )
     check = check_issuer_connectivity(issuer)
     if check.get("reachable") and check.get("complete"):
         con.print("  [green]Issuer discovery OK[/green] [dim]· authorization, token, and JWKS endpoints resolved.[/dim]")
@@ -311,7 +381,7 @@ def setup_oidc_cmd(
     for i, step in enumerate(_provider_steps(provider, redirect_uri), start=1):
         con.print(f"     [cyan]{i}.[/cyan] {step}")
 
-    # Env block (the one place the secret is shown).
+    # Non-secret env block. Confidential clients receive only a file reference.
     con.print("\n  [bold]2. Configuration[/bold] [dim]· set these on the agent-bom API process[/dim]")
     if tenant_claim:
         con.print("  [dim]Multi-tenant: tenant is read from the configured claim.[/dim]")
@@ -328,9 +398,9 @@ def setup_oidc_cmd(
     if should_write:
         written = write_env_file(output_path, block)
         con.print(f"  [green]Wrote[/green] {written} [dim]· mode 0644 (compose env_file readable)[/dim]")
-        if "AGENT_BOM_OIDC_CLIENT_SECRET" in env:
+        if "AGENT_BOM_OIDC_CLIENT_SECRET_FILE" in env:
             con.print(
-                f"  [yellow]Contains a client secret[/yellow] [dim]· restrict the {written.parent}/ directory; do not commit it.[/dim]"
+                "  [dim]The env file contains only a secret-file reference; mount that file read-only at the configured runtime path.[/dim]"
             )
     else:
         con.print(f"  [dim]Not written. Re-run with --write to save to {output_path}.[/dim]")

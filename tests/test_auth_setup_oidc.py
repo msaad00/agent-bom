@@ -6,10 +6,12 @@ fork the OIDC mechanism. Discovery is always mocked here — no network.
 
 from __future__ import annotations
 
+import socket
 import stat
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import main
@@ -62,7 +64,7 @@ def test_build_env_google_public_client_single_tenant():
         issuer="https://accounts.google.com",
         client_id="abc.apps.googleusercontent.com",
         redirect_uri="https://abom.example.com/v1/auth/oidc/callback",
-        client_secret="",  # PKCE public client
+        client_secret_file="",  # PKCE public client
     )
     assert env == {
         "AGENT_BOM_OIDC_ISSUER": "https://accounts.google.com",
@@ -75,14 +77,15 @@ def test_build_env_google_public_client_single_tenant():
     assert list(env)[0] == "AGENT_BOM_OIDC_ISSUER"
 
 
-def test_build_env_confidential_client_includes_secret():
+def test_build_env_confidential_client_references_secret_file():
     env = build_oidc_env(
         issuer="https://accounts.google.com",
         client_id="cid",
         redirect_uri="https://x/v1/auth/oidc/callback",
-        client_secret="topsecret",
+        client_secret_file="/run/secrets/oidc_client_secret",
     )
-    assert env["AGENT_BOM_OIDC_CLIENT_SECRET"] == "topsecret"
+    assert env["AGENT_BOM_OIDC_CLIENT_SECRET_FILE"] == "/run/secrets/oidc_client_secret"
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET" not in env
 
 
 def test_build_env_explicit_audience_and_role_claim():
@@ -138,11 +141,55 @@ def test_connectivity_happy_path():
 def test_connectivity_unreachable_warns_not_raises():
     from agent_bom.api.oidc import OIDCError
 
-    with patch("agent_bom.api.oidc.discover_oidc", side_effect=OIDCError("Failed to fetch discovery")):
+    with patch(
+        "agent_bom.api.oidc.discover_oidc",
+        side_effect=OIDCError("Failed to fetch https://idp.example?client_secret=do-not-leak"),
+    ):
         result = check_issuer_connectivity("https://unreachable.example")
     assert result["reachable"] is False
     assert result["complete"] is False
     assert "Failed to fetch" in str(result["warning"])
+    assert "do-not-leak" not in str(result["warning"])
+
+
+def test_connectivity_dns_security_error_becomes_sanitized_offline_warning():
+    from agent_bom.security import SecurityError
+
+    with patch(
+        "agent_bom.api.oidc.discover_oidc",
+        side_effect=SecurityError("Cannot resolve hostname: secret-bearing-idp.invalid"),
+    ):
+        result = check_issuer_connectivity("https://secret-bearing-idp.invalid")
+
+    assert result == {
+        "reachable": False,
+        "complete": False,
+        "warning": "OIDC issuer hostname could not be resolved",
+    }
+
+
+def test_connectivity_raw_gaierror_becomes_sanitized_offline_warning():
+    with patch("agent_bom.api.oidc.discover_oidc", side_effect=socket.gaierror("resolver included secret-token")):
+        result = check_issuer_connectivity("https://unreachable.invalid")
+
+    assert result == {
+        "reachable": False,
+        "complete": False,
+        "warning": "OIDC issuer hostname could not be resolved",
+    }
+
+
+def test_connectivity_does_not_swallow_url_policy_security_error():
+    from agent_bom.security import SecurityError
+
+    with (
+        patch(
+            "agent_bom.api.oidc.discover_oidc",
+            side_effect=SecurityError("Cannot connect to private/reserved IP: 127.0.0.1"),
+        ),
+        pytest.raises(SecurityError, match="private/reserved"),
+    ):
+        check_issuer_connectivity("https://127.0.0.1")
 
 
 def test_connectivity_incomplete_when_endpoint_missing():
@@ -179,8 +226,8 @@ def test_cli_non_interactive_emits_env_block():
                 "google",
                 "--client-id",
                 "cid.apps.googleusercontent.com",
-                "--client-secret",
-                "shh",
+                "--client-secret-file",
+                "/run/secrets/oidc_client_secret",
                 "--base-url",
                 "https://abom.example.com",
             ],
@@ -189,7 +236,8 @@ def test_cli_non_interactive_emits_env_block():
     assert "AGENT_BOM_OIDC_ISSUER=https://accounts.google.com" in result.output
     assert "AGENT_BOM_OIDC_REDIRECT_URI=https://abom.example.com/v1/auth/oidc/callback" in result.output
     assert "AGENT_BOM_OIDC_AUDIENCE=cid.apps.googleusercontent.com" in result.output
-    assert "AGENT_BOM_OIDC_CLIENT_SECRET=shh" in result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret" in result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET=" not in result.output
     assert "Google Cloud Console" in result.output
     # Nothing written without --write.
     assert "Not written" in result.output
@@ -213,8 +261,40 @@ def test_cli_generic_provider_requires_issuer():
     assert "issuer" in result.output.lower()
 
 
-def test_cli_write_mode_creates_0644_file(tmp_path: Path):
-    out = tmp_path / "secrets" / "oidc.env"
+def test_cli_rejects_literal_client_secret_without_echoing_or_side_effects(tmp_path: Path):
+    runner = CliRunner()
+    output = tmp_path / "must-not-exist.env"
+
+    with patch("agent_bom.api.oidc.discover_oidc") as discover:
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "google",
+                "--client-id",
+                "cid",
+                "--client-secret",
+                "do-not-echo-this",
+                "--base-url",
+                "https://abom.example.com",
+                "--write",
+                "--output",
+                str(output),
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "do-not-echo-this" not in result.output
+    assert "client-secret-file" in result.output
+    discover.assert_not_called()
+    assert not output.exists()
+
+
+def test_cli_legacy_client_secret_accepts_only_an_at_file_reference():
+    """Released automation can migrate without putting secret bytes in argv."""
     runner = CliRunner()
     with patch("agent_bom.api.oidc.discover_oidc", return_value=dict(_DISCOVERY_OK)):
         result = runner.invoke(
@@ -228,7 +308,130 @@ def test_cli_write_mode_creates_0644_file(tmp_path: Path):
                 "--client-id",
                 "cid",
                 "--client-secret",
-                "topsecret",
+                "@/run/agent-bom/oidc/client_secret",
+                "--base-url",
+                "https://abom.example.com",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/agent-bom/oidc/client_secret" in result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET=" not in result.output
+    assert "deprecated" in result.output.lower()
+
+
+@pytest.mark.parametrize(
+    ("legacy_value", "sensitive_fragment"),
+    (
+        ("@literal-secret-sentinel", "literal-secret-sentinel"),
+        ("@../secret-file", "../secret-file"),
+        ("@/run/agent-bom/../secret-file", "../secret-file"),
+        ("@/run/agent-bom/oidc/client_secret\nAGENT_BOM_API_KEYS=attacker:admin", "attacker:admin"),
+    ),
+)
+def test_cli_legacy_client_secret_rejects_unsafe_file_references_before_side_effects(
+    tmp_path: Path,
+    legacy_value: str,
+    sensitive_fragment: str,
+):
+    output = tmp_path / "must-not-exist.env"
+    runner = CliRunner()
+    with patch("agent_bom.api.oidc.discover_oidc") as discover:
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "google",
+                "--client-id",
+                "cid",
+                "--client-secret",
+                legacy_value,
+                "--base-url",
+                "https://abom.example.com",
+                "--write",
+                "--output",
+                str(output),
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "absolute normalized runtime file path" in result.output
+    assert sensitive_fragment not in result.output
+    discover.assert_not_called()
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "secret_file",
+    (
+        "relative/client_secret",
+        "../client_secret",
+        "/run/agent-bom/../client_secret",
+        "/run/agent-bom/./oidc/client_secret",
+        "/run/agent-bom//oidc/client_secret",
+        "/run/agent-bom/oidc/client_secret\rINJECTED=1",
+    ),
+)
+def test_build_env_rejects_non_absolute_non_normalized_or_control_character_secret_paths(secret_file: str):
+    from agent_bom.cli._auth_group import OIDCSetupError
+
+    with pytest.raises(OIDCSetupError, match="absolute normalized runtime file path"):
+        build_oidc_env(
+            issuer="https://issuer.example",
+            client_id="cid",
+            redirect_uri="https://abom.example/v1/auth/oidc/callback",
+            client_secret_file=secret_file,
+        )
+
+
+def test_build_env_preserves_valid_absolute_normalized_secret_path():
+    env = build_oidc_env(
+        issuer="https://issuer.example",
+        client_id="cid",
+        redirect_uri="https://abom.example/v1/auth/oidc/callback",
+        client_secret_file="/run/agent-bom/oidc/client_secret",
+    )
+
+    assert env["AGENT_BOM_OIDC_CLIENT_SECRET_FILE"] == "/run/agent-bom/oidc/client_secret"
+
+
+def test_public_oidc_setup_surfaces_use_file_references_only():
+    root = Path(__file__).resolve().parents[1]
+    ui_catalog = (root / "ui" / "lib" / "sso-provider-presets.ts").read_text(encoding="utf-8")
+    helm_readme = (root / "deploy" / "helm" / "agent-bom" / "examples" / "README.md").read_text(encoding="utf-8")
+    helm_secret = (root / "deploy" / "helm" / "agent-bom" / "examples" / "control-plane-auth-secret.example.yaml").read_text(
+        encoding="utf-8"
+    )
+    helm_values = (root / "deploy" / "helm" / "agent-bom" / "examples" / "oidc-secret-file-values.yaml").read_text(encoding="utf-8")
+
+    for surface in (ui_catalog, helm_readme, helm_secret, helm_values):
+        assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE" in surface
+        assert "AGENT_BOM_OIDC_CLIENT_SECRET (" not in surface
+    assert "encrypted at rest" not in ui_catalog.lower()
+    assert "stored server-side" not in ui_catalog.lower()
+    assert "mountPath: /run/agent-bom/oidc" in helm_values
+    assert "readOnly: true" in helm_values
+
+
+def test_cli_write_mode_creates_non_secret_0644_file(tmp_path: Path):
+    out = tmp_path / "secrets" / "oidc.env"
+    runner = CliRunner()
+    with patch("agent_bom.api.oidc.discover_oidc", return_value=dict(_DISCOVERY_OK)):
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "google",
+                "--client-id",
+                "cid",
+                "--client-secret-file",
+                "/run/secrets/oidc_client_secret",
                 "--base-url",
                 "https://abom.example.com",
                 "--write",
@@ -242,8 +445,9 @@ def test_cli_write_mode_creates_0644_file(tmp_path: Path):
     assert mode == 0o644, oct(mode)
     content = out.read_text()
     assert "AGENT_BOM_OIDC_CLIENT_ID=cid" in content
-    assert "AGENT_BOM_OIDC_CLIENT_SECRET=topsecret" in content
-    assert "Contains a client secret" in result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret" in content
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET=" not in content
+    assert "Contains a client secret" not in result.output
 
 
 def test_cli_offline_issuer_warns_but_still_emits(tmp_path: Path):
@@ -270,11 +474,85 @@ def test_cli_offline_issuer_warns_but_still_emits(tmp_path: Path):
     assert "AGENT_BOM_OIDC_ISSUER=https://accounts.google.com" in result.output
 
 
+def test_cli_dns_failure_warns_and_still_writes_non_secret_config(tmp_path: Path):
+    out = tmp_path / "oidc.env"
+    runner = CliRunner()
+    with patch("socket.getaddrinfo", side_effect=socket.gaierror("resolver failure with secret-token")):
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "generic",
+                "--issuer",
+                "https://unreachable.invalid",
+                "--client-id",
+                "cid",
+                "--base-url",
+                "https://abom.example.com",
+                "--write",
+                "--output",
+                str(out),
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    assert "Continuing offline" in result.output
+    assert "secret-token" not in result.output
+    assert "AGENT_BOM_OIDC_ISSUER=https://unreachable.invalid" in out.read_text(encoding="utf-8")
+
+
+def test_cli_unsafe_issuer_still_fails_closed_without_writing(tmp_path: Path):
+    from agent_bom.security import SecurityError
+
+    out = tmp_path / "must-not-exist.env"
+    result = CliRunner().invoke(
+        main,
+        [
+            "auth",
+            "setup-oidc",
+            "--non-interactive",
+            "--provider",
+            "generic",
+            "--issuer",
+            "https://127.0.0.1",
+            "--client-id",
+            "cid",
+            "--base-url",
+            "https://abom.example.com",
+            "--write",
+            "--output",
+            str(out),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, SecurityError)
+    assert "Continuing offline" not in result.output
+    assert not out.exists()
+
+
 def test_cli_interactive_prompts_and_confirms_write(tmp_path: Path):
     out = tmp_path / "oidc.env"
     runner = CliRunner()
-    # provider preset? -> y ; issuer default ; client id ; secret ; base url ; audience default ; write? -> y
-    stdin = "\n".join(["y", "", "cid.apps.googleusercontent.com", "s3cret", "https://abom.example.com", "", "y"]) + "\n"
+    # provider preset? -> y ; issuer default ; client id ; secret file ; base url ; audience default ; write? -> y
+    stdin = (
+        "\n".join(
+            [
+                "y",
+                "",
+                "cid.apps.googleusercontent.com",
+                "/run/secrets/oidc_client_secret",
+                "https://abom.example.com",
+                "",
+                "y",
+            ]
+        )
+        + "\n"
+    )
     with (
         patch("agent_bom.api.oidc.discover_oidc", return_value=dict(_DISCOVERY_OK)),
         patch("agent_bom.cli._auth_group._stdin_is_tty", return_value=True),
@@ -284,7 +562,8 @@ def test_cli_interactive_prompts_and_confirms_write(tmp_path: Path):
     assert out.exists()
     content = out.read_text()
     assert "AGENT_BOM_OIDC_ISSUER=https://accounts.google.com" in content
-    assert "AGENT_BOM_OIDC_CLIENT_SECRET=s3cret" in content
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret" in content
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET=" not in content
     assert "AGENT_BOM_OIDC_REDIRECT_URI=https://abom.example.com/v1/auth/oidc/callback" in content
 
 

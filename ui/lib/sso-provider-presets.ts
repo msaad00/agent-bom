@@ -14,7 +14,8 @@
  *   - SAML:  `SAMLConfig` (src/agent_bom/api/saml.py) — AGENT_BOM_SAML_*
  *
  * Hard invariants (enforced by sso-provider-presets.test.ts):
- *   - A `secret`-kind field is NEVER prefilled — its `value` is always "".
+ *   - OIDC confidential clients reference a mounted secret file; secret bytes
+ *     are never accepted, stored, or emitted by this read-only helper.
  *   - "Generic" presets stay fully manual — every `value` is "".
  *   - Provider discovery-URL shapes track the current IdP docs (verified
  *     2026-07-14): Okta org vs `/oauth2/default`, Entra
@@ -104,13 +105,13 @@ function oidcTenantClientFields(clientIdPlaceholder: string, audiencePlaceholder
       hint: "Register this exact URL as an allowed redirect on the IdP app.",
     },
     {
-      key: "client_secret",
-      envVar: "AGENT_BOM_OIDC_CLIENT_SECRET",
-      label: "Client secret",
-      kind: "secret",
-      value: "",
-      placeholder: "Paste after creating the app — never committed, encrypted at rest",
-      hint: "Confidential clients only. Stored server-side; never prefilled or logged.",
+      key: "client_secret_file",
+      envVar: "AGENT_BOM_OIDC_CLIENT_SECRET_FILE",
+      label: "Client secret file",
+      kind: "config",
+      value: "/run/agent-bom/oidc/client_secret",
+      placeholder: "/run/agent-bom/oidc/client_secret",
+      hint: "Confidential clients only. Mount the operator-managed secret file read-only at this runtime path.",
     },
   ];
 }
@@ -231,7 +232,7 @@ const OKTA_OIDC: SsoProviderPreset = {
     ...oidcTenantClientFields("0oabc1234DEF5678gh7", "api://default"),
   ],
   setupSteps: [
-    "In Okta, create an OIDC Web app integration and note the client id + secret.",
+    "In Okta, create an OIDC Web app integration; note the client id and store the secret in the mounted file.",
     "Add https://<agent-bom-host>/v1/auth/oidc/callback as a sign-in redirect URI.",
     "Add a groups claim to the app so agent-bom can map roles from group membership.",
     "Set AGENT_BOM_OIDC_AUDIENCE to the token audience (api://default on the default server).",
@@ -353,7 +354,7 @@ const GOOGLE_OIDC: SsoProviderPreset = {
     ...oidcTenantClientFields("1234567890-abc123.apps.googleusercontent.com", "1234567890-abc123.apps.googleusercontent.com"),
   ],
   setupSteps: [
-    "In Google Cloud console, create an OAuth 2.0 Web application client id + secret.",
+    "In Google Cloud console, create an OAuth 2.0 Web application; note the client id and store the secret in the mounted file.",
     "Add https://<agent-bom-host>/v1/auth/oidc/callback as an authorized redirect URI.",
     "Restrict sign-in to your Workspace domain and verify the hd claim.",
     "Map Workspace groups to agent-bom roles (admin/analyst/viewer).",
@@ -434,18 +435,19 @@ const GENERIC_OIDC: SsoProviderPreset = {
       placeholder: "https://agent-bom.your-org.example/v1/auth/oidc/callback",
     },
     {
-      key: "client_secret",
-      envVar: "AGENT_BOM_OIDC_CLIENT_SECRET",
-      label: "Client secret",
-      kind: "secret",
+      key: "client_secret_file",
+      envVar: "AGENT_BOM_OIDC_CLIENT_SECRET_FILE",
+      label: "Client secret file",
+      kind: "tenant",
       value: "",
-      placeholder: "Paste after creating the app — encrypted at rest, never prefilled",
+      placeholder: "/run/agent-bom/oidc/client_secret",
+      hint: "Confidential clients only. Mount the operator-managed secret file read-only at this runtime path.",
     },
   ],
   setupSteps: [
     "Read the issuer's discovery document at /.well-known/openid-configuration.",
     "Register agent-bom as a confidential client and add the callback redirect URI.",
-    "Map an audience and a role claim, then supply the client id + secret.",
+    "Map an audience and a role claim, then mount the client secret read-only and supply its runtime file path.",
   ],
 };
 

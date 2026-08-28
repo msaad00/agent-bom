@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from threading import Event, Thread
 from types import SimpleNamespace
@@ -617,9 +618,24 @@ def test_credential_retirement_purges_legacy_secret_reference_at_rest(source_cli
     assert secret not in fetched.text
 
 
-def test_repeated_credential_retirement_purges_legacy_secret_reference_at_rest(
+@pytest.mark.parametrize("credential_store_backend", ["memory", "sqlite"])
+def test_repeated_credential_retirement_purges_legacy_secret_reference_at_rest_and_audits_once(
     source_client: TestClient,
+    credential_store_backend: str,
+    tmp_path,
 ) -> None:
+    from agent_bom.api.audit_log import InMemoryAuditLog, get_audit_log, set_audit_log
+    from agent_bom.api.credential_store import SQLiteCredentialRefStore
+
+    credential_store = (
+        InMemoryCredentialRefStore()
+        if credential_store_backend == "memory"
+        else SQLiteCredentialRefStore(str(tmp_path / "credential-purge.db"))
+    )
+    _stores.set_credential_ref_store(credential_store)
+    original_audit_log = get_audit_log()
+    audit_log = InMemoryAuditLog()
+    set_audit_log(audit_log)
     secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
     legacy = CredentialRefRecord(
         credential_ref_id="legacy-secret-already-retired",
@@ -632,28 +648,47 @@ def test_repeated_credential_retirement_purges_legacy_secret_reference_at_rest(
         created_at="2026-08-27T00:00:00+00:00",
         updated_at="2026-08-27T00:00:00+00:00",
     )
-    _stores._credential_ref_store.put(legacy)
+    credential_store.put(legacy)
 
-    retired = source_client.delete(
-        "/v1/credentials/legacy-secret-already-retired",
-        headers=ADMIN_HEADERS,
-    )
-
-    assert retired.status_code == 204
-    persisted = _stores._credential_ref_store.get(
-        "legacy-secret-already-retired",
-        tenant_id="tenant-alpha",
-    )
-    assert persisted is not None
-    assert persisted.status == CredentialRefStatus.RETIRED
-    assert persisted.external_ref is None
-    assert (
-        secret
-        not in source_client.get(
+    try:
+        retired = source_client.delete(
             "/v1/credentials/legacy-secret-already-retired",
-            headers=VIEWER_HEADERS,
-        ).text
-    )
+            headers=ADMIN_HEADERS,
+        )
+        repeated = source_client.delete(
+            "/v1/credentials/legacy-secret-already-retired",
+            headers=ADMIN_HEADERS,
+        )
+
+        assert retired.status_code == 204
+        assert repeated.status_code == 204
+        persisted = credential_store.get(
+            "legacy-secret-already-retired",
+            tenant_id="tenant-alpha",
+        )
+        assert persisted is not None
+        assert persisted.status == CredentialRefStatus.RETIRED
+        assert persisted.external_ref is None
+        entries = audit_log.list_entries(
+            action="credential_ref.retired_legacy_secret_purge",
+            tenant_id="tenant-alpha",
+        )
+        assert len(entries) == 1
+        assert entries[0].resource == "credential/legacy-secret-already-retired"
+        assert entries[0].details == {
+            "provider": "github",
+            "tenant_id": "tenant-alpha",
+        }
+        assert secret not in json.dumps(entries[0].to_dict())
+        assert (
+            secret
+            not in source_client.get(
+                "/v1/credentials/legacy-secret-already-retired",
+                headers=VIEWER_HEADERS,
+            ).text
+        )
+    finally:
+        set_audit_log(original_audit_log)
 
 
 @pytest.mark.parametrize("depth", range(1, 7))

@@ -19,6 +19,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `--client-secret-file <absolute-runtime-path>`. Secret bytes are never
   accepted, echoed, read, or written by the wizard.
 
+### Fixed
+
+- Purging secret-shaped legacy material from an already-retired credential
+  reference now records one tenant-scoped, sanitized audit event without
+  duplicating the event on idempotent DELETE retries.
+
 ## [0.102.0] - 2026-08-23
 
 A release-integrity and evidence-truth release. Published Python images remove

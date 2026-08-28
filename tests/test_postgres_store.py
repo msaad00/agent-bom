@@ -3,10 +3,12 @@
 Uses a mock psycopg_pool to avoid needing a real PostgreSQL instance.
 """
 
+import asyncio
 import json
 import sys
 import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -105,6 +107,8 @@ class MockConnection:
                     table = "trend_history"
                 elif "scan_schedules" in sql:
                     table = "scan_schedules"
+                elif "credential_refs" in sql:
+                    table = "credential_refs"
                 elif "control_plane_schema_versions" in sql:
                     table = "control_plane_schema_versions"
                 elif "osv_cache" in sql:
@@ -1554,6 +1558,64 @@ def test_credential_ref_store_put_get_list_delete(mock_pool):
     assert isinstance(listed, list)
 
     assert store.delete("cred-1", tenant_id="tenant-alpha") is True
+
+
+def test_retired_legacy_credential_purge_audits_once_with_postgres_store(mock_pool):
+    from agent_bom.api import stores
+    from agent_bom.api.audit_log import InMemoryAuditLog, get_audit_log, set_audit_log
+    from agent_bom.api.models import CredentialRefRecord, CredentialRefStatus
+    from agent_bom.api.postgres_store import PostgresCredentialRefStore
+    from agent_bom.api.routes.credentials import delete_credential_ref
+
+    credential_store = PostgresCredentialRefStore(pool=mock_pool)
+    secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
+    credential_store.put(
+        CredentialRefRecord(
+            credential_ref_id="legacy-secret-already-retired",
+            tenant_id="tenant-alpha",
+            display_name="Legacy retired credential",
+            provider="github",
+            external_ref=secret,
+            enabled=False,
+            status=CredentialRefStatus.RETIRED,
+            created_at="2026-08-27T00:00:00+00:00",
+            updated_at="2026-08-27T00:00:00+00:00",
+        )
+    )
+    original_credential_store = stores._credential_ref_store
+    original_audit_log = get_audit_log()
+    audit_log = InMemoryAuditLog()
+    stores.set_credential_ref_store(credential_store)
+    set_audit_log(audit_log)
+    request = SimpleNamespace(
+        state=SimpleNamespace(
+            tenant_id="tenant-alpha",
+            api_key_name="postgres-admin",
+        )
+    )
+
+    try:
+        asyncio.run(delete_credential_ref(request, "legacy-secret-already-retired"))
+        asyncio.run(delete_credential_ref(request, "legacy-secret-already-retired"))
+
+        persisted = credential_store.get("legacy-secret-already-retired", tenant_id="tenant-alpha")
+        assert persisted is not None
+        assert persisted.external_ref is None
+        entries = audit_log.list_entries(
+            action="credential_ref.retired_legacy_secret_purge",
+            tenant_id="tenant-alpha",
+        )
+        assert len(entries) == 1
+        assert entries[0].actor == "postgres-admin"
+        assert entries[0].resource == "credential/legacy-secret-already-retired"
+        assert entries[0].details == {
+            "provider": "github",
+            "tenant_id": "tenant-alpha",
+        }
+        assert secret not in json.dumps(entries[0].to_dict())
+    finally:
+        stores._credential_ref_store = original_credential_store
+        set_audit_log(original_audit_log)
 
 
 def test_tenant_context_is_applied_to_postgres_session(mock_pool):

@@ -231,34 +231,50 @@ async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
 @router.delete("/credentials/{credential_ref_id}", tags=["credentials"], status_code=204)
 async def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
     tenant_id = _tenant_id(request)
+    already_retired = False
+    retired_legacy_secret_purged = False
     with tenant_quota_guard(tenant_id):
         credential = _credential_for_request(request, credential_ref_id)
         if credential.status == CredentialRefStatus.RETIRED:
+            already_retired = True
             if value_looks_like_secret(credential.external_ref):
                 credential.external_ref = None
                 credential.updated_at = _now()
                 _get_credential_ref_store().put(credential)
-            return
-        attached_sources = [
-            source for source in _get_source_store().list_all(tenant_id=credential.tenant_id) if source.credential_ref == credential_ref_id
-        ]
-        if attached_sources:
-            count = len(attached_sources)
-            noun = "source" if count == 1 else "sources"
-            raise HTTPException(
-                status_code=409,
-                detail=f"Credential reference is attached to {count} {noun}; detach it before retiring the reference",
+                retired_legacy_secret_purged = True
+        else:
+            attached_sources = [
+                source
+                for source in _get_source_store().list_all(tenant_id=credential.tenant_id)
+                if source.credential_ref == credential_ref_id
+            ]
+            if attached_sources:
+                count = len(attached_sources)
+                noun = "source" if count == 1 else "sources"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Credential reference is attached to {count} {noun}; detach it before retiring the reference",
+                )
+            credential.enabled = False
+            credential.status = CredentialRefStatus.RETIRED
+            # Older releases could persist credential material in this metadata
+            # field. Retirement is terminal, so scrub detected legacy material
+            # before making the record immutable; otherwise no later API call can
+            # remove the secret from durable storage.
+            if value_looks_like_secret(credential.external_ref):
+                credential.external_ref = None
+            credential.updated_at = _now()
+            _get_credential_ref_store().put(credential)
+    if already_retired:
+        if retired_legacy_secret_purged:
+            log_action(
+                "credential_ref.retired_legacy_secret_purge",
+                actor=_actor(request),
+                resource=f"credential/{credential_ref_id}",
+                tenant_id=credential.tenant_id,
+                provider=credential.provider,
             )
-        credential.enabled = False
-        credential.status = CredentialRefStatus.RETIRED
-        # Older releases could persist credential material in this metadata
-        # field. Retirement is terminal, so scrub detected legacy material
-        # before making the record immutable; otherwise no later API call can
-        # remove the secret from durable storage.
-        if value_looks_like_secret(credential.external_ref):
-            credential.external_ref = None
-        credential.updated_at = _now()
-        _get_credential_ref_store().put(credential)
+        return
     log_action(
         "credential_ref.retire",
         actor=_actor(request),

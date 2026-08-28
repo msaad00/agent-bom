@@ -120,10 +120,24 @@ Which keys each profile requires, and its first-run login posture:
 
 Swap `AGENT_BOM_API_KEYS` for the OIDC block
 (`AGENT_BOM_OIDC_ISSUER` / `AGENT_BOM_OIDC_CLIENT_ID` /
-`AGENT_BOM_OIDC_REDIRECT_URI` / `AGENT_BOM_OIDC_CLIENT_SECRET`) on the API env
-when an IdP is available. Session cookies are marked `Secure` automatically on
+`AGENT_BOM_OIDC_REDIRECT_URI` / `AGENT_BOM_OIDC_CLIENT_SECRET_FILE`) on the API
+env when an IdP is available. Set the file variable to a runtime path such as
+`/run/agent-bom/oidc/client_secret`, then mount a dedicated Kubernetes Secret
+at that path with `controlPlane.api.extraVolumes` and `extraVolumeMounts`
+(`readOnly: true`). Do not place the secret value in the env block. Session cookies are marked `Secure` automatically on
 the clustered/production profiles (replicas > 1), so no cookie flag is needed;
 the sqlite demo intentionally leaves it off so login works over plain HTTP.
+
+The shipped `oidc-secret-file-values.yaml` overlay wires the read-only mount.
+Create its referenced Secret from an operator-managed file, then layer the
+overlay on the chosen control-plane profile:
+
+```bash
+kubectl -n agent-bom create secret generic agent-bom-oidc-client \
+  --from-file=client_secret=/secure/path/to/oidc-client-secret
+helm upgrade --install agent-bom ../ \
+  -f eks-mcp-pilot-values.yaml -f oidc-secret-file-values.yaml
+```
 
 ## Operator guidance
 

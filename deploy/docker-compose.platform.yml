@@ -115,14 +115,17 @@ services:
     command: api --host 0.0.0.0 --port 8422
     ports:
       - "${AGENT_BOM_API_BIND_HOST:-127.0.0.1}:${API_PORT:-8422}:8422"
+    env_file:
+      # Optional until OIDC browser SSO is configured. The setup wizard writes
+      # this non-secret file; the client secret stays in the read-only mount.
+      - path: ./secrets/oidc.env
+        required: false
     environment:
       - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
       - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password
       - AGENT_BOM_POSTGRES_MAINTENANCE_URL=postgresql://agent_bom_maintenance@postgres:5432/${POSTGRES_DB:-agent_bom}
       - AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE=/run/secrets/postgres_maintenance_password
       - AGENT_BOM_API_KEY_FILE=/run/secrets/api_key
-      - AGENT_BOM_OIDC_ISSUER=${AGENT_BOM_OIDC_ISSUER:-}
-      - AGENT_BOM_OIDC_AUDIENCE=${AGENT_BOM_OIDC_AUDIENCE:-}
       - AGENT_BOM_AUDIT_HMAC_KEY_FILE=/run/secrets/audit_hmac_key
       - AGENT_BOM_REQUIRE_AUDIT_HMAC=${AGENT_BOM_REQUIRE_AUDIT_HMAC:-1}
       - AGENT_BOM_CONNECTIONS_KEY_FILE=/run/secrets/connections_key
@@ -148,6 +151,7 @@ services:
       - connections_key
     volumes:
       - agent-bom-state:/home/abom/.agent-bom
+      - ./secrets/oidc:/run/agent-bom/oidc:ro
     depends_on:
       postgres:
         condition: service_healthy

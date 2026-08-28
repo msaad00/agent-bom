@@ -215,29 +215,81 @@ def test_cli_generic_provider_requires_issuer():
     assert "issuer" in result.output.lower()
 
 
-def test_cli_rejects_literal_client_secret_without_echoing_it():
+def test_cli_rejects_literal_client_secret_without_echoing_or_side_effects(tmp_path: Path):
     runner = CliRunner()
+    output = tmp_path / "must-not-exist.env"
 
-    result = runner.invoke(
-        main,
-        [
-            "auth",
-            "setup-oidc",
-            "--non-interactive",
-            "--provider",
-            "google",
-            "--client-id",
-            "cid",
-            "--client-secret",
-            "do-not-echo-this",
-            "--base-url",
-            "https://abom.example.com",
-        ],
-    )
+    with patch("agent_bom.api.oidc.discover_oidc") as discover:
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "google",
+                "--client-id",
+                "cid",
+                "--client-secret",
+                "do-not-echo-this",
+                "--base-url",
+                "https://abom.example.com",
+                "--write",
+                "--output",
+                str(output),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "do-not-echo-this" not in result.output
     assert "client-secret-file" in result.output
+    discover.assert_not_called()
+    assert not output.exists()
+
+
+def test_cli_legacy_client_secret_accepts_only_an_at_file_reference():
+    """Released automation can migrate without putting secret bytes in argv."""
+    runner = CliRunner()
+    with patch("agent_bom.api.oidc.discover_oidc", return_value=dict(_DISCOVERY_OK)):
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "google",
+                "--client-id",
+                "cid",
+                "--client-secret",
+                "@/run/agent-bom/oidc/client_secret",
+                "--base-url",
+                "https://abom.example.com",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/agent-bom/oidc/client_secret" in result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET=" not in result.output
+    assert "deprecated" in result.output.lower()
+
+
+def test_public_oidc_setup_surfaces_use_file_references_only():
+    root = Path(__file__).resolve().parents[1]
+    ui_catalog = (root / "ui" / "lib" / "sso-provider-presets.ts").read_text(encoding="utf-8")
+    helm_readme = (root / "deploy" / "helm" / "agent-bom" / "examples" / "README.md").read_text(encoding="utf-8")
+    helm_secret = (root / "deploy" / "helm" / "agent-bom" / "examples" / "control-plane-auth-secret.example.yaml").read_text(
+        encoding="utf-8"
+    )
+    helm_values = (root / "deploy" / "helm" / "agent-bom" / "examples" / "oidc-secret-file-values.yaml").read_text(encoding="utf-8")
+
+    for surface in (ui_catalog, helm_readme, helm_secret, helm_values):
+        assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE" in surface
+        assert "AGENT_BOM_OIDC_CLIENT_SECRET (" not in surface
+    assert "encrypted at rest" not in ui_catalog.lower()
+    assert "stored server-side" not in ui_catalog.lower()
+    assert "mountPath: /run/agent-bom/oidc" in helm_values
+    assert "readOnly: true" in helm_values
 
 
 def test_cli_write_mode_creates_non_secret_0644_file(tmp_path: Path):

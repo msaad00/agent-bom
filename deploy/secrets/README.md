@@ -28,6 +28,11 @@ printf %s "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.gen
 # printf %s "$(openssl rand -hex 32)" > deploy/secrets/trust_proxy_auth_secret
 # printf %s "$(openssl rand -hex 32)" > deploy/secrets/scim_bearer_token
 
+# Optional confidential OIDC client: provision this value from the IdP or
+# secret manager. Compose mounts only this dedicated directory read-only.
+# install -m 0644 /secure/path/to/oidc-client-secret \
+#   deploy/secrets/oidc/client_secret
+
 # 0644 (world-readable), NOT 0400: compose bind-mounts these host files into
 # /run/secrets/* preserving host perms (the mode/uid/gid long-syntax fields are
 # swarm-only, ignored by compose), and the non-root container users — postgres

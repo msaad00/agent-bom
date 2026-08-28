@@ -38,7 +38,7 @@ function kindLabel(kind: SsoProviderPreset["fields"][number]["kind"]): string {
 /**
  * Operator helper: pick an IdP preset and get the provider-specific OIDC/SAML
  * fields pre-filled with the issuer / discovery / endpoint shapes. Tenant and
- * secret values are never prefilled. Read-only guidance — SSO config is applied
+ * secret values are never collected. Read-only guidance — SSO config is applied
  * via the AGENT_BOM_* environment (copy the generated block).
  */
 export function SsoSetupPresets() {
@@ -76,7 +76,7 @@ export function SsoSetupPresets() {
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-tertiary)]">SSO provider presets</p>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Pick your identity provider to pre-fill the issuer, discovery and endpoint shapes. You still supply your
-            domain, client id and secret — secrets are never prefilled.
+            domain and client id. Confidential-client secrets stay in an operator-managed read-only file mount.
           </p>
         </div>
         <div className="inline-flex rounded-lg border border-[var(--border-subtle)] p-0.5" role="tablist" aria-label="SSO protocol">

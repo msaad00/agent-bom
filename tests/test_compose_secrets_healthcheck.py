@@ -227,7 +227,7 @@ def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
     assert env_map.get("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_FILE") == "/run/secrets/browser_session_signing_key"
     assert env_map.get("AGENT_BOM_CONNECTIONS_KEY_FILE") == "/run/secrets/connections_key"
     assert "AGENT_BOM_API_KEY" not in env_map
-    assert "AGENT_BOM_OIDC_ISSUER" in env_map
+    assert "AGENT_BOM_OIDC_ISSUER" not in env_map
     assert "--allow-insecure-no-auth" not in api.get("command", "")
     assert env_map.get("AGENT_BOM_DISABLE_DOCS") == "1"
     assert env_map.get("AGENT_BOM_API_LOCAL_PATH_SCANS") == "disabled"
@@ -349,6 +349,27 @@ def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home(
     assert "postgres_app_password" in (data.get("secrets") or {})
     assert "postgres_maintenance_password" in (data.get("secrets") or {})
     assert "api_key" in (data.get("secrets") or {})
+
+
+@pytest.mark.parametrize(
+    "compose_name",
+    ("docker-compose.fullstack.yml", "docker-compose.platform.yml"),
+)
+def test_control_plane_compose_loads_oidc_env_and_mounts_only_oidc_secrets_read_only(compose_name: str) -> None:
+    data = yaml.safe_load((COMPOSE_DIR / compose_name).read_text(encoding="utf-8"))
+    api = data["services"]["api"]
+
+    assert {"path": "./secrets/oidc.env", "required": False} in (api.get("env_file") or [])
+    assert "./secrets/oidc:/run/agent-bom/oidc:ro" in (api.get("volumes") or [])
+    assert (COMPOSE_DIR / "secrets" / "oidc").is_dir()
+
+    raw_env = api.get("environment") or {}
+    if isinstance(raw_env, list):
+        env_names = {item.split("=", 1)[0] for item in raw_env if isinstance(item, str)}
+    else:
+        env_names = set(raw_env)
+    assert "AGENT_BOM_OIDC_ISSUER" not in env_names
+    assert "AGENT_BOM_OIDC_AUDIENCE" not in env_names
 
 
 @pytest.mark.parametrize(

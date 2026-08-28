@@ -232,7 +232,7 @@ export AGENT_BOM_OIDC_TENANT_CLAIM="tenant_id"      # or a custom claim like org
 # Dashboard SSO (auth-code + PKCE) — in addition to bearer verification:
 # export AGENT_BOM_OIDC_CLIENT_ID="agent-bom-dashboard"
 # export AGENT_BOM_OIDC_REDIRECT_URI="https://cp.example/v1/auth/oidc/callback"
-# export AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret  # optional, file-first
+# export AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/agent-bom/oidc/client_secret  # optional, file-first
 # export AGENT_BOM_OIDC_SCOPES="openid profile email"
 ```
 

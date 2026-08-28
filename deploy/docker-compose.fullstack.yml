@@ -76,6 +76,11 @@ services:
     container_name: agent-bom-api
     restart: unless-stopped
     command: api --host 0.0.0.0 --port 8422
+    env_file:
+      # Optional until OIDC browser SSO is configured. The setup wizard writes
+      # this non-secret file; the client secret stays in the read-only mount.
+      - path: ./secrets/oidc.env
+        required: false
     environment:
       # Runtime traffic uses the non-superuser app role so FORCE ROW LEVEL
       # SECURITY cannot be bypassed. Password comes from a mounted secret file
@@ -117,6 +122,7 @@ services:
       - ~/.claude:/home/abom/.claude:ro
       # Persist vuln DB, scan cache, and control-plane state for the abom user
       - ~/.agent-bom:/home/abom/.agent-bom
+      - ./secrets/oidc:/run/agent-bom/oidc:ro
     networks:
       - agent-bom
     depends_on:

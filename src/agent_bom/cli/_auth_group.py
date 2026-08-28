@@ -11,7 +11,7 @@ Usage::
 
     agent-bom auth setup-oidc                      # interactive wizard (TTY)
     agent-bom auth setup-oidc --provider google \\
-        --client-id … --client-secret-file /run/secrets/oidc_client_secret \\
+        --client-id … --client-secret-file /run/agent-bom/oidc/client_secret \\
         --base-url https://abom.example --write
 """
 
@@ -253,11 +253,20 @@ def setup_oidc_cmd(
     con = Console()
     interactive = (not non_interactive) and _stdin_is_tty()
 
+    used_legacy_file_reference = False
     if client_secret is not None:
-        raise OIDCSetupError(
-            "Literal --client-secret input is no longer accepted because command arguments can leak. "
-            "Store the value in a protected file and pass its runtime path with --client-secret-file."
-        )
+        legacy_value = client_secret.strip()
+        if legacy_value.startswith("@") and legacy_value[1:].strip():
+            if client_secret_file:
+                raise OIDCSetupError("Pass either --client-secret-file or deprecated --client-secret @<runtime-path>, not both.")
+            client_secret_file = legacy_value[1:].strip()
+            used_legacy_file_reference = True
+        else:
+            raise OIDCSetupError(
+                "Literal --client-secret input is no longer accepted because command arguments can leak. "
+                "Store the value in a protected file and pass its runtime path with --client-secret-file. "
+                "Released automation may migrate safely with --client-secret @<runtime-path>."
+            )
 
     if not provider:
         if interactive:
@@ -315,6 +324,11 @@ def setup_oidc_cmd(
 
     # Connectivity check (warn, never fail).
     con.print(f"\n  [bold]OIDC setup[/bold] [dim]· provider {provider} · issuer {issuer}[/dim]")
+    if used_legacy_file_reference:
+        con.print(
+            "  [yellow]Deprecated option[/yellow] [dim]· --client-secret @<runtime-path> is a file-reference migration shim; "
+            "use --client-secret-file on the next update.[/dim]"
+        )
     check = check_issuer_connectivity(issuer)
     if check.get("reachable") and check.get("complete"):
         con.print("  [green]Issuer discovery OK[/green] [dim]· authorization, token, and JWKS endpoints resolved.[/dim]")

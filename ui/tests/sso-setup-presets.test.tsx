@@ -10,10 +10,11 @@ describe("SsoSetupPresets", () => {
     expect(screen.getByText("SSO provider presets")).toBeInTheDocument();
     expect(screen.getByText("https://{yourOktaDomain}/oauth2/default")).toBeInTheDocument();
 
-    // The client-secret row is present but shows guidance, not a value.
-    const secretEnv = screen.getByText("AGENT_BOM_OIDC_CLIENT_SECRET");
+    // The client-secret row references an operator-managed mounted file.
+    const secretEnv = screen.getByText("AGENT_BOM_OIDC_CLIENT_SECRET_FILE");
     const secretRow = secretEnv.closest("div")?.parentElement as HTMLElement;
-    expect(within(secretRow).getByText(/never prefilled/i)).toBeInTheDocument();
+    expect(within(secretRow).getByText(/mount .* read-only/i)).toBeInTheDocument();
+    expect(screen.queryByText(/encrypted at rest/i)).not.toBeInTheDocument();
   });
 
   it("switching to Google OIDC swaps in the fixed accounts.google.com issuer", async () => {

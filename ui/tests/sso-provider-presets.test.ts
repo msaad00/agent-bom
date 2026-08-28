@@ -110,23 +110,20 @@ describe("secrets are never prefilled or emitted", () => {
     }
   });
 
-  it("only OIDC presets carry a client-secret field and it is always empty", () => {
-    const oktaSecret = ssoProviderPreset("okta-oidc")!.fields.find((f) => f.key === "client_secret");
-    expect(oktaSecret?.kind).toBe("secret");
-    expect(oktaSecret?.value).toBe("");
-    // applied form never contains a non-empty client secret.
-    expect(applySsoPreset(ssoProviderPreset("okta-oidc")!).client_secret).toBe("");
+  it("OIDC presets carry only a mounted client-secret file reference", () => {
+    const oktaSecretFile = ssoProviderPreset("okta-oidc")!.fields.find((f) => f.key === "client_secret_file");
+    expect(oktaSecretFile?.kind).toBe("config");
+    expect(oktaSecretFile?.value).toBe("/run/agent-bom/oidc/client_secret");
+    expect(applySsoPreset(ssoProviderPreset("okta-oidc")!).client_secret_file).toBe("/run/agent-bom/oidc/client_secret");
     // SAML has no secret (the IdP cert is a public signing certificate).
     expect(ssoProviderPreset("okta-saml")!.fields.some((f) => f.kind === "secret")).toBe(false);
   });
 
-  it("the generated env snippet placeholders a secret, never a real value", () => {
+  it("the generated env snippet uses only a mounted secret-file reference", () => {
     const snippet = buildSsoEnvSnippet(ssoProviderPreset("entra-oidc")!);
     expect(snippet).toContain("AGENT_BOM_OIDC_ISSUER=");
     expect(snippet).toContain("https://login.microsoftonline.com/{tenantId}/v2.0");
-    // client secret line exists but only as a paste-me placeholder in angle brackets.
-    const secretLine = snippet.split("\n").find((line) => line.startsWith("AGENT_BOM_OIDC_CLIENT_SECRET="));
-    expect(secretLine).toBeDefined();
-    expect(secretLine).toMatch(/=<.*>$/);
+    expect(snippet).toContain("AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/agent-bom/oidc/client_secret");
+    expect(snippet).not.toContain("AGENT_BOM_OIDC_CLIENT_SECRET=");
   });
 });

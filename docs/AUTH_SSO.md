@@ -29,7 +29,7 @@ agent-bom auth setup-oidc \
   --non-interactive \
   --provider google \
   --client-id  <client-id>.apps.googleusercontent.com \
-  --client-secret-file /run/secrets/oidc_client_secret \
+  --client-secret-file /run/agent-bom/oidc/client_secret \
   --base-url https://abom.example.com \
   --write                      # write deploy/secrets/oidc.env (default path)
 ```
@@ -38,6 +38,26 @@ It prints the provider-side steps, a copy-paste non-secret env block, and (with
 `--write` or an interactive confirmation) saves the block to
 `deploy/secrets/oidc.env`. The wizard never reads, prints, or writes a client
 secret value; confidential clients reference an operator-managed mounted file.
+
+For Compose, provision the secret as `deploy/secrets/oidc/client_secret` before
+starting the stack. The shipped platform and full-stack profiles mount that
+dedicated directory read-only and load `oidc.env` automatically when present.
+
+### Migrating released automation
+
+Literal `--client-secret <value>` arguments are rejected before issuer
+discovery or file writes because process arguments and shell history can expose
+the value. Update automation to `--client-secret-file <runtime-path>`. A
+deprecated transition form keeps the released option name without accepting
+secret bytes:
+
+```bash
+agent-bom auth setup-oidc ... \
+  --client-secret @/run/agent-bom/oidc/client_secret
+```
+
+The `@` value is a runtime **file reference**, not a secret. It produces the
+same `AGENT_BOM_OIDC_CLIENT_SECRET_FILE` output and a deprecation notice.
 
 > The redirect URI is always derived as `<base-url>/v1/auth/oidc/callback` — the
 > dashboard's OIDC callback route. It must be allowlisted at the IdP **exactly**.
@@ -52,14 +72,14 @@ secret value; confidential clients reference an operator-managed mounted file.
    `https://<your-host>/v1/auth/oidc/callback`
 4. **Create**, then copy the **Client ID**. Store the **Client secret** in your
    secret manager and mount it read-only at a runtime path such as
-   `/run/secrets/oidc_client_secret`.
+   `/run/agent-bom/oidc/client_secret`.
 5. Run the command with the client ID and runtime secret-file path (issuer is
    preset to `https://accounts.google.com`):
 
    ```bash
    agent-bom auth setup-oidc --provider google \
      --client-id <id>.apps.googleusercontent.com \
-     --client-secret-file /run/secrets/oidc_client_secret \
+     --client-secret-file /run/agent-bom/oidc/client_secret \
      --base-url https://<your-host> --write
    ```
 
@@ -71,7 +91,7 @@ Resulting env block:
 ```dotenv
 AGENT_BOM_OIDC_ISSUER=https://accounts.google.com
 AGENT_BOM_OIDC_CLIENT_ID=<id>.apps.googleusercontent.com
-AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret
+AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/agent-bom/oidc/client_secret
 AGENT_BOM_OIDC_REDIRECT_URI=https://<your-host>/v1/auth/oidc/callback
 AGENT_BOM_OIDC_AUDIENCE=<id>.apps.googleusercontent.com
 AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1
@@ -86,10 +106,11 @@ AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1
 
 ### Loading the env
 
-- **Docker Compose:** load `deploy/secrets/oidc.env` as an `env_file`, then mount
-  the separately managed client-secret file read-only at the exact path named by
-  `AGENT_BOM_OIDC_CLIENT_SECRET_FILE`. The generated env file contains the path,
-  not the secret value.
+- **Docker Compose:** `docker-compose.platform.yml` and
+  `docker-compose.fullstack.yml` load `deploy/secrets/oidc.env` when it exists
+  and mount `deploy/secrets/oidc/` read-only at `/run/agent-bom/oidc`. Write the
+  client secret to `deploy/secrets/oidc/client_secret`; the generated env file
+  contains only its runtime path. The dedicated directory is gitignored.
 - **systemd / bare process:** export the variables into the API process
   environment (an `EnvironmentFile=` works with the same dotenv file) and set
   `AGENT_BOM_OIDC_CLIENT_SECRET_FILE` to a protected file readable by the API
@@ -113,7 +134,7 @@ discovery document under the issuer is what the wizard validates.
 agent-bom auth setup-oidc --provider generic \
   --issuer https://<org>.okta.com \
   --client-id <client-id> \
-  --client-secret-file /run/secrets/oidc_client_secret \
+  --client-secret-file /run/agent-bom/oidc/client_secret \
   --base-url https://<your-host> \
   --role-claim groups \
   --tenant-claim org_id \

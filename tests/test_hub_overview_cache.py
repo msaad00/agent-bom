@@ -9,8 +9,10 @@ to the store's live ``severity_breakdown`` truth.
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -18,6 +20,12 @@ import pytest
 
 from agent_bom.api import hub_overview_cache
 from agent_bom.api.routes import overview
+
+
+def _sqlite_revision_child(db_path: str) -> None:
+    from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore
+
+    SQLiteComplianceHubStore(db_path).add("acme", [{"id": "f-child", "severity": "high"}])
 
 
 @pytest.fixture(autouse=True)
@@ -46,8 +54,8 @@ def test_snapshot_memoised_and_counts_match_store(monkeypatch):
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
 
-    first = overview._hub_severity_snapshot(_request("acme"))
-    second = overview._hub_severity_snapshot(_request("acme"))
+    first = overview._hub_severity_snapshot(_request("acme"), revision=0)
+    second = overview._hub_severity_snapshot(_request("acme"), revision=0)
 
     # Second read is a cache hit — the O(n) GROUP BY ran once.
     assert store.calls == 1
@@ -63,15 +71,58 @@ def test_ingest_invalidates_snapshot(monkeypatch):
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
 
-    overview._hub_severity_snapshot(_request("acme"))
+    overview._hub_severity_snapshot(_request("acme"), revision=0)
     assert store.calls == 1
 
     # A hub-ledger mutation invalidates the cache; the next read recomputes.
     store.counts = {"critical": 9, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
     hub_overview_cache.invalidate_tenant("acme")
-    refreshed = overview._hub_severity_snapshot(_request("acme"))
+    refreshed = overview._hub_severity_snapshot(_request("acme"), revision=1)
     assert store.calls == 2
     assert refreshed["critical"] == 9
+
+
+def test_failing_framework_snapshot_is_memoised_and_invalidated(monkeypatch):
+    class _FrameworkStore:
+        calls = 0
+
+        def current_failing_framework_slug_counts(self, tenant_id: str, **filters) -> dict[str, int]:
+            self.calls += 1
+            assert tenant_id == "acme"
+            assert filters["origin"] == "bulk_ingest"
+            assert filters["status"] == "open"
+            assert filters["since"] is not None
+            return {"soc2": 2, "iso-27001": 1}
+
+    store = _FrameworkStore()
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+
+    assert overview._hub_failing_frameworks_snapshot(_request("acme"), revision=0) == {"soc2", "iso-27001"}
+    assert overview._hub_failing_frameworks_snapshot(_request("acme"), revision=0) == {"soc2", "iso-27001"}
+    assert store.calls == 1
+    hub_overview_cache.invalidate_tenant("acme")
+    overview._hub_failing_frameworks_snapshot(_request("acme"), revision=1)
+    assert store.calls == 2
+
+
+def test_failing_framework_snapshot_sanitizes_store_exception(monkeypatch, caplog):
+    secret = "AKIAIOSFODNN7EXAMPLE"
+
+    class _FailingStore:
+        def current_failing_framework_slug_counts(self, tenant_id: str, **filters) -> dict[str, int]:
+            raise RuntimeError(f"token={secret} path=/private/customer/tenant.db")
+
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: _FailingStore())
+
+    with caplog.at_level("DEBUG", logger=overview._logger.name):
+        assert overview._hub_failing_frameworks_snapshot(_request("acme")) == set()
+
+    record = next(record for record in caplog.records if record.message.startswith("hub framework snapshot failed"))
+    assert record.exc_info is None
+    assert secret not in caplog.text
+    assert "/private/customer/tenant.db" not in caplog.text
 
 
 def test_ttl_zero_disables_cache(monkeypatch):
@@ -79,8 +130,8 @@ def test_ttl_zero_disables_cache(monkeypatch):
     store = _CountingStore({"critical": 1, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0})
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
-    overview._hub_severity_snapshot(_request("acme"))
-    overview._hub_severity_snapshot(_request("acme"))
+    overview._hub_severity_snapshot(_request("acme"), revision=0)
+    overview._hub_severity_snapshot(_request("acme"), revision=0)
     # TTL<=0 disables memoisation entirely (every read recomputes).
     assert store.calls == 2
 
@@ -96,12 +147,273 @@ def test_store_add_and_clear_invalidate_overview_cache():
     seed = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
 
     hub_overview_cache.set_cached_severity("acme", dict(seed))
+    hub_overview_cache.set_cached_failing_frameworks("acme", {"soc2": 1})
     store.add("acme", [{"id": "f-1", "severity": "critical", "source": "connector"}])
     assert hub_overview_cache.get_cached_severity("acme") is None
+    assert hub_overview_cache.get_cached_failing_frameworks("acme") is None
 
     hub_overview_cache.set_cached_severity("acme", dict(seed))
     store.clear("acme")
     assert hub_overview_cache.get_cached_severity("acme") is None
+
+
+def test_store_evidence_version_changes_for_same_shape_refresh_and_is_tenant_scoped():
+    from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore
+
+    store = InMemoryComplianceHubStore()
+    initial = store.overview_evidence_revision("acme")
+    store.add("acme", [{"id": "f-1", "severity": "high", "is_kev": False}])
+    first = store.overview_evidence_revision("acme")
+    store.add("acme", [{"id": "f-1", "severity": "high", "is_kev": True}])
+    refreshed = store.overview_evidence_revision("acme")
+
+    assert initial != first != refreshed
+    assert store.overview_evidence_revision("other") == initial
+
+
+def test_in_memory_clear_advances_revision_for_current_only_evidence():
+    from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore
+
+    store = InMemoryComplianceHubStore()
+    store.upsert_current_batch(
+        "acme",
+        [{"id": "current-only", "severity": "high", "origin": "bulk_ingest"}],
+        observed_at="2026-08-27T00:00:00Z",
+        batch_id="batch-1",
+        source="connector",
+    )
+    before_clear = store.overview_evidence_revision("acme")
+
+    assert store.clear("acme") == 0
+    assert store.overview_evidence_revision("acme") > before_clear
+
+
+def test_revision_tag_rejects_a_late_stale_cache_write():
+    hub_overview_cache.set_cached_severity("acme", {"critical": 1}, revision=0)
+    assert hub_overview_cache.get_cached_severity("acme", revision=1) is None
+
+
+@pytest.mark.parametrize("missing_component", ["revision", "severity", "kev"])
+def test_posture_counts_fails_closed_when_revisioned_component_is_unavailable(monkeypatch, missing_component):
+    """The nav count endpoint must not turn a partial hub read into clean zeros."""
+    from fastapi import HTTPException
+
+    class _RevisionStore:
+        def overview_evidence_revision(self, tenant_id: str) -> int:
+            assert tenant_id == "acme"
+            if missing_component == "revision":
+                raise RuntimeError("revision store unavailable")
+            return 7
+
+    store = _RevisionStore()
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+
+    def _severity(request, **kwargs):
+        if missing_component == "severity" and kwargs.get("strict"):
+            overview._raise_hub_overview_unavailable()
+        return {"critical": 1}
+
+    def _kev(request, **kwargs):
+        if missing_component == "kev" and kwargs.get("strict"):
+            overview._raise_hub_overview_unavailable()
+        return 0
+
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", _severity)
+    monkeypatch.setattr(overview, "_hub_kev_snapshot", _kev)
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="acme"), headers={})
+    with pytest.raises(HTTPException) as raised:
+        overview.exec_severity_counts(request, [])
+    assert raised.value.status_code == 503
+    assert raised.value.headers == {"Retry-After": "1"}
+
+
+def test_sqlite_overview_revision_is_shared_across_processes(tmp_path):
+    from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore
+
+    db_path = str(tmp_path / "hub.db")
+    store = SQLiteComplianceHubStore(db_path)
+    before = store.overview_evidence_revision("acme")
+    process = multiprocessing.get_context("spawn").Process(target=_sqlite_revision_child, args=(db_path,))
+    process.start()
+    process.join(timeout=15)
+    assert process.exitcode == 0
+    assert store.overview_evidence_revision("acme") > before
+
+
+@pytest.mark.parametrize("mutation_point", ["kev", "top_risks"])
+def test_hub_snapshot_retries_when_late_component_mutates_revision(monkeypatch, mutation_point):
+    """No response may combine components from two committed hub revisions."""
+
+    class _RevisionStore:
+        revision = 0
+
+        def overview_evidence_revision(self, tenant_id: str) -> int:
+            assert tenant_id == "acme"
+            return self.revision
+
+    store = _RevisionStore()
+    state = {
+        "severity": {"critical": 1, "high": 0},
+        "frameworks": {"soc2"},
+        "kev": 0,
+        "top_risks": [{"vulnerability_id": "old"}],
+    }
+    mutated = False
+
+    def _mutate_once() -> None:
+        nonlocal mutated
+        if mutated:
+            return
+        mutated = True
+        state.update(
+            severity={"critical": 0, "high": 1},
+            frameworks={"iso-27001"},
+            kev=1,
+            top_risks=[{"vulnerability_id": "new"}],
+        )
+        store.revision += 1
+
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: dict(state["severity"]))
+    monkeypatch.setattr(
+        overview,
+        "_hub_failing_frameworks_snapshot",
+        lambda request, **kwargs: set(state["frameworks"]),
+    )
+
+    def _kev(request, **kwargs):
+        if mutation_point == "kev":
+            _mutate_once()
+        return state["kev"]
+
+    def _top_risks(request, **kwargs):
+        if mutation_point == "top_risks":
+            _mutate_once()
+        return list(state["top_risks"])
+
+    monkeypatch.setattr(overview, "_hub_kev_snapshot", _kev)
+    monkeypatch.setattr(overview, "_hub_top_risks", _top_risks)
+
+    snapshot = overview._capture_hub_overview_snapshot(object(), store)
+
+    assert snapshot.revision == 1
+    assert snapshot.severity == {"critical": 0, "high": 1}
+    assert snapshot.failing_frameworks == {"iso-27001"}
+    assert snapshot.kev == 1
+    assert snapshot.top_risks == [{"vulnerability_id": "new"}]
+
+
+def test_hub_snapshot_observes_cross_process_sqlite_mutation(monkeypatch, tmp_path):
+    """A mutation committed by another process invalidates an in-flight read."""
+    from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore
+
+    db_path = str(tmp_path / "hub-snapshot.db")
+    store = SQLiteComplianceHubStore(db_path)
+    original_kev = overview._hub_kev_snapshot
+    launched = False
+
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+
+    def _kev_with_process_mutation(request, **kwargs):
+        nonlocal launched
+        if not launched:
+            launched = True
+            process = multiprocessing.get_context("spawn").Process(target=_sqlite_revision_child, args=(db_path,))
+            process.start()
+            process.join(timeout=15)
+            assert process.exitcode == 0
+        return original_kev(request, **kwargs)
+
+    monkeypatch.setattr(overview, "_hub_kev_snapshot", _kev_with_process_mutation)
+    snapshot = overview._capture_hub_overview_snapshot(object(), store)
+
+    assert launched is True
+    assert snapshot.revision == store.overview_evidence_revision("acme")
+
+
+def test_unstable_hub_snapshot_fails_bounded_without_overview_cache_write(monkeypatch):
+    """Continuous mutation returns retryable failure, never a cached hybrid."""
+    from fastapi import HTTPException
+
+    class _ChurningStore:
+        revision = 0
+
+        def overview_evidence_revision(self, tenant_id: str) -> int:
+            self.revision += 1
+            return self.revision
+
+    writes = []
+    store = _ChurningStore()
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr(overview, "_get_store", lambda: SimpleNamespace(list_all=lambda tenant_id: []))
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: {})
+    monkeypatch.setattr(overview, "_hub_failing_frameworks_snapshot", lambda request, **kwargs: set())
+    monkeypatch.setattr(overview, "_hub_kev_snapshot", lambda request, **kwargs: 0)
+    monkeypatch.setattr(overview, "_hub_top_risks", lambda request, **kwargs: [])
+    monkeypatch.setattr(overview, "_overview_cache_put", lambda *args, **kwargs: writes.append(args))
+
+    with pytest.raises(HTTPException) as raised:
+        overview._build_overview(object())
+
+    assert raised.value.status_code == 503
+    assert raised.value.headers == {"Retry-After": "1"}
+    assert writes == []
+
+
+@pytest.mark.parametrize("failed_component", ["severity", "frameworks", "kev", "top_risks"])
+def test_hub_snapshot_fails_closed_when_an_authoritative_component_is_unavailable(
+    monkeypatch,
+    failed_component,
+):
+    """A partial store outage must not be rendered or cached as truthful zero."""
+    from fastapi import HTTPException
+
+    class _PartiallyUnavailableStore:
+        def overview_evidence_revision(self, tenant_id: str) -> int:
+            assert tenant_id == "acme"
+            return 7
+
+        def current_severity_breakdown(self, *args, **kwargs):
+            if failed_component == "severity":
+                raise RuntimeError("severity unavailable")
+            return {"critical": 1}
+
+        def current_failing_framework_slug_counts(self, *args, **kwargs):
+            if failed_component == "frameworks":
+                raise RuntimeError("frameworks unavailable")
+            return {"soc2": 1}
+
+        def current_kev_count(self, *args, **kwargs):
+            if failed_component == "kev":
+                raise RuntimeError("kev unavailable")
+            return 1
+
+        def list_current_page(self, *args, **kwargs):
+            if failed_component == "top_risks":
+                raise RuntimeError("top risks unavailable")
+            return ([{"id": "live", "severity": "critical"}], None)
+
+    store = _PartiallyUnavailableStore()
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
+
+    with pytest.raises(HTTPException) as raised:
+        overview._capture_hub_overview_snapshot(object(), store)
+
+    assert raised.value.status_code == 503
+    assert raised.value.detail == "Overview evidence is temporarily unavailable; retry the request."
+    assert raised.value.headers == {"Retry-After": "1"}
+
+
+def test_postgres_overview_revision_contract_is_shared_and_rls_scoped():
+    source = (Path(__file__).parents[1] / "src/agent_bom/api/postgres_compliance_hub.py").read_text()
+    assert "CREATE TABLE IF NOT EXISTS hub_overview_revisions" in source
+    assert '_ensure_tenant_rls(conn, "hub_overview_revisions", "tenant_id")' in source
+    assert "ON CONFLICT (tenant_id) DO UPDATE SET revision" in source
 
 
 # ── Live Postgres: cache-hit latency is bounded as rows grow ─────────────────

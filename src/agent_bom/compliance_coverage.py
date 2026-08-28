@@ -411,6 +411,12 @@ def framework_output_key_by_slug() -> dict[str, str]:
     return {metadata.slug: metadata.output_key for metadata in TAG_MAPPED_FRAMEWORKS}
 
 
+def scored_framework_slugs() -> frozenset[str]:
+    """Canonical framework slugs that carry pass/warn/fail semantics."""
+
+    return frozenset(metadata.slug for metadata in TAG_MAPPED_FRAMEWORKS if metadata.scored)
+
+
 def framework_report_labels_by_slug() -> dict[str, tuple[str, str]]:
     """Return API output keys and report labels keyed by public framework slug."""
 

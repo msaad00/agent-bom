@@ -510,8 +510,7 @@ function buildComplianceSnapshot(
   compliance: ComplianceResponse | null,
 ): OverviewComplianceSnapshot | null {
   if (!compliance) return null;
-  const hasMcp = Boolean(compliance.has_mcp_context);
-  const frameworks = complianceFrameworkSummaries(compliance, hasMcp)
+  const frameworks = complianceFrameworkSummaries(compliance)
     .filter((framework) => !framework.disabled)
     .map((framework) => ({
       id: framework.id,
@@ -520,6 +519,9 @@ function buildComplianceSnapshot(
       warn: framework.warn,
       fail: framework.fail,
       total: framework.total,
+      kind: framework.kind,
+      ...(framework.applicable === undefined ? {} : { applicable: framework.applicable }),
+      ...(framework.notApplicable === undefined ? {} : { notApplicable: framework.notApplicable }),
     }));
   return {
     overallScore: compliance.overall_score,

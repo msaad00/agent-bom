@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from starlette.testclient import TestClient
 
-from agent_bom.api.server import JobStatus, _get_store, app
-from agent_bom.api.store import InMemoryJobStore
+from agent_bom.api.server import JobStatus, _get_store, app, set_job_store
+from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import BlastRadius
@@ -178,6 +180,402 @@ def test_compliance_can_scope_posture_to_a_selected_scan():
     llm02 = next(control for control in data["owasp_llm_top10"] if control["code"] == "LLM02")
     assert llm01["findings"] == 1
     assert llm02["findings"] == 0
+
+
+def test_compliance_can_scope_posture_to_report_scan_id():
+    """Persisted job ids and report scan ids are both supported selectors."""
+    _clear_jobs()
+    _add_done_job(
+        [{"vulnerability_id": "CVE-REPORT", "severity": "critical", "owasp_tags": ["LLM01"]}],
+        job_id="job-wrapper",
+        result_extra={"scan_id": "report-scan-id"},
+    )
+
+    response = TestClient(app).get("/v1/compliance?scan_id=report-scan-id", headers=_AUTH_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["scan_count"] == 1
+    llm01 = next(control for control in data["owasp_llm_top10"] if control["code"] == "LLM01")
+    assert llm01["findings"] == 1
+    _clear_jobs()
+
+
+def test_agentic_context_is_inferred_from_canonical_agent_evidence_without_mcp() -> None:
+    _clear_jobs()
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-AGENT-ONLY",
+                "severity": "high",
+                "affected_agents": ["cursor"],
+                "affected_servers": [],
+                "owasp_agentic_tags": ["ASI04"],
+            }
+        ],
+        result_extra={"has_mcp_context": False, "has_agent_context": False},
+    )
+
+    data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    assert data["has_mcp_context"] is False
+    assert data["has_agent_context"] is True
+    agentic = next(control for control in data["owasp_agentic_top10"] if control["code"] == "ASI04")
+    assert agentic["status"] == "applicable"
+    assert agentic["findings"] == 1
+    _clear_jobs()
+
+
+def test_unified_findings_drive_agentic_and_mcp_applicability_without_blast_duplicates() -> None:
+    _clear_jobs()
+    _add_done_job(
+        [],
+        result_extra={
+            "has_mcp_context": False,
+            "has_agent_context": False,
+            "findings": [
+                {
+                    "id": "agent-occurrence",
+                    "severity": "high",
+                    "affected_agents": ["cursor"],
+                    "owasp_agentic_tags": ["ASI04"],
+                },
+                {
+                    "id": "mcp-occurrence",
+                    "severity": "high",
+                    "affected_servers": ["payments"],
+                    "owasp_mcp_tags": ["MCP04"],
+                },
+            ],
+        },
+    )
+
+    data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    assert data["has_agent_context"] is True
+    assert data["has_mcp_context"] is True
+    agentic = next(control for control in data["owasp_agentic_top10"] if control["code"] == "ASI04")
+    mcp = next(control for control in data["owasp_mcp_top10"] if control["code"] == "MCP04")
+    assert (agentic["status"], agentic["findings"]) == ("applicable", 1)
+    assert (mcp["status"], mcp["findings"]) == ("applicable", 1)
+    _clear_jobs()
+
+
+def test_unified_finding_occurrence_is_not_double_counted_across_scans() -> None:
+    _clear_jobs()
+    finding = {
+        "id": "same-occurrence",
+        "severity": "high",
+        "affected_agents": ["cursor"],
+        "owasp_agentic_tags": ["ASI04"],
+    }
+    _add_done_job([], job_id="scan-a", result_extra={"findings": [finding]})
+    _add_done_job([], job_id="scan-b", result_extra={"findings": [dict(finding)]})
+
+    data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+    agentic = next(control for control in data["owasp_agentic_top10"] if control["code"] == "ASI04")
+    assert agentic["findings"] == 1
+    _clear_jobs()
+
+
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_newest_unified_finding_occurrence_wins_independent_of_backend_order(
+    tmp_path: Path,
+    reverse_put_order: bool,
+) -> None:
+    """The authoritative occurrence is selected by evidence time, not store order.
+
+    In-memory jobs retain insertion order while SQLite returns newest-created
+    jobs first. A re-scan that clears a mapped high finding must therefore
+    produce the same control posture on both backends.
+    """
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    def _job(job_id: str, *, generated_at: str, completed_at: str, finding: dict) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=completed_at,
+            request=ScanRequest(),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = completed_at
+        job.result = {"generated_at": generated_at, "findings": [finding]}
+        return job
+
+    old = _job(
+        "scan-old",
+        generated_at="2026-08-20T00:00:00Z",
+        # A delayed persistence completion must not outrank fresher evidence.
+        completed_at="2026-08-22T00:01:00Z",
+        finding={
+            "id": "same-occurrence",
+            "severity": "critical",
+            "soc2_tags": ["CC7.1"],
+        },
+    )
+    newest = _job(
+        "scan-new",
+        generated_at="2026-08-21T00:00:00Z",
+        completed_at="2026-08-21T00:01:00Z",
+        finding={
+            "id": "same-occurrence",
+            "severity": "low",
+            "soc2_tags": [],
+        },
+    )
+    jobs = [newest, old] if reverse_put_order else [old, newest]
+    results = []
+    try:
+        for store in (InMemoryJobStore(), SQLiteJobStore(str(tmp_path / f"jobs-{reverse_put_order}.db"))):
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
+            results.append((cc71["status"], cc71["findings"]))
+    finally:
+        _clear_jobs()
+
+    assert results == [("not_evaluated", 0), ("not_evaluated", 0)]
+
+
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_newest_empty_scan_retires_absent_findings_only_in_same_scope(
+    tmp_path: Path,
+    reverse_put_order: bool,
+) -> None:
+    """A successful empty re-scan is authoritative evidence, not missing data.
+
+    The latest completed scan for one target scope replaces that scope's prior
+    finding set even when the replacement set is empty.  Evidence from another
+    target scope remains current.  Selection is independent of backend return
+    order (in-memory insertion order versus SQLite newest-first order).
+    """
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    def _job(
+        job_id: str,
+        *,
+        repo_url: str,
+        generated_at: str,
+        findings: list[dict],
+    ) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=generated_at,
+            request=ScanRequest(repo_url=repo_url),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = generated_at
+        job.result = {
+            "generated_at": generated_at,
+            "scan_sources": ["repo_tree"],
+            "findings": findings,
+        }
+        return job
+
+    old_scope_a = _job(
+        "scope-a-old",
+        repo_url="https://example.test/acme/a.git",
+        generated_at="2026-08-20T00:00:00Z",
+        findings=[{"id": "a-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+    )
+    new_scope_a = _job(
+        "scope-a-new-empty",
+        repo_url="https://example.test/acme/a.git",
+        generated_at="2026-08-21T00:00:00Z",
+        findings=[],
+    )
+    scope_b = _job(
+        "scope-b-current",
+        repo_url="https://example.test/acme/b.git",
+        generated_at="2026-08-20T12:00:00Z",
+        findings=[{"id": "b-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+    )
+    jobs = [new_scope_a, scope_b, old_scope_a] if reverse_put_order else [old_scope_a, scope_b, new_scope_a]
+
+    results = []
+    try:
+        stores = (
+            InMemoryJobStore(),
+            SQLiteJobStore(str(tmp_path / f"empty-scope-{reverse_put_order}.db")),
+        )
+        for store in stores:
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
+            results.append((cc71["status"], cc71["findings"]))
+    finally:
+        _clear_jobs()
+
+    # Scope A's old finding is retired by its empty successor; scope B remains.
+    assert results == [("fail", 1), ("fail", 1)]
+
+
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_min_severity_change_does_not_split_target_scope(
+    tmp_path: Path,
+    reverse_put_order: bool,
+) -> None:
+    """Result filtering is not target identity and cannot retain retired rows."""
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    def _job(job_id: str, *, at: str, min_severity: str, findings: list[dict]) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=at,
+            request=ScanRequest(
+                repo_url="https://example.test/acme/repo.git",
+                min_severity=min_severity,
+            ),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = at
+        job.result = {"generated_at": at, "scan_sources": ["repo_tree"], "findings": findings}
+        return job
+
+    old = _job(
+        "scope-old-low",
+        at="2026-08-20T00:00:00Z",
+        min_severity="low",
+        findings=[{"id": "retired-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+    )
+    newest = _job(
+        "scope-new-high-empty",
+        at="2026-08-21T00:00:00Z",
+        min_severity="high",
+        findings=[],
+    )
+    jobs = [newest, old] if reverse_put_order else [old, newest]
+
+    results = []
+    try:
+        stores = (
+            InMemoryJobStore(),
+            SQLiteJobStore(str(tmp_path / f"min-severity-scope-{reverse_put_order}.db")),
+        )
+        for store in stores:
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
+            results.append((cc71["status"], cc71["findings"]))
+    finally:
+        _clear_jobs()
+
+    assert results == [("not_evaluated", 0), ("not_evaluated", 0)]
+
+
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_posture_uses_canonical_newest_success_independent_of_store_order(
+    tmp_path: Path,
+    reverse_put_order: bool,
+) -> None:
+    """The primary posture API must not trust backend-specific list ordering."""
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    def _job(job_id: str, *, at: str, grade: str, score: int) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=at,
+            request=ScanRequest(repo_url="https://example.test/acme/repo.git"),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = at
+        job.result = {
+            "generated_at": at,
+            "summary": {"total_packages": 1},
+            "posture_scorecard": {"grade": grade, "score": score, "summary": job_id},
+        }
+        return job
+
+    old = _job("old-posture", at="2026-08-20T00:00:00Z", grade="F", score=10)
+    newest = _job("new-posture", at="2026-08-21T00:00:00Z", grade="A", score=95)
+    jobs = [newest, old] if reverse_put_order else [old, newest]
+
+    results = []
+    try:
+        stores = (
+            InMemoryJobStore(),
+            SQLiteJobStore(str(tmp_path / f"posture-order-{reverse_put_order}.db")),
+        )
+        for store in stores:
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            response = TestClient(app).get("/v1/posture", headers=_AUTH_HEADERS)
+            assert response.status_code == 200
+            results.append((response.json()["grade"], response.json()["summary"]))
+    finally:
+        _clear_jobs()
+
+    assert results == [("A", "new-posture"), ("A", "new-posture")]
+
+
+def test_unified_finding_authority_uses_stable_job_id_tie_break() -> None:
+    """Equal evidence/completion timestamps have one deterministic winner."""
+    from agent_bom.api.routes import compliance as route
+
+    row = {"id": "same-occurrence"}
+    common = {
+        "status": JobStatus.DONE,
+        "completed_at": "2026-08-21T00:01:00Z",
+        "created_at": "2026-08-21T00:00:00Z",
+        "result": {"generated_at": "2026-08-21T00:00:30Z"},
+    }
+    job_a = SimpleNamespace(job_id="scan-a", **common)
+    job_z = SimpleNamespace(job_id="scan-z", **common)
+
+    assert route._compliance_evidence_authority_key(job_z, row) > route._compliance_evidence_authority_key(job_a, row)
+
+
+def test_fedramp_rest_and_narrative_reconcile_namespaced_scanner_tags():
+    """The REST score and narrative must join the same emitted FedRAMP tag."""
+    _clear_jobs()
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2026-FEDRAMP",
+                "severity": "critical",
+                "package": "demo",
+                "fedramp_tags": ["FedRAMP-SI-10"],
+            }
+        ]
+    )
+    client = TestClient(app)
+
+    posture = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+    narrative = client.get("/v1/compliance/narrative/fedramp", headers=_AUTH_HEADERS).json()
+
+    rest_control = next(control for control in posture["fedramp"] if control["code"] == "SI-10")
+    narrative_framework = narrative["framework_narratives"][0]
+    assert rest_control["findings"] == 1
+    assert rest_control["status"] == "fail"
+    assert posture["summary"]["fedramp_fail"] == 1
+    assert {control["control_id"] for control in narrative_framework["failing_controls"]} == {"SI-10"}
+    _clear_jobs()
+
+
+def test_compliance_serializes_framework_kinds_for_every_framework():
+    """Clients must not infer whether a catalog is scored from its display name."""
+    _clear_jobs()
+    data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    assert data["framework_kinds"] == {
+        metadata.output_key: ("scored" if metadata.scored else "applicability") for metadata in TAG_MAPPED_FRAMEWORKS
+    }
+    serialized_fixture = json.loads((Path(__file__).parents[1] / "ui/tests/fixtures/compliance-overlay-response.json").read_text())
+    assert serialized_fixture["framework_kinds"] == data["framework_kinds"]
+    for output_key in ("owasp_llm_top10", "owasp_mcp_top10", "owasp_agentic_top10", "mitre_atlas"):
+        assert data["framework_kinds"][output_key] == "applicability"
+    _clear_jobs()
     _clear_jobs()
 
 

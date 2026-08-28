@@ -9777,7 +9777,9 @@ paths:
         scans.
 
 
-        Returns per-control pass/warning/fail status and an overall compliance score.'
+        Returns scored control posture plus applicability-only risk/technique
+
+        catalogs and an overall score derived only from the scored frameworks.'
       operationId: get_compliance_v1_compliance_get
       parameters:
       - in: query

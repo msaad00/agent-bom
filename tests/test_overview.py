@@ -256,6 +256,25 @@ def test_overview_counts_bulk_ingested_findings() -> None:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     get_compliance_hub_store().clear("default")
+    _ingest_hub_findings(
+        [
+            {"finding_id": "H-med-1", "severity": "medium", "cvss_score": 6.5, "title": "m1"},
+            {"finding_id": "H-med-2", "severity": "medium", "cvss_score": 5.0, "title": "m2"},
+            {"finding_id": "H-high-1", "severity": "high", "cvss_score": 8.8, "title": "h1"},
+        ]
+    )
+
+    data = client_get_overview()
+    top = data["top_risks"]
+    assert top, "hub-ingested findings must surface in the exec top-risk strip"
+    ids = {r["vulnerability_id"] for r in top}
+    assert {"H-med-1", "H-med-2", "H-high-1"} & ids, ids
+    for row in top:
+        # Each entry carries the fields the strip drills on (severity + score).
+        assert row["severity"] in {"critical", "high", "medium", "low", "unknown", "unrated"}
+        assert isinstance(row["risk_score"], (int, float))
+
+    get_compliance_hub_store().clear("default")
 
     client = TestClient(app)
     # Baseline: no scans, no ingest -> N/A posture, zero headline.
@@ -296,25 +315,54 @@ def test_overview_top_risks_include_hub_ingested_findings() -> None:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     get_compliance_hub_store().clear("default")
-    _ingest_hub_findings(
-        [
-            {"finding_id": "H-med-1", "severity": "medium", "cvss_score": 6.5, "title": "m1"},
-            {"finding_id": "H-med-2", "severity": "medium", "cvss_score": 5.0, "title": "m2"},
-            {"finding_id": "H-high-1", "severity": "high", "cvss_score": 8.8, "title": "h1"},
-        ]
+
+
+@pytest.mark.parametrize("hub_backend", ["memory", "sqlite"])
+def test_overview_top_risks_use_current_open_bulk_window_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    hub_backend: str,
+) -> None:
+    """Resolved, aged, and non-bulk rows cannot leak into the live risk strip."""
+    from agent_bom.api.compliance_hub_store import (
+        InMemoryComplianceHubStore,
+        SQLiteComplianceHubStore,
+        set_compliance_hub_store,
+    )
+    from agent_bom.api.routes import overview
+
+    store = InMemoryComplianceHubStore() if hub_backend == "memory" else SQLiteComplianceHubStore(str(tmp_path / "hub-top-risks.db"))
+    recent = _recent_stamp()
+    rows = [
+        {"id": "keep", "severity": "high", "origin": "bulk_ingest", "title": "live"},
+        {"id": "resolved", "severity": "critical", "origin": "bulk_ingest", "title": "closed"},
+        {"id": "aged", "severity": "critical", "origin": "bulk_ingest", "title": "old"},
+        {"id": "foreign", "severity": "critical", "origin": "scan", "title": "other lane"},
+    ]
+    store.add("default", rows)
+    for row in rows:
+        observed_at = "2020-01-01T00:00:00Z" if row["id"] == "aged" else recent
+        store.upsert_current_batch(
+            "default",
+            [row],
+            observed_at=observed_at,
+            batch_id=f"batch-{row['id']}",
+            source="test",
+        )
+    store.reconcile_current_absent(
+        "default",
+        present_canonical_ids={"keep", "aged", "foreign"},
+        observed_at=recent,
     )
 
-    data = client_get_overview()
-    top = data["top_risks"]
-    assert top, "hub-ingested findings must surface in the exec top-risk strip"
-    ids = {r["vulnerability_id"] for r in top}
-    assert {"H-med-1", "H-med-2", "H-high-1"} & ids, ids
-    for row in top:
-        # Each entry carries the fields the strip drills on (severity + score).
-        assert row["severity"] in {"critical", "high", "medium", "low", "unknown", "unrated"}
-        assert isinstance(row["risk_score"], (int, float))
+    set_compliance_hub_store(store)
+    monkeypatch.setattr(overview, "_tenant_id", lambda request: "default")
+    try:
+        ids = {row["vulnerability_id"] for row in overview._hub_top_risks(object())}
+    finally:
+        set_compliance_hub_store(None)
 
-    get_compliance_hub_store().clear("default")
+    assert ids == {"keep"}
 
 
 def test_overview_medium_dominant_estate_surfaces_risks_and_honest_summary() -> None:
@@ -441,6 +489,30 @@ def test_overview_hub_kev_finding_moves_exec_kev_count() -> None:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     get_compliance_hub_store().clear("default")
+
+
+def test_overview_resolved_hub_kev_does_not_inflate_live_headline() -> None:
+    """The executive KEV count uses the same open lifecycle basis as findings."""
+    _clear_jobs()
+    from datetime import datetime, timezone
+
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    store = get_compliance_hub_store()
+    store.clear("default")
+    _ingest_hub_findings([{"finding_id": "K-resolved", "severity": "critical", "is_kev": True}])
+    store.reconcile_current_absent(
+        "default",
+        present_canonical_ids=set(),
+        observed_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    client = TestClient(app)
+    assert client.get("/v1/findings", headers=_AUTH_HEADERS).json()["total"] == 0
+    assert client.get("/v1/overview", headers=_AUTH_HEADERS).json()["headline"]["kev"] == 0
+    assert client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()["kev"] == 0
+
+    store.clear("default")
     _ingest_hub_findings(
         [
             {"finding_id": "K-1", "severity": "high", "title": "kev bug", "is_kev": True},
@@ -763,6 +835,87 @@ def test_posture_counts_reconcile_with_overview_headline() -> None:
     get_compliance_hub_store().clear("default")
 
 
+@pytest.mark.parametrize("reverse_put_order", [False, True])
+def test_overview_uses_newest_current_snapshot_independent_of_store_order(
+    tmp_path,
+    reverse_put_order: bool,
+) -> None:
+    """Severity, KEV, framework failures and top risk share newest-wins truth."""
+    from agent_bom.api.routes.overview import _reset_overview_cache
+    from agent_bom.api.server import ScanJob, ScanRequest, set_job_store
+    from agent_bom.api.store import SQLiteJobStore
+
+    def _job(job_id: str, generated_at: str, finding: dict) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="default",
+            created_at=generated_at,
+            request=ScanRequest(repo_url="https://example.test/acme/service.git"),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = generated_at
+        job.result = {
+            "generated_at": generated_at,
+            "scan_sources": ["repo_tree"],
+            "findings": [finding],
+            "agents": [],
+        }
+        return job
+
+    old = _job(
+        "old-critical",
+        "2026-08-20T00:00:00Z",
+        {
+            "id": "same-finding",
+            "severity": "critical",
+            "is_kev": True,
+            "applicable_frameworks": ["soc2"],
+        },
+    )
+    new = _job(
+        "new-low",
+        "2026-08-21T00:00:00Z",
+        {
+            "id": "same-finding",
+            "severity": "low",
+            "is_kev": False,
+            "applicable_frameworks": [],
+        },
+    )
+    jobs = [new, old] if reverse_put_order else [old, new]
+
+    snapshots = []
+    try:
+        stores = (
+            InMemoryJobStore(),
+            SQLiteJobStore(str(tmp_path / f"overview-order-{reverse_put_order}.db")),
+        )
+        for store in stores:
+            set_job_store(store)
+            for job in jobs:
+                store.put(job)
+            _reset_overview_cache()
+            response = TestClient(app).get("/v1/overview", headers=_AUTH_HEADERS)
+            assert response.status_code == 200, response.text
+            data = response.json()
+            snapshots.append(
+                {
+                    "severity": data["domains"]["vuln"]["detail"]["severity"],
+                    "kev": data["headline"]["kev"],
+                    "top_risks": data["top_risks"],
+                    "compliance_failing": next(row["count"] for row in data["posture"]["breakdown"] if row["driver"] == "compliance"),
+                }
+            )
+    finally:
+        _clear_jobs()
+
+    assert snapshots[0] == snapshots[1]
+    assert snapshots[0]["severity"] == {"critical": 0, "high": 0, "medium": 0, "low": 1, "unrated": 0}
+    assert snapshots[0]["kev"] == 0
+    assert snapshots[0]["compliance_failing"] == 0
+    assert [row["severity"] for row in snapshots[0]["top_risks"]] == ["low"]
+
+
 def test_overview_compliance_failing_moves_grade() -> None:
     """A failing compliance framework feeds the exec grade (was hardcoded 0) (#3962)."""
     _clear_jobs()
@@ -807,6 +960,104 @@ def test_overview_compliance_failing_moves_grade() -> None:
     assert failing["posture"]["score"] < base["posture"]["score"]
     _reset_score_config()
     get_compliance_hub_store().clear("default")
+
+
+def test_overview_hub_frameworks_move_compliance_driver_and_dedupe_scan_overlap() -> None:
+    """Live high/critical hub mappings contribute once alongside scan mappings."""
+    _clear_jobs()
+    _reset_score_config()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    store = get_compliance_hub_store()
+    finding = {
+        "id": "hub-critical",
+        "severity": "critical",
+        "origin": "bulk_ingest",
+        "applicable_frameworks": ["soc2", "iso_27001", "SOC2"],
+    }
+    store.add("default", [finding])
+    store.upsert_current_batch(
+        "default",
+        [finding],
+        observed_at=_recent_stamp(),
+        batch_id="hub-frameworks",
+        source="connector",
+    )
+
+    hub_only = client_get_overview()
+    hub_row = next(row for row in hub_only["posture"]["breakdown"] if row["driver"] == "compliance")
+    assert hub_row["count"] == 2
+    assert hub_row["contribution"] > 0
+
+    _add_done_job(
+        [],
+        result_extra={
+            "findings": [
+                {
+                    "id": "scan-critical",
+                    "security_domain": "cspm",
+                    "severity": "critical",
+                    "applicable_frameworks": ["soc2"],
+                }
+            ]
+        },
+    )
+    combined = client_get_overview()
+    combined_row = next(row for row in combined["posture"]["breakdown"] if row["driver"] == "compliance")
+    assert combined_row["count"] == 2
+    _reset_score_config()
+    store.clear("default")
+
+
+def test_overview_applicability_overlays_never_count_as_failing_frameworks() -> None:
+    """Risk/technique applicability must not become a compliance failure."""
+    _clear_jobs()
+    _reset_score_config()
+    _add_done_job(
+        [],
+        result_extra={
+            "findings": [
+                {
+                    "id": "overlay-critical",
+                    "security_domain": "aispm",
+                    "severity": "critical",
+                    "applicable_frameworks": ["owasp-agentic", "atlas", "attack"],
+                },
+                {
+                    "id": "scored-critical",
+                    "security_domain": "cspm",
+                    "severity": "critical",
+                    "applicable_frameworks": ["soc2"],
+                },
+            ]
+        },
+    )
+
+    data = client_get_overview()
+    row = next(item for item in data["posture"]["breakdown"] if item["driver"] == "compliance")
+    assert row["count"] == 1
+    _clear_jobs()
+
+
+def test_overview_hub_applicability_overlays_do_not_move_compliance_driver() -> None:
+    _clear_jobs()
+    _reset_score_config()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    store = get_compliance_hub_store()
+    finding = {
+        "id": "hub-overlay",
+        "severity": "critical",
+        "origin": "bulk_ingest",
+        "applicable_frameworks": ["owasp-mcp", "owasp-agentic", "atlas"],
+    }
+    store.add("default", [finding])
+    store.upsert_current_batch("default", [finding], observed_at=_recent_stamp(), batch_id="hub-overlay", source="connector")
+
+    data = client_get_overview()
+    row = next(item for item in data["posture"]["breakdown"] if item["driver"] == "compliance")
+    assert row["count"] == 0
+    store.clear("default")
 
 
 def test_overview_sheds_with_429_when_backpressure_opens(monkeypatch) -> None:

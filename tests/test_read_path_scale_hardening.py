@@ -156,7 +156,7 @@ def test_overview_concurrent_misses_share_one_fold(monkeypatch) -> None:
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.delenv("AGENT_BOM_OVERVIEW_CACHE_TTL_SECONDS", raising=False)
     monkeypatch.setattr(overview, "_get_store", lambda: _FakeJobStore([]))
-    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request: {"critical": 1})
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: {"critical": 1})
 
     readers = 8
     parked = threading.Semaphore(0)
@@ -181,7 +181,15 @@ def test_overview_concurrent_misses_share_one_fold(monkeypatch) -> None:
 
     barrier_held = {"ok": True}
 
-    def _slow_compose(request, tenant_id, jobs, hub_severity):
+    def _slow_compose(
+        request,
+        tenant_id,
+        jobs,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_revision=None,
+        **kwargs,
+    ):
         with folds_lock:
             folds["n"] += 1
         # Hold the leader until every other reader is parked as a follower.
@@ -229,11 +237,19 @@ def test_overview_singleflight_follower_recomputes_when_leader_fails(monkeypatch
     overview._reset_overview_cache()
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
     monkeypatch.setattr(overview, "_get_store", lambda: _FakeJobStore([]))
-    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request: {"critical": 1})
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: {"critical": 1})
 
     calls = {"n": 0}
 
-    def _flaky_compose(request, tenant_id, jobs, hub_severity):
+    def _flaky_compose(
+        request,
+        tenant_id,
+        jobs,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_revision=None,
+        **kwargs,
+    ):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("cold fold exploded")

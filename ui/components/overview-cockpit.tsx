@@ -49,6 +49,9 @@ export type OverviewComplianceFramework = {
   warn: number;
   fail: number;
   total: number;
+  kind: "scored" | "applicability";
+  applicable?: number;
+  notApplicable?: number;
 };
 
 export type OverviewComplianceSnapshot = {
@@ -65,6 +68,7 @@ export type OverviewComplianceSnapshot = {
  *  size. A framework with 10 bundled controls but 0 mapped findings has
  *  `total` 10 yet `evaluated` 0, and must never read as a green PASS (#3889). */
 function frameworkEvaluated(framework: OverviewComplianceFramework): number {
+  if (framework.kind === "applicability") return 0;
   return framework.pass + framework.warn + framework.fail;
 }
 
@@ -653,9 +657,10 @@ function ComplianceSnapshotPanel({
   hasScanEvidence?: boolean | undefined;
   defaultOpen?: boolean | undefined;
 }) {
-  const frameworks = (compliance?.frameworks ?? []).slice(0, 8);
+  const allFrameworks = compliance?.frameworks ?? [];
+  const frameworks = allFrameworks.slice(0, 8);
   const evidenceReady = hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance);
-  const failing = evidenceReady ? frameworks.filter((item) => item.fail > 0).length : 0;
+  const failing = evidenceReady ? allFrameworks.filter((item) => item.kind === "scored" && item.fail > 0).length : 0;
   const statusTone =
     !evidenceReady
       ? "text-[color:var(--text-tertiary)]"
@@ -676,12 +681,12 @@ function ComplianceSnapshotPanel({
       defaultOpen={defaultOpen}
       subtitle={
         evidenceReady
-          ? `${Math.round(compliance.overallScore)}% of ${compliance.evaluatedControls} evaluated control${compliance.evaluatedControls === 1 ? "" : "s"} · ${failing} framework${failing === 1 ? "" : "s"} need attention`
+          ? `${Math.round(compliance.overallScore)}% of ${compliance.evaluatedControls} evaluated control${compliance.evaluatedControls === 1 ? "" : "s"} · ${failing} framework${failing === 1 ? " needs" : "s need"} attention`
           : hasScanEvidence
             ? "No evaluated framework coverage is available for completed scans"
             : "Framework coverage appears after the first completed scan"
       }
-      count={evidenceReady && frameworks.length > 0 ? frameworks.length : undefined}
+      count={evidenceReady && allFrameworks.length > 0 ? allFrameworks.length : undefined}
       scrollMaxHeight="16rem"
       data-testid="overview-compliance-snapshot"
       actions={
@@ -701,10 +706,13 @@ function ComplianceSnapshotPanel({
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {frameworks.map((framework) => {
             const evaluated = frameworkEvaluated(framework);
+            const isApplicability = framework.kind === "applicability";
             // 0 evaluated controls is NOT a pass — surface a neutral
             // "not evaluated" state so an unscored framework never reads green.
             const tone =
-              evaluated === 0
+              isApplicability
+                ? (framework.applicable ?? 0) > 0 ? "applicability" : "not_applicable"
+                : evaluated === 0
                 ? "not_evaluated"
                 : framework.fail > 0
                   ? "fail"
@@ -723,14 +731,18 @@ function ComplianceSnapshotPanel({
                     {framework.label}
                   </p>
                   <p className="mt-0.5 truncate text-[10px] leading-tight text-[color:var(--text-tertiary)]">
-                    {evaluated === 0
+                    {isApplicability
+                      ? `${framework.applicable ?? 0}/${framework.total} risks applicable`
+                      : evaluated === 0
                       ? `Not evaluated · 0/${framework.total} controls`
                       : `${framework.pass}/${evaluated} pass${framework.fail > 0 ? ` · ${framework.fail} fail` : ""}`}
                   </p>
                 </div>
                 <span
                   className={`justify-self-end rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-                    tone === "fail"
+                    tone === "applicability"
+                      ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                      : tone === "fail"
                       ? "bg-red-500/15 text-red-700 dark:text-red-300"
                       : tone === "warn"
                         ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-200"
@@ -739,7 +751,7 @@ function ComplianceSnapshotPanel({
                           : "border border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
                   }`}
                 >
-                  {tone === "not_evaluated" ? "n/a" : tone}
+                  {tone === "applicability" ? "observed" : tone === "not_applicable" ? "none" : tone === "not_evaluated" ? "n/a" : tone}
                 </span>
               </Link>
             );

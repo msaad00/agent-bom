@@ -208,6 +208,7 @@ CREATE INDEX IF NOT EXISTS idx_credential_refs_tenant_updated ON credential_refs
 CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (tenant_id TEXT PRIMARY KEY,entry_count BIGINT NOT NULL DEFAULT 0,head_signature TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL DEFAULT '');
 
 CREATE TABLE IF NOT EXISTS compliance_hub_findings (tenant_id TEXT NOT NULL,finding_id TEXT NOT NULL,ingested_at TEXT NOT NULL,source TEXT NOT NULL,applicable_frameworks_csv TEXT NOT NULL DEFAULT '',payload JSONB NOT NULL,ordinal BIGSERIAL NOT NULL,effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0,origin TEXT NOT NULL DEFAULT '',severity TEXT NOT NULL DEFAULT '',severity_rank INTEGER NOT NULL DEFAULT 0,cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0,scan_id TEXT NOT NULL DEFAULT '',PRIMARY KEY(tenant_id,finding_id));
+CREATE TABLE IF NOT EXISTS hub_overview_revisions (tenant_id TEXT PRIMARY KEY,revision BIGINT NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id,ordinal);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_reach ON compliance_hub_findings(tenant_id,origin,effective_reach_score DESC,ordinal);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin ON compliance_hub_findings(tenant_id,origin);
@@ -246,7 +247,7 @@ BEGIN
     'gateway_activity_tombstones','runtime_workload_evidence','scim_users','scim_groups',
     'idempotency_keys','proxy_replay_log','tenant_quota_overrides','tenant_graph_retention_overrides','tenant_score_config_overrides','graph_scenarios',
     'mcp_client_configs','model_provider_keys','model_virtual_keys','risk_campaign_workflows','governance_audit_log','cloud_connections','ticketing_connections','ticket_links',
-    'control_plane_sources','credential_refs','audit_chain_checkpoint','managed_trial_invitations','managed_trial_tenants','compliance_hub_findings','hub_findings_current',
+    'control_plane_sources','credential_refs','audit_chain_checkpoint','managed_trial_invitations','managed_trial_tenants','compliance_hub_findings','hub_overview_revisions','hub_findings_current',
     'hub_findings_current_observations','hub_cve_intel','hub_framework_refs','fleet_endpoints'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',t);
@@ -363,6 +364,9 @@ SELECT component,1,now() FROM unnest(ARRAY[
  'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','model_provider_keys','tenant_score_config',
  'ticketing_connections','graph_scenarios'
 ]) component
+ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
+INSERT INTO control_plane_schema_versions(component,version,updated_at)
+VALUES ('compliance_hub',2,now())
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
 INSERT INTO control_plane_schema_versions(component,version,updated_at)
 VALUES ('runtime_workload_evidence',2,now())

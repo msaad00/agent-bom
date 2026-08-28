@@ -387,6 +387,38 @@ class TestFrameworkSlugCountsSql:
         assert store.framework_slug_counts("t2") == {"pci-dss": 1}
 
 
+class TestCurrentFailingFrameworkSlugCounts:
+    def test_matches_live_bulk_window_and_deduplicates_aliases(self, store) -> None:
+        """Overview compliance uses the same live/window/origin basis as findings."""
+        now = _now()
+        recent = (now - timedelta(days=1)).isoformat()
+        stale = (now - timedelta(days=400)).isoformat()
+        rows = [
+            {"id": "live-a", "severity": "critical", "origin": "bulk_ingest", "applicable_frameworks": ["soc2", "iso_27001"]},
+            {"id": "live-b", "severity": "high", "origin": "bulk_ingest", "applicable_frameworks": ["ISO-27001"]},
+            {"id": "low", "severity": "low", "origin": "bulk_ingest", "applicable_frameworks": ["pci-dss"]},
+            {"id": "other", "severity": "critical", "origin": "scan", "applicable_frameworks": ["cmmc"]},
+            {"id": "resolved", "severity": "critical", "origin": "bulk_ingest", "applicable_frameworks": ["fedramp"]},
+        ]
+        for row in rows:
+            _seed_ledger(store, "t1", [row])
+            _seed_current(store, "t1", row, observed_at=recent)
+        stale_row = {"id": "stale", "severity": "critical", "origin": "bulk_ingest", "applicable_frameworks": ["fedramp"]}
+        _seed_ledger(store, "t1", [stale_row])
+        _seed_current(store, "t1", stale_row, observed_at=stale)
+        store.reconcile_current_absent(
+            "t1",
+            present_canonical_ids={"live-a", "live-b", "low", "other", "stale"},
+            observed_at=recent,
+        )
+
+        from agent_bom.api import time_window
+
+        since = time_window.window_since_iso(90, now=now)
+        counts = store.current_failing_framework_slug_counts("t1", origin="bulk_ingest", since=since, status="open")
+        assert counts == {"iso-27001": 2, "soc2": 1}
+
+
 class TestCurrentSeverityBreakdown:
     def test_matches_list_current_page_count_by_construction(self, store) -> None:
         """The exec breakdown counts exactly what /v1/findings counts.
@@ -462,6 +494,23 @@ class TestCurrentKevCount:
         # Stale (>90d) row excluded; tenant t2's KEV never leaks into t1.
         assert store.current_kev_count("t1", origin="bulk_ingest", since=since) == 1
         assert store.current_kev_count("t3", origin="bulk_ingest", since=since) == 0
+
+    def test_resolved_kev_does_not_inflate_open_exec_count(self, store) -> None:
+        now = _now()
+        recent = (now - timedelta(days=1)).isoformat()
+        kev = {"id": "resolved-kev", "severity": "critical", "origin": "bulk_ingest", "is_kev": True}
+        store.add("t1", [kev])
+        store.upsert_current_batch("t1", [kev], observed_at=recent, batch_id="b1", source="test")
+        store.reconcile_current_absent(
+            "t1",
+            present_canonical_ids=set(),
+            observed_at=recent,
+        )
+
+        from agent_bom.api import time_window
+
+        since = time_window.window_since_iso(90, now=now)
+        assert store.current_kev_count("t1", origin="bulk_ingest", since=since, status="open") == 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════

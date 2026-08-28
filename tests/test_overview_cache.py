@@ -22,8 +22,20 @@ class _FakeStore:
         return list(self._jobs)
 
 
-def _job(job_id: str, status: str = "done", completed_at: str = "2026-07-15T00:00:00Z"):
-    return SimpleNamespace(job_id=job_id, status=status, completed_at=completed_at)
+def _job(
+    job_id: str,
+    status: str = "done",
+    completed_at: str = "2026-07-15T00:00:00Z",
+    *,
+    generated_at: str = "2026-07-15T00:00:00Z",
+):
+    return SimpleNamespace(
+        job_id=job_id,
+        tenant_id="acme",
+        status=status,
+        completed_at=completed_at,
+        result={"scan_id": job_id, "generated_at": generated_at, "schema_version": "scan-report.v1"},
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -39,10 +51,18 @@ def _install(monkeypatch, jobs, hub_severity=None):
     store = _FakeStore(jobs)
     monkeypatch.setattr(overview, "_get_store", lambda: store)
     hub_state = dict(hub_severity or {"critical": 0, "high": 0})
-    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request: dict(hub_state))
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: dict(hub_state))
     calls = {"n": 0}
 
-    def _fake_compose(request, tenant_id, jobs_arg, hub_severity):
+    def _fake_compose(
+        request,
+        tenant_id,
+        jobs_arg,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_revision=None,
+        **kwargs,
+    ):
         calls["n"] += 1
         return {"schema_version": "overview.v1", "tenant_id": tenant_id, "job_count": len(jobs_arg)}
 
@@ -55,10 +75,18 @@ def test_hub_ingest_invalidates_cache(monkeypatch):
     hub = {"critical": 0, "high": 0}
     store = _FakeStore(jobs)
     monkeypatch.setattr(overview, "_get_store", lambda: store)
-    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request: dict(hub))
+    monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request, **kwargs: dict(hub))
     calls = {"n": 0}
 
-    def _fake_compose(request, tenant_id, jobs_arg, hub_severity):
+    def _fake_compose(
+        request,
+        tenant_id,
+        jobs_arg,
+        hub_severity,
+        hub_failing_frameworks,
+        hub_evidence_revision=None,
+        **kwargs,
+    ):
         calls["n"] += 1
         return {"hub_critical": hub_severity.get("critical", 0)}
 
@@ -114,6 +142,22 @@ def test_status_transition_invalidates_cache(monkeypatch):
     # Same job id, but it completes -> fingerprint must change.
     job.status = "done"
     job.completed_at = "2026-07-15T01:00:00Z"
+    overview._build_overview(req)
+    assert calls["n"] == 2
+
+
+def test_same_job_metadata_with_new_canonical_evidence_invalidates_cache(monkeypatch):
+    job = _job("j1")
+    calls = _install(monkeypatch, [job])
+    req = object()
+
+    overview._build_overview(req)
+    assert calls["n"] == 1
+
+    # A stored result can be refreshed in place while job id/status/completion
+    # and the severity shape remain identical. Its canonical generated_at is
+    # the evidence version and must invalidate KEV/top-risk/compliance output.
+    job.result["generated_at"] = "2026-07-15T00:05:00Z"
     overview._build_overview(req)
     assert calls["n"] == 2
 

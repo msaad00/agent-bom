@@ -37,6 +37,7 @@ BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
 RUNTIME_SCHEMA_SQL = POSTGRES_DIR / "runtime-schema.sql"
 HUB_LEDGER_SCAN_ID = VERSIONS_DIR / "20260818_01_hub_ledger_scan_id.py"
 TENANT_BINDING_AUTHORITY = VERSIONS_DIR / "20260819_01_tenant_binding_authority.py"
+HUB_OVERVIEW_REVISION = VERSIONS_DIR / "20260827_01_hub_overview_revision.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -48,7 +49,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260825_01"
+ALEMBIC_HEAD = "20260827_01"
 
 
 def _canonical_sql(text: str) -> str:
@@ -70,6 +71,21 @@ def test_alembic_scaffolding_exists():
     assert (ALEMBIC_DIR / "script.py.mako").exists()
     assert BASELINE.exists()
     assert GRAPH_HOT_PATH_INDEXES.exists()
+
+
+def test_hub_overview_revision_is_durable_chained_and_tenant_isolated() -> None:
+    sql = HUB_OVERVIEW_REVISION.read_text()
+    assert re.search(r'revision\s*=\s*"20260827_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260825_01"', sql)
+    assert "CREATE TABLE IF NOT EXISTS hub_overview_revisions" in sql
+    assert "tenant_id TEXT PRIMARY KEY" in sql
+    assert "revision BIGINT NOT NULL DEFAULT 0" in sql
+    assert "ALTER TABLE hub_overview_revisions ENABLE ROW LEVEL SECURITY" in sql
+    assert "ALTER TABLE hub_overview_revisions FORCE ROW LEVEL SECURITY" in sql
+    assert "hub_overview_revisions_tenant_isolation" in sql
+    assert "tenant_id = public.abom_current_tenant()" in sql
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON hub_overview_revisions TO agent_bom_app" in sql
+    assert "VALUES ('compliance_hub', 2, now())" in sql
 
 
 def test_managed_trial_invitation_migration_is_chained_and_secret_minimal() -> None:

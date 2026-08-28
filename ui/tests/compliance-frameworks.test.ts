@@ -6,6 +6,7 @@ import {
   compliancePassRate,
   controlMatchesQuery,
 } from "@/lib/compliance-frameworks";
+import overlayPayload from "./fixtures/compliance-overlay-response.json";
 
 function sampleControl(overrides: Partial<ComplianceControl> = {}): ComplianceControl {
   return {
@@ -30,13 +31,9 @@ function sampleCompliance(overrides: Partial<ComplianceResponse> = {}): Complian
     scan_count: 1,
     latest_scan: "2026-07-09T22:45:07Z",
     has_mcp_context: true,
+    framework_kinds: overlayPayload.framework_kinds as ComplianceResponse["framework_kinds"],
     summary: {
-      owasp_pass: 3,
-      owasp_warn: 0,
-      owasp_fail: 7,
-      owasp_mcp_pass: 2,
-      owasp_mcp_warn: 0,
-      owasp_mcp_fail: 8,
+      ...overlayPayload.summary,
       // ATLAS is an applicability overlay (#4709): the API reports which
       // techniques the evidence puts in play, never pass/fail. This fixture
       // asserted the scored form long after the server stopped sending it,
@@ -46,9 +43,6 @@ function sampleCompliance(overrides: Partial<ComplianceResponse> = {}): Complian
       nist_pass: 2,
       nist_warn: 0,
       nist_fail: 12,
-      owasp_agentic_pass: 1,
-      owasp_agentic_warn: 0,
-      owasp_agentic_fail: 9,
       eu_ai_act_pass: 0,
       eu_ai_act_warn: 0,
       eu_ai_act_fail: 6,
@@ -81,13 +75,13 @@ function sampleCompliance(overrides: Partial<ComplianceResponse> = {}): Complian
       aisvs_error: 0,
       aisvs_not_applicable: 0,
     },
-    owasp_llm_top10: [],
-    owasp_mcp_top10: [],
+    owasp_llm_top10: Array.from({ length: 10 }, () => sampleControl()),
+    owasp_mcp_top10: Array.from({ length: 10 }, () => sampleControl()),
     mitre_atlas: Array.from({ length: 65 }, (_, index) =>
       sampleControl({ code: `AML.T${index}`, status: index < 25 ? "pass" : "fail" }),
     ),
     nist_ai_rmf: Array.from({ length: 14 }, () => sampleControl()),
-    owasp_agentic_top10: [],
+    owasp_agentic_top10: Array.from({ length: 10 }, () => sampleControl()),
     eu_ai_act: Array.from({ length: 6 }, () => sampleControl({ status: "fail" })),
     nist_csf: Array.from({ length: 14 }, () => sampleControl({ status: "fail" })),
     iso_27001: [],
@@ -131,20 +125,31 @@ function sampleCompliance(overrides: Partial<ComplianceResponse> = {}): Complian
 
 describe("complianceFrameworkSummaries", () => {
   it("builds framework cards with MCP disabled when context is missing", () => {
-    const frameworks = complianceFrameworkSummaries(
-      sampleCompliance({ has_mcp_context: false }),
-      false,
-    );
+    const frameworks = complianceFrameworkSummaries(sampleCompliance({ has_mcp_context: false }));
     const mcp = frameworks.find((framework) => framework.id === "owasp-mcp");
     expect(mcp?.disabled).toBe(true);
     expect(mcp?.disabledReason).toMatch(/MCP/i);
   });
 
-  it("computes pass rate from pass/total", () => {
-    const frameworks = complianceFrameworkSummaries(sampleCompliance(), true);
+  it("uses the serialized framework kind and never scores OWASP risk catalogs", () => {
+    const frameworks = complianceFrameworkSummaries(sampleCompliance());
     const llm = frameworks.find((framework) => framework.id === "owasp-llm");
-    expect(llm?.pass).toBe(3);
+    expect(llm?.kind).toBe("applicability");
+    expect(llm?.pass).toBe(0);
+    expect(llm?.fail).toBe(0);
+    expect(llm?.applicable).toBe(3);
     expect(compliancePassRate(llm!)).toBe(30);
+  });
+
+  it("shows agentic evidence without requiring MCP context", () => {
+    const frameworks = complianceFrameworkSummaries(
+      sampleCompliance({ has_mcp_context: false, has_agent_context: true }),
+    );
+    const mcp = frameworks.find((framework) => framework.id === "owasp-mcp");
+    const agentic = frameworks.find((framework) => framework.id === "owasp-agentic");
+
+    expect(mcp?.disabled).toBe(true);
+    expect(agentic?.disabled).toBe(false);
   });
 });
 

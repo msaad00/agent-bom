@@ -234,8 +234,8 @@ describe("OverviewCockpit", () => {
           evaluatedControls: 20,
           totalControls: 40,
           frameworks: [
-            { id: "owasp-llm", label: "OWASP LLM Top 10", pass: 8, warn: 1, fail: 1, total: 10 },
-            { id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 },
+            { id: "owasp-llm", label: "OWASP LLM Top 10", kind: "applicability", applicable: 8, pass: 0, warn: 0, fail: 0, total: 10 },
+            { id: "cis", label: "CIS Controls v8", kind: "scored", pass: 10, warn: 0, fail: 0, total: 10 },
           ],
         }}
         issueMatrix={{
@@ -254,6 +254,8 @@ describe("OverviewCockpit", () => {
 
     expect(screen.getByTestId("overview-compliance-snapshot")).toBeInTheDocument();
     expect(screen.getByText("OWASP LLM Top 10")).toBeInTheDocument();
+    expect(screen.getByText("8/10 risks applicable")).toBeInTheDocument();
+    expect(screen.queryByText(/8\/10 pass/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("overview-severity-issue-strip")).toBeInTheDocument();
     expect(screen.getByText("Open issues")).toBeInTheDocument();
     expect(screen.getByText("Misconfig 4")).toBeInTheDocument();
@@ -379,7 +381,7 @@ describe("OverviewCockpit", () => {
           overallStatus: "pass",
           evaluatedControls: 0,
           totalControls: 10,
-          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
+          frameworks: [{ id: "cis", label: "CIS Controls v8", kind: "scored", pass: 10, warn: 0, fail: 0, total: 10 }],
         }}
       />,
     );
@@ -397,7 +399,7 @@ describe("OverviewCockpit", () => {
           overallStatus: "warning",
           evaluatedControls: 0,
           totalControls: 10,
-          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 0, warn: 0, fail: 0, total: 10 }],
+          frameworks: [{ id: "cis", label: "CIS Controls v8", kind: "scored", pass: 0, warn: 0, fail: 0, total: 10 }],
         }}
       />,
     );
@@ -416,7 +418,7 @@ describe("OverviewCockpit", () => {
           overallStatus: "fail",
           evaluatedControls: 10,
           totalControls: 10,
-          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 0, warn: 0, fail: 10, total: 10 }],
+          frameworks: [{ id: "cis", label: "CIS Controls v8", kind: "scored", pass: 0, warn: 0, fail: 10, total: 10 }],
         }}
       />,
     );
@@ -424,7 +426,7 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("Compliance 0%")).toBeInTheDocument();
     expect(screen.getByText("CIS Controls v8")).toBeInTheDocument();
     // The percentage always carries the denominator it was computed over.
-    expect(screen.getByText(/0% of 10 evaluated controls · 1 framework need attention/i)).toBeInTheDocument();
+    expect(screen.getByText(/0% of 10 evaluated controls · 1 framework needs attention/i)).toBeInTheDocument();
     expect(screen.queryByText(/coverage appears after the first completed scan/i)).not.toBeInTheDocument();
   });
 
@@ -443,9 +445,9 @@ describe("OverviewCockpit", () => {
           evaluatedControls: 8,
           totalControls: 240,
           frameworks: [
-            { id: "nist-csf", label: "NIST CSF", pass: 3, warn: 0, fail: 0, total: 14 },
-            { id: "nist-800-53", label: "NIST 800-53", pass: 2, warn: 0, fail: 0, total: 29 },
-            { id: "cis", label: "CIS Controls v8", pass: 3, warn: 0, fail: 0, total: 10 },
+            { id: "nist-csf", label: "NIST CSF", kind: "scored", pass: 3, warn: 0, fail: 0, total: 14 },
+            { id: "nist-800-53", label: "NIST 800-53", kind: "scored", pass: 2, warn: 0, fail: 0, total: 29 },
+            { id: "cis", label: "CIS Controls v8", kind: "scored", pass: 3, warn: 0, fail: 0, total: 10 },
           ],
         }}
       />,
@@ -471,9 +473,9 @@ describe("OverviewCockpit", () => {
           totalControls: 20,
           frameworks: [
             // Evaluated (some findings mapped) — legitimately shows.
-            { id: "cis", label: "CIS Controls v8", pass: 8, warn: 1, fail: 1, total: 10 },
+            { id: "cis", label: "CIS Controls v8", kind: "scored", pass: 8, warn: 1, fail: 1, total: 10 },
             // Scan ran but nothing mapped: 0 evaluated must read "Not evaluated".
-            { id: "soc2", label: "SOC 2", pass: 0, warn: 0, fail: 0, total: 65 },
+            { id: "soc2", label: "SOC 2", kind: "scored", pass: 0, warn: 0, fail: 0, total: 65 },
           ],
         }}
       />,
@@ -483,6 +485,36 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/Not evaluated · 0\/65 controls/i)).toBeInTheDocument();
     // The unevaluated framework must not claim any pass count.
     expect(screen.queryByText(/0\/65 pass/i)).not.toBeInTheDocument();
+  });
+
+  it("computes compliance totals and failures before limiting the visible cards", () => {
+    const frameworks = Array.from({ length: 9 }, (_, index) => ({
+      id: `framework-${index + 1}`,
+      label: `Framework ${index + 1}`,
+      kind: "scored" as const,
+      pass: index === 8 ? 0 : 1,
+      warn: 0,
+      fail: index === 8 ? 1 : 0,
+      total: 1,
+    }));
+
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        compliance={{
+          overallScore: 88,
+          overallStatus: "fail",
+          evaluatedControls: 9,
+          totalControls: 9,
+          frameworks,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/1 framework needs attention/i)).toBeInTheDocument();
+    expect(within(screen.getByTestId("overview-compliance-snapshot")).getByText("9", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Framework 8")).toBeInTheDocument();
+    expect(screen.queryByText("Framework 9")).not.toBeInTheDocument();
   });
 
   it("renders the score breakdown explainer from weighted inputs (#3940)", () => {
@@ -534,7 +566,7 @@ describe("OverviewCockpit", () => {
           overallStatus: "pass",
           evaluatedControls: 10,
           totalControls: 10,
-          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
+          frameworks: [{ id: "cis", label: "CIS Controls v8", kind: "scored", pass: 10, warn: 0, fail: 0, total: 10 }],
         }}
       />,
     );

@@ -14,6 +14,7 @@ from typing import Any
 
 from agent_bom.api.compliance_hub_store import (
     _LEDGER_ORDINAL_SENTINEL,
+    _SCHEMA_VERSION,
     RECONCILE_ABSENT_CHUNK,
     FindingCursorPage,
     FindingPage,
@@ -65,6 +66,14 @@ def _invalidate_overview_severity(tenant_id: str) -> None:
     from agent_bom.api import hub_overview_cache
 
     hub_overview_cache.invalidate_tenant(tenant_id)
+
+
+def _bump_overview_revision_postgres(conn: Any, tenant_id: str) -> None:
+    conn.execute(
+        """INSERT INTO hub_overview_revisions (tenant_id, revision) VALUES (%s, 1)
+        ON CONFLICT (tenant_id) DO UPDATE SET revision = hub_overview_revisions.revision + 1""",
+        (tenant_id,),
+    )
 
 
 def _migrate_lifecycle_observations_l2_postgres(conn: Any) -> None:
@@ -368,7 +377,7 @@ class PostgresComplianceHubStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "compliance_hub"):
+            if not ensure_postgres_schema_version(conn, "compliance_hub", _SCHEMA_VERSION):
                 return
             _ensure_backfill_marker_table(conn)
             conn.execute(
@@ -390,6 +399,11 @@ class PostgresComplianceHubStore:
                     PRIMARY KEY (tenant_id, finding_id)
                 )
                 """
+            )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS hub_overview_revisions (
+                tenant_id TEXT PRIMARY KEY, revision BIGINT NOT NULL DEFAULT 0
+                )"""
             )
             conn.execute(
                 "ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0"
@@ -508,6 +522,7 @@ class PostgresComplianceHubStore:
                 "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan ON compliance_hub_findings(tenant_id, scan_id) WHERE scan_id <> ''"
             )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
+            _ensure_tenant_rls(conn, "hub_overview_revisions", "tenant_id")
             from agent_bom.api.finding_lifecycle import (
                 _CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES,
                 _CURRENT_LIFECYCLE_POSTGRES_DDL,
@@ -736,6 +751,8 @@ class PostgresComplianceHubStore:
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         with _tenant_connection(self._pool) as conn:
             new_rows = self._write_ledger_batch(conn, tenant_id, findings)
+            if findings:
+                _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
         _invalidate_overview_severity(tenant_id)
         return self._bump_tenant_total(tenant_id, new_rows)
@@ -781,6 +798,7 @@ class PostgresComplianceHubStore:
                     observed_at=observed_at,
                     scope_source=source,
                 )
+            _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
         _invalidate_overview_severity(tenant_id)
         from agent_bom.api.findings_count_cache import invalidate_tenant
@@ -916,8 +934,9 @@ class PostgresComplianceHubStore:
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> int:
-        # Same tenant/since/origin predicates as ``current_severity_breakdown``.
+        # Same tenant/since/origin/status predicates as ``current_severity_breakdown``.
         # The KEV flag is not a current-state column, so resolve it from the
         # current payload, the joined ledger payload, and the CVE-intel reference
         # — the same places the drill hydrates it — so the exec KEV count
@@ -930,6 +949,10 @@ class PostgresComplianceHubStore:
         if origin is not None:
             where.append("c.origin = %s")
             params.append(origin)
+        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
+        if status_sql:
+            where.append(status_sql.replace("status", "c.status", 1))
+            params.extend(status_params)
         where_sql = " AND ".join(where)
         kev_cond = " OR ".join(_kev_json_cond_postgres(col) for col in ("c.payload", "l.payload", "i.payload"))
         with _tenant_connection(self._pool) as conn:
@@ -972,6 +995,56 @@ class PostgresComplianceHubStore:
             counts[canonical] = counts.get(canonical, 0) + int(n)
         return counts
 
+    def current_failing_framework_slug_counts(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, int]:
+        from agent_bom.compliance_coverage import normalize_framework_slug
+
+        where = ["c.tenant_id = %s", "LOWER(c.severity) IN ('critical', 'high')"]
+        params: list[Any] = [tenant_id]
+        if since:
+            where.append("c.last_seen >= %s")
+            params.append(since)
+        if origin is not None:
+            where.append("c.origin = %s")
+            params.append(origin)
+        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
+        if status_sql:
+            where.append(status_sql.replace("status", "c.status", 1))
+            params.extend(status_params)
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT TRIM(token), COUNT(*)
+                FROM hub_findings_current c
+                JOIN compliance_hub_findings l
+                  ON l.tenant_id = c.tenant_id AND l.finding_id = c.ledger_finding_id
+                CROSS JOIN LATERAL unnest(string_to_array(l.applicable_frameworks_csv, ',')) AS token
+                WHERE {" AND ".join(where)} AND l.applicable_frameworks_csv <> ''
+                GROUP BY TRIM(token)
+                HAVING TRIM(token) <> ''
+                """,  # nosec B608
+                tuple(params),
+            ).fetchall()
+        counts: dict[str, int] = {}
+        for slug, count in rows:
+            canonical = normalize_framework_slug(str(slug))
+            counts[canonical] = counts.get(canonical, 0) + int(count)
+        return counts
+
+    def overview_evidence_revision(self, tenant_id: str) -> int:
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                "SELECT revision FROM hub_overview_revisions WHERE tenant_id = %s",
+                (tenant_id,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
     def count(self, tenant_id: str) -> int:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
@@ -988,6 +1061,7 @@ class PostgresComplianceHubStore:
             )
             conn.execute("DELETE FROM hub_findings_current WHERE tenant_id = %s", (tenant_id,))
             conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = %s", (tenant_id,))
+            _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
         removed = cur.rowcount or 0
         self._reset_ingest_stats(tenant_id)
@@ -1016,7 +1090,11 @@ class PostgresComplianceHubStore:
                 batch_id=batch_id,
                 source=source,
             )
+            if findings:
+                _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
+        if findings:
+            _invalidate_overview_severity(tenant_id)
 
     def _write_current_batch(
         self,
@@ -1447,7 +1525,11 @@ class PostgresComplianceHubStore:
                 observed_at=observed_at,
                 scope_source=scope_source,
             )
+            if total:
+                _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
+        if total:
+            _invalidate_overview_severity(tenant_id)
         return total
 
     def _reconcile_current_absent_conn(

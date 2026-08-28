@@ -220,6 +220,37 @@ def _result_has_runtime_signals(result: dict[str, Any]) -> bool:
     )
 
 
+def _result_compliance_evidence(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the canonical unified spine, with blast-radius legacy fallback."""
+
+    findings = [row for row in (result.get("findings") or []) if isinstance(row, dict)]
+    if findings:
+        return findings
+    return [row for row in (result.get("blast_radius") or []) if isinstance(row, dict)]
+
+
+def _compliance_evidence_authority_key(job: Any, _row: dict[str, Any]) -> tuple[str, str, str]:
+    """Compatibility wrapper around the canonical scan authority key."""
+
+    from agent_bom.api.findings_current import scan_evidence_authority_key
+
+    # Kept as a compatibility seam for callers/tests; scan-level authority is
+    # canonicalized in findings_current and shared with Overview/Findings.
+    return scan_evidence_authority_key(job)
+
+
+def _result_evidence_context(result: dict[str, Any]) -> tuple[bool, bool, set[str]]:
+    """Derive MCP and agent context once from canonical scan evidence."""
+
+    sources = {str(source) for source in result.get("scan_sources", []) if source}
+    evidence = _result_compliance_evidence(result)
+    has_mcp = bool(result.get("has_mcp_context")) or any(row.get("affected_servers") or row.get("owasp_mcp_tags") for row in evidence)
+    has_agent = bool(result.get("has_agent_context")) or any(
+        row.get("affected_agents") or row.get("owasp_agentic_tags") for row in evidence
+    )
+    return has_mcp, has_agent, sources
+
+
 def _tenant_has_proxy_alerts(tenant_id: str) -> bool:
     """Return True when the in-process proxy-alert ring buffer holds any
     alerts for ``tenant_id``.
@@ -259,9 +290,10 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
             continue
         scan_count += 1
         result = cast(dict[str, Any], job.result)
-        has_mcp_context = has_mcp_context or bool(result.get("has_mcp_context"))
-        has_agent_context = has_agent_context or bool(result.get("has_agent_context"))
-        scan_sources.update(str(src) for src in result.get("scan_sources", []) if src)
+        result_has_mcp, result_has_agent, result_sources = _result_evidence_context(result)
+        has_mcp_context = has_mcp_context or result_has_mcp
+        has_agent_context = has_agent_context or result_has_agent
+        scan_sources.update(result_sources)
         has_runtime_signals = has_runtime_signals or _result_has_runtime_signals(result)
 
     fleet_agents = _get_fleet_store().list_by_tenant(tenant_id)
@@ -435,11 +467,16 @@ async def get_compliance(
     """Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,
     OWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.
 
-    Returns per-control pass/warning/fail status and an overall compliance score.
+    Returns scored control posture plus applicability-only risk/technique
+    catalogs and an overall score derived only from the scored frameworks.
     """
-    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+    return _build_compliance(_tenant_jobs(request), scan_id=scan_id)
 
-    tenant_jobs = _tenant_jobs(request)
+
+def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> dict[str, Any]:
+    """Build compliance truth from one caller-owned job-store snapshot."""
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, control_key_for_tag
+
     if scan_id:
         matching_jobs = []
         for job in tenant_jobs:
@@ -448,8 +485,14 @@ async def get_compliance(
                 matching_jobs.append(job)
         tenant_jobs = matching_jobs
 
-    # Collect blast_radius entries from all completed scans
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    tenant_jobs = list(current_scan_jobs(tenant_jobs, since=None, scan_id=scan_id))
+
+    # Collect the unified findings spine (legacy blast-radius fallback) from all
+    # completed scans, deduped by canonical occurrence identity across re-scans.
     all_blast: list[dict] = []
+    authoritative_occurrences: dict[str, tuple[tuple[str, str, str], dict[str, Any]]] = {}
     latest_scan: str | None = None
     scan_count = 0
     has_mcp_context = False
@@ -460,17 +503,24 @@ async def get_compliance(
         if job.status != JobStatus.DONE or not job.result:
             continue
         scan_count += 1
-        br_list = job.result.get("blast_radius", [])
-        all_blast.extend(br_list)
+        for row in _result_compliance_evidence(job.result):
+            occurrence_id = str(row.get("id") or row.get("canonical_id") or "")
+            if not occurrence_id:
+                all_blast.append(row)
+                continue
+            authority = _compliance_evidence_authority_key(job, row)
+            current = authoritative_occurrences.get(occurrence_id)
+            if current is None or authority > current[0]:
+                authoritative_occurrences[occurrence_id] = (authority, row)
         if latest_scan is None or (job.completed_at and job.completed_at > latest_scan):
             latest_scan = job.completed_at
         # Detect scan context from result metadata
-        if job.result.get("has_mcp_context"):
-            has_mcp_context = True
-        if job.result.get("has_agent_context"):
-            has_agent_context = True
-        for src in job.result.get("scan_sources", []):
-            all_scan_sources.add(src)
+        result_has_mcp, result_has_agent, result_sources = _result_evidence_context(job.result)
+        has_mcp_context = has_mcp_context or result_has_mcp
+        has_agent_context = has_agent_context or result_has_agent
+        all_scan_sources.update(result_sources)
+
+    all_blast.extend(row for _authority, row in authoritative_occurrences.values())
 
     def _build_controls(
         catalog: dict[str, str],
@@ -503,7 +553,7 @@ async def get_compliance(
 
             for br in all_blast:
                 tags = br.get(tag_field, [])
-                if code in tags:
+                if any(control_key_for_tag(str(tag), catalog) == code for tag in tags):
                     findings += 1
                     sev = (br.get("severity") or "").lower()
                     if sev in sev_breakdown:
@@ -734,6 +784,10 @@ async def get_compliance(
         "has_mcp_context": has_mcp_context,
         "has_agent_context": has_agent_context,
         "scan_sources": sorted(all_scan_sources),
+        # Serialized measurement contract for every framework. Consumers must
+        # not infer this from labels: OWASP risk catalogs and MITRE technique
+        # catalogs are applicability overlays, never pass/fail controls.
+        "framework_kinds": {metadata.output_key: ("scored" if metadata.scored else "applicability") for metadata in TAG_MAPPED_FRAMEWORKS},
         "aisvs_benchmark": aisvs,
         "cis_foundations_benchmark": cis_foundations_line,
         "nist_800_53_catalog": nist_800_53_catalog_line,
@@ -1706,7 +1760,8 @@ async def export_compliance_report(
     if since_dt >= until_dt:
         raise HTTPException(status_code=400, detail="since must be earlier than until")
 
-    full = await get_compliance(request)
+    raw_tenant_jobs = _tenant_jobs(request)
+    full = _build_compliance(raw_tenant_jobs)
     from agent_bom.compliance_coverage import framework_report_labels_by_slug
 
     framework_map = framework_report_labels_by_slug()
@@ -1722,7 +1777,9 @@ async def export_compliance_report(
     tenant_id = _tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
 
-    tenant_jobs = _tenant_jobs(request)
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    tenant_jobs = list(current_scan_jobs(raw_tenant_jobs, since=None, scan_id=None))
     blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
 
     from agent_bom.api.audit_log import get_audit_log, log_action
@@ -1985,7 +2042,8 @@ async def export_compliance_pack(
     if since_dt >= until_dt:
         raise HTTPException(status_code=400, detail="since must be earlier than until")
 
-    full = await get_compliance(request)
+    raw_tenant_jobs = _tenant_jobs(request)
+    full = _build_compliance(raw_tenant_jobs)
     from agent_bom.compliance_coverage import framework_report_labels_by_slug
 
     framework_map = framework_report_labels_by_slug()
@@ -1993,7 +2051,9 @@ async def export_compliance_pack(
     tenant_id = _tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
 
-    tenant_jobs = _tenant_jobs(request)
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    tenant_jobs = list(current_scan_jobs(raw_tenant_jobs, since=None, scan_id=None))
     blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
     completed_scan_count = sum(1 for job in tenant_jobs if job.status == JobStatus.DONE and bool(job.result))
 
@@ -2192,12 +2252,10 @@ async def get_posture_scorecard(request: Request) -> dict:
     breakdown covering vulnerability posture, credential hygiene, supply
     chain quality, compliance coverage, active exploitation, and configuration.
     """
-    latest_result = None
-    for job in _tenant_jobs(request):
-        if job.status != JobStatus.DONE or not job.result:
-            continue
-        latest_result = job.result
-        break  # list_all returns newest first
+    from agent_bom.api.findings_current import latest_current_scan_job
+
+    latest_job = latest_current_scan_job(_tenant_jobs(request))
+    latest_result = latest_job.result if latest_job is not None else None
 
     if latest_result is None:
         return {
@@ -2269,12 +2327,13 @@ def _compound_issue_count(tenant_jobs: list[Any]) -> int:
     correlation that lives in ``blast_radius`` (not a raw severity count).
     Deduped by vulnerability id across scans.
     """
+    from agent_bom.api.findings_current import current_scan_jobs
+
     seen_ids: set[str] = set()
     compound = 0
-    for job in tenant_jobs:
-        if job.status != JobStatus.DONE or not job.result:
-            continue
-        for b in job.result.get("blast_radius", []):
+    for job in current_scan_jobs(tenant_jobs, since=None, scan_id=None):
+        result = cast(dict[str, Any], job.result)
+        for b in result.get("blast_radius", []):
             vid = b.get("vulnerability_id", "")
             if vid in seen_ids:
                 continue

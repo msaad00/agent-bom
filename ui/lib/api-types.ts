@@ -2429,10 +2429,8 @@ export interface ComplianceControl {
   code: string;
   name: string;
   findings: number;
-  // The API also emits the unscored statuses "not_evaluated", "not_assessed",
-  // "not_applicable", and "applicable" (api/routes/compliance.py:_build_controls).
-  // They are handled as strings through the compliance-status helpers rather than
-  // widening this union — the matrix/heatmap row types mirror it narrowly.
+  // Additional unscored states are normalized by compliance-status helpers at
+  // render boundaries; the legacy matrix row contract remains scored-only.
   status: "pass" | "warning" | "fail";
   // Provenance for the status: WHY a control landed where it did (e.g.
   // "no_completed_scan", "no_mapped_finding", "no_observed_signal"). Drives the
@@ -2616,6 +2614,8 @@ export interface ComplianceResponse {
   has_mcp_context?: boolean | undefined;
   has_agent_context?: boolean | undefined;
   scan_sources?: string[] | undefined;
+  /** Server-owned measurement semantics; UI consumers must not infer from labels. */
+  framework_kinds: Record<string, "scored" | "applicability">;
   owasp_llm_top10: ComplianceControl[];
   owasp_mcp_top10: ComplianceControl[];
   mitre_atlas: ComplianceControl[];
@@ -2638,12 +2638,10 @@ export interface ComplianceResponse {
   nist_800_53_catalog?: NistCatalogLine | undefined;
   aisvs_benchmark: AISVSComplianceResponse;
   summary: {
-    owasp_pass: number;
-    owasp_warn: number;
-    owasp_fail: number;
-    owasp_mcp_pass: number;
-    owasp_mcp_warn: number;
-    owasp_mcp_fail: number;
+    owasp_applicable?: number | undefined;
+    owasp_not_applicable?: number | undefined;
+    owasp_mcp_applicable?: number | undefined;
+    owasp_mcp_not_applicable?: number | undefined;
     /**
      * ATLAS and ATT&CK are technique catalogs, so they report which techniques
      * the evidence puts in play — never pass/fail. #4709 removed the scored
@@ -2657,9 +2655,8 @@ export interface ComplianceResponse {
     nist_pass: number;
     nist_warn: number;
     nist_fail: number;
-    owasp_agentic_pass: number;
-    owasp_agentic_warn: number;
-    owasp_agentic_fail: number;
+    owasp_agentic_applicable?: number | undefined;
+    owasp_agentic_not_applicable?: number | undefined;
     eu_ai_act_pass: number;
     eu_ai_act_warn: number;
     eu_ai_act_fail: number;

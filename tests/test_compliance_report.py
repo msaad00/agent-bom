@@ -280,8 +280,8 @@ def test_list_cis_checks_prefers_columnar_store():
     }
 
 
-def _patched_get_compliance_returns(payload: dict):
-    return patch.object(compliance_routes, "get_compliance", return_value=payload)
+def _patched_compliance_builder_returns(payload: dict):
+    return patch.object(compliance_routes, "_build_compliance", return_value=payload)
 
 
 def _export_with_real_producer(framework: str = "owasp-llm", *, format: str = "json"):
@@ -315,7 +315,7 @@ def test_report_json_signature_matches_canonical_body() -> None:
     req = _request("tenant-alpha")
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        with _patched_get_compliance_returns(full_payload):
+        with _patched_compliance_builder_returns(full_payload):
             resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
 
     assert isinstance(resp, JSONResponse)
@@ -434,6 +434,82 @@ def test_compliance_report_route_exports_real_evidence_end_to_end() -> None:
         set_audit_log(original_audit_log)
 
 
+def test_signed_report_excludes_findings_retired_by_current_empty_snapshot() -> None:
+    """The signed artifact must carry the same current evidence as its verdict."""
+    original_store = _get_store()
+    original_audit_log = get_audit_log()
+    _setup_audit_log()
+
+    class _CountingStore(InMemoryJobStore):
+        list_reads = 0
+
+        def list_all(self, *args, **kwargs):
+            self.list_reads += 1
+            return super().list_all(*args, **kwargs)
+
+    store = _CountingStore()
+    set_job_store(store)
+
+    def _job(job_id: str, *, at: str, findings: list[dict]) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id="tenant-alpha",
+            status=JobStatus.DONE,
+            created_at=at,
+            completed_at=at,
+            request=ScanRequest(repo_url="https://example.test/acme/repo.git"),
+        )
+        job.result = {
+            "generated_at": at,
+            "scan_sources": ["repo_tree"],
+            "findings": findings,
+            "blast_radius": findings,
+        }
+        return job
+
+    stale = {
+        "id": "retired-finding",
+        "finding_id": "retired-finding",
+        "vulnerability_id": "CVE-RETIRED",
+        "package": "demo@1",
+        "severity": "critical",
+        "soc2_tags": ["CC6.1"],
+    }
+    store.put(_job("old-with-finding", at="2026-08-20T00:00:00Z", findings=[stale]))
+    store.put(_job("new-empty", at="2026-08-21T00:00:00Z", findings=[]))
+
+    try:
+        client = TestClient(app)
+        posture = client.get("/v1/compliance", headers=proxy_headers(tenant="tenant-alpha")).json()
+        cc61 = next(control for control in posture["soc2"] if control["code"] == "CC6.1")
+        assert cc61["findings"] == 0
+        assert store.list_reads == 1
+
+        report = client.get(
+            "/v1/compliance/soc2/report",
+            headers=proxy_headers(tenant="tenant-alpha"),
+        )
+        assert report.status_code == 200
+        report_cc61 = next(control for control in report.json()["controls"] if control["control_id"] == "CC6.1")
+        assert report_cc61["finding_count"] == 0
+        assert report_cc61["evidence"] == []
+        assert store.list_reads == 2
+
+        pack = client.get(
+            "/v1/compliance/report/pack",
+            headers=proxy_headers(tenant="tenant-alpha"),
+        )
+        assert pack.status_code == 200
+        soc2 = next(bundle for bundle in pack.json()["frameworks"] if bundle["framework"] == "soc2")
+        pack_cc61 = next(control for control in soc2["controls"] if control["control_id"] == "CC6.1")
+        assert pack_cc61["finding_count"] == 0
+        assert pack_cc61["evidence"] == []
+        assert store.list_reads == 3
+    finally:
+        set_job_store(original_store)
+        set_audit_log(original_audit_log)
+
+
 def test_report_with_no_completed_scans_marks_controls_not_evaluated() -> None:
     _setup_audit_log()
     req = _request("tenant-alpha")
@@ -444,7 +520,7 @@ def test_report_with_no_completed_scans_marks_controls_not_evaluated() -> None:
     }
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
-        with _patched_get_compliance_returns(payload):
+        with _patched_compliance_builder_returns(payload):
             resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
 
     body = json.loads(resp.body)
@@ -469,7 +545,7 @@ def test_report_with_missing_control_evidence_is_incomplete_not_pass() -> None:
     }
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=_seed_jobs_with_findings()):
-        with _patched_get_compliance_returns(payload):
+        with _patched_compliance_builder_returns(payload):
             resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
 
     body = json.loads(resp.body)
@@ -603,7 +679,7 @@ def test_report_jsonl_streams_one_record_per_line() -> None:
     req = _request("tenant-alpha")
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        with _patched_get_compliance_returns(full_payload):
+        with _patched_compliance_builder_returns(full_payload):
             resp = asyncio.run(compliance_routes.export_compliance_report(req, "soc2", format="jsonl"))
 
     # jsonl path is a StreamingResponse — drain the async iterator into bytes.
@@ -653,7 +729,7 @@ def test_unknown_framework_returns_400() -> None:
     _setup_audit_log()
     req = _request("tenant-alpha")
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
-        with _patched_get_compliance_returns({}):
+        with _patched_compliance_builder_returns({}):
             with pytest.raises(HTTPException) as exc:
                 asyncio.run(compliance_routes.export_compliance_report(req, "made-up-framework"))
     assert exc.value.status_code == 400
@@ -664,7 +740,7 @@ def test_invalid_format_returns_400() -> None:
     _setup_audit_log()
     req = _request("tenant-alpha")
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
-        with _patched_get_compliance_returns({}):
+        with _patched_compliance_builder_returns({}):
             with pytest.raises(HTTPException) as exc:
                 asyncio.run(compliance_routes.export_compliance_report(req, "fedramp", format="csv"))
     assert exc.value.status_code == 400
@@ -675,7 +751,7 @@ def test_malformed_since_returns_400() -> None:
     _setup_audit_log()
     req = _request("tenant-alpha")
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
-        with _patched_get_compliance_returns({}):
+        with _patched_compliance_builder_returns({}):
             with pytest.raises(HTTPException) as exc:
                 asyncio.run(compliance_routes.export_compliance_report(req, "fedramp", since="not-a-date"))
     assert exc.value.status_code == 400
@@ -688,7 +764,7 @@ def test_since_after_until_returns_400() -> None:
     later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     earlier = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
-        with _patched_get_compliance_returns({}):
+        with _patched_compliance_builder_returns({}):
             with pytest.raises(HTTPException) as exc:
                 asyncio.run(
                     compliance_routes.export_compliance_report(

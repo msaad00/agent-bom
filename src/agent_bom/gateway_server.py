@@ -1398,6 +1398,17 @@ class _GatewayAuditTenantRegistry:
             os.close(parent_fd)
 
 
+def _audit_health_has_pending_state(health: dict[str, str | int | bool]) -> bool:
+    """Return whether a tenant marker must remain for unresolved audit state."""
+
+    return (
+        not bool(health.get("backlog_observable", False))
+        or int(health.get("backlog_bytes", 0)) > 0
+        or int(health.get("dlq_bytes", 0)) > 0
+        or int(health.get("dropped_events", 0)) > 0
+    )
+
+
 class ControlPlaneAuditSink:
     """Durably queue and retry standalone-gateway audit delivery.
 
@@ -1506,7 +1517,7 @@ class ControlPlaneAuditSink:
                     max_tenant_sinks=0,
                 )
                 child_health = sink._own_health()
-                if bool(child_health["backlog_observable"]) and int(child_health["backlog_bytes"]) == 0:
+                if not _audit_health_has_pending_state(child_health):
                     self._tenant_registry.unregister(tenant_id)
                     continue
                 sink._remote_ack_available = False
@@ -1683,7 +1694,7 @@ class ControlPlaneAuditSink:
             for tenant_id, child in children:
                 try:
                     child_health = child._own_health()
-                    if bool(child_health["backlog_observable"]) and int(child_health["backlog_bytes"]) == 0:
+                    if not _audit_health_has_pending_state(child_health):
                         self._tenant_registry.unregister(tenant_id)
                 except Exception as exc:  # noqa: BLE001 - shutdown remains secret-free
                     self._tenant_registry_available = False
@@ -1724,7 +1735,7 @@ class ControlPlaneAuditSink:
         )
         if not accepting_events:
             health["status"] = "degraded"
-        return {
+        result: dict[str, str | int | bool] = {
             "configured": True,
             "durable": self._persistence_available and backlog_observable,
             "accepting_events": accepting_events,
@@ -1733,6 +1744,8 @@ class ControlPlaneAuditSink:
             "retry_worker_running": self._worker is not None and not self._worker.done() and not self._closed,
             **health,
         }
+        result["pending_audit_state"] = _audit_health_has_pending_state(result)
+        return result
 
     def health(self) -> dict[str, str | int | bool]:
         health = self._own_health()
@@ -1755,6 +1768,7 @@ class ControlPlaneAuditSink:
                     "backoff_seconds": max(int(item["backoff_seconds"]) for item in all_health),
                     "circuit_open": any(bool(item["circuit_open"]) for item in all_health),
                     "dropped_events": sum(int(item["dropped_events"]) for item in all_health),
+                    "pending_audit_state": any(_audit_health_has_pending_state(item) for item in all_health),
                     "tenant_sink_count": len(child_health) + 1,
                     "tenant_sink_capacity": self._max_tenant_sinks + 1,
                 }

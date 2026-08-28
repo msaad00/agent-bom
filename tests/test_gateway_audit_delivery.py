@@ -200,6 +200,49 @@ async def test_restart_discovers_unbound_tenant_backlog_and_reports_degraded_hea
 
 
 @pytest.mark.asyncio
+async def test_restart_discovers_unbound_tenant_dlq_only_backlog_and_reports_degraded_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+
+    async def unavailable_sender(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise RuntimeError("control plane unavailable")
+
+    first = build_control_plane_audit_sink(
+        "https://control.invalid",
+        "alpha-token",
+        tenant_id="tenant-alpha",
+        sender=unavailable_sender,
+    )
+    await first.start()
+    await first.bind_authenticated_tenant("tenant-beta", "beta-token")
+    beta = first._tenant_sinks["tenant-beta"]
+    beta._delivery_state.store.max_spillover_bytes = 1
+    with pytest.raises(GatewayAuditDeliveryUnavailableError, match="durable audit backlog is full"):
+        await first(_event(tenant_id="tenant-beta"))
+    assert int(first.health()["backlog_bytes"]) == 0
+    assert int(first.health()["dlq_bytes"]) > 0
+    await first.aclose()
+
+    restarted = build_control_plane_audit_sink(
+        "https://control.invalid",
+        "alpha-token-rotated",
+        tenant_id="tenant-alpha",
+        sender=unavailable_sender,
+    )
+    await restarted.start()
+    health = restarted.health()
+    await restarted.aclose()
+
+    assert health["status"] == "degraded"
+    assert int(health["backlog_bytes"]) == 0
+    assert int(health["dlq_bytes"]) > 0
+    assert health["accepting_events"] is False
+    assert int(health["tenant_sink_count"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_restart_fails_closed_on_symlinked_tenant_registry_marker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

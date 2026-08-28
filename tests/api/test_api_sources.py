@@ -49,6 +49,14 @@ OTHER_TENANT_ANALYST_HEADERS = {
 }
 
 
+def _nested_encoded_github_ref(depth: int) -> tuple[str, str]:
+    token = "ghp_" + "A" * 36
+    encoded = "".join(f"%{ord(char):02X}" for char in token)
+    for _ in range(depth - 1):
+        encoded = encoded.replace("%", "%25")
+    return token, f"vault://team/{encoded}"
+
+
 @pytest.fixture
 def source_client(monkeypatch: pytest.MonkeyPatch):
     old_source_store = _stores._source_store
@@ -403,6 +411,61 @@ def test_credential_reference_rejects_opaque_secret_inside_reference_path_withou
     assert _stores._credential_ref_store.list_all(tenant_id="tenant-alpha") == []
 
 
+@pytest.mark.parametrize("depth", range(1, 7))
+def test_credential_reference_rejects_nested_encoded_secret_without_echo_or_persistence(
+    source_client: TestClient,
+    depth: int,
+) -> None:
+    token, external_ref = _nested_encoded_github_ref(depth)
+
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": f"Nested encoded credential {depth}",
+            "provider": "vault",
+            "external_ref": external_ref,
+        },
+    )
+
+    assert create.status_code == 422
+    assert token not in create.text
+    assert external_ref not in create.text
+    assert _stores._credential_ref_store.list_all(tenant_id="tenant-alpha") == []
+
+
+@pytest.mark.parametrize(
+    "external_ref",
+    [
+        "vault://team/agent-bom/production",
+        "keyvault://prod-vault/agent-bom-reader",
+        "aws-secretsmanager://production/agent-bom",
+        "gcp-secretmanager://projects/acme-prod/secrets/agent-bom-reader",
+        "secret-manager://platform/agent-bom",
+    ],
+)
+def test_credential_reference_accepts_and_persists_legitimate_reference(
+    source_client: TestClient,
+    external_ref: str,
+) -> None:
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Managed credential reference",
+            "provider": "vault",
+            "external_ref": external_ref,
+        },
+    )
+
+    assert create.status_code == 201
+    assert create.json()["external_ref"] == external_ref
+    credential_ref_id = create.json()["credential_ref_id"]
+    persisted = _stores._credential_ref_store.get(credential_ref_id, tenant_id="tenant-alpha")
+    assert persisted is not None
+    assert persisted.external_ref == external_ref
+
+
 def test_credential_reference_rejects_secret_shaped_update_without_mutating_existing_ref(
     source_client: TestClient,
 ) -> None:
@@ -552,6 +615,38 @@ def test_credential_retirement_purges_legacy_secret_reference_at_rest(source_cli
     assert fetched.status_code == 200
     assert fetched.json()["external_ref"] is None
     assert secret not in fetched.text
+
+
+@pytest.mark.parametrize("depth", range(1, 7))
+def test_credential_retirement_purges_nested_encoded_legacy_secret_at_rest(
+    source_client: TestClient,
+    depth: int,
+) -> None:
+    token, external_ref = _nested_encoded_github_ref(depth)
+    credential_ref_id = f"legacy-nested-secret-{depth}"
+    _stores._credential_ref_store.put(
+        CredentialRefRecord(
+            credential_ref_id=credential_ref_id,
+            tenant_id="tenant-alpha",
+            display_name="Legacy nested credential",
+            provider="vault",
+            external_ref=external_ref,
+            created_at="2026-08-27T00:00:00+00:00",
+            updated_at="2026-08-27T00:00:00+00:00",
+        )
+    )
+
+    retired = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
+
+    assert retired.status_code == 204
+    persisted = _stores._credential_ref_store.get(credential_ref_id, tenant_id="tenant-alpha")
+    assert persisted is not None
+    assert persisted.status.value == "retired"
+    assert persisted.external_ref is None
+    fetched = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=VIEWER_HEADERS)
+    assert fetched.status_code == 200
+    assert token not in fetched.text
+    assert external_ref not in fetched.text
 
 
 def test_runnable_source_rejects_missing_or_metadata_only_credential_reference(source_client: TestClient) -> None:

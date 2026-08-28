@@ -244,6 +244,7 @@ _REFERENCE_SAFE_PREFIXES = (
     "secret-manager://",
     "workload-identity/",
 )
+_REFERENCE_ENCODED_OCTET_RE = re.compile(r"%[0-9A-Fa-f]{2}")
 
 
 def _contains_value_credential(value: str) -> bool:
@@ -294,11 +295,20 @@ def value_looks_like_secret(value: object) -> bool:
         components = [_decode_reference_component(parsed.hostname or "")]
         decoded_path = _decode_reference_component(parsed.path)
         components.extend(part for part in decoded_path.split("/") if part)
+        # Decoding is intentionally capped. If a syntactically valid encoded
+        # octet remains after that budget, accepting it would let another
+        # consumer reveal a credential through one more decode pass. Reject
+        # the ambiguous reference instead of making decoding unbounded.
+        if any(_REFERENCE_ENCODED_OCTET_RE.search(component) for component in components):
+            return True
         return any(_looks_sensitive_value(component) for component in components)
     if lowered.startswith(_REFERENCE_SAFE_PREFIXES):
         # Non-URL reference forms (ARNs and workload-identity names) receive
         # the same segment-level check instead of bypassing entropy wholesale.
-        components = [part for part in re.split(r"[/:]", _decode_reference_component(text)) if part]
+        decoded_reference = _decode_reference_component(text)
+        if _REFERENCE_ENCODED_OCTET_RE.search(decoded_reference):
+            return True
+        components = [part for part in re.split(r"[/:]", decoded_reference) if part]
         return any(_looks_sensitive_value(component) for component in components)
     return _looks_sensitive_value(text)
 

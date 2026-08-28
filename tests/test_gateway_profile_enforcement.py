@@ -19,7 +19,7 @@ from agent_bom.api.mcp_config_store import (
     McpClientConfigAssignment,
     set_mcp_config_store,
 )
-from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+from agent_bom.gateway_server import GatewayAuditDeliveryUnavailableError, GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 
 
@@ -115,6 +115,25 @@ def _relay(
         headers=headers,
         json=_call(token),
     )
+
+
+@pytest.mark.parametrize("mode", ["warn", "enforce"])
+def test_profile_audit_outage_fails_closed_before_upstream(mode: str) -> None:
+    calls: list[dict[str, Any]] = []
+    settings = _settings(calls, [], listener_host="127.0.0.1", mode=mode)
+
+    async def unavailable_audit(_event: dict[str, Any]) -> None:
+        raise GatewayAuditDeliveryUnavailableError("hostile audit detail /private/profile.db")
+
+    settings.audit_sink = unavailable_audit
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        response = client.post("/mcp/filesystem", json=_call(""))
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == -32003
+    assert response.json()["id"] == 1
+    assert "/private/profile.db" not in response.text
+    assert calls == []
 
 
 @pytest.fixture(autouse=True)

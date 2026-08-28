@@ -5689,9 +5689,8 @@ components:
           - type: 'null'
           title: Connector Name
         credential_mode:
+          $ref: '#/components/schemas/SourceCredentialMode'
           default: none
-          title: Credential Mode
-          type: string
         credential_ref:
           anyOf:
           - type: string
@@ -5723,6 +5722,20 @@ components:
       - kind
       title: SourceCreate
       type: object
+    SourceCredentialMode:
+      description: 'How a source''s credential metadata is represented.
+
+
+        Older clients used ``credential_ref`` as the mode spelling. Normalize it
+
+        to the canonical reference mode so it cannot bypass the reference-presence
+
+        and execution checks in the source routes.'
+      enum:
+      - none
+      - reference
+      title: SourceCredentialMode
+      type: string
     SourceKind:
       enum:
       - scan.repo
@@ -5765,9 +5778,8 @@ components:
           title: Connector Name
         credential_mode:
           anyOf:
-          - type: string
+          - $ref: '#/components/schemas/SourceCredentialMode'
           - type: 'null'
-          title: Credential Mode
         credential_ref:
           anyOf:
           - type: string

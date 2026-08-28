@@ -105,6 +105,17 @@ the same `/v1/proxy/audit` HMAC-chained relay. Each event carries:
 - the policy version that produced it,
 - a hash chain link so tampering is detectable.
 
+For a control-plane-connected multi-tenant gateway, an API key is first
+validated by the gateway and then reused only for that tenant's audit ingest.
+Each tenant has a distinct restart-stable backlog and retry state; an event is
+rejected before upstream execution if its tenant does not match the validated
+credential. Static gateway bearer and broker tokens remain bound to the
+operator-configured `AGENT_BOM_TENANT_ID` and do not impersonate other tenants.
+The restart registry stores only a bounded tenant identifier marker—never an
+API key or bearer token. After restart, any discovered tenant backlog remains
+degraded and blocks readiness until a newly authenticated request rebinds that
+tenant's credential; malformed or unsafe registry state fails closed.
+
 The chain is described in `docs/PROXY_AUDIT_LOG.md`. Operators reading
 audit output can attribute every denial to exactly one layer; the
 precedence rules in `docs/POLICY_PRECEDENCE.md` guarantee no event has

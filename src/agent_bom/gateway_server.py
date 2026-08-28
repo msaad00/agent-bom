@@ -119,6 +119,9 @@ UpstreamCaller = Callable[[UpstreamConfig, dict[str, Any], dict[str, str]], Awai
 
 _GATEWAY_AUDIT_SPILLOVER_BYTES = 8 * 1024 * 1024
 _GATEWAY_AUDIT_DLQ_BYTES = 64 * 1024 * 1024
+_GATEWAY_AUDIT_MAX_TENANT_SINKS = 256
+_GATEWAY_AUDIT_TENANT_MARKER_MAX_BYTES = 4096
+_GATEWAY_AUDIT_TENANT_ID_MAX_BYTES = 512
 
 
 class GatewayAuditDeliveryUnavailableError(RuntimeError):
@@ -1266,6 +1269,142 @@ async def _send_gateway_audit_batch(
     return body
 
 
+class _GatewayAuditTenantRegistry:
+    """Secret-free durable discovery markers for tenant audit backlogs."""
+
+    def __init__(self, state_dir: Path, *, source_id: str, audit_url: str) -> None:
+        router_identity = f"{source_id}\0{audit_url}"
+        router_digest = hashlib.sha256(router_identity.encode("utf-8")).hexdigest()[:20]
+        self._root = canonical_runtime_state_path(state_dir) / "runtime-audit"
+        self._prefix = f"gateway-router-{router_digest}-"
+
+    @staticmethod
+    def _normalize_tenant_id(tenant_id: str) -> str:
+        normalized = tenant_id.strip()
+        encoded = normalized.encode("utf-8")
+        if not normalized or len(encoded) > _GATEWAY_AUDIT_TENANT_ID_MAX_BYTES or any(ord(character) < 32 for character in normalized):
+            raise ValueError("gateway audit tenant id is invalid")
+        return normalized
+
+    def _marker_name(self, tenant_id: str) -> str:
+        normalized = self._normalize_tenant_id(tenant_id)
+        digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:20]
+        return f"{self._prefix}{digest}.tenant.json"
+
+    def _parent_fd(self) -> int:
+        return AuditSpilloverStore._safe_parent_fd(self._root / ".tenant-registry")
+
+    def register(self, tenant_id: str) -> None:
+        """Atomically persist one tenant identity without its credential."""
+
+        normalized = self._normalize_tenant_id(tenant_id)
+        marker_name = self._marker_name(normalized)
+        content = json.dumps(
+            {"schema_version": 1, "tenant_id": normalized},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        if len(content) > _GATEWAY_AUDIT_TENANT_MARKER_MAX_BYTES:
+            raise ValueError("gateway audit tenant marker is too large")
+        parent_fd = self._parent_fd()
+        temp_name = f".{marker_name}.tmp-{os.urandom(8).hex()}"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+        fd = -1
+        try:
+            try:
+                existing = os.stat(marker_name, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                AuditSpilloverStore._validate_single_link_regular(existing)
+            fd = os.open(temp_name, flags, 0o600, dir_fd=parent_fd)
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                fd = -1
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, marker_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            os.fsync(parent_fd)
+        finally:
+            if fd >= 0:
+                os.close(fd)
+            try:
+                os.unlink(temp_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+            os.close(parent_fd)
+
+    def discover(self) -> list[str]:
+        """Load and validate every marker for this control-plane route."""
+
+        parent_fd = self._parent_fd()
+        tenants: set[str] = set()
+        read_flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            read_flags |= os.O_NOFOLLOW
+        if hasattr(os, "O_CLOEXEC"):
+            read_flags |= os.O_CLOEXEC
+        try:
+            names = sorted(name for name in os.listdir(parent_fd) if name.startswith(self._prefix) and name.endswith(".tenant.json"))
+            for name in names:
+                fd = os.open(name, read_flags, dir_fd=parent_fd)
+                try:
+                    file_stat = os.fstat(fd)
+                    AuditSpilloverStore._validate_single_link_regular(file_stat)
+                    if file_stat.st_mode & 0o077:
+                        raise ValueError("gateway audit tenant marker permissions must be owner-only")
+                    if file_stat.st_size > _GATEWAY_AUDIT_TENANT_MARKER_MAX_BYTES:
+                        raise ValueError("gateway audit tenant marker is too large")
+                    with os.fdopen(fd, "rb") as handle:
+                        fd = -1
+                        raw = handle.read(_GATEWAY_AUDIT_TENANT_MARKER_MAX_BYTES + 1)
+                finally:
+                    if fd >= 0:
+                        os.close(fd)
+                payload = json.loads(raw.decode("utf-8"))
+                if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+                    raise ValueError("gateway audit tenant marker schema is invalid")
+                tenant_id = self._normalize_tenant_id(str(payload.get("tenant_id") or ""))
+                if name != self._marker_name(tenant_id):
+                    raise ValueError("gateway audit tenant marker identity is invalid")
+                tenants.add(tenant_id)
+        finally:
+            os.close(parent_fd)
+        return sorted(tenants)
+
+    def unregister(self, tenant_id: str) -> None:
+        """Remove a marker only after its durable backlog is empty."""
+
+        marker_name = self._marker_name(tenant_id)
+        parent_fd = self._parent_fd()
+        try:
+            try:
+                existing = os.stat(marker_name, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return
+            AuditSpilloverStore._validate_single_link_regular(existing)
+            os.unlink(marker_name, dir_fd=parent_fd)
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+
+
+def _audit_health_has_pending_state(health: dict[str, str | int | bool]) -> bool:
+    """Return whether a tenant marker must remain for unresolved audit state."""
+
+    return (
+        not bool(health.get("backlog_observable", False))
+        or int(health.get("backlog_bytes", 0)) > 0
+        or int(health.get("dlq_bytes", 0)) > 0
+        or int(health.get("dropped_events", 0)) > 0
+    )
+
+
 class ControlPlaneAuditSink:
     """Durably queue and retry standalone-gateway audit delivery.
 
@@ -1278,24 +1417,121 @@ class ControlPlaneAuditSink:
     def __init__(
         self,
         *,
+        base_url: str,
         token: str | None,
         tenant_id: str,
         source_id: str,
         session_id: str,
         delivery_state: AuditDeliveryState,
         sender: GatewayAuditSender,
+        tenant_registry: _GatewayAuditTenantRegistry | None = None,
+        tenant_routing_enabled: bool = True,
+        max_tenant_sinks: int = _GATEWAY_AUDIT_MAX_TENANT_SINKS,
     ) -> None:
+        self._base_url = base_url.rstrip("/")
         self._token = token
         self._tenant_id = tenant_id
         self._source_id = source_id
         self._session_id = session_id
         self._delivery_state = delivery_state
         self._sender = sender
+        self._tenant_registry = tenant_registry
+        self._tenant_registry_available = True
         self._lock = asyncio.Lock()
         self._worker: asyncio.Task[None] | None = None
         self._closed = False
         self._persistence_available = True
         self._remote_ack_available = True
+        self._tenant_routing_enabled = tenant_routing_enabled
+        self._max_tenant_sinks = max_tenant_sinks
+        self._tenant_sinks: dict[str, ControlPlaneAuditSink] = {}
+        self._tenant_sinks_lock = asyncio.Lock()
+
+    async def bind_authenticated_tenant(self, tenant_id: str, token: str | None) -> None:
+        """Bind one verified request credential to an isolated tenant queue."""
+
+        normalized_tenant = tenant_id.strip()
+        if not normalized_tenant:
+            raise GatewayAuditDeliveryUnavailableError("authenticated audit tenant is unavailable")
+        if self._tenant_registry is not None and not self._tenant_registry_available:
+            raise GatewayAuditDeliveryUnavailableError("tenant audit routing registry is unavailable")
+        if normalized_tenant == self._tenant_id:
+            if token:
+                self._token = token
+            return
+        if not self._tenant_routing_enabled or not token:
+            raise GatewayAuditDeliveryUnavailableError("no tenant-bound audit credential is available")
+        async with self._tenant_sinks_lock:
+            sink = self._tenant_sinks.get(normalized_tenant)
+            if sink is None:
+                if len(self._tenant_sinks) >= self._max_tenant_sinks:
+                    raise GatewayAuditDeliveryUnavailableError("tenant audit routing capacity is unavailable")
+                if self._tenant_registry is None:
+                    raise GatewayAuditDeliveryUnavailableError("tenant audit routing registry is unavailable")
+                try:
+                    self._tenant_registry.register(normalized_tenant)
+                except Exception as exc:  # noqa: BLE001 - registry integrity is fail-closed
+                    self._tenant_registry_available = False
+                    logger.error("Gateway audit tenant registry unavailable (error_type=%s)", type(exc).__name__)
+                    raise GatewayAuditDeliveryUnavailableError("tenant audit routing registry is unavailable") from None
+                sink = build_control_plane_audit_sink(
+                    self._base_url,
+                    token,
+                    tenant_id=normalized_tenant,
+                    source_id=self._source_id,
+                    sender=self._sender,
+                    tenant_routing_enabled=False,
+                    max_tenant_sinks=0,
+                )
+                self._tenant_sinks[normalized_tenant] = sink
+                await sink.start()
+            else:
+                sink._token = token
+                sink._remote_ack_available = True
+                await sink.start()
+
+    async def _recover_tenant_sinks(self) -> None:
+        """Reconstruct unbound child queues so restart health remains truthful."""
+
+        if self._tenant_registry is None or self._tenant_sinks:
+            return
+        try:
+            tenant_ids = self._tenant_registry.discover()
+            for tenant_id in tenant_ids:
+                if tenant_id == self._tenant_id:
+                    self._tenant_registry.unregister(tenant_id)
+                    continue
+                if len(self._tenant_sinks) >= self._max_tenant_sinks:
+                    raise ValueError("gateway audit tenant registry exceeds configured capacity")
+                sink = build_control_plane_audit_sink(
+                    self._base_url,
+                    None,
+                    tenant_id=tenant_id,
+                    source_id=self._source_id,
+                    sender=self._sender,
+                    tenant_routing_enabled=False,
+                    max_tenant_sinks=0,
+                )
+                child_health = sink._own_health()
+                if not _audit_health_has_pending_state(child_health):
+                    self._tenant_registry.unregister(tenant_id)
+                    continue
+                sink._remote_ack_available = False
+                self._tenant_sinks[tenant_id] = sink
+        except Exception as exc:  # noqa: BLE001 - undiscoverable durable state is fail-closed
+            self._tenant_registry_available = False
+            logger.error("Gateway audit tenant registry recovery failed (error_type=%s)", type(exc).__name__)
+
+    def _sink_for_event(self, event: dict[str, Any]) -> ControlPlaneAuditSink:
+        if self._tenant_registry is not None and not self._tenant_registry_available:
+            raise GatewayAuditDeliveryUnavailableError("tenant audit routing registry is unavailable")
+        event_tenant = str(event.get("tenant_id") or "")
+        if event_tenant == self._tenant_id:
+            return self
+        sink = self._tenant_sinks.get(event_tenant)
+        if sink is None:
+            raise GatewayAuditDeliveryUnavailableError("no tenant-bound audit credential is available")
+        return sink
 
     @staticmethod
     def _batch_idempotency_key(session_id: str, events: list[dict[str, Any]]) -> str:
@@ -1367,11 +1603,19 @@ class ControlPlaneAuditSink:
                 raise GatewayAuditDeliveryUnavailableError("control-plane durable acknowledgement is unavailable")
 
     async def __call__(self, event: dict[str, Any]) -> None:
+        sink = self._sink_for_event(event)
+        if sink is not self:
+            await sink(event)
+            return
         await self._persist_and_flush(event, require_remote_ack=False)
 
     async def admit_before_tool_execution(self, event: dict[str, Any]) -> None:
         """Require the control plane to durably acknowledge before execution."""
 
+        sink = self._sink_for_event(event)
+        if sink is not self:
+            await sink.admit_before_tool_execution(event)
+            return
         await self._persist_and_flush(event, require_remote_ack=True)
 
     async def _flush_locked(self) -> bool:
@@ -1433,11 +1677,24 @@ class ControlPlaneAuditSink:
         if self._worker is not None:
             return
         self._closed = False
+        await self._recover_tenant_sinks()
         await self.flush_once()
         self._worker = asyncio.create_task(self._retry_loop(), name="gateway-audit-delivery")
 
     async def aclose(self) -> None:
         self._closed = True
+        children = list(self._tenant_sinks.items())
+        for _tenant_id, child in children:
+            await child.aclose()
+        if self._tenant_registry is not None:
+            for tenant_id, child in children:
+                try:
+                    child_health = child._own_health()
+                    if not _audit_health_has_pending_state(child_health):
+                        self._tenant_registry.unregister(tenant_id)
+                except Exception as exc:  # noqa: BLE001 - shutdown remains secret-free
+                    self._tenant_registry_available = False
+                    logger.error("Gateway audit tenant registry cleanup failed (error_type=%s)", type(exc).__name__)
         if self._worker is None:
             return
         self._worker.cancel()
@@ -1447,7 +1704,7 @@ class ControlPlaneAuditSink:
             pass
         self._worker = None
 
-    def health(self) -> dict[str, str | int | bool]:
+    def _own_health(self) -> dict[str, str | int | bool]:
         try:
             health = self._delivery_state.health(buffer_bytes=0)
             backlog_observable = True
@@ -1474,7 +1731,7 @@ class ControlPlaneAuditSink:
         )
         if not accepting_events:
             health["status"] = "degraded"
-        return {
+        result: dict[str, str | int | bool] = {
             "configured": True,
             "durable": self._persistence_available and backlog_observable,
             "accepting_events": accepting_events,
@@ -1483,6 +1740,47 @@ class ControlPlaneAuditSink:
             "retry_worker_running": self._worker is not None and not self._worker.done() and not self._closed,
             **health,
         }
+        result["pending_audit_state"] = _audit_health_has_pending_state(result)
+        return result
+
+    def health(self) -> dict[str, str | int | bool]:
+        health = self._own_health()
+        child_health = [sink._own_health() for sink in self._tenant_sinks.values()]
+        if child_health:
+            all_health = [health, *child_health]
+            health.update(
+                {
+                    "status": "degraded" if any(item["status"] != "healthy" for item in all_health) else "healthy",
+                    "durable": all(bool(item["durable"]) for item in all_health),
+                    "accepting_events": all(bool(item["accepting_events"]) for item in all_health),
+                    "backlog_observable": all(bool(item["backlog_observable"]) for item in all_health),
+                    "remote_acknowledgement_available": all(bool(item["remote_acknowledgement_available"]) for item in all_health),
+                    "retry_worker_running": all(bool(item["retry_worker_running"]) for item in all_health),
+                    "buffer_bytes": sum(int(item["buffer_bytes"]) for item in all_health),
+                    "spillover_bytes": sum(int(item["spillover_bytes"]) for item in all_health),
+                    "dlq_bytes": sum(int(item["dlq_bytes"]) for item in all_health),
+                    "backlog_bytes": sum(int(item["backlog_bytes"]) for item in all_health),
+                    "consecutive_failures": sum(int(item["consecutive_failures"]) for item in all_health),
+                    "backoff_seconds": max(int(item["backoff_seconds"]) for item in all_health),
+                    "circuit_open": any(bool(item["circuit_open"]) for item in all_health),
+                    "dropped_events": sum(int(item["dropped_events"]) for item in all_health),
+                    "pending_audit_state": any(_audit_health_has_pending_state(item) for item in all_health),
+                    "tenant_sink_count": len(child_health) + 1,
+                    "tenant_sink_capacity": self._max_tenant_sinks + 1,
+                }
+            )
+        if self._tenant_registry is not None:
+            health["tenant_registry_available"] = self._tenant_registry_available
+            if not self._tenant_registry_available:
+                health.update(
+                    {
+                        "status": "degraded",
+                        "durable": False,
+                        "accepting_events": False,
+                        "backlog_observable": False,
+                    }
+                )
+        return health
 
 
 class LocalGatewayAuditSink:
@@ -1592,6 +1890,8 @@ def build_control_plane_audit_sink(
     max_spillover_bytes: int = _GATEWAY_AUDIT_SPILLOVER_BYTES,
     max_dlq_bytes: int = _GATEWAY_AUDIT_DLQ_BYTES,
     sender: GatewayAuditSender | None = None,
+    tenant_routing_enabled: bool = True,
+    max_tenant_sinks: int = _GATEWAY_AUDIT_MAX_TENANT_SINKS,
 ) -> ControlPlaneAuditSink:
     """Build the gateway's shared bounded control-plane audit delivery sink."""
 
@@ -1599,6 +1899,8 @@ def build_control_plane_audit_sink(
     normalized_tenant_id = tenant_id.strip()
     if not normalized_tenant_id:
         raise ValueError("gateway audit tenant_id must not be empty")
+    if max_tenant_sinks < 0:
+        raise ValueError("gateway audit max_tenant_sinks must not be negative")
     delivery_identity = f"{source_id}\0{audit_url}\0{normalized_tenant_id}"
     active_session_id = session_id or "gateway-" + hashlib.sha256(delivery_identity.encode("utf-8")).hexdigest()[:20]
     state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
@@ -1609,6 +1911,11 @@ def build_control_plane_audit_sink(
     )
     active_spill_path = spill_path or stable_paths.spill_path
     active_dlq_path = dlq_path or stable_paths.dlq_path
+    tenant_registry = (
+        _GatewayAuditTenantRegistry(state_dir, source_id=source_id, audit_url=audit_url)
+        if tenant_routing_enabled and max_tenant_sinks > 0
+        else None
+    )
     controller = AuditDeliveryController()
     store = AuditSpilloverStore(
         spill_path=active_spill_path,
@@ -1627,12 +1934,16 @@ def build_control_plane_audit_sink(
     else:
         active_sender = sender
     return ControlPlaneAuditSink(
+        base_url=base_url,
         token=token,
         tenant_id=normalized_tenant_id,
         source_id=source_id,
         session_id=active_session_id,
         delivery_state=AuditDeliveryState(controller=controller, store=store),
         sender=active_sender,
+        tenant_registry=tenant_registry,
+        tenant_routing_enabled=tenant_routing_enabled,
+        max_tenant_sinks=max_tenant_sinks,
     )
 
 
@@ -1856,6 +2167,40 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
     app = FastAPI(title="agent-bom gateway", version="1", lifespan=_lifespan)
 
+    def _audit_unavailable_response(message_id: object, *, headers: dict[str, str] | None = None) -> JSONResponse:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": message_id,
+                "error": {
+                    "code": -32003,
+                    "message": "Gateway audit persistence unavailable",
+                    "data": {
+                        "reason": "Tool call was not executed because durable audit admission failed",
+                        "policy_source": "audit_delivery",
+                    },
+                },
+            },
+            status_code=503,
+            headers=headers,
+        )
+
+    @app.exception_handler(GatewayAuditDeliveryUnavailableError)
+    async def _audit_delivery_unavailable(request: Request, _exc: GatewayAuditDeliveryUnavailableError) -> JSONResponse:
+        """Turn any pre-upstream audit outage into a stable fail-closed response."""
+
+        if request.url.path.startswith("/mcp/"):
+            record_gateway_relay(str(getattr(request.state, "gateway_upstream", "unknown")), "audit_unavailable")
+            return _audit_unavailable_response(getattr(request.state, "gateway_message_id", None))
+        return JSONResponse(status_code=503, content={"detail": "Gateway audit persistence unavailable"})
+
+    async def _bind_authenticated_audit_tenant(request: Request, tenant_id: str, auth_method: str) -> None:
+        sink = settings.audit_sink
+        if not isinstance(sink, ControlPlaneAuditSink):
+            return
+        request_token = _extract_request_token(request) if auth_method == "api_key" else None
+        await sink.bind_authenticated_tenant(tenant_id, request_token)
+
     # OAuth 2.1 Authorization Server (broker AS): mount the unauthenticated
     # discovery/registration/PKCE/token/JWKS endpoints so standard MCP clients
     # can auto-authenticate to brokered MCPs. These deliberately sit outside the
@@ -1979,10 +2324,12 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # the policy evaluator is reachable unauthenticated on shared
         # deployments and leaks every rule via the matched_rule field.
         tenant_id = _configured_gateway_tenant_id()
+        auth_method = "none"
         if _gateway_requires_auth(settings):
             tenant_id, auth_method = _authenticate_gateway_request(request, settings)
             request.state.tenant_id = tenant_id
             request.state.auth_method = auth_method
+        await _bind_authenticated_audit_tenant(request, tenant_id, auth_method)
         try:
             payload = await request.json()
         except json.JSONDecodeError as exc:
@@ -2106,6 +2453,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         upstream = settings.registry.get(server_name, tenant_id=tenant_id)
         if upstream is None:
             raise HTTPException(status_code=404, detail=f"unknown upstream {server_name!r}")
+        request.state.gateway_upstream = upstream.name
 
         content_length = request.headers.get("content-length")
         if content_length:
@@ -2125,8 +2473,10 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # Parse the JSON-RPC envelope so check_policy sees the real message shape.
         if isinstance(body, dict) and "jsonrpc" in body:
             message = body
+            request.state.gateway_message_id = message.get("id")
         else:
             raise HTTPException(status_code=400, detail="request must be a JSON-RPC message")
+        await _bind_authenticated_audit_tenant(request, tenant_id, auth_method)
 
         # Inline policy check — reuse the exact evaluator the per-MCP proxy uses.
         tenant_id = getattr(request.state, "tenant_id", None) or "default"
@@ -3517,22 +3867,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 )
             except GatewayAuditDeliveryUnavailableError:
                 record_gateway_relay(upstream.name, "audit_unavailable")
-                return JSONResponse(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": message.get("id"),
-                        "error": {
-                            "code": -32003,
-                            "message": "Gateway audit persistence unavailable",
-                            "data": {
-                                "reason": "Tool call was not executed because durable audit admission failed",
-                                "policy_source": "audit_delivery",
-                            },
-                        },
-                    },
-                    status_code=503,
-                    headers=rate_limit_headers or None,
-                )
+                return _audit_unavailable_response(message.get("id"), headers=rate_limit_headers or None)
 
         post_forward_audit_degraded = False
 

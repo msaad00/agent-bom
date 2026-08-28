@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import agent_bom.security as security
 from agent_bom.security import (
     SecurityError,
     _is_obfuscated_credential,
@@ -28,7 +29,15 @@ from agent_bom.security import (
     validate_package_name,
     validate_path,
     validate_url,
+    value_looks_like_secret,
 )
+
+
+def _nested_percent_encode(value: str, depth: int) -> str:
+    encoded = "".join(f"%{ord(char):02X}" for char in value)
+    for _ in range(depth - 1):
+        encoded = encoded.replace("%", "%25")
+    return encoded
 
 
 def test_sanitize_log_label_strips_ansi_and_line_controls():
@@ -42,6 +51,78 @@ def test_sanitize_log_label_strips_ansi_and_line_controls():
 
 def test_sanitize_log_label_bounds_length():
     assert sanitize_log_label("x" * 20, max_len=7) == "x" * 7
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "arn:aws:iam::123456789012:role/agent-bom-scanner",
+        "vault://team/agent-bom/production",
+        "keyvault://prod-vault/agent-bom-reader",
+        "aws-secretsmanager://production/agent-bom",
+        "gcp-secretmanager://projects/acme-prod/secrets/agent-bom-reader",
+        "secret-manager://platform/agent-bom",
+        "workload-identity/scanner-production",
+        "credential-ref-production",
+    ],
+)
+def test_value_looks_like_secret_accepts_reference_identifiers(reference):
+    assert value_looks_like_secret(reference) is False
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+        "AKIAABCDEFGHIJKLMNOP",
+        "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890",
+        "postgresql://agent:super-secret@example.com/agent_bom",
+        "vault://team/agent-bom?token=ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+        "aws-secretsmanager://production/agent-bom#credential-material",
+        "vault://production/aZ9kLm2NpQr7StUvWx3Yz8AbCdEfGhJkLmNoPqRs",
+        "https://secrets.example/aZ9kLm2NpQr7StUvWx3Yz8AbCdEfGhJkLmNoPqRs",
+        "vault://team/glpat-1234567890abcdefghij",
+        "vault://%41%4B%49%41%41%42%43%44%45%46%47%48%49%4A%4B%4C%4D%4E%4F%50/reference",
+        "vault://team/%2567%2568%2570%255fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    ],
+)
+def test_value_looks_like_secret_rejects_credential_material(secret):
+    assert value_looks_like_secret(secret) is True
+
+
+def test_embedded_sk_substring_in_resource_identifier_is_not_a_secret():
+    identifier = "aws:iam_role:100000000000:risk-production-posture-collector-123"
+
+    assert value_looks_like_secret(identifier) is False
+    assert security.sanitize_text(identifier) == identifier
+
+
+@pytest.mark.parametrize("depth", range(1, 7))
+def test_value_looks_like_secret_rejects_bounded_nested_encoding(depth):
+    token = "ghp_" + "A" * 36
+    reference = f"vault://team/{_nested_percent_encode(token, depth)}"
+
+    assert value_looks_like_secret(reference) is True
+
+
+def test_reference_component_decoding_is_bounded_and_non_expanding(monkeypatch):
+    original_unquote = security.unquote
+    decoded_lengths: list[tuple[int, int]] = []
+
+    def _observed_unquote(value: str) -> str:
+        decoded = original_unquote(value)
+        decoded_lengths.append((len(value), len(decoded)))
+        return decoded
+
+    monkeypatch.setattr(security, "unquote", _observed_unquote)
+    nested = "%25252541" * 131_072
+
+    decoded = security._decode_reference_component(nested)
+
+    assert len(nested) > 1_000_000
+    assert len(decoded_lengths) == 3
+    assert all(output_length <= input_length for input_length, output_length in decoded_lengths)
+    assert len(decoded) <= len(nested)
 
 
 # ---------------------------------------------------------------------------

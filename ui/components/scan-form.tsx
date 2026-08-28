@@ -30,6 +30,7 @@ import {
   type SourceRecord,
 } from "@/lib/api";
 import { deploymentModeLabel } from "@/lib/deployment-context";
+import { sourceSupportsDirectRun } from "@/lib/connections-sources";
 import {
   adhocScopeChips,
   cloudConnectionScopeChips,
@@ -289,7 +290,13 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   }
 
   async function handleSourceRun() {
-    if (!roleCanRunScans || managedTrialSession || !selectedSource) return;
+    if (
+      !roleCanRunScans ||
+      managedTrialSession ||
+      !selectedSource?.enabled ||
+      !sourceSupportsDirectRun(selectedSource.kind) ||
+      selectedSource.credential_mode === "reference"
+    ) return;
     setLoading(true);
     setError("");
     try {
@@ -308,7 +315,26 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
       selectedConnection.status === "active" &&
       isScannableConnection(selectedConnection),
   );
-  const sourceRunReady = Boolean(roleCanRunScans && !managedTrialSession && selectedSource?.enabled);
+  const sourceDirectRunSupported = Boolean(selectedSource && sourceSupportsDirectRun(selectedSource.kind));
+  const sourceCredentialBlocksRun = Boolean(
+    selectedSource && sourceDirectRunSupported && selectedSource.credential_mode === "reference",
+  );
+  const sourceRunReady = Boolean(
+    roleCanRunScans &&
+      !managedTrialSession &&
+      selectedSource?.enabled &&
+      sourceDirectRunSupported &&
+      !sourceCredentialBlocksRun,
+  );
+  const sourceRunDisabledReason = !selectedSource
+    ? "Select a source to run."
+    : !sourceDirectRunSupported
+      ? "Push and runtime sources receive evidence externally and cannot run directly."
+      : sourceCredentialBlocksRun
+        ? "Credential references are governance metadata and cannot execute this source. Detach the reference first."
+        : !selectedSource.enabled
+          ? "Enable this source before running it."
+          : undefined;
   const repoUrlValid = isHttpRepoUrl(repoUrlInput);
   const repoUrlInvalid = target === "repository" && repoUrlInput.trim().length > 0 && !repoUrlValid;
   const repoScanReady = roleCanRunScans && !managedTrialSession && (target !== "repository" || repoUrlValid);
@@ -612,6 +638,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                   type="button"
                   onClick={handleSourceRun}
                   disabled={authLoading || loading || !sourceRunReady}
+                  title={sourceRunDisabledReason}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-48"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

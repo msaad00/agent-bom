@@ -23,6 +23,13 @@ capability classes, not vendor product names.
 | `evidence_ingest` | Push of scan results, artifacts, traces, or fleet sync into the control plane without a live cloud assume. | `/v1/sources` ingest kinds (`ingest.fleet_sync`, `ingest.trace_push`, `ingest.result_push`, `ingest.artifact_import`); OCSF ingest at the wire boundary |
 | `findings_export` | Outbound findings / events to customer-owned sinks (SIEM, lake, OTLP). Not a “connection” row — an integration / export path. | SIEM connectors + OCSF projection; report / delta export |
 
+The built-in named connectors are Jira, ServiceNow, and Slack. Until the
+connector registry exposes a canonical family field, the UI presents one
+generic **SaaS connector** tile and registers these under
+`connector.cloud_read_only`. Do not infer a package-registry or warehouse
+capability from the `connector.registry` / `connector.warehouse` enum names;
+those API values remain available for compatible installed extensions.
+
 Display categories in the hub (`cloud` / `code` / `ai` / `data` / `runtime` /
 `ingest`) are the UI filter chips mapped from `SourceKind` in
 `connections-sources.ts`. Prefer extending that map over inventing a parallel
@@ -62,3 +69,5 @@ taxonomy in React.
 4. Schedules attach by source id count — cloud recurrence is still the
    Connections scheduler + `scan_interval_minutes` intersection documented in
    CLOUD_CONNECT.
+5. `Run now` is available only for direct-scan, artifact-import, and named
+   connector kinds. Push and runtime sources receive evidence externally.

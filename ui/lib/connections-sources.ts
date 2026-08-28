@@ -88,6 +88,23 @@ const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   "runtime.gateway": "MCP gateway runtime",
 };
 
+const DIRECT_RUN_SOURCE_KINDS = new Set<SourceKind>([
+  "scan.repo",
+  "scan.image",
+  "scan.iac",
+  "scan.cloud",
+  "scan.mcp_config",
+  "ingest.artifact_import",
+  "connector.cloud_read_only",
+  "connector.registry",
+  "connector.warehouse",
+]);
+
+/** Mirrors the server's direct-run source contract. Push/runtime kinds are passive. */
+export function sourceSupportsDirectRun(kind: SourceKind | string): boolean {
+  return DIRECT_RUN_SOURCE_KINDS.has(kind as SourceKind);
+}
+
 export function sourceKindCategory(kind: SourceKind | string): SourceCategory {
   return SOURCE_KIND_CATEGORY[kind as SourceKind] ?? "ingest";
 }

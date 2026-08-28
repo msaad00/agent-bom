@@ -811,6 +811,29 @@ class SourceStatus(str, Enum):
     DISABLED = "disabled"
 
 
+class SourceCredentialMode(str, Enum):
+    """How a source's credential metadata is represented.
+
+    Older clients used ``credential_ref`` as the mode spelling. Normalize it
+    to the canonical reference mode so it cannot bypass the reference-presence
+    and execution checks in the source routes.
+    """
+
+    NONE = "none"
+    REFERENCE = "reference"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "SourceCredentialMode | None":
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip().lower().replace("-", "_")
+        if normalized in {"credential_ref", cls.REFERENCE.value}:
+            return cls.REFERENCE
+        if normalized == cls.NONE.value:
+            return cls.NONE
+        return None
+
+
 class CredentialRefStatus(str, Enum):
     CONFIGURED = "configured"
     HEALTHY = "healthy"
@@ -825,7 +848,7 @@ class CredentialRefRecord(BaseModel):
     display_name: str
     provider: str
     mode: str = "external_ref"
-    external_ref: str
+    external_ref: str | None
     description: str = ""
     owner: str = ""
     scopes: list[str] = Field(default_factory=list)
@@ -892,7 +915,7 @@ class SourceRecord(BaseModel):
     description: str = ""
     owner: str = ""
     connector_name: str | None = None
-    credential_mode: str = "none"
+    credential_mode: SourceCredentialMode = SourceCredentialMode.NONE
     credential_ref: str | None = None
     enabled: bool = True
     status: SourceStatus = SourceStatus.CONFIGURED
@@ -914,7 +937,7 @@ class SourceCreate(BaseModel):
     description: str = ""
     owner: str = ""
     connector_name: str | None = None
-    credential_mode: str = "none"
+    credential_mode: SourceCredentialMode = SourceCredentialMode.NONE
     credential_ref: str | None = None
     enabled: bool = True
     config: dict[str, Any] = Field(default_factory=dict)
@@ -927,7 +950,7 @@ class SourceUpdate(BaseModel):
     description: str | None = None
     owner: str | None = None
     connector_name: str | None = None
-    credential_mode: str | None = None
+    credential_mode: SourceCredentialMode | None = None
     credential_ref: str | None = None
     enabled: bool | None = None
     status: SourceStatus | None = None

@@ -86,6 +86,29 @@ const mockConnection = {
   auth_params: {},
 };
 
+const mockSource = {
+  source_id: "source-repo-1",
+  tenant_id: "default",
+  display_name: "Repository source",
+  kind: "scan.repo" as const,
+  description: "",
+  owner: "",
+  connector_name: null,
+  credential_mode: "none" as const,
+  credential_ref: null,
+  enabled: true,
+  status: "configured" as const,
+  config: { scan_request: { repo_url: "https://example.com/acme/repo" } },
+  last_tested_at: null,
+  last_test_status: null,
+  last_test_message: null,
+  last_run_at: null,
+  last_run_status: null,
+  last_job_id: null,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
 describe("ScanForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -257,6 +280,36 @@ describe("ScanForm", () => {
 
     await user.click(screen.getByRole("tab", { name: "Data source" }));
     expect(await screen.findByText("Data sources are unavailable for this session.")).toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      name: "push source",
+      source: { ...mockSource, kind: "ingest.result_push" as const },
+      reason: /receive evidence externally and cannot run directly/i,
+    },
+    {
+      name: "credential-bound source",
+      source: {
+        ...mockSource,
+        credential_mode: "reference" as const,
+        credential_ref: "credential-metadata",
+      },
+      reason: /governance metadata and cannot execute this source/i,
+    },
+  ])("does not offer a runnable action for a $name", async ({ source, reason }) => {
+    vi.spyOn(api, "listSources").mockResolvedValue({ sources: [source], count: 1 });
+    const runSource = vi.spyOn(api, "runSource");
+    const user = userEvent.setup();
+
+    render(<ScanForm />);
+    await user.click(screen.getByRole("tab", { name: "Data source" }));
+
+    const button = await screen.findByRole("button", { name: /Run source/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", expect.stringMatching(reason));
+    await user.click(button);
+    expect(runSource).not.toHaveBeenCalled();
   });
 
   it("starts a public repository scan from a git URL", async () => {

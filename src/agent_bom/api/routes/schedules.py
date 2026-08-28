@@ -16,11 +16,28 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import ScheduleCreate
-from agent_bom.api.stores import _get_schedule_store
+from agent_bom.api.stores import _get_schedule_store, _get_source_store
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_schedule_quota, tenant_quota_guard
 
 router = APIRouter()
+
+
+def _validate_enabled_source_schedule(tenant_id: str, scan_config: dict) -> None:
+    """Require an enabled source-backed schedule to reference a runnable source."""
+    source_id = str(scan_config.get("source_id") or "").strip()
+    if not source_id:
+        return
+    source = _get_source_store().get(source_id)
+    if source is None or source.tenant_id != tenant_id or not source.enabled:
+        raise HTTPException(status_code=409, detail="Scheduled source is not available in this tenant")
+
+    # Keep schedule admission aligned with the canonical source execution
+    # contract instead of letting an impossible run fail hours later.
+    from agent_bom.api.routes.sources import _request_for_source, _validate_credential_ref_for_tenant
+
+    _validate_credential_ref_for_tenant(tenant_id, source)
+    _request_for_source(source)
 
 
 @router.post("/schedules", tags=["schedules"], status_code=201)
@@ -55,6 +72,8 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     )
     # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
     with tenant_quota_guard(tenant_id, lambda: enforce_schedule_quota(tenant_id)):
+        if schedule.enabled:
+            _validate_enabled_source_schedule(tenant_id, schedule.scan_config)
         _get_schedule_store().put(schedule)
     log_action(
         "schedule.create",
@@ -91,10 +110,11 @@ async def delete_schedule(request: Request, schedule_id: str) -> None:
 
     tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
-    s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
-    if s is None:
-        raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
-    _get_schedule_store().delete(schedule_id, tenant_id=tenant_id)
+    with tenant_quota_guard(tenant_id):
+        s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
+        if s is None:
+            raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
+        _get_schedule_store().delete(schedule_id, tenant_id=tenant_id)
     log_action("schedule.delete", actor=actor, resource=f"schedule/{schedule_id}", tenant_id=tenant_id)
 
 
@@ -105,12 +125,16 @@ async def toggle_schedule(request: Request, schedule_id: str) -> dict:
 
     tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
-    s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
-    if s is None:
-        raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
-    s.enabled = not s.enabled
-    s.updated_at = datetime.now(timezone.utc).isoformat()
-    _get_schedule_store().put(s)
+    with tenant_quota_guard(tenant_id):
+        s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
+        if s is None:
+            raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
+        enabling = not s.enabled
+        if enabling:
+            _validate_enabled_source_schedule(tenant_id, s.scan_config)
+        s.enabled = enabling
+        s.updated_at = datetime.now(timezone.utc).isoformat()
+        _get_schedule_store().put(s)
     log_action(
         "schedule.toggle",
         actor=actor,

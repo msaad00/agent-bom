@@ -197,9 +197,7 @@ def current_scan_jobs(
     eligible = [
         job
         for job in jobs
-        if getattr(job, "status", None) == JobStatus.DONE
-        and isinstance(getattr(job, "result", None), dict)
-        and job_in_window(job, since)
+        if getattr(job, "status", None) == JobStatus.DONE and isinstance(getattr(job, "result", None), dict) and job_in_window(job, since)
     ]
     if scan_id:
         selected = [job for job in eligible if _job_matches_scan_id(job, scan_id)]

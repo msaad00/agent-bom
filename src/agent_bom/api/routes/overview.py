@@ -1250,9 +1250,7 @@ def _capture_hub_overview_snapshot(
         revision = _read_revision()
         snapshot = _HubOverviewSnapshot(
             severity=_hub_severity_snapshot(request, revision=revision, strict=True),
-            failing_frameworks=(
-                _hub_failing_frameworks_snapshot(request, revision=revision, strict=True) if include_details else set()
-            ),
+            failing_frameworks=(_hub_failing_frameworks_snapshot(request, revision=revision, strict=True) if include_details else set()),
             kev=_hub_kev_snapshot(request, revision=revision, strict=True),
             top_risks=(_hub_top_risks(request, strict=True) if include_details else []),
             revision=revision,

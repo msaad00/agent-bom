@@ -57,6 +57,8 @@ _lock = threading.Lock()
 _entries: dict[str, _Entry] = {}
 _kev_entries: dict[str, _KevEntry] = {}
 _framework_entries: dict[str, _FrameworkEntry] = {}
+
+
 def get_cached_severity(tenant_id: str, *, revision: int | None = None) -> dict[str, int] | None:
     ttl = _ttl_seconds()
     if ttl <= 0:

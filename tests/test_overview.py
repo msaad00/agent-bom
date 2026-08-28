@@ -903,9 +903,7 @@ def test_overview_uses_newest_current_snapshot_independent_of_store_order(
                     "severity": data["domains"]["vuln"]["detail"]["severity"],
                     "kev": data["headline"]["kev"],
                     "top_risks": data["top_risks"],
-                    "compliance_failing": next(
-                        row["count"] for row in data["posture"]["breakdown"] if row["driver"] == "compliance"
-                    ),
+                    "compliance_failing": next(row["count"] for row in data["posture"]["breakdown"] if row["driver"] == "compliance"),
                 }
             )
     finally:

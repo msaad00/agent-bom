@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+import agent_bom.gateway_server as gateway_server
 from agent_bom.api.auth import Role
 from agent_bom.gateway_server import (
     GatewayAuditDeliveryUnavailableError,
@@ -48,6 +49,182 @@ def _event(event_id: str = "gw_delivery_1", **overrides: object) -> dict[str, An
 
 def _paths(tmp_path: Path) -> tuple[Path, Path]:
     return tmp_path / "gateway-audit.spill.jsonl", tmp_path / "gateway-audit.dlq.jsonl"
+
+
+def test_control_plane_audit_routes_each_authenticated_api_key_to_its_tenant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    upstream_tenants: list[str] = []
+    delivered: list[tuple[str, str]] = []
+
+    class _TenantKeyStore:
+        @staticmethod
+        def has_keys() -> bool:
+            return True
+
+        @staticmethod
+        def verify(raw_key: str) -> SimpleNamespace | None:
+            if raw_key not in {"tenant-alpha-key", "tenant-beta-key"}:
+                return None
+            tenant_id = raw_key.removesuffix("-key")
+            return SimpleNamespace(
+                tenant_id=tenant_id,
+                role=Role.ANALYST,
+                has_scope=lambda required: required == "gateway:relay",
+            )
+
+    async def sender(payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+        events = payload["alerts"]
+        delivered.extend((str(event["tenant_id"]), headers.get("Authorization", "")) for event in events)
+        count = len(events)
+        return {
+            "accepted_alert_count": count,
+            "duplicate_alert_count": 0,
+            "durable_accepted_count": count,
+            "durable_duplicate_count": 0,
+            "durable_conflict_count": 0,
+        }
+
+    async def upstream(upstream_config: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        upstream_tenants.append(str(getattr(upstream_config, "tenant_id", "")))
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    monkeypatch.setattr(gateway_server, "get_key_store", lambda: _TenantKeyStore())
+    registry = UpstreamRegistry(
+        [
+            UpstreamConfig(name="jira", tenant_id="tenant-alpha", url="https://alpha.invalid/mcp"),
+            UpstreamConfig(name="jira", tenant_id="tenant-beta", url="https://beta.invalid/mcp"),
+        ]
+    )
+    sink = build_control_plane_audit_sink(
+        "https://control.invalid",
+        "tenant-alpha-bootstrap",
+        tenant_id="tenant-alpha",
+        sender=sender,
+    )
+    app = create_gateway_app(GatewaySettings(registry=registry, policy={}, audit_sink=sink, upstream_caller=upstream))
+    message = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "query_issues", "arguments": {}},
+    }
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        alpha = client.post("/mcp/jira", headers={"X-API-Key": "tenant-alpha-key"}, json=message)
+        beta = client.post("/mcp/jira", headers={"X-API-Key": "tenant-beta-key"}, json=message)
+
+    assert alpha.status_code == 200
+    assert beta.status_code == 200
+    assert upstream_tenants == ["tenant-alpha", "tenant-beta"]
+    assert ("tenant-alpha", "Bearer tenant-alpha-key") in delivered
+    assert ("tenant-beta", "Bearer tenant-beta-key") in delivered
+
+
+@pytest.mark.asyncio
+async def test_tenant_child_audit_degradation_rolls_up_to_gateway_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+
+    async def unavailable_sender(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise RuntimeError("hostile transport detail /private/tenant-beta")
+
+    sink = build_control_plane_audit_sink(
+        "https://control.invalid",
+        "tenant-alpha-token",
+        tenant_id="tenant-alpha",
+        sender=unavailable_sender,
+    )
+    await sink.start()
+    await sink.bind_authenticated_tenant("tenant-beta", "tenant-beta-token")
+    await sink(_event(tenant_id="tenant-beta"))
+    health = sink.health()
+    await sink.aclose()
+
+    assert health["status"] == "degraded"
+    assert health["accepting_events"] is False
+    assert health["remote_acknowledgement_available"] is False
+    assert int(health["backlog_bytes"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_control_plane_audit_tenant_routing_is_bounded_and_requires_verified_request_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    sink = build_control_plane_audit_sink(
+        "https://control.invalid",
+        "tenant-alpha-token",
+        tenant_id="tenant-alpha",
+        max_tenant_sinks=1,
+    )
+
+    with pytest.raises(GatewayAuditDeliveryUnavailableError, match="tenant-bound"):
+        await sink.bind_authenticated_tenant("tenant-beta", None)
+    await sink.bind_authenticated_tenant("tenant-beta", "tenant-beta-token")
+    with pytest.raises(GatewayAuditDeliveryUnavailableError, match="capacity"):
+        await sink.bind_authenticated_tenant("tenant-gamma", "tenant-gamma-token")
+    await sink.aclose()
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"rules": [{"id": "no-shell", "action": "block", "block_tools": ["run_shell"]}]},
+        {"require_agent_identity": True},
+    ],
+    ids=["policy-deny", "identity-deny"],
+)
+def test_pre_upstream_audit_outage_returns_deterministic_jsonrpc_denial(
+    policy: dict[str, Any],
+) -> None:
+    upstream_calls = 0
+
+    async def upstream(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"side_effect": True}}
+
+    async def unavailable_audit(_event: dict[str, Any]) -> None:
+        raise GatewayAuditDeliveryUnavailableError("hostile internal path /private/audit.db")
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.invalid")]),
+        policy=policy,
+        audit_sink=unavailable_audit,
+        upstream_caller=upstream,
+    )
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/mcp/filesystem",
+            json={
+                "jsonrpc": "2.0",
+                "id": 71,
+                "method": "tools/call",
+                "params": {"name": "run_shell", "arguments": {}},
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "jsonrpc": "2.0",
+        "id": 71,
+        "error": {
+            "code": -32003,
+            "message": "Gateway audit persistence unavailable",
+            "data": {
+                "reason": "Tool call was not executed because durable audit admission failed",
+                "policy_source": "audit_delivery",
+            },
+        },
+    }
+    assert upstream_calls == 0
+    assert "/private/audit.db" not in response.text
 
 
 @pytest.mark.asyncio

@@ -510,6 +510,57 @@ def test_signed_report_excludes_findings_retired_by_current_empty_snapshot() -> 
         set_audit_log(original_audit_log)
 
 
+def test_signed_report_and_pack_include_canonical_findings_without_blast_radius() -> None:
+    original_store = _get_store()
+    original_audit_log = get_audit_log()
+    _setup_audit_log()
+    store = InMemoryJobStore()
+    set_job_store(store)
+    finding = {
+        "id": "finding-only",
+        "finding_id": "finding-only",
+        "vulnerability_id": "CVE-2026-FINDING-ONLY",
+        "package": "demo@1.0.0",
+        "severity": "critical",
+        "soc2_tags": ["CC6.1"],
+    }
+    job = ScanJob(
+        job_id="scan-findings-only",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at="2026-08-27T00:00:00Z",
+        completed_at="2026-08-27T00:01:00Z",
+        request=ScanRequest(repo_url="https://example.test/acme/repo.git"),
+    )
+    job.result = {
+        "generated_at": "2026-08-27T00:01:00Z",
+        "scan_sources": ["repo_tree"],
+        "summary": {"total_packages": 1, "total_findings": 1},
+        "findings": [finding],
+        "blast_radius": [],
+    }
+    store.put(job)
+
+    try:
+        client = TestClient(app)
+        headers = proxy_headers(tenant="tenant-alpha")
+        report = client.get("/v1/compliance/soc2/report", headers=headers)
+        assert report.status_code == 200
+        report_control = next(control for control in report.json()["controls"] if control["control_id"] == "CC6.1")
+        assert report_control["finding_count"] == 1
+        assert report_control["evidence"][0]["finding_id"] == "finding-only"
+
+        pack = client.get("/v1/compliance/report/pack", headers=headers)
+        assert pack.status_code == 200
+        soc2 = next(bundle for bundle in pack.json()["frameworks"] if bundle["framework"] == "soc2")
+        pack_control = next(control for control in soc2["controls"] if control["control_id"] == "CC6.1")
+        assert pack_control["finding_count"] == 1
+        assert pack_control["evidence"][0]["finding_id"] == "finding-only"
+    finally:
+        set_job_store(original_store)
+        set_audit_log(original_audit_log)
+
+
 def test_report_with_no_completed_scans_marks_controls_not_evaluated() -> None:
     _setup_audit_log()
     req = _request("tenant-alpha")

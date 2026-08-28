@@ -182,11 +182,35 @@ def _job_matches_scan_id(job: _ScanJobLike, scan_id: str) -> bool:
     return scan_id in {str(result.get("scan_id") or ""), str(scan_run.get("scan_id") or "")}
 
 
+def job_has_authoritative_scan_evidence(job: _ScanJobLike) -> bool:
+    """Return whether a completed job represents an executed scan.
+
+    Request validation and inventory-only jobs may finish successfully, but
+    ``scan_skipped``, ``dry_run``, and ``no_scan`` cannot prove that a
+    detective control operated. Check both request and result because older
+    persisted jobs did not consistently copy execution flags into the result.
+    """
+    raw_result = getattr(job, "result", None)
+    result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
+    if any(bool(result.get(field)) for field in ("scan_skipped", "dry_run", "no_scan")):
+        return False
+
+    request = getattr(job, "request", None)
+    if request is not None and hasattr(request, "model_dump"):
+        raw_request = request.model_dump(mode="json")
+    elif isinstance(request, dict):
+        raw_request = request
+    else:
+        raw_request = {}
+    return not any(bool(raw_request.get(field)) for field in ("dry_run", "no_scan"))
+
+
 def current_scan_jobs(
     jobs: Iterable[_ScanJobLike],
     *,
     since: str | None,
     scan_id: str | None,
+    require_authoritative_evidence: bool = False,
 ) -> list[_ScanJobLike]:
     """Select the newest successful leaf snapshot for every target scope.
 
@@ -197,7 +221,10 @@ def current_scan_jobs(
     eligible = [
         job
         for job in jobs
-        if getattr(job, "status", None) == JobStatus.DONE and isinstance(getattr(job, "result", None), dict) and job_in_window(job, since)
+        if getattr(job, "status", None) == JobStatus.DONE
+        and isinstance(getattr(job, "result", None), dict)
+        and job_in_window(job, since)
+        and (not require_authoritative_evidence or job_has_authoritative_scan_evidence(job))
     ]
     if scan_id:
         selected = [job for job in eligible if _job_matches_scan_id(job, scan_id)]
@@ -238,9 +265,18 @@ def current_scan_findings(
     return [deduped[key][1] for key in sorted(deduped)]
 
 
-def latest_current_scan_job(jobs: Iterable[_ScanJobLike]) -> _ScanJobLike | None:
-    """Return the newest authoritative successful scan across current scopes."""
-    current = current_scan_jobs(jobs, since=None, scan_id=None)
+def latest_current_scan_job(
+    jobs: Iterable[_ScanJobLike],
+    *,
+    require_authoritative_evidence: bool = False,
+) -> _ScanJobLike | None:
+    """Return the newest successful current scan, optionally requiring execution."""
+    current = current_scan_jobs(
+        jobs,
+        since=None,
+        scan_id=None,
+        require_authoritative_evidence=require_authoritative_evidence,
+    )
     return max(current, key=scan_evidence_authority_key, default=None)
 
 
@@ -248,6 +284,7 @@ __all__ = [
     "current_scan_findings",
     "current_scan_jobs",
     "finding_identity",
+    "job_has_authoritative_scan_evidence",
     "job_in_window",
     "latest_current_scan_job",
     "scan_evidence_authority_key",

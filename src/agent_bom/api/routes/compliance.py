@@ -475,19 +475,17 @@ async def get_compliance(
 
 def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> dict[str, Any]:
     """Build compliance truth from one caller-owned job-store snapshot."""
+    from agent_bom.api.findings_current import current_scan_jobs
     from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, control_key_for_tag
 
-    if scan_id:
-        matching_jobs = []
-        for job in tenant_jobs:
-            result_scan_id = str(job.result.get("scan_id") or "") if job.result else ""
-            if job.job_id == scan_id or result_scan_id == scan_id:
-                matching_jobs.append(job)
-        tenant_jobs = matching_jobs
-
-    from agent_bom.api.findings_current import current_scan_jobs
-
-    tenant_jobs = list(current_scan_jobs(tenant_jobs, since=None, scan_id=scan_id))
+    tenant_jobs = list(
+        current_scan_jobs(
+            tenant_jobs,
+            since=None,
+            scan_id=scan_id,
+            require_authoritative_evidence=True,
+        )
+    )
 
     # Collect the unified findings spine (legacy blast-radius fallback) from all
     # completed scans, deduped by canonical occurrence identity across re-scans.
@@ -1566,7 +1564,7 @@ def _scan_request_payload(job: Any) -> dict:
 
 
 def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
-    """Build a flat tag → list[blast-radius] index across all completed scans."""
+    """Build a flat tag → canonical-finding index across completed scans."""
     from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
 
     by_tag: dict[str, list[dict]] = {}
@@ -1583,7 +1581,7 @@ def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
             "policy_decisions": job.result.get("policy_decisions") or [],
             "provenance": job.result.get("provenance") or job.result.get("scan_provenance") or {},
         }
-        for br in job.result.get("blast_radius", []):
+        for br in _result_compliance_evidence(job.result):
             br_with_scan = {**br, **scan_context}
             for tag_field in COMPLIANCE_TAG_FIELDS:
                 for tag in br.get(tag_field, []) or []:
@@ -1779,7 +1777,14 @@ async def export_compliance_report(
 
     from agent_bom.api.findings_current import current_scan_jobs
 
-    tenant_jobs = list(current_scan_jobs(raw_tenant_jobs, since=None, scan_id=None))
+    tenant_jobs = list(
+        current_scan_jobs(
+            raw_tenant_jobs,
+            since=None,
+            scan_id=None,
+            require_authoritative_evidence=True,
+        )
+    )
     blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
 
     from agent_bom.api.audit_log import get_audit_log, log_action
@@ -2053,7 +2058,14 @@ async def export_compliance_pack(
 
     from agent_bom.api.findings_current import current_scan_jobs
 
-    tenant_jobs = list(current_scan_jobs(raw_tenant_jobs, since=None, scan_id=None))
+    tenant_jobs = list(
+        current_scan_jobs(
+            raw_tenant_jobs,
+            since=None,
+            scan_id=None,
+            require_authoritative_evidence=True,
+        )
+    )
     blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
     completed_scan_count = sum(1 for job in tenant_jobs if job.status == JobStatus.DONE and bool(job.result))
 
@@ -2254,7 +2266,7 @@ async def get_posture_scorecard(request: Request) -> dict:
     """
     from agent_bom.api.findings_current import latest_current_scan_job
 
-    latest_job = latest_current_scan_job(_tenant_jobs(request))
+    latest_job = latest_current_scan_job(_tenant_jobs(request), require_authoritative_evidence=True)
     latest_result = latest_job.result if latest_job is not None else None
 
     if latest_result is None:
@@ -2331,7 +2343,12 @@ def _compound_issue_count(tenant_jobs: list[Any]) -> int:
 
     seen_ids: set[str] = set()
     compound = 0
-    for job in current_scan_jobs(tenant_jobs, since=None, scan_id=None):
+    for job in current_scan_jobs(
+        tenant_jobs,
+        since=None,
+        scan_id=None,
+        require_authoritative_evidence=True,
+    ):
         result = cast(dict[str, Any], job.result)
         for b in result.get("blast_radius", []):
             vid = b.get("vulnerability_id", "")

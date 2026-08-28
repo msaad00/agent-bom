@@ -117,6 +117,31 @@ def test_evidence_index_preserves_all_framework_tags() -> None:
         assert f"tag:{field}" in index
 
 
+def test_evidence_index_uses_canonical_findings_when_blast_radius_is_empty() -> None:
+    from agent_bom.api.routes import compliance as route
+
+    finding = {
+        "id": "finding-only",
+        "finding_id": "finding-only",
+        "vulnerability_id": "CVE-2026-FINDING-ONLY",
+        "package": "demo@1.0.0",
+        "severity": "critical",
+        "soc2_tags": ["CC6.1"],
+    }
+    job = SimpleNamespace(
+        status=JobStatus.DONE,
+        job_id="scan-findings-only",
+        result={"findings": [finding], "blast_radius": []},
+        request={},
+        created_at="2026-08-27T00:00:00Z",
+        completed_at="2026-08-27T00:01:00Z",
+    )
+
+    index = route._index_blast_radii_by_tag([job])
+
+    assert index["CC6.1"][0]["finding_id"] == "finding-only"
+
+
 # ─── Tests ───────────────────────────────────────────────────────────────────
 
 
@@ -158,6 +183,118 @@ def test_compliance_no_scans():
         assert data["summary"][f"{metadata.summary_prefix}_fail"] == 0
         assert data["summary"][f"{metadata.summary_prefix}_not_evaluated"] == metadata.control_count
     _clear_jobs()
+
+
+@pytest.mark.parametrize(
+    ("request_kwargs", "result_flags"),
+    [
+        ({}, {"scan_skipped": True}),
+        ({"dry_run": True}, {"dry_run": True}),
+        ({"no_scan": True}, {"no_scan": True}),
+    ],
+    ids=["scan-skipped", "dry-run", "no-scan"],
+)
+def test_non_scan_jobs_do_not_become_authoritative_control_evidence(
+    request_kwargs: dict,
+    result_flags: dict,
+) -> None:
+    from agent_bom.api.routes.compliance import _build_compliance
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    job = ScanJob(
+        job_id="not-a-scan",
+        tenant_id="default",
+        created_at=_recent_iso(hours=1),
+        completed_at=_recent_iso(),
+        status=JobStatus.DONE,
+        request=ScanRequest(**request_kwargs),
+    )
+    job.result = {
+        **result_flags,
+        "scan_run": {"outcome": "complete"},
+        "summary": {"total_packages": 10},
+        "findings": [],
+        "blast_radius": [],
+    }
+
+    posture = _build_compliance([job])
+
+    assert posture["scan_count"] == 0
+    assert posture["latest_scan"] is None
+    assert posture["overall_status"] == "no_data"
+
+
+def test_newer_same_scope_dry_run_does_not_retire_real_control_evidence() -> None:
+    from agent_bom.api.routes.compliance import _build_compliance
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    request = ScanRequest(repo_url="https://example.test/acme/repo.git")
+    real_scan = ScanJob(
+        job_id="real-scan",
+        tenant_id="default",
+        created_at="2026-08-27T00:00:00Z",
+        completed_at="2026-08-27T00:01:00Z",
+        status=JobStatus.DONE,
+        request=request,
+    )
+    real_scan.result = {
+        "findings": [
+            {
+                "finding_id": "real-finding",
+                "vulnerability_id": "CVE-2026-REAL",
+                "package": "demo@1.0.0",
+                "severity": "critical",
+                "soc2_tags": ["CC6.1"],
+            }
+        ],
+        "blast_radius": [],
+    }
+    dry_run = ScanJob(
+        job_id="newer-dry-run",
+        tenant_id="default",
+        created_at="2026-08-27T01:00:00Z",
+        completed_at="2026-08-27T01:01:00Z",
+        status=JobStatus.DONE,
+        request=request.model_copy(update={"dry_run": True}),
+    )
+    dry_run.result = {
+        "dry_run": True,
+        "scan_skipped": True,
+        "findings": [],
+        "blast_radius": [],
+    }
+
+    posture = _build_compliance([dry_run, real_scan])
+
+    assert posture["scan_count"] == 1
+    assert posture["latest_scan"] == "2026-08-27T00:01:00Z"
+    soc2_control = next(control for control in posture["soc2"] if control["control_id"] == "CC6.1")
+    assert soc2_control["findings"] == 1
+    assert soc2_control["status"] == "fail"
+
+
+def test_compliance_scan_id_matches_nested_scan_run_identifier() -> None:
+    from agent_bom.api.routes.compliance import _build_compliance
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    job = ScanJob(
+        job_id="queue-job",
+        tenant_id="default",
+        created_at=_recent_iso(hours=1),
+        completed_at=_recent_iso(),
+        status=JobStatus.DONE,
+        request=ScanRequest(repo_url="https://example.test/acme/repo.git"),
+    )
+    job.result = {
+        "scan_run": {"scan_id": "reported-scan", "outcome": "complete"},
+        "summary": {"total_packages": 1},
+        "findings": [],
+        "blast_radius": [],
+    }
+
+    posture = _build_compliance([job], scan_id="reported-scan")
+
+    assert posture["scan_count"] == 1
 
 
 def test_compliance_can_scope_posture_to_a_selected_scan():

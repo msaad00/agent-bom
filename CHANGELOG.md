@@ -19,6 +19,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
   the deprecated safe migration form `--client-secret @<absolute-runtime-path>` before
   moving to `--client-secret-file`; secret bytes are never echoed or read.
 
+### Fixed
+
+- Purging secret-shaped legacy material from an already-retired credential
+  reference now records one tenant-scoped, sanitized audit event without
+  duplicating the event on idempotent DELETE retries.
+
 ## [0.102.0] - 2026-08-23
 
 A release-integrity and evidence-truth release. Published Python images remove

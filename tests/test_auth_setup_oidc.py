@@ -320,6 +320,84 @@ def test_cli_legacy_client_secret_accepts_only_an_at_file_reference():
     assert "deprecated" in result.output.lower()
 
 
+@pytest.mark.parametrize(
+    ("legacy_value", "sensitive_fragment"),
+    (
+        ("@literal-secret-sentinel", "literal-secret-sentinel"),
+        ("@../secret-file", "../secret-file"),
+        ("@/run/agent-bom/../secret-file", "../secret-file"),
+        ("@/run/agent-bom/oidc/client_secret\nAGENT_BOM_API_KEYS=attacker:admin", "attacker:admin"),
+    ),
+)
+def test_cli_legacy_client_secret_rejects_unsafe_file_references_before_side_effects(
+    tmp_path: Path,
+    legacy_value: str,
+    sensitive_fragment: str,
+):
+    output = tmp_path / "must-not-exist.env"
+    runner = CliRunner()
+    with patch("agent_bom.api.oidc.discover_oidc") as discover:
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "google",
+                "--client-id",
+                "cid",
+                "--client-secret",
+                legacy_value,
+                "--base-url",
+                "https://abom.example.com",
+                "--write",
+                "--output",
+                str(output),
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "absolute normalized runtime file path" in result.output
+    assert sensitive_fragment not in result.output
+    discover.assert_not_called()
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "secret_file",
+    (
+        "relative/client_secret",
+        "../client_secret",
+        "/run/agent-bom/../client_secret",
+        "/run/agent-bom/./oidc/client_secret",
+        "/run/agent-bom//oidc/client_secret",
+        "/run/agent-bom/oidc/client_secret\rINJECTED=1",
+    ),
+)
+def test_build_env_rejects_non_absolute_non_normalized_or_control_character_secret_paths(secret_file: str):
+    from agent_bom.cli._auth_group import OIDCSetupError
+
+    with pytest.raises(OIDCSetupError, match="absolute normalized runtime file path"):
+        build_oidc_env(
+            issuer="https://issuer.example",
+            client_id="cid",
+            redirect_uri="https://abom.example/v1/auth/oidc/callback",
+            client_secret_file=secret_file,
+        )
+
+
+def test_build_env_preserves_valid_absolute_normalized_secret_path():
+    env = build_oidc_env(
+        issuer="https://issuer.example",
+        client_id="cid",
+        redirect_uri="https://abom.example/v1/auth/oidc/callback",
+        client_secret_file="/run/agent-bom/oidc/client_secret",
+    )
+
+    assert env["AGENT_BOM_OIDC_CLIENT_SECRET_FILE"] == "/run/agent-bom/oidc/client_secret"
+
+
 def test_public_oidc_setup_surfaces_use_file_references_only():
     root = Path(__file__).resolve().parents[1]
     ui_catalog = (root / "ui" / "lib" / "sso-provider-presets.ts").read_text(encoding="utf-8")

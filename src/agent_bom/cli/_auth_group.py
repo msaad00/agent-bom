@@ -20,7 +20,7 @@ from __future__ import annotations
 import socket
 import sys
 from collections import OrderedDict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 import click
@@ -44,6 +44,30 @@ _PROVIDER_ISSUERS = {
 
 class OIDCSetupError(click.ClickException):
     """Raised for a user-correctable wizard configuration error."""
+
+
+def _normalize_runtime_secret_file_path(value: Optional[str]) -> str:
+    """Return one safe POSIX runtime file path, or reject without echoing it."""
+    if value is None or value == "":
+        return ""
+    if value != value.strip() or any(not char.isprintable() for char in value):
+        raise OIDCSetupError(
+            "Client secret file reference must be an absolute normalized runtime file path without traversal or control characters."
+        )
+    path = PurePosixPath(value)
+    components = value.split("/")
+    if (
+        not path.is_absolute()
+        or value.startswith("//")
+        or "" in components[1:]
+        or any(component in {".", ".."} for component in components)
+        or path.name == ""
+        or path.as_posix() != value
+    ):
+        raise OIDCSetupError(
+            "Client secret file reference must be an absolute normalized runtime file path without traversal or control characters."
+        )
+    return value
 
 
 def _stdin_is_tty() -> bool:
@@ -109,7 +133,7 @@ def build_oidc_env(
     env: "OrderedDict[str, str]" = OrderedDict()
     env["AGENT_BOM_OIDC_ISSUER"] = issuer
     env["AGENT_BOM_OIDC_CLIENT_ID"] = client_id
-    secret_file = (client_secret_file or "").strip()
+    secret_file = _normalize_runtime_secret_file_path(client_secret_file)
     if secret_file:
         env["AGENT_BOM_OIDC_CLIENT_SECRET_FILE"] = secret_file
     env["AGENT_BOM_OIDC_REDIRECT_URI"] = redirect_uri
@@ -269,17 +293,20 @@ def setup_oidc_cmd(
 
     used_legacy_file_reference = False
     if client_secret is not None:
-        legacy_value = client_secret.strip()
-        if legacy_value.startswith("@") and legacy_value[1:].strip():
+        legacy_value = client_secret
+        if legacy_value.startswith("@") and legacy_value[1:]:
             if client_secret_file:
-                raise OIDCSetupError("Pass either --client-secret-file or deprecated --client-secret @<runtime-path>, not both.")
-            client_secret_file = legacy_value[1:].strip()
+                raise OIDCSetupError(
+                    "Pass either --client-secret-file or deprecated "
+                    "--client-secret @<absolute-runtime-path>, not both."
+                )
+            client_secret_file = legacy_value[1:]
             used_legacy_file_reference = True
         else:
             raise OIDCSetupError(
                 "Literal --client-secret input is no longer accepted because command arguments can leak. "
                 "Store the value in a protected file and pass its runtime path with --client-secret-file. "
-                "Released automation may migrate safely with --client-secret @<runtime-path>."
+                "Released automation may migrate safely with --client-secret @<absolute-runtime-path>."
             )
 
     if not provider:
@@ -340,7 +367,7 @@ def setup_oidc_cmd(
     con.print(f"\n  [bold]OIDC setup[/bold] [dim]· provider {provider} · issuer {issuer}[/dim]")
     if used_legacy_file_reference:
         con.print(
-            "  [yellow]Deprecated option[/yellow] [dim]· --client-secret @<runtime-path> is a file-reference migration shim; "
+            "  [yellow]Deprecated option[/yellow] [dim]· --client-secret @<absolute-runtime-path> is a file-reference migration shim; "
             "use --client-secret-file on the next update.[/dim]"
         )
     check = check_issuer_connectivity(issuer)

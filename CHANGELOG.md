@@ -16,7 +16,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
   dedicated OIDC secret directory read-only; dashboard and Helm guidance use
   the same file-first contract. Literal `auth setup-oidc --client-secret`
   values now fail before discovery or file writes. Released automation can use
-  the deprecated safe migration form `--client-secret @<runtime-path>` before
+  the deprecated safe migration form `--client-secret @<absolute-runtime-path>` before
   moving to `--client-secret-file`; secret bytes are never echoed or read.
 
 ## [0.102.0] - 2026-08-23

@@ -47,9 +47,9 @@ dedicated directory read-only and load `oidc.env` automatically when present.
 
 Literal `--client-secret <value>` arguments are rejected before issuer
 discovery or file writes because process arguments and shell history can expose
-the value. Update automation to `--client-secret-file <runtime-path>`. A
+the value. Update automation to `--client-secret-file <absolute-runtime-path>`. A
 deprecated transition form keeps the released option name without accepting
-secret bytes:
+secret bytes; the value must be an absolute, normalized runtime path:
 
 ```bash
 agent-bom auth setup-oidc ... \

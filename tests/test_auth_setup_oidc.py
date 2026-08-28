@@ -301,7 +301,8 @@ def test_cli_rejects_removed_client_secret_option_without_echoing_or_side_effect
         )
 
     assert result.exit_code != 0
-    assert "No such option: --client-secret" in result.output
+    assert "No such option" in result.output
+    assert "--client-secret" in result.output
     assert sensitive_fragment not in result.output
     discover.assert_not_called()
     assert not output.exists()

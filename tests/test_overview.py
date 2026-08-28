@@ -916,6 +916,60 @@ def test_overview_uses_newest_current_snapshot_independent_of_store_order(
     assert [row["severity"] for row in snapshots[0]["top_risks"]] == ["low"]
 
 
+def test_estate_latest_scan_normalizes_offsets_before_comparison() -> None:
+    from agent_bom.api.routes.overview import _estate_rollup
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    later = ScanJob(
+        job_id="later-utc",
+        tenant_id="default",
+        created_at="2026-08-21T00:00:00+00:00",
+        completed_at="2026-08-21T00:00:00+00:00",
+        status=JobStatus.DONE,
+        request=ScanRequest(repo_url="https://example.test/acme/later.git"),
+        result={"findings": []},
+    )
+    earlier = ScanJob(
+        job_id="earlier-offset",
+        tenant_id="default",
+        created_at="2026-08-21T01:00:00+02:00",
+        completed_at="2026-08-21T01:00:00+02:00",
+        status=JobStatus.DONE,
+        request=ScanRequest(repo_url="https://example.test/acme/earlier.git"),
+        result={"findings": []},
+    )
+
+    estate = _estate_rollup([later, earlier])
+
+    assert estate["latest_scan_at"] == "2026-08-21T00:00:00+00:00"
+
+
+def test_overview_excludes_skipped_pushed_findings_from_current_evidence() -> None:
+    from agent_bom.api.routes.overview import _current_scan_severity, _estate_rollup
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    skipped = ScanJob(
+        job_id="skipped-push",
+        tenant_id="default",
+        created_at="2026-08-27T01:00:00Z",
+        completed_at="2026-08-27T01:00:00Z",
+        status=JobStatus.DONE,
+        request=ScanRequest(repo_url="https://example.test/acme/repo.git", dry_run=True),
+        result={
+            "scan_skipped": True,
+            "dry_run": True,
+            "findings": [{"id": "fake", "severity": "critical", "soc2_tags": ["CC6.1"]}],
+        },
+    )
+
+    estate = _estate_rollup([skipped])
+
+    assert estate["unique_findings"] == 0
+    assert estate["severity"]["critical"] == 0
+    assert estate["latest_scan_at"] is None
+    assert _current_scan_severity([skipped])["critical"] == 0
+
+
 def test_overview_compliance_failing_moves_grade() -> None:
     """A failing compliance framework feeds the exec grade (was hardcoded 0) (#3962)."""
     _clear_jobs()

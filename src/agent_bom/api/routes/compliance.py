@@ -190,23 +190,28 @@ def _build_aisvs_payload(
 
 
 def _latest_aisvs_benchmark_from_jobs(jobs: list[Any]) -> dict[str, Any]:
-    latest: tuple[str, str, dict[str, Any]] | None = None
-    for job in jobs:
-        if job.status != JobStatus.DONE or not isinstance(getattr(job, "result", None), dict):
-            continue
+    from agent_bom.api.findings_current import current_scan_jobs, scan_evidence_authority_key
+
+    latest: tuple[tuple[str, str, str], str, dict[str, Any]] | None = None
+    for job in current_scan_jobs(
+        jobs,
+        since=None,
+        scan_id=None,
+        require_authoritative_evidence=True,
+    ):
         result = cast(dict[str, Any], job.result)
         benchmark = result.get("aisvs_benchmark") or result.get("aisvs_benchmark_data")
         if not isinstance(benchmark, dict):
             continue
-        measured_at = str(getattr(job, "completed_at", None) or getattr(job, "created_at", None) or "")
+        authority = scan_evidence_authority_key(job)
         scan_id = str(result.get("scan_id") or getattr(job, "job_id", ""))
-        if latest is None or measured_at >= latest[0]:
-            latest = (measured_at, scan_id, benchmark)
+        if latest is None or authority > latest[0]:
+            latest = (authority, scan_id, benchmark)
 
     if latest is None:
         return _build_aisvs_payload(None)
-    latest_measured_at, latest_scan_id, benchmark = latest
-    return _build_aisvs_payload(benchmark, scan_id=latest_scan_id, measured_at=latest_measured_at or None)
+    authority, latest_scan_id, benchmark = latest
+    return _build_aisvs_payload(benchmark, scan_id=latest_scan_id, measured_at=authority[1] or None)
 
 
 def _result_has_runtime_signals(result: dict[str, Any]) -> bool:
@@ -475,25 +480,23 @@ async def get_compliance(
 
 def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> dict[str, Any]:
     """Build compliance truth from one caller-owned job-store snapshot."""
+    from agent_bom.api.findings_current import current_scan_jobs, scan_evidence_authority_key
     from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, control_key_for_tag
 
-    if scan_id:
-        matching_jobs = []
-        for job in tenant_jobs:
-            result_scan_id = str(job.result.get("scan_id") or "") if job.result else ""
-            if job.job_id == scan_id or result_scan_id == scan_id:
-                matching_jobs.append(job)
-        tenant_jobs = matching_jobs
-
-    from agent_bom.api.findings_current import current_scan_jobs
-
-    tenant_jobs = list(current_scan_jobs(tenant_jobs, since=None, scan_id=scan_id))
+    tenant_jobs = list(
+        current_scan_jobs(
+            tenant_jobs,
+            since=None,
+            scan_id=scan_id,
+            require_authoritative_evidence=True,
+        )
+    )
 
     # Collect the unified findings spine (legacy blast-radius fallback) from all
     # completed scans, deduped by canonical occurrence identity across re-scans.
     all_blast: list[dict] = []
     authoritative_occurrences: dict[str, tuple[tuple[str, str, str], dict[str, Any]]] = {}
-    latest_scan: str | None = None
+    latest_scan_job: Any | None = None
     scan_count = 0
     has_mcp_context = False
     has_agent_context = False
@@ -512,8 +515,8 @@ def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> 
             current = authoritative_occurrences.get(occurrence_id)
             if current is None or authority > current[0]:
                 authoritative_occurrences[occurrence_id] = (authority, row)
-        if latest_scan is None or (job.completed_at and job.completed_at > latest_scan):
-            latest_scan = job.completed_at
+        if latest_scan_job is None or scan_evidence_authority_key(job) > scan_evidence_authority_key(latest_scan_job):
+            latest_scan_job = job
         # Detect scan context from result metadata
         result_has_mcp, result_has_agent, result_sources = _result_evidence_context(job.result)
         has_mcp_context = has_mcp_context or result_has_mcp
@@ -521,6 +524,7 @@ def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> 
         all_scan_sources.update(result_sources)
 
     all_blast.extend(row for _authority, row in authoritative_occurrences.values())
+    latest_scan = getattr(latest_scan_job, "completed_at", None) if latest_scan_job is not None else None
 
     def _build_controls(
         catalog: dict[str, str],
@@ -1566,7 +1570,7 @@ def _scan_request_payload(job: Any) -> dict:
 
 
 def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
-    """Build a flat tag → list[blast-radius] index across all completed scans."""
+    """Build a flat tag → canonical-finding index across completed scans."""
     from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
 
     by_tag: dict[str, list[dict]] = {}
@@ -1583,7 +1587,7 @@ def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
             "policy_decisions": job.result.get("policy_decisions") or [],
             "provenance": job.result.get("provenance") or job.result.get("scan_provenance") or {},
         }
-        for br in job.result.get("blast_radius", []):
+        for br in _result_compliance_evidence(job.result):
             br_with_scan = {**br, **scan_context}
             for tag_field in COMPLIANCE_TAG_FIELDS:
                 for tag in br.get(tag_field, []) or []:
@@ -1779,7 +1783,14 @@ async def export_compliance_report(
 
     from agent_bom.api.findings_current import current_scan_jobs
 
-    tenant_jobs = list(current_scan_jobs(raw_tenant_jobs, since=None, scan_id=None))
+    tenant_jobs = list(
+        current_scan_jobs(
+            raw_tenant_jobs,
+            since=None,
+            scan_id=None,
+            require_authoritative_evidence=True,
+        )
+    )
     blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
 
     from agent_bom.api.audit_log import get_audit_log, log_action
@@ -2053,7 +2064,14 @@ async def export_compliance_pack(
 
     from agent_bom.api.findings_current import current_scan_jobs
 
-    tenant_jobs = list(current_scan_jobs(raw_tenant_jobs, since=None, scan_id=None))
+    tenant_jobs = list(
+        current_scan_jobs(
+            raw_tenant_jobs,
+            since=None,
+            scan_id=None,
+            require_authoritative_evidence=True,
+        )
+    )
     blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
     completed_scan_count = sum(1 for job in tenant_jobs if job.status == JobStatus.DONE and bool(job.result))
 
@@ -2254,7 +2272,7 @@ async def get_posture_scorecard(request: Request) -> dict:
     """
     from agent_bom.api.findings_current import latest_current_scan_job
 
-    latest_job = latest_current_scan_job(_tenant_jobs(request))
+    latest_job = latest_current_scan_job(_tenant_jobs(request), require_authoritative_evidence=True)
     latest_result = latest_job.result if latest_job is not None else None
 
     if latest_result is None:
@@ -2331,7 +2349,12 @@ def _compound_issue_count(tenant_jobs: list[Any]) -> int:
 
     seen_ids: set[str] = set()
     compound = 0
-    for job in current_scan_jobs(tenant_jobs, since=None, scan_id=None):
+    for job in current_scan_jobs(
+        tenant_jobs,
+        since=None,
+        scan_id=None,
+        require_authoritative_evidence=True,
+    ):
         result = cast(dict[str, Any], job.result)
         for b in result.get("blast_radius", []):
             vid = b.get("vulnerability_id", "")

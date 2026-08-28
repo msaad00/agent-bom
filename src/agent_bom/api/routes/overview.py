@@ -543,7 +543,11 @@ def _estate_rollup(jobs: list[Any]) -> dict[str, Any]:
     latest_scan_at: str | None = None
 
     from agent_bom.api import time_window
-    from agent_bom.api.findings_current import current_scan_jobs
+    from agent_bom.api.findings_current import (
+        current_scan_jobs,
+        job_has_authoritative_scan_evidence,
+        scan_evidence_authority_key,
+    )
 
     # Operational counters describe job history. Evidence-bearing posture below
     # is folded only from the newest successful snapshot per target scope.
@@ -557,13 +561,18 @@ def _estate_rollup(jobs: list[Any]) -> dict[str, Any]:
             continue
         scan_count += 1
         done_count += 1
-        created = getattr(job, "created_at", None)
-        created_str = str(created) if created is not None else None
-        if created_str and (latest_scan_at is None or created_str > latest_scan_at):
-            latest_scan_at = created_str
+        if job_has_authoritative_scan_evidence(job):
+            completed = scan_evidence_authority_key(job)[1]
+            if completed and (latest_scan_at is None or completed > latest_scan_at):
+                latest_scan_at = completed
 
     since = time_window.window_since_iso(time_window.normalize_window_days(None))
-    evidence_jobs = current_scan_jobs(jobs, since=since, scan_id=None)
+    evidence_jobs = current_scan_jobs(
+        jobs,
+        since=since,
+        scan_id=None,
+        require_authoritative_evidence=True,
+    )
     for job in evidence_jobs:
         result = cast(dict[str, Any], job.result)
 
@@ -677,7 +686,7 @@ def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:
     """Letter grade + score from the latest completed scan (same as /v1/posture)."""
     from agent_bom.api.findings_current import latest_current_scan_job
 
-    job = latest_current_scan_job(jobs)
+    job = latest_current_scan_job(jobs, require_authoritative_evidence=True)
     if job is not None:
         result = cast(dict[str, Any], job.result)
         scorecard = result.get("posture_scorecard")
@@ -1059,7 +1068,7 @@ def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]
 
 
 def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
-    """Severity histogram with the exact scan semantics of ``/v1/findings``."""
+    """Authoritative executed-scan histogram for executive posture surfaces."""
     from agent_bom.api import time_window
     from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.api.findings_current import current_scan_findings
@@ -1071,6 +1080,7 @@ def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
         since=since,
         scan_id=None,
         iter_findings=_iter_scan_findings,
+        require_authoritative_evidence=True,
     )
     severity = _empty_severity()
     for row in findings:

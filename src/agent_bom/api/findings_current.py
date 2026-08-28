@@ -194,6 +194,10 @@ def job_has_authoritative_scan_evidence(job: _ScanJobLike) -> bool:
     result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
     if any(bool(result.get(field)) for field in ("scan_skipped", "dry_run", "no_scan")):
         return False
+    raw_scan_run = result.get("scan_run")
+    scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
+    if str(scan_run.get("outcome") or "").strip().casefold() == "failed":
+        return False
 
     request = getattr(job, "request", None)
     if request is not None and hasattr(request, "model_dump"):
@@ -247,15 +251,22 @@ def current_scan_findings(
     since: str | None,
     scan_id: str | None,
     iter_findings: Callable[[Any], list[dict[str, Any]]],
+    require_authoritative_evidence: bool = False,
 ) -> list[dict[str, Any]]:
     """Return the latest current row per identity across eligible scan jobs.
 
     Parent aggregation jobs are excluded from the unscoped view because their
     child jobs already own the evidence. A direct ``scan_id`` query retains the
-    selected job's rows verbatim.
+    selected job's rows verbatim. Callers asserting that a scan operated may
+    require executed evidence, excluding skipped/dry-run/failed outcomes.
     """
     deduped: dict[str, tuple[tuple[str, str, str], dict[str, Any]]] = {}
-    for job in current_scan_jobs(jobs, since=since, scan_id=scan_id):
+    for job in current_scan_jobs(
+        jobs,
+        since=since,
+        scan_id=scan_id,
+        require_authoritative_evidence=require_authoritative_evidence,
+    ):
         authority = scan_evidence_authority_key(job)
         for row in iter_findings(job):
             identity = finding_identity(row)

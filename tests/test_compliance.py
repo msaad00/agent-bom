@@ -273,6 +273,70 @@ def test_newer_same_scope_dry_run_does_not_retire_real_control_evidence() -> Non
     assert soc2_control["status"] == "fail"
 
 
+def test_failed_scan_outcome_cannot_operate_detective_controls() -> None:
+    from agent_bom.api.routes.compliance import _build_compliance
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    failed = ScanJob(
+        job_id="failed-outcome",
+        tenant_id="default",
+        created_at=_recent_iso(hours=1),
+        completed_at=_recent_iso(),
+        status=JobStatus.DONE,
+        request=ScanRequest(repo_url="https://example.test/acme/repo.git"),
+    )
+    failed.result = {
+        "scan_run": {
+            "outcome": "failed",
+            "issues": [{"severity": "error", "affects_coverage": True}],
+            "requested_scope_count": 1,
+            "complete_scope_count": 0,
+            "incomplete_scope_count": 1,
+        },
+        "summary": {"total_packages": 1},
+        "findings": [],
+    }
+
+    posture = _build_compliance([failed])
+    detective = [
+        control
+        for controls in (posture["soc2"], posture["nist_csf"], posture["cis_controls"])
+        for control in controls
+        if control.get("evaluation_mode") == "detective"
+    ]
+
+    assert posture["scan_count"] == 0
+    assert all(control["status"] != "pass" for control in detective)
+
+
+def test_compliance_latest_scan_normalizes_offsets_before_comparison() -> None:
+    from agent_bom.api.routes.compliance import _build_compliance
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    later = ScanJob(
+        job_id="later-utc",
+        tenant_id="default",
+        created_at="2026-08-21T00:00:00+00:00",
+        completed_at="2026-08-21T00:00:00+00:00",
+        status=JobStatus.DONE,
+        request=ScanRequest(repo_url="https://example.test/later.git"),
+        result={"findings": []},
+    )
+    earlier = ScanJob(
+        job_id="earlier-offset",
+        tenant_id="default",
+        created_at="2026-08-21T01:00:00+02:00",
+        completed_at="2026-08-21T01:00:00+02:00",
+        status=JobStatus.DONE,
+        request=ScanRequest(repo_url="https://example.test/earlier.git"),
+        result={"findings": []},
+    )
+
+    posture = _build_compliance([later, earlier])
+
+    assert posture["latest_scan"] == "2026-08-21T00:00:00+00:00"
+
+
 def test_compliance_scan_id_matches_nested_scan_run_identifier() -> None:
     from agent_bom.api.routes.compliance import _build_compliance
     from agent_bom.api.server import ScanJob, ScanRequest
@@ -809,6 +873,55 @@ def test_compliance_includes_latest_aisvs_benchmark():
     assert data["total_controls"] > data["evaluated_controls"]
 
     _clear_jobs()
+
+
+def test_latest_aisvs_excludes_newer_skipped_scan_and_is_order_independent() -> None:
+    from agent_bom.api.routes.compliance import _latest_aisvs_benchmark_from_jobs
+
+    def _job(job_id: str, completed_at: str, *, request: dict | None = None, result: dict) -> SimpleNamespace:
+        return SimpleNamespace(
+            job_id=job_id,
+            status=JobStatus.DONE,
+            request=request or {},
+            result=result,
+            created_at=completed_at,
+            completed_at=completed_at,
+            child_job_ids=[],
+        )
+
+    real = _job(
+        "real",
+        "2026-08-27T00:00:00Z",
+        result={"aisvs_benchmark": {"checks": [{"status": "pass"}]}},
+    )
+    skipped = _job(
+        "skipped",
+        "2026-08-27T01:00:00Z",
+        request={"dry_run": True},
+        result={
+            "scan_skipped": True,
+            "dry_run": True,
+            "aisvs_benchmark": {"checks": [{"status": "fail"}]},
+        },
+    )
+    scan_a = _job(
+        "scan-a",
+        "2026-08-27T02:00:00Z",
+        request={"repo_url": "https://example.test/a.git"},
+        result={"aisvs_benchmark": {"checks": [{"status": "pass"}]}},
+    )
+    scan_z = _job(
+        "scan-z",
+        "2026-08-27T02:00:00Z",
+        request={"repo_url": "https://example.test/z.git"},
+        result={"aisvs_benchmark": {"checks": [{"status": "fail"}]}},
+    )
+
+    assert _latest_aisvs_benchmark_from_jobs([real, skipped])["scan_id"] == "real"
+    forward = _latest_aisvs_benchmark_from_jobs([scan_a, scan_z])
+    reverse = _latest_aisvs_benchmark_from_jobs([scan_z, scan_a])
+    assert forward == reverse
+    assert forward["scan_id"] == "scan-z"
 
 
 def test_aisvs_compliance_endpoint_is_tenant_scoped():

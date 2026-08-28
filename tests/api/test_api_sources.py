@@ -382,6 +382,27 @@ def test_credential_reference_rejects_secret_shaped_external_ref_without_echo_or
     assert secret not in listed.text
 
 
+def test_credential_reference_rejects_opaque_secret_inside_reference_path_without_persisting(
+    source_client: TestClient,
+) -> None:
+    secret = "".join(("aZ9k", "Lm2N", "pQr7", "StUv", "Wx3Y", "z8Ab", "CdEf", "GhJk", "LmNo", "PqRs"))
+    external_ref = f"vault://production/{secret}"
+
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unsafe opaque credential",
+            "provider": "vault",
+            "external_ref": external_ref,
+        },
+    )
+
+    assert create.status_code == 422
+    assert secret not in create.text
+    assert _stores._credential_ref_store.list_all(tenant_id="tenant-alpha") == []
+
+
 def test_credential_reference_rejects_secret_shaped_update_without_mutating_existing_ref(
     source_client: TestClient,
 ) -> None:
@@ -502,6 +523,35 @@ def test_credential_update_explicit_null_purges_legacy_secret_reference(source_c
     persisted = _stores._credential_ref_store.get("legacy-secret-reference", tenant_id="tenant-alpha")
     assert persisted is not None
     assert persisted.external_ref is None
+
+
+def test_credential_retirement_purges_legacy_secret_reference_at_rest(source_client: TestClient) -> None:
+    secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
+    legacy = CredentialRefRecord(
+        credential_ref_id="legacy-secret-retire",
+        tenant_id="tenant-alpha",
+        display_name="Legacy credential",
+        provider="github",
+        external_ref=secret,
+        created_at="2026-08-27T00:00:00+00:00",
+        updated_at="2026-08-27T00:00:00+00:00",
+    )
+    _stores._credential_ref_store.put(legacy)
+
+    retired = source_client.delete(
+        "/v1/credentials/legacy-secret-retire",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert retired.status_code == 204
+    persisted = _stores._credential_ref_store.get("legacy-secret-retire", tenant_id="tenant-alpha")
+    assert persisted is not None
+    assert persisted.status.value == "retired"
+    assert persisted.external_ref is None
+    fetched = source_client.get("/v1/credentials/legacy-secret-retire", headers=VIEWER_HEADERS)
+    assert fetched.status_code == 200
+    assert fetched.json()["external_ref"] is None
+    assert secret not in fetched.text
 
 
 def test_runnable_source_rejects_missing_or_metadata_only_credential_reference(source_client: TestClient) -> None:

@@ -12,7 +12,7 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -275,9 +275,18 @@ def value_looks_like_secret(value: object) -> bool:
         # credential reference has no reason to preserve either.
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             return True
-        return False
+        # A reference-shaped URL can still carry an opaque credential in its
+        # host or path (for example ``vault://team/<pasted token>``). Apply the
+        # same bounded entropy classifier to individual decoded components;
+        # checking the whole URL would skip entropy because it contains ``://``.
+        components = [parsed.hostname or ""]
+        components.extend(part for part in unquote(parsed.path).split("/") if part)
+        return any(_looks_sensitive_value(component) for component in components)
     if lowered.startswith(_REFERENCE_SAFE_PREFIXES):
-        return False
+        # Non-URL reference forms (ARNs and workload-identity names) receive
+        # the same segment-level check instead of bypassing entropy wholesale.
+        components = [part for part in re.split(r"[/:]", unquote(text)) if part]
+        return any(_looks_sensitive_value(component) for component in components)
     return _looks_sensitive_value(text)
 
 

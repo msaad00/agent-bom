@@ -249,6 +249,12 @@ async def delete_credential_ref(request: Request, credential_ref_id: str) -> Non
             )
         credential.enabled = False
         credential.status = CredentialRefStatus.RETIRED
+        # Older releases could persist credential material in this metadata
+        # field. Retirement is terminal, so scrub detected legacy material
+        # before making the record immutable; otherwise no later API call can
+        # remove the secret from durable storage.
+        if value_looks_like_secret(credential.external_ref):
+            credential.external_ref = None
         credential.updated_at = _now()
         _get_credential_ref_store().put(credential)
     log_action(

@@ -581,6 +581,61 @@ class TestSchedulerLoop:
         asyncio.run(_run())
         assert store.get("s1") is None
 
+    def test_postgres_scheduler_binds_tenant_before_dispatch(self, monkeypatch):
+        """Maintenance discovery must not leave the dispatch callback on the default RLS tenant."""
+        from agent_bom.api.postgres_common import _current_tenant
+        from agent_bom.api.scheduler import scheduler_loop
+
+        class PostgresScheduleStore(InMemoryScheduleStore):
+            pass
+
+        store = PostgresScheduleStore()
+        store.put(
+            _make_schedule(
+                "tenant-schedule",
+                next_run="2020-01-01T00:00:00+00:00",
+                enabled=True,
+                tenant_id="tenant-alpha",
+            )
+        )
+        monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
+        observed_tenants: list[str] = []
+
+        class _FakeCursor:
+            def fetchone(self):
+                return (True,)
+
+        class _FakeConn:
+            def execute(self, sql, params):
+                return _FakeCursor()
+
+        class _FakePool:
+            def getconn(self):
+                return _FakeConn()
+
+            def putconn(self, conn):
+                return None
+
+        def mock_scan(config, **metadata):
+            observed_tenants.append(_current_tenant.get())
+            return "tenant-job"
+
+        async def _run():
+            task = asyncio.create_task(scheduler_loop(store, mock_scan, interval_seconds=0))
+            await asyncio.sleep(0.05)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        with patch("agent_bom.api.postgres_store._get_pool", return_value=_FakePool()):
+            asyncio.run(_run())
+
+        assert observed_tenants
+        assert set(observed_tenants) == {"tenant-alpha"}
+        assert _current_tenant.get() == "default"
+
     def test_skips_due_scans_without_postgres_leader_lock(self, monkeypatch):
         """Only the replica holding the advisory lock should trigger schedules."""
         from agent_bom.api.scheduler import scheduler_loop

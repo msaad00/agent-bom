@@ -68,6 +68,8 @@ def test_value_looks_like_secret_accepts_reference_identifiers(reference):
         "postgresql://agent:super-secret@example.com/agent_bom",
         "vault://team/agent-bom?token=ghp_abcdefghijklmnopqrstuvwxyz1234567890",
         "aws-secretsmanager://production/agent-bom#credential-material",
+        "vault://production/aZ9kLm2NpQr7StUvWx3Yz8AbCdEfGhJkLmNoPqRs",
+        "https://secrets.example/aZ9kLm2NpQr7StUvWx3Yz8AbCdEfGhJkLmNoPqRs",
     ],
 )
 def test_value_looks_like_secret_rejects_credential_material(secret):

@@ -13,7 +13,6 @@ in-memory (dev) and SQLite (production) backends.
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import json
 import logging
@@ -208,8 +207,7 @@ else:
 def _hmac_sha256_hex(signing_key: bytes, payload: bytes) -> str:
     """Authenticate an audit payload; this is a MAC, not password hashing."""
 
-    # lgtm[py/weak-sensitive-data-hashing]
-    return hmac.new(signing_key, payload, hashlib.sha256).hexdigest()
+    return hmac.digest(signing_key, payload, "sha256").hex()
 
 
 @dataclass

@@ -205,8 +205,9 @@ else:
 
 
 def _hmac_sha256_hex(signing_key: bytes, payload: bytes) -> str:
-    """Authenticate an audit payload; this is a MAC, not password hashing."""
+    """Authenticate an audit payload with HMAC; this is not password hashing."""
 
+    # codeql[py/weak-sensitive-data-hashing]
     return hmac.digest(signing_key, payload, "sha256").hex()
 
 

@@ -1287,6 +1287,79 @@ def test_response_hmac_differs_from_payload_hash():
     assert compute_response_hmac(msg, "some-key") != compute_payload_hash(msg)
 
 
+@pytest.mark.asyncio
+async def test_proxy_restart_recovers_failed_audit_delivery_from_stable_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two real proxy lifecycles share the same durable delivery identity."""
+    from unittest.mock import AsyncMock
+
+    state_dir = tmp_path / "state"
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("AGENT_BOM_PROXY_POLICY_CACHE_PATH", str(tmp_path / "policy-cache.json"))
+    monkeypatch.delenv("AGENT_BOM_PROXY_AUDIT_SPILLOVER_PATH", raising=False)
+    monkeypatch.delenv("AGENT_BOM_PROXY_AUDIT_DLQ_PATH", raising=False)
+    monkeypatch.setattr(proxy_mod, "create_async_stdin_reader", AsyncMock(return_value=object()))
+    monkeypatch.setattr(proxy_mod, "read_async_stdin_line", AsyncMock(return_value=b""))
+    monkeypatch.setattr(proxy_mod, "_fetch_enabled_gateway_policies", AsyncMock(return_value=([], None)))
+
+    control_plane_url = "https://control.example.test"
+    paths = proxy_mod._proxy_audit_delivery_paths(
+        control_plane_url,
+        "default",
+        proxy_mod._generate_proxy_source_id(),
+    )
+    seeded = AuditSpilloverStore(
+        paths.spill_path,
+        paths.dlq_path,
+        max_spillover_bytes=8 * 1024 * 1024,
+    )
+    assert seeded.append_events([{"event_id": "restart-event", "decision": "deny"}]) == "spillover"
+
+    delivered: list[str] = []
+    attempts = 0
+
+    async def push_with_one_failure(
+        _base_url: str,
+        _token: str | None,
+        _source_id: str,
+        _session_id: str,
+        alerts: list[dict],
+        _summary: dict | None,
+    ) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            seeded.append_events([{"event_id": "during-failed-send", "decision": "deny"}])
+            raise RuntimeError("temporary 503")
+        if attempts == 2:
+            seeded.append_events([{"event_id": "during-successful-send", "decision": "deny"}])
+        delivered.extend(str(alert["event_id"]) for alert in alerts)
+
+    monkeypatch.setattr(proxy_mod, "_push_proxy_audit_batch", push_with_one_failure)
+    server_cmd = ["python3", "-c", "pass"]
+
+    assert await proxy_mod.run_proxy(server_cmd, control_plane_url=control_plane_url, metrics_port=0) == 0
+    after_failure = AuditSpilloverStore(
+        paths.spill_path,
+        paths.dlq_path,
+        max_spillover_bytes=8 * 1024 * 1024,
+    )
+    assert after_failure.read_spillover() == [
+        {"decision": "deny", "event_id": "restart-event"},
+        {"decision": "deny", "event_id": "during-failed-send"},
+    ]
+
+    assert await proxy_mod.run_proxy(server_cmd, control_plane_url=control_plane_url, metrics_port=0) == 0
+    assert delivered == ["restart-event", "during-failed-send"]
+    assert after_failure.read_spillover() == [{"decision": "deny", "event_id": "during-successful-send"}]
+
+    assert await proxy_mod.run_proxy(server_cmd, control_plane_url=control_plane_url, metrics_port=0) == 0
+    assert delivered == ["restart-event", "during-failed-send", "during-successful-send"]
+    assert after_failure.read_spillover() == []
+
+
 # ── ProxyMetrics relay_errors ───────────────────────────────────────────────
 
 

@@ -21,6 +21,12 @@ class GatewayRuntimeEventType(str, Enum):
     DLP_RESULT_REDACTED = "gateway.dlp.result_redacted"
     DLP_RESULT_BLOCKED = "gateway.dlp.result_blocked"
     VISUAL_REDACTED = "gateway.visual.redacted"
+    RUNTIME_PROFILE_WARNED = "gateway.runtime_profile.warned"
+    RUNTIME_PROFILE_DEV_BYPASS = "gateway.runtime_profile.dev_bypass"
+    RUNTIME_PROFILE_BLOCKED = "gateway.runtime_profile.blocked"
+    ENFORCEMENT_WARNED = "gateway.enforcement.warned"
+    ENFORCEMENT_OBSERVED = "gateway.enforcement.observed"
+    ENFORCEMENT_BLOCKED = "gateway.enforcement.blocked"
 
 
 GATEWAY_ALLOWED_EVENT_TYPES = frozenset({GatewayRuntimeEventType.TOOL_CALL_ALLOWED.value})
@@ -37,6 +43,155 @@ GATEWAY_DATA_FILTER_EVENT_TYPES = frozenset(
         GatewayRuntimeEventType.VISUAL_REDACTED.value,
     }
 )
+GATEWAY_PROFILE_EVENT_TYPES = frozenset(
+    {
+        GatewayRuntimeEventType.RUNTIME_PROFILE_WARNED.value,
+        GatewayRuntimeEventType.RUNTIME_PROFILE_DEV_BYPASS.value,
+        GatewayRuntimeEventType.RUNTIME_PROFILE_BLOCKED.value,
+    }
+)
+GATEWAY_ENFORCEMENT_EVENT_TYPES = frozenset(
+    {
+        GatewayRuntimeEventType.ENFORCEMENT_WARNED.value,
+        GatewayRuntimeEventType.ENFORCEMENT_OBSERVED.value,
+        GatewayRuntimeEventType.ENFORCEMENT_BLOCKED.value,
+    }
+)
+GATEWAY_DENIED_EVENT_TYPES = GATEWAY_BLOCKED_EVENT_TYPES | frozenset(
+    {
+        GatewayRuntimeEventType.RUNTIME_PROFILE_BLOCKED.value,
+        GatewayRuntimeEventType.ENFORCEMENT_BLOCKED.value,
+    }
+)
+GATEWAY_CANONICAL_EVENT_TYPES = (
+    GATEWAY_ALLOWED_EVENT_TYPES
+    | GATEWAY_BLOCKED_EVENT_TYPES
+    | GATEWAY_DATA_FILTER_EVENT_TYPES
+    | GATEWAY_PROFILE_EVENT_TYPES
+    | GATEWAY_ENFORCEMENT_EVENT_TYPES
+)
+
+_BLOCKED_ENFORCEMENT_ACTIONS = frozenset(
+    {
+        "gateway.a2a_mutual_auth_blocked",
+        "gateway.anomaly_blocked",
+        "gateway.budget_exceeded",
+        "gateway.conditional_access_blocked",
+        "gateway.firewall_blocked",
+        "gateway.fleet_blocked",
+        "gateway.graph_reachability_blocked",
+        "gateway.identity_blocked",
+        "gateway.oauth_scope_blocked",
+        "gateway.policy_blocked",
+        "gateway.policy_fail_closed",
+        "gateway.policy_quarantined",
+        "gateway.rate_limited",
+    }
+)
+_WARNED_ENFORCEMENT_ACTIONS = frozenset(
+    {
+        "gateway.a2a_mutual_auth_warned",
+        "gateway.anomaly_warned",
+        "gateway.drift_warned",
+        "gateway.fleet_warned",
+        "gateway.firewall_warned",
+        "gateway.graph_reachability_warned",
+        "gateway.policy_warned",
+    }
+)
+_OBSERVED_ENFORCEMENT_ACTIONS = frozenset({"gateway.identity_jit_grant_used"})
+
+
+def ensure_gateway_event_identity(event: dict[str, Any]) -> dict[str, Any]:
+    """Assign one occurrence identity before an event enters durable delivery."""
+
+    identified = dict(event)
+    event_id = str(identified.get("event_id") or identified.get("decision_id") or f"gw_{uuid.uuid4().hex}")
+    identified["event_id"] = event_id
+    if not identified.get("decision_id"):
+        identified["decision_id"] = event_id
+    return identified
+
+
+def _positive_revision(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        revision = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, revision)
+
+
+def _policy_ids(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(dict.fromkeys(item for item in value if isinstance(item, str) and item))
+
+
+def canonicalize_gateway_enforcement_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Convert legacy enforcement actions to safe durable event metadata."""
+
+    if str(event.get("event_type") or "") in GATEWAY_CANONICAL_EVENT_TYPES:
+        return dict(event)
+    action = str(event.get("action") or "")
+    if action == "gateway.firewall_blocked":
+        # This action is emitted only from the in-path tool relay. It therefore
+        # contributes to tool-call blocked KPIs rather than generic posture.
+        event_type = GatewayRuntimeEventType.TOOL_CALL_BLOCKED
+        decision = "deny"
+    elif action == "gateway.firewall_decision":
+        # The read-only decision endpoint may report enforce, dry-run, or allow.
+        # Canonical decisions stay binary; warnings are represented by event type.
+        effective_decision = str(event.get("effective_decision") or event.get("decision") or "allow")
+        if effective_decision == "deny":
+            event_type = GatewayRuntimeEventType.ENFORCEMENT_BLOCKED
+            decision = "deny"
+        elif effective_decision == "warn":
+            event_type = GatewayRuntimeEventType.ENFORCEMENT_WARNED
+            decision = "allow"
+        else:
+            event_type = GatewayRuntimeEventType.ENFORCEMENT_OBSERVED
+            decision = "allow"
+    elif action == "gateway.drift_binding_unavailable":
+        blocked = str(event.get("enforcement_mode") or "") == "enforce"
+        event_type = GatewayRuntimeEventType.ENFORCEMENT_BLOCKED if blocked else GatewayRuntimeEventType.ENFORCEMENT_WARNED
+        decision = "deny" if blocked else "allow"
+    elif action in _BLOCKED_ENFORCEMENT_ACTIONS:
+        event_type = GatewayRuntimeEventType.ENFORCEMENT_BLOCKED
+        decision = "deny"
+    elif action in _WARNED_ENFORCEMENT_ACTIONS:
+        event_type = GatewayRuntimeEventType.ENFORCEMENT_WARNED
+        decision = "allow"
+    elif action in _OBSERVED_ENFORCEMENT_ACTIONS:
+        event_type = GatewayRuntimeEventType.ENFORCEMENT_OBSERVED
+        decision = "allow"
+    else:
+        return dict(event)
+    reason_code = action.removeprefix("gateway.").replace(".", "_")
+    canonical = build_gateway_runtime_event(
+        event_type,
+        tenant_id=str(event.get("tenant_id") or "default"),
+        agent_id=str(event.get("source_agent") or event.get("agent_id") or "anonymous"),
+        profile_id=str(event.get("profile_id") or ""),
+        upstream=str(event.get("upstream") or event.get("target_agent") or ""),
+        tool=str(event.get("tool") or event.get("method") or ""),
+        decision=decision,
+        policy_source=str(event.get("policy_source") or reason_code),
+        trace_id=str(event.get("trace_id") or ""),
+        identity_id=str(event.get("identity_id") or ""),
+        profile_revision=_positive_revision(event.get("profile_revision")),
+        blueprint_id=str(event.get("blueprint_id") or ""),
+        blueprint_revision=_positive_revision(event.get("blueprint_revision")),
+        policy_ids=_policy_ids(event.get("policy_ids")),
+        reason_code=reason_code,
+        policy_id=str(event.get("policy_id") or ""),
+        evidence_id=str(event.get("evidence_id") or ""),
+    )
+    if event.get("event_id"):
+        canonical["event_id"] = str(event["event_id"])
+        canonical["decision_id"] = str(event.get("decision_id") or event["event_id"])
+    return canonical
 
 
 def build_gateway_runtime_event(
@@ -103,7 +258,13 @@ def build_gateway_runtime_event(
 __all__ = [
     "GATEWAY_ALLOWED_EVENT_TYPES",
     "GATEWAY_BLOCKED_EVENT_TYPES",
+    "GATEWAY_CANONICAL_EVENT_TYPES",
     "GATEWAY_DATA_FILTER_EVENT_TYPES",
+    "GATEWAY_DENIED_EVENT_TYPES",
+    "GATEWAY_ENFORCEMENT_EVENT_TYPES",
+    "GATEWAY_PROFILE_EVENT_TYPES",
     "GatewayRuntimeEventType",
     "build_gateway_runtime_event",
+    "canonicalize_gateway_enforcement_event",
+    "ensure_gateway_event_identity",
 ]

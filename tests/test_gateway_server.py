@@ -76,6 +76,17 @@ def test_healthz_lists_configured_upstreams() -> None:
         "status": "ok",
         "upstreams": ["filesystem", "jira"],
         "auth": {"incoming_token_required": False},
+        "audit_delivery": {
+            "configured": True,
+            "mode": "local_hmac_sqlite",
+            "status": "healthy",
+            "durable": True,
+            "accepting_events": True,
+            "backlog_observable": True,
+            "retry_worker_running": False,
+            "backlog_bytes": 0,
+            "dropped_events": 0,
+        },
         "upstream_runtime": {
             "pooled_http_client": True,
             "circuit_breaker_enabled": True,
@@ -1129,7 +1140,9 @@ def test_relay_upstream_error_surfaces_as_502_and_is_audited() -> None:
     )
     assert resp.status_code == 502
     assert resp.json()["detail"] == "upstream error: An internal error occurred. Please contact support."
-    assert audit_events == [
+    assert audit_events[0]["event_type"] == "gateway.tool_call.allowed"
+    assert audit_events[0]["tool"] == "read_file"
+    assert audit_events[1:] == [
         {
             "action": "gateway.upstream_error",
             "upstream": "filesystem",
@@ -1163,7 +1176,9 @@ def test_relay_upstream_timeout_surfaces_as_502_and_is_audited() -> None:
     )
     assert resp.status_code == 502
     assert resp.json()["detail"] == "upstream error: timeout"
-    assert audit_events == [
+    assert audit_events[0]["event_type"] == "gateway.tool_call.allowed"
+    assert audit_events[0]["tool"] == "read_file"
+    assert audit_events[1:] == [
         {
             "action": "gateway.upstream_error",
             "upstream": "filesystem",
@@ -1172,6 +1187,59 @@ def test_relay_upstream_timeout_surfaces_as_502_and_is_audited() -> None:
             "reason": "timeout",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_status", "expected_detail", "expected_retry_after"),
+    [
+        ("timeout", 502, "upstream error: timeout", None),
+        ("circuit", 503, "upstream circuit open", "12"),
+        ("general", 502, "upstream error: An internal error occurred. Please contact support.", None),
+    ],
+)
+def test_post_forward_error_audit_failure_never_masks_upstream_error(
+    failure: str,
+    expected_status: int,
+    expected_detail: str,
+    expected_retry_after: str | None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    audit_calls = 0
+
+    async def failing_caller(upstream, message, extra_headers):
+        if failure == "timeout":
+            raise asyncio.TimeoutError()
+        if failure == "circuit":
+            from agent_bom.gateway_server import GatewayCircuitOpenError
+
+            raise GatewayCircuitOpenError(upstream.name, 12)
+        raise RuntimeError("upstream-secret-token")
+
+    async def failing_after_admission_audit(event):
+        nonlocal audit_calls
+        audit_calls += 1
+        if audit_calls > 1:
+            raise RuntimeError("audit-secret-token")
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=failing_caller,
+        audit_sink=failing_after_admission_audit,
+    )
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/mcp/filesystem",
+            json=_json_rpc("tools/call", name="read_file", arguments={"path": "/tmp/x"}),
+        )
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == expected_detail
+    assert response.headers.get("Retry-After") == expected_retry_after
+    assert response.headers["X-Agent-Bom-Audit-Delivery"] == "degraded"
+    assert audit_calls == 2
+    assert "audit-secret-token" not in caplog.text
+    assert "upstream-secret-token" not in caplog.text
 
 
 def test_managed_upstream_relay_opens_circuit_after_repeated_failures() -> None:
@@ -1335,7 +1403,9 @@ def test_relay_returns_503_when_managed_circuit_is_open() -> None:
     assert resp.status_code == 503
     assert resp.headers["retry-after"] == "12"
     assert resp.json()["detail"] == "upstream circuit open"
-    assert audit_events == [
+    assert audit_events[0]["event_type"] == "gateway.tool_call.allowed"
+    assert audit_events[0]["tool"] == "read_file"
+    assert audit_events[1:] == [
         {
             "action": "gateway.upstream_circuit_open",
             "upstream": "filesystem",

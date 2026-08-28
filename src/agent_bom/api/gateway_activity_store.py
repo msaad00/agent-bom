@@ -24,6 +24,7 @@ from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.runtime.gateway_events import (
     GATEWAY_ALLOWED_EVENT_TYPES,
     GATEWAY_BLOCKED_EVENT_TYPES,
+    GATEWAY_CANONICAL_EVENT_TYPES,
     GATEWAY_DATA_FILTER_EVENT_TYPES,
 )
 from agent_bom.runtime.profile_resolution import classify_profile_shadow_reason
@@ -140,7 +141,7 @@ def ensure_sqlite_gateway_activity_schema(conn: sqlite3.Connection) -> None:
     ensure_sqlite_schema_version(conn, "runtime_events", version=GATEWAY_ACTIVITY_STORAGE_VERSION)
 
 
-_EVENT_TYPES = GATEWAY_ALLOWED_EVENT_TYPES | GATEWAY_BLOCKED_EVENT_TYPES | GATEWAY_DATA_FILTER_EVENT_TYPES
+_EVENT_TYPES = GATEWAY_CANONICAL_EVENT_TYPES
 _EXPECTED_DECISIONS = {
     "gateway.tool_call.allowed": "allow",
     "gateway.tool_call.blocked": "deny",
@@ -148,6 +149,12 @@ _EXPECTED_DECISIONS = {
     "gateway.dlp.result_redacted": "allow",
     "gateway.dlp.result_blocked": "deny",
     "gateway.visual.redacted": "allow",
+    "gateway.runtime_profile.warned": "allow",
+    "gateway.runtime_profile.dev_bypass": "allow",
+    "gateway.runtime_profile.blocked": "deny",
+    "gateway.enforcement.warned": "allow",
+    "gateway.enforcement.observed": "allow",
+    "gateway.enforcement.blocked": "deny",
 }
 _ALLOWED_EVENT_FIELDS = frozenset(
     {

@@ -9,6 +9,17 @@ single canonical version.
 For policy-layer ordering inside a single tool-call see
 `docs/POLICY_PRECEDENCE.md`. This page is the higher-level surface map.
 
+The standalone gateway exposes separate liveness and admission signals.
+`/healthz` reports delivery degradation and bounded backlog details. `/readyz`
+returns 200 only while the configured audit path can admit tool execution. A
+control-plane gateway therefore becomes unready when the remote durable
+acknowledgement is unavailable, even though its bounded local spool retains the
+event for retry. The Helm chart requires that spool on a restart-stable PVC for
+both remote-connected and local-only gateways, runs one writer replica, and
+rejects autoscaling until shared delivery leases exist. A local-only gateway
+remains ready while its SQLite audit store is writable. Persistence failure, a
+full bounded backlog, or shutdown returns 503.
+
 ### Runtime doc set
 
 This page is the canonical runtime surface map. The detail docs:

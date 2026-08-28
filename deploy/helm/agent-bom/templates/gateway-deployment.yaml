@@ -1,5 +1,22 @@
 {{- $profileEnforcement := .Values.gateway.profileEnforcement | default "off" -}}
 {{- $gatewayEnvFrom := .Values.gateway.envFrom -}}
+{{- $gatewayPersistence := .Values.gateway.persistence | default dict -}}
+{{- $gatewayRuntimeReplicas := int (.Values.gateway.replicas | default 1) -}}
+{{- if or (.Values.gateway.autoscaling.enabled | default false) (.Values.gateway.autoscaling.keda.enabled | default false) -}}
+{{- $gatewayRuntimeReplicas = int (.Values.gateway.autoscaling.maxReplicas | default 2) -}}
+{{- end -}}
+{{- if and .Values.gateway.enabled (not ($gatewayPersistence.enabled | default false)) -}}
+{{- fail "gateway audit requires gateway.persistence.enabled=true and a restart-stable PVC, including control-plane-connected deployments" -}}
+{{- end -}}
+{{- if and .Values.gateway.enabled ($gatewayPersistence.enabled | default false) (ne (int (.Values.gateway.replicas | default 1)) 1) -}}
+{{- fail "gateway persistence requires gateway.replicas=1 because durable delivery claims are process-owned" -}}
+{{- end -}}
+{{- if and .Values.gateway.enabled ($gatewayPersistence.enabled | default false) (or (.Values.gateway.autoscaling.enabled | default false) (.Values.gateway.autoscaling.keda.enabled | default false)) -}}
+{{- fail "gateway persistence is incompatible with gateway autoscaling until cross-pod delivery leases are implemented" -}}
+{{- end -}}
+{{- if and .Values.gateway.enabled ($gatewayPersistence.enabled | default false) (not ($gatewayPersistence.existingClaim | default "")) -}}
+{{- fail "gateway.persistence.existingClaim is required when gateway persistence is enabled" -}}
+{{- end -}}
 {{- if and .Values.gateway.enabled (ne $profileEnforcement "off") (not $gatewayEnvFrom) -}}
 {{- fail "gateway profile enforcement requires gateway.envFrom with a gateway-scoped Secret containing the shared AGENT_BOM_POSTGRES_URL" -}}
 {{- end -}}
@@ -13,7 +30,11 @@ metadata:
     {{- include "agent-bom.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
 spec:
-  replicas: {{ .Values.gateway.replicas | default 2 }}
+  replicas: {{ .Values.gateway.replicas | default 1 }}
+  {{- if ($gatewayPersistence.enabled | default false) }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "agent-bom.name" . }}
@@ -101,12 +122,20 @@ spec:
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: http
             initialDelaySeconds: 2
             periodSeconds: 5
-          {{- with .Values.gateway.env }}
           env:
+            - name: AGENT_BOM_GATEWAY_REPLICAS
+              value: {{ $gatewayRuntimeReplicas | quote }}
+            - name: AGENT_BOM_STATE_DIR
+              {{- if ($gatewayPersistence.enabled | default false) }}
+              value: {{ $gatewayPersistence.mountPath | default "/var/lib/agent-bom" | quote }}
+              {{- else }}
+              value: {{ .Values.gateway.stateDir | default "/tmp/agent-bom" | quote }}
+              {{- end }}
+          {{- with .Values.gateway.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- with $gatewayEnvFrom }}
@@ -127,6 +156,10 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if ($gatewayPersistence.enabled | default false) }}
+            - name: audit-state
+              mountPath: {{ $gatewayPersistence.mountPath | default "/var/lib/agent-bom" | quote }}
+            {{- end }}
             {{- with .Values.gateway.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -136,6 +169,11 @@ spec:
             name: {{ include "agent-bom.name" . }}-gateway-upstreams
         - name: tmp
           emptyDir: {}
+        {{- if ($gatewayPersistence.enabled | default false) }}
+        - name: audit-state
+          persistentVolumeClaim:
+            claimName: {{ required "gateway.persistence.existingClaim is required" $gatewayPersistence.existingClaim | quote }}
+        {{- end }}
         {{- with .Values.gateway.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

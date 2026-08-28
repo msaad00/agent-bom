@@ -31,6 +31,12 @@ CANONICAL_EVENT_TYPES = [
     "gateway.dlp.result_redacted",
     "gateway.dlp.result_blocked",
     "gateway.visual.redacted",
+    "gateway.runtime_profile.warned",
+    "gateway.runtime_profile.dev_bypass",
+    "gateway.runtime_profile.blocked",
+    "gateway.enforcement.warned",
+    "gateway.enforcement.observed",
+    "gateway.enforcement.blocked",
 ]
 
 

@@ -174,6 +174,12 @@ through the configured audit sink. In a normal cluster install that sink fans
 out to `/v1/proxy/audit`, so denies and warns flow into the same HMAC-chained
 audit table the proxy already writes to.
 
+The standalone gateway binds both the response and audit event to the
+authenticated request tenant. When a policy declares `tenant_id`, a request
+authenticated for a different tenant is rejected with `403`; the gateway never
+relabels that request as the policy tenant. Static bearer and OAuth gateway
+credentials use the operator-controlled `AGENT_BOM_TENANT_ID` binding.
+
 The control-plane API route records every decision directly into
 `/v1/firewall/stats`, including allow decisions, so the runtime dashboard has a
 denominator for allow/warn/deny trends.

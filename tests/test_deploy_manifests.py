@@ -493,6 +493,7 @@ def test_helm_gateway_service_account_defaults():
     assert gateway["profileEnforcement"] == "off"
     assert gateway["profileEnvironment"] == ""
     assert gateway["profileIssuer"] == "agent-bom"
+    assert gateway["stateDir"] == "/tmp/agent-bom"
 
 
 def test_helm_gateway_network_policy_defaults_to_explicit_egress_allowlist():
@@ -532,6 +533,9 @@ def test_helm_gateway_template_wires_control_plane_and_runtime_flags():
     assert "--profile-issuer" in template
     assert "$gatewayEnvFrom = .Values.controlPlane.api.envFrom" not in template
     assert "gateway profile enforcement requires gateway.envFrom" in template
+    assert "AGENT_BOM_STATE_DIR" in template
+    assert "AGENT_BOM_GATEWAY_REPLICAS" in template
+    assert ".Values.gateway.stateDir" in template
 
 
 def test_helm_examples_do_not_ship_duplicate_sqlite_pilot_profile():
@@ -553,6 +557,139 @@ def test_helm_gateway_autoscaling_defaults():
     assert autoscaling["keda"]["enabled"] is False
     assert autoscaling["keda"]["prometheus"]["relayRateThreshold"] == "25"
     assert autoscaling["keda"]["prometheus"]["pressureRateThreshold"] == "1"
+
+
+def test_helm_gateway_persistent_audit_backlog_is_single_replica_and_pvc_bound():
+    values = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    persistence = values["gateway"]["persistence"]
+    template = (HELM_DIR / "templates" / "gateway-deployment.yaml").read_text()
+
+    assert persistence == {
+        "enabled": False,
+        "existingClaim": "",
+        "mountPath": "/var/lib/agent-bom",
+    }
+    assert "gateway persistence requires gateway.replicas=1" in template
+    assert "gateway persistence is incompatible with gateway autoscaling" in template
+    assert "gateway.persistence.existingClaim is required" in template
+    assert "persistentVolumeClaim" in template
+    assert "$gatewayPersistence.mountPath" in template
+    assert "path: /readyz" in template
+    assert "type: Recreate" in template
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_helm_gateway_renders_restart_stable_single_writer_persistence() -> None:
+    def _render(*sets: str) -> list[dict]:
+        args = ["helm", "template", "abom", str(HELM_DIR)]
+        for item in sets:
+            args.extend(("--set", item))
+        result = subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)
+        assert result.returncode == 0, result.stderr
+        return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+
+    def _gateway_deployment(documents: list[dict]) -> dict:
+        return next(
+            doc for doc in documents if doc.get("kind") == "Deployment" and doc.get("metadata", {}).get("name", "").endswith("-gateway")
+        )
+
+    persistent = _gateway_deployment(
+        _render(
+            "gateway.enabled=true",
+            "gateway.replicas=1",
+            "gateway.persistence.enabled=true",
+            "gateway.persistence.existingClaim=gateway-audit",
+            "gateway.controlPlaneDiscovery.url=https://control.example.test",
+        )
+    )
+    assert persistent["spec"]["strategy"] == {"type": "Recreate"}
+    persistent_env = {item["name"]: item["value"] for item in persistent["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert persistent_env["AGENT_BOM_GATEWAY_REPLICAS"] == "1"
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_helm_gateway_rejects_local_only_ephemeral_audit_state() -> None:
+    result = subprocess.run(
+        [
+            "helm",
+            "template",
+            "abom",
+            str(HELM_DIR),
+            "--set",
+            "gateway.enabled=true",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "gateway audit requires gateway.persistence.enabled=true" in result.stderr
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_helm_gateway_rejects_remote_connected_ephemeral_audit_state() -> None:
+    result = subprocess.run(
+        [
+            "helm",
+            "template",
+            "abom",
+            str(HELM_DIR),
+            "--set",
+            "gateway.enabled=true",
+            "--set",
+            "gateway.controlPlaneDiscovery.url=https://control.example.test",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "gateway audit requires gateway.persistence.enabled=true" in result.stderr
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+@pytest.mark.parametrize(
+    ("sets", "expected_error"),
+    [
+        (
+            ("gateway.replicas=2",),
+            "gateway persistence requires gateway.replicas=1",
+        ),
+        (
+            ("gateway.replicas=1", "gateway.autoscaling.enabled=true"),
+            "gateway persistence is incompatible with gateway autoscaling",
+        ),
+        (
+            ("gateway.replicas=1", "gateway.autoscaling.keda.enabled=true"),
+            "gateway persistence is incompatible with gateway autoscaling",
+        ),
+    ],
+)
+def test_helm_gateway_persistence_rejects_overlapping_owners(
+    sets: tuple[str, ...],
+    expected_error: str,
+) -> None:
+    args = [
+        "helm",
+        "template",
+        "abom",
+        str(HELM_DIR),
+        "--set",
+        "gateway.enabled=true",
+        "--set",
+        "gateway.persistence.enabled=true",
+        "--set",
+        "gateway.persistence.existingClaim=gateway-audit",
+    ]
+    for item in sets:
+        args.extend(("--set", item))
+    result = subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)
+    assert result.returncode != 0
+    assert expected_error in result.stderr
 
 
 def test_helm_gateway_keda_template_suppresses_static_hpa():

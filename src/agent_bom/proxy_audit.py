@@ -24,6 +24,13 @@ from agent_bom.audit_integrity import (
     persist_ephemeral_chain_key,
 )
 from agent_bom.event_normalization import build_agentic_identity_graph_projection, build_proxy_event_relationships
+from agent_bom.runtime import audit_delivery as _audit_delivery
+
+AuditDeliveryController = _audit_delivery.AuditDeliveryController
+AuditDeliveryPaths = _audit_delivery.AuditDeliveryPaths
+AuditDeliveryState = _audit_delivery.AuditDeliveryState
+AuditSpilloverStore = _audit_delivery.AuditSpilloverStore
+audit_delivery_paths = _audit_delivery.audit_delivery_paths
 
 logger = logging.getLogger(__name__)
 
@@ -232,104 +239,6 @@ class ProxyMetrics:
             "audit_push_backoff_seconds": self.audit_push_backoff_seconds,
             "audit_circuit_open": 1 if self.audit_circuit_open else 0,
         }
-
-
-@dataclass
-class AuditDeliveryController:
-    """Backoff and circuit-breaker state for proxy audit push delivery."""
-
-    base_interval_seconds: int = 10
-    max_backoff_seconds: int = 300
-    breaker_failure_threshold: int = 3
-    breaker_cooldown_seconds: int = 60
-    consecutive_failures: int = 0
-    _next_delay_seconds: int = 10
-    _circuit_open_until: float = 0.0
-
-    def is_circuit_open(self, now: float | None = None) -> bool:
-        now = time.monotonic() if now is None else now
-        return now < self._circuit_open_until
-
-    def current_backoff_seconds(self, now: float | None = None) -> int:
-        now = time.monotonic() if now is None else now
-        if self.is_circuit_open(now):
-            return max(int(self._circuit_open_until - now), 1)
-        return self._next_delay_seconds
-
-    def record_success(self) -> None:
-        self.consecutive_failures = 0
-        self._next_delay_seconds = self.base_interval_seconds
-        self._circuit_open_until = 0.0
-
-    def record_failure(self, now: float | None = None) -> None:
-        now = time.monotonic() if now is None else now
-        self.consecutive_failures += 1
-        if self._next_delay_seconds <= self.base_interval_seconds:
-            self._next_delay_seconds = min(self.base_interval_seconds * 2, self.max_backoff_seconds)
-        else:
-            self._next_delay_seconds = min(self._next_delay_seconds * 2, self.max_backoff_seconds)
-        if self.consecutive_failures >= self.breaker_failure_threshold:
-            self._circuit_open_until = now + self.breaker_cooldown_seconds
-
-
-@dataclass
-class AuditSpilloverStore:
-    """Persist bounded proxy audit overflow to spillover and DLQ files."""
-
-    spill_path: Path
-    dlq_path: Path
-    max_spillover_bytes: int
-
-    def spillover_size_bytes(self) -> int:
-        try:
-            return self.spill_path.stat().st_size
-        except FileNotFoundError:
-            return 0
-
-    def dlq_size_bytes(self) -> int:
-        try:
-            return self.dlq_path.stat().st_size
-        except FileNotFoundError:
-            return 0
-
-    def append_events(self, events: list[dict]) -> str:
-        if not events:
-            return "noop"
-        encoded = [json.dumps(event) for event in events]
-        total_bytes = sum(len((line + "\n").encode("utf-8")) for line in encoded)
-        if self.spillover_size_bytes() + total_bytes <= self.max_spillover_bytes:
-            self._append_lines(self.spill_path, encoded)
-            return "spillover"
-        self._append_lines(self.dlq_path, encoded)
-        return "dlq"
-
-    def read_spillover(self) -> list[dict]:
-        if not self.spill_path.exists():
-            return []
-        events: list[dict] = []
-        with self.spill_path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning("Skipping malformed proxy audit spillover line from %s", self.spill_path)
-                    continue
-                if isinstance(payload, dict):
-                    events.append(payload)
-        return events
-
-    def clear_spillover(self) -> None:
-        if self.spill_path.exists():
-            self.spill_path.unlink()
-
-    def _append_lines(self, path: Path, lines: list[str]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            for line in lines:
-                handle.write(line + "\n")
 
 
 @dataclass(frozen=True)

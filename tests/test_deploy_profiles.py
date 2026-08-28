@@ -87,7 +87,12 @@ def test_gateway_runtime_profile_uses_shipped_upstreams_example():
     repo_root = Path(__file__).resolve().parent.parent
     profiles = {profile.name: profile for profile in helm_validation_profiles(repo_root)}
     gateway = profiles["gateway-runtime"]
-    assert gateway.set_arguments == ("gateway.enabled=true",)
+    assert gateway.set_arguments == (
+        "gateway.enabled=true",
+        "gateway.replicas=1",
+        "gateway.persistence.enabled=true",
+        "gateway.persistence.existingClaim=agent-bom-gateway-audit",
+    )
     assert gateway.set_file_arguments == (
         ("gateway.upstreamsYaml", repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "gateway-upstreams.example.yaml"),
     )
@@ -103,8 +108,8 @@ def test_keda_profile_layers_production_and_keda_overlay():
         example_dir / "eks-production-values.yaml",
         example_dir / "eks-keda-values.yaml",
     )
-    assert keda.set_arguments == ("gateway.enabled=true",)
-    assert keda.set_file_arguments == (("gateway.upstreamsYaml", example_dir / "gateway-upstreams.example.yaml"),)
+    assert keda.set_arguments == ()
+    assert keda.set_file_arguments == ()
 
 
 def test_postgres_secret_example_documents_byo_postgres_contract():

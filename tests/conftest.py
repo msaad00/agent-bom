@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import types
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -30,7 +31,7 @@ os.environ.setdefault("COLUMNS", "200")
 # tests. Each worker process gets its own dir, so workers never collide.
 os.environ.setdefault(
     "AGENT_BOM_STATE_DIR",
-    tempfile.mkdtemp(prefix="agent-bom-test-state-"),
+    str(Path(tempfile.mkdtemp(prefix="agent-bom-test-state-")).resolve()),
 )
 
 # The control-plane lifecycle stores (agent identity, JIT grants, runtime

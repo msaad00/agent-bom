@@ -131,13 +131,11 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
         ),
         HelmValidationProfile(
             name="keda-autoscaling",
-            description="Production EKS defaults with KEDA-backed API and gateway autoscaling.",
+            description="Production EKS defaults with KEDA-backed control-plane API autoscaling.",
             values_files=(
                 examples / "eks-production-values.yaml",
                 examples / "eks-keda-values.yaml",
             ),
-            set_arguments=("gateway.enabled=true",),
-            set_file_arguments=(("gateway.upstreamsYaml", examples / "gateway-upstreams.example.yaml"),),
         ),
         HelmValidationProfile(
             name="eks-vanilla",
@@ -156,9 +154,14 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
         ),
         HelmValidationProfile(
             name="gateway-runtime",
-            description="Focused pilot plus central gateway rendering with shipped upstream example.",
+            description="Focused pilot plus single-writer PVC-backed gateway with shipped upstream example.",
             values_files=(examples / "eks-mcp-pilot-values.yaml",),
-            set_arguments=("gateway.enabled=true",),
+            set_arguments=(
+                "gateway.enabled=true",
+                "gateway.replicas=1",
+                "gateway.persistence.enabled=true",
+                "gateway.persistence.existingClaim=agent-bom-gateway-audit",
+            ),
             set_file_arguments=(("gateway.upstreamsYaml", examples / "gateway-upstreams.example.yaml"),),
         ),
         HelmValidationProfile(

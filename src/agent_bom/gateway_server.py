@@ -28,13 +28,13 @@ Non-goals for MVP (see design doc):
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import json
 import logging
 import os
 import threading
 import time
-import uuid
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -83,8 +83,21 @@ from agent_bom.proxy_policy import (
     summarize_policy_bundle,
 )
 from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan_tool_response
+from agent_bom.runtime.audit_delivery import (
+    AuditDeliveryController,
+    AuditDeliveryState,
+    AuditSpilloverClaim,
+    AuditSpilloverStore,
+    audit_delivery_paths,
+    canonical_runtime_state_path,
+)
 from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
-from agent_bom.runtime.gateway_events import GatewayRuntimeEventType, build_gateway_runtime_event
+from agent_bom.runtime.gateway_events import (
+    GatewayRuntimeEventType,
+    build_gateway_runtime_event,
+    canonicalize_gateway_enforcement_event,
+    ensure_gateway_event_identity,
+)
 from agent_bom.runtime.gateway_relay_contract import (
     MAX_GATEWAY_RELAY_MESSAGE_BYTES,
     RelayForwardRequest,
@@ -93,7 +106,7 @@ from agent_bom.runtime.gateway_relay_contract import (
 )
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 from agent_bom.runtime.profile_resolution import ProfileResolutionCode
-from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
@@ -101,7 +114,16 @@ _MAX_GATEWAY_MESSAGE_BYTES = MAX_GATEWAY_RELAY_MESSAGE_BYTES
 _GATEWAY_RELAY_SCOPE = "gateway:relay"
 
 AuditSink = Callable[[dict[str, Any]], Awaitable[None]]
+GatewayAuditSender = Callable[[dict[str, Any], dict[str, str]], Awaitable[dict[str, Any]]]
 UpstreamCaller = Callable[[UpstreamConfig, dict[str, Any], dict[str, str]], Awaitable[dict[str, Any]]]
+
+_GATEWAY_AUDIT_SPILLOVER_BYTES = 8 * 1024 * 1024
+_GATEWAY_AUDIT_DLQ_BYTES = 64 * 1024 * 1024
+
+
+class GatewayAuditDeliveryUnavailableError(RuntimeError):
+    """The gateway could not durably retain a runtime audit event."""
+
 
 # Lazy singleton so disabled deploys don't pay the import cost of the
 # visual detector (Pillow/pytesseract). Built on first use when
@@ -1072,12 +1094,16 @@ def _api_key_allows_gateway_relay(api_key: Any) -> tuple[bool, str]:
     return True, ""
 
 
+def _configured_gateway_tenant_id() -> str:
+    return os.environ.get("AGENT_BOM_TENANT_ID", "default").strip() or "default"
+
+
 def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -> tuple[str, str]:
     raw_token = _extract_request_token(request)
     if settings.bearer_token:
         if not raw_token or not _request_has_expected_token(request, settings.bearer_token):
             raise HTTPException(status_code=401, detail="gateway authentication required")
-        return "default", "static_gateway_token"
+        return _configured_gateway_tenant_id(), "static_gateway_token"
 
     # OAuth 2.1 broker: a standard MCP client presenting an AS-issued access
     # token in the Authorization header satisfies transport auth (the AS already
@@ -1086,7 +1112,7 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
     if settings.oauth_as is not None and raw_token:
         claims = settings.oauth_as.validate_token(raw_token)
         if claims is not None:
-            return "default", "oauth_as"
+            return _configured_gateway_tenant_id(), "oauth_as"
 
     try:
         store = get_key_store()
@@ -1108,7 +1134,7 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
             raise HTTPException(status_code=403, detail=reason)
         return api_key.tenant_id or "default", "api_key"
 
-    return "default", "none"
+    return _configured_gateway_tenant_id(), "none"
 
 
 def _inject_jsonrpc_trace_meta(
@@ -1222,37 +1248,392 @@ async def _read_bounded_gateway_body(request: Any) -> bytes:
     return bytes(body)
 
 
+async def _send_gateway_audit_batch(
+    audit_url: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+) -> dict[str, Any]:
+    """POST one already-redacted backlog batch to the control plane."""
+
+    import httpx
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)) as client:
+        response = await client.post(audit_url, json=payload, headers=headers)
+        response.raise_for_status()
+        body = response.json()
+    if not isinstance(body, dict):
+        raise RuntimeError("control-plane audit acknowledgement is not an object")
+    return body
+
+
+class ControlPlaneAuditSink:
+    """Durably queue and retry standalone-gateway audit delivery.
+
+    A remote outage is fail-safe while the bounded local backlog accepts the
+    event: the relay may continue and health reports degraded. If neither the
+    spill file nor its finite DLQ can retain the event, ``__call__`` raises and
+    the gateway fails closed instead of acknowledging an unaudited decision.
+    """
+
+    def __init__(
+        self,
+        *,
+        token: str | None,
+        tenant_id: str,
+        source_id: str,
+        session_id: str,
+        delivery_state: AuditDeliveryState,
+        sender: GatewayAuditSender,
+    ) -> None:
+        self._token = token
+        self._tenant_id = tenant_id
+        self._source_id = source_id
+        self._session_id = session_id
+        self._delivery_state = delivery_state
+        self._sender = sender
+        self._lock = asyncio.Lock()
+        self._worker: asyncio.Task[None] | None = None
+        self._closed = False
+        self._persistence_available = True
+        self._remote_ack_available = True
+
+    @staticmethod
+    def _batch_idempotency_key(session_id: str, events: list[dict[str, Any]]) -> str:
+        event_identities = [
+            str(event.get("event_id"))
+            if event.get("event_id")
+            else hashlib.sha256(json.dumps(event, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode("utf-8")).hexdigest()
+            for event in events
+        ]
+        material = json.dumps([session_id, event_identities], separators=(",", ":"), ensure_ascii=True)
+        return "gateway-audit-" + hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _validate_acknowledgement(events: list[dict[str, Any]], response: dict[str, Any]) -> None:
+        from agent_bom.runtime.gateway_events import GATEWAY_CANONICAL_EVENT_TYPES
+
+        canonical_count = sum(str(event.get("event_type") or "") in GATEWAY_CANONICAL_EVENT_TYPES for event in events)
+        durable_count = int(response.get("durable_accepted_count") or 0) + int(response.get("durable_duplicate_count") or 0)
+        conflict_count = int(response.get("durable_conflict_count") or 0)
+        accepted_count = int(response.get("accepted_alert_count") or 0) + int(response.get("duplicate_alert_count") or 0)
+        if conflict_count or durable_count < canonical_count:
+            raise RuntimeError("control plane did not durably acknowledge canonical gateway activity")
+        if accepted_count < len(events):
+            raise RuntimeError("control plane did not acknowledge the complete gateway audit batch")
+
+    def _payload(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "source_id": self._source_id,
+            "session_id": self._session_id,
+            "idempotency_key": self._batch_idempotency_key(self._session_id, events),
+            "alerts": events,
+        }
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        return headers
+
+    async def _persist_and_flush(self, event: dict[str, Any], *, require_remote_ack: bool) -> None:
+        async with self._lock:
+            try:
+                if not self._persistence_available:
+                    raise GatewayAuditDeliveryUnavailableError("durable audit backlog is unavailable")
+                event = canonicalize_gateway_enforcement_event(ensure_gateway_event_identity(event))
+                event_tenant = str(event.get("tenant_id") or "")
+                if event_tenant != self._tenant_id:
+                    raise GatewayAuditDeliveryUnavailableError("audit credential is not bound to the event tenant")
+                if self._delivery_state.store.dlq_size_bytes() or self._delivery_state.store.dropped_events:
+                    self._persistence_available = False
+                    raise GatewayAuditDeliveryUnavailableError("durable audit backlog is full")
+                destination = self._delivery_state.store.append_events([event])
+            except GatewayAuditDeliveryUnavailableError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - local durability failure is fail-closed
+                self._persistence_available = False
+                logger.error("Gateway audit persistence unavailable (error_type=%s)", type(exc).__name__)
+                raise GatewayAuditDeliveryUnavailableError("durable audit backlog is unavailable") from None
+            if destination in {"dlq", "dropped"}:
+                self._persistence_available = False
+                raise GatewayAuditDeliveryUnavailableError("durable audit backlog is full")
+            self._persistence_available = True
+            flushed = False
+            if not self._delivery_state.controller.is_circuit_open():
+                flushed = await self._flush_locked()
+            if not flushed and not self._persistence_available:
+                raise GatewayAuditDeliveryUnavailableError("durable audit backlog is unavailable")
+            if require_remote_ack and not flushed:
+                raise GatewayAuditDeliveryUnavailableError("control-plane durable acknowledgement is unavailable")
+
+    async def __call__(self, event: dict[str, Any]) -> None:
+        await self._persist_and_flush(event, require_remote_ack=False)
+
+    async def admit_before_tool_execution(self, event: dict[str, Any]) -> None:
+        """Require the control plane to durably acknowledge before execution."""
+
+        await self._persist_and_flush(event, require_remote_ack=True)
+
+    async def _flush_locked(self) -> bool:
+        try:
+            claim = self._delivery_state.store.claim_spillover()
+        except Exception as exc:  # noqa: BLE001 - health must report local durability failure
+            self._persistence_available = False
+            logger.error("Gateway audit persistence unavailable during retry (error_type=%s)", type(exc).__name__)
+            return False
+        if claim is None:
+            self._persistence_available = True
+            return True
+        if not claim.events:
+            self._delivery_state.store.acknowledge_claim(claim)
+            return True
+        active_claim: AuditSpilloverClaim | None = claim
+        try:
+            while active_claim is not None:
+                events = active_claim.events[:500]
+                response = await self._sender(self._payload(events), self._headers())
+                self._validate_acknowledgement(events, response)
+                active_claim = self._delivery_state.store.acknowledge_claim_prefix(active_claim, len(events))
+        except asyncio.CancelledError:
+            if active_claim is not None:
+                self._delivery_state.store.restore_claim(active_claim)
+            raise
+        except Exception as exc:  # noqa: BLE001 - retained backlog is retried
+            try:
+                if active_claim is not None:
+                    self._delivery_state.store.restore_claim(active_claim)
+            except Exception:  # noqa: BLE001 - do not leak persistence exception details
+                self._persistence_available = False
+                logger.error("Gateway audit persistence unavailable while retaining a failed delivery")
+            self._delivery_state.controller.record_failure()
+            self._remote_ack_available = False
+            logger.warning("Gateway audit push failed; retained for retry (error_type=%s)", type(exc).__name__)
+            return False
+        self._persistence_available = True
+        self._remote_ack_available = True
+        self._delivery_state.controller.record_success()
+        return True
+
+    async def flush_once(self) -> bool:
+        """Attempt one serialized backlog delivery, primarily for startup/tests."""
+
+        async with self._lock:
+            if self._delivery_state.controller.is_circuit_open():
+                return False
+            return await self._flush_locked()
+
+    async def _retry_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self._delivery_state.controller.current_backoff_seconds())
+            await self.flush_once()
+
+    async def start(self) -> None:
+        """Recover a prior spill immediately, then maintain bounded retries."""
+
+        if self._worker is not None:
+            return
+        self._closed = False
+        await self.flush_once()
+        self._worker = asyncio.create_task(self._retry_loop(), name="gateway-audit-delivery")
+
+    async def aclose(self) -> None:
+        self._closed = True
+        if self._worker is None:
+            return
+        self._worker.cancel()
+        try:
+            await self._worker
+        except asyncio.CancelledError:
+            pass
+        self._worker = None
+
+    def health(self) -> dict[str, str | int | bool]:
+        try:
+            health = self._delivery_state.health(buffer_bytes=0)
+            backlog_observable = True
+        except Exception:  # noqa: BLE001 - health remains secret-free and available
+            self._persistence_available = False
+            controller = self._delivery_state.controller
+            health = {
+                "status": "degraded",
+                "buffer_bytes": 0,
+                "spillover_bytes": 0,
+                "dlq_bytes": 0,
+                "backlog_bytes": 0,
+                "consecutive_failures": controller.consecutive_failures,
+                "backoff_seconds": controller.current_backoff_seconds(),
+                "circuit_open": controller.is_circuit_open(),
+                "dropped_events": self._delivery_state.store.dropped_events,
+            }
+            backlog_observable = False
+        accepting_events = (
+            self._persistence_available
+            and self._remote_ack_available
+            and not bool(health["dlq_bytes"])
+            and not bool(health["dropped_events"])
+        )
+        if not accepting_events:
+            health["status"] = "degraded"
+        return {
+            "configured": True,
+            "durable": self._persistence_available and backlog_observable,
+            "accepting_events": accepting_events,
+            "backlog_observable": backlog_observable,
+            "remote_acknowledgement_available": self._remote_ack_available,
+            "retry_worker_running": self._worker is not None and not self._worker.done() and not self._closed,
+            **health,
+        }
+
+
+class LocalGatewayAuditSink:
+    """HMAC-chained local durability for gateways without a control plane."""
+
+    def __init__(self, db_path: Path) -> None:
+        from agent_bom.api.audit_log import SQLiteAuditLog
+
+        db_path = canonical_runtime_state_path(db_path)
+        parent_fd = AuditSpilloverStore._safe_parent_fd(db_path)
+        os.close(parent_fd)
+        AuditSpilloverStore._validate_existing_path(db_path)
+        self._hmac_key = self.load_key(db_path, create=not db_path.exists())
+        self._store = SQLiteAuditLog(str(db_path), hmac_key=self._hmac_key)
+        self._available = True
+        self.db_path = db_path
+
+    @staticmethod
+    def load_key(db_path: Path, *, create: bool = False) -> bytes:
+        return AuditSpilloverStore.load_or_create_private_key(
+            canonical_runtime_state_path(db_path).with_suffix(".hmac.key"),
+            create=create,
+        )
+
+    async def __call__(self, event: dict[str, Any]) -> None:
+        from agent_bom.api.audit_log import AuditEntry, sanitize_audit_details
+
+        if not self._available:
+            raise GatewayAuditDeliveryUnavailableError("local durable audit store is unavailable")
+        identified = canonicalize_gateway_enforcement_event(ensure_gateway_event_identity(event))
+        sanitized = sanitize_sensitive_payload(identified)
+        if not isinstance(sanitized, dict):
+            self._available = False
+            raise GatewayAuditDeliveryUnavailableError("local durable audit event is invalid")
+        action = str(sanitized.get("action") or sanitized.get("event_type") or "gateway.runtime")[:256]
+        upstream = str(sanitized.get("upstream") or "gateway")[:200]
+        entry = AuditEntry(
+            action=action,
+            actor="gateway",
+            resource=f"upstream/{upstream}",
+            details=sanitize_audit_details(sanitized),
+        )
+        try:
+            await asyncio.to_thread(self._store.append, entry)
+        except Exception as exc:  # noqa: BLE001 - local audit failure is fail-closed
+            self._available = False
+            logger.error("Gateway local audit persistence unavailable (error_type=%s)", type(exc).__name__)
+            raise GatewayAuditDeliveryUnavailableError("local durable audit store is unavailable") from None
+
+    async def admit_before_tool_execution(self, event: dict[str, Any]) -> None:
+        await self(event)
+
+    def health(self) -> dict[str, str | int | bool]:
+        return {
+            "configured": True,
+            "mode": "local_hmac_sqlite",
+            "status": "healthy" if self._available else "degraded",
+            "durable": self._available,
+            "accepting_events": self._available,
+            "backlog_observable": True,
+            "retry_worker_running": False,
+            "backlog_bytes": 0,
+            "dropped_events": 0,
+        }
+
+
+class UnavailableGatewayAuditSink:
+    """Fail-closed health surface retained when local audit setup fails."""
+
+    async def __call__(self, _event: dict[str, Any]) -> None:
+        raise GatewayAuditDeliveryUnavailableError("local durable audit store is unavailable")
+
+    async def admit_before_tool_execution(self, event: dict[str, Any]) -> None:
+        await self(event)
+
+    @staticmethod
+    def health() -> dict[str, str | int | bool]:
+        return {
+            "configured": True,
+            "mode": "unavailable",
+            "status": "degraded",
+            "durable": False,
+            "accepting_events": False,
+            "backlog_observable": False,
+            "retry_worker_running": False,
+            "backlog_bytes": 0,
+            "dropped_events": 0,
+        }
+
+
+def build_local_gateway_audit_sink(*, state_dir: Path | None = None) -> LocalGatewayAuditSink:
+    """Build the default durable audit path for a standalone local gateway."""
+
+    root = state_dir or Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
+    return LocalGatewayAuditSink(root / "runtime-audit" / "gateway-local-audit.db")
+
+
 def build_control_plane_audit_sink(
     base_url: str,
     token: str | None,
     *,
+    tenant_id: str = "default",
     source_id: str = "gateway",
     session_id: str | None = None,
-) -> AuditSink:
-    """Build an audit sink that forwards gateway runtime events to the API."""
+    spill_path: Path | None = None,
+    dlq_path: Path | None = None,
+    max_spillover_bytes: int = _GATEWAY_AUDIT_SPILLOVER_BYTES,
+    max_dlq_bytes: int = _GATEWAY_AUDIT_DLQ_BYTES,
+    sender: GatewayAuditSender | None = None,
+) -> ControlPlaneAuditSink:
+    """Build the gateway's shared bounded control-plane audit delivery sink."""
+
     audit_url = base_url.rstrip("/") + "/v1/proxy/audit"
-    active_session_id = session_id or str(uuid.uuid4())
+    normalized_tenant_id = tenant_id.strip()
+    if not normalized_tenant_id:
+        raise ValueError("gateway audit tenant_id must not be empty")
+    delivery_identity = f"{source_id}\0{audit_url}\0{normalized_tenant_id}"
+    active_session_id = session_id or "gateway-" + hashlib.sha256(delivery_identity.encode("utf-8")).hexdigest()[:20]
+    state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
+    stable_paths = audit_delivery_paths(
+        state_dir,
+        surface="gateway",
+        identity=delivery_identity,
+    )
+    active_spill_path = spill_path or stable_paths.spill_path
+    active_dlq_path = dlq_path or stable_paths.dlq_path
+    controller = AuditDeliveryController()
+    store = AuditSpilloverStore(
+        spill_path=active_spill_path,
+        dlq_path=active_dlq_path,
+        max_spillover_bytes=max_spillover_bytes,
+        max_dlq_bytes=max_dlq_bytes,
+    )
 
-    async def _sink(event: dict[str, Any]) -> None:
-        import httpx
+    active_sender: GatewayAuditSender
+    if sender is None:
 
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        payload = {
-            "source_id": source_id,
-            "session_id": active_session_id,
-            "idempotency_key": event.get("event_id") or str(uuid.uuid4()),
-            "alerts": [event],
-        }
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)) as client:
-                response = await client.post(audit_url, json=payload, headers=headers)
-                response.raise_for_status()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Gateway audit push failed: %s", sanitize_text(_sanitize_for_log(exc)))
+        async def _sender(payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+            return await _send_gateway_audit_batch(audit_url, payload, headers)
 
-    return _sink
+        active_sender = _sender
+    else:
+        active_sender = sender
+    return ControlPlaneAuditSink(
+        token=token,
+        tenant_id=normalized_tenant_id,
+        source_id=source_id,
+        session_id=active_session_id,
+        delivery_state=AuditDeliveryState(controller=controller, store=store),
+        sender=active_sender,
+    )
 
 
 def _warn_on_quarantined_agents(settings: GatewaySettings) -> None:
@@ -1295,6 +1676,12 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     Separating app construction from CLI entry point keeps the server
     testable end-to-end via ``TestClient(create_gateway_app(settings))``.
     """
+    if settings.audit_sink is None:
+        try:
+            settings.audit_sink = build_local_gateway_audit_sink()
+        except Exception as exc:  # noqa: BLE001 - relay remains fail-closed below
+            logger.error("Gateway local audit initialization failed (error_type=%s)", type(exc).__name__)
+            settings.audit_sink = UnavailableGatewayAuditSink()
     if settings.enable_visual_leak_detection and settings.require_visual_leak_detection_ready:
         from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
 
@@ -1441,6 +1828,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         nonlocal reload_task
         nonlocal firewall_reload_task
         try:
+            if isinstance(settings.audit_sink, ControlPlaneAuditSink):
+                await settings.audit_sink.start()
             if settings.policy_path is not None:
                 await _reload_policy_if_changed(force=True)
                 if settings.policy_reload_interval_seconds > 0:
@@ -1462,6 +1851,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         pass
             reload_task = None
             firewall_reload_task = None
+            if isinstance(settings.audit_sink, ControlPlaneAuditSink):
+                await settings.audit_sink.aclose()
 
     app = FastAPI(title="agent-bom gateway", version="1", lifespan=_lifespan)
 
@@ -1545,7 +1936,26 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 **visual_leak_runtime_health(),
                 "required": settings.require_visual_leak_detection_ready,
             }
+        audit_health = getattr(settings.audit_sink, "health", None)
+        if callable(audit_health):
+            audit_delivery_health = audit_health()
+            health["audit_delivery"] = audit_delivery_health
+            if audit_delivery_health["status"] != "healthy":
+                health["status"] = "degraded"
         return health
+
+    @app.get("/readyz")
+    async def readyz() -> JSONResponse:
+        """Report whether configured durable audit delivery can accept work."""
+
+        health = await healthz()
+        audit_delivery = health.get("audit_delivery")
+        ready = not isinstance(audit_delivery, dict) or (
+            bool(audit_delivery.get("durable"))
+            and bool(audit_delivery.get("accepting_events"))
+            and bool(audit_delivery.get("backlog_observable"))
+        )
+        return JSONResponse(status_code=200 if ready else 503, content={"ready": ready, **health})
 
     @app.post("/v1/firewall/check")
     async def firewall_check(request: Request) -> JSONResponse:
@@ -1568,6 +1978,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # gate the firewall-check endpoint, not just /mcp/{server}. Otherwise
         # the policy evaluator is reachable unauthenticated on shared
         # deployments and leaks every rule via the matched_rule field.
+        tenant_id = _configured_gateway_tenant_id()
         if _gateway_requires_auth(settings):
             tenant_id, auth_method = _authenticate_gateway_request(request, settings)
             request.state.tenant_id = tenant_id
@@ -1598,6 +2009,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             policy_source = firewall_state["source"]
             policy_loaded_at = firewall_state["last_loaded_at"]
             policy_load_failed = bool(firewall_state.get("load_failed"))
+        if policy.tenant_id is not None and policy.tenant_id != tenant_id:
+            raise HTTPException(status_code=403, detail="firewall policy is not bound to the authenticated tenant")
         if fail_closed and policy_load_failed and settings.firewall_policy_path is not None:
             result = FirewallEvaluation(
                 decision=FirewallDecision.DENY,
@@ -1635,7 +2048,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "loaded_at": policy_loaded_at,
                 "default_decision": policy.default_decision.value,
                 "enforcement_mode": policy.enforcement_mode.value,
-                "tenant_id": policy.tenant_id,
+                "tenant_id": tenant_id,
             },
         }
 
@@ -1652,7 +2065,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "source_roles": list(raw_source_roles),
                     "target_roles": list(raw_target_roles),
                     "matched_rule": response_payload["matched_rule"],
-                    "tenant_id": policy.tenant_id,
+                    "tenant_id": tenant_id,
                     "enforcement_mode": policy.enforcement_mode.value,
                     "timestamp": time.time(),
                 }
@@ -1683,7 +2096,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     async def relay(server_name: str, request: Request) -> JSONResponse:
         """Route an MCP JSON-RPC request to the named upstream after policy + audit."""
         trace_meta = make_request_trace(dict(request.headers))
-        tenant_id = "default"
+        tenant_id = _configured_gateway_tenant_id()
         auth_method = "none"
         if _gateway_requires_auth(settings):
             tenant_id, auth_method = _authenticate_gateway_request(request, settings)
@@ -2040,18 +2453,29 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "development_mode": bool(explicit_dev_bypass),
                         "trace_id": str(trace_meta["trace_id"]),
                     }
-                    if runtime_profile_mode == "enforce" and not explicit_dev_bypass and is_tools_call(message):
+                    if runtime_profile_mode == "enforce" and not explicit_dev_bypass:
                         profile_audit.update(
                             _typed_runtime_event(
-                                GatewayRuntimeEventType.TOOL_CALL_BLOCKED,
+                                GatewayRuntimeEventType.TOOL_CALL_BLOCKED
+                                if is_tools_call(message)
+                                else GatewayRuntimeEventType.RUNTIME_PROFILE_BLOCKED,
                                 decision="deny",
                                 policy_source="runtime_profile",
                                 reason_code=profile_failure_code,
                             )
                         )
                     else:
-                        profile_event_id = f"gw_{uuid.uuid4().hex}"
-                        profile_audit.update({"event_id": profile_event_id, "decision_id": profile_event_id})
+                        profile_audit.update(
+                            _typed_runtime_event(
+                                GatewayRuntimeEventType.RUNTIME_PROFILE_DEV_BYPASS
+                                if explicit_dev_bypass
+                                else GatewayRuntimeEventType.RUNTIME_PROFILE_WARNED,
+                                decision="allow",
+                                policy_source="runtime_profile",
+                                reason_code=profile_failure_code,
+                            )
+                        )
+                        profile_audit["development_mode"] = bool(explicit_dev_bypass)
                     await settings.audit_sink(profile_audit)
 
                 if runtime_profile_mode == "enforce" and not explicit_dev_bypass:
@@ -3049,6 +3473,90 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     }
                 )
 
+        # Durably admit an authorized tool call before any upstream side effect.
+        # Readiness can remove an unhealthy pod from service, but it cannot
+        # protect an in-flight/direct request. Persisting the authorization here
+        # makes a full/unavailable audit backlog fail closed before execution.
+        _forward_is_tool_call = is_tools_call(message)
+        if _forward_is_tool_call and settings.audit_sink is None:
+            record_gateway_relay(upstream.name, "audit_unavailable")
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32003,
+                        "message": "Gateway audit persistence unavailable",
+                        "data": {
+                            "reason": "Tool call was not executed because no durable audit sink is configured",
+                            "policy_source": "audit_delivery",
+                        },
+                    },
+                },
+                status_code=503,
+                headers=rate_limit_headers or None,
+            )
+        if _forward_is_tool_call and settings.audit_sink is not None:
+            try:
+                admission = getattr(settings.audit_sink, "admit_before_tool_execution", settings.audit_sink)
+                await admission(
+                    {
+                        "action": "gateway.tool_call",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "method": message.get("method"),
+                        "tool": extract_tool_name(message),
+                        "source_agent": source_agent,
+                        **_typed_runtime_event(
+                            GatewayRuntimeEventType.TOOL_CALL_ALLOWED,
+                            decision="allow",
+                            policy_source=resolved_policy_source,
+                            tool=extract_tool_name(message) or "",
+                        ),
+                    }
+                )
+            except GatewayAuditDeliveryUnavailableError:
+                record_gateway_relay(upstream.name, "audit_unavailable")
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "error": {
+                            "code": -32003,
+                            "message": "Gateway audit persistence unavailable",
+                            "data": {
+                                "reason": "Tool call was not executed because durable audit admission failed",
+                                "policy_source": "audit_delivery",
+                            },
+                        },
+                    },
+                    status_code=503,
+                    headers=rate_limit_headers or None,
+                )
+
+        post_forward_audit_degraded = False
+
+        async def _audit_after_forward(event: dict[str, Any]) -> None:
+            """Never turn a completed upstream side effect into an ambiguous 500."""
+
+            nonlocal post_forward_audit_degraded
+            if settings.audit_sink is None:
+                return
+            try:
+                await settings.audit_sink(event)
+            except Exception as exc:  # noqa: BLE001 - outcome is already produced
+                post_forward_audit_degraded = True
+                record_gateway_relay(upstream.name, "audit_unavailable")
+                logger.error(
+                    "Gateway post-forward audit degraded (error_type=%s)",
+                    type(exc).__name__,
+                )
+
+        def _post_forward_headers(headers: dict[str, str]) -> dict[str, str]:
+            if post_forward_audit_degraded:
+                headers["X-Agent-BOM-Audit-Delivery"] = "degraded"
+            return headers
+
         # Forward to the upstream with bounded W3C trace headers and JSON-RPC
         # `_meta` so both HTTP-aware and JSON-RPC-aware upstreams can stitch
         # the same end-to-end trace.
@@ -3095,48 +3603,53 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             logger.warning("gateway upstream circuit open for %s", upstream.name)
             record_gateway_relay(upstream.name, "circuit_open")
             retry_after_header = str(int(exc.retry_after_seconds))
-            if settings.audit_sink is not None:
-                await settings.audit_sink(
-                    {
-                        "action": "gateway.upstream_circuit_open",
-                        "upstream": upstream.name,
-                        "tenant_id": tenant_id,
-                        "reason": "circuit_open",
-                        "retry_after_seconds": int(exc.retry_after_seconds),
-                    }
-                )
+            await _audit_after_forward(
+                {
+                    "action": "gateway.upstream_circuit_open",
+                    "upstream": upstream.name,
+                    "tenant_id": tenant_id,
+                    "reason": "circuit_open",
+                    "retry_after_seconds": int(exc.retry_after_seconds),
+                }
+            )
             raise HTTPException(
                 status_code=503,
                 detail="upstream circuit open",
-                headers={"Retry-After": retry_after_header},
+                headers=_post_forward_headers({"Retry-After": retry_after_header}),
             ) from exc
         except asyncio.TimeoutError as exc:
             logger.warning("gateway upstream call timed out for %s", upstream.name)
             record_gateway_relay(upstream.name, "upstream_timeout")
-            if settings.audit_sink is not None:
-                await settings.audit_sink(
-                    {
-                        "action": "gateway.upstream_error",
-                        "upstream": upstream.name,
-                        "tenant_id": tenant_id,
-                        "error": "timeout",
-                        "reason": "timeout",
-                    }
-                )
-            raise HTTPException(status_code=502, detail="upstream error: timeout") from exc
+            await _audit_after_forward(
+                {
+                    "action": "gateway.upstream_error",
+                    "upstream": upstream.name,
+                    "tenant_id": tenant_id,
+                    "error": "timeout",
+                    "reason": "timeout",
+                }
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="upstream error: timeout",
+                headers=_post_forward_headers({}),
+            ) from exc
         except Exception as exc:  # noqa: BLE001
             logger.error("gateway upstream call failed for %s", upstream.name)
             record_gateway_relay(upstream.name, "upstream_error")
-            if settings.audit_sink is not None:
-                await settings.audit_sink(
-                    {
-                        "action": "gateway.upstream_error",
-                        "upstream": upstream.name,
-                        "tenant_id": tenant_id,
-                        "error": _public_gateway_error(exc),
-                    }
-                )
-            raise HTTPException(status_code=502, detail=f"upstream error: {_public_gateway_error(exc)}") from exc
+            await _audit_after_forward(
+                {
+                    "action": "gateway.upstream_error",
+                    "upstream": upstream.name,
+                    "tenant_id": tenant_id,
+                    "error": _public_gateway_error(exc),
+                }
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"upstream error: {_public_gateway_error(exc)}",
+                headers=_post_forward_headers({}),
+            ) from exc
 
         record_gateway_relay(upstream.name, "forwarded")
 
@@ -3165,7 +3678,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     if alerts:
                         record_gateway_relay(upstream.name, "visual_leak_redacted")
                         if settings.audit_sink is not None:
-                            await settings.audit_sink(
+                            await _audit_after_forward(
                                 {
                                     "action": "gateway.visual_leak_blocked",
                                     "upstream": upstream.name,
@@ -3225,7 +3738,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         tool=str(tool_name_for_dlp),
                         data_action="pii_redacted",
                     )
-                await settings.audit_sink(
+                await _audit_after_forward(
                     {
                         "action": "gateway.dlp_result",
                         "upstream": upstream.name,
@@ -3255,41 +3768,27 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         },
                     },
                     status_code=200,
-                    headers=rate_limit_headers or None,
+                    headers=_post_forward_headers(dict(rate_limit_headers)) or None,
                 )
             if result_redacted:
                 upstream_response["result"] = _redact_obj_pii(upstream_response.get("result"))
 
-        if settings.audit_sink is not None:
-            _forward_is_tool_call = is_tools_call(message)
+        if settings.audit_sink is not None and not _forward_is_tool_call:
             forward_audit_event: dict[str, Any] = {
-                "action": "gateway.tool_call" if _forward_is_tool_call else "gateway.message",
+                "action": "gateway.message",
                 "upstream": upstream.name,
                 "tenant_id": tenant_id,
                 "method": message.get("method"),
-                "tool": extract_tool_name(message) if _forward_is_tool_call else None,
+                "tool": None,
             }
-            # Only an actual tools/call is an authorized tool invocation. JSON-RPC
-            # handshake / discovery traffic (initialize, tools/list, notifications)
-            # is forwarded too but must not be tagged TOOL_CALL_ALLOWED, or the live
-            # feed would inflate calls_today / tool_calls_authorized with
-            # non-invocation messages.
-            if _forward_is_tool_call:
-                forward_audit_event.update(
-                    _typed_runtime_event(
-                        GatewayRuntimeEventType.TOOL_CALL_ALLOWED,
-                        decision="allow",
-                        policy_source=resolved_policy_source,
-                        tool=extract_tool_name(message) or "",
-                    )
-                )
-            await settings.audit_sink(forward_audit_event)
+            await _audit_after_forward(forward_audit_event)
         response_headers = dict(rate_limit_headers)
         response_headers["traceparent"] = str(trace_meta["traceparent"])
         if trace_meta["tracestate"]:
             response_headers["tracestate"] = str(trace_meta["tracestate"])
         if trace_meta["baggage"]:
             response_headers["baggage"] = str(trace_meta["baggage"])
+        _post_forward_headers(response_headers)
         return JSONResponse(upstream_response, headers=response_headers or None)
 
     return app
@@ -3297,6 +3796,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
 # Re-export the parser for easier test authoring / CLI glue.
 __all__ = [
+    "ControlPlaneAuditSink",
+    "GatewayAuditDeliveryUnavailableError",
     "GatewaySettings",
     "build_control_plane_audit_sink",
     "create_gateway_app",

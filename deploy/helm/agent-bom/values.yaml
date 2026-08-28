@@ -273,8 +273,13 @@ monitor:
 # ─────────────────────────────────────────────────────────────────────────────
 gateway:
   enabled: false
-  replicas: 2
+  # Durable delivery claims are process-owned; the shipped topology is one
+  # replica with a restart-stable PVC. Scale-out requires shared leases.
+  replicas: 1
   autoscaling:
+    # Reserved for a future shared-lease delivery backend. Enabling either HPA
+    # mode currently fails rendering because persistent audit delivery is
+    # required and supports one writer.
     enabled: false
     minReplicas: 2
     maxReplicas: 6
@@ -312,6 +317,18 @@ gateway:
     # Optional URL for --from-control-plane discovery.
     # Example: https://agent-bom.internal.example.com
     url: ""
+  # Writable local retry state. Every Helm gateway requires the PVC-backed mode
+  # below: even with control-plane discovery, post-forward outcomes and errors
+  # must survive a control-plane outage and pod reschedule without loss.
+  stateDir: /tmp/agent-bom
+  # Pod-rescheduling durability for every gateway. Claims and the local
+  # HMAC chain are process-owned, so the chart requires one replica, disables
+  # both HPA modes, and uses a Recreate rollout when a PVC is used. Scale-out
+  # needs a shared lease implementation that is not shipped.
+  persistence:
+    enabled: false
+    existingClaim: ""
+    mountPath: /var/lib/agent-bom
   # Optional runtime policy JSON path (mounted via extraVolumes + extraVolumeMounts).
   policyPath: ""
   # In-process policy file reload interval; requires policyPath when > 0.

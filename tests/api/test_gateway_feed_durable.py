@@ -54,6 +54,19 @@ def _blocked_event(event_id: str) -> dict[str, object]:
     return event
 
 
+def _profile_event(event_id: str, event_type: str, *, decision: str = "allow") -> dict[str, object]:
+    event = _event(event_id, tool="read_file")
+    event.update(
+        {
+            "event_type": event_type,
+            "decision": decision,
+            "reason_code": "profile_revoked",
+            "development_mode": event_type.endswith("dev_bypass"),
+        }
+    )
+    return event
+
+
 @pytest.fixture(autouse=True)
 def _isolated_gateway_feed(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
@@ -163,6 +176,64 @@ def test_kpis_use_exact_utc_window_over_durable_events_after_ring_loss() -> None
     assert body["window"]["start"].endswith("+00:00")
     assert body["window"]["end"].endswith("+00:00")
     assert body["window"]["exact"] is True
+
+
+def test_profile_posture_is_durable_without_inflating_tool_call_feed_or_kpis() -> None:
+    client = TestClient(app)
+    tenant_id = "tenant-profile-posture"
+    ingest = client.post(
+        "/v1/proxy/audit",
+        headers=_headers(tenant_id, role="admin"),
+        json={
+            "source_id": "gateway-a",
+            "session_id": "session-a",
+            "alerts": [
+                _profile_event("evt-profile-warn", "gateway.runtime_profile.warned"),
+                _profile_event("evt-profile-bypass", "gateway.runtime_profile.dev_bypass"),
+                _profile_event("evt-profile-block", "gateway.runtime_profile.blocked", decision="deny"),
+                _event("evt-allow", tool="read_file"),
+            ],
+        },
+    )
+    assert ingest.status_code == 200, ingest.text
+    assert ingest.json()["durable_accepted_count"] == 4
+    proxy_routes._reset_proxy_runtime_for_tests()
+
+    feed = client.get("/v1/gateway/feed", headers=_headers(tenant_id), params={"limit": 20})
+    assert feed.status_code == 200, feed.text
+    assert [event["event_id"] for event in feed.json()["events"]] == ["evt-allow"]
+    assert feed.json()["completeness"]["status"] == "complete"
+
+    kpis = client.get("/v1/gateway/feed/kpis", headers=_headers(tenant_id))
+    assert kpis.status_code == 200, kpis.text
+    assert kpis.json()["tool_calls_authorized"] == 1
+    assert kpis.json()["blocked_today"] == 0
+
+
+def test_enforcement_posture_is_durable_without_inflating_tool_call_kpis() -> None:
+    client = TestClient(app)
+    tenant_id = "tenant-enforcement-posture"
+    ingest = client.post(
+        "/v1/proxy/audit",
+        headers=_headers(tenant_id, role="admin"),
+        json={
+            "source_id": "gateway-a",
+            "session_id": "session-a",
+            "alerts": [
+                _profile_event("evt-enforcement-warn", "gateway.enforcement.warned"),
+                _profile_event("evt-enforcement-observed", "gateway.enforcement.observed"),
+                _profile_event("evt-enforcement-block", "gateway.enforcement.blocked", decision="deny"),
+                _event("evt-allow", tool="read_file"),
+            ],
+        },
+    )
+    assert ingest.status_code == 200, ingest.text
+    assert ingest.json()["durable_accepted_count"] == 4
+
+    kpis = client.get("/v1/gateway/feed/kpis", headers=_headers(tenant_id))
+    assert kpis.status_code == 200, kpis.text
+    assert kpis.json()["tool_calls_authorized"] == 1
+    assert kpis.json()["blocked_today"] == 0
 
 
 def test_retention_marks_initial_backfill_partial_and_expires_old_cursor() -> None:

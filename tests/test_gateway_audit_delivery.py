@@ -175,11 +175,7 @@ async def test_restart_discovers_unbound_tenant_backlog_and_reports_degraded_hea
     assert int(first.health()["backlog_bytes"]) > 0
     await first.aclose()
 
-    persisted = "".join(
-        path.read_text(encoding="utf-8", errors="replace")
-        for path in tmp_path.rglob("*")
-        if path.is_file()
-    )
+    persisted = "".join(path.read_text(encoding="utf-8", errors="replace") for path in tmp_path.rglob("*") if path.is_file())
     assert alpha_token not in persisted
     assert beta_token not in persisted
 

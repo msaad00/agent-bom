@@ -1350,11 +1350,7 @@ class _GatewayAuditTenantRegistry:
         if hasattr(os, "O_CLOEXEC"):
             read_flags |= os.O_CLOEXEC
         try:
-            names = sorted(
-                name
-                for name in os.listdir(parent_fd)
-                if name.startswith(self._prefix) and name.endswith(".tenant.json")
-            )
+            names = sorted(name for name in os.listdir(parent_fd) if name.startswith(self._prefix) and name.endswith(".tenant.json"))
             for name in names:
                 fd = os.open(name, read_flags, dir_fd=parent_fd)
                 try:

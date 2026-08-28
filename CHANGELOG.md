@@ -14,10 +14,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - OIDC setup emits file references instead of client-secret values. Compose
   control-plane profiles load the generated non-secret env file and mount a
   dedicated OIDC secret directory read-only; dashboard and Helm guidance use
-  the same file-first contract. Literal `auth setup-oidc --client-secret`
-  values now fail before discovery or file writes. Released automation can use
-  the deprecated safe migration form `--client-secret @<absolute-runtime-path>` before
-  moving to `--client-secret-file`; secret bytes are never echoed or read.
+  the same file-first contract. `auth setup-oidc` no longer accepts a
+  `--client-secret` option; automation must use
+  `--client-secret-file <absolute-runtime-path>`. Secret bytes are never
+  accepted, echoed, read, or written by the wizard.
 
 ## [0.102.0] - 2026-08-23
 

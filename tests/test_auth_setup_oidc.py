@@ -261,81 +261,24 @@ def test_cli_generic_provider_requires_issuer():
     assert "issuer" in result.output.lower()
 
 
-def test_cli_rejects_literal_client_secret_without_echoing_or_side_effects(tmp_path: Path):
-    runner = CliRunner()
-    output = tmp_path / "must-not-exist.env"
-
-    with patch("agent_bom.api.oidc.discover_oidc") as discover:
-        result = runner.invoke(
-            main,
-            [
-                "auth",
-                "setup-oidc",
-                "--non-interactive",
-                "--provider",
-                "google",
-                "--client-id",
-                "cid",
-                "--client-secret",
-                "do-not-echo-this",
-                "--base-url",
-                "https://abom.example.com",
-                "--write",
-                "--output",
-                str(output),
-            ],
-        )
-
-    assert result.exit_code != 0
-    assert "do-not-echo-this" not in result.output
-    assert "client-secret-file" in result.output
-    discover.assert_not_called()
-    assert not output.exists()
-
-
-def test_cli_legacy_client_secret_accepts_only_an_at_file_reference():
-    """Released automation can migrate without putting secret bytes in argv."""
-    runner = CliRunner()
-    with patch("agent_bom.api.oidc.discover_oidc", return_value=dict(_DISCOVERY_OK)):
-        result = runner.invoke(
-            main,
-            [
-                "auth",
-                "setup-oidc",
-                "--non-interactive",
-                "--provider",
-                "google",
-                "--client-id",
-                "cid",
-                "--client-secret",
-                "@/run/agent-bom/oidc/client_secret",
-                "--base-url",
-                "https://abom.example.com",
-            ],
-        )
-
-    assert result.exit_code == 0, result.output
-    assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/agent-bom/oidc/client_secret" in result.output
-    assert "AGENT_BOM_OIDC_CLIENT_SECRET=" not in result.output
-    assert "deprecated" in result.output.lower()
-
-
 @pytest.mark.parametrize(
     ("legacy_value", "sensitive_fragment"),
     (
-        ("@literal-secret-sentinel", "literal-secret-sentinel"),
+        ("do-not-echo-this", "do-not-echo-this"),
+        ("@/run/agent-bom/oidc/client_secret", "/run/agent-bom/oidc/client_secret"),
         ("@../secret-file", "../secret-file"),
         ("@/run/agent-bom/../secret-file", "../secret-file"),
         ("@/run/agent-bom/oidc/client_secret\nAGENT_BOM_API_KEYS=attacker:admin", "attacker:admin"),
     ),
 )
-def test_cli_legacy_client_secret_rejects_unsafe_file_references_before_side_effects(
+def test_cli_rejects_removed_client_secret_option_without_echoing_or_side_effects(
     tmp_path: Path,
     legacy_value: str,
     sensitive_fragment: str,
 ):
-    output = tmp_path / "must-not-exist.env"
     runner = CliRunner()
+    output = tmp_path / "must-not-exist.env"
+
     with patch("agent_bom.api.oidc.discover_oidc") as discover:
         result = runner.invoke(
             main,
@@ -358,7 +301,7 @@ def test_cli_legacy_client_secret_rejects_unsafe_file_references_before_side_eff
         )
 
     assert result.exit_code != 0
-    assert "absolute normalized runtime file path" in result.output
+    assert "No such option: --client-secret" in result.output
     assert sensitive_fragment not in result.output
     discover.assert_not_called()
     assert not output.exists()

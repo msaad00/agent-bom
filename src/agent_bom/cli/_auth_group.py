@@ -255,7 +255,6 @@ def auth_group() -> None:
     default=None,
     help="Runtime path to an operator-managed OAuth client-secret file (omit for a PKCE public client).",
 )
-@click.option("--client-secret", default=None, hidden=True)
 @click.option("--base-url", default=None, help="Deployment base URL; the redirect URI is derived from it.")
 @click.option("--redirect-uri", default=None, help="Override the derived redirect URI (must match the IdP allowlist).")
 @click.option("--audience", default=None, help="Expected JWT audience (defaults to the client ID).")
@@ -269,7 +268,6 @@ def setup_oidc_cmd(
     issuer: Optional[str],
     client_id: Optional[str],
     client_secret_file: Optional[str],
-    client_secret: Optional[str],
     base_url: Optional[str],
     redirect_uri: Optional[str],
     audience: Optional[str],
@@ -290,21 +288,6 @@ def setup_oidc_cmd(
 
     con = Console()
     interactive = (not non_interactive) and _stdin_is_tty()
-
-    used_legacy_file_reference = False
-    if client_secret is not None:
-        legacy_value = client_secret
-        if legacy_value.startswith("@") and legacy_value[1:]:
-            if client_secret_file:
-                raise OIDCSetupError("Pass either --client-secret-file or deprecated --client-secret @<absolute-runtime-path>, not both.")
-            client_secret_file = legacy_value[1:]
-            used_legacy_file_reference = True
-        else:
-            raise OIDCSetupError(
-                "Literal --client-secret input is no longer accepted because command arguments can leak. "
-                "Store the value in a protected file and pass its runtime path with --client-secret-file. "
-                "Released automation may migrate safely with --client-secret @<absolute-runtime-path>."
-            )
 
     if not provider:
         if interactive:
@@ -362,11 +345,6 @@ def setup_oidc_cmd(
 
     # Connectivity check (warn, never fail).
     con.print(f"\n  [bold]OIDC setup[/bold] [dim]· provider {provider} · issuer {issuer}[/dim]")
-    if used_legacy_file_reference:
-        con.print(
-            "  [yellow]Deprecated option[/yellow] [dim]· --client-secret @<absolute-runtime-path> is a file-reference migration shim; "
-            "use --client-secret-file on the next update.[/dim]"
-        )
     check = check_issuer_connectivity(issuer)
     if check.get("reachable") and check.get("complete"):
         con.print("  [green]Issuer discovery OK[/green] [dim]· authorization, token, and JWKS endpoints resolved.[/dim]")

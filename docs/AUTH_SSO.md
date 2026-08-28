@@ -43,21 +43,19 @@ For Compose, provision the secret as `deploy/secrets/oidc/client_secret` before
 starting the stack. The shipped platform and full-stack profiles mount that
 dedicated directory read-only and load `oidc.env` automatically when present.
 
-### Migrating released automation
+### Migrating automation
 
-Literal `--client-secret <value>` arguments are rejected before issuer
-discovery or file writes because process arguments and shell history can expose
-the value. Update automation to `--client-secret-file <absolute-runtime-path>`. A
-deprecated transition form keeps the released option name without accepting
-secret bytes; the value must be an absolute, normalized runtime path:
+The setup command does not accept a `--client-secret` option because process
+arguments and shell history can expose secret values. Update automation to use
+an absolute, normalized runtime file reference:
 
 ```bash
 agent-bom auth setup-oidc ... \
-  --client-secret @/run/agent-bom/oidc/client_secret
+  --client-secret-file /run/agent-bom/oidc/client_secret
 ```
 
-The `@` value is a runtime **file reference**, not a secret. It produces the
-same `AGENT_BOM_OIDC_CLIENT_SECRET_FILE` output and a deprecation notice.
+The wizard emits `AGENT_BOM_OIDC_CLIENT_SECRET_FILE`; it never reads the
+referenced file or emits its contents.
 
 > The redirect URI is always derived as `<base-url>/v1/auth/oidc/callback` — the
 > dashboard's OIDC callback route. It must be allowlisted at the IdP **exactly**.

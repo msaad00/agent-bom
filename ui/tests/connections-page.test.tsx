@@ -803,7 +803,7 @@ describe("ConnectionsPage — Connect segment", () => {
 
     // Non-cloud surfaces register in-hub (a button that jumps to the Sources tab).
     expect(screen.getByRole("button", { name: "Register Repositories" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Register Warehouse & lake" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Register SaaS connector" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Set up coding agent" })).toBeInTheDocument();
   });
 
@@ -846,13 +846,68 @@ describe("ConnectionsPage — Connect segment", () => {
     );
   });
 
+  it("registers backend connectors without claiming a credential-reference binding", async () => {
+    navState.search = "?tab=sources";
+    apiMock.listConnectors.mockResolvedValue({ connectors: ["jira"] });
+    apiMock.getConnectorHealth.mockResolvedValue({
+      connector: "jira",
+      state: "healthy",
+      message: "ready",
+      api_version: null,
+    });
+    apiMock.createSource.mockResolvedValue({
+      ...SOURCE_RECORD,
+      kind: "connector.cloud_read_only",
+      connector_name: "jira",
+      credential_mode: "none",
+    });
+    render(<ConnectionsPage />);
+
+    fireEvent.change(await screen.findByPlaceholderText("Payments monorepo"), {
+      target: { value: "Jira evidence" },
+    });
+    const kind = screen.getByRole("combobox", { name: "Kind" });
+    fireEvent.change(kind, {
+      target: { value: "connector.cloud_read_only" },
+    });
+    await waitFor(() => expect(kind).toHaveValue("connector.cloud_read_only"));
+    const connector = await screen.findByRole("combobox", { name: "Connector name" });
+    await screen.findByRole("option", { name: "jira" });
+    fireEvent.change(connector, {
+      target: { value: "jira" },
+    });
+    await waitFor(() => expect(connector).toHaveValue("jira"));
+    fireEvent.click(screen.getByRole("button", { name: "Register source" }));
+
+    await waitFor(() =>
+      expect(apiMock.createSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          display_name: "Jira evidence",
+          kind: "connector.cloud_read_only",
+          connector_name: "jira",
+          credential_mode: "none",
+        }),
+      ),
+    );
+  });
+
+  it("does not advertise unshipped registry or warehouse connector families", async () => {
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    expect(screen.getByRole("button", { name: "Register SaaS connector" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Register Package registry" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Register Warehouse & lake" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Snowflake, BigQuery read-only/i)).not.toBeInTheDocument();
+  });
+
   it("filters the gallery by category and free-text search", async () => {
     render(<ConnectionsPage />);
     await waitForConnectTab();
 
     fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
     expect(screen.queryByRole("button", { name: "Connect Amazon Web Services" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Register Warehouse & lake" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Register SaaS connector" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /^All/ }));
     fireEvent.change(screen.getByRole("searchbox", { name: "Search connectors" }), {
@@ -1329,6 +1384,67 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     expect(deleteButton).toBeDisabled();
     fireEvent.click(deleteButton);
     expect(apiMock.deleteSource).not.toHaveBeenCalled();
+  });
+
+  it("does not offer Run now for push-driven or runtime sources", async () => {
+    apiMock.listSources.mockResolvedValue({
+      schema_version: "sources.v1",
+      tenant_id: "tenant-acme",
+      count: 1,
+      sources: [
+        {
+          ...SOURCE_RECORD,
+          source_id: "src-push",
+          display_name: "Trace producer",
+          kind: "ingest.trace_push",
+          credential_mode: "reference",
+          credential_ref: "producer-workload",
+        },
+      ],
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Trace producer")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Trace producer" }));
+
+    expect(screen.getByText("Metadata only (not executable)")).toBeInTheDocument();
+    const run = screen.getByRole("button", { name: "Run now" });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute("title", "Push and runtime sources receive evidence externally and cannot run directly.");
+    fireEvent.click(run);
+    expect(apiMock.runSource).not.toHaveBeenCalled();
+  });
+
+  it("does not offer Run now for a legacy runnable source with a metadata-only credential reference", async () => {
+    apiMock.listSources.mockResolvedValue({
+      schema_version: "sources.v1",
+      tenant_id: "tenant-acme",
+      count: 1,
+      sources: [
+        {
+          ...SOURCE_RECORD,
+          source_id: "src-legacy-ref",
+          display_name: "Legacy Jira source",
+          kind: "connector.cloud_read_only",
+          connector_name: "jira",
+          credential_mode: "reference",
+          credential_ref: "credential-ref-1",
+        },
+      ],
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Legacy Jira source")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Legacy Jira source" }));
+
+    const run = screen.getByRole("button", { name: "Run now" });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute(
+      "title",
+      "Credential references are governance metadata and cannot execute this source. Detach the reference first.",
+    );
+    fireEvent.click(run);
+    expect(apiMock.runSource).not.toHaveBeenCalled();
   });
 
   it("enables source deletion only for an Admin", async () => {

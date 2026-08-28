@@ -14,7 +14,6 @@ import asyncio
 import logging
 import os
 import re
-import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,7 +44,7 @@ from agent_bom.api.models import (
     JobStatus,
     PostgresPortabilityHealth,
     PublicHealthResponse,
-    ScanJob,
+    ScanJob,  # noqa: F401 — re-exported for legacy store imports
     ScanRequest,
     StepStatus,  # noqa: F401 — re-exported for tests
     StorageHealth,
@@ -292,6 +291,77 @@ def _preflight_postgres_tenant_isolation() -> None:
     preflight_rls_capable_role()
 
 
+def _enqueue_scheduled_scan(
+    scan_config: dict[str, Any],
+    *,
+    schedule_id: str | None = None,
+    tenant_id: str | None = None,
+) -> str:
+    """Resolve a schedule to one canonical request and enqueue it durably."""
+
+    resolved_tenant_id = tenant_id or scan_config.get("tenant_id", "default")
+    resolved_tenant_id = str(resolved_tenant_id or "default")
+    source_id = str(scan_config.get("source_id") or "").strip()
+
+    from agent_bom.api.routes.scan import enqueue_scan_job
+
+    if source_id:
+        from agent_bom.api.routes.sources import _request_for_source, _validate_credential_ref_for_tenant
+        from agent_bom.api.scan_batches import scan_request_targets
+        from agent_bom.api.tenant_quota import (
+            enforce_active_scan_quota,
+            enforce_retained_jobs_quota,
+            tenant_quota_guard,
+        )
+
+        with tenant_quota_guard(resolved_tenant_id):
+            if schedule_id:
+                schedule = _get_schedule_store().get(schedule_id, tenant_id=resolved_tenant_id)
+                scheduled_source_id = str(schedule.scan_config.get("source_id") or "") if schedule is not None else ""
+                if schedule is None or not schedule.enabled or scheduled_source_id != source_id:
+                    raise RuntimeError("Scheduled source is no longer active in this tenant")
+            source = _get_source_store().get(source_id)
+            if source is None or source.tenant_id != resolved_tenant_id:
+                raise RuntimeError("Scheduled source is unavailable in this tenant")
+            if not source.enabled:
+                raise RuntimeError("Scheduled source is disabled")
+            _validate_credential_ref_for_tenant(resolved_tenant_id, source)
+            request_body = _request_for_source(source)
+            target_count = len(scan_request_targets(request_body))
+            attempted_jobs = target_count + 1 if target_count > 1 else 1
+            enforce_active_scan_quota(resolved_tenant_id, attempted=attempted_jobs)
+            enforce_retained_jobs_quota(resolved_tenant_id, attempted=attempted_jobs)
+            job = enqueue_scan_job(
+                tenant_id=resolved_tenant_id,
+                triggered_by=f"scheduler:source:{source_id}",
+                request_body=request_body,
+                source_id=source_id,
+                schedule_id=schedule_id,
+                quota_guarded=True,
+            )
+            from agent_bom.api.pipeline import _now
+
+            source.last_run_at = _now()
+            source.last_run_status = job.status.value
+            source.last_job_id = job.job_id
+            source.updated_at = _now()
+            _get_source_store().put(source)
+        return job.job_id
+
+    request_payload = {key: value for key, value in scan_config.items() if key in ScanRequest.model_fields}
+    legacy_path = scan_config.get("path")
+    if isinstance(legacy_path, str) and legacy_path and not request_payload.get("agent_projects"):
+        request_payload["agent_projects"] = [legacy_path]
+    request_body = ScanRequest(**request_payload)
+    job = enqueue_scan_job(
+        tenant_id=resolved_tenant_id,
+        triggered_by="scheduler",
+        request_body=request_body,
+        schedule_id=schedule_id,
+    )
+    return job.job_id
+
+
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Start background cleanup task on startup, cancel on shutdown."""
@@ -524,56 +594,9 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
     # Start scheduler background loop
     global _scheduler_task
-    from agent_bom.api.pipeline import _now
     from agent_bom.api.scheduler import scheduler_loop
-    from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 
-    def _schedule_scan(scan_config: dict, *, schedule_id: str | None = None, tenant_id: str | None = None) -> str:
-        """Trigger a scan from a schedule."""
-        resolved_tenant_id = tenant_id or (
-            getattr(scan_config, "tenant_id", None) if hasattr(scan_config, "tenant_id") else scan_config.get("tenant_id", "default")
-        )
-        tenant_id = str(resolved_tenant_id or "default")
-        request_payload = scan_config
-        if isinstance(scan_config, dict):
-            request_payload = {key: value for key, value in scan_config.items() if key in ScanRequest.model_fields}
-            legacy_path = scan_config.get("path")
-            if isinstance(legacy_path, str) and legacy_path and not request_payload.get("agent_projects"):
-                request_payload["agent_projects"] = [legacy_path]
-        job = ScanJob(
-            job_id=str(uuid.uuid4()),
-            tenant_id=tenant_id,
-            schedule_id=schedule_id,
-            triggered_by="scheduler",
-            created_at=_now(),
-            request=ScanRequest(**request_payload) if isinstance(request_payload, dict) else request_payload,
-        )
-        # Per-tenant quota lock makes (check + insert) atomic. See
-        # tenant_quota.tenant_quota_guard for rationale (audit-4 P1).
-        with tenant_quota_guard(
-            tenant_id,
-            lambda: enforce_active_scan_quota(tenant_id),
-            lambda: enforce_retained_jobs_quota(tenant_id),
-        ):
-            store = _get_store()
-            store.put(job)
-            _jobs_put(job.job_id, job)
-            try:
-                from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
-
-                reconcile_scan_jobs_active(store)
-            except Exception:  # noqa: BLE001
-                pass
-        from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
-
-        if distributed_scans_enabled() and store_supports_dispatch(store):
-            store.enqueue_for_dispatch(job)
-        else:
-            loop = asyncio.get_running_loop()
-            submit_scheduled_scan_job(loop, job)
-        return job.job_id
-
-    _scheduler_task = asyncio.create_task(scheduler_loop(_get_schedule_store(), _schedule_scan))
+    _scheduler_task = asyncio.create_task(scheduler_loop(_get_schedule_store(), _enqueue_scheduled_scan))
 
     # ── Cloud-connection scan scheduler (Phase B.2) ──
     # Opt-in background loop that re-scans due cloud connections so a connection
@@ -964,7 +987,6 @@ from agent_bom.api.pipeline import (  # noqa: E402
     iter_pipeline_dag_event_records,  # noqa: F401 — re-exported for tests/artifact consumers
     pipeline_dag_events_jsonl,  # noqa: F401 — re-exported for tests/artifact consumers
     shutdown_scan_executor,
-    submit_scheduled_scan_job,
 )
 
 # ─── Route modules ────────────────────────────────────────────────────────

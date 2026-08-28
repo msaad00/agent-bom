@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
+from threading import Event, Thread
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
+from fastapi import HTTPException
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.credential_store import InMemoryCredentialRefStore
-from agent_bom.api.models import SourceKind, SourceRecord
+from agent_bom.api.models import CredentialRefRecord, CredentialRefStatus, ScanJob, SourceKind, SourceRecord
+from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore
@@ -36,6 +42,19 @@ OTHER_TENANT_HEADERS = {
     "X-Agent-Bom-Tenant-ID": "tenant-beta",
     "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
 }
+OTHER_TENANT_ANALYST_HEADERS = {
+    "X-Agent-Bom-Role": "analyst",
+    "X-Agent-Bom-Tenant-ID": "tenant-beta",
+    "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
+}
+
+
+def _nested_encoded_github_ref(depth: int) -> tuple[str, str]:
+    token = "ghp_" + "A" * 36
+    encoded = "".join(f"%{ord(char):02X}" for char in token)
+    for _ in range(depth - 1):
+        encoded = encoded.replace("%", "%25")
+    return token, f"vault://team/{encoded}"
 
 
 @pytest.fixture
@@ -43,6 +62,7 @@ def source_client(monkeypatch: pytest.MonkeyPatch):
     old_source_store = _stores._source_store
     old_credential_store = _stores._credential_ref_store
     old_job_store = _stores._store
+    old_schedule_store = _stores._schedule_store
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
@@ -50,6 +70,7 @@ def source_client(monkeypatch: pytest.MonkeyPatch):
     _stores.set_source_store(InMemorySourceStore())
     _stores.set_credential_ref_store(InMemoryCredentialRefStore())
     _stores.set_job_store(InMemoryJobStore())
+    _stores.set_schedule_store(InMemoryScheduleStore())
 
     try:
         with TestClient(app) as client:
@@ -60,6 +81,7 @@ def source_client(monkeypatch: pytest.MonkeyPatch):
         _stores._source_store = old_source_store
         _stores._credential_ref_store = old_credential_store
         _stores._store = old_job_store
+        _stores._schedule_store = old_schedule_store
 
 
 def test_source_crud_and_role_enforcement(source_client: TestClient) -> None:
@@ -71,7 +93,7 @@ def test_source_crud_and_role_enforcement(source_client: TestClient) -> None:
             "kind": "connector.cloud_read_only",
             "owner": "platform-security",
             "connector_name": "jira",
-            "credential_mode": "reference",
+            "credential_mode": "none",
             "description": "Read-only cloud discovery source",
         },
     )
@@ -241,7 +263,10 @@ def test_credential_reference_crud_and_tenant_isolation(source_client: TestClien
 
     deleted = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
     assert deleted.status_code == 204
-    assert source_client.get("/v1/credentials", headers=VIEWER_HEADERS).json()["count"] == 0
+    retired = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=VIEWER_HEADERS)
+    assert retired.status_code == 200
+    assert retired.json()["status"] == "retired"
+    assert retired.json()["enabled"] is False
 
 
 def test_credential_rotation_posture_flags_stale_and_expiring_refs(source_client: TestClient) -> None:
@@ -343,7 +368,327 @@ def test_credential_reference_rejects_secret_material(source_client: TestClient)
     assert create.status_code == 422
 
 
-def test_source_with_credential_reference_requires_same_tenant_ref(source_client: TestClient) -> None:
+def test_credential_reference_rejects_secret_shaped_external_ref_without_echo_or_persist(
+    source_client: TestClient,
+) -> None:
+    secret = "ghp_" + "A" * 36
+
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unsafe credential",
+            "provider": "github",
+            "external_ref": secret,
+        },
+    )
+
+    assert create.status_code == 422
+    assert secret not in create.text
+    listed = source_client.get("/v1/credentials", headers=VIEWER_HEADERS)
+    assert listed.json()["count"] == 0
+    assert secret not in listed.text
+
+
+def test_credential_reference_rejects_opaque_secret_inside_reference_path_without_persisting(
+    source_client: TestClient,
+) -> None:
+    secret = "".join(("aZ9k", "Lm2N", "pQr7", "StUv", "Wx3Y", "z8Ab", "CdEf", "GhJk", "LmNo", "PqRs"))
+    external_ref = f"vault://production/{secret}"
+
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unsafe opaque credential",
+            "provider": "vault",
+            "external_ref": external_ref,
+        },
+    )
+
+    assert create.status_code == 422
+    assert secret not in create.text
+    assert _stores._credential_ref_store.list_all(tenant_id="tenant-alpha") == []
+
+
+@pytest.mark.parametrize("depth", range(1, 7))
+def test_credential_reference_rejects_nested_encoded_secret_without_echo_or_persistence(
+    source_client: TestClient,
+    depth: int,
+) -> None:
+    token, external_ref = _nested_encoded_github_ref(depth)
+
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": f"Nested encoded credential {depth}",
+            "provider": "vault",
+            "external_ref": external_ref,
+        },
+    )
+
+    assert create.status_code == 422
+    assert token not in create.text
+    assert external_ref not in create.text
+    assert _stores._credential_ref_store.list_all(tenant_id="tenant-alpha") == []
+
+
+@pytest.mark.parametrize(
+    "external_ref",
+    [
+        "vault://team/agent-bom/production",
+        "keyvault://prod-vault/agent-bom-reader",
+        "aws-secretsmanager://production/agent-bom",
+        "gcp-secretmanager://projects/acme-prod/secrets/agent-bom-reader",
+        "secret-manager://platform/agent-bom",
+    ],
+)
+def test_credential_reference_accepts_and_persists_legitimate_reference(
+    source_client: TestClient,
+    external_ref: str,
+) -> None:
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Managed credential reference",
+            "provider": "vault",
+            "external_ref": external_ref,
+        },
+    )
+
+    assert create.status_code == 201
+    assert create.json()["external_ref"] == external_ref
+    credential_ref_id = create.json()["credential_ref_id"]
+    persisted = _stores._credential_ref_store.get(credential_ref_id, tenant_id="tenant-alpha")
+    assert persisted is not None
+    assert persisted.external_ref == external_ref
+
+
+def test_credential_reference_rejects_secret_shaped_update_without_mutating_existing_ref(
+    source_client: TestClient,
+) -> None:
+    created = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "GitHub producer identity",
+            "provider": "github",
+            "external_ref": "vault://github/agent-bom",
+        },
+    )
+    credential_ref_id = created.json()["credential_ref_id"]
+    secret = "ghp_" + "B" * 36
+
+    update = source_client.put(
+        f"/v1/credentials/{credential_ref_id}",
+        headers=ANALYST_HEADERS,
+        json={"external_ref": secret},
+    )
+
+    assert update.status_code == 422
+    assert secret not in update.text
+    fetched = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=VIEWER_HEADERS)
+    assert fetched.json()["external_ref"] == "vault://github/agent-bom"
+    assert secret not in fetched.text
+
+
+def test_credential_retirement_is_terminal_and_cannot_be_rewritten_or_tested_by_analyst(
+    source_client: TestClient,
+) -> None:
+    created = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Retired producer identity",
+            "provider": "github",
+            "external_ref": "vault://github/retired",
+        },
+    )
+    credential_ref_id = created.json()["credential_ref_id"]
+    assert source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS).status_code == 204
+
+    revived = source_client.put(
+        f"/v1/credentials/{credential_ref_id}",
+        headers=ANALYST_HEADERS,
+        json={"enabled": True, "status": "configured"},
+    )
+    tested = source_client.post(f"/v1/credentials/{credential_ref_id}/test", headers=ANALYST_HEADERS)
+
+    assert revived.status_code == 409
+    assert tested.status_code == 409
+    fetched = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=VIEWER_HEADERS)
+    assert fetched.json()["enabled"] is False
+    assert fetched.json()["status"] == "retired"
+
+
+def test_credential_update_explicit_null_clears_nullable_lifecycle_fields(source_client: TestClient) -> None:
+    created = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Rotating producer identity",
+            "provider": "github",
+            "external_ref": "vault://github/rotating",
+            "last_rotated_at": "2026-01-01T00:00:00+00:00",
+            "expires_at": "2027-01-01T00:00:00+00:00",
+            "rotation_interval_days": 30,
+            "max_age_days": 60,
+            "expiry_warning_days": 14,
+        },
+    )
+    credential_ref_id = created.json()["credential_ref_id"]
+
+    cleared = source_client.put(
+        f"/v1/credentials/{credential_ref_id}",
+        headers=ANALYST_HEADERS,
+        json={
+            "last_rotated_at": None,
+            "expires_at": None,
+            "rotation_interval_days": None,
+            "max_age_days": None,
+            "expiry_warning_days": None,
+        },
+    )
+
+    assert cleared.status_code == 200
+    for field in (
+        "last_rotated_at",
+        "expires_at",
+        "rotation_interval_days",
+        "max_age_days",
+        "expiry_warning_days",
+    ):
+        assert cleared.json()[field] is None
+
+
+def test_credential_update_explicit_null_purges_legacy_secret_reference(source_client: TestClient) -> None:
+    legacy = CredentialRefRecord(
+        credential_ref_id="legacy-secret-reference",
+        tenant_id="tenant-alpha",
+        display_name="Legacy credential",
+        provider="github",
+        external_ref="ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890",
+        created_at="2026-08-27T00:00:00+00:00",
+        updated_at="2026-08-27T00:00:00+00:00",
+    )
+    _stores._credential_ref_store.put(legacy)
+
+    cleared = source_client.put(
+        "/v1/credentials/legacy-secret-reference",
+        headers=ANALYST_HEADERS,
+        json={"external_ref": None},
+    )
+
+    assert cleared.status_code == 200
+    assert cleared.json()["external_ref"] is None
+    persisted = _stores._credential_ref_store.get("legacy-secret-reference", tenant_id="tenant-alpha")
+    assert persisted is not None
+    assert persisted.external_ref is None
+
+
+def test_credential_retirement_purges_legacy_secret_reference_at_rest(source_client: TestClient) -> None:
+    secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
+    legacy = CredentialRefRecord(
+        credential_ref_id="legacy-secret-retire",
+        tenant_id="tenant-alpha",
+        display_name="Legacy credential",
+        provider="github",
+        external_ref=secret,
+        created_at="2026-08-27T00:00:00+00:00",
+        updated_at="2026-08-27T00:00:00+00:00",
+    )
+    _stores._credential_ref_store.put(legacy)
+
+    retired = source_client.delete(
+        "/v1/credentials/legacy-secret-retire",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert retired.status_code == 204
+    persisted = _stores._credential_ref_store.get("legacy-secret-retire", tenant_id="tenant-alpha")
+    assert persisted is not None
+    assert persisted.status.value == "retired"
+    assert persisted.external_ref is None
+    fetched = source_client.get("/v1/credentials/legacy-secret-retire", headers=VIEWER_HEADERS)
+    assert fetched.status_code == 200
+    assert fetched.json()["external_ref"] is None
+    assert secret not in fetched.text
+
+
+def test_repeated_credential_retirement_purges_legacy_secret_reference_at_rest(
+    source_client: TestClient,
+) -> None:
+    secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
+    legacy = CredentialRefRecord(
+        credential_ref_id="legacy-secret-already-retired",
+        tenant_id="tenant-alpha",
+        display_name="Legacy retired credential",
+        provider="github",
+        external_ref=secret,
+        enabled=False,
+        status=CredentialRefStatus.RETIRED,
+        created_at="2026-08-27T00:00:00+00:00",
+        updated_at="2026-08-27T00:00:00+00:00",
+    )
+    _stores._credential_ref_store.put(legacy)
+
+    retired = source_client.delete(
+        "/v1/credentials/legacy-secret-already-retired",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert retired.status_code == 204
+    persisted = _stores._credential_ref_store.get(
+        "legacy-secret-already-retired",
+        tenant_id="tenant-alpha",
+    )
+    assert persisted is not None
+    assert persisted.status == CredentialRefStatus.RETIRED
+    assert persisted.external_ref is None
+    assert (
+        secret
+        not in source_client.get(
+            "/v1/credentials/legacy-secret-already-retired",
+            headers=VIEWER_HEADERS,
+        ).text
+    )
+
+
+@pytest.mark.parametrize("depth", range(1, 7))
+def test_credential_retirement_purges_nested_encoded_legacy_secret_at_rest(
+    source_client: TestClient,
+    depth: int,
+) -> None:
+    token, external_ref = _nested_encoded_github_ref(depth)
+    credential_ref_id = f"legacy-nested-secret-{depth}"
+    _stores._credential_ref_store.put(
+        CredentialRefRecord(
+            credential_ref_id=credential_ref_id,
+            tenant_id="tenant-alpha",
+            display_name="Legacy nested credential",
+            provider="vault",
+            external_ref=external_ref,
+            created_at="2026-08-27T00:00:00+00:00",
+            updated_at="2026-08-27T00:00:00+00:00",
+        )
+    )
+
+    retired = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
+
+    assert retired.status_code == 204
+    persisted = _stores._credential_ref_store.get(credential_ref_id, tenant_id="tenant-alpha")
+    assert persisted is not None
+    assert persisted.status.value == "retired"
+    assert persisted.external_ref is None
+    fetched = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=VIEWER_HEADERS)
+    assert fetched.status_code == 200
+    assert token not in fetched.text
+    assert external_ref not in fetched.text
+
+
+def test_runnable_source_rejects_missing_or_metadata_only_credential_reference(source_client: TestClient) -> None:
     missing_ref = source_client.post(
         "/v1/sources",
         headers=ANALYST_HEADERS,
@@ -374,13 +719,271 @@ def test_source_with_credential_reference_requires_same_tenant_ref(source_client
         json={
             "display_name": "AWS source",
             "kind": "scan.cloud",
-            "credential_mode": "reference",
+            "credential_mode": " credential_ref ",
             "credential_ref": credential_ref_id,
             "config": {"scan_request": {"connectors": ["jira"], "format": "json"}},
         },
     )
+    assert create.status_code == 409
+    assert create.json()["detail"] == (
+        "credential_ref is governance metadata and is not an executable credential binding; "
+        "use a brokered cloud connection or server-configured connector credentials"
+    )
+
+
+def test_source_credential_mode_is_canonical_and_cannot_bypass_reference_validation(
+    source_client: TestClient,
+) -> None:
+    aliased_reference = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Legacy credential mode",
+            "kind": "connector.cloud_read_only",
+            "connector_name": "jira",
+            "credential_mode": " credential_ref ",
+        },
+    )
+    assert aliased_reference.status_code == 422
+    assert aliased_reference.json()["detail"] == "credential_mode=reference requires credential_ref"
+
+    unknown_mode = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unknown credential mode",
+            "kind": "connector.cloud_read_only",
+            "connector_name": "jira",
+            "credential_mode": "secret_manager",
+        },
+    )
+    assert unknown_mode.status_code == 422
+
+
+def test_source_credential_reference_rejects_cross_tenant_attachment(source_client: TestClient) -> None:
+    credential = source_client.post(
+        "/v1/credentials",
+        headers=OTHER_TENANT_ANALYST_HEADERS,
+        json={
+            "display_name": "Tenant beta producer",
+            "provider": "generic",
+            "external_ref": "workload-identity/tenant-beta",
+            "tenant_id": "tenant-beta",
+        },
+    )
+    assert credential.status_code == 201
+
+    source = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Tenant alpha trace producer",
+            "kind": "ingest.trace_push",
+            "credential_mode": "reference",
+            "credential_ref": credential.json()["credential_ref_id"],
+        },
+    )
+    assert source.status_code == 409
+    assert source.json()["detail"] == "Source credential_ref is not available in this tenant"
+
+
+def test_source_rejects_reference_mode_without_reference(source_client: TestClient) -> None:
+    create = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Jira source",
+            "kind": "connector.registry",
+            "connector_name": "jira",
+            "credential_mode": "reference",
+            "config": {"scan_request": {"format": "json"}},
+        },
+    )
+
+    assert create.status_code == 422
+    assert create.json()["detail"] == "credential_mode=reference requires credential_ref"
+
+
+def test_push_source_may_retain_metadata_only_credential_reference(source_client: TestClient) -> None:
+    credential = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Producer workload identity",
+            "provider": "generic",
+            "mode": "external_ref",
+            "external_ref": "workload-identity/producer",
+        },
+    )
+    credential_ref_id = credential.json()["credential_ref_id"]
+
+    create = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Trace producer",
+            "kind": "ingest.trace_push",
+            "credential_mode": " credential_ref ",
+            "credential_ref": credential_ref_id,
+        },
+    )
+
     assert create.status_code == 201
+    assert create.json()["credential_mode"] == "reference"
     assert create.json()["credential_ref"] == credential_ref_id
+
+    referenced_delete = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
+    assert referenced_delete.status_code == 409
+    assert referenced_delete.json()["detail"] == ("Credential reference is attached to 1 source; detach it before retiring the reference")
+
+    source_id = create.json()["source_id"]
+    cleared = source_client.put(
+        f"/v1/sources/{source_id}",
+        headers=ANALYST_HEADERS,
+        json={"credential_mode": "none", "credential_ref": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["credential_mode"] == "none"
+    assert cleared.json()["credential_ref"] is None
+
+    retired = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
+    assert retired.status_code == 204
+    credential_after_retire = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=VIEWER_HEADERS)
+    assert credential_after_retire.status_code == 200
+    assert credential_after_retire.json()["status"] == "retired"
+
+
+def test_credential_retire_serializes_with_source_attachment(source_client: TestClient) -> None:
+    created = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Producer workload",
+            "provider": "github",
+            "external_ref": "workload-identity/producer",
+        },
+    )
+    credential_ref_id = created.json()["credential_ref_id"]
+    base_store = _stores._credential_ref_store
+    retirement_reached_put = Event()
+    release_retirement = Event()
+
+    class BlockingCredentialStore:
+        def put(self, credential):
+            if credential.status.value == "retired":
+                retirement_reached_put.set()
+                assert release_retirement.wait(timeout=5)
+            return base_store.put(credential)
+
+        def get(self, credential_ref_id, *, tenant_id):
+            credential = base_store.get(credential_ref_id, tenant_id=tenant_id)
+            return credential.model_copy(deep=True) if credential is not None else None
+
+        def delete(self, credential_ref_id, *, tenant_id):
+            return base_store.delete(credential_ref_id, tenant_id=tenant_id)
+
+        def list_all(self, tenant_id=None):
+            return base_store.list_all(tenant_id=tenant_id)
+
+    _stores.set_credential_ref_store(BlockingCredentialStore())
+    responses: dict[str, Any] = {}
+
+    def retire() -> None:
+        responses["retire"] = source_client.delete(
+            f"/v1/credentials/{credential_ref_id}",
+            headers=ADMIN_HEADERS,
+        )
+
+    def attach() -> None:
+        responses["attach"] = source_client.post(
+            "/v1/sources",
+            headers=ANALYST_HEADERS,
+            json={
+                "display_name": "Result producer",
+                "kind": "ingest.result_push",
+                "credential_mode": "reference",
+                "credential_ref": credential_ref_id,
+            },
+        )
+
+    retire_thread = Thread(target=retire)
+    attach_thread = Thread(target=attach)
+    retire_thread.start()
+    assert retirement_reached_put.wait(timeout=5)
+    attach_thread.start()
+    attach_thread.join(timeout=0.2)
+    attachment_waited = attach_thread.is_alive()
+    release_retirement.set()
+    retire_thread.join(timeout=5)
+    attach_thread.join(timeout=5)
+
+    assert attachment_waited, "attachment must wait for the retirement decision"
+    assert responses["retire"].status_code == 204
+    assert responses["attach"].status_code == 409
+    assert source_client.get("/v1/sources", headers=VIEWER_HEADERS).json()["count"] == 0
+
+
+def test_legacy_runnable_source_can_clear_reference_before_test_and_run(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Legacy Jira credential",
+            "provider": "jira",
+            "external_ref": "vault/jira/legacy",
+        },
+    )
+    credential_ref_id = credential.json()["credential_ref_id"]
+    legacy = SourceRecord(
+        source_id="legacy-jira-source",
+        tenant_id="tenant-alpha",
+        display_name="Legacy Jira source",
+        kind=SourceKind.CONNECTOR_CLOUD_READ_ONLY,
+        connector_name="jira",
+        credential_mode="credential_ref",
+        credential_ref=credential_ref_id,
+    )
+    _stores._source_store.put(legacy)
+
+    blocked_test = source_client.post(f"/v1/sources/{legacy.source_id}/test", headers=ANALYST_HEADERS)
+    blocked_run = source_client.post(f"/v1/sources/{legacy.source_id}/run", headers=ANALYST_HEADERS)
+    assert blocked_test.status_code == 409
+    assert blocked_run.status_code == 409
+
+    cleared = source_client.put(
+        f"/v1/sources/{legacy.source_id}",
+        headers=ANALYST_HEADERS,
+        json={"credential_mode": "none", "credential_ref": None, "description": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["credential_ref"] is None
+    assert cleared.json()["description"] == ""
+
+    monkeypatch.setattr(
+        "agent_bom.connectors.check_connector_health",
+        lambda connector_name: ConnectorStatus(
+            connector=connector_name,
+            state=ConnectorHealthState.HEALTHY,
+            message="Connector can authenticate",
+            api_version=None,
+        ),
+    )
+    assert source_client.post(f"/v1/sources/{legacy.source_id}/test", headers=ANALYST_HEADERS).status_code == 200
+    monkeypatch.setattr(
+        "agent_bom.api.routes.sources.enqueue_scan_job",
+        lambda **kwargs: ScanJob(
+            job_id="legacy-source-job",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-08-27T00:00:00+00:00",
+            request=kwargs["request_body"],
+        ),
+    )
+    assert source_client.post(f"/v1/sources/{legacy.source_id}/run", headers=ANALYST_HEADERS).status_code == 202
 
 
 def test_connector_source_test_updates_health(source_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -401,7 +1004,7 @@ def test_connector_source_test_updates_health(source_client: TestClient, monkeyp
             "display_name": "Snowflake lake",
             "kind": "connector.warehouse",
             "connector_name": "slack",
-            "credential_mode": "reference",
+            "credential_mode": "none",
         },
     )
     source_id = create.json()["source_id"]
@@ -417,6 +1020,195 @@ def test_connector_source_test_updates_health(source_client: TestClient, monkeyp
     fetched_body = fetched.json()
     assert fetched_body["last_test_status"] == "healthy"
     assert fetched_body["status"] == "healthy"
+
+
+def test_connector_source_test_sanitizes_health_message_before_response_and_persistence(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Jira source",
+            "kind": "connector.cloud_read_only",
+            "connector_name": "jira",
+            "credential_mode": "none",
+        },
+    )
+    source_id = created.json()["source_id"]
+    leaked = "postgresql://operator:secret-token@db.example/app"
+    monkeypatch.setattr(
+        "agent_bom.connectors.check_connector_health",
+        lambda _connector_name: ConnectorStatus(
+            connector="jira",
+            state=ConnectorHealthState.UNREACHABLE,
+            message=leaked,
+            api_version=None,
+        ),
+    )
+
+    tested = source_client.post(f"/v1/sources/{source_id}/test", headers=ANALYST_HEADERS)
+    fetched = source_client.get(f"/v1/sources/{source_id}", headers=VIEWER_HEADERS)
+
+    assert tested.status_code == 200
+    assert leaked not in tested.text
+    assert "secret-token" not in tested.text
+    assert leaked not in fetched.text
+    assert "secret-token" not in fetched.text
+
+
+def test_source_test_cannot_resurrect_source_deleted_during_health_probe(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Jira health race",
+            "kind": "connector.registry",
+            "connector_name": "jira",
+        },
+    )
+    source_id = created.json()["source_id"]
+    health_started = Event()
+    release_health = Event()
+    outcomes: dict[str, Any] = {}
+    from agent_bom.api.routes import sources as source_routes
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-alpha", api_key_name="replica"))
+
+    def _blocking_health(connector_name):
+        health_started.set()
+        assert release_health.wait(timeout=5)
+        return ConnectorStatus(
+            connector=connector_name,
+            state=ConnectorHealthState.HEALTHY,
+            message="Connected",
+        )
+
+    def _test_source() -> None:
+        try:
+            outcomes["test"] = asyncio.run(source_routes.test_source(request, source_id))
+        except HTTPException as exc:
+            outcomes["test_error"] = exc
+
+    monkeypatch.setattr("agent_bom.connectors.check_connector_health", _blocking_health)
+    test_thread = Thread(target=_test_source)
+    test_thread.start()
+    assert health_started.wait(timeout=5)
+    asyncio.run(source_routes.delete_source(request, source_id))
+    release_health.set()
+    test_thread.join(timeout=5)
+
+    assert outcomes["test_error"].status_code == 404
+    assert _stores._source_store.get(source_id) is None
+
+
+def test_source_run_cannot_enqueue_or_resurrect_after_concurrent_delete(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Repository run race",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://example.com/acme/repo"}},
+        },
+    )
+    source_id = created.json()["source_id"]
+    request_started = Event()
+    release_request = Event()
+    outcomes: dict[str, Any] = {}
+    enqueued: list[str] = []
+    from agent_bom.api.routes import sources as source_routes
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-alpha", api_key_name="replica"))
+    original_request = source_routes._request_for_source
+    first_call = True
+
+    def _blocking_request(source):
+        nonlocal first_call
+        request_body = original_request(source)
+        if first_call:
+            first_call = False
+            request_started.set()
+            assert release_request.wait(timeout=5)
+        return request_body
+
+    def _fake_enqueue(**kwargs):
+        enqueued.append(kwargs["source_id"])
+        return ScanJob(
+            job_id="stale-run-job",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-08-27T00:00:00+00:00",
+            request=kwargs["request_body"],
+        )
+
+    def _run_source() -> None:
+        try:
+            outcomes["run"] = asyncio.run(source_routes.run_source(request, source_id))
+        except HTTPException as exc:
+            outcomes["run_error"] = exc
+
+    monkeypatch.setattr(source_routes, "_request_for_source", _blocking_request)
+    monkeypatch.setattr(source_routes, "enqueue_scan_job", _fake_enqueue)
+    run_thread = Thread(target=_run_source)
+    run_thread.start()
+    assert request_started.wait(timeout=5)
+    asyncio.run(source_routes.delete_source(request, source_id))
+    release_request.set()
+    run_thread.join(timeout=5)
+
+    assert outcomes["run_error"].status_code == 404
+    assert enqueued == []
+    assert _stores._source_store.get(source_id) is None
+
+
+def test_source_delete_removes_linked_schedules_for_same_tenant_only(source_client: TestClient) -> None:
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Scheduled repo",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://example.com/acme/repo"}},
+        },
+    )
+    source_id = created.json()["source_id"]
+    _stores._schedule_store.put(
+        ScanSchedule(
+            schedule_id="source-schedule",
+            tenant_id="tenant-alpha",
+            name="Scheduled repo recurring run",
+            cron_expression="0 * * * *",
+            scan_config={"source_id": source_id},
+            enabled=True,
+            next_run="2026-08-27T00:00:00+00:00",
+        )
+    )
+    _stores._schedule_store.put(
+        ScanSchedule(
+            schedule_id="other-tenant-schedule",
+            tenant_id="tenant-beta",
+            name="Other tenant",
+            cron_expression="0 * * * *",
+            scan_config={"source_id": source_id},
+            enabled=True,
+            next_run="2026-08-27T00:00:00+00:00",
+        )
+    )
+
+    deleted = source_client.delete(f"/v1/sources/{source_id}", headers=ADMIN_HEADERS)
+
+    assert deleted.status_code == 204
+    assert _stores._schedule_store.get("source-schedule", tenant_id="tenant-alpha") is None
+    assert _stores._schedule_store.get("other-tenant-schedule", tenant_id="tenant-beta") is not None
 
 
 def test_viewer_cannot_test_or_run_sources(source_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -451,7 +1243,15 @@ def test_running_source_queues_source_linked_job(source_client: TestClient, monk
     from agent_bom.api.models import ScanJob
     from agent_bom.api.stores import _get_store, _jobs_put
 
-    def _fake_enqueue(*, tenant_id: str, triggered_by: str, request_body, source_id: str | None = None) -> ScanJob:
+    def _fake_enqueue(
+        *,
+        tenant_id: str,
+        triggered_by: str,
+        request_body,
+        source_id: str | None = None,
+        quota_guarded: bool = False,
+    ) -> ScanJob:
+        assert quota_guarded is True
         job = ScanJob(
             job_id="job-source-1",
             tenant_id=tenant_id,

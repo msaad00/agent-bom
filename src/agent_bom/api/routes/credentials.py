@@ -16,8 +16,10 @@ from agent_bom.api.models import (
     CredentialRefStatus,
     CredentialRefUpdate,
 )
-from agent_bom.api.stores import _get_credential_ref_store
+from agent_bom.api.stores import _get_credential_ref_store, _get_source_store
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
+from agent_bom.api.tenant_quota import tenant_quota_guard
+from agent_bom.security import value_looks_like_secret
 
 router = APIRouter()
 
@@ -42,7 +44,31 @@ def _credential_for_request(request: Request, credential_ref_id: str) -> Credent
     return credential
 
 
+def _public_credential(credential: CredentialRefRecord) -> dict:
+    payload = credential.model_dump()
+    if value_looks_like_secret(credential.external_ref):
+        payload["external_ref"] = "<redacted-secret-reference>"
+    return payload
+
+
+def _validate_external_ref(external_ref: str | None) -> None:
+    if external_ref is not None and value_looks_like_secret(external_ref):
+        raise HTTPException(
+            status_code=422,
+            detail="external_ref must identify customer-managed credential metadata, never credential material",
+        )
+
+
 def _apply_update(credential: CredentialRefRecord, body: CredentialRefUpdate) -> CredentialRefRecord:
+    credential = credential.model_copy(deep=True)
+    nullable_lifecycle_fields = {
+        "external_ref",
+        "last_rotated_at",
+        "expires_at",
+        "rotation_interval_days",
+        "max_age_days",
+        "expiry_warning_days",
+    }
     for field in (
         "display_name",
         "provider",
@@ -60,8 +86,10 @@ def _apply_update(credential: CredentialRefRecord, body: CredentialRefUpdate) ->
         "enabled",
         "status",
     ):
+        if field not in body.model_fields_set:
+            continue
         value = getattr(body, field)
-        if value is not None:
+        if value is not None or field in nullable_lifecycle_fields:
             setattr(credential, field, value)
     credential.updated_at = _now()
     if not credential.enabled:
@@ -75,6 +103,7 @@ def _apply_update(credential: CredentialRefRecord, body: CredentialRefUpdate) ->
 async def create_credential_ref(request: Request, body: CredentialRefCreate) -> dict:
     tenant_id = _tenant_id(request)
     require_body_tenant_match(body.tenant_id, tenant_id)
+    _validate_external_ref(body.external_ref)
 
     now = _now()
     credential = CredentialRefRecord(
@@ -98,7 +127,8 @@ async def create_credential_ref(request: Request, body: CredentialRefCreate) -> 
         created_at=now,
         updated_at=now,
     )
-    _get_credential_ref_store().put(credential)
+    with tenant_quota_guard(tenant_id):
+        _get_credential_ref_store().put(credential)
     log_action(
         "credential_ref.create",
         actor=_actor(request),
@@ -107,7 +137,7 @@ async def create_credential_ref(request: Request, body: CredentialRefCreate) -> 
         provider=credential.provider,
         mode=credential.mode,
     )
-    return credential.model_dump()
+    return _public_credential(credential)
 
 
 @router.get("/credentials", tags=["credentials"])
@@ -117,7 +147,7 @@ async def list_credential_refs(
     offset: int = Query(0, ge=0),
 ) -> dict:
     tenant_id = _tenant_id(request)
-    all_credentials = [credential.model_dump() for credential in _get_credential_ref_store().list_all(tenant_id=tenant_id)]
+    all_credentials = [_public_credential(credential) for credential in _get_credential_ref_store().list_all(tenant_id=tenant_id)]
     total = len(all_credentials)
     page = all_credentials[offset : offset + limit]
     return {
@@ -143,13 +173,21 @@ async def get_credential_rotation_posture(request: Request) -> dict:
 
 @router.get("/credentials/{credential_ref_id}", tags=["credentials"])
 async def get_credential_ref(request: Request, credential_ref_id: str) -> dict:
-    return _credential_for_request(request, credential_ref_id).model_dump()
+    return _public_credential(_credential_for_request(request, credential_ref_id))
 
 
 @router.put("/credentials/{credential_ref_id}", tags=["credentials"])
 async def update_credential_ref(request: Request, credential_ref_id: str, body: CredentialRefUpdate) -> dict:
-    credential = _apply_update(_credential_for_request(request, credential_ref_id), body)
-    _get_credential_ref_store().put(credential)
+    tenant_id = _tenant_id(request)
+    _validate_external_ref(body.external_ref if "external_ref" in body.model_fields_set else None)
+    if body.status == CredentialRefStatus.RETIRED:
+        raise HTTPException(status_code=422, detail="Use DELETE to retire a credential reference")
+    with tenant_quota_guard(tenant_id):
+        current = _credential_for_request(request, credential_ref_id)
+        if current.status == CredentialRefStatus.RETIRED:
+            raise HTTPException(status_code=409, detail="Retired credential references are immutable")
+        credential = _apply_update(current, body)
+        _get_credential_ref_store().put(credential)
     log_action(
         "credential_ref.update",
         actor=_actor(request),
@@ -158,19 +196,23 @@ async def update_credential_ref(request: Request, credential_ref_id: str, body: 
         enabled=credential.enabled,
         status=credential.status.value,
     )
-    return credential.model_dump()
+    return _public_credential(credential)
 
 
 @router.post("/credentials/{credential_ref_id}/test", tags=["credentials"])
 async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
-    credential = _credential_for_request(request, credential_ref_id)
-    status, message = validate_credential_ref(credential)
-    credential.last_validated_at = _now()
-    credential.last_validation_status = status.value
-    credential.last_validation_message = message
-    credential.status = status
-    credential.updated_at = _now()
-    _get_credential_ref_store().put(credential)
+    tenant_id = _tenant_id(request)
+    with tenant_quota_guard(tenant_id):
+        credential = _credential_for_request(request, credential_ref_id)
+        if credential.status == CredentialRefStatus.RETIRED:
+            raise HTTPException(status_code=409, detail="Retired credential references cannot be tested")
+        status, message = validate_credential_ref(credential)
+        credential.last_validated_at = _now()
+        credential.last_validation_status = status.value
+        credential.last_validation_message = message
+        credential.status = status
+        credential.updated_at = _now()
+        _get_credential_ref_store().put(credential)
     log_action(
         "credential_ref.test",
         actor=_actor(request),
@@ -188,10 +230,37 @@ async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
 
 @router.delete("/credentials/{credential_ref_id}", tags=["credentials"], status_code=204)
 async def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
-    credential = _credential_for_request(request, credential_ref_id)
-    _get_credential_ref_store().delete(credential_ref_id, tenant_id=credential.tenant_id)
+    tenant_id = _tenant_id(request)
+    with tenant_quota_guard(tenant_id):
+        credential = _credential_for_request(request, credential_ref_id)
+        if credential.status == CredentialRefStatus.RETIRED:
+            if value_looks_like_secret(credential.external_ref):
+                credential.external_ref = None
+                credential.updated_at = _now()
+                _get_credential_ref_store().put(credential)
+            return
+        attached_sources = [
+            source for source in _get_source_store().list_all(tenant_id=credential.tenant_id) if source.credential_ref == credential_ref_id
+        ]
+        if attached_sources:
+            count = len(attached_sources)
+            noun = "source" if count == 1 else "sources"
+            raise HTTPException(
+                status_code=409,
+                detail=f"Credential reference is attached to {count} {noun}; detach it before retiring the reference",
+            )
+        credential.enabled = False
+        credential.status = CredentialRefStatus.RETIRED
+        # Older releases could persist credential material in this metadata
+        # field. Retirement is terminal, so scrub detected legacy material
+        # before making the record immutable; otherwise no later API call can
+        # remove the secret from durable storage.
+        if value_looks_like_secret(credential.external_ref):
+            credential.external_ref = None
+        credential.updated_at = _now()
+        _get_credential_ref_store().put(credential)
     log_action(
-        "credential_ref.delete",
+        "credential_ref.retire",
         actor=_actor(request),
         resource=f"credential/{credential_ref_id}",
         tenant_id=credential.tenant_id,

@@ -15,6 +15,7 @@ import os
 from agent_bom.config import resolved_servicenow_instance_url
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+from agent_bom.security import sanitize_error
 
 from .base import CONNECTOR_HEALTH_TIMEOUT, ConnectorError, ConnectorHealthState, ConnectorStatus
 
@@ -152,7 +153,7 @@ def health_check(
     try:
         url, tok = _get_config(instance_url, token)
     except ConnectorError as e:
-        return ConnectorStatus(connector="servicenow", state=ConnectorHealthState.AUTH_FAILED, message=str(e))
+        return ConnectorStatus(connector="servicenow", state=ConnectorHealthState.AUTH_FAILED, message=sanitize_error(e, generic=True))
 
     async def _check() -> ConnectorStatus:
         async with create_client(timeout=CONNECTOR_HEALTH_TIMEOUT) as client:
@@ -174,4 +175,4 @@ def health_check(
     try:
         return asyncio.run(_check())
     except Exception as e:
-        return ConnectorStatus(connector="servicenow", state=ConnectorHealthState.UNREACHABLE, message=str(e))
+        return ConnectorStatus(connector="servicenow", state=ConnectorHealthState.UNREACHABLE, message=sanitize_error(e, generic=True))

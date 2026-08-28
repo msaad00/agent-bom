@@ -12,7 +12,7 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -215,7 +215,13 @@ def validate_path(
 
 _VALUE_CREDENTIAL_PATTERNS = [
     re.compile(r"(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}", re.I),  # Stripe/service keys
+    # Require a token boundary so ordinary identifiers containing ``risk-``
+    # are not truncated from the embedded ``sk-`` onward.
+    re.compile(r"(?<![A-Za-z0-9])sk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{20,}"),  # OpenAI/Anthropic-style keys
+    re.compile(r"hf_[A-Za-z0-9]{20,}"),  # Hugging Face tokens
+    re.compile(r"AIza[A-Za-z0-9_-]{30,}"),  # Google API keys
     re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}"),  # GitHub tokens
+    re.compile(r"(?:glpat|glcbt|gldt|glrt|glptt|glagent)-[A-Za-z0-9_-]{20,}"),  # GitLab tokens
     re.compile(r"(?:AKIA|ASIA)[A-Z0-9]{16}"),  # AWS access key IDs
     # Any PEM private-key label, not an enumerated few: `OPENSSH` (ssh-keygen's
     # default since OpenSSH 7.8), `ENCRYPTED` and `PGP … BLOCK` were all missing,
@@ -231,12 +237,82 @@ _VALUE_CREDENTIAL_PATTERNS = [
 # makes regex search backtrack from every character of a non-URL model payload,
 # turning a linear redaction pass into minutes of CPU time.
 _CONNECTION_CREDENTIAL_RE = re.compile(r"://[^:\s/@]+:[^@\s/]+@")
+_REFERENCE_SAFE_PREFIXES = (
+    "arn:",
+    "vault://",
+    "keyvault://",
+    "aws-secretsmanager://",
+    "gcp-secretmanager://",
+    "secret-manager://",
+    "workload-identity/",
+)
+_REFERENCE_ENCODED_OCTET_RE = re.compile(r"%[0-9A-Fa-f]{2}")
 
 
 def _contains_value_credential(value: str) -> bool:
     return any(pattern.search(value) for pattern in _VALUE_CREDENTIAL_PATTERNS) or (
         "://" in value and _CONNECTION_CREDENTIAL_RE.search(value) is not None
     )
+
+
+def _decode_reference_component(value: str) -> str:
+    """Decode bounded nested percent-encoding before classifying a reference."""
+    decoded = value
+    for _ in range(3):
+        next_value = unquote(decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
+    return decoded
+
+
+def value_looks_like_secret(value: object) -> bool:
+    """Return whether an external reference is actually credential material.
+
+    Credential-reference APIs accept names, role ARNs, and secret-manager
+    *paths*, never their values. Known credential patterns are authoritative;
+    a bounded entropy fallback catches opaque pasted tokens while allowlisting
+    the explicit reference shapes the product documents.
+    """
+
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if _contains_value_credential(text):
+        return True
+    lowered = text.lower()
+    if "://" in text:
+        try:
+            parsed = urlsplit(text)
+        except ValueError:
+            return True
+        # Query strings and fragments frequently carry bearer material. A
+        # credential reference has no reason to preserve either.
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            return True
+        # A reference-shaped URL can still carry an opaque credential in its
+        # host or path (for example ``vault://team/<pasted token>``). Apply the
+        # same bounded entropy classifier to individual decoded components;
+        # checking the whole URL would skip entropy because it contains ``://``.
+        components = [_decode_reference_component(parsed.hostname or "")]
+        decoded_path = _decode_reference_component(parsed.path)
+        components.extend(part for part in decoded_path.split("/") if part)
+        # Decoding is intentionally capped. If a syntactically valid encoded
+        # octet remains after that budget, accepting it would let another
+        # consumer reveal a credential through one more decode pass. Reject
+        # the ambiguous reference instead of making decoding unbounded.
+        if any(_REFERENCE_ENCODED_OCTET_RE.search(component) for component in components):
+            return True
+        return any(_looks_sensitive_value(component) for component in components)
+    if lowered.startswith(_REFERENCE_SAFE_PREFIXES):
+        # Non-URL reference forms (ARNs and workload-identity names) receive
+        # the same segment-level check instead of bypassing entropy wholesale.
+        decoded_reference = _decode_reference_component(text)
+        if _REFERENCE_ENCODED_OCTET_RE.search(decoded_reference):
+            return True
+        components = [part for part in re.split(r"[/:]", decoded_reference) if part]
+        return any(_looks_sensitive_value(component) for component in components)
+    return _looks_sensitive_value(text)
 
 
 # Base64 alphabet (standard + URL-safe)

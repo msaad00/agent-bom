@@ -2,14 +2,19 @@
 
 import asyncio
 from datetime import datetime, timezone
+from threading import Event, Thread
 from unittest.mock import patch
 
+from agent_bom.api import stores as _stores
+from agent_bom.api.models import ScanJob, SourceKind, SourceRecord
 from agent_bom.api.schedule_store import (
     InMemoryScheduleStore,
     ScanSchedule,
     SQLiteScheduleStore,
 )
 from agent_bom.api.scheduler import parse_cron_next, validate_cron_expression
+from agent_bom.api.source_store import InMemorySourceStore
+from agent_bom.api.store import InMemoryJobStore
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -184,6 +189,164 @@ class TestSQLiteScheduleStore:
         store = SQLiteScheduleStore(str(db))
 
         assert store.get("legacy-sched", tenant_id="tenant-alpha") is not None
+
+
+def test_source_schedule_resolves_canonical_source_request_and_links_job(monkeypatch):
+    from agent_bom.api.server import _enqueue_scheduled_scan
+
+    source_store = InMemorySourceStore()
+    schedule_store = InMemoryScheduleStore()
+    source_store.put(
+        SourceRecord(
+            source_id="source-repo",
+            tenant_id="tenant-alpha",
+            display_name="Repository",
+            kind=SourceKind.SCAN_REPO,
+            config={"scan_request": {"repo_url": "https://example.com/acme/repo"}},
+        )
+    )
+    schedule_store.put(
+        ScanSchedule(
+            schedule_id="schedule-source",
+            tenant_id="tenant-alpha",
+            name="Repository schedule",
+            cron_expression="* * * * *",
+            scan_config={"source_id": "source-repo"},
+        )
+    )
+    old_source_store = _stores._source_store
+    old_schedule_store = _stores._schedule_store
+    old_job_store = _stores._store
+    _stores.set_source_store(source_store)
+    _stores.set_schedule_store(schedule_store)
+    _stores.set_job_store(InMemoryJobStore())
+    captured = {}
+
+    def _fake_enqueue(**kwargs):
+        captured.update(kwargs)
+        return ScanJob(
+            job_id="scheduled-source-job",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            schedule_id=kwargs["schedule_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-08-27T00:00:00+00:00",
+            request=kwargs["request_body"],
+        )
+
+    monkeypatch.setattr("agent_bom.api.routes.scan.enqueue_scan_job", _fake_enqueue)
+    try:
+        job_id = _enqueue_scheduled_scan(
+            {"source_id": "source-repo"},
+            schedule_id="schedule-source",
+            tenant_id="tenant-alpha",
+        )
+    finally:
+        _stores._source_store = old_source_store
+        _stores._schedule_store = old_schedule_store
+        _stores._store = old_job_store
+
+    assert job_id == "scheduled-source-job"
+    assert captured["tenant_id"] == "tenant-alpha"
+    assert captured["source_id"] == "source-repo"
+    assert captured["schedule_id"] == "schedule-source"
+    assert captured["request_body"].repo_url == "https://example.com/acme/repo"
+    updated = source_store.get("source-repo")
+    assert updated is not None
+    assert updated.last_job_id == "scheduled-source-job"
+    assert updated.last_run_status == "pending"
+
+
+def test_source_schedule_resolution_and_enqueue_are_fenced_against_delete(monkeypatch):
+    from agent_bom.api.server import _enqueue_scheduled_scan
+    from agent_bom.api.tenant_quota import tenant_quota_guard
+
+    source_store = InMemorySourceStore()
+    schedule_store = InMemoryScheduleStore()
+    source = SourceRecord(
+        source_id="source-race",
+        tenant_id="tenant-alpha",
+        display_name="Repository",
+        kind=SourceKind.SCAN_REPO,
+        config={"scan_request": {"repo_url": "https://example.com/acme/repo"}},
+    )
+    schedule = ScanSchedule(
+        schedule_id="schedule-race",
+        tenant_id="tenant-alpha",
+        name="Repository schedule",
+        cron_expression="* * * * *",
+        scan_config={"source_id": source.source_id},
+        enabled=True,
+    )
+    source_store.put(source)
+    schedule_store.put(schedule)
+    old_source_store = _stores._source_store
+    old_schedule_store = _stores._schedule_store
+    old_job_store = _stores._store
+    _stores.set_source_store(source_store)
+    _stores.set_schedule_store(schedule_store)
+    _stores.set_job_store(InMemoryJobStore())
+
+    request_resolved = Event()
+    release_request = Event()
+    delete_started = Event()
+    delete_finished = Event()
+    enqueued: list[str] = []
+    original_request = __import__("agent_bom.api.routes.sources", fromlist=["_request_for_source"])._request_for_source
+
+    def _blocking_request(current):
+        request = original_request(current)
+        request_resolved.set()
+        assert release_request.wait(timeout=5)
+        return request
+
+    def _fake_enqueue(**kwargs):
+        enqueued.append(kwargs["source_id"])
+        return ScanJob(
+            job_id="fenced-job",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            schedule_id=kwargs["schedule_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-08-27T00:00:00+00:00",
+            request=kwargs["request_body"],
+        )
+
+    def _delete_source_and_schedule():
+        delete_started.set()
+        with tenant_quota_guard("tenant-alpha"):
+            schedule_store.delete(schedule.schedule_id, tenant_id="tenant-alpha")
+            source_store.delete(source.source_id)
+        delete_finished.set()
+
+    monkeypatch.setattr("agent_bom.api.routes.sources._request_for_source", _blocking_request)
+    monkeypatch.setattr("agent_bom.api.routes.scan.enqueue_scan_job", _fake_enqueue)
+    schedule_thread = Thread(
+        target=_enqueue_scheduled_scan,
+        args=({"source_id": source.source_id},),
+        kwargs={"schedule_id": schedule.schedule_id, "tenant_id": "tenant-alpha"},
+    )
+    delete_thread = Thread(target=_delete_source_and_schedule)
+    try:
+        schedule_thread.start()
+        assert request_resolved.wait(timeout=5)
+        delete_thread.start()
+        assert delete_started.wait(timeout=5)
+        assert delete_finished.wait(timeout=0.1) is False
+        release_request.set()
+        schedule_thread.join(timeout=5)
+        delete_thread.join(timeout=5)
+    finally:
+        release_request.set()
+        schedule_thread.join(timeout=5)
+        delete_thread.join(timeout=5)
+        _stores._source_store = old_source_store
+        _stores._schedule_store = old_schedule_store
+        _stores._store = old_job_store
+
+    assert enqueued == [source.source_id]
+    assert source_store.get(source.source_id) is None
+    assert schedule_store.get(schedule.schedule_id, tenant_id="tenant-alpha") is None
 
 
 # ─── parse_cron_next ──────────────────────────────────────────────────────────
@@ -394,6 +557,84 @@ class TestSchedulerLoop:
         assert updated.last_job_id == "job-456"
         assert triggered[0]["metadata"]["schedule_id"] == "s1"
         assert triggered[0]["metadata"]["tenant_id"] == "default"
+
+    def test_deleted_schedule_is_not_resurrected_after_trigger(self):
+        """A concurrent source deletion can remove a schedule during dispatch."""
+        from agent_bom.api.scheduler import scheduler_loop
+
+        store = InMemoryScheduleStore()
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+
+        def mock_scan(config, **metadata):
+            store.delete(metadata["schedule_id"], tenant_id=metadata["tenant_id"])
+            return "job-after-delete"
+
+        async def _run():
+            task = asyncio.create_task(scheduler_loop(store, mock_scan, interval_seconds=0))
+            await asyncio.sleep(0.1)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(_run())
+        assert store.get("s1") is None
+
+    def test_postgres_scheduler_binds_tenant_before_dispatch(self, monkeypatch):
+        """Maintenance discovery must not leave the dispatch callback on the default RLS tenant."""
+        from agent_bom.api.postgres_common import _current_tenant
+        from agent_bom.api.scheduler import scheduler_loop
+
+        class PostgresScheduleStore(InMemoryScheduleStore):
+            pass
+
+        store = PostgresScheduleStore()
+        store.put(
+            _make_schedule(
+                "tenant-schedule",
+                next_run="2020-01-01T00:00:00+00:00",
+                enabled=True,
+                tenant_id="tenant-alpha",
+            )
+        )
+        monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
+        observed_tenants: list[str] = []
+
+        class _FakeCursor:
+            def fetchone(self):
+                return (True,)
+
+        class _FakeConn:
+            def execute(self, sql, params):
+                return _FakeCursor()
+
+        class _FakePool:
+            def getconn(self):
+                return _FakeConn()
+
+            def putconn(self, conn):
+                return None
+
+        def mock_scan(config, **metadata):
+            observed_tenants.append(_current_tenant.get())
+            return "tenant-job"
+
+        async def _run():
+            task = asyncio.create_task(scheduler_loop(store, mock_scan, interval_seconds=0))
+            await asyncio.sleep(0.05)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        with patch("agent_bom.api.postgres_store._get_pool", return_value=_FakePool()):
+            asyncio.run(_run())
+
+        assert observed_tenants
+        assert set(observed_tenants) == {"tenant-alpha"}
+        assert _current_tenant.get() == "default"
 
     def test_skips_due_scans_without_postgres_leader_lock(self, monkeypatch):
         """Only the replica holding the advisory lock should trigger schedules."""

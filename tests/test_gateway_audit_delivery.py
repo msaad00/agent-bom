@@ -152,6 +152,97 @@ async def test_tenant_child_audit_degradation_rolls_up_to_gateway_health(
 
 
 @pytest.mark.asyncio
+async def test_restart_discovers_unbound_tenant_backlog_and_reports_degraded_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    alpha_token = "alpha-token-must-not-persist"
+    beta_token = "beta-token-must-not-persist"
+
+    async def unavailable_sender(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise RuntimeError("control plane unavailable")
+
+    first = build_control_plane_audit_sink(
+        "https://control.invalid",
+        alpha_token,
+        tenant_id="tenant-alpha",
+        sender=unavailable_sender,
+    )
+    await first.start()
+    await first.bind_authenticated_tenant("tenant-beta", beta_token)
+    await first(_event(tenant_id="tenant-beta"))
+    assert int(first.health()["backlog_bytes"]) > 0
+    await first.aclose()
+
+    persisted = "".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    )
+    assert alpha_token not in persisted
+    assert beta_token not in persisted
+
+    restarted = build_control_plane_audit_sink(
+        "https://control.invalid",
+        "alpha-token-rotated",
+        tenant_id="tenant-alpha",
+        sender=unavailable_sender,
+    )
+    await restarted.start()
+    health = restarted.health()
+    await restarted.aclose()
+
+    assert health["status"] == "degraded"
+    assert int(health["backlog_bytes"]) > 0
+    assert health["accepting_events"] is False
+    assert int(health["tenant_sink_count"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_restart_fails_closed_on_symlinked_tenant_registry_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+
+    async def unavailable_sender(_payload: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        raise RuntimeError("control plane unavailable")
+
+    first = build_control_plane_audit_sink(
+        "https://control.invalid",
+        "alpha-token",
+        tenant_id="tenant-alpha",
+        sender=unavailable_sender,
+    )
+    await first.start()
+    await first.bind_authenticated_tenant("tenant-beta", "beta-token")
+    await first(_event(tenant_id="tenant-beta"))
+    await first.aclose()
+
+    markers = list((tmp_path / "runtime-audit").glob("gateway-router-*.tenant.json"))
+    assert len(markers) == 1
+    outside = tmp_path / "outside-tenant.json"
+    outside.write_text('{"tenant_id":"hostile"}', encoding="utf-8")
+    markers[0].unlink()
+    markers[0].symlink_to(outside)
+
+    restarted = build_control_plane_audit_sink(
+        "https://control.invalid",
+        "alpha-token-rotated",
+        tenant_id="tenant-alpha",
+        sender=unavailable_sender,
+    )
+    await restarted.start()
+    health = restarted.health()
+    await restarted.aclose()
+
+    assert health["status"] == "degraded"
+    assert health["accepting_events"] is False
+    assert health["backlog_observable"] is False
+
+
+@pytest.mark.asyncio
 async def test_control_plane_audit_tenant_routing_is_bounded_and_requires_verified_request_token(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

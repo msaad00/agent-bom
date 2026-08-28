@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+from agent_bom.gateway_server import GatewayAuditDeliveryUnavailableError, GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.rbac import Role
 
@@ -479,3 +479,36 @@ def test_relay_firewall_dry_run_warns_without_blocking(tmp_path: Path) -> None:
     assert len(warned) == 1
     assert warned[0]["effective_decision"] == "warn"
     assert not [e for e in audit.events if e["action"] == "gateway.firewall_blocked"]
+
+
+def test_relay_firewall_warn_audit_outage_fails_closed_before_upstream(tmp_path: Path) -> None:
+    policy_path = _write_policy(
+        tmp_path / "fw.json",
+        enforcement_mode="dry_run",
+        rules=[{"source": "cursor", "target": "filesystem", "decision": "deny"}],
+    )
+    upstream_calls = 0
+
+    async def unavailable_audit(_event: dict[str, Any]) -> None:
+        raise GatewayAuditDeliveryUnavailableError("hostile audit detail /private/firewall.db")
+
+    async def caller(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"side_effect": True}}
+
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={"agent_tokens": {"tok-cursor": "cursor"}},
+        firewall_policy_path=policy_path,
+        upstream_caller=caller,
+        audit_sink=unavailable_audit,
+    )
+    with TestClient(create_gateway_app(settings), raise_server_exceptions=False) as client:
+        response = client.post("/mcp/filesystem", json=_relay_message())
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == -32003
+    assert response.json()["id"] == 7
+    assert "/private/firewall.db" not in response.text
+    assert upstream_calls == 0

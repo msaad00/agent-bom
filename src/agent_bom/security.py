@@ -219,6 +219,7 @@ _VALUE_CREDENTIAL_PATTERNS = [
     re.compile(r"hf_[A-Za-z0-9]{20,}"),  # Hugging Face tokens
     re.compile(r"AIza[A-Za-z0-9_-]{30,}"),  # Google API keys
     re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}"),  # GitHub tokens
+    re.compile(r"(?:glpat|glcbt|gldt|glrt|glptt|glagent)-[A-Za-z0-9_-]{20,}"),  # GitLab tokens
     re.compile(r"(?:AKIA|ASIA)[A-Z0-9]{16}"),  # AWS access key IDs
     # Any PEM private-key label, not an enumerated few: `OPENSSH` (ssh-keygen's
     # default since OpenSSH 7.8), `ENCRYPTED` and `PGP … BLOCK` were all missing,
@@ -251,6 +252,17 @@ def _contains_value_credential(value: str) -> bool:
     )
 
 
+def _decode_reference_component(value: str) -> str:
+    """Decode bounded nested percent-encoding before classifying a reference."""
+    decoded = value
+    for _ in range(3):
+        next_value = unquote(decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
+    return decoded
+
+
 def value_looks_like_secret(value: object) -> bool:
     """Return whether an external reference is actually credential material.
 
@@ -279,13 +291,14 @@ def value_looks_like_secret(value: object) -> bool:
         # host or path (for example ``vault://team/<pasted token>``). Apply the
         # same bounded entropy classifier to individual decoded components;
         # checking the whole URL would skip entropy because it contains ``://``.
-        components = [parsed.hostname or ""]
-        components.extend(part for part in unquote(parsed.path).split("/") if part)
+        components = [_decode_reference_component(parsed.hostname or "")]
+        decoded_path = _decode_reference_component(parsed.path)
+        components.extend(part for part in decoded_path.split("/") if part)
         return any(_looks_sensitive_value(component) for component in components)
     if lowered.startswith(_REFERENCE_SAFE_PREFIXES):
         # Non-URL reference forms (ARNs and workload-identity names) receive
         # the same segment-level check instead of bypassing entropy wholesale.
-        components = [part for part in re.split(r"[/:]", unquote(text)) if part]
+        components = [part for part in re.split(r"[/:]", _decode_reference_component(text)) if part]
         return any(_looks_sensitive_value(component) for component in components)
     return _looks_sensitive_value(text)
 

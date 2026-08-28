@@ -70,6 +70,9 @@ def test_value_looks_like_secret_accepts_reference_identifiers(reference):
         "aws-secretsmanager://production/agent-bom#credential-material",
         "vault://production/aZ9kLm2NpQr7StUvWx3Yz8AbCdEfGhJkLmNoPqRs",
         "https://secrets.example/aZ9kLm2NpQr7StUvWx3Yz8AbCdEfGhJkLmNoPqRs",
+        "vault://team/glpat-1234567890abcdefghij",
+        "vault://%41%4B%49%41%41%42%43%44%45%46%47%48%49%4A%4B%4C%4D%4E%4F%50/reference",
+        "vault://team/%2567%2568%2570%255fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     ],
 )
 def test_value_looks_like_secret_rejects_credential_material(secret):

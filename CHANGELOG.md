@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- OIDC setup preserves the released `--client-secret @/absolute/runtime/path`
+  migration form as a file-reference-only compatibility alias. Literal secret
+  values still fail before discovery, output, or file writes; new automation
+  should use `--client-secret-file`.
+
 ### Changed
 
 - SARIF files use compact JSON encoding, cutting the bundled demo artifact by

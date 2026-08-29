@@ -70,6 +70,22 @@ def _normalize_runtime_secret_file_path(value: Optional[str]) -> str:
     return value
 
 
+def _legacy_client_secret_file_reference(value: Optional[str]) -> str:
+    """Translate the released ``--client-secret @/path`` form without reading it."""
+    if value is None:
+        return ""
+    message = (
+        "--client-secret accepts only a file reference in the form @/absolute/runtime/path; "
+        "prefer --client-secret-file /absolute/runtime/path."
+    )
+    if not value.startswith("@") or len(value) == 1:
+        raise OIDCSetupError(message)
+    try:
+        return _normalize_runtime_secret_file_path(value[1:])
+    except OIDCSetupError:
+        raise OIDCSetupError(message) from None
+
+
 def _stdin_is_tty() -> bool:
     """Whether stdin is an interactive terminal (patch point for tests)."""
     try:
@@ -255,6 +271,13 @@ def auth_group() -> None:
     default=None,
     help="Runtime path to an operator-managed OAuth client-secret file (omit for a PKCE public client).",
 )
+@click.option(
+    "--client-secret",
+    "legacy_client_secret",
+    default=None,
+    hidden=True,
+    metavar="@/ABSOLUTE/RUNTIME/PATH",
+)
 @click.option("--base-url", default=None, help="Deployment base URL; the redirect URI is derived from it.")
 @click.option("--redirect-uri", default=None, help="Override the derived redirect URI (must match the IdP allowlist).")
 @click.option("--audience", default=None, help="Expected JWT audience (defaults to the client ID).")
@@ -268,6 +291,7 @@ def setup_oidc_cmd(
     issuer: Optional[str],
     client_id: Optional[str],
     client_secret_file: Optional[str],
+    legacy_client_secret: Optional[str],
     base_url: Optional[str],
     redirect_uri: Optional[str],
     audience: Optional[str],
@@ -288,6 +312,15 @@ def setup_oidc_cmd(
 
     con = Console()
     interactive = (not non_interactive) and _stdin_is_tty()
+
+    # Preserve released automation that used ``--client-secret @/path`` while
+    # continuing to reject literal secret values. Resolve this before prompts,
+    # discovery, output, or writes so invalid input cannot have side effects.
+    legacy_secret_file = _legacy_client_secret_file_reference(legacy_client_secret)
+    if legacy_secret_file and client_secret_file is not None:
+        raise OIDCSetupError("--client-secret and --client-secret-file are mutually exclusive; prefer --client-secret-file.")
+    if legacy_secret_file:
+        client_secret_file = legacy_secret_file
 
     if not provider:
         if interactive:

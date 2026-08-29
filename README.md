@@ -16,7 +16,11 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
+<h1 align="center">Turn scattered infrastructure evidence into prioritized, verifiable action</h1>
+
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
+
+<p align="center">Scan repositories, software supply chains, identity, and data infrastructure locally in under a minute. Connect read-only sources when the team is ready. Keep raw data, credentials, findings, and policy decisions inside your environment.</p>
 
 <p align="center">
   <a href="#quick-start"><b>Quick start</b></a> ·
@@ -24,75 +28,81 @@
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
-## Discover → Scan → Correlate → Act
+## From evidence source to verified action
 
-`agent-bom` scans repositories and software supply chains across SCA, secrets,
-IaC, and containers; inventories AI agents, MCP, models, and datasets; and connects
-read-only cloud, identity, Snowflake, and data sources. It normalizes that evidence
-into one Finding + UnifiedGraph model, correlates reachable risk, then carries
-work through owner, fix, verification, compliance evidence, or runtime policy.
+Security teams rarely lack scanners. They lack one trustworthy view of what was
+scanned, what was discovered, which findings are actually connected to critical
+systems, who owns the fix, and whether the fix held.
 
-`agent or tool entrypoint → MCP server → package → finding → impact → owner → fix → verify`
+`agent-bom` closes that loop with two honest entry paths:
 
-Run ad hoc locally or in CI, or use your self-hosted control plane for
-scheduled or connected scans, history, assignments, and runtime enforcement.
-Raw source and credentials stay inside the customer-controlled execution boundary;
-collected, inferred, static, and runtime relationships stay distinct; incomplete evidence stays explicit.
+| Start from | First action | What produces inventory |
+|---|---|---|
+| A repository, image, SBOM, workstation, or MCP config | Run a local or CI scan—no connection required | The scanner reads the target and emits inventory, findings, provenance, and graph evidence together |
+| AWS, Azure, GCP, Snowflake, Kubernetes, or another managed source | Add a read-only connection in the self-hosted control plane, then run or schedule a scan | The connection defines scope and credentials; the scan collects the source and creates the inventory snapshot |
+
+Both paths converge after collection: normalize evidence into the same Finding +
+UnifiedGraph contracts, correlate reachable risk, assign an owner and SLA, then
+re-scan to verify the result. Inventory is always the output of a named target or
+connected source—never unexplained preloaded data.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/workflow-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/workflow-light.svg">
+    <img src="docs/images/workflow-light.svg" alt="Evidence sources flow through read-only collection and scanning, normalization, correlation, ownership, remediation, verification, and export or runtime policy" width="920" />
+  </picture>
+</p>
+
+**The product promise:** start with one useful artifact today; keep the same
+evidence model as you add CI, connected sources, history, assignments,
+compliance exports, and runtime enforcement in your own environment.
 
 [Quick start](#quick-start) · [Evidence workflow](docs/HOW_IT_WORKS.md) · [Integration capability matrix](docs/INTEGRATIONS.md) · [Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json) · [Control-plane architecture](docs/ARCHITECTURE.md)
 
-## Who it is for
+### Product proof: one scan, end to end
+
+The sample estate below is visibly labeled. A real run begins with a target or
+read-only connection, executes the same six-stage pipeline, and persists the
+inventory, findings, graph, and report as one evidence lineage.
+
+<p align="center">
+  <a href="docs/images/jobs-pipeline-live.png"><img src="docs/images/jobs-pipeline-live.png" alt="Completed read-only scan pipeline from a registered source through discovery, extraction, scanning, enrichment, analysis, and persisted evidence" width="920" /></a>
+</p>
+
+From that run, operators can move from a ranked path to a fix and a verified
+terminal state without switching evidence systems.
+
+<p align="center">
+  <a href="docs/images/security-graph-live.png"><img src="docs/images/security-graph-live.png" alt="Ranked attack path with risk, hop count, affected agents, evidence, and bounded graph traversal" width="920" /></a>
+</p>
+
+[Open the full product gallery](docs/GALLERY.md) · [See the capture protocol](docs/CAPTURE.md)
+
+## Value by role
 
 | Role | Start here | Primary outcome |
 |---|---|---|
-| AppSec / product security | `agent-bom scan . -f sarif -o findings.sarif` | Scan repository dependencies, secrets, IaC, and images; gate CI with reachable findings |
-| AI / ML engineer | `agent-bom scan .` | Inventory agents, MCP clients and servers, skills, models, and datasets before they ship |
-| Cloud security | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` | Generate a read-only grant, then connect and evaluate inventory, posture, and identity evidence |
-| Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve` | Centralize evidence, assign an owner and SLA, remediate, and verify |
-| GRC / audit | `agent-bom report compliance-narrative scan.json` | Review control mappings and export evidence with explicit gaps |
-| Leadership / CISO | `pip install 'agent-bom[ui]' && agent-bom serve` | Review posture, coverage, material risk, and change over time |
+| Developer / AI engineer | `agent-bom scan .` | See dependencies, secrets, IaC, agents, MCP, models, datasets, and reachable impact before shipping |
+| AppSec / product security | `agent-bom scan . -f sarif -o findings.sarif` | Gate CI on evidence-backed findings and retain a reviewable SARIF artifact |
+| Cloud security | Add a read-only connection, then run a scan | Build scoped cloud, identity, and posture inventory with explicit coverage and provenance |
+| Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve` | Schedule scans, centralize evidence, assign owners and SLAs, and verify remediation |
+| GRC / audit | `agent-bom report compliance-narrative scan.json` | Export mapped evidence while preserving unavailable, partial, and not-assessed states |
+| CISO / engineering leader | Open the self-hosted posture and investigation views | See material paths, coverage, ownership, and change over time—not another raw alert count |
 
-Security engineering and GRC remain separate workflows: findings and reachability are not
-presented as audit certification. See [product boundaries](docs/PRODUCT_BOUNDARIES.md).
-
-### Product journey
-
-The captures below use a visibly labeled sample estate; live scans use the same
-Finding + UnifiedGraph contracts. Select any image for the full-size proof.
-
-<table>
-  <tr>
-    <th>1 · Discover inventory</th>
-    <th>2 · Scan</th>
-  </tr>
-  <tr>
-    <td><a href="docs/images/inventory-live.png"><img src="docs/images/inventory-live.png" alt="Unified asset inventory across packages, MCP servers, AI agents, cloud resources, identities, containers, and code with evidence coverage" width="440" /></a></td>
-    <td><a href="docs/images/jobs-pipeline-live.png"><img src="docs/images/jobs-pipeline-live.png" alt="Completed read-only scan pipeline from discovery through persisted findings, graph, and report evidence" width="440" /></a></td>
-  </tr>
-  <tr>
-    <th>3 · Reachable graph</th>
-    <th>4 · Ranked path</th>
-  </tr>
-  <tr>
-    <td><a href="docs/images/lineage-graph-live.png"><img src="docs/images/lineage-graph-live.png" alt="Reachable graph focused from an AI agent through MCP and package hops to a vulnerability" width="440" /></a></td>
-    <td><a href="docs/images/security-graph-live.png"><img src="docs/images/security-graph-live.png" alt="Ranked attack path with risk, hop count, agents, evidence, and bounded traversal" width="440" /></a></td>
-  </tr>
-  <tr>
-    <th colspan="2">5 · Act and verify</th>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><a href="docs/images/remediation-live.png"><img src="docs/images/remediation-live.png" alt="Prioritized remediation campaign with owner, SLA, modeled reduction, fix, and re-verification" width="900" /></a></td>
-  </tr>
-</table>
-
-[Continue to runtime enforcement in the full product gallery](docs/GALLERY.md) ·
-[Capture protocol](docs/CAPTURE.md)
+Security engineering and GRC remain separate workflows: findings and
+reachability are not presented as audit certification. See
+[product boundaries](docs/PRODUCT_BOUNDARIES.md).
 
 ## Quick start
 
-**Start here. This is the front door — two commands, no account, no config.**
-The offline sample completes without downloading an advisory database and
-shows the inventory, finding, and blast-radius output shape.
+Choose the smallest path that proves value. No account or control plane is
+required for repository, image, SBOM, workstation, or MCP configuration scans.
+
+### Path A — scan now, no connection
+
+The offline sample completes without downloading an advisory database and shows
+the inventory, finding, reachable path, and remediation output shape.
 
 ```bash
 pip install agent-bom
@@ -109,6 +119,23 @@ agent-bom scan .
 The repository scan shows inventory, findings, and reachable impact.
 `agent-bom scan .` and `agent-bom scan -p .` are the same command; `PATH` is an
 alias for `--project`.
+
+### Path B — connect a source, then scan
+
+Use this path when the source is an account or platform rather than a local
+target. Start the customer-controlled control plane, open **Connections**, add
+the provider's read-only grant, and run the first scan. Connections default to
+auto-scan on creation; scheduled scans are an explicit operator opt-in.
+
+```bash
+pip install 'agent-bom[ui]'
+agent-bom serve
+```
+
+For headless onboarding, `agent-bom connect <provider>` prints the exact grant,
+credential boundary, verification step, and next scan command. The
+[cloud connection guide](docs/CLOUD_CONNECT.md) documents AWS, Azure, GCP, and
+Snowflake, including organization scope and scheduler behavior.
 
 Need a disconnected scan? Seed the smallest package-advisory database first:
 
@@ -199,15 +226,26 @@ The sample intentionally contains a known-malicious package, which fails closed.
 
 ## Self-host
 
-Start the loopback control plane:
+The control plane is the growth path, not a prerequisite. Use it when one-off
+artifacts need to become a durable team workflow: registered sources, scheduled
+scans, history, inventory snapshots, finding ownership, graph investigation,
+compliance evidence, and runtime policy—all inside the customer's cloud,
+cluster, database, identity, and audit boundary.
+
+Start the loopback evaluation profile:
 
 ```bash
 pip install 'agent-bom[ui]'
 agent-bom serve
 ```
 
-For a shared deployment, use the documented Docker or Helm path and configure
-real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
+Then open **Connections** to add a source or **New Scan** to target a repository,
+image, SBOM, MCP configuration, or IaC path. A scan produces the inventory;
+inventory is not populated merely by starting the server.
+
+For a shared deployment, use the production-shaped Docker or Helm path and
+configure real identity, TLS, PostgreSQL, encryption, and audit keys before
+exposing it.
 
 | Target | Start here |
 |---|---|

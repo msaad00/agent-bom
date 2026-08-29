@@ -1179,11 +1179,34 @@ def load_graph(
         reason="node_budget" if budget is not None and total_nodes > returned_nodes else "",
     )
 
-    eq = "SELECT * FROM graph_edges WHERE tenant_id = ? AND scan_id = ?"
-    eparams: list[Any] = [tenant_id, effective_scan_id]
+    sql_scoped_edges = budget is not None or bool(entity_types) or bool(sev_sql)
+    if sql_scoped_edges:
+        # Drive the edge read from the exact node ids loaded above. Encoding the
+        # bounded set as one JSON parameter avoids SQLite's variable limit and
+        # avoids repeating the ranked node query. The endpoint index makes the
+        # work proportional to edges touching those nodes instead of every edge
+        # in the snapshot; the second join preserves the induced-subgraph
+        # contract.
+        eq = """
+            WITH selected_node_ids AS MATERIALIZED (
+                SELECT CAST(value AS TEXT) AS id FROM json_each(?)
+            )
+            SELECT edge.*
+            FROM selected_node_ids AS source_node
+            CROSS JOIN graph_edges AS edge INDEXED BY idx_ge_tenant_scan_source
+            JOIN selected_node_ids AS target_node
+              ON target_node.id = edge.target_id
+            WHERE edge.tenant_id = ?
+              AND edge.scan_id = ?
+              AND edge.source_id = source_node.id
+        """
+        eparams: list[Any] = [json.dumps(sorted(node_ids)), tenant_id, effective_scan_id]
+    else:
+        eq = "SELECT * FROM graph_edges WHERE tenant_id = ? AND scan_id = ?"
+        eparams = [tenant_id, effective_scan_id]
     if relationship_types:
         placeholders = ",".join("?" * len(relationship_types))
-        eq += f" AND relationship IN ({placeholders})"
+        eq += f" AND edge.relationship IN ({placeholders})" if sql_scoped_edges else f" AND relationship IN ({placeholders})"
         eparams.extend(sorted(relationship_types))
     for row in conn.execute(eq, eparams):
         if row["source_id"] not in node_ids or row["target_id"] not in node_ids:

@@ -14,7 +14,9 @@ and edge-dedup (#4762) work:
 
 2. **A node budget must bound the read, not the result.** Postgres pushes the
    budget into SQL; SQLite materialized the whole snapshot and trimmed
-   afterwards — a bound that is declared but applied too late to help.
+   afterwards — a bound that is declared but applied too late to help. The
+   selected nodes must also drive endpoint-indexed edge reads; otherwise the
+   store still scans every edge in the snapshot and filters them in Python.
 
 3. **Deep ``offset`` is O(offset).** ``/v1/graph`` and ``/v1/graph/agents``
    reject it past a cap; ``/v1/graph/search`` accepted any offset.
@@ -33,6 +35,7 @@ and edge-dedup (#4762) work:
 from __future__ import annotations
 
 import os
+import sqlite3
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -300,6 +303,60 @@ class TestNodeBudgetBoundsTheRead:
         graph = store.load_graph(tenant_id="default", node_budget=10)
         for edge in graph.edges:
             assert edge.source in graph.nodes and edge.target in graph.nodes
+
+    def test_sqlite_budgeted_edge_read_seeks_from_selected_node_ids(self, tmp_path: Path) -> None:
+        """A node budget must also keep the edge read off the snapshot-wide index."""
+        from agent_bom.db import graph_store as sqlite_graph_store
+
+        graph = UnifiedGraph(scan_id="budget-edge-plan", tenant_id="default")
+        for i in range(40):
+            graph.add_node(
+                UnifiedNode(
+                    id=f"asset:{i}",
+                    entity_type=EntityType.CLOUD_RESOURCE,
+                    label=f"asset-{i}",
+                    risk_score=float(i),
+                )
+            )
+        for i in range(39):
+            graph.add_edge(
+                UnifiedEdge(
+                    source=f"asset:{i}",
+                    target=f"asset:{i + 1}",
+                    relationship=RelationshipType.DEPENDS_ON,
+                )
+            )
+
+        db_path = tmp_path / "graph.db"
+        SQLiteGraphStore(db_path).save_graph(graph)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        captured: list[tuple[str, list[Any]]] = []
+
+        class _RecordingConnection:
+            def execute(self, sql: str, params: list[Any] | tuple[Any, ...] = ()):
+                if "graph_edges" in sql:
+                    captured.append((sql, list(params)))
+                return conn.execute(sql, params)
+
+        try:
+            loaded = sqlite_graph_store.load_graph(
+                _RecordingConnection(),  # type: ignore[arg-type]
+                tenant_id="default",
+                scan_id="budget-edge-plan",
+                node_budget=10,
+            )
+            edge_sql, edge_params = captured[-1]
+            plan = [str(row[3]) for row in conn.execute(f"EXPLAIN QUERY PLAN {edge_sql}", edge_params)]
+        finally:
+            conn.close()
+
+        assert len(loaded.nodes) == 10
+        graph_edge_steps = [step for step in plan if "graph_edges" in step or "idx_ge_tenant_scan_source" in step]
+        assert graph_edge_steps, plan
+        assert all("source_id=?" in step or "rowid=?" in step for step in graph_edge_steps), (
+            f"budgeted load still reads the whole edge snapshot: {graph_edge_steps}"
+        )
 
 
 # ── the API surfaces ────────────────────────────────────────────────────────

@@ -30,6 +30,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Budgeted and filtered SQLite graph loads now seek edges from the selected
+  node ids instead of scanning every edge in the snapshot and discarding most
+  of them in Python.
 - Purging secret-shaped legacy material from an already-retired credential
   reference now records one tenant-scoped, sanitized audit event without
   duplicating the event on idempotent DELETE retries.

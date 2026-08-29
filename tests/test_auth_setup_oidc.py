@@ -265,13 +265,12 @@ def test_cli_generic_provider_requires_issuer():
     ("legacy_value", "sensitive_fragment"),
     (
         ("do-not-echo-this", "do-not-echo-this"),
-        ("@/run/agent-bom/oidc/client_secret", "/run/agent-bom/oidc/client_secret"),
         ("@../secret-file", "../secret-file"),
         ("@/run/agent-bom/../secret-file", "../secret-file"),
         ("@/run/agent-bom/oidc/client_secret\nAGENT_BOM_API_KEYS=attacker:admin", "attacker:admin"),
     ),
 )
-def test_cli_rejects_removed_client_secret_option_without_echoing_or_side_effects(
+def test_cli_rejects_literal_or_invalid_legacy_client_secret_without_echoing_or_side_effects(
     tmp_path: Path,
     legacy_value: str,
     sensitive_fragment: str,
@@ -301,11 +300,62 @@ def test_cli_rejects_removed_client_secret_option_without_echoing_or_side_effect
         )
 
     assert result.exit_code != 0
-    assert "No such option" in result.output
     assert "--client-secret" in result.output
     assert sensitive_fragment not in result.output
     discover.assert_not_called()
     assert not output.exists()
+
+
+def test_cli_accepts_legacy_file_reference_without_reading_or_emitting_a_secret():
+    runner = CliRunner()
+    with patch("agent_bom.api.oidc.discover_oidc", return_value=dict(_DISCOVERY_OK)):
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "google",
+                "--client-id",
+                "cid",
+                "--client-secret",
+                "@/run/agent-bom/oidc/client_secret",
+                "--base-url",
+                "https://abom.example.com",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET_FILE=/run/agent-bom/oidc/client_secret" in result.output
+    assert "AGENT_BOM_OIDC_CLIENT_SECRET=" not in result.output
+
+
+def test_cli_rejects_both_secret_file_options_before_discovery():
+    runner = CliRunner()
+    with patch("agent_bom.api.oidc.discover_oidc") as discover:
+        result = runner.invoke(
+            main,
+            [
+                "auth",
+                "setup-oidc",
+                "--non-interactive",
+                "--provider",
+                "google",
+                "--client-id",
+                "cid",
+                "--client-secret",
+                "@/run/agent-bom/oidc/client_secret",
+                "--client-secret-file",
+                "/run/agent-bom/oidc/client_secret",
+                "--base-url",
+                "https://abom.example.com",
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+    discover.assert_not_called()
 
 
 @pytest.mark.parametrize(

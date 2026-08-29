@@ -9,12 +9,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
+## [0.103.0] - 2026-08-29
 
-- OIDC setup preserves the released `--client-secret @/absolute/runtime/path`
-  migration form as a file-reference-only compatibility alias. Literal secret
-  values still fail before discovery, output, or file writes; new automation
-  should use `--client-secret-file`.
+This release expands repository and architecture evidence beyond MCP-only
+surfaces, strengthens fail-closed identity and audit boundaries, and removes
+large-scan bottlenecks across scanning, graph projection, SBOM ingestion, and
+API result delivery.
+
+### Added
+
+- Repository scans inventory remote GitHub Actions and reusable workflows with
+  exact-versus-mutable reference provenance across JSON, CycloneDX, SPDX, and
+  graph exports without treating those coordinates as an advisory ecosystem.
+- Reachability analysis models evidence-backed application entrypoints such as
+  console scripts, main guards, Click/Typer commands, and FastAPI/Flask routes,
+  while keeping ordinary exported functions outside the reachable set.
+- Tenant-scoped architecture scenarios compare current and proposed graph
+  states with deterministic deltas without mutating observed inventory or
+  attack-path evidence.
 
 ### Changed
 
@@ -29,17 +41,53 @@ Versions follow [Semantic Versioning](https://semver.org/).
   alias accepts only `@/absolute/runtime/path`; new automation must use
   `--client-secret-file <absolute-runtime-path>`. Secret bytes are never
   accepted, echoed, read, or written by the wizard.
+- The graph opens on a risk-ranked estate investigation with authoritative
+  facets, deduplicated paths, bounded traversal, and an optional expert canvas.
+- JavaScript and TypeScript AST parsing plus repository ignore semantics now
+  ship in the base installation, so first-run source and secret analysis does
+  not depend on optional parser packages.
 
 ### Fixed
 
 - Budgeted and filtered SQLite graph loads now seek edges from the selected
   node ids instead of scanning every edge in the snapshot and discarding most
   of them in Python.
+- Large scans reuse canonical report and graph projections, bound legacy
+  advisory coverage queries to inventory ecosystems, preserve distinct finding
+  occurrences, and avoid repeated redaction and CVE materialization work.
+- CycloneDX dependency and vulnerability joins use authoritative `bom-ref`
+  indexes, reducing recovered 20,000-component fixture parsing from 18.548s to
+  0.132s while preserving duplicate component identity.
+- Runtime reachability follows framework-registered tools and resolved
+  dependencies, preserves exposure-path topology, and uses attack-path evidence
+  rather than structural closure for reachable findings.
+- Compliance and overview projections exclude failed, skipped, dry-run, and
+  no-scan jobs and require canonical, current scan evidence.
+- Credential and scheduler source lifecycles close cleanly, scan targets must be
+  executable, and gateway audit delivery and tenant routing remain durable and
+  isolated.
 - Purging secret-shaped legacy material from an already-retired credential
   reference now records one tenant-scoped, sanitized audit event without
   duplicating the event on idempotent DELETE retries.
 - Full scan-result API responses now sanitize large AI-BOM payloads in the
   bounded worker pool so polling them cannot monopolize the server event loop.
+- Image and registry release gates preserve truthful multi-architecture
+  evidence, idempotent publication, and immediate post-release verification.
+
+### Security
+
+- API-key delegation, browser and WebSocket sessions, SAML/OIDC state, SCIM,
+  Snowflake state, revocation, replay protection, and shared brute-force limits
+  fail closed when their authoritative shared state is unavailable.
+- Forwarded client identity is accepted only through an explicit bounded proxy
+  depth from allowlisted transport peers; direct callers cannot spoof private
+  network policy with forwarding headers.
+- Exception logging, graph scenario errors, outbound evidence, native secret
+  findings, and repository scans use sanitized, ignore-aware projections that
+  do not expose credential values or server internals.
+- PostgreSQL audit and governance writes serialize per tenant with persistent
+  signing, while runtime and source audit paths reject fallback routing that
+  could cross tenant boundaries or lose required evidence.
 
 ## [0.102.0] - 2026-08-23
 
@@ -3405,7 +3453,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.102.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.103.0...HEAD
+[0.103.0]: https://github.com/msaad00/agent-bom/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/msaad00/agent-bom/compare/v0.101.0...v0.102.0
 [0.101.0]: https://github.com/msaad00/agent-bom/compare/v0.100.0...v0.101.0
 [0.100.0]: https://github.com/msaad00/agent-bom/compare/v0.99.0...v0.100.0

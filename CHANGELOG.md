@@ -24,6 +24,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Purging secret-shaped legacy material from an already-retired credential
   reference now records one tenant-scoped, sanitized audit event without
   duplicating the event on idempotent DELETE retries.
+- Full scan-result API responses now sanitize large AI-BOM payloads in the
+  bounded worker pool so polling them cannot monopolize the server event loop.
 
 ## [0.102.0] - 2026-08-23
 

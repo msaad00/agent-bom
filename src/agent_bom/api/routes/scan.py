@@ -1299,6 +1299,14 @@ def _job_response_payload(job: ScanJob) -> ScanJob:
     return job.model_copy(update={"result": redacted_result})
 
 
+async def _job_response_payload_off_loop(job: ScanJob) -> ScanJob:
+    """Sanitize a potentially large full result in the bounded worker pool."""
+    return cast(
+        ScanJob,
+        await anyio.to_thread.run_sync(partial(_job_response_payload, job)),
+    )
+
+
 def enqueue_scan_job(
     *,
     tenant_id: str,
@@ -1578,7 +1586,7 @@ async def get_scan(request: Request, job_id: str) -> ScanJob:
     non-json ``format``, ``result_document`` carries that rendering and
     ``result_format`` names it.
     """
-    return _job_response_payload(await _load_job_for_request(request, job_id))
+    return await _job_response_payload_off_loop(await _load_job_for_request(request, job_id))
 
 
 @router.get("/scan/{job_id}/status", tags=["scan"])

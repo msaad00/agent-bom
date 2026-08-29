@@ -186,7 +186,7 @@ secret gates automatic for a team, pin the shipped consumer hooks:
 ```yaml
 repos:
   - repo: https://github.com/msaad00/agent-bom
-    rev: v0.102.0
+    rev: v0.103.0
     hooks:
       - id: agent-bom-secrets
       - id: agent-bom-scan
@@ -255,7 +255,7 @@ exposing it.
 |---|---|
 | Docker Compose | [Platform compose](deploy/docker-compose.platform.yml) — PostgreSQL, split secrets, migration job |
 | Docker Compose (evaluation) | [Pilot compose](deploy/docker-compose.pilot.yml) — loopback only, SQLite, no auth |
-| Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.102.0` |
+| Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.103.0` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | Snowflake SPCS / Native App | `scripts/deploy/install.sh snowflake-native` · [install guide](docs/snowflake-native-app/INSTALL.md) |
 | Air-gapped | [Image bundle guide](site-docs/deployment/airgapped-image-bundle.md) |
@@ -272,7 +272,7 @@ exposing it.
 
 | Need | First action | Artifact or next step |
 |---|---|---|
-| GitHub CI | `uses: msaad00/agent-bom@v0.102.0` | SARIF, PR summary, and a policy exit code |
+| GitHub CI | `uses: msaad00/agent-bom@v0.103.0` | SARIF, PR summary, and a policy exit code |
 | Cloud evidence | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` | Deploy the read-only grant, then connect and scan |
 | Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
 | Agent interface | `agent-bom mcp server` | 84 MCP tools, 6 resources, and 8 workflow prompts |

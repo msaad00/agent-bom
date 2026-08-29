@@ -311,6 +311,33 @@ def test_sarif_framework_taxonomy_labels_mappings_vendor_asserted() -> None:
     assert all(t["name"] == t["id"] for t in nist["taxa"])  # name == id, no title text
 
 
+def test_sarif_result_taxa_use_compact_resolvable_index_references(sarif_doc: dict) -> None:
+    """Repeated result references resolve through tool extensions without IDs."""
+    from agent_bom.output.sarif import _FRAMEWORK_TAXONOMY_META
+
+    run = sarif_doc["runs"][0]
+    extensions = run["tool"]["extensions"]
+    tagged_results = [result for result in run["results"] if result.get("taxa")]
+    assert tagged_results
+
+    for result in tagged_results:
+        resolved: set[tuple[str, str]] = set()
+        for reference in result["taxa"]:
+            assert set(reference) == {"index", "toolComponent"}
+            assert set(reference["toolComponent"]) == {"index"}
+            extension = extensions[reference["toolComponent"]["index"]]
+            taxon = extension["taxa"][reference["index"]]
+            assert set(taxon) == {"id"}, "extension taxa must not repeat name when it equals id"
+            resolved.add((extension["name"], taxon["id"]))
+
+        expected = {
+            (taxonomy_name, str(tag))
+            for property_name, (taxonomy_name, _full_name, _uri) in _FRAMEWORK_TAXONOMY_META.items()
+            for tag in result["properties"].get(property_name, [])
+        }
+        assert resolved == expected
+
+
 def _full_chain_report() -> AIBOMReport:
     """A report whose blast radius spans agent → server → package → CVE → tool."""
     vuln = Vulnerability(

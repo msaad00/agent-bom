@@ -18,8 +18,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- SARIF files use compact JSON encoding, cutting the bundled demo artifact by
-  more than half without removing results, taxonomies, or evidence fields.
+- SARIF files use compact JSON encoding and indexed result taxonomy references;
+  extension taxa omit names that duplicate their IDs. The bundled demo
+  artifact is less than half its former size without removing results,
+  taxonomies, or evidence fields.
 - OIDC setup emits file references instead of client-secret values. Compose
   control-plane profiles load the generated non-secret env file and mount a
   dedicated OIDC secret directory read-only; dashboard and Helm guidance use

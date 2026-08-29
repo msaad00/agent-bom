@@ -348,14 +348,47 @@ def _taxonomies_as_tool_extensions(taxonomies: list[dict]) -> list[dict]:
     """Expose framework catalogs as SARIF tool extensions for catalog readers."""
     extensions: list[dict] = []
     for taxonomy in taxonomies:
+        extension_taxa: list[dict] = []
+        for taxon in taxonomy.get("taxa", []):
+            compact_taxon = dict(taxon)
+            if compact_taxon.get("name") == compact_taxon.get("id"):
+                compact_taxon.pop("name", None)
+            extension_taxa.append(compact_taxon)
         extension = {
             "name": taxonomy["name"],
             "fullName": taxonomy.get("fullName", taxonomy["name"]),
             "informationUri": taxonomy.get("informationUri", ""),
-            "taxa": taxonomy.get("taxa", []),
+            "taxa": extension_taxa,
         }
         extensions.append(extension)
     return extensions
+
+
+def _compact_taxa_references(results: list[dict], taxonomies: list[dict]) -> None:
+    """Replace repeated taxonomy names and IDs with SARIF index references."""
+    taxonomy_indexes = {taxonomy.get("name"): index for index, taxonomy in enumerate(taxonomies)}
+    taxon_indexes = {
+        (taxonomy.get("name"), taxon.get("id")): index for taxonomy in taxonomies for index, taxon in enumerate(taxonomy.get("taxa") or [])
+    }
+    for result in results:
+        references = result.get("taxa")
+        if not isinstance(references, list):
+            continue
+        compact: list[dict] = []
+        for reference in references:
+            if not isinstance(reference, dict):
+                compact.append(reference)
+                continue
+            component = reference.get("toolComponent")
+            taxonomy_name = component.get("name") if isinstance(component, dict) else None
+            taxon_id = reference.get("id")
+            taxonomy_index = taxonomy_indexes.get(taxonomy_name)
+            taxon_index = taxon_indexes.get((taxonomy_name, taxon_id))
+            if taxonomy_index is None or taxon_index is None:
+                compact.append(reference)
+                continue
+            compact.append({"index": taxon_index, "toolComponent": {"index": taxonomy_index}})
+        result["taxa"] = compact
 
 
 _GUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
@@ -1247,6 +1280,7 @@ def to_sarif(
             )
 
     taxonomies = _build_run_taxonomies(results)
+    _compact_taxa_references(results, taxonomies)
     run: dict = {
         "tool": {
             "driver": {

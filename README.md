@@ -65,6 +65,8 @@ compliance exports, and runtime enforcement in your own environment.
 The sample estate below is visibly labeled. A real run begins with a target or
 read-only connection, executes the same six-stage pipeline, and persists the
 inventory, findings, graph, and report as one evidence lineage.
+Collected, inferred, static, and runtime relationships remain distinguishable
+throughout that lineage.
 
 <p align="center">
   <a href="docs/images/jobs-pipeline-live.png"><img src="docs/images/jobs-pipeline-live.png" alt="Completed read-only scan pipeline from a registered source through discovery, extraction, scanning, enrichment, analysis, and persisted evidence" width="920" /></a>

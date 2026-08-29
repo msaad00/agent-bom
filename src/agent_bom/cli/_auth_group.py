@@ -70,7 +70,7 @@ def _normalize_runtime_secret_file_path(value: Optional[str]) -> str:
     return value
 
 
-def _legacy_client_secret_file_reference(value: Optional[str]) -> str:
+def _legacy_file_reference(value: Optional[str]) -> str:
     """Translate the released ``--client-secret @/path`` form without reading it."""
     if value is None:
         return ""
@@ -273,7 +273,7 @@ def auth_group() -> None:
 )
 @click.option(
     "--client-secret",
-    "legacy_client_secret",
+    "legacy_file_reference",
     default=None,
     hidden=True,
     metavar="@/ABSOLUTE/RUNTIME/PATH",
@@ -291,7 +291,7 @@ def setup_oidc_cmd(
     issuer: Optional[str],
     client_id: Optional[str],
     client_secret_file: Optional[str],
-    legacy_client_secret: Optional[str],
+    legacy_file_reference: Optional[str],
     base_url: Optional[str],
     redirect_uri: Optional[str],
     audience: Optional[str],
@@ -316,11 +316,11 @@ def setup_oidc_cmd(
     # Preserve released automation that used ``--client-secret @/path`` while
     # continuing to reject literal secret values. Resolve this before prompts,
     # discovery, output, or writes so invalid input cannot have side effects.
-    legacy_secret_file = _legacy_client_secret_file_reference(legacy_client_secret)
-    if legacy_secret_file and client_secret_file is not None:
+    migrated_file_reference = _legacy_file_reference(legacy_file_reference)
+    if migrated_file_reference and client_secret_file is not None:
         raise OIDCSetupError("--client-secret and --client-secret-file are mutually exclusive; prefer --client-secret-file.")
-    if legacy_secret_file:
-        client_secret_file = legacy_secret_file
+    if migrated_file_reference:
+        client_secret_file = migrated_file_reference
 
     if not provider:
         if interactive:

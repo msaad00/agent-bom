@@ -555,6 +555,15 @@ def test_sarif_export_file(sample_report, tmp_path):
     assert len(data["runs"][0]["results"]) == 1
 
 
+def test_sarif_export_uses_compact_json(sample_report, tmp_path):
+    """Machine-consumed SARIF should not pay the size cost of pretty printing."""
+    out = tmp_path / "test.sarif"
+    export_sarif(sample_report, str(out))
+
+    exported = out.read_text(encoding="utf-8")
+    assert exported == json.dumps(json.loads(exported), separators=(",", ":"))
+
+
 def test_sarif_exclude_unfixable():
     """exclude_unfixable=True drops findings without a fixed_version."""
     unfixable_vuln = Vulnerability(

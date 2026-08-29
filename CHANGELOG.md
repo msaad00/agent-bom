@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- SARIF files use compact JSON encoding, cutting the bundled demo artifact by
+  more than half without removing results, taxonomies, or evidence fields.
 - OIDC setup emits file references instead of client-secret values. Compose
   control-plane profiles load the generated non-secret env file and mount a
   dedicated OIDC secret directory read-only; dashboard and Helm guidance use

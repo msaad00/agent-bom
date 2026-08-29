@@ -234,7 +234,7 @@ def test_persona_table_rows_all_carry_a_concrete_first_action() -> None:
     for role in ("Developer / AI engineer", "AppSec / product security", "Platform / DevOps", "GRC / audit"):
         assert "`agent-bom " in rows[role] or "`pip install " in rows[role], (role, rows[role])
     assert rows["Cloud security"] == "Add a read-only connection, then run a scan"
-    assert rows["CISO / engineering leader"] == "Open the self-hosted posture and investigation views"
+    assert rows["CISO / engineering leader"] == "Open **Architecture** in the self-hosted graph"
 
 
 def test_persona_card_copy_fits_inside_its_card() -> None:

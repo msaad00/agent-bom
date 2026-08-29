@@ -85,16 +85,18 @@ terminal state without switching evidence systems.
 
 | Role | Start here | Primary outcome |
 |---|---|---|
-| Developer / AI engineer | `agent-bom scan .` | See dependencies, secrets, IaC, agents, MCP, models, datasets, and reachable impact before shipping |
-| AppSec / product security | `agent-bom scan . -f sarif -o findings.sarif` | Gate CI on evidence-backed findings and retain a reviewable SARIF artifact |
+| Developer / AI engineer | `agent-bom scan .` | See dependencies, secrets, IaC, agents, MCP, and whether Click, Flask, or FastAPI entry points can reach vulnerable packages before shipping |
+| AppSec / product security | `agent-bom agents --gha . --offline` | Inventory remote actions and reusable workflows with their refs, source provenance, and CI-hardening findings |
 | Cloud security | Add a read-only connection, then run a scan | Build scoped cloud, identity, and posture inventory with explicit coverage and provenance |
 | Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve` | Schedule scans, centralize evidence, assign owners and SLAs, and verify remediation |
 | GRC / audit | `agent-bom report compliance-narrative scan.json` | Export mapped evidence while preserving unavailable, partial, and not-assessed states |
-| CISO / engineering leader | Open the self-hosted posture and investigation views | See material paths, coverage, ownership, and change over time—not another raw alert count |
+| CISO / engineering leader | Open **Architecture** in the self-hosted graph | Compare observed **Current** state with modeled **Proposed** and **Difference** views; proposals remain labeled as not observed or deployed |
 
 Security engineering and GRC remain separate workflows: findings and
 reachability are not presented as audit certification. See
-[product boundaries](docs/PRODUCT_BOUNDARIES.md).
+[product boundaries](docs/PRODUCT_BOUNDARIES.md). GitHub Actions collection and
+credential requirements are documented in [permissions](docs/PERMISSIONS.md);
+scenario truth boundaries are defined by the [graph contract](docs/graph/CONTRACT.md).
 
 ## Quick start
 

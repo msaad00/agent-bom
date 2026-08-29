@@ -26,9 +26,9 @@ IMAGES = ROOT / "docs" / "images"
 
 
 def _readme_persona_rows() -> list[list[str]]:
-    """Return the ``## Who it is for`` table body rows as trimmed cell lists."""
+    """Return the ``## Value by role`` table body rows as trimmed cell lists."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    section = readme.split("## Who it is for", 1)[1].split("\n## ", 1)[0]
+    section = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
     table_lines: list[str] = []
     in_table = False
     for line in section.splitlines():
@@ -193,48 +193,48 @@ def test_readme_persona_table_covers_each_operating_lane() -> None:
     """Public onboarding routes each audience to its actual first action."""
     titles = [row[0] for row in _readme_persona_rows()]
     assert titles == [
+        "Developer / AI engineer",
         "AppSec / product security",
-        "AI / ML engineer",
         "Cloud security",
         "Platform / DevOps",
         "GRC / audit",
-        "Leadership / CISO",
+        "CISO / engineering leader",
     ]
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    who_it_is_for = readme.index("## Who it is for")
-    role_table = readme.index("| Role | Start here | Primary outcome |", who_it_is_for)
-    assert who_it_is_for < role_table
+    value_by_role = readme.index("## Value by role")
+    role_table = readme.index("| Role | Start here | Primary outcome |", value_by_role)
+    assert value_by_role < role_table
     assert "persona-value-dark.svg" not in readme
 
 
 def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    workflow_heading = readme.index("## Discover → Scan → Correlate → Act")
+    workflow_heading = readme.index("## From evidence source to verified action")
     workflow_link = readme.index("[Evidence workflow](docs/HOW_IT_WORKS.md)", workflow_heading)
-    persona_heading = readme.index("## Who it is for")
+    persona_heading = readme.index("## Value by role")
     assert workflow_heading < workflow_link < persona_heading
     assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in readme[workflow_heading:persona_heading]
-    assert (
-        "raw source and credentials stay inside the customer-controlled execution boundary"
-        in readme[workflow_heading:persona_heading].lower()
-    )
-    assert "### From source to verified action" not in readme
+    assert "raw data, credentials, findings, and policy decisions" in readme[:workflow_heading].lower()
+    assert "### Product proof: one scan, end to end" in readme[workflow_heading:persona_heading]
 
 
-def test_readme_moves_dense_workflow_and_architecture_art_to_full_size_docs() -> None:
+def test_readme_embeds_one_readable_workflow_and_moves_dense_detail_to_docs() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    for diagram in ("workflow-dark.svg", "architecture-dark.svg", "persona-value-dark.svg"):
+    assert "workflow-dark.svg" in readme
+    for diagram in ("architecture-dark.svg", "persona-value-dark.svg"):
         assert diagram not in readme
     assert "[Evidence workflow](docs/HOW_IT_WORKS.md)" in readme
     assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in readme
 
 
-def test_persona_table_rows_all_carry_a_runnable_command() -> None:
-    """Every persona row gives a literal first command, not a noun phrase."""
-    for row in _readme_persona_rows():
-        start_here = row[1]
-        assert "`agent-bom " in start_here or "`pip install " in start_here, row
+def test_persona_table_rows_all_carry_a_concrete_first_action() -> None:
+    """Every persona row gives a command or the exact UI action for its lane."""
+    rows = {row[0]: row[1] for row in _readme_persona_rows()}
+    for role in ("Developer / AI engineer", "AppSec / product security", "Platform / DevOps", "GRC / audit"):
+        assert "`agent-bom " in rows[role] or "`pip install " in rows[role], (role, rows[role])
+    assert rows["Cloud security"] == "Add a read-only connection, then run a scan"
+    assert rows["CISO / engineering leader"] == "Open the self-hosted posture and investigation views"
 
 
 def test_persona_card_copy_fits_inside_its_card() -> None:

@@ -91,17 +91,17 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
 def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    journey = readme.split("### Product journey", 1)[1].split("## Quick start", 1)[0]
-    stages = ["Discover inventory", "Scan", "Reachable graph", "Ranked path", "Act and verify"]
-    images = ["inventory-live.png", "jobs-pipeline-live.png", "lineage-graph-live.png", "security-graph-live.png", "remediation-live.png"]
-    assert all(stage in journey for stage in stages)
+    journey = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
+    stages = ["read-only connection", "collect", "inventory", "findings", "graph", "owner", "re-scan", "verify"]
+    images = ["workflow-dark.svg", "jobs-pipeline-live.png", "security-graph-live.png"]
+    normalized = " ".join(journey.lower().split())
+    assert all(stage in normalized for stage in stages)
     assert all(image in journey for image in images)
-    assert [journey.index(stage) for stage in stages] == sorted(journey.index(stage) for stage in stages)
     assert [journey.index(image) for image in images] == sorted(journey.index(image) for image in images)
-    assert 'width="900"' in readme
-    assert "[Continue to runtime enforcement in the full product gallery](docs/GALLERY.md)" in readme
-    for diagram in ("workflow-dark.svg", "architecture-dark.svg", "persona-value-dark.svg"):
-        assert diagram not in readme
+    assert 'width="920"' in journey
+    assert "[Open the full product gallery](docs/GALLERY.md)" in journey
+    for removed_thumbnail in ("inventory-live.png", "lineage-graph-live.png", "remediation-live.png"):
+        assert removed_thumbnail not in journey
 
 
 def test_readme_leads_with_discover_scan_correlate_act_brand_header() -> None:
@@ -116,16 +116,16 @@ def test_readme_leads_with_discover_scan_correlate_act_brand_header() -> None:
 
 def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    frontdoor = readme.split("## Discover → Scan → Correlate → Act", 1)[1].split("## Who it is for", 1)[0]
-    content_lines = [line for line in frontdoor.splitlines() if line.strip()]
+    frontdoor = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
     normalized = " ".join(frontdoor.split())
 
-    assert len(content_lines) <= 12
-    assert "agent or tool entrypoint → MCP server → package → finding" in frontdoor
-    for capability in ("repositories", "SCA", "secrets", "IaC", "AI agents", "models", "cloud", "identity"):
+    assert "two honest entry paths" in frontdoor
+    for capability in ("repository", "image", "SBOM", "MCP config", "AWS", "Azure", "GCP", "Snowflake"):
         assert capability in frontdoor
-    assert "scheduled or connected scans" in frontdoor
-    assert "incomplete evidence stays explicit" in normalized
+    assert "no connection required" in frontdoor
+    assert "Add a read-only connection" in frontdoor
+    assert "Finding + UnifiedGraph" in normalized
+    assert "Inventory is always the output" in normalized
     assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in frontdoor
 
     header_note = readme.split('<p align="center">', 2)[2].split("</p>", 1)[0]
@@ -156,13 +156,13 @@ def test_gallery_retains_full_size_product_screens() -> None:
 
 def test_persona_routes_start_with_their_actual_work() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    personas = readme.split("## Who it is for", 1)[1].split("\n## ", 1)[0]
+    personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
 
+    assert "| Developer / AI engineer | `agent-bom scan .`" in personas
     assert "| AppSec / product security | `agent-bom scan . -f sarif -o findings.sarif`" in personas
-    assert "| AI / ML engineer | `agent-bom scan .`" in personas
-    assert "| Cloud security | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json`" in personas
+    assert "| Cloud security | Add a read-only connection, then run a scan" in personas
     assert "| Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve`" in personas
-    assert "owner and sla" in personas.lower()
+    assert "owners and slas" in personas.lower()
 
 
 def test_cloud_connect_leads_with_wheel_safe_emit_before_optional_terraform() -> None:
@@ -176,7 +176,7 @@ def test_cloud_connect_leads_with_wheel_safe_emit_before_optional_terraform() ->
 
 def test_readme_header_omits_volatile_metric_strip() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    header = readme.split("## Discover → Scan → Correlate → Act", 1)[0]
+    header = readme.split("## From evidence source to verified action", 1)[0]
 
     assert "package ecosystems" not in header
     assert "compliance surfaces" not in header

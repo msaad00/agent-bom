@@ -1303,4 +1303,4 @@ def export_sarif(
 ) -> None:
     """Export report as SARIF 2.1.0 JSON file."""
     data = to_sarif(report, exclude_unfixable=exclude_unfixable)
-    Path(output_path).write_text(json.dumps(data, indent=2))
+    Path(output_path).write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")

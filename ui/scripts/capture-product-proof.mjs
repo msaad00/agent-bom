@@ -2353,6 +2353,12 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     const visibleErrorPatterns = [/500 Internal Server Error/i, /Application error/i, /Unhandled Runtime Error/i];
     const visibleError = visibleErrorPatterns.find((pattern) => pattern.test(visibleText));
     if (visibleError) throw new Error(`Visible error on ${urlPath}: ${visibleError}`);
+    if (browserErrors.length > 0) {
+      throw new Error(`Browser errors on ${urlPath}: ${browserErrors.join(" | ")}`);
+    }
+    if (networkErrors.length > 0) {
+      throw new Error(`Network errors on ${urlPath}: ${networkErrors.join(" | ")}`);
+    }
     for (const expected of options.expectedText ?? []) {
       const matched = expected instanceof RegExp ? expected.test(visibleText) : visibleText.includes(expected);
       if (!matched) throw new Error(`Expected content ${String(expected)} is missing on ${urlPath}`);
@@ -2381,12 +2387,6 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     }
     if (!visibleText.includes(RELEASE_VERSION)) {
       throw new Error(`Release version ${RELEASE_VERSION} is not visible on ${urlPath}`);
-    }
-    if (browserErrors.length > 0) {
-      throw new Error(`Browser errors on ${urlPath}: ${browserErrors.join(" | ")}`);
-    }
-    if (networkErrors.length > 0) {
-      throw new Error(`Network errors on ${urlPath}: ${networkErrors.join(" | ")}`);
     }
     if (options.readySelector) {
       // Recheck at the last possible moment. URL/state synchronization can

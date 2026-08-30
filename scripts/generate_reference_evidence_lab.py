@@ -24,6 +24,7 @@ from agent_bom.scanners.package_scan import default_scan_options, scan_packages 
 
 LAB = ROOT / "examples" / "reference-evidence-lab"
 OUTPUT = LAB / "generated" / "correlation-proof.json"
+PINNED_PACKAGE_INPUT = LAB / "pinned-package.txt"
 TENANT = "reference-lab"
 CORRELATION_ID = "reference-evidence-correlation-v1"
 CREATED = datetime(2026, 8, 30, 4, 0, tzinfo=timezone.utc)
@@ -103,19 +104,28 @@ def _graph(scan_id: str, index: int) -> UnifiedGraph:
 
 
 async def _scanner_evidence() -> dict[str, Any]:
-    discovered = scan_project_directory(LAB, max_depth=1)
-    packages = [package for directory in sorted(discovered, key=str) for package in discovered[directory]]
-    pillow = next((package for package in packages if package.name.lower() == "pillow" and package.version == "9.0.0"), None)
-    if pillow is None:
-        raise RuntimeError("reference lab parser did not discover Pillow 9.0.0")
-    await scan_packages(
-        packages,
-        options=default_scan_options(
-            offline=True,
-            demo_advisories=True,
-            project_dir=str(LAB),
-        ),
-    )
+    # Materialize the intentionally vulnerable fixture only inside an isolated
+    # scanner workspace. Keeping it out of a repository requirements.txt makes
+    # clear that Pillow 9.0.0 is evidence input, not an installable dependency.
+    with tempfile.TemporaryDirectory(prefix="agent-bom-reference-scanner-") as temp_dir:
+        scanner_root = Path(temp_dir)
+        (scanner_root / "requirements.txt").write_text(PINNED_PACKAGE_INPUT.read_text(encoding="utf-8"), encoding="utf-8")
+        discovered = scan_project_directory(scanner_root, max_depth=1)
+        packages = [package for directory in sorted(discovered, key=str) for package in discovered[directory]]
+        pillow = next(
+            (package for package in packages if package.name.lower() == "pillow" and package.version == "9.0.0"),
+            None,
+        )
+        if pillow is None:
+            raise RuntimeError("reference lab parser did not discover Pillow 9.0.0")
+        await scan_packages(
+            packages,
+            options=default_scan_options(
+                offline=True,
+                demo_advisories=True,
+                project_dir=str(scanner_root),
+            ),
+        )
     vulnerability = next((item for item in pillow.vulnerabilities if item.id == ADVISORY), None)
     if vulnerability is None:
         raise RuntimeError("reference lab scanner did not match the pinned CVE-2023-4863 advisory")
@@ -123,7 +133,8 @@ async def _scanner_evidence() -> dict[str, Any]:
         "parser": "agent_bom.parsers.scan_project_directory",
         "scanner": "agent_bom.scanners.package_scan.scan_packages",
         "mode": "offline_bundled_pinned_advisory",
-        "manifest": "examples/reference-evidence-lab/requirements.txt",
+        "evidence_input": "examples/reference-evidence-lab/pinned-package.txt",
+        "scanner_manifest": "isolated temporary requirements.txt",
         "package": PURL,
         "advisory": vulnerability.id,
         "severity": vulnerability.severity.value,
@@ -136,13 +147,13 @@ def _snapshots() -> list[UnifiedGraph]:
     repo = _graph("reference-repository-scan", 0)
     repo.add_node(
         _node(
-            "source:requirements",
+            "source:pinned-package",
             EntityType.SOURCE_FILE,
-            "requirements.txt",
+            "pinned-package.txt",
             source="repository_parser",
             attributes={
                 "repository_commit": "a9f53db346d078d26f8f53c6cc6ee98e3230f284",
-                "repository_path": "requirements.txt",
+                "repository_path": "examples/reference-evidence-lab/pinned-package.txt",
             },
             index=0,
         )
@@ -159,7 +170,7 @@ def _snapshots() -> list[UnifiedGraph]:
     )
     repo.add_edge(
         _edge(
-            "source:requirements",
+            "source:pinned-package",
             "package:repo:pillow",
             RelationshipType.IMPORTS,
             scan_id=repo.scan_id,

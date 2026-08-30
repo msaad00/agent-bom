@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:a05fd356df4a0cdb659a3eb2df988f6fdfa006b4e9f36044c1d466651b8b18ef",
+  "artifact_sha256": "sha256:e0357e6bd2583a70ee2c7293592757b039fe8d985830e2d826311fc62c74567e",
   "container_digest": "sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a",
   "correlation": {
     "allow_stale": false,
@@ -61,7 +61,7 @@
       {
         "age_hours": 0.1,
         "created_at": "2026-08-30T04:00:00+00:00",
-        "digest": "sha256:642ce57ff20d45e307849c45b55034898077f36ba93843dd988fdd6f1abe76ba",
+        "digest": "sha256:0ed16da9085cec78d09d92bad624ce3e6e8053fdec42ee4a075c5779cf5906ac",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -83,7 +83,7 @@
         ]
       }
     ],
-    "manifest_sha256": "sha256:277eba132611fdf8b0ba9e3682747295812f701ebbc3fca1e4616a1bb4bfad4a",
+    "manifest_sha256": "sha256:2c3d5640f2af3c33efb22f714fc8368b9012f1e4ef69532e689f4a71108aaa0b",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -180,7 +180,7 @@
         {
           "age_hours": 0.1,
           "created_at": "2026-08-30T04:00:00+00:00",
-          "digest": "sha256:642ce57ff20d45e307849c45b55034898077f36ba93843dd988fdd6f1abe76ba",
+          "digest": "sha256:0ed16da9085cec78d09d92bad624ce3e6e8053fdec42ee4a075c5779cf5906ac",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -487,12 +487,13 @@
   "scanner_evidence": {
     "advisory": "CVE-2023-4863",
     "cvss_score": 8.8,
+    "evidence_input": "examples/reference-evidence-lab/pinned-package.txt",
     "is_kev": true,
-    "manifest": "examples/reference-evidence-lab/requirements.txt",
     "mode": "offline_bundled_pinned_advisory",
     "package": "pkg:pypi/pillow@9.0.0",
     "parser": "agent_bom.parsers.scan_project_directory",
     "scanner": "agent_bom.scanners.package_scan.scan_packages",
+    "scanner_manifest": "isolated temporary requirements.txt",
     "severity": "high"
   },
   "schema_version": "agent-bom.reference-evidence-lab/v1"

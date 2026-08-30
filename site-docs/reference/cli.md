@@ -68,6 +68,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `graph` | Export the transitive dependency graph from a scan report |
 | `graph-evidence` | Export retained graph snapshot history or a signed evidence manifest digest |
 | `graph-paths` | Query ranked attack paths and exposure paths for a scan from the graph store |
+| `graph-correlate` | Create, inspect, and list provenance-rich correlations across retained graph snapshots |
 | `compliance` | Evaluate a framework's pass/fail posture; `eval --framework <id>` exits non-zero on failure for CI gating |
 | `mesh` | Show lightweight agent/MCP topology without CVE scanning |
 | `report` | History, diff, pipeline-event artifacts, local queries, analytics, dashboard, and compliance narrative workflows |

@@ -22,10 +22,19 @@ def test_reference_lab_generated_output_is_current() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_reference_lab_vulnerable_input_is_not_an_installable_manifest() -> None:
+    pinned_input = LAB / "pinned-package.txt"
+
+    assert pinned_input.read_text(encoding="utf-8") == "Pillow==9.0.0\n"
+    assert not (LAB / "requirements.txt").exists()
+
+
 def test_reference_lab_proves_exact_end_to_end_chain() -> None:
     payload = json.loads(OUTPUT.read_text(encoding="utf-8"))
 
     assert payload["label"] == "Reference evidence lab — modeled local infrastructure"
+    assert payload["scanner_evidence"]["evidence_input"] == "examples/reference-evidence-lab/pinned-package.txt"
+    assert payload["scanner_evidence"]["scanner_manifest"] == "isolated temporary requirements.txt"
     assert payload["scanner_evidence"]["package"] == "pkg:pypi/pillow@9.0.0"
     assert payload["scanner_evidence"]["advisory"] == "CVE-2023-4863"
     assert payload["container_digest"].startswith("sha256:")

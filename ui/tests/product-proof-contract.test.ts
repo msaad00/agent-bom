@@ -85,9 +85,9 @@ describe("product proof capture contract", () => {
   });
 
   it("pins the legacy attack-path proof to its explicit canonical lens", () => {
-    expect(source).toContain('page: "/security-graph?lens=attack-path&capture=1"');
+    expect(source).toContain('page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`');
     expect(source).toContain(
-      'await capture(page, "/security-graph?lens=attack-path&capture=1", "security-graph-live.png"',
+      'await capture(page, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-live.png"',
     );
     expect(source).not.toContain('"/security-graph?capture=1"');
   });

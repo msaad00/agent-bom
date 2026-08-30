@@ -2479,7 +2479,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "security-graph-live.png",
-      page: "/security-graph?lens=attack-path&capture=1",
+      page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`,
       scope: "Prioritized attack path with graph evidence export and remediation handoff",
       presentation: `${CAPTURE_THEME} desktop`,
     },
@@ -2503,13 +2503,13 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "security-graph-light-live.png",
-      page: "/security-graph?lens=attack-path&capture=1",
+      page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`,
       scope: "Prioritized attack path in the light theme",
       presentation: "light desktop",
     },
     {
       path: "security-graph-mobile-live.png",
-      page: "/security-graph?lens=attack-path&capture=1",
+      page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`,
       scope: "Prioritized attack path at a 390 by 844 viewport",
       presentation: "dark mobile",
     },
@@ -2720,7 +2720,7 @@ async function main() {
       minGraphEdges: 3,
     });
     await page.setViewportSize({ width: 1440, height: 980 });
-    await capture(page, "/security-graph?lens=attack-path&capture=1", "security-graph-live.png", async (securityGraphPage) => {
+    await capture(page, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });
@@ -3014,7 +3014,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
-    await capture(lightPage, "/security-graph?lens=attack-path&capture=1", "security-graph-light-live.png", async (securityGraphPage) => {
+    await capture(lightPage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-light-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });
@@ -3035,7 +3035,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
-    await capture(mobilePage, "/security-graph?lens=attack-path&capture=1", "security-graph-mobile-live.png", async (securityGraphPage) => {
+    await capture(mobilePage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-mobile-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });

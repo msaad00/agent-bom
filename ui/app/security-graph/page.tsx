@@ -942,6 +942,7 @@ function AttackPathInvestigationContent() {
                       <AttackPathCorrelationProof
                         path={selectedAttackPath}
                         riskReasons={selectedFixFirstCard?.risk_reasons}
+                        nodes={selectedFixFirstCard?.nodes}
                       />
                       <AttackPathTechniqueChain path={selectedAttackPath} />
                     </>

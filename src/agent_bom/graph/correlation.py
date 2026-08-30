@@ -38,6 +38,38 @@ _REPOSITORY_ENTITY_TYPES = frozenset(
         EntityType.DIRECTORY.value,
     }
 )
+_CLOUD_RESOURCE_ENTITY_TYPES = frozenset(
+    {
+        EntityType.ACCOUNT.value,
+        EntityType.API_GATEWAY.value,
+        EntityType.CLOUD_RESOURCE.value,
+        EntityType.CLUSTER.value,
+        EntityType.DATASET.value,
+        EntityType.DATA_STORE.value,
+        EntityType.ORG.value,
+        EntityType.PROVIDER.value,
+        EntityType.RESOURCE.value,
+    }
+)
+_PROVIDER_IDENTITY_ENTITY_TYPES = frozenset(
+    {
+        EntityType.FEDERATED_IDENTITY.value,
+        EntityType.GROUP.value,
+        EntityType.MANAGED_IDENTITY.value,
+        EntityType.ROLE.value,
+        EntityType.SERVICE_ACCOUNT.value,
+        EntityType.SERVICE_PRINCIPAL.value,
+        EntityType.USER.value,
+    }
+)
+_RUNTIME_ENTITY_TYPES = frozenset(
+    {
+        EntityType.AGENT.value,
+        EntityType.SERVER.value,
+        EntityType.TOOL.value,
+        EntityType.TOOL_CALL.value,
+    }
+)
 
 
 def _digest(value: Any) -> str:
@@ -71,6 +103,23 @@ def _oci_digest(node: UnifiedNode) -> str:
 def _snapshot_scoped_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
     entity_type = _entity_value(node)
     return entity_type, f"snapshot:{scan_id}:{node.canonical_id}", "snapshot_scoped_missing_exact_identity"
+
+
+def _exact_attribute_identity(
+    node: UnifiedNode,
+    *,
+    keys: Sequence[str],
+    basis: str,
+) -> tuple[str, str, str] | None:
+    value = next((str(node.attributes.get(key) or "").strip() for key in keys if str(node.attributes.get(key) or "").strip()), "")
+    if not value:
+        return None
+    scope = {
+        key: str(node.attributes.get(key) or "").strip()
+        for key in ("cloud_provider", "cloud_account_id", "tenant_id", "subscription_id", "project_id")
+        if str(node.attributes.get(key) or "").strip()
+    }
+    return _entity_value(node), _digest({"scope": scope, "value": value}), basis
 
 
 def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
@@ -117,7 +166,57 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
             return entity_type, _digest({"commit": commit, "path": path}), "repository_commit_path"
         return _snapshot_scoped_identity(node, scan_id=scan_id)
 
-    return entity_type, node.canonical_id, "canonical_id"
+    if entity_type in _CLOUD_RESOURCE_ENTITY_TYPES:
+        exact = _exact_attribute_identity(
+            node,
+            keys=(
+                "arn",
+                "resource_arn",
+                "kubernetes_uid",
+                "uid",
+                "resource_id",
+                "provider_id",
+                "object_fqn",
+                "self_link",
+                "canonical_id",
+                "stable_id",
+            ),
+            basis="cloud_resource_id",
+        )
+        return exact or _snapshot_scoped_identity(node, scan_id=scan_id)
+
+    if entity_type in _PROVIDER_IDENTITY_ENTITY_TYPES:
+        exact = _exact_attribute_identity(
+            node,
+            keys=(
+                "provider_identity_id",
+                "principal_id",
+                "directory_principal_id",
+                "object_id",
+                "subject_id",
+                "arn",
+                "client_id",
+                "canonical_id",
+                "stable_id",
+            ),
+            basis="provider_identity_id",
+        )
+        return exact or _snapshot_scoped_identity(node, scan_id=scan_id)
+
+    if entity_type in _RUNTIME_ENTITY_TYPES:
+        exact = _exact_attribute_identity(
+            node,
+            keys=("runtime_id", "stable_id", "canonical_id"),
+            basis="runtime_stable_id",
+        )
+        return exact or _snapshot_scoped_identity(node, scan_id=scan_id)
+
+    exact = _exact_attribute_identity(
+        node,
+        keys=("canonical_id", "stable_id"),
+        basis="canonical_id",
+    )
+    return exact or _snapshot_scoped_identity(node, scan_id=scan_id)
 
 
 @dataclass(frozen=True, slots=True)

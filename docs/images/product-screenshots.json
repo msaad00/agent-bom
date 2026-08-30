@@ -1,7 +1,7 @@
 {
   "release_version": "0.103.1",
-  "captured_at": "2026-08-30T19:05:06.326Z",
-  "source_commit": "b11db3148b8cae296179329d3c22ff636e2ab666",
+  "captured_at": "2026-08-30T20:32:43.804Z",
+  "source_commit": "6f3049a70e9b26e359858c025eebd0c25640f933",
   "source_tree": "clean",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
@@ -35,7 +35,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.103.1",
-      "sha256": "sha256:5c2cebb44f51b843e0c5ba54520634c7f928a04c49e7b5e1d2acde58220cf5ff"
+      "sha256": "sha256:d96d96824f29d236b84839b81da17748ea5becaa4a78cf577dcfdc2b4b12761e"
     },
     {
       "presentation": "dark desktop",
@@ -99,10 +99,10 @@
       "page": "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&correlation=1&capture=1",
       "scope": "Reference evidence lab source receipts flowing into one immutable, manifest-bound correlated snapshot",
       "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
-      "evidence_sha256": "sha256:89425591df802c976c4cf756d586b490b0e596d76993ee18889a160fbe804737",
+      "evidence_sha256": "sha256:de7f28159eb17b3a99acde4d3cb83fb0ef07e7fca2cb6bcd0f07195d962dbefc",
       "correlation_manifest_sha256": "sha256:6570ece1de94119d03613a9e18d1dc46b2b9036f72b5c75b17daebc0ba360bf0",
       "visible_version": "0.103.1",
-      "sha256": "sha256:5e2ea38378ce90465d47b157c62056eecfba3fe0f186d1ada1991abb0f906d7d"
+      "sha256": "sha256:a3c4982c8cc90ca381ab56675da260c6bc68b0b94aaead0638d089e75d7be610"
     },
     {
       "presentation": "dark desktop",
@@ -110,10 +110,10 @@
       "page": "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&cve=CVE-2023-4863&capture=1",
       "scope": "Reference evidence lab confirmed path with exact OCI digest, advisory, hop provenance, freshness, runtime observation, strict block proof, and remediation handoff",
       "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
-      "evidence_sha256": "sha256:89425591df802c976c4cf756d586b490b0e596d76993ee18889a160fbe804737",
+      "evidence_sha256": "sha256:de7f28159eb17b3a99acde4d3cb83fb0ef07e7fca2cb6bcd0f07195d962dbefc",
       "correlation_manifest_sha256": "sha256:6570ece1de94119d03613a9e18d1dc46b2b9036f72b5c75b17daebc0ba360bf0",
       "visible_version": "0.103.1",
-      "sha256": "sha256:adf07a83c488ef07e629c1b18e3a2199d169f540a1de71536af9122035da77cf"
+      "sha256": "sha256:f625d7398914d469e5d747337974669e9c221f53a51e138b7d5186fe9152e49c"
     },
     {
       "presentation": "light desktop",
@@ -153,7 +153,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform&agent=developer-copilot&vulnOnly=1",
       "scope": "URL-pinned developer-copilot vulnerable-path lineage across agent, MCP, package, and finding nodes",
       "visible_version": "0.103.1",
-      "sha256": "sha256:1cf72fc1b29c46363e336d903450b6b31a448e1fa068967b3f31f33cc4d3b0a1"
+      "sha256": "sha256:e20c0466b7adc8a06387225a245295aa3fbcf5ea2f9c7abe3a25139bd492cbc4"
     },
     {
       "presentation": "dark desktop",

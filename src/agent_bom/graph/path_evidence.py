@@ -157,7 +157,10 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
     path.hop_evidence = receipts
     path.analysis = analysis
 
-    all_complete = len(receipts) == max(len(path.hops) - 1, 0) and all(receipt["complete"] for receipt in receipts)
+    # A path must contain at least one relationship. Without this guard a
+    # single-node structural finding satisfies ``all([])`` and is promoted to
+    # confirmed despite having no directed, provenance-backed hop.
+    all_complete = bool(receipts) and len(receipts) == max(len(path.hops) - 1, 0) and all(receipt["complete"] for receipt in receipts)
     stale = any(str(receipt["freshness"]).startswith("stale") for receipt in receipts)
     if not all_complete and path.reachability != "unlikely":
         path.reachability = "unknown"

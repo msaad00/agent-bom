@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:23e12dee3930256911a0400f5a0944e0751c58bb51c3c8a2af109dc0a066e418",
+  "artifact_sha256": "sha256:0912b4e14f7d6b6535c35902c746eb4844460a03860b8baf04dadd9e2fe2370b",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -632,7 +632,7 @@
             "canonical_id": "kubernetes-uid:495b5f42-47ae-51f8-918f-5f86cb1e9ad5",
             "correlation": {
               "conflict_fields": [],
-              "identity_basis": "canonical_id",
+              "identity_basis": "runtime_stable_id",
               "observation_count": 1,
               "observations": [
                 {
@@ -738,7 +738,7 @@
             "cloud_resource_id": "local:object-store:customer-records",
             "correlation": {
               "conflict_fields": [],
-              "identity_basis": "canonical_id",
+              "identity_basis": "cloud_resource_id",
               "observation_count": 1,
               "observations": [
                 {
@@ -843,7 +843,7 @@
             "canonical_id": "kubernetes-uid:9ba1b7ae-3bd2-5cb6-951a-5935ad4fc3a1",
             "correlation": {
               "conflict_fields": [],
-              "identity_basis": "canonical_id",
+              "identity_basis": "runtime_stable_id",
               "observation_count": 1,
               "observations": [
                 {
@@ -889,7 +889,7 @@
             "canonical_id": "provider-identity:local:reference-evidence-workload",
             "correlation": {
               "conflict_fields": [],
-              "identity_basis": "canonical_id",
+              "identity_basis": "provider_identity_id",
               "observation_count": 2,
               "observations": [
                 {
@@ -997,7 +997,7 @@
             ],
             "correlation": {
               "conflict_fields": [],
-              "identity_basis": "canonical_id",
+              "identity_basis": "runtime_stable_id",
               "observation_count": 2,
               "observations": [
                 {

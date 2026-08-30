@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -65,6 +67,28 @@ def test_tampered_bundle_is_rejected() -> None:
 
     with pytest.raises(RuntimeFactsBundleError, match="invalid_signature"):
         verify_runtime_facts_bundle(bundle, signing_key=KEY, tenant_id="tenant-a", now=NOW)
+
+
+def test_verifier_rejects_future_issued_and_overlong_signed_bundles() -> None:
+    future = _bundle(now=NOW + timedelta(minutes=6))
+    with pytest.raises(RuntimeFactsBundleError, match="bundle_not_yet_valid"):
+        verify_runtime_facts_bundle(future, signing_key=KEY, tenant_id="tenant-a", now=NOW)
+
+    overlong = _bundle()
+    overlong["payload"]["expires_at"] = (NOW + timedelta(days=2)).isoformat()
+    encoded = json.dumps(overlong["payload"], sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    overlong["signature"]["value"] = hmac.digest(KEY, encoded, "sha256").hex()
+    with pytest.raises(RuntimeFactsBundleError, match="invalid_expiry"):
+        verify_runtime_facts_bundle(overlong, signing_key=KEY, tenant_id="tenant-a", now=NOW)
+
+
+def test_verifier_rejects_signed_bundle_without_correlation_receipts() -> None:
+    malformed = _bundle()
+    malformed["payload"]["correlation_id"] = ""
+    encoded = json.dumps(malformed["payload"], sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    malformed["signature"]["value"] = hmac.digest(KEY, encoded, "sha256").hex()
+    with pytest.raises(RuntimeFactsBundleError, match="invalid_identity"):
+        verify_runtime_facts_bundle(malformed, signing_key=KEY, tenant_id="tenant-a", now=NOW)
 
 
 @pytest.mark.asyncio

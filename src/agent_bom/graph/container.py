@@ -103,6 +103,13 @@ class AttackPath:
     # disproven (unlikely), or structural investigation context (unknown).
     reachability: str = "unknown"
     reachability_basis: list[str] = field(default_factory=list)
+    # One immutable evidence receipt per directed hop. Additive and empty on
+    # legacy snapshots; correlation/runtime surfaces populate this before a
+    # path is presented as verified.
+    hop_evidence: list[dict[str, Any]] = field(default_factory=list)
+    # Snapshot-wide/path-analysis completeness. Kept separate from hop receipts
+    # so bounded analysis cannot be mistaken for an exhaustive clean result.
+    analysis: dict[str, Any] = field(default_factory=dict)
     # Typed MITRE ATT&CK / ATLAS techniques mapped from this path's observed
     # evidence, ordered by hop. Potential/mapped techniques for the kill-chain
     # sequence — never a claim of observed attacker activity.
@@ -126,6 +133,8 @@ class AttackPath:
             "finding_ids": self.finding_ids,
             "reachability": self.reachability,
             "reachability_basis": self.reachability_basis,
+            "hop_evidence": self.hop_evidence,
+            "analysis": self.analysis,
             "technique_mappings": [m.to_dict() for m in self.technique_mappings],
             "mitre_technique_ids": self.mitre_technique_ids(),
         }
@@ -145,6 +154,8 @@ class AttackPath:
             finding_ids=list(data.get("finding_ids") or []),
             reachability=str(data.get("reachability") or "unknown"),
             reachability_basis=[str(item) for item in data.get("reachability_basis") or []],
+            hop_evidence=[dict(item) for item in data.get("hop_evidence") or [] if isinstance(item, dict)],
+            analysis=dict(data.get("analysis") or {}),
             technique_mappings=[TechniqueMapping.from_dict(m) for m in data.get("technique_mappings", [])],
         )
 

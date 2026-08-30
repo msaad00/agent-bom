@@ -1161,59 +1161,6 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("MCP auth posture overlay failed", exc_info=True)
 
-    # Multi-hop attack-path fusion: now that both the CNAPP exposure overlay and
-    # the effective-permissions overlay have enriched the single graph, walk true
-    # end-to-end kill-chains (internet entry → vuln/credential/permission/
-    # escalation → crown-jewel data store) and materialise them as first-class
-    # attack paths. Runs last so it sees every flag/edge the overlays wrote.
-    try:
-        from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion
-
-        apply_attack_path_fusion(graph)
-    except Exception:  # noqa: BLE001
-        from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
-
-        graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
-            status=GraphAnalysisState.FAILED,
-            reason_codes=("analysis_error",),
-            observed={"node_count": len(graph.nodes), "result_count": 0},
-        )
-        _logger.warning("attack-path fusion failed: analysis_error")
-
-    # Enrich every materialised attack path with typed MITRE ATT&CK / ATLAS
-    # technique mappings derived from the path's observed evidence (edge
-    # relationship + node type), so persistence/API/exports carry the typed
-    # kill-chain sequence. Potential techniques, never detected activity.
-    try:
-        from agent_bom.graph.attack_path_mitre import apply_attack_path_technique_mappings
-
-        apply_attack_path_technique_mappings(graph)
-    except Exception:  # noqa: BLE001
-        _logger.warning("attack-path technique mapping failed: analysis_error")
-
-    # Cost (FinOps) fusion: attach LLM spend to agent/resource nodes, roll it up
-    # the CONTAINS hierarchy, and flag nodes that are BOTH high-cost AND
-    # high-risk. Runs LAST so it sees every exposure/toxic/critical flag the
-    # overlays above wrote. Cost is optional: this no-ops byte-identically when
-    # the report carries no ``llm_cost_records`` block.
-    try:
-        _apply_cost_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("cost overlay failed", exc_info=True)
-
-    # ASPM (Application Security Posture Management) correlation: organise the
-    # AppSec findings already in the graph AROUND the application they belong to
-    # — derive APPLICATION roots from finding source paths, attach findings via
-    # BELONGS_TO, roll up per-app risk, dedupe duplicate CVE/rule across sources,
-    # and flag reachability from existing attack-path data. Runs LAST so it sees
-    # every attack-path / exposure signal the overlays above wrote. No scanners,
-    # no network: a pure correlation layer that no-ops byte-identically when the
-    # report carries no ``findings`` block.
-    try:
-        _apply_aspm_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("ASPM overlay failed", exc_info=True)
-
     try:
         _apply_runtime_evidence_overlay(graph, report_json)
     except Exception:  # noqa: BLE001
@@ -1223,8 +1170,8 @@ def build_unified_graph_from_report(
     # files, file → dependency → vuln paths, and file → finding paths from the
     # project inventory + file-scoped findings already in the report, so a code
     # / repo scan visualises its folder layout the way the cloud graph
-    # visualises the cloud hierarchy. Runs after the inventory + ASPM overlays so
-    # the project servers, packages, and misconfiguration nodes it stitches onto
+    # visualises the cloud hierarchy. Runs after core inventory so the project
+    # servers, packages, and misconfiguration nodes it stitches onto
     # already exist. No-op (graph byte-identical) when no project inventory and
     # no file-scoped findings are present.
     try:
@@ -1265,6 +1212,48 @@ def build_unified_graph_from_report(
         apply_endpoint_inventory_overlay(graph, report_json)
     except Exception:  # noqa: BLE001
         _logger.warning("endpoint-inventory overlay failed", exc_info=True)
+
+    # Final path fusion runs only after every topology-producing overlay. This
+    # prevents repository, AST/code, CI, endpoint, runtime, CNAPP, identity,
+    # permission, and data relationships from arriving too late to participate
+    # in the end-to-end chain.
+    try:
+        from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion
+
+        apply_attack_path_fusion(graph)
+    except Exception:  # noqa: BLE001
+        from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
+
+        graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+            status=GraphAnalysisState.FAILED,
+            reason_codes=("analysis_error",),
+            observed={"node_count": len(graph.nodes), "result_count": 0},
+        )
+        _logger.warning("attack-path fusion failed: analysis_error")
+
+    # Technique mappings must follow final fusion so every materialized path is
+    # enriched from its actual hop evidence, never from a partial topology.
+    try:
+        from agent_bom.graph.attack_path_mitre import apply_attack_path_technique_mappings
+
+        apply_attack_path_technique_mappings(graph)
+    except Exception:  # noqa: BLE001
+        _logger.warning("attack-path technique mapping failed: analysis_error")
+
+    # ASPM consumes the final attack-path set when marking reachable findings;
+    # running it before fusion silently omitted paths contributed by late
+    # topology overlays.
+    try:
+        _apply_aspm_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("ASPM overlay failed", exc_info=True)
+
+    # FinOps risk fusion is a projection over the fully analyzed graph and does
+    # not contribute topology, so it remains last.
+    try:
+        _apply_cost_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("cost overlay failed", exc_info=True)
 
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)

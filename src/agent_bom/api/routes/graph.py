@@ -1550,6 +1550,10 @@ def _with_technique_mappings(paths: list[AttackPath], graph: UnifiedGraph) -> li
     the API surfaces the same typed kill-chain sequence for a pure-render UI.
     Never raises into the route.
     """
+    from agent_bom.graph.path_evidence import annotate_attack_path_evidence
+
+    for path in paths:
+        annotate_attack_path_evidence(path, graph)
     try:
         from agent_bom.graph.attack_path_mitre import derive_attack_path_techniques
 
@@ -1579,8 +1583,8 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
         if path.reachability == "unknown":
             path.reachability = "likely"
             path.reachability_basis = ["observed_graph_edges"]
+    materialized: list[AttackPath] = []
     if graph.attack_paths:
-        materialized: list[AttackPath] = []
         for path in graph.attack_paths:
             vulnerability_nodes = [
                 graph.nodes[hop]
@@ -1603,14 +1607,6 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     if "unverified" not in path.summary.lower():
                         path.summary = f"Unverified structural candidate. {path.summary}".strip()
             materialized.append(path)
-        return _with_technique_mappings(
-            sorted(
-                materialized + governance_paths,
-                key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
-                reverse=True,
-            ),
-            graph,
-        )
 
     incoming: dict[str, list] = {}
     outgoing: dict[str, list] = {}
@@ -1723,10 +1719,23 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                         )
                     )
 
-    paths.extend(governance_paths)
+    # Persisted paths are occurrences, so retain them all for accurate matched-
+    # path counts. Only suppress an ordinary derived path when an equivalent
+    # persisted/governance occurrence already exists.
+    combined = [*materialized, *governance_paths]
+
+    def path_key(path: AttackPath) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
+        return path.source, path.target, tuple(path.hops), tuple(path.edges)
+
+    existing_keys = {path_key(path) for path in combined}
+    for derived_path in paths:
+        derived_path_key = path_key(derived_path)
+        if derived_path_key not in existing_keys:
+            combined.append(derived_path)
+            existing_keys.add(derived_path_key)
     return _with_technique_mappings(
         sorted(
-            paths,
+            combined,
             key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
             reverse=True,
         ),

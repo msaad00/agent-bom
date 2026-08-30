@@ -39,6 +39,7 @@ HUB_LEDGER_SCAN_ID = VERSIONS_DIR / "20260818_01_hub_ledger_scan_id.py"
 TENANT_BINDING_AUTHORITY = VERSIONS_DIR / "20260819_01_tenant_binding_authority.py"
 HUB_OVERVIEW_REVISION = VERSIONS_DIR / "20260827_01_hub_overview_revision.py"
 GRAPH_CORRELATIONS = VERSIONS_DIR / "20260830_01_graph_correlations.py"
+ATTACK_PATH_EVIDENCE = VERSIONS_DIR / "20260830_02_graph_correlation_mechanical.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -50,7 +51,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260830_01"
+ALEMBIC_HEAD = "20260830_02"
 
 
 def _canonical_sql(text: str) -> str:
@@ -109,6 +110,16 @@ def test_graph_correlation_migration_tolerates_legacy_schema_without_graph_snaps
 
     sql = GRAPH_CORRELATIONS.read_text()
     assert "to_regclass('public.graph_snapshots') IS NOT NULL" in sql
+
+
+def test_attack_path_evidence_migration_is_additive_and_legacy_safe() -> None:
+    sql = ATTACK_PATH_EVIDENCE.read_text()
+    assert re.search(r'revision\s*=\s*"20260830_02"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260830_01"', sql)
+    assert "to_regclass('public.attack_paths') IS NOT NULL" in sql
+    assert "ADD COLUMN IF NOT EXISTS hop_evidence" in sql
+    assert "ADD COLUMN IF NOT EXISTS analysis" in sql
+    assert "VALUES ('graph', 3, now())" in sql
 
 
 def test_managed_trial_invitation_migration_is_chained_and_secret_minimal() -> None:

@@ -220,7 +220,7 @@ def _decode_json_array(value: Any, *, field: str) -> list[Any]:
 
 _CORRELATION_RUN_COLUMNS = """
     correlation_id, tenant_id, idempotency_key, name, status,
-    max_age_hours, allow_stale, input_manifest, manifest_sha256,
+    max_age_hours, allow_stale, input_manifest, manifest_sha256, result_manifest,
     output_scan_id, failure_code, created_at, started_at, completed_at
 """
 
@@ -237,11 +237,12 @@ def _correlation_run_from_row(row: Sequence[Any]) -> GraphCorrelationRun:
             "allow_stale": bool(row[6]),
             "input_manifest": _decode_json_array(row[7], field="input_manifest"),
             "manifest_sha256": row[8],
-            "output_scan_id": row[9],
-            "failure_code": row[10],
-            "created_at": row[11],
-            "started_at": row[12],
-            "completed_at": row[13],
+            "result_manifest": _decode_json_object(row[9], field="result_manifest"),
+            "output_scan_id": row[10],
+            "failure_code": row[11],
+            "created_at": row[12],
+            "started_at": row[13],
+            "completed_at": row[14],
         }
     )
 
@@ -406,6 +407,7 @@ class PostgresGraphStore:
                     max_age_hours INTEGER NOT NULL CHECK (max_age_hours BETWEEN 1 AND 8760),
                     allow_stale INTEGER NOT NULL DEFAULT 0 CHECK (allow_stale IN (0, 1)),
                     input_manifest TEXT NOT NULL DEFAULT '[]',
+                    result_manifest TEXT NOT NULL DEFAULT '{}',
                     manifest_sha256 TEXT NOT NULL DEFAULT '',
                     output_scan_id TEXT NOT NULL DEFAULT '',
                     failure_code TEXT NOT NULL DEFAULT '',
@@ -420,6 +422,7 @@ class PostgresGraphStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_pg_graph_correlation_runs_recent ON graph_correlation_runs(tenant_id, created_at DESC)"
             )
+            conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN IF NOT EXISTS result_manifest TEXT NOT NULL DEFAULT '{}'")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS attack_paths (
@@ -436,6 +439,8 @@ class PostgresGraphStore:
                     reachability TEXT DEFAULT 'unknown',
                     reachability_basis TEXT DEFAULT '[]',
                     technique_mappings TEXT DEFAULT '[]',
+                    hop_evidence TEXT DEFAULT '[]',
+                    analysis TEXT DEFAULT '{}',
                     scan_id TEXT NOT NULL,
                     tenant_id TEXT NOT NULL DEFAULT 'default',
                     computed_at TEXT NOT NULL,
@@ -458,6 +463,8 @@ class PostgresGraphStore:
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS technique_mappings TEXT DEFAULT '[]'")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS reachability TEXT DEFAULT 'unknown'")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS reachability_basis TEXT DEFAULT '[]'")
+            conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS hop_evidence TEXT DEFAULT '[]'")
+            conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS analysis TEXT DEFAULT '{}'")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT '{}'")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_from TEXT DEFAULT ''")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_to TEXT DEFAULT NULL")
@@ -673,6 +680,8 @@ class PostgresGraphStore:
         snapshot_kind: str = "scan",
         correlation_id: str = "",
         evidence_manifest_sha256: str = "",
+        correlation_result_manifest: Mapping[str, Any] | None = None,
+        correlation_completed_at: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables without materialising a graph.
 
@@ -894,6 +903,8 @@ class PostgresGraphStore:
                         ap.reachability,
                         json.dumps(ap.reachability_basis),
                         json.dumps([m.to_dict() for m in ap.technique_mappings]),
+                        json.dumps(ap.hop_evidence, sort_keys=True),
+                        json.dumps(ap.analysis, sort_keys=True),
                         scan,
                         tenant,
                         now,
@@ -1014,8 +1025,8 @@ class PostgresGraphStore:
                     source_node, target_node, hop_count, composite_risk,
                     summary, path_nodes, path_edges, credential_exposure,
                     tool_exposure, vuln_ids, reachability, reachability_basis,
-                    technique_mappings, scan_id, tenant_id, computed_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    technique_mappings, hop_evidence, analysis, scan_id, tenant_id, computed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source_node, target_node, scan_id, tenant_id) DO UPDATE SET
                     hop_count = EXCLUDED.hop_count,
                     composite_risk = EXCLUDED.composite_risk,
@@ -1028,6 +1039,8 @@ class PostgresGraphStore:
                     reachability = EXCLUDED.reachability,
                     reachability_basis = EXCLUDED.reachability_basis,
                     technique_mappings = EXCLUDED.technique_mappings,
+                    hop_evidence = EXCLUDED.hop_evidence,
+                    analysis = EXCLUDED.analysis,
                     computed_at = EXCLUDED.computed_at
                 """,
                 attack_path_rows(),
@@ -1081,6 +1094,44 @@ class PostgresGraphStore:
                     evidence_manifest_sha256,
                 ),
             )
+            if correlation_result_manifest is not None:
+                row = conn.execute(
+                    f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs "
+                    "WHERE tenant_id = %s AND correlation_id = %s FOR UPDATE",  # nosec B608 - static internal column list
+                    (tenant, correlation_id),
+                ).fetchone()
+                if row is None:
+                    raise KeyError("correlation run not found")
+                existing = _correlation_run_from_row(row)
+                resolved_hash, resolved_result, resolved_output, resolved_failure = validate_correlation_update(
+                    existing,
+                    status=CorrelationRunStatus.COMPLETE,
+                    manifest_sha256=evidence_manifest_sha256,
+                    result_manifest=correlation_result_manifest,
+                    output_scan_id=scan,
+                )
+                updated = conn.execute(
+                    """
+                    UPDATE graph_correlation_runs
+                    SET status = %s, manifest_sha256 = %s, result_manifest = %s,
+                        output_scan_id = %s, failure_code = %s, completed_at = %s
+                    WHERE tenant_id = %s AND correlation_id = %s AND status = %s
+                    RETURNING correlation_id
+                    """,
+                    (
+                        CorrelationRunStatus.COMPLETE.value,
+                        resolved_hash,
+                        json.dumps(resolved_result, sort_keys=True, separators=(",", ":")),
+                        resolved_output,
+                        resolved_failure,
+                        correlation_completed_at or now,
+                        tenant,
+                        correlation_id,
+                        existing.status.value,
+                    ),
+                ).fetchone()
+                if updated is None:
+                    raise RuntimeError("correlation run changed during atomic completion")
             conn.commit()
 
             # Mirror the SQLite backend's age-based retention purge so Postgres
@@ -1309,7 +1360,8 @@ class PostgresGraphStore:
                     """
                     SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
                            summary, credential_exposure, tool_exposure, vuln_ids,
-                           reachability, reachability_basis, technique_mappings
+                           reachability, reachability_basis, technique_mappings,
+                           hop_evidence, analysis
                     FROM attack_paths
                     WHERE tenant_id = %s AND scan_id = %s
                     ORDER BY source_node, target_node, composite_risk DESC, path_nodes
@@ -1329,6 +1381,12 @@ class PostgresGraphStore:
                             vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
                             reachability=row[9] or "unknown",
                             reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                            hop_evidence=[
+                                dict(item)
+                                for item in _decode_json_array(row[12], field="attack path hop evidence")
+                                if isinstance(item, dict)
+                            ],
+                            analysis=_decode_json_object(row[13], field="attack path analysis"),
                             technique_mappings=technique_mappings_from_json(row[11]),
                         )
                     )
@@ -1844,7 +1902,8 @@ class PostgresGraphStore:
                 f"""
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
                        summary, credential_exposure, tool_exposure, vuln_ids,
-                       reachability, reachability_basis, technique_mappings
+                       reachability, reachability_basis, technique_mappings,
+                       hop_evidence, analysis
                 FROM attack_paths
                 WHERE tenant_id = %s AND scan_id = %s AND source_node IN ({placeholders})
                 ORDER BY composite_risk DESC, source_node ASC, target_node ASC
@@ -1867,6 +1926,10 @@ class PostgresGraphStore:
                 vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
                 reachability=row[9] or "unknown",
                 reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                hop_evidence=[
+                    dict(item) for item in _decode_json_array(row[12], field="attack path hop evidence") if isinstance(item, dict)
+                ],
+                analysis=_decode_json_object(row[13], field="attack path analysis"),
                 technique_mappings=technique_mappings_from_json(row[11]),
             )
             for row in rows
@@ -1898,7 +1961,8 @@ class PostgresGraphStore:
                 """
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
                        summary, credential_exposure, tool_exposure, vuln_ids,
-                       reachability, reachability_basis, technique_mappings
+                       reachability, reachability_basis, technique_mappings,
+                       hop_evidence, analysis
                 FROM attack_paths
                 WHERE tenant_id = %s AND scan_id = %s
                 ORDER BY composite_risk DESC, source_node ASC, target_node ASC
@@ -1925,6 +1989,10 @@ class PostgresGraphStore:
                     vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
                     reachability=row[9] or "unknown",
                     reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                    hop_evidence=[
+                        dict(item) for item in _decode_json_array(row[12], field="attack path hop evidence") if isinstance(item, dict)
+                    ],
+                    analysis=_decode_json_object(row[13], field="attack path analysis"),
                     technique_mappings=technique_mappings_from_json(row[11]),
                 )
                 for row in rows
@@ -2301,6 +2369,39 @@ class PostgresGraphStore:
                 for row in rows
             ]
 
+    def snapshots_by_ids(self, *, tenant_id: str, scan_ids: set[str]) -> list[dict[str, Any]]:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        selected = sorted({scan_id.strip() for scan_id in scan_ids if scan_id.strip()})
+        if not selected:
+            return []
+        if len(selected) > 32:
+            raise ValueError("at most 32 snapshot IDs may be selected")
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                """
+                SELECT scan_id, created_at, node_count, edge_count, risk_summary, analysis_status,
+                       snapshot_kind, correlation_id, evidence_manifest_sha256
+                FROM graph_snapshots
+                WHERE tenant_id = %s AND scan_id = ANY(%s)
+                ORDER BY scan_id
+                """,
+                (tenant, selected),
+            ).fetchall()
+        return [
+            {
+                "scan_id": row[0],
+                "created_at": row[1],
+                "node_count": row[2],
+                "edge_count": row[3],
+                "risk_summary": _decode_json_object(row[4]),
+                "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(_decode_json_object(row[5]))),
+                "snapshot_kind": row[6] or "scan",
+                "correlation_id": row[7] or "",
+                "evidence_manifest_sha256": row[8] or "",
+            }
+            for row in rows
+        ]
+
     def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> GraphCorrelationRun | None:
         tenant = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
@@ -2309,6 +2410,34 @@ class PostgresGraphStore:
                 (tenant, correlation_id),
             ).fetchone()
         return _correlation_run_from_row(row) if row is not None else None
+
+    def complete_correlation_run(
+        self,
+        graph: UnifiedGraph,
+        *,
+        result_manifest: Mapping[str, Any],
+        manifest_sha256: str,
+        completed_at: str = "",
+    ) -> GraphCorrelationRun:
+        self.save_graph_streaming(
+            scan_id=graph.scan_id,
+            tenant_id=graph.tenant_id,
+            created_at=graph.created_at,
+            nodes=graph.nodes.values(),
+            edges=graph.edges,
+            attack_paths=graph.attack_paths,
+            interaction_risks=graph.interaction_risks,
+            analysis_status=graph.analysis_status,
+            snapshot_kind="correlation",
+            correlation_id=graph.scan_id,
+            evidence_manifest_sha256=manifest_sha256,
+            correlation_result_manifest=result_manifest,
+            correlation_completed_at=completed_at,
+        )
+        completed = self.get_correlation_run(tenant_id=graph.tenant_id, correlation_id=graph.scan_id)
+        if completed is None:  # pragma: no cover - defensive invariant
+            raise RuntimeError("completed correlation run disappeared")
+        return completed
 
     def create_correlation_run(self, run: GraphCorrelationRun) -> tuple[GraphCorrelationRun, bool]:
         tenant = normalize_graph_tenant_id(run.tenant_id)
@@ -2325,7 +2454,7 @@ class PostgresGraphStore:
             row = conn.execute(
                 f"""
                 INSERT INTO graph_correlation_runs ({_CORRELATION_RUN_COLUMNS})
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 RETURNING {_CORRELATION_RUN_COLUMNS}
                 """,  # nosec B608 - static internal column list
@@ -2339,6 +2468,7 @@ class PostgresGraphStore:
                     int(run.allow_stale),
                     json.dumps(run.input_manifest, sort_keys=True, separators=(",", ":")),
                     run.manifest_sha256,
+                    json.dumps(run.result_manifest, sort_keys=True, separators=(",", ":")),
                     run.output_scan_id,
                     run.failure_code,
                     run.created_at,
@@ -2377,6 +2507,7 @@ class PostgresGraphStore:
         correlation_id: str,
         status: CorrelationRunStatus,
         manifest_sha256: str = "",
+        result_manifest: Mapping[str, Any] | None = None,
         output_scan_id: str = "",
         failure_code: str = "",
         started_at: str = "",
@@ -2386,10 +2517,11 @@ class PostgresGraphStore:
         existing = self.get_correlation_run(tenant_id=tenant, correlation_id=correlation_id)
         if existing is None:
             raise KeyError("correlation run not found")
-        resolved_manifest, resolved_output, resolved_failure = validate_correlation_update(
+        resolved_manifest, resolved_result_manifest, resolved_output, resolved_failure = validate_correlation_update(
             existing,
             status=status,
             manifest_sha256=manifest_sha256,
+            result_manifest=result_manifest,
             output_scan_id=output_scan_id,
             failure_code=failure_code,
         )
@@ -2397,7 +2529,7 @@ class PostgresGraphStore:
             row = conn.execute(
                 f"""
                 UPDATE graph_correlation_runs
-                SET status = %s, manifest_sha256 = %s, output_scan_id = %s,
+                SET status = %s, manifest_sha256 = %s, result_manifest = %s, output_scan_id = %s,
                     failure_code = %s, started_at = %s, completed_at = %s
                 WHERE tenant_id = %s AND correlation_id = %s AND status = %s
                 RETURNING {_CORRELATION_RUN_COLUMNS}
@@ -2405,6 +2537,7 @@ class PostgresGraphStore:
                 (
                     status.value,
                     resolved_manifest,
+                    json.dumps(resolved_result_manifest, sort_keys=True, separators=(",", ":")),
                     resolved_output,
                     resolved_failure,
                     started_at or existing.started_at,
@@ -2478,7 +2611,8 @@ class PostgresGraphStore:
         for row in conn.execute(
             """
             SELECT source_node, target_node, hop_count, composite_risk, summary,
-                   path_nodes, path_edges, tool_exposure, vuln_ids
+                   path_nodes, path_edges, credential_exposure, tool_exposure, vuln_ids,
+                   reachability, reachability_basis, technique_mappings, hop_evidence, analysis
             FROM attack_paths
             WHERE tenant_id = %s AND scan_id = %s
             ORDER BY source_node, target_node
@@ -2494,8 +2628,14 @@ class PostgresGraphStore:
                     "summary": row[4] or "",
                     "path_nodes": _decode_json_array(row[5], field="attack path nodes"),
                     "path_edges": _decode_json_array(row[6], field="attack path edges"),
-                    "tool_exposure": _decode_json_array(row[7], field="attack path tool exposure"),
-                    "vuln_ids": _decode_json_array(row[8], field="attack path vulnerability IDs"),
+                    "credential_exposure": _decode_json_array(row[7], field="attack path credential exposure"),
+                    "tool_exposure": _decode_json_array(row[8], field="attack path tool exposure"),
+                    "vuln_ids": _decode_json_array(row[9], field="attack path vulnerability IDs"),
+                    "reachability": row[10] or "unknown",
+                    "reachability_basis": _decode_json_array(row[11], field="attack path reachability basis"),
+                    "technique_mappings": _decode_json_array(row[12], field="attack path technique mappings"),
+                    "hop_evidence": _decode_json_array(row[13], field="attack path hop evidence"),
+                    "analysis": _decode_json_object(row[14], field="attack path analysis"),
                 }
             )
 

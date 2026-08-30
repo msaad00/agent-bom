@@ -337,6 +337,42 @@ def init_policy_cmd(template_name: str, output_path: Path, mode: str, output_for
     ),
 )
 @click.option(
+    "--graph-reachability-bundle-url",
+    envvar="AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_BUNDLE_URL",
+    default="",
+    help="Authenticated runtime-facts endpoint for a completed graph correlation.",
+)
+@click.option(
+    "--graph-reachability-bundle-tenant",
+    envvar="AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_BUNDLE_TENANT",
+    default="default",
+    show_default=True,
+    help="Tenant identity that the signed runtime-facts bundle must match.",
+)
+@click.option(
+    "--graph-reachability-bundle-signing-key-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar="AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_BUNDLE_SIGNING_KEY_FILE",
+    default=None,
+    help="File containing the HMAC verification key for signed runtime facts.",
+)
+@click.option(
+    "--graph-reachability-bundle-poll-seconds",
+    type=float,
+    envvar="AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_BUNDLE_POLL_SECONDS",
+    default=30.0,
+    show_default=True,
+    help="Polling interval for signed runtime facts; 0 loads once at startup.",
+)
+@click.option(
+    "--graph-reachability-failure-mode",
+    type=click.Choice(["allow", "deny"]),
+    envvar="AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_FAILURE_MODE",
+    default="allow",
+    show_default=True,
+    help="Behavior when configured graph evidence is unavailable; deny is strict opt-in.",
+)
+@click.option(
     "--enable-oauth-as",
     is_flag=True,
     envvar="AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS",
@@ -436,6 +472,11 @@ def serve_cmd(
     fleet_enforcement: str,
     graph_reachability_path: Path | None,
     graph_reachability_enforcement: str,
+    graph_reachability_bundle_url: str,
+    graph_reachability_bundle_tenant: str,
+    graph_reachability_bundle_signing_key_file: Path | None,
+    graph_reachability_bundle_poll_seconds: float,
+    graph_reachability_failure_mode: str,
     enable_oauth_as: bool,
     oauth_as_issuer: str | None,
     a2a_mutual_auth_enforcement: str,
@@ -479,6 +520,20 @@ def serve_cmd(
         raise click.ClickException("--profile-enforcement warn/enforce requires --profile-issuer")
     if allow_profile_dev_bypass and not _is_loopback_host(host):
         raise click.ClickException("--allow-profile-dev-bypass is permitted only with a loopback --bind")
+    if graph_reachability_bundle_poll_seconds < 0:
+        raise click.ClickException("--graph-reachability-bundle-poll-seconds must be >= 0")
+    if graph_reachability_bundle_url and graph_reachability_bundle_signing_key_file is None:
+        raise click.ClickException("--graph-reachability-bundle-url requires --graph-reachability-bundle-signing-key-file")
+    if graph_reachability_bundle_url and not graph_reachability_bundle_tenant.strip():
+        raise click.ClickException("--graph-reachability-bundle-url requires a non-empty bundle tenant")
+    graph_reachability_bundle_signing_key: bytes | None = None
+    if graph_reachability_bundle_signing_key_file is not None:
+        try:
+            graph_reachability_bundle_signing_key = graph_reachability_bundle_signing_key_file.read_bytes().strip()
+        except OSError as exc:
+            raise click.ClickException("unable to read graph reachability bundle signing key") from exc
+        if len(graph_reachability_bundle_signing_key) < 32:
+            raise click.ClickException("graph reachability bundle signing key must contain at least 32 bytes")
 
     from agent_bom.gateway_server import GatewaySettings, build_control_plane_audit_sink, create_gateway_app
     from agent_bom.gateway_upstreams import (
@@ -638,6 +693,12 @@ def serve_cmd(
         fleet_enforcement_mode=fleet_enforcement,
         graph_reachability_path=graph_reachability_path,
         graph_reachability_enforcement_mode=graph_reachability_enforcement,
+        graph_reachability_failure_mode=graph_reachability_failure_mode,
+        graph_reachability_bundle_url=graph_reachability_bundle_url.strip(),
+        graph_reachability_bundle_tenant_id=graph_reachability_bundle_tenant.strip(),
+        graph_reachability_bundle_signing_key=graph_reachability_bundle_signing_key,
+        graph_reachability_bundle_bearer_token=control_plane_token or "",
+        graph_reachability_bundle_poll_interval_seconds=graph_reachability_bundle_poll_seconds,
         oauth_as=oauth_as,
         oidc_discovery_shim=oidc_discovery_shim,
         a2a_mutual_auth_enforcement_mode=a2a_mutual_auth_enforcement,

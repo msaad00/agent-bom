@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 
 DEFAULT_GRAPH_TENANT_ID = "default"
-_GRAPH_SCHEMA_VERSION = 4
+_GRAPH_SCHEMA_VERSION = 5
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
 _DEFAULT_GRAPH_RETENTION_DAYS = 180
 _FINDING_ENTITY_TYPES = {
@@ -223,6 +223,7 @@ CREATE TABLE IF NOT EXISTS graph_correlation_runs (
     max_age_hours   INTEGER NOT NULL CHECK (max_age_hours BETWEEN 1 AND 8760),
     allow_stale     INTEGER NOT NULL DEFAULT 0 CHECK (allow_stale IN (0, 1)),
     input_manifest  TEXT NOT NULL DEFAULT '[]',
+    result_manifest TEXT NOT NULL DEFAULT '{}',
     manifest_sha256 TEXT NOT NULL DEFAULT '',
     output_scan_id  TEXT NOT NULL DEFAULT '',
     failure_code    TEXT NOT NULL DEFAULT '',
@@ -249,6 +250,8 @@ CREATE TABLE IF NOT EXISTS attack_paths (
     reachability    TEXT DEFAULT 'unknown',
     reachability_basis TEXT DEFAULT '[]',
     technique_mappings TEXT DEFAULT '[]',
+    hop_evidence     TEXT DEFAULT '[]',
+    analysis         TEXT DEFAULT '{}',
     scan_id         TEXT NOT NULL,
     tenant_id       TEXT NOT NULL DEFAULT 'default',
     computed_at     TEXT NOT NULL,
@@ -390,6 +393,10 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
         conn.execute("ALTER TABLE attack_paths ADD COLUMN reachability TEXT DEFAULT 'unknown'")
     if "reachability_basis" not in existing_columns:
         conn.execute("ALTER TABLE attack_paths ADD COLUMN reachability_basis TEXT DEFAULT '[]'")
+    if "hop_evidence" not in existing_columns:
+        conn.execute("ALTER TABLE attack_paths ADD COLUMN hop_evidence TEXT DEFAULT '[]'")
+    if "analysis" not in existing_columns:
+        conn.execute("ALTER TABLE attack_paths ADD COLUMN analysis TEXT DEFAULT '{}'")
     edge_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_edges)").fetchall()}
     # v3 adds replay metadata. Empty valid_from is interpreted as first_seen for
     # stores created before this migration, so old snapshots remain queryable.
@@ -424,6 +431,9 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN correlation_id TEXT DEFAULT NULL")
     if "evidence_manifest_sha256" not in snapshot_columns:
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN evidence_manifest_sha256 TEXT NOT NULL DEFAULT ''")
+    correlation_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_correlation_runs)").fetchall()}
+    if "result_manifest" not in correlation_columns:
+        conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN result_manifest TEXT NOT NULL DEFAULT '{}'")
     conn.execute("INSERT OR IGNORE INTO graph_schema_version (version) VALUES (?)", (_GRAPH_SCHEMA_VERSION,))
     if backfill_legacy_tenants:
         _backfill_empty_tenant_ids(conn)
@@ -799,6 +809,8 @@ def save_graph_streaming(
     snapshot_kind: str = "scan",
     correlation_id: str = "",
     evidence_manifest_sha256: str = "",
+    correlation_result_manifest: Mapping[str, Any] | None = None,
+    correlation_completed_at: str = "",
 ) -> dict[str, int]:
     """Persist a graph snapshot from streamed node/edge iterables.
 
@@ -1036,8 +1048,8 @@ def save_graph_streaming(
                 source_node, target_node, hop_count, composite_risk,
                 summary, path_nodes, path_edges, credential_exposure,
                 tool_exposure, vuln_ids, reachability, reachability_basis,
-                technique_mappings, scan_id, tenant_id, computed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                technique_mappings, hop_evidence, analysis, scan_id, tenant_id, computed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ap.source,
@@ -1053,6 +1065,8 @@ def save_graph_streaming(
                 ap.reachability,
                 json.dumps(ap.reachability_basis),
                 json.dumps([m.to_dict() for m in ap.technique_mappings]),
+                json.dumps(ap.hop_evidence, sort_keys=True),
+                json.dumps(ap.analysis, sort_keys=True),
                 scan,
                 tenant,
                 now,
@@ -1098,6 +1112,39 @@ def save_graph_streaming(
             evidence_manifest_sha256,
         ),
     )
+
+    if correlation_result_manifest is not None:
+        existing = get_correlation_run(conn, tenant_id=tenant, correlation_id=correlation_id)
+        if existing is None:
+            raise KeyError("correlation run not found")
+        resolved_hash, resolved_result, resolved_output, resolved_failure = validate_correlation_update(
+            existing,
+            status=CorrelationRunStatus.COMPLETE,
+            manifest_sha256=evidence_manifest_sha256,
+            result_manifest=correlation_result_manifest,
+            output_scan_id=scan,
+        )
+        conn.execute(
+            """
+            UPDATE graph_correlation_runs
+            SET status = ?, manifest_sha256 = ?, result_manifest = ?, output_scan_id = ?,
+                failure_code = ?, completed_at = ?
+            WHERE tenant_id = ? AND correlation_id = ? AND status = ?
+            """,
+            (
+                CorrelationRunStatus.COMPLETE.value,
+                resolved_hash,
+                json.dumps(resolved_result, sort_keys=True, separators=(",", ":")),
+                resolved_output,
+                resolved_failure,
+                correlation_completed_at or now,
+                tenant,
+                correlation_id,
+                existing.status.value,
+            ),
+        )
+        if conn.execute("SELECT changes()").fetchone()[0] != 1:
+            raise RuntimeError("correlation run changed during atomic completion")
 
     conn.commit()
     logger.info(
@@ -1294,6 +1341,8 @@ def load_graph(
                     vuln_ids=json.loads(row["vuln_ids"]),
                     reachability=row["reachability"] or "unknown",
                     reachability_basis=json.loads(row["reachability_basis"] or "[]"),
+                    hop_evidence=json.loads(row["hop_evidence"] or "[]"),
+                    analysis=json.loads(row["analysis"] or "{}"),
                     technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                 )
             )
@@ -1701,6 +1750,47 @@ def list_snapshots(
     ]
 
 
+def snapshots_by_ids(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    scan_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Return exact retained snapshot receipts without a recent-history cap."""
+
+    tenant = normalize_graph_tenant_id(tenant_id)
+    selected = sorted({scan_id.strip() for scan_id in scan_ids if scan_id.strip()})
+    if not selected:
+        return []
+    if len(selected) > 32:
+        raise ValueError("at most 32 snapshot IDs may be selected")
+    placeholders = ",".join("?" for _item in selected)
+    rows = conn.execute(
+        f"""
+        SELECT scan_id, created_at, node_count, edge_count, risk_summary, analysis_status,
+               snapshot_kind, correlation_id, evidence_manifest_sha256
+        FROM graph_snapshots
+        WHERE tenant_id = ? AND scan_id IN ({placeholders})
+        ORDER BY scan_id
+        """,  # nosec B608 - placeholder count derives only from bounded internal IDs
+        [tenant, *selected],
+    ).fetchall()
+    return [
+        {
+            "scan_id": row["scan_id"],
+            "created_at": row["created_at"],
+            "node_count": row["node_count"],
+            "edge_count": row["edge_count"],
+            "risk_summary": json.loads(row["risk_summary"]),
+            "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(json.loads(row["analysis_status"] or "{}"))),
+            "snapshot_kind": row["snapshot_kind"] or "scan",
+            "correlation_id": row["correlation_id"] or "",
+            "evidence_manifest_sha256": row["evidence_manifest_sha256"] or "",
+        }
+        for row in rows
+    ]
+
+
 def _correlation_run_from_row(row: sqlite3.Row) -> GraphCorrelationRun:
     return GraphCorrelationRun.from_mapping(
         {
@@ -1712,6 +1802,7 @@ def _correlation_run_from_row(row: sqlite3.Row) -> GraphCorrelationRun:
             "max_age_hours": row["max_age_hours"],
             "allow_stale": bool(row["allow_stale"]),
             "input_manifest": json.loads(row["input_manifest"] or "[]"),
+            "result_manifest": json.loads(row["result_manifest"] or "{}"),
             "manifest_sha256": row["manifest_sha256"],
             "output_scan_id": row["output_scan_id"],
             "failure_code": row["failure_code"],
@@ -1760,8 +1851,8 @@ def create_correlation_run(
         INSERT INTO graph_correlation_runs (
             correlation_id, tenant_id, idempotency_key, name, status,
             max_age_hours, allow_stale, input_manifest, manifest_sha256,
-            output_scan_id, failure_code, created_at, started_at, completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            result_manifest, output_scan_id, failure_code, created_at, started_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run.correlation_id,
@@ -1773,6 +1864,7 @@ def create_correlation_run(
             int(run.allow_stale),
             json.dumps(run.input_manifest, sort_keys=True, separators=(",", ":")),
             run.manifest_sha256,
+            json.dumps(run.result_manifest, sort_keys=True, separators=(",", ":")),
             run.output_scan_id,
             run.failure_code,
             run.created_at,
@@ -1808,6 +1900,7 @@ def update_correlation_run(
     correlation_id: str,
     status: CorrelationRunStatus,
     manifest_sha256: str = "",
+    result_manifest: Mapping[str, Any] | None = None,
     output_scan_id: str = "",
     failure_code: str = "",
     started_at: str = "",
@@ -1816,23 +1909,25 @@ def update_correlation_run(
     existing = get_correlation_run(conn, tenant_id=tenant_id, correlation_id=correlation_id)
     if existing is None:
         raise KeyError("correlation run not found")
-    resolved_manifest, resolved_output, resolved_failure = validate_correlation_update(
+    resolved_manifest, resolved_result_manifest, resolved_output, resolved_failure = validate_correlation_update(
         existing,
         status=status,
         manifest_sha256=manifest_sha256,
+        result_manifest=result_manifest,
         output_scan_id=output_scan_id,
         failure_code=failure_code,
     )
     conn.execute(
         """
         UPDATE graph_correlation_runs
-        SET status = ?, manifest_sha256 = ?, output_scan_id = ?, failure_code = ?,
+        SET status = ?, manifest_sha256 = ?, result_manifest = ?, output_scan_id = ?, failure_code = ?,
             started_at = ?, completed_at = ?
         WHERE tenant_id = ? AND correlation_id = ?
         """,
         (
             status.value,
             resolved_manifest,
+            json.dumps(resolved_result_manifest, sort_keys=True, separators=(",", ":")),
             resolved_output,
             resolved_failure,
             started_at or existing.started_at,
@@ -1918,7 +2013,8 @@ def _snapshot_digests(conn: sqlite3.Connection, *, tenant_id: str, scan_id: str)
     for row in conn.execute(
         """
         SELECT source_node, target_node, hop_count, composite_risk, summary,
-               path_nodes, path_edges, tool_exposure, vuln_ids
+               path_nodes, path_edges, credential_exposure, tool_exposure, vuln_ids,
+               reachability, reachability_basis, technique_mappings, hop_evidence, analysis
         FROM attack_paths
         WHERE tenant_id = ? AND scan_id = ?
         ORDER BY source_node, target_node
@@ -1934,8 +2030,14 @@ def _snapshot_digests(conn: sqlite3.Connection, *, tenant_id: str, scan_id: str)
                 "summary": row["summary"] or "",
                 "path_nodes": json.loads(row["path_nodes"] or "[]"),
                 "path_edges": json.loads(row["path_edges"] or "[]"),
+                "credential_exposure": json.loads(row["credential_exposure"] or "[]"),
                 "tool_exposure": json.loads(row["tool_exposure"] or "[]"),
                 "vuln_ids": json.loads(row["vuln_ids"] or "[]"),
+                "reachability": row["reachability"] or "unknown",
+                "reachability_basis": json.loads(row["reachability_basis"] or "[]"),
+                "technique_mappings": json.loads(row["technique_mappings"] or "[]"),
+                "hop_evidence": json.loads(row["hop_evidence"] or "[]"),
+                "analysis": json.loads(row["analysis"] or "{}"),
             }
         )
 

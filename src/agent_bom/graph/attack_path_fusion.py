@@ -334,12 +334,15 @@ def _walk_from_entry(
             # A data store can also be a transit hop, so keep exploring.
 
         if len(hops) > _MAX_DEPTH:
-            if any(_rel(edge) in _TRAVERSABLE_RELS and edge.target not in on_path for edge in graph.adjacency.get(node_id, [])):
+            if any(
+                edge.traversable and _rel(edge) in _TRAVERSABLE_RELS and edge.target not in on_path
+                for edge in graph.adjacency.get(node_id, [])
+            ):
                 limit_reasons.add("depth_cap_reached")
             return
 
         for edge in graph.adjacency.get(node_id, []):
-            if _rel(edge) not in _TRAVERSABLE_RELS:
+            if not edge.traversable or _rel(edge) not in _TRAVERSABLE_RELS:
                 continue
             nxt = edge.target
             if nxt in on_path:  # no cycles
@@ -401,6 +404,10 @@ def apply_attack_path_fusion(graph: UnifiedGraph) -> dict[str, object]:
     graph.attack_paths.extend(fused)
     graph.attack_campaigns = _cluster_small_graph_campaigns(graph, fused)
     graph.analysis_status[_ANALYZER] = computation.status
+    from agent_bom.graph.path_evidence import annotate_attack_path_evidence
+
+    for path in fused:
+        annotate_attack_path_evidence(path, graph)
     return {
         "fused_attack_paths": len(fused),
         "max_fused_risk": int(round(max((p.composite_risk for p in fused), default=0.0))),
@@ -426,6 +433,10 @@ def _apply_partitioned_campaigns(graph: UnifiedGraph) -> dict[str, object]:
     graph.attack_paths.extend(result.paths)
     graph.attack_campaigns = result.campaigns
     graph.analysis_status[_ANALYZER] = result.status
+    from agent_bom.graph.path_evidence import annotate_attack_path_evidence
+
+    for path in result.paths:
+        annotate_attack_path_evidence(path, graph)
     return {
         "fused_attack_paths": len(result.paths),
         "max_fused_risk": int(round(max((p.composite_risk for p in result.paths), default=0.0))),

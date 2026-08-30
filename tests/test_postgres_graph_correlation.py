@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 
@@ -46,7 +47,7 @@ class _Conn:
             return _Cursor([row] if row else [])
         if low.startswith("select correlation_id") and "order by created_at" in low:
             tenant, limit = params
-            rows = sorted((row for row in self.rows.values() if row[1] == tenant), key=lambda row: (row[11], row[0]), reverse=True)
+            rows = sorted((row for row in self.rows.values() if row[1] == tenant), key=lambda row: (row[12], row[0]), reverse=True)
             return _Cursor(rows[:limit])
         if low.startswith("insert into graph_correlation_runs"):
             tenant, correlation_id, idem = params[1], params[0], params[2]
@@ -55,7 +56,7 @@ class _Conn:
             self.rows[(tenant, correlation_id)] = params
             return _Cursor([params])
         if low.startswith("update graph_correlation_runs"):
-            status, manifest, output, failure, started, completed, tenant, correlation_id, expected = params
+            status, manifest, result_manifest, output, failure, started, completed, tenant, correlation_id, expected = params
             row = self.rows.get((tenant, correlation_id))
             if row is None or row[4] != expected:
                 return _Cursor()
@@ -69,9 +70,10 @@ class _Conn:
                 row[6],
                 row[7],
                 manifest,
+                result_manifest,
                 output,
                 failure,
-                row[11],
+                row[12],
                 started,
                 completed,
             )
@@ -131,11 +133,14 @@ def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None
         status=CorrelationRunStatus.RUNNING,
         started_at="2026-08-30T00:01:00+00:00",
     )
+    result_manifest = {"correlation_id": "corr-1"}
+    manifest_sha256 = "sha256:" + hashlib.sha256(json.dumps(result_manifest, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     complete = store.update_correlation_run(
         tenant_id="acme",
         correlation_id="corr-1",
         status=CorrelationRunStatus.COMPLETE,
-        manifest_sha256="sha256:" + "a" * 64,
+        manifest_sha256=manifest_sha256,
+        result_manifest=result_manifest,
         output_scan_id="corr-1",
         completed_at="2026-08-30T00:02:00+00:00",
     )

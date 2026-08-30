@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -175,6 +175,7 @@ class GraphCorrelationRun:
     max_age_hours: int
     allow_stale: bool
     input_manifest: list[dict[str, Any]]
+    result_manifest: dict[str, Any] = field(default_factory=dict)
     manifest_sha256: str = ""
     output_scan_id: str = ""
     failure_code: str = ""
@@ -225,6 +226,7 @@ class GraphCorrelationRun:
             "max_age_hours": self.max_age_hours,
             "allow_stale": self.allow_stale,
             "input_manifest": deepcopy(self.input_manifest),
+            "result_manifest": deepcopy(self.result_manifest),
             "manifest_sha256": self.manifest_sha256,
             "output_scan_id": self.output_scan_id,
             "failure_code": self.failure_code,
@@ -245,6 +247,7 @@ class GraphCorrelationRun:
             max_age_hours=int(value.get("max_age_hours") or 0),
             allow_stale=bool(value.get("allow_stale", False)),
             input_manifest=[dict(item) for item in value.get("input_manifest") or [] if isinstance(item, Mapping)],
+            result_manifest=dict(value.get("result_manifest") or {}),
             manifest_sha256=str(value.get("manifest_sha256") or ""),
             output_scan_id=str(value.get("output_scan_id") or ""),
             failure_code=str(value.get("failure_code") or ""),
@@ -259,14 +262,16 @@ def validate_correlation_update(
     *,
     status: CorrelationRunStatus,
     manifest_sha256: str = "",
+    result_manifest: Mapping[str, Any] | None = None,
     output_scan_id: str = "",
     failure_code: str = "",
-) -> tuple[str, str, str]:
+) -> tuple[str, dict[str, Any], str, str]:
     """Validate one monotonic state transition and return resolved values."""
 
     if status not in _CORRELATION_TRANSITIONS[existing.status]:
         raise ValueError("correlation run is terminal or the status transition is invalid")
     resolved_manifest = manifest_sha256 or existing.manifest_sha256
+    resolved_result_manifest = dict(result_manifest or existing.result_manifest)
     resolved_output = output_scan_id or existing.output_scan_id
     if failure_code and _FAILURE_CODE_RE.fullmatch(failure_code) is None:
         raise ValueError("failure_code must be a sanitized machine-readable code")
@@ -275,6 +280,8 @@ def validate_correlation_update(
             raise ValueError("completed correlation output snapshot must equal correlation_id")
         if _SHA256_RE.fullmatch(resolved_manifest) is None:
             raise ValueError("completed correlation requires a sha256 evidence manifest")
+        if not resolved_result_manifest or _digest(resolved_result_manifest) != resolved_manifest:
+            raise ValueError("completed correlation manifest hash does not match result_manifest")
         if failure_code:
             raise ValueError("completed correlation cannot contain a failure code")
     if status is CorrelationRunStatus.FAILED:
@@ -282,7 +289,7 @@ def validate_correlation_update(
             raise ValueError("failed correlation requires a sanitized failure code")
         if resolved_output:
             raise ValueError("failed correlation cannot expose an output snapshot")
-    return resolved_manifest, resolved_output, failure_code
+    return resolved_manifest, resolved_result_manifest, resolved_output, failure_code
 
 
 @dataclass(frozen=True, slots=True)

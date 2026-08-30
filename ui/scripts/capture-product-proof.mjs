@@ -2587,7 +2587,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     captured_at: new Date().toISOString(),
     ...provenance,
     capture_note:
-      "Captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
+      "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
     screenshots,
   };
   await fs.writeFile(path.join(outputDir, path.basename(SCREENSHOT_MANIFEST)), `${JSON.stringify(manifest, null, 2)}\n`);

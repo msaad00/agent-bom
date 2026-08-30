@@ -1,9 +1,10 @@
 # Screenshot capture protocol
 
 Published screenshots in `docs/images/` must come from packaged Next.js
-product routes using the deterministic, explicitly synthetic capture fixture,
-with the agent and scope chosen so the resulting graph is informative. The
-fixture validates UI contracts; it is not evidence from a buyer estate.
+product routes. The README correlation views consume the committed,
+hash-pinned reference evidence lab output; broader gallery routes retain
+deterministic, explicitly synthetic fixtures for UI regression coverage. None
+is evidence from a buyer estate.
 PR #1445 regressed `mesh-live.png` to a near-empty graph because the captured agent
 had no servers in the local data — this protocol exists so that does not
 happen again.
@@ -23,6 +24,7 @@ before replacing any published product image.
    the deterministic capture harness:
 
    ```bash
+   uv run python scripts/generate_reference_evidence_lab.py --check
    cd ui
    npm ci
    npm run build
@@ -35,7 +37,12 @@ before replacing any published product image.
    never uses the Next.js development server, so transient compilation state
    cannot enter published assets.
 
-3. Inspect all 24 PNGs and the manifest at the final README display size. The
+   The harness independently hashes
+   `examples/reference-evidence-lab/generated/correlation-proof.json` and
+   compares it with `correlation-proof.sha256` before opening a browser. A
+   stale or hand-edited artifact stops capture.
+
+3. Inspect all 26 PNGs and the manifest at the final README display size. The
    harness stages files and publishes them only after every page passes.
 
 Backend-connected release evidence is a separate end-to-end smoke. For that
@@ -81,7 +88,9 @@ deterministic public screenshot set.
 | `new-scan-live.png` | `/scan?capture=1` | New Scan modes — connected account, ad-hoc, public repo URL | Scan scope clarity |
 | `mesh-live.png` | `/mesh?capture=1` | Capture-mode scopes developer-copilot + sre-runbook-agent on shared filesystem MCP with path focus off and labeled edges | README mesh proof must differ from lineage: multi-agent shared server, not the same single CVE chain |
 | `gateway-policies-live.png` | `/runtime?tab=gateway&capture=1` | KPI rollup, enforcement posture, and recent tool-call evidence | Proves runtime gateway observability without a live proxy session during capture |
-| `security-graph-live.png` | `/security-graph?lens=attack-path&capture=1` | Capture a prioritized attack path with graph evidence export and remediation handoff | Keeps the legacy proof pinned to the attack-path lens now that the estate canvas is the default surface |
+| `security-graph-live.png` | `/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1` | Capture a prioritized synthetic attack path with graph evidence export and remediation handoff | Keeps the gallery fixture pinned to its own scan instead of inheriting a newer correlation snapshot |
+| `correlation-receipts-live.png` | `/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&correlation=1&capture=1` | Six hash-bound source receipts flowing into one immutable correlated snapshot | Primary README proof; generated from the reference lab rather than the synthetic graph fixture |
+| `correlation-path-live.png` | `/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&cve=CVE-2023-4863&capture=1` | Confirmed real-advisory path with exact identifiers, hop receipts, freshness, runtime proof, and remediation handoff | Primary README path proof; modeled local infrastructure, never customer evidence |
 | `investigation-canvas-current-1512x811.png` | `/security-graph?lens=estate&rollup=1&capture=1` | Observed current-state estate roll-up at 1512x811 | Locks the audited desktop viewport to the canonical graph snapshot and explicit completeness |
 | `investigation-canvas-proposed-1568x780.png` | `/security-graph?lens=estate&rollup=1&scenario=...&state=proposed&capture=1` | Modeled proposed-state comparison at 1568x780 | Keeps scenario evidence visibly distinct from observed or deployed truth |
 | `lineage-graph-live.png` | `/graph?capture=1&agent=developer-copilot&vulnOnly=1` | URL-pinned developer-copilot vulnerable paths through GitHub MCP, explicit `next@` package node, and DEMO-VULN | Keeps the package-hop lineage story shareable without scripting secondary controls |
@@ -111,18 +120,19 @@ A capture set that misses either frame is incomplete. Re-shoot from the
 packaged UI and crop deliberately; do not publish another full-page stitched
 dashboard asset unless the layout materially changes again.
 
-Use `developer-copilot` as the public graph proof scope. The seeded path links
-that agent to GitHub MCP, a package, and `DEMO-VULN-21441` without implying
-whole-estate density. Use `/mesh?capture=1` for the product graph, then frame it
+Use the reference lab correlation views as the public README proof. Use
+`developer-copilot` only for the explicitly synthetic gallery scope. Its seeded
+path links the agent to GitHub MCP, a package, and `DEMO-VULN-21441` without
+implying whole-estate density. Use `/mesh?capture=1` for that gallery graph, then frame it
 so the title, graph controls, legend, nodes, and dependency/finding edges remain
 visible without the left navigation or a large empty canvas. Do not publish duplicate
 dark/light theme copies in the public README or Docker Hub description unless
 the section is specifically proving a theme bug fix. Do not publish a docs-only
 slide or card view in place of the graph screenshot.
 
-The README graph proof should show more than the mesh path. Keep
+Keep
 `security-graph-live.png`, `lineage-graph-live.png`, and `context-map-live.png`
-in the open graph gallery so readers can see fix-first paths, a filtered
+in the explicitly synthetic graph gallery so readers can see fix-first paths, a filtered
 lineage drilldown, and focused lateral context without expanding every details
 block.
 
@@ -149,16 +159,18 @@ npm run capture:product-proof
 # Inspect docs/images/security-graph-live.png (and lineage/mesh if chrome changed).
 ```
 
-Do not commit a replacement `security-graph-live.png` until the separate
-backend demo-estate findings smoke is green. That smoke validates API/storage
-behavior; it is not an alternate screenshot source.
+Do not commit replacement correlation hero views unless the lab generator check,
+reference-lab tests, and screenshot metadata checks are green. The separate
+backend demo-estate smoke continues to validate API/storage behavior for the
+synthetic gallery; it is not an alternate source for the correlation hero.
 
 The harness rejects `CAPTURE_BASE_URL` and starts the current local standalone
-production build. It routes deterministic scan, fleet, gateway, IAM,
-environment, runtime, and package responses into the shipped Next.js pages,
-fails on browser/network/API contract errors, and publishes the full set only
-after every capture succeeds. It is suitable for README UI proof, not for
-claiming those exact entities came from the backend or a buyer environment.
+production build. It routes the committed reference-lab artifact into the two
+correlation views and deterministic scan, fleet, gateway, IAM, environment,
+runtime, and package fixtures into the broader gallery. It fails on stale lab
+hashes, browser/network/API contract errors, or stale screenshot metadata and
+publishes the full set only after every capture succeeds. It is suitable for
+modeled local product proof, not for claiming buyer or live-cloud evidence.
 
 The capture harness must refresh every asset listed in
 `docs/images/product-screenshots.json`; adding a new manifest entry without a

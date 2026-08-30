@@ -216,7 +216,13 @@ def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     assert workflow_heading < workflow_link < persona_heading
     assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in readme[workflow_heading:persona_heading]
     assert "raw data, credentials, findings, and policy decisions" in readme[:workflow_heading].lower()
-    assert "### Product proof: one scan, end to end" in readme[workflow_heading:persona_heading]
+    workflow = readme[workflow_heading:persona_heading]
+    normalized_workflow = " ".join(workflow.split())
+    assert "### Product proof: independent evidence, one verifiable path" in workflow
+    assert "Reference evidence lab — modeled local infrastructure" in normalized_workflow
+    assert "correlation-receipts-live.png" in workflow
+    assert "correlation-path-live.png" in workflow
+    assert "CVE-2023-4863" in workflow
 
 
 def test_readme_embeds_one_readable_workflow_and_moves_dense_detail_to_docs() -> None:

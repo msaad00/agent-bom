@@ -8,8 +8,11 @@ const graphPage = fs.readFileSync(path.join(process.cwd(), "app", "graph", "grap
 const exposurePath = fs.readFileSync(path.join(process.cwd(), "components", "exposure-path-command-center.tsx"), "utf8");
 
 describe("product proof capture contract", () => {
-  it("uses unmistakably fictional vulnerability identifiers", () => {
-    expect(source).not.toMatch(/CVE-\d{4}-\d+/);
+  it("uses the hash-pinned real-advisory lab only for correlation proof and keeps gallery fixtures fictional", () => {
+    expect(source).toContain("REFERENCE_LAB_PROOF_PATH");
+    expect(source).toContain("REFERENCE_LAB_DIGEST_PATH");
+    expect(source).toContain("Reference evidence lab proof is stale");
+    expect(source).toContain("CVE-2023-4863");
     expect(source).toContain("DEMO-VULN-");
     expect(source).not.toContain('source: "nvd"');
     expect(source).not.toContain("is_kev: true");
@@ -82,11 +85,23 @@ describe("product proof capture contract", () => {
   });
 
   it("pins the legacy attack-path proof to its explicit canonical lens", () => {
-    expect(source).toContain('page: "/security-graph?lens=attack-path&capture=1"');
+    expect(source).toContain('page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`');
     expect(source).toContain(
-      'await capture(page, "/security-graph?lens=attack-path&capture=1", "security-graph-live.png"',
+      'await capture(page, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-live.png"',
     );
     expect(source).not.toContain('"/security-graph?capture=1"');
+  });
+
+  it("captures the reference-lab receipt DAG and confirmed path from one pinned artifact", () => {
+    expect(source).toContain('path: "correlation-receipts-live.png"');
+    expect(source).toContain('path: "correlation-path-live.png"');
+    expect(source).toContain('getByTestId("graph-correlation-receipt-dag")');
+    expect(source).toContain('getByTestId("attack-path-correlation-proof")');
+    expect(source).toContain("referenceLabActualDigest");
+    expect(source).toContain("correlation_manifest_sha256");
+    expect(source).toContain("Runtime block verified");
+    expect(source).toContain("Reference evidence lab — modeled local infrastructure");
+    expect(source).toContain('window.scrollTo({ top: workflowTop - 88, behavior: "instant" })');
   });
 
   it("keeps the base graph fixture from swallowing graph subroutes", () => {

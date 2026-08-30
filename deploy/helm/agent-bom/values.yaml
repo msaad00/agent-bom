@@ -344,6 +344,18 @@ gateway:
   runtimeRateLimitPerTenantPerMinute: 0
   # Fail closed unless runtime rate limiting uses a shared backend.
   requireSharedRateLimit: false
+  # Opt-in graph-derived runtime enforcement. The global default remains off.
+  # bundleUrl must target GET /v1/graph/correlations/{id}/runtime-facts and the
+  # signing key file must be mounted through extraVolumes/extraVolumeMounts.
+  graphReachability:
+    enforcement: "off"
+    bundleUrl: ""
+    tenant: default
+    signingKeyFile: ""
+    pollSeconds: 30
+    # allow preserves legacy missing-evidence behavior. deny is explicit strict
+    # fail-closed mode for environments that require a valid cached bundle.
+    failureMode: "allow"
   # Canonical managed client-profile enforcement. Set profileEnvironment when
   # using warn/enforce. Enforced gateways must share the control plane's
   # authoritative Postgres identity/profile store. Set gateway.envFrom to the

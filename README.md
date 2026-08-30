@@ -60,26 +60,29 @@ compliance exports, and runtime enforcement in your own environment.
 
 [Quick start](#quick-start) · [Evidence workflow](docs/HOW_IT_WORKS.md) · [Integration capability matrix](docs/INTEGRATIONS.md) · [Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json) · [Control-plane architecture](docs/ARCHITECTURE.md)
 
-### Product proof: one scan, end to end
+### Product proof: independent evidence, one verifiable path
 
-The sample estate below is visibly labeled. A real run begins with a target or
-read-only connection, executes the same six-stage pipeline, and persists the
-inventory, findings, graph, and report as one evidence lineage.
-Collected, inferred, static, and runtime relationships remain distinguishable
-throughout that lineage.
-
-<p align="center">
-  <a href="docs/images/jobs-pipeline-live.png"><img src="docs/images/jobs-pipeline-live.png" alt="Completed read-only scan pipeline from a registered source through discovery, extraction, scanning, enrichment, analysis, and persisted evidence" width="920" /></a>
-</p>
-
-From that run, operators can move from a ranked path to a fix and a verified
-terminal state without switching evidence systems.
+The views below come from the committed **Reference evidence lab — modeled
+local infrastructure**. The credential-free run uses the real repository parser
+and bundled advisory scanner for `pillow@9.0.0` / `CVE-2023-4863`, then
+correlates exact OCI digest, Kubernetes UID, MCP tool, workload identity, and
+runtime receipts. It is not customer evidence or a live-cloud claim.
 
 <p align="center">
-  <a href="docs/images/security-graph-live.png"><img src="docs/images/security-graph-live.png" alt="Ranked attack path with risk, hop count, affected agents, evidence, and bounded graph traversal" width="920" /></a>
+  <a href="docs/images/correlation-receipts-live.png"><img src="docs/images/correlation-receipts-live.png" alt="Reference evidence lab source receipts from repository, image and SBOM, Kubernetes IaC, MCP configuration, identity, and runtime flowing into one immutable correlated snapshot" width="920" /></a>
 </p>
 
-[Open the full product gallery](docs/GALLERY.md) · [See the capture protocol](docs/CAPTURE.md)
+The resulting path is confirmed only because every directed hop is traversable
+and provenance-backed: exposed service → workload → digest-pinned container →
+`pillow@9.0.0` / `CVE-2023-4863` → MCP capability → workload identity →
+modeled sensitive object store. The same lab records an observed gateway call
+and a separate strict opt-in block before the remediation handoff.
+
+<p align="center">
+  <a href="docs/images/correlation-path-live.png"><img src="docs/images/correlation-path-live.png" alt="Reference evidence lab Investigation path for CVE-2023-4863 with exact container digest, per-hop source provenance, freshness, runtime observation and strict block proof, and remediation handoff" width="920" /></a>
+</p>
+
+[Regenerate the reference lab](examples/reference-evidence-lab/README.md) · [Open the full product gallery](docs/GALLERY.md) · [See the capture protocol](docs/CAPTURE.md)
 
 ## Value by role
 

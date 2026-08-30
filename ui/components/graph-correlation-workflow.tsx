@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Network } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Database, Loader2, Network } from "lucide-react";
 
 import { api, formatDate, type GraphCorrelationRun, type GraphSnapshot } from "@/lib/api";
 import { userFacingApiErrorMessage } from "@/lib/api-errors";
@@ -189,15 +189,41 @@ export function GraphCorrelationWorkflow({
               </button>
             ) : null}
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {run.input_manifest.map((receipt) => (
-              <div key={receipt.scan_id} className="rounded-lg border border-[color:var(--border-subtle)] p-2">
-                <p className="truncate font-mono text-[color:var(--foreground)]">{receipt.scan_id}</p>
-                <p className={receipt.freshness === "stale_allowed" ? "text-amber-600 dark:text-amber-300" : "text-emerald-600 dark:text-emerald-300"}>
-                  {receipt.freshness ?? "receipt captured"}
-                </p>
-              </div>
-            ))}
+          <div
+            aria-label="Correlation source receipt graph"
+            data-testid="graph-correlation-receipt-dag"
+            className="mt-3 grid items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(12rem,0.34fr)]"
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              {run.input_manifest.map((receipt) => (
+                <div key={receipt.scan_id} className="rounded-lg border border-[color:var(--border-subtle)] p-2">
+                  <p className="truncate font-mono text-[color:var(--foreground)]">{receipt.scan_id}</p>
+                  <p className="mt-1 truncate text-[10px] text-[color:var(--text-tertiary)]">
+                    {(receipt.source_kinds ?? ["source receipt"]).join(" + ")}
+                  </p>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p className={receipt.freshness === "stale_allowed" ? "text-amber-600 dark:text-amber-300" : "text-emerald-600 dark:text-emerald-300"}>
+                      {receipt.freshness ?? "receipt captured"}
+                    </p>
+                    {receipt.digest ? <span className="font-mono text-[9px] text-[color:var(--text-tertiary)]">{receipt.digest.slice(0, 15)}…</span> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden items-center text-emerald-500 lg:flex" aria-hidden="true">
+              <ArrowRight className="h-5 w-5" />
+            </div>
+            <div className="flex flex-col justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3">
+              <p className="flex items-center gap-2 font-semibold text-[color:var(--foreground)]">
+                <Database className="h-4 w-4 text-emerald-500" /> Immutable correlated snapshot
+              </p>
+              <p className="mt-2 break-all font-mono text-[10px] text-[color:var(--text-secondary)]">
+                {run.output_scan_id || "pending"}
+              </p>
+              <p className="mt-2 text-[10px] text-[color:var(--text-tertiary)]">
+                Manifest {run.manifest_sha256 ? `${run.manifest_sha256.slice(0, 20)}…` : "pending"}
+              </p>
+            </div>
           </div>
           {run.status === "complete" ? (
             <div className="mt-3 flex flex-wrap gap-2 text-[color:var(--text-secondary)]">

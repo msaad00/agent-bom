@@ -13,6 +13,20 @@ const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), ".
 const REPO_ROOT = path.resolve(UI_ROOT, "..");
 const IMAGE_DIR = path.join(REPO_ROOT, "docs", "images");
 const SCREENSHOT_MANIFEST = path.join(IMAGE_DIR, "product-screenshots.json");
+const REFERENCE_LAB_PROOF_PATH = path.join(
+  REPO_ROOT,
+  "examples",
+  "reference-evidence-lab",
+  "generated",
+  "correlation-proof.json",
+);
+const REFERENCE_LAB_DIGEST_PATH = path.join(
+  REPO_ROOT,
+  "examples",
+  "reference-evidence-lab",
+  "generated",
+  "correlation-proof.sha256",
+);
 const UI_PACKAGE = JSON.parse(await fs.readFile(path.join(UI_ROOT, "package.json"), "utf8"));
 const RELEASE_VERSION = UI_PACKAGE.version;
 const CREATED_AT = "2026-06-03T20:30:00Z";
@@ -20,6 +34,35 @@ const SCAN_ID = "scan-proof-ai-platform";
 const PREVIOUS_SCAN_ID = "scan-proof-ai-platform-prev";
 const SCENARIO_ID = "scenario-private-service-endpoint";
 const CAPTURE_THEME = process.env.CAPTURE_THEME === "light" ? "light" : "dark";
+const referenceLabProofBytes = await fs.readFile(REFERENCE_LAB_PROOF_PATH);
+const referenceLabExpectedDigest = (await fs.readFile(REFERENCE_LAB_DIGEST_PATH, "utf8")).trim();
+const referenceLabActualDigest = `sha256:${createHash("sha256").update(referenceLabProofBytes).digest("hex")}`;
+if (referenceLabActualDigest !== referenceLabExpectedDigest) {
+  throw new Error("Reference evidence lab proof is stale: regenerate the hash-pinned correlation artifact");
+}
+const REFERENCE_LAB = JSON.parse(referenceLabProofBytes.toString("utf8"));
+if (
+  REFERENCE_LAB.label !== "Reference evidence lab — modeled local infrastructure"
+  || REFERENCE_LAB.correlation?.status !== "complete"
+  || REFERENCE_LAB.capture_fixture?.graph?.scan_id !== REFERENCE_LAB.correlation?.output_scan_id
+) {
+  throw new Error("Reference evidence lab proof does not contain a completed correlated snapshot");
+}
+const REFERENCE_CORRELATION_ID = REFERENCE_LAB.correlation.correlation_id;
+const referenceGraph = REFERENCE_LAB.capture_fixture.graph;
+const referenceSnapshots = [
+  {
+    scan_id: REFERENCE_CORRELATION_ID,
+    created_at: REFERENCE_LAB.correlation.completed_at,
+    node_count: referenceGraph.nodes.length,
+    edge_count: referenceGraph.edges.length,
+    risk_summary: referenceGraph.stats.severity_counts,
+    snapshot_kind: "correlation",
+    correlation_id: REFERENCE_CORRELATION_ID,
+    evidence_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+  },
+  ...REFERENCE_LAB.capture_fixture.snapshots,
+];
 
 const baseUrlFromEnv = process.env.CAPTURE_BASE_URL;
 if (baseUrlFromEnv) {
@@ -930,6 +973,56 @@ function fixFirstView() {
   };
 }
 
+function referenceFixFirstView() {
+  const pathItem = referenceGraph.attack_paths[0];
+  const nodesById = new Map(referenceGraph.nodes.map((item) => [item.id, item]));
+  const digest = REFERENCE_LAB.container_digest;
+  return {
+    scan_id: REFERENCE_CORRELATION_ID,
+    tenant_id: REFERENCE_LAB.correlation.tenant_id,
+    created_at: REFERENCE_LAB.correlation.completed_at,
+    cards: [{
+      id: "reference-lab-path-1",
+      rank: 1,
+      title: "Public service reaches modeled customer records through CVE-2023-4863",
+      summary: `${REFERENCE_LAB.label}. Exact digest ${digest} contains pillow@9.0.0 and CVE-2023-4863. The gateway observed the correlated tool call; strict opt-in policy ${REFERENCE_LAB.runtime_control.policy_id} then blocked the same canonical tool and runtime.`,
+      attack_path: pathItem,
+      nodes: referenceGraph.nodes,
+      sequence_labels: pathItem.hops.map((hop) => {
+        const nodeItem = nodesById.get(hop);
+        if (nodeItem?.entity_type === "container") return `reference-evidence-api@${digest}`;
+        return nodeItem?.label ?? hop;
+      }),
+      risk_reasons: [
+        { kind: "exact_identity", label: "Exact identities", detail: "PURL, OCI digest, Kubernetes UID, stable MCP tool ID, and provider identity receipts support every cross-source join." },
+        { kind: "runtime_observed", label: "Runtime observed", detail: `Observed event ${REFERENCE_LAB.runtime_control.observed_event} binds the same runtime and tool.` },
+        { kind: "runtime_blocked", label: "Runtime blocked", detail: `Strict deny event ${REFERENCE_LAB.runtime_control.blocked_event} verifies the opt-in enforcement path.` },
+      ],
+      next_actions: [
+        { title: "Patch Pillow and re-run correlation", detail: "Upgrade the vulnerable package, rebuild the digest, then verify the correlated path is absent.", href: "/remediation" },
+      ],
+      affected: {
+        agents: pathItem.hops.filter((hop) => hop.startsWith("workload:")),
+        servers: pathItem.hops.filter((hop) => hop.startsWith("service:")),
+        packages: pathItem.hops.filter((hop) => hop.startsWith("package:")),
+        findings: pathItem.vuln_ids,
+        credentials: pathItem.hops.filter((hop) => hop.startsWith("identity:")),
+        tools: pathItem.hops.filter((hop) => hop.startsWith("tool:")),
+      },
+    }],
+    summary: {
+      total_paths: referenceGraph.attack_paths.length,
+      matched_paths: 1,
+      returned_paths: 1,
+      highest_risk: pathItem.composite_risk,
+      covered_findings: pathItem.vuln_ids.length,
+      node_count: referenceGraph.nodes.length,
+      edge_count: referenceGraph.edges.length,
+    },
+    focus: { cve: "CVE-2023-4863", package: "pillow", agent: "" },
+  };
+}
+
 const gatewayPolicies = [
   {
     policy_id: "policy-default-deny",
@@ -1480,11 +1573,30 @@ async function installRoutes(page) {
   await page.route("**/v1/compliance", (route) => fulfill(route, {
     overall_score: 72,
     overall_status: "warning",
+    evaluated_controls: 12,
+    total_controls: 12,
+    coverage_pct: 100,
     scan_count: 2,
     latest_scan: CREATED_AT,
     has_mcp_context: true,
     has_agent_context: true,
     scan_sources: ["demo-fixture"],
+    framework_kinds: {
+      owasp_llm_top10: "applicability",
+      owasp_mcp_top10: "applicability",
+      mitre_atlas: "applicability",
+      nist_ai_rmf: "scored",
+      owasp_agentic_top10: "applicability",
+      eu_ai_act: "scored",
+      nist_csf: "scored",
+      iso_27001: "scored",
+      soc2: "scored",
+      cis_controls: "scored",
+      cmmc: "scored",
+      nist_800_53: "scored",
+      fedramp: "scored",
+      pci_dss: "scored",
+    },
     owasp_llm_top10: [],
     owasp_mcp_top10: [],
     mitre_atlas: [],
@@ -1760,6 +1872,7 @@ async function installRoutes(page) {
     }
   }, (route) => fulfill(route, scanJob()));
   await page.route("**/v1/graph/snapshots?**", (route) => fulfill(route, [
+    ...referenceSnapshots,
     { scan_id: SCAN_ID, created_at: CREATED_AT, node_count: graph.nodes.length, edge_count: graph.edges.length, risk_summary: graph.stats.severity_counts },
     { scan_id: PREVIOUS_SCAN_ID, created_at: "2026-06-03T19:00:00Z", node_count: 22, edge_count: 25, risk_summary: { critical: 5, high: 8, medium: 6 } },
   ]));
@@ -1793,7 +1906,18 @@ async function installRoutes(page) {
       completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 1, total: 1 },
     });
   });
-  await page.route("**/v1/graph/views/fix-first?**", (route) => fulfill(route, fixFirstView()));
+  await page.route("**/v1/graph/views/fix-first?**", (route) => {
+    const url = new URL(route.request().url());
+    return fulfill(route, url.searchParams.get("scan_id") === REFERENCE_CORRELATION_ID ? referenceFixFirstView() : fixFirstView());
+  });
+  await page.route((url) => url.pathname === "/v1/graph/correlations", (route) => {
+    if (route.request().method() === "POST") return fulfill(route, REFERENCE_LAB.correlation, 202);
+    return fulfill(route, { correlations: [REFERENCE_LAB.correlation], count: 1 });
+  });
+  await page.route(
+    (url) => url.pathname === `/v1/graph/correlations/${REFERENCE_CORRELATION_ID}`,
+    (route) => fulfill(route, REFERENCE_LAB.correlation),
+  );
   await page.route("**/v1/graph/presets**", (route) => fulfill(route, []));
   await page.route(`**/v1/graph/scenarios/${SCENARIO_ID}/comparison?**`, (route) =>
     fulfill(route, graphScenarioComparison()),
@@ -1859,7 +1983,11 @@ async function installRoutes(page) {
       reason: "",
     },
   }));
-  await page.route("**/v1/graph/attack-paths?**", (route) => fulfill(route, graphResponseWithPagination()));
+  await page.route("**/v1/graph/attack-paths?**", (route) => {
+    const url = new URL(route.request().url());
+    const selectedGraph = url.searchParams.get("scan_id") === REFERENCE_CORRELATION_ID ? referenceGraph : graph;
+    return fulfill(route, graphResponseWithPagination(selectedGraph));
+  });
   await page.route("**/v1/graph/exposure-paths?**", (route) => fulfill(route, {
     schema_version: "exposure-paths.v1",
     tool: "agent_bom_exposure_paths",
@@ -1920,9 +2048,10 @@ async function installRoutes(page) {
       impact: { node_id: selected.id, affected_nodes: [], affected_by_type: {}, affected_count: 0, max_depth_reached: 0 },
     });
   });
-  await page.route((url) => url.pathname === "/v1/graph", (route) =>
-    fulfill(route, graphResponseWithPagination()),
-  );
+  await page.route((url) => url.pathname === "/v1/graph", (route) => {
+    const url = new URL(route.request().url());
+    return fulfill(route, graphResponseWithPagination(url.searchParams.get("scan_id") === REFERENCE_CORRELATION_ID ? referenceGraph : graph));
+  });
   await page.route("**/v1/findings?**", (route) => {
     const findings = buildFindings();
     return fulfill(route, {
@@ -2243,6 +2372,12 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     const visibleErrorPatterns = [/500 Internal Server Error/i, /Application error/i, /Unhandled Runtime Error/i];
     const visibleError = visibleErrorPatterns.find((pattern) => pattern.test(visibleText));
     if (visibleError) throw new Error(`Visible error on ${urlPath}: ${visibleError}`);
+    if (browserErrors.length > 0) {
+      throw new Error(`Browser errors on ${urlPath}: ${browserErrors.join(" | ")}`);
+    }
+    if (networkErrors.length > 0) {
+      throw new Error(`Network errors on ${urlPath}: ${networkErrors.join(" | ")}`);
+    }
     for (const expected of options.expectedText ?? []) {
       const matched = expected instanceof RegExp ? expected.test(visibleText) : visibleText.includes(expected);
       if (!matched) throw new Error(`Expected content ${String(expected)} is missing on ${urlPath}`);
@@ -2271,12 +2406,6 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     }
     if (!visibleText.includes(RELEASE_VERSION)) {
       throw new Error(`Release version ${RELEASE_VERSION} is not visible on ${urlPath}`);
-    }
-    if (browserErrors.length > 0) {
-      throw new Error(`Browser errors on ${urlPath}: ${browserErrors.join(" | ")}`);
-    }
-    if (networkErrors.length > 0) {
-      throw new Error(`Network errors on ${urlPath}: ${networkErrors.join(" | ")}`);
     }
     if (options.readySelector) {
       // Recheck at the last possible moment. URL/state synchronization can
@@ -2350,19 +2479,37 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "security-graph-live.png",
-      page: "/security-graph?lens=attack-path&capture=1",
+      page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`,
       scope: "Prioritized attack path with graph evidence export and remediation handoff",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
+      path: "correlation-receipts-live.png",
+      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
+      scope: "Reference evidence lab source receipts flowing into one immutable, manifest-bound correlated snapshot",
+      presentation: `${CAPTURE_THEME} desktop`,
+      evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
+      evidence_sha256: referenceLabActualDigest,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+    },
+    {
+      path: "correlation-path-live.png",
+      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      scope: "Reference evidence lab confirmed path with exact OCI digest, advisory, hop provenance, freshness, runtime observation, strict block proof, and remediation handoff",
+      presentation: `${CAPTURE_THEME} desktop`,
+      evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
+      evidence_sha256: referenceLabActualDigest,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+    },
+    {
       path: "security-graph-light-live.png",
-      page: "/security-graph?lens=attack-path&capture=1",
+      page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`,
       scope: "Prioritized attack path in the light theme",
       presentation: "light desktop",
     },
     {
       path: "security-graph-mobile-live.png",
-      page: "/security-graph?lens=attack-path&capture=1",
+      page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`,
       scope: "Prioritized attack path at a 390 by 844 viewport",
       presentation: "dark mobile",
     },
@@ -2440,7 +2587,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     captured_at: new Date().toISOString(),
     ...provenance,
     capture_note:
-      "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No external or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or production-environment evidence.",
+      "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
     screenshots,
   };
   await fs.writeFile(path.join(outputDir, path.basename(SCREENSHOT_MANIFEST)), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -2573,7 +2720,7 @@ async function main() {
       minGraphEdges: 3,
     });
     await page.setViewportSize({ width: 1440, height: 980 });
-    await capture(page, "/security-graph?lens=attack-path&capture=1", "security-graph-live.png", async (securityGraphPage) => {
+    await capture(page, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });
@@ -2582,6 +2729,69 @@ async function main() {
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: 'section[aria-label="Selected exposure path graph"]',
     });
+    const correlationPage = await newCapturePage("dark", { width: 1440, height: 1120 });
+    await capture(
+      correlationPage,
+      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
+      "correlation-receipts-live.png",
+      async (proofPage) => {
+        await proofPage.getByRole("button", { name: /^Evidence scope Current scan/i }).click();
+        const workflow = proofPage.getByTestId("graph-correlation-workflow");
+        await workflow.waitFor({ state: "visible", timeout: 30_000 });
+        await proofPage.getByLabel("Correlation name").fill("Reference evidence lab — modeled local infrastructure");
+        for (const snapshot of REFERENCE_LAB.capture_fixture.snapshots) {
+          await proofPage.getByLabel(snapshot.scan_id).check();
+        }
+        await proofPage.getByLabel(/I confirm the 7-day freshness bound/i).check();
+        await proofPage.getByRole("button", { name: "Correlate selected evidence" }).click();
+        await proofPage.getByTestId("graph-correlation-receipt-dag").waitFor({ state: "visible", timeout: 30_000 });
+        const workflowTop = await workflow.evaluate(
+          (element) => element.getBoundingClientRect().top + window.scrollY,
+        );
+        await proofPage.evaluate((workflowTop) => {
+          window.scrollTo({ top: workflowTop - 88, behavior: "instant" });
+        }, workflowTop);
+        await proofPage.waitForTimeout(500);
+      },
+      {
+        expectedText: [
+          "Correlate evidence snapshots",
+          "Immutable correlated snapshot",
+          "reference-image-sbom-scan",
+          "gateway_runtime",
+          "1 confirmed attack paths",
+        ],
+        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
+        readySelector: '[data-testid="graph-correlation-receipt-dag"]',
+      },
+    );
+    await correlationPage.close();
+
+    await page.setViewportSize({ width: 1440, height: 1120 });
+    await capture(
+      page,
+      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      "correlation-path-live.png",
+      async (proofPage) => {
+        await proofPage.getByTestId("attack-path-correlation-proof").waitFor({ state: "visible", timeout: 30_000 });
+        await proofPage.getByTestId("attack-path-correlation-proof").scrollIntoViewIfNeeded();
+        await proofPage.evaluate(() => window.scrollBy({ top: -300, behavior: "instant" }));
+        await proofPage.waitForTimeout(500);
+      },
+      {
+        expectedText: [
+          "CVE-2023-4863",
+          REFERENCE_LAB.container_digest,
+          "Correlation provenance",
+          "Runtime observed",
+          "Runtime block verified",
+          "Patch Pillow and re-run correlation",
+        ],
+        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
+        readySelector: '[data-testid="attack-path-correlation-proof"]',
+      },
+    );
+    await page.setViewportSize({ width: 1440, height: 980 });
     const currentCanvasPage = await newCapturePage("dark", { width: 1512, height: 811 });
     await capture(
       currentCanvasPage,
@@ -2809,7 +3019,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
-    await capture(lightPage, "/security-graph?lens=attack-path&capture=1", "security-graph-light-live.png", async (securityGraphPage) => {
+    await capture(lightPage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-light-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });
@@ -2830,7 +3040,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
-    await capture(mobilePage, "/security-graph?lens=attack-path&capture=1", "security-graph-mobile-live.png", async (securityGraphPage) => {
+    await capture(mobilePage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-mobile-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
         .waitFor({ state: "visible", timeout: 30_000 });

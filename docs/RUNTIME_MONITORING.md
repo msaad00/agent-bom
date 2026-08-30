@@ -190,6 +190,30 @@ Docker/Podman runtime image.
 
 If you need cross-agent correlation and the broader 8-detector runtime engine, use `agent-bom runtime protect --shield` alongside or upstream of the proxy pipeline.
 
+## Correlated runtime facts
+
+The gateway can optionally poll the authenticated runtime-facts endpoint for a
+completed graph correlation. Bundles are signed, tenant-bound, expiring, and
+cached as the last valid evidence during a transient control-plane outage.
+File-backed reachability remains supported and graph enforcement remains
+globally off unless selected.
+
+```bash
+agent-bom gateway serve \
+  --graph-reachability-enforcement enforce \
+  --graph-reachability-bundle-url https://agent-bom.internal/v1/graph/correlations/CORRELATION_ID/runtime-facts \
+  --graph-reachability-bundle-tenant TENANT_ID \
+  --graph-reachability-bundle-signing-key-file /run/secrets/runtime-facts-hmac \
+  --graph-reachability-bundle-poll-seconds 30 \
+  --graph-reachability-failure-mode deny
+```
+
+`allow` is the compatibility default when graph evidence is missing or no
+valid cached bundle exists. `deny` is explicit fail-closed behavior for strict
+evidence labs and production environments whose availability design can
+support it. An expired, invalidly signed, or cross-tenant bundle is never used
+as fresh verification.
+
 ### Enforce mode
 
 Add `--block-undeclared` and/or `--policy policy.json` to actively block tool calls:

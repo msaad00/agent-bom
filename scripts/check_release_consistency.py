@@ -19,6 +19,7 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
 PRODUCT_SCREENSHOTS = ROOT / "docs" / "images" / "product-screenshots.json"
+REFERENCE_LAB_DIGEST = ROOT / "examples" / "reference-evidence-lab" / "generated" / "correlation-proof.sha256"
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
 SITE_INDEX = ROOT / "site-docs" / "index.md"
@@ -300,6 +301,8 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
         "dashboard-paths-live.png",
         "mesh-live.png",
         "security-graph-live.png",
+        "correlation-receipts-live.png",
+        "correlation-path-live.png",
         "lineage-graph-live.png",
         "dependency-map-live.png",
         "remediation-live.png",
@@ -311,6 +314,16 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
     missing = sorted(required - paths)
     if missing:
         _fail(f"docs/images/product-screenshots.json is missing screenshot entries: {missing}")
+
+    lab_digest = REFERENCE_LAB_DIGEST.read_text(encoding="utf-8").strip()
+    by_path = {entry.get("path"): entry for entry in screenshots if isinstance(entry, dict)}
+    for rel_path in ("correlation-receipts-live.png", "correlation-path-live.png"):
+        entry = by_path[rel_path]
+        if entry.get("evidence_sha256") != lab_digest:
+            _fail(f"docs/images/{rel_path} is not bound to the current reference lab artifact")
+        manifest_hash = entry.get("correlation_manifest_sha256")
+        if not isinstance(manifest_hash, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", manifest_hash) is None:
+            _fail(f"docs/images/{rel_path} is missing the correlation manifest hash")
 
     expected_parts = tuple(int(part) for part in expected_version.split("."))
     for entry in screenshots:

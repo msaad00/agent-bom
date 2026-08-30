@@ -24,6 +24,28 @@ stay local. Shared surfaces receive normalized evidence and explicit
 completeness. A permission denial, unsupported collector, or partial scan stays
 partial or unavailable; it is never shown as observed or clean.
 
+## How independent scans become path proof
+
+Retained same-tenant graph snapshots can be correlated with
+`agent-bom graph-correlate create`. The run requires an explicit freshness
+bound and merges only exact canonical identities: PURLs, OCI digests,
+repository commit/path identities, Kubernetes UIDs, provider resource and
+identity IDs, and stable runtime IDs. Labels, similar names, and mutable image
+tags never create a cross-source join.
+
+The output is one immutable correlation snapshot with a hash-bound manifest of
+every input receipt, its source kinds, timestamp, digest, counts, and freshness.
+Confirmed attack paths require every hop to be directed, traversable, and
+provenance-backed. Structural candidates remain visible as lower-confidence
+exposure paths, and limited analysis stays labeled rather than presented as
+complete.
+
+The credential-free [reference evidence lab](../examples/reference-evidence-lab/README.md)
+proves this loop with real parser and bundled-advisory output for
+`pillow@9.0.0` / `CVE-2023-4863` plus modeled local Kubernetes, MCP, identity,
+data, and runtime evidence. Its label is **Reference evidence lab — modeled
+local infrastructure**; it is not buyer or live-cloud evidence.
+
 ## Why it's different: symbol-level CVE reachability
 
 Most scanners stop at "this package has a CVE." `agent-bom` joins the
@@ -69,6 +91,10 @@ not a separate product lane.
 The scan lane computes symbol-level reachability; `UnifiedGraph` turns it into
 blast radius across agents, MCP servers, packages, credentials, and tools. The
 control plane and gateway consume that same evidence instead of rebuilding it.
+Graph-derived enforcement remains globally `off` by default. An operator can
+poll a signed, expiring runtime-facts bundle and retain the last valid bundle;
+legacy missing-evidence behavior is `allow`, while
+`--graph-reachability-failure-mode deny` is the explicit strict choice.
 
 ## Where to go next
 

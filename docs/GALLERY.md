@@ -1,8 +1,21 @@
 # Product gallery
 
-These screenshots use deterministic sample data that is visibly labeled in the
-UI. They prove the product-state and workflow shape; they are not customer or
-advisory evidence.
+The two correlation views use the committed, hash-pinned **Reference evidence
+lab — modeled local infrastructure** artifact and a real bundled advisory.
+Other gallery screens use deterministic synthetic fixtures that are visibly
+labeled. None are customer or live-cloud evidence.
+
+## Correlated evidence proof
+
+Independent repository, image/SBOM, Kubernetes IaC, MCP, identity, and runtime
+receipts converge into one immutable snapshot before path analysis.
+
+<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/correlation-receipts-live.png" alt="Reference evidence lab correlation receipt DAG" width="900" />
+
+The confirmed `CVE-2023-4863` path retains exact identifiers, per-hop evidence,
+freshness, runtime observation and strict-block proof, and a remediation handoff.
+
+<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/correlation-path-live.png" alt="Reference evidence lab confirmed CVE-2023-4863 path" width="900" />
 
 ## Overview
 
@@ -18,8 +31,8 @@ The finding queue preserves severity, evidence, and the next action.
 
 ## Investigation
 
-Ranked findings open into a path-first investigation with provenance-aware
-graph evidence.
+The broader synthetic gallery retains a visibly labeled path-first UI fixture
+for layout and interaction regression coverage.
 
 <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Path-first investigation with provenance-aware sample graph evidence" width="900" />
 

@@ -148,8 +148,6 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
     if not all_complete and path.reachability != "unlikely":
         path.reachability = "unknown"
         path.composite_risk = min(path.composite_risk, 39.0)
-        if "unverified" not in path.summary.lower():
-            path.summary = f"Unverified structural candidate. {path.summary}".strip()
         if "incomplete_hop_evidence" not in path.reachability_basis:
             path.reachability_basis.append("incomplete_hop_evidence")
     elif stale and path.reachability == "confirmed":

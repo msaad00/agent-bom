@@ -152,6 +152,41 @@ def test_materialized_fused_path_carries_hop_evidence() -> None:
     assert graph.attack_paths[0].analysis["status"] == "complete"
 
 
+def test_evidence_annotation_preserves_fused_path_identity_when_provenance_is_incomplete() -> None:
+    graph = UnifiedGraph(scan_id="", tenant_id="tenant-a")
+    graph.add_node(
+        UnifiedNode(
+            id="workload:public",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="public workload",
+            attributes={"internet_exposed": True},
+        )
+    )
+    graph.add_node(
+        UnifiedNode(
+            id="data_store:crown",
+            entity_type=EntityType.DATA_STORE,
+            label="crown-jewel",
+            attributes={"data_sensitivity": "restricted"},
+        )
+    )
+    graph.add_edge(
+        UnifiedEdge(
+            source="workload:public",
+            target="data_store:crown",
+            relationship=RelationshipType.CAN_ACCESS,
+        )
+    )
+
+    apply_attack_path_fusion(graph)
+
+    path = graph.attack_paths[0]
+    assert path.summary.startswith("Internet-exposed ")
+    assert path.reachability == "unknown"
+    assert path.composite_risk <= 39.0
+    assert path.hop_evidence[0]["complete"] is False
+
+
 def test_confirmed_path_carries_complete_per_hop_evidence() -> None:
     path = next(path for path in _derived_attack_paths(_ordinary_vulnerability_graph()) if path.target == "vuln:CVE-2026-1")
 

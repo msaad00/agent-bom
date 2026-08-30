@@ -16,11 +16,22 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        "ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_kind "
-        "TEXT NOT NULL DEFAULT 'scan' CHECK (snapshot_kind IN ('scan', 'correlation'))"
+        """
+        DO $$
+        BEGIN
+            IF to_regclass('public.graph_snapshots') IS NOT NULL THEN
+                ALTER TABLE public.graph_snapshots
+                    ADD COLUMN IF NOT EXISTS snapshot_kind TEXT NOT NULL DEFAULT 'scan'
+                    CHECK (snapshot_kind IN ('scan', 'correlation'));
+                ALTER TABLE public.graph_snapshots
+                    ADD COLUMN IF NOT EXISTS correlation_id TEXT DEFAULT NULL;
+                ALTER TABLE public.graph_snapshots
+                    ADD COLUMN IF NOT EXISTS evidence_manifest_sha256 TEXT NOT NULL DEFAULT '';
+            END IF;
+        END
+        $$
+        """
     )
-    op.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS correlation_id TEXT DEFAULT NULL")
-    op.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS evidence_manifest_sha256 TEXT NOT NULL DEFAULT ''")
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS graph_correlation_runs (
@@ -43,10 +54,7 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pg_graph_correlation_runs_recent "
-        "ON graph_correlation_runs(tenant_id, created_at DESC)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_correlation_runs_recent ON graph_correlation_runs(tenant_id, created_at DESC)")
     op.execute("ALTER TABLE graph_correlation_runs ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE graph_correlation_runs FORCE ROW LEVEL SECURITY")
     op.execute(

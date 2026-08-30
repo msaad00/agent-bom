@@ -104,6 +104,13 @@ def test_graph_correlation_migration_is_additive_chained_and_tenant_isolated() -
     assert "VALUES ('graph', 2, now())" in sql
 
 
+def test_graph_correlation_migration_tolerates_legacy_schema_without_graph_snapshots() -> None:
+    """Legacy checkpoints may predate the optional graph persistence tables."""
+
+    sql = GRAPH_CORRELATIONS.read_text()
+    assert "to_regclass('public.graph_snapshots') IS NOT NULL" in sql
+
+
 def test_managed_trial_invitation_migration_is_chained_and_secret_minimal() -> None:
     sql = MANAGED_TRIAL_INVITATIONS.read_text()
     assert re.search(r'revision\s*=\s*"20260724_03"', sql)

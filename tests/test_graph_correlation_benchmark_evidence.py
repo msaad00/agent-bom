@@ -22,7 +22,4 @@ def test_graph_correlation_benchmark_records_required_envelopes_and_limits() -> 
     assert all(item["correlation_wall_seconds"] > 0 for item in results)
     assert all(item["peak_rss_mb"] >= item["baseline_rss_mb"] for item in results)
     assert all(item["manifest_sha256"].startswith("sha256:") for item in results)
-    assert all(
-        set(item["query_plans"]) == {"snapshot_receipts", "snapshot_nodes", "snapshot_edges"}
-        for item in results
-    )
+    assert all(set(item["query_plans"]) == {"snapshot_receipts", "snapshot_nodes", "snapshot_edges"} for item in results)

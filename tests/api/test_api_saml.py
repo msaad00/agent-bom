@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 from unittest.mock import patch
 
@@ -113,6 +114,18 @@ def test_saml_enabled_from_env_tracks_config(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://agent-bom.example.com/saml/metadata")
     monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://agent-bom.example.com/v1/auth/saml/login")
     assert saml_enabled_from_env() is True
+
+
+def test_saml_settings_reject_deprecated_signature_algorithms() -> None:
+    cfg = SAMLConfig(
+        idp_entity_id="https://idp.example.com/metadata",
+        idp_sso_url="https://idp.example.com/sso",
+        idp_x509_cert="cert",
+        sp_entity_id="https://agent-bom.example.com/saml/metadata",
+        sp_acs_url="https://agent-bom.example.com/v1/auth/saml/login",
+    )
+
+    assert cfg.settings_dict()["security"]["rejectDeprecatedAlgorithm"] is True
 
 
 def test_saml_attribute_mapping_uses_existing_role_and_tenant_contract():
@@ -359,6 +372,36 @@ async def test_saml_login_rejects_replayed_assertion_with_fresh_relay(isolated_k
 
     with pytest.raises(HTTPException) as error:
         await enterprise.saml_login(SAMLLoginRequest(saml_response="same-assertion", relay_state=second_relay["relay_state"]))
+    assert error.value.status_code == 401
+    assert error.value.detail == "SAML assertion replay detected"
+
+
+@pytest.mark.asyncio
+async def test_saml_replay_identity_uses_decoded_response_bytes(isolated_key_store, monkeypatch, saml_runtime_enabled):
+    first_relay = await enterprise.saml_relay_state()
+    second_relay = await enterprise.saml_relay_state()
+    encoded = base64.b64encode(b'<samlp:Response ID="response-1">signed-content</samlp:Response>').decode("ascii")
+    folded = "\n".join(encoded[index : index + 16] for index in range(0, len(encoded), 16))
+
+    monkeypatch.setattr(
+        "agent_bom.api.saml.SAMLConfig.verify_response",
+        lambda self, saml_response, relay_state=None: type(
+            "Assertion",
+            (),
+            {
+                "subject": "alice@example.com",
+                "attributes": {"agent_bom_role": "admin", "tenant_id": "tenant-alpha"},
+                "role": "admin",
+                "tenant_id": "tenant-alpha",
+                "session_index": "session-1",
+            },
+        )(),
+    )
+
+    await enterprise.saml_login(SAMLLoginRequest(saml_response=encoded, relay_state=first_relay["relay_state"]))
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.saml_login(SAMLLoginRequest(saml_response=folded, relay_state=second_relay["relay_state"]))
     assert error.value.status_code == 401
     assert error.value.detail == "SAML assertion replay detected"
 

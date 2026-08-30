@@ -31,6 +31,8 @@ Endpoints:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 import os
@@ -189,6 +191,21 @@ def _relay_state_digest(relay_state: str) -> str:
     return hashlib.sha256(relay_state.encode("utf-8")).hexdigest()
 
 
+def _saml_response_digest(saml_response: str) -> str:
+    """Hash the verified response bytes, independent of Base64 presentation."""
+    import hashlib
+
+    compact = "".join(saml_response.split())
+    try:
+        response_bytes = base64.b64decode(compact, validate=True)
+    except (binascii.Error, ValueError):
+        # Production reaches this helper only after python3-saml has verified
+        # the response. Keep mocked/test integrations deterministic without
+        # weakening the verification boundary.
+        response_bytes = compact.encode("utf-8")
+    return hashlib.sha256(response_bytes).hexdigest()
+
+
 def _saml_idp_initiated_allowed() -> bool:
     return os.environ.get("AGENT_BOM_SAML_ALLOW_IDP_INITIATED", "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -234,7 +251,7 @@ def _consume_saml_relay_state(relay_state: str | None) -> None:
 def _consume_saml_response_once(saml_response: str, *, ttl_seconds: int) -> None:
     from agent_bom.api.shared_auth_state import AuthStateUnavailable, get_auth_state
 
-    digest = f"saml-response:{_relay_state_digest(saml_response)}"
+    digest = f"saml-response:{_saml_response_digest(saml_response)}"
     backend = get_auth_state()
     now = int(time.time())
     try:

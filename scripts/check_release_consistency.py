@@ -312,6 +312,7 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
     if missing:
         _fail(f"docs/images/product-screenshots.json is missing screenshot entries: {missing}")
 
+    expected_parts = tuple(int(part) for part in expected_version.split("."))
     for entry in screenshots:
         if not isinstance(entry, dict):
             _fail("docs/images/product-screenshots.json screenshots entries must be objects")
@@ -327,8 +328,16 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
         image = ROOT / "docs" / "images" / rel_path
         if not image.exists():
             _fail(f"docs/images/product-screenshots.json references missing image: docs/images/{rel_path}")
-        if entry.get("visible_version") != expected_version:
-            _fail(f"docs/images/{rel_path} manifest visible_version is stale: {entry.get('visible_version')!r} != {expected_version}")
+        visible_version = entry.get("visible_version")
+        if not isinstance(visible_version, str) or re.fullmatch(r"\d+\.\d+\.\d+", visible_version) is None:
+            _fail(f"docs/images/{rel_path} manifest visible_version is not semantic version text: {visible_version!r}")
+        # A screenshot is immutable evidence bound by its recorded SHA-256. Its
+        # visible version describes what is actually in those bytes and must not
+        # be rewritten during a later release bump. It may therefore trail the
+        # release that still embeds it, but it can never claim a future version.
+        visible_parts = tuple(int(part) for part in visible_version.split("."))
+        if visible_parts > expected_parts:
+            _fail(f"docs/images/{rel_path} manifest visible_version is newer than the release: {visible_version!r} > {expected_version}")
 
 
 def sweep_version_drift(expected: str) -> list[str]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -26,9 +27,12 @@ def test_dependency_hook_scans_only_the_downstream_repository() -> None:
 
 def test_readme_exposes_zero_install_and_daily_developer_gates() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    version_match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
+    assert version_match
 
     assert "uvx agent-bom scan ." in readme
     assert "uvx agent-bom check requests@2.33.0 --ecosystem pypi" in readme
-    assert "rev: v0.103.0" in readme
+    assert f"rev: v{version_match.group(1)}" in readme
     assert "- id: agent-bom-secrets" in readme
     assert "- id: agent-bom-scan" in readme

@@ -106,9 +106,12 @@ def quickstart_cmd(
     click.echo("")
     click.echo("Local API/UI:")
     click.echo("  pip install 'agent-bom[ui]'")
-    click.echo(f"  agent-bom serve --persist ~/.agent-bom/control-plane.db --host 127.0.0.1 --port {port} --allow-insecure-no-auth")
-    click.echo("  # loopback demo runs unauthenticated so the cockpit can load; on a shared host drop")
-    click.echo("  # --allow-insecure-no-auth and pass --api-key <key> (send it as a Bearer / X-API-Key header).")
+    click.echo(
+        f"  AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db"
+        f" --host 127.0.0.1 --port {port} --allow-insecure-no-auth"
+    )
+    click.echo("  # the explicit local analyst role permits scans in this loopback-only workflow;")
+    click.echo("  # on a shared host use --api-key <key> or configure OIDC authentication instead.")
     click.echo(f"  API docs: http://127.0.0.1:{port}/docs")
     click.echo(f"  UI:       http://127.0.0.1:{port}/")
     click.echo("")
@@ -199,9 +202,12 @@ def _run_quickstart(
     click.echo("Onboarding complete. The security graph is now populated locally.")
     click.echo("")
     click.echo("Open the cockpit:")
-    click.echo(f"  agent-bom serve --persist ~/.agent-bom/control-plane.db --host 127.0.0.1 --port {port} --allow-insecure-no-auth")
-    click.echo("  # loopback demo runs unauthenticated so the cockpit can load; on a shared host drop")
-    click.echo("  # --allow-insecure-no-auth and pass --api-key <key> (send it as a Bearer / X-API-Key header).")
+    click.echo(
+        f"  AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db"
+        f" --host 127.0.0.1 --port {port} --allow-insecure-no-auth"
+    )
+    click.echo("  # the explicit local analyst role permits scans in this loopback-only workflow;")
+    click.echo("  # on a shared host use --api-key <key> or configure OIDC authentication instead.")
     click.echo(f"  Security graph: http://127.0.0.1:{port}/security-graph")
     click.echo(f"  Dashboard:      http://127.0.0.1:{port}/")
     if policy_path is not None:

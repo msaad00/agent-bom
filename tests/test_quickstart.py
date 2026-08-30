@@ -14,6 +14,7 @@ from agent_bom.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
 DURABLE_LOCAL_CONTROL_PLANE = "agent-bom serve --persist ~/.agent-bom/control-plane.db"
+LOCAL_ANALYST_CONTROL_PLANE = f"AGENT_BOM_NO_AUTH_ROLE=analyst {DURABLE_LOCAL_CONTROL_PLANE}"
 
 
 @pytest.fixture()
@@ -47,7 +48,7 @@ def test_quickstart_dry_run_offline_prints_local_next_steps():
     assert "agent-bom scan --demo --offline" in result.output
     assert "agent-bom quickstart --write-sample --sample-dir agent-bom-first-run" in result.output
     assert "agent-bom scan --inventory agent-bom-first-run/inventory.json -p agent-bom-first-run --offline" in result.output
-    assert f"{DURABLE_LOCAL_CONTROL_PLANE} --host 127.0.0.1 --port 8422" in result.output
+    assert f"{LOCAL_ANALYST_CONTROL_PLANE} --host 127.0.0.1 --port 8422" in result.output
     assert "http://127.0.0.1:8422/docs" in result.output
     assert "agent-bom[all]" in result.output
     assert "MLflow remains separate" in result.output
@@ -110,7 +111,7 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     assert "Onboarding complete" in result.output
     assert "/security-graph" in result.output
     # cockpit handoff must pass a flag that actually lets /v1/overview load on loopback
-    assert f"{DURABLE_LOCAL_CONTROL_PLANE} --host 127.0.0.1 --port 8422 --allow-insecure-no-auth" in result.output
+    assert f"{LOCAL_ANALYST_CONTROL_PLANE} --host 127.0.0.1 --port 8422 --allow-insecure-no-auth" in result.output
     assert "--api-key <key>" in result.output
 
 

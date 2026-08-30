@@ -746,7 +746,7 @@ def _existing_snapshots(graph_store: GraphStoreProtocol, tenant_id: str) -> list
             _logger.warning("showcase seed could not list snapshots", exc_info=True)
     latest_snapshot_id = getattr(graph_store, "latest_snapshot_id", None)
     if callable(latest_snapshot_id):
-        scan_id = latest_snapshot_id(tenant_id=tenant_id)
+        scan_id = latest_snapshot_id(tenant_id=tenant_id, snapshot_kind="scan")
         if scan_id:
             return [{"scan_id": scan_id, "created_at": ""}]
     return []

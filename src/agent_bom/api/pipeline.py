@@ -624,7 +624,7 @@ def _persist_graph_snapshot(
         try:
             prior_digest = None
             graph_store = _get_graph_store()
-            previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id)
+            previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id, snapshot_kind="scan")
             if previous_scan_id and previous_scan_id != scan_id:
                 # Bounded prior-snapshot digest instead of a second full UnifiedGraph
                 # load — keeps peak RSS decoupled from the prior graph size (#4055/#4075).

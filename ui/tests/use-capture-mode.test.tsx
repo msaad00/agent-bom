@@ -2,13 +2,47 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { graphFitViewOptions } from "@/lib/graph-viewport";
-import { isCaptureModeSearch, useCaptureMode } from "@/lib/use-capture-mode";
+import {
+  isCaptureModeSearch,
+  isReferenceEvidenceLabSearch,
+  useCaptureMode,
+  useReferenceEvidenceLabMode,
+} from "@/lib/use-capture-mode";
 
 describe("useCaptureMode", () => {
   it("parses capture query strings", () => {
     expect(isCaptureModeSearch("?capture=1")).toBe(true);
     expect(isCaptureModeSearch("?capture=0")).toBe(false);
     expect(isCaptureModeSearch("")).toBe(false);
+  });
+
+  it("recognizes only the committed reference evidence correlation", () => {
+    expect(
+      isReferenceEvidenceLabSearch(
+        "?capture=1&scan=reference-evidence-correlation-v1&cve=CVE-2023-4863",
+      ),
+    ).toBe(true);
+    expect(isReferenceEvidenceLabSearch("?capture=1&scan=scan-proof-ai-platform")).toBe(false);
+    expect(isReferenceEvidenceLabSearch("?scan=reference-evidence-correlation-v1")).toBe(false);
+  });
+
+  it("tracks reference-lab capture navigation", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/security-graph?capture=1&scan=reference-evidence-correlation-v1",
+    );
+    const { result } = renderHook(() => useReferenceEvidenceLabMode());
+
+    await waitFor(() => {
+      expect(result.current).toBe(true);
+    });
+
+    act(() => {
+      window.history.pushState({}, "", "/security-graph?capture=1&scan=scan-proof-ai-platform");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(result.current).toBe(false);
   });
 
   it("reads capture mode after mount", async () => {

@@ -100,6 +100,8 @@ describe("product proof capture contract", () => {
     expect(source).toContain("referenceLabActualDigest");
     expect(source).toContain("correlation_manifest_sha256");
     expect(source).toContain("Runtime block verified");
+    expect(source).toContain("Reference evidence lab — modeled local infrastructure");
+    expect(source).toContain('window.scrollTo({ top: workflowTop - 88, behavior: "instant" })');
   });
 
   it("keeps the base graph fixture from swallowing graph subroutes", () => {

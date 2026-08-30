@@ -31,7 +31,8 @@ function displayPathTitle(row: RankedPathRow): string {
   const startsWithCve =
     title.slice(0, cve.length).toLowerCase() === cve.toLowerCase() &&
     (title.length === cve.length || !/[a-z0-9]/i.test(title.charAt(cve.length)));
-  return startsWithCve ? title : `${cve} · ${title}`;
+  if (!startsWithCve) return title;
+  return title.slice(cve.length).trimStart().replace(/^[·:—-]\s*/, "") || title;
 }
 
 /**
@@ -64,6 +65,7 @@ export function RankedPathList({
       {rows.map((row) => {
         const active = row.selectionKey === selectedKey;
         const displayTitle = displayPathTitle(row);
+        const advisory = row.cve?.trim() || null;
         return (
           <button
             key={row.key}
@@ -87,9 +89,17 @@ export function RankedPathList({
               {row.rank === 1 ? "#1 fix first" : `#${row.rank}`}
             </span>
             <span className="min-w-0 flex-1">
+              {advisory ? (
+                <span
+                  data-testid="ranked-path-advisory"
+                  className="mb-0.5 block font-mono text-[11px] font-semibold text-red-700 dark:text-red-200"
+                >
+                  {advisory}
+                </span>
+              ) : null}
               <span
                 className="line-clamp-2 break-normal text-sm font-medium leading-snug text-[color:var(--foreground)]"
-                title={displayTitle}
+                title={advisory ? `${advisory} · ${displayTitle}` : displayTitle}
               >
                 {displayTitle}
               </span>

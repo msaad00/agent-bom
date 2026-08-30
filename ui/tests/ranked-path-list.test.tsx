@@ -74,7 +74,8 @@ describe("RankedPathList", () => {
   it("bounds long path titles while preserving their full value in a tooltip", () => {
     render(<RankedPathList rows={rows} selectedKey="k1" onSelect={vi.fn()} />);
 
-    const title = screen.getByText(/CVE-2026-0002/);
+    expect(screen.getByTestId("ranked-path-advisory")).toHaveTextContent("CVE-2026-0002");
+    const title = screen.getByText("Agent → Database → werkzeug");
     expect(title).toHaveClass("line-clamp-2", "break-normal");
     expect(title).not.toHaveClass("break-words");
     expect(title).toHaveAttribute("title", "CVE-2026-0002 · Agent → Database → werkzeug");
@@ -95,10 +96,11 @@ describe("RankedPathList", () => {
       />,
     );
 
-    const title = screen.getByText("CVE-2026-0002 via Agent → Database → werkzeug");
+    expect(screen.getByTestId("ranked-path-advisory")).toHaveTextContent("CVE-2026-0002");
+    const title = screen.getByText("via Agent → Database → werkzeug");
     expect(title).toHaveAttribute(
       "title",
-      "CVE-2026-0002 via Agent → Database → werkzeug",
+      "CVE-2026-0002 · via Agent → Database → werkzeug",
     );
   });
 });

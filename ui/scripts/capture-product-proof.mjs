@@ -2745,7 +2745,12 @@ async function main() {
         await proofPage.getByLabel(/I confirm the 7-day freshness bound/i).check();
         await proofPage.getByRole("button", { name: "Correlate selected evidence" }).click();
         await proofPage.getByTestId("graph-correlation-receipt-dag").waitFor({ state: "visible", timeout: 30_000 });
-        await workflow.scrollIntoViewIfNeeded();
+        const workflowTop = await workflow.evaluate(
+          (element) => element.getBoundingClientRect().top + window.scrollY,
+        );
+        await proofPage.evaluate((workflowTop) => {
+          window.scrollTo({ top: workflowTop - 88, behavior: "instant" });
+        }, workflowTop);
         await proofPage.waitForTimeout(500);
       },
       {

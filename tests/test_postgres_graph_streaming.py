@@ -527,6 +527,8 @@ def test_edge_and_attack_path_reads_accept_native_jsonb_and_preserve_tenant(monk
         "confirmed",
         ["graph_path"],
         [],
+        [],
+        {},
     )
 
     class _NativeJsonbRelatedConn(_RecordingConn):

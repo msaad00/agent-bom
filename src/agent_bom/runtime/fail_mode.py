@@ -168,8 +168,13 @@ GATEWAY_FAIL_MODE_MATRIX: tuple[SubsystemFailMode, ...] = (
         subsystem="graph_reachability_enforcement",
         default_posture=FailPosture.OPEN,
         follows_gateway_fail_mode=False,
-        control="graph_reachability_enforcement_mode (default: off)",
-        on_failure="A reachability-map evaluation error is logged and never blocks the relay.",
+        control=(
+            "graph_reachability_enforcement_mode (default: off) and graph_reachability_failure_mode (default: allow; deny is strict opt-in)"
+        ),
+        on_failure=(
+            "Missing, expired, tenant-mismatched, or invalid signed evidence allows by default; "
+            "an explicit graph_reachability_failure_mode=deny blocks while enforcement is enabled."
+        ),
     ),
     SubsystemFailMode(
         subsystem="device_posture_enrichment",

@@ -96,6 +96,7 @@ _WARNED_ENFORCEMENT_ACTIONS = frozenset(
         "gateway.fleet_warned",
         "gateway.firewall_warned",
         "gateway.graph_reachability_warned",
+        "gateway.graph_reachability_evidence_unavailable",
         "gateway.policy_warned",
     }
 )

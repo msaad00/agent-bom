@@ -238,6 +238,16 @@ AGENT_BOM_GATEWAY_DLP_PII_ACTION
 AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_ENFORCEMENT
 # scan-report JSON supplying agent->privileged-node graph reachability facts
 AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_REPORT
+# authenticated completed-correlation runtime-facts URL; read in cli/_gateway.py
+AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_BUNDLE_URL
+# tenant binding required by the signed runtime-facts verifier; read in cli/_gateway.py
+AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_BUNDLE_TENANT
+# mounted HMAC verification-key file for runtime-facts bundles; read in cli/_gateway.py
+AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_BUNDLE_SIGNING_KEY_FILE
+# signed runtime-facts polling interval in seconds; read in cli/_gateway.py
+AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_BUNDLE_POLL_SECONDS
+# missing-evidence posture (allow by default, deny by explicit opt-in); read in cli/_gateway.py
+AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_FAILURE_MODE
 # shared fallback policy path for standalone gateway and control-plane firewall decision route
 AGENT_BOM_GATEWAY_FIREWALL_POLICY
 AGENT_BOM_GATEWAY_FIREWALL_POLICY_RELOAD_SECONDS

@@ -180,6 +180,15 @@ class GraphStoreProtocol(Protocol):
         evidence_manifest_sha256: str = "",
     ) -> dict[str, int]: ...
 
+    def complete_correlation_run(
+        self,
+        graph: UnifiedGraph,
+        *,
+        result_manifest: Mapping[str, Any],
+        manifest_sha256: str,
+        completed_at: str = "",
+    ) -> GraphCorrelationRun: ...
+
     def create_correlation_run(self, run: GraphCorrelationRun) -> tuple[GraphCorrelationRun, bool]: ...
 
     def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> GraphCorrelationRun | None: ...
@@ -193,6 +202,7 @@ class GraphStoreProtocol(Protocol):
         correlation_id: str,
         status: CorrelationRunStatus,
         manifest_sha256: str = "",
+        result_manifest: Mapping[str, Any] | None = None,
         output_scan_id: str = "",
         failure_code: str = "",
         started_at: str = "",
@@ -219,6 +229,8 @@ class GraphStoreProtocol(Protocol):
     def changed_edges_between_scans(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]: ...
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> list[dict[str, Any]]: ...
+
+    def snapshots_by_ids(self, *, tenant_id: str, scan_ids: set[str]) -> list[dict[str, Any]]: ...
 
     def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]: ...
 
@@ -1281,7 +1293,8 @@ class SQLiteGraphStore:
                 f"""
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
                        summary, credential_exposure, tool_exposure, vuln_ids,
-                       reachability, reachability_basis, technique_mappings
+                       reachability, reachability_basis, technique_mappings,
+                       hop_evidence, analysis
                 FROM attack_paths
                 WHERE tenant_id = ? AND scan_id = ? AND source_node IN ({placeholders})
                 """,  # nosec B608 - placeholders are generated internally
@@ -1300,6 +1313,8 @@ class SQLiteGraphStore:
                     vuln_ids=json.loads(row["vuln_ids"]),
                     reachability=row["reachability"] or "unknown",
                     reachability_basis=json.loads(row["reachability_basis"] or "[]"),
+                    hop_evidence=json.loads(row["hop_evidence"] or "[]"),
+                    analysis=json.loads(row["analysis"] or "{}"),
                     technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                 )
                 for row in rows
@@ -1331,7 +1346,8 @@ class SQLiteGraphStore:
                 """
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
                        summary, credential_exposure, tool_exposure, vuln_ids,
-                       reachability, reachability_basis, technique_mappings
+                       reachability, reachability_basis, technique_mappings,
+                       hop_evidence, analysis
                 FROM attack_paths
                 WHERE tenant_id = ? AND scan_id = ?
                 ORDER BY composite_risk DESC, source_node ASC, target_node ASC
@@ -1355,6 +1371,8 @@ class SQLiteGraphStore:
                         vuln_ids=json.loads(row["vuln_ids"]),
                         reachability=row["reachability"] or "unknown",
                         reachability_basis=json.loads(row["reachability_basis"] or "[]"),
+                        hop_evidence=json.loads(row["hop_evidence"] or "[]"),
+                        analysis=json.loads(row["analysis"] or "{}"),
                         technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                     )
                     for row in rows
@@ -1738,9 +1756,53 @@ class SQLiteGraphStore:
         finally:
             conn.close()
 
+    def snapshots_by_ids(self, *, tenant_id: str, scan_ids: set[str]) -> list[dict[str, Any]]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return []
+        try:
+            return sqlite_graph_store.snapshots_by_ids(conn, tenant_id=tenant_id, scan_ids=scan_ids)
+        finally:
+            conn.close()
+
     def create_correlation_run(self, run: GraphCorrelationRun) -> tuple[GraphCorrelationRun, bool]:
         with sqlite_graph_store.open_graph_db(self._db_path) as conn:
             return sqlite_graph_store.create_correlation_run(conn, run)
+
+    def complete_correlation_run(
+        self,
+        graph: UnifiedGraph,
+        *,
+        result_manifest: Mapping[str, Any],
+        manifest_sha256: str,
+        completed_at: str = "",
+    ) -> GraphCorrelationRun:
+        with sqlite_graph_store.open_graph_db(self._db_path) as conn:
+            sqlite_graph_store.save_graph_streaming(
+                conn,
+                scan_id=graph.scan_id,
+                tenant_id=graph.tenant_id,
+                created_at=graph.created_at,
+                nodes=graph.nodes.values(),
+                edges=graph.edges,
+                attack_paths=graph.attack_paths,
+                interaction_risks=graph.interaction_risks,
+                analysis_status=graph.analysis_status,
+                snapshot_kind="correlation",
+                correlation_id=graph.scan_id,
+                evidence_manifest_sha256=manifest_sha256,
+                correlation_result_manifest=result_manifest,
+                correlation_completed_at=completed_at,
+            )
+            completed = sqlite_graph_store.get_correlation_run(
+                conn,
+                tenant_id=graph.tenant_id,
+                correlation_id=graph.scan_id,
+            )
+            if completed is None:  # pragma: no cover - defensive invariant
+                raise RuntimeError("completed correlation run disappeared")
+            return completed
 
     def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> GraphCorrelationRun | None:
         conn = self._open_ro_conn()
@@ -1767,6 +1829,7 @@ class SQLiteGraphStore:
         correlation_id: str,
         status: CorrelationRunStatus,
         manifest_sha256: str = "",
+        result_manifest: Mapping[str, Any] | None = None,
         output_scan_id: str = "",
         failure_code: str = "",
         started_at: str = "",
@@ -1779,6 +1842,7 @@ class SQLiteGraphStore:
                 correlation_id=correlation_id,
                 status=status,
                 manifest_sha256=manifest_sha256,
+                result_manifest=result_manifest,
                 output_scan_id=output_scan_id,
                 failure_code=failure_code,
                 started_at=started_at,

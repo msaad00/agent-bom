@@ -326,11 +326,24 @@ class NeptuneGraphStore:
         )
         return [self._snapshot_from_record(row) for row in rows]
 
+    def snapshots_by_ids(self, *, tenant_id: str, scan_ids: set[str]) -> list[dict[str, Any]]:
+        self._unsupported("snapshots_by_ids")
+
     def create_correlation_run(self, run: "GraphCorrelationRun") -> tuple["GraphCorrelationRun", bool]:
         self._unsupported("create_correlation_run")
 
     def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> "GraphCorrelationRun | None":
         self._unsupported("get_correlation_run")
+
+    def complete_correlation_run(
+        self,
+        graph: UnifiedGraph,
+        *,
+        result_manifest: Mapping[str, Any],
+        manifest_sha256: str,
+        completed_at: str = "",
+    ) -> "GraphCorrelationRun":
+        self._unsupported("complete_correlation_run")
 
     def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list["GraphCorrelationRun"]:
         self._unsupported("list_correlation_runs")
@@ -342,6 +355,7 @@ class NeptuneGraphStore:
         correlation_id: str,
         status: "CorrelationRunStatus",
         manifest_sha256: str = "",
+        result_manifest: Mapping[str, Any] | None = None,
         output_scan_id: str = "",
         failure_code: str = "",
         started_at: str = "",

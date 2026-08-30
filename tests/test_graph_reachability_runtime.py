@@ -19,6 +19,8 @@ tests cover the consume direction:
 from __future__ import annotations
 
 import json
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,8 +28,11 @@ from starlette.testclient import TestClient
 
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+from agent_bom.runtime.correlation_facts import create_runtime_facts_bundle
 from agent_bom.runtime.graph_reachability import (
     REACHABILITY_RULE_ID,
+    AgentReachability,
+    ReachabilityMap,
     load_reachability_map,
     reachability_map_from_report_data,
 )
@@ -256,3 +261,156 @@ def test_malformed_facts_file_is_noop(tmp_path: Path):
     client = TestClient(create_gateway_app(_settings("enforce", bad)))
     resp = client.post("/mcp/filesystem", json=_call(tool="read_secret"))
     assert _is_allowed(resp), resp.text
+
+
+def _signed_bundle(*, tenant_id: str = "default", tool: str = "read_secret") -> dict[str, Any]:
+    reachability = ReachabilityMap(
+        by_agent={
+            "agent-a": AgentReachability(
+                agent_id="agent-a",
+                node_ids=frozenset({f"tool:{tool}"}),
+                node_labels=frozenset({tool}),
+            )
+        }
+    )
+    return create_runtime_facts_bundle(
+        correlation_id="corr-runtime-proof",
+        tenant_id=tenant_id,
+        manifest_sha256="sha256:" + "a" * 64,
+        reachability=reachability,
+        signing_key=b"runtime-facts-signing-key-32-bytes!!",
+        ttl_seconds=300,
+        now=datetime.now(timezone.utc),
+        key_id="lab-key",
+    )
+
+
+def _bundle_settings(
+    fetcher,
+    *,
+    mode: str = "enforce",
+    failure_mode: str = "allow",
+    poll_seconds: float = 0,
+    audit: list[dict[str, Any]] | None = None,
+    tenant_id: str = "default",
+) -> GatewaySettings:
+    settings = _settings(mode, None, audit=audit)
+    settings.graph_reachability_bundle_fetcher = fetcher
+    settings.graph_reachability_bundle_signing_key = b"runtime-facts-signing-key-32-bytes!!"
+    settings.graph_reachability_bundle_tenant_id = tenant_id
+    settings.graph_reachability_bundle_poll_interval_seconds = poll_seconds
+    settings.graph_reachability_failure_mode = failure_mode
+    return settings
+
+
+def test_signed_bundle_blocks_first_jsonrpc_tool_call():
+    async def _fetch():
+        return _signed_bundle()
+
+    audit: list[dict[str, Any]] = []
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, audit=audit))) as client:
+        resp = client.post("/mcp/filesystem", json=_call(tool="read_secret"))
+
+    assert _is_blocked(resp), resp.text
+    blocked = next(event for event in audit if event.get("action") == "gateway.graph_reachability_blocked")
+    assert blocked["correlation_id"] == "corr-runtime-proof"
+    assert blocked["manifest_sha256"] == "sha256:" + "a" * 64
+    assert blocked["evidence_source"] == "correlation_bundle"
+    assert blocked["evidence_freshness"] == "fresh"
+
+
+def test_bundle_hot_refresh_replaces_reachability_without_restart():
+    calls = 0
+
+    async def _fetch():
+        nonlocal calls
+        calls += 1
+        return _signed_bundle(tool="read_secret" if calls == 1 else "rotate_keys")
+
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, poll_seconds=0.01))) as client:
+        assert _is_blocked(client.post("/mcp/filesystem", json=_call(tool="read_secret")))
+        deadline = time.monotonic() + 1
+        while calls < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert calls >= 2
+        assert _is_allowed(client.post("/mcp/filesystem", json=_call(tool="read_secret")))
+        assert _is_blocked(client.post("/mcp/filesystem", json=_call(tool="rotate_keys")))
+
+
+def test_bundle_outage_preserves_legacy_allow_behavior():
+    async def _fetch():
+        raise RuntimeError("secret upstream detail")
+
+    audit: list[dict[str, Any]] = []
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, audit=audit))) as client:
+        resp = client.post("/mcp/filesystem", json=_call())
+
+    assert _is_allowed(resp), resp.text
+    unavailable = next(event for event in audit if event.get("action") == "gateway.graph_reachability_evidence_unavailable")
+    assert unavailable["failure_mode"] == "allow"
+    assert unavailable["reason_code"] == "bundle_fetch_failed"
+    assert "secret upstream detail" not in json.dumps(unavailable)
+
+
+def test_explicit_deny_blocks_when_bundle_is_unavailable():
+    async def _fetch():
+        raise RuntimeError("do not expose")
+
+    audit: list[dict[str, Any]] = []
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, failure_mode="deny", audit=audit))) as client:
+        resp = client.post("/mcp/filesystem", json=_call())
+
+    assert _is_blocked(resp), resp.text
+    assert resp.json()["error"]["data"] == {
+        "reason": "Graph reachability evidence unavailable and strict mode is active",
+        "policy_source": "graph_reachability_evidence",
+    }
+    assert any(event.get("action") == "gateway.graph_reachability_evidence_unavailable" for event in audit)
+
+
+def test_tenant_mismatched_bundle_is_not_accepted():
+    async def _fetch():
+        return _signed_bundle(tenant_id="other-tenant")
+
+    audit: list[dict[str, Any]] = []
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, audit=audit))) as client:
+        resp = client.post("/mcp/filesystem", json=_call())
+
+    assert _is_allowed(resp), resp.text
+    unavailable = next(event for event in audit if event.get("action") == "gateway.graph_reachability_evidence_unavailable")
+    assert unavailable["reason_code"] == "tenant_mismatch"
+
+
+def test_global_off_ignores_valid_bundle():
+    async def _fetch():
+        return _signed_bundle()
+
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, mode="off", failure_mode="deny"))) as client:
+        resp = client.post("/mcp/filesystem", json=_call())
+
+    assert _is_allowed(resp), resp.text
+
+
+def test_strict_deny_blocks_when_no_evidence_source_is_configured():
+    settings = _settings("enforce", None)
+    settings.graph_reachability_failure_mode = "deny"
+
+    with TestClient(create_gateway_app(settings)) as client:
+        resp = client.post("/mcp/filesystem", json=_call())
+
+    assert _is_blocked(resp), resp.text
+    assert resp.json()["error"]["data"]["policy_source"] == "graph_reachability_evidence"
+
+
+def test_bundle_tenant_must_match_authenticated_request_tenant():
+    async def _fetch():
+        return _signed_bundle(tenant_id="tenant-a")
+
+    audit: list[dict[str, Any]] = []
+    settings = _bundle_settings(_fetch, audit=audit, tenant_id="tenant-a")
+    with TestClient(create_gateway_app(settings)) as client:
+        resp = client.post("/mcp/filesystem", json=_call())
+
+    assert _is_allowed(resp), resp.text
+    unavailable = next(event for event in audit if event.get("action") == "gateway.graph_reachability_evidence_unavailable")
+    assert unavailable["reason_code"] == "request_tenant_mismatch"

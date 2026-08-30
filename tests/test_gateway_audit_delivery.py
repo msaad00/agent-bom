@@ -557,6 +557,7 @@ async def test_gateway_audit_dlq_poison_keeps_later_events_fail_closed(tmp_path:
         ("gateway.fleet_warned", "gateway.enforcement.warned", "allow"),
         ("gateway.drift_warned", "gateway.enforcement.warned", "allow"),
         ("gateway.graph_reachability_warned", "gateway.enforcement.warned", "allow"),
+        ("gateway.graph_reachability_evidence_unavailable", "gateway.enforcement.warned", "allow"),
         ("gateway.policy_warned", "gateway.enforcement.warned", "allow"),
         ("gateway.firewall_warned", "gateway.enforcement.warned", "allow"),
         ("gateway.identity_jit_grant_used", "gateway.enforcement.observed", "allow"),

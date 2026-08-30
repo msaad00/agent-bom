@@ -39,7 +39,7 @@ from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Mapping
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -91,6 +91,7 @@ from agent_bom.runtime.audit_delivery import (
     audit_delivery_paths,
     canonical_runtime_state_path,
 )
+from agent_bom.runtime.correlation_facts import RuntimeFactsPoller, VerifiedRuntimeFacts
 from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
 from agent_bom.runtime.gateway_events import (
     GatewayRuntimeEventType,
@@ -164,6 +165,7 @@ def _public_gateway_block_reason(policy_source: str) -> str:
         "dlp": "Data-loss-prevention policy blocked sensitive content in this request",
         "firewall": "Inter-agent firewall blocked this request",
         "graph_reachability": "Graph reachability policy blocked this request",
+        "graph_reachability_evidence": "Graph reachability evidence unavailable and strict mode is active",
         "policy_plugin": "A gateway policy plugin blocked this request",
         "fail_closed": "Gateway policy unavailable and fail-closed mode is active",
         "runtime_profile": "Runtime client profile validation blocked this request",
@@ -205,18 +207,19 @@ class GatewaySettings:
     # without touching the MCP allow/deny patterns.
     firewall_policy_path: Path | None = None
     firewall_policy_reload_interval_seconds: int = 0
-    # Graph-derived reachability enforcement (consume direction). The unified
-    # graph statically detects which agents reach a credential / privileged-tool
-    # node (the AGENT_REACHES_PRIVILEGED toxic-combination rule). Today that is
-    # advisory-only. Point this at a scan-report JSON and an over-reaching agent's
-    # FIRST call against one of its reachable privileged tools is blocked
-    # ("enforce") or flagged ("warn") in-path — pre-emptively, before any runtime
-    # correlation. Default "off" + no facts path = zero behaviour change. Loading
-    # is read-only/no-network and fail-safe: a missing/malformed report is a no-op
-    # and never breaks a relay. The reverse runtime→graph feedback loop is a
-    # documented follow-up and is NOT wired here.
+    # Graph-derived reachability enforcement (consume direction). Static report
+    # mode remains compatible; signed correlation bundles add opt-in polling and
+    # last-valid caching. The global default stays off. Missing evidence allows by
+    # default, while an operator can explicitly select deny for a strict lab.
     graph_reachability_path: Path | None = None
     graph_reachability_enforcement_mode: str = "off"
+    graph_reachability_failure_mode: str = "allow"
+    graph_reachability_bundle_url: str = ""
+    graph_reachability_bundle_tenant_id: str = "default"
+    graph_reachability_bundle_signing_key: bytes | None = None
+    graph_reachability_bundle_bearer_token: str = ""
+    graph_reachability_bundle_poll_interval_seconds: float = 30.0
+    graph_reachability_bundle_fetcher: Callable[[], Awaitable[Mapping[str, Any]]] | None = None
     upstream_failure_threshold: int = 3
     upstream_circuit_cooldown_seconds: float = 30.0
     upstream_http_timeout_seconds: float = 30.0
@@ -2077,11 +2080,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     firewall_lock = asyncio.Lock()
     firewall_reload_task: asyncio.Task[None] | None = None
 
-    # Graph-derived reachability facts (consume direction). Loaded once at build
-    # time from a static scan-report JSON; fail-safe (a missing/malformed report
-    # yields an empty no-op map and is logged, never raised). Enforcement is only
-    # active when a facts path is set AND graph_reachability_enforcement_mode is
-    # warn/enforce — otherwise this is dead-weight default-allow.
+    # Graph-derived reachability facts (consume direction). Static report mode is
+    # retained for compatibility. A signed correlation bundle may be polled when
+    # explicitly configured; the poller keeps the last valid unexpired bundle.
     reachability_map: ReachabilityMap = load_reachability_map(settings.graph_reachability_path)
     if settings.graph_reachability_path is not None:
         logger.info(
@@ -2090,6 +2091,45 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             len(reachability_map.by_agent),
             _sanitize_for_log(settings.graph_reachability_enforcement_mode),
         )
+
+    runtime_facts_task: asyncio.Task[None] | None = None
+    runtime_facts_configured = bool(settings.graph_reachability_bundle_fetcher or settings.graph_reachability_bundle_url.strip())
+    runtime_facts_config_error = ""
+
+    async def _fetch_runtime_facts_url() -> Mapping[str, Any]:
+        import httpx
+
+        headers: dict[str, str] = {"Accept": "application/json"}
+        if settings.graph_reachability_bundle_bearer_token:
+            headers["Authorization"] = f"Bearer {settings.graph_reachability_bundle_bearer_token}"
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)) as client:
+            response = await client.get(settings.graph_reachability_bundle_url, headers=headers)
+            response.raise_for_status()
+            if len(response.content) > 8 * 1024 * 1024:
+                raise ValueError("bundle_response_too_large")
+            payload = response.json()
+        if not isinstance(payload, Mapping):
+            raise ValueError("malformed_bundle_response")
+        return payload
+
+    runtime_facts_poller: RuntimeFactsPoller | None = None
+    if runtime_facts_configured and settings.graph_reachability_enforcement_mode != "off":
+        if settings.graph_reachability_bundle_signing_key is None:
+            runtime_facts_config_error = "missing_signing_key"
+        elif not settings.graph_reachability_bundle_tenant_id.strip():
+            runtime_facts_config_error = "missing_tenant_id"
+        else:
+            runtime_facts_poller = RuntimeFactsPoller(
+                fetch=settings.graph_reachability_bundle_fetcher or _fetch_runtime_facts_url,
+                signing_key=settings.graph_reachability_bundle_signing_key,
+                tenant_id=settings.graph_reachability_bundle_tenant_id,
+            )
+
+    async def _runtime_facts_refresh_loop() -> None:
+        assert runtime_facts_poller is not None
+        while True:
+            await asyncio.sleep(max(settings.graph_reachability_bundle_poll_interval_seconds, 0.1))
+            await runtime_facts_poller.refresh()
 
     async def _reload_firewall_policy_if_changed(force: bool = False) -> bool:
         if settings.firewall_policy_path is None:
@@ -2138,6 +2178,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     async def _lifespan(_app: FastAPI):
         nonlocal reload_task
         nonlocal firewall_reload_task
+        nonlocal runtime_facts_task
         try:
             if isinstance(settings.audit_sink, ControlPlaneAuditSink):
                 await settings.audit_sink.start()
@@ -2149,11 +2190,15 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 await _reload_firewall_policy_if_changed(force=True)
                 if settings.firewall_policy_reload_interval_seconds > 0:
                     firewall_reload_task = asyncio.create_task(_firewall_reload_loop())
+            if runtime_facts_poller is not None:
+                await runtime_facts_poller.refresh()
+                if settings.graph_reachability_bundle_poll_interval_seconds > 0:
+                    runtime_facts_task = asyncio.create_task(_runtime_facts_refresh_loop())
             yield
         finally:
             if managed_upstream_relay is not None:
                 await managed_upstream_relay.aclose()
-            for task in (reload_task, firewall_reload_task):
+            for task in (reload_task, firewall_reload_task, runtime_facts_task):
                 if task is not None:
                     task.cancel()
                     try:
@@ -2162,6 +2207,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         pass
             reload_task = None
             firewall_reload_task = None
+            runtime_facts_task = None
             if isinstance(settings.audit_sink, ControlPlaneAuditSink):
                 await settings.audit_sink.aclose()
 
@@ -3504,19 +3550,72 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 "reason": drift_lookup.reason,
                             }
                         )
-            # Graph reachability enforcement (consume direction): the unified
-            # graph statically flagged this source_agent as reaching a credential
-            # / privileged-tool node (AGENT_REACHES_PRIVILEGED). When the call's
-            # target tool is one of those reachable privileged nodes, block the
-            # FIRST attempt ("enforce") or flag it ("warn") — pre-emptively,
-            # before any runtime call-sequence correlation. Off by default and a
-            # no-op when no facts are loaded; fail-safe so it never breaks a relay.
-            if allowed and reachability_map and settings.graph_reachability_enforcement_mode in ("warn", "enforce"):
+            # Graph reachability enforcement (consume direction). Prefer the
+            # current signed correlation bundle, then fall back to the legacy
+            # static report. Bundle verification failures expose only stable
+            # reason codes. Missing evidence preserves the legacy allow posture
+            # unless the operator explicitly selected failure_mode=deny.
+            if allowed and settings.graph_reachability_enforcement_mode in ("warn", "enforce"):
+                fetched_runtime_facts: VerifiedRuntimeFacts | None = (
+                    runtime_facts_poller.current() if runtime_facts_poller is not None else None
+                )
+                request_tenant_mismatch = bool(fetched_runtime_facts is not None and fetched_runtime_facts.tenant_id != tenant_id)
+                verified_runtime_facts = None if request_tenant_mismatch else fetched_runtime_facts
+                effective_reachability = verified_runtime_facts.reachability if verified_runtime_facts is not None else reachability_map
+                bundle_unavailable = runtime_facts_configured and verified_runtime_facts is None
+                strict_evidence_missing = (
+                    settings.graph_reachability_failure_mode == "deny" and verified_runtime_facts is None and not reachability_map
+                )
+                if bundle_unavailable or strict_evidence_missing:
+                    if request_tenant_mismatch:
+                        reason_code = "request_tenant_mismatch"
+                    elif runtime_facts_config_error:
+                        reason_code = runtime_facts_config_error
+                    elif runtime_facts_poller is not None and runtime_facts_poller.last_error:
+                        reason_code = runtime_facts_poller.last_error
+                    elif settings.graph_reachability_path is not None:
+                        reason_code = "static_evidence_unavailable"
+                    else:
+                        reason_code = "evidence_not_configured"
+                    unavailable_reason = reason_code or "bundle_unavailable"
+                    if settings.audit_sink is not None:
+                        await settings.audit_sink(
+                            {
+                                "action": "gateway.graph_reachability_evidence_unavailable",
+                                "upstream": upstream.name,
+                                "tenant_id": tenant_id,
+                                "source_agent": source_agent,
+                                "tool": tool_name,
+                                "failure_mode": settings.graph_reachability_failure_mode,
+                                "reason_code": unavailable_reason,
+                            }
+                        )
+                    if strict_evidence_missing:
+                        allowed = False
+                        reason = "signed graph reachability evidence unavailable"
+                        policy_source = "graph_reachability_evidence"
+                        _emit_gateway_governance_event(
+                            "graph_reachability.evidence_unavailable",
+                            tenant_id=tenant_id,
+                            subject_id=source_agent,
+                            payload={
+                                "source_agent": source_agent,
+                                "tool": tool_name,
+                                "failure_mode": "deny",
+                                "reason_code": unavailable_reason,
+                            },
+                        )
+
+                reach_hit = None
                 try:
-                    reach_hit = reachability_map.reaches_privileged(source_agent, tool_name)
+                    if allowed and effective_reachability:
+                        reach_hit = effective_reachability.reaches_privileged(source_agent, tool_name)
                 except Exception as exc:  # noqa: BLE001 — fail-open, never break the relay
                     logger.warning("gateway graph-reachability check failed: %s", sanitize_text(_sanitize_for_log(exc)))
-                    reach_hit = None
+                    if settings.graph_reachability_failure_mode == "deny":
+                        allowed = False
+                        reason = "graph reachability evaluation unavailable"
+                        policy_source = "graph_reachability_evidence"
                 if reach_hit is not None:
                     reach_reason = (
                         f"agent '{source_agent}' statically reaches privileged/credential node "
@@ -3535,6 +3634,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                     "rule_id": reach_hit.rule_id,
                                     "severity": reach_hit.severity,
                                     "reason": reach_reason,
+                                    "evidence_source": ("correlation_bundle" if verified_runtime_facts is not None else "scan_report"),
+                                    "correlation_id": (verified_runtime_facts.correlation_id if verified_runtime_facts is not None else ""),
+                                    "manifest_sha256": (
+                                        verified_runtime_facts.manifest_sha256 if verified_runtime_facts is not None else ""
+                                    ),
+                                    "evidence_freshness": (
+                                        verified_runtime_facts.evidence_freshness if verified_runtime_facts is not None else "unknown"
+                                    ),
                                 }
                             )
                         _emit_gateway_governance_event(
@@ -3547,6 +3654,12 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 "rule_id": reach_hit.rule_id,
                                 "severity": reach_hit.severity,
                                 "reason": reach_reason,
+                                "evidence_source": ("correlation_bundle" if verified_runtime_facts is not None else "scan_report"),
+                                "correlation_id": (verified_runtime_facts.correlation_id if verified_runtime_facts is not None else ""),
+                                "manifest_sha256": (verified_runtime_facts.manifest_sha256 if verified_runtime_facts is not None else ""),
+                                "evidence_freshness": (
+                                    verified_runtime_facts.evidence_freshness if verified_runtime_facts is not None else "unknown"
+                                ),
                             },
                         )
                     elif settings.audit_sink is not None:
@@ -3560,6 +3673,12 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 "rule_id": reach_hit.rule_id,
                                 "severity": reach_hit.severity,
                                 "reason": reach_reason,
+                                "evidence_source": ("correlation_bundle" if verified_runtime_facts is not None else "scan_report"),
+                                "correlation_id": (verified_runtime_facts.correlation_id if verified_runtime_facts is not None else ""),
+                                "manifest_sha256": (verified_runtime_facts.manifest_sha256 if verified_runtime_facts is not None else ""),
+                                "evidence_freshness": (
+                                    verified_runtime_facts.evidence_freshness if verified_runtime_facts is not None else "unknown"
+                                ),
                             }
                         )
             # Declarative conditional access + plugin policy evaluators. Both are

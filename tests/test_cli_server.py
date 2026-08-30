@@ -660,6 +660,71 @@ def test_gateway_serve_passes_runtime_rate_limit_settings(tmp_path):
     mock_run.assert_called_once()
 
 
+def test_gateway_serve_passes_signed_correlation_bundle_settings(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    signing_key = tmp_path / "runtime-facts.key"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+    signing_key.write_bytes(b"runtime-facts-signing-key-32-bytes!!\n")
+
+    with (
+        patch("agent_bom.gateway_server.create_gateway_app") as mock_create_app,
+        patch("uvicorn.run") as mock_run,
+    ):
+        mock_create_app.return_value = object()
+        result = runner.invoke(
+            gateway_serve_cmd,
+            [
+                "--bind",
+                "127.0.0.1:8090",
+                "--upstreams",
+                str(upstreams),
+                "--graph-reachability-enforcement",
+                "enforce",
+                "--graph-reachability-bundle-url",
+                "https://control.example/v1/graph/correlations/corr-1/runtime-facts",
+                "--graph-reachability-bundle-tenant",
+                "tenant-a",
+                "--graph-reachability-bundle-signing-key-file",
+                str(signing_key),
+                "--graph-reachability-bundle-poll-seconds",
+                "15",
+                "--graph-reachability-failure-mode",
+                "deny",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    settings = mock_create_app.call_args.args[0]
+    assert settings.graph_reachability_bundle_url.endswith("/runtime-facts")
+    assert settings.graph_reachability_bundle_tenant_id == "tenant-a"
+    assert settings.graph_reachability_bundle_signing_key == b"runtime-facts-signing-key-32-bytes!!"
+    assert settings.graph_reachability_bundle_poll_interval_seconds == 15
+    assert settings.graph_reachability_failure_mode == "deny"
+    mock_run.assert_called_once()
+
+
+def test_gateway_serve_rejects_bundle_without_signing_key(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    result = runner.invoke(
+        gateway_serve_cmd,
+        [
+            "--bind",
+            "127.0.0.1:8090",
+            "--upstreams",
+            str(upstreams),
+            "--graph-reachability-bundle-url",
+            "https://control.example/runtime-facts",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "requires --graph-reachability-bundle-signing-key-file" in result.output
+
+
 def test_gateway_serve_passes_canonical_profile_enforcement_settings(tmp_path):
     runner = CliRunner()
     upstreams = tmp_path / "upstreams.yaml"

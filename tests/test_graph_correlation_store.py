@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
 
 from agent_bom.db import graph_store
-from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+from agent_bom.graph import AttackPath, EntityType, UnifiedGraph, UnifiedNode
 from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun
 
 
@@ -42,11 +44,12 @@ def test_sqlite_migration_adds_snapshot_metadata_and_correlation_table(tmp_path)
         "max_age_hours",
         "allow_stale",
         "input_manifest",
+        "result_manifest",
         "manifest_sha256",
         "output_scan_id",
         "failure_code",
     } <= run_columns
-    assert version >= 4
+    assert version >= 5
 
 
 def test_correlation_run_is_tenant_isolated_and_idempotent(tmp_path) -> None:
@@ -103,19 +106,25 @@ def test_correlation_request_is_immutable_but_status_progresses_monotonically(tm
             status=CorrelationRunStatus.RUNNING,
             started_at="2026-08-30T00:01:00+00:00",
         )
+        result_manifest = {"correlation_id": "corr-1"}
+        manifest_sha256 = (
+            "sha256:" + hashlib.sha256(json.dumps(result_manifest, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        )
         complete = graph_store.update_correlation_run(
             conn,
             tenant_id="acme",
             correlation_id="corr-1",
             status=CorrelationRunStatus.COMPLETE,
             output_scan_id="corr-1",
-            manifest_sha256="sha256:" + "a" * 64,
+            manifest_sha256=manifest_sha256,
+            result_manifest=result_manifest,
             completed_at="2026-08-30T00:02:00+00:00",
         )
 
         assert running.status is CorrelationRunStatus.RUNNING
         assert complete.status is CorrelationRunStatus.COMPLETE
         assert complete.input_manifest == _run().input_manifest
+        assert complete.result_manifest == result_manifest
         with pytest.raises(ValueError, match="terminal"):
             graph_store.update_correlation_run(
                 conn,
@@ -218,3 +227,46 @@ def test_retention_purges_correlated_snapshot_but_keeps_immutable_run_receipt(tm
         assert result["purged_snapshots"] == [{"scan_id": "corr-1", "tenant_id": "acme"}]
         assert graph_store.get_correlation_run(conn, tenant_id="acme", correlation_id="corr-1") is not None
         assert graph_store.list_snapshots(conn, tenant_id="acme") == []
+
+
+def test_evidence_manifest_digest_covers_attack_path_hop_receipts(tmp_path) -> None:
+    db = tmp_path / "graph.db"
+    graph = UnifiedGraph(scan_id="scan-proof", tenant_id="acme")
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+    graph.add_node(UnifiedNode(id="tool:secret", entity_type=EntityType.TOOL, label="read_secret"))
+    graph.attack_paths.append(
+        AttackPath(
+            source="agent:a",
+            target="tool:secret",
+            hops=["agent:a", "tool:secret"],
+            edges=["reaches_tool"],
+            composite_risk=9.0,
+            hop_evidence=[{"source_snapshot_ids": ["runtime-a"], "freshness": "fresh"}],
+            analysis={"status": "complete", "truncated": False},
+        )
+    )
+
+    with graph_store.open_graph_db(db) as conn:
+        graph_store.save_graph(conn, graph)
+        first = graph_store.graph_evidence_manifest(conn, tenant_id="acme", scan_id="scan-proof")
+        graph.attack_paths[0].hop_evidence[0]["freshness"] = "stale_allowed"
+        graph_store.save_graph(conn, graph)
+        second = graph_store.graph_evidence_manifest(conn, tenant_id="acme", scan_id="scan-proof")
+
+    assert first["findings_digest"] != second["findings_digest"]
+
+
+def test_snapshot_receipts_are_selected_by_exact_ids_without_history_paging(tmp_path) -> None:
+    with graph_store.open_graph_db(tmp_path / "graph.db") as store:
+        for scan_id in ("old-retained", "recent", "unselected"):
+            graph = UnifiedGraph(scan_id=scan_id, tenant_id="acme")
+            graph.add_node(UnifiedNode(id=f"agent:{scan_id}", entity_type=EntityType.AGENT, label=scan_id))
+            graph_store.save_graph(store, graph)
+
+        rows = graph_store.snapshots_by_ids(
+            store,
+            tenant_id="acme",
+            scan_ids={"old-retained", "recent", "missing"},
+        )
+
+    assert {row["scan_id"] for row in rows} == {"old-retained", "recent"}

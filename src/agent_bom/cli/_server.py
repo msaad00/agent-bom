@@ -1067,7 +1067,7 @@ def api_cmd(
     type=click.Choice(["guided", "full"]),
     default="full",
     show_default=True,
-    help="Tool catalog: full 84-tool catalog, or guided workflow tools for concise agent context.",
+    help="Tool catalog: full 86-tool catalog, or guided workflow tools for concise agent context.",
 )
 @click.option(
     "--bearer-token",
@@ -1112,7 +1112,7 @@ def mcp_server_cmd(
 
     \b
     The default is the full tool catalog.
-    Exposes 84 security tools via MCP protocol, including
+    Exposes 86 security tools via MCP protocol, including
     advanced direct tools such as skill_scan, skill_verify, compliance, and
     remediate. See:
       docs/MCP_WORKFLOWS.md

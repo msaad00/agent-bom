@@ -13,6 +13,9 @@ import type {
   ScanJob,
   ScanJobStatus,
   GraphSnapshot,
+  GraphCorrelationCreate,
+  GraphCorrelationList,
+  GraphCorrelationRun,
   GraphScenario,
   GraphScenariosResponse,
   GraphScenarioResponse,
@@ -193,6 +196,9 @@ export type {
   GraphCompleteness,
   GraphAttackPath,
   GraphSnapshot,
+  GraphCorrelationCreate,
+  GraphCorrelationList,
+  GraphCorrelationRun,
   GraphScenario,
   GraphScenarioChange,
   GraphScenariosResponse,
@@ -984,6 +990,20 @@ export const api = {
     if (windowDays != null) params.set("window_days", String(windowDays));
     return get<GraphSnapshot[]>(`/v1/graph/snapshots?${params.toString()}`);
   },
+
+  /** Correlate 2-32 exact immutable graph snapshots into one provenance-rich snapshot. */
+  createGraphCorrelation: (request: GraphCorrelationCreate) =>
+    post<GraphCorrelationRun>("/v1/graph/correlations", request, {
+      "Idempotency-Key": mutationIdempotencyKey("graph-correlation"),
+    }),
+
+  /** Read one tenant-scoped graph correlation run. */
+  getGraphCorrelation: (correlationId: string) =>
+    get<GraphCorrelationRun>(`/v1/graph/correlations/${encodeURIComponent(correlationId)}`),
+
+  /** List recent tenant-scoped graph correlation runs. */
+  listGraphCorrelations: (limit = 50) =>
+    get<GraphCorrelationList>(`/v1/graph/correlations?limit=${limit}`),
 
   /** List persistent, snapshot-pinned proposed architecture scenarios. */
   getGraphScenarios: () =>

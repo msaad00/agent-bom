@@ -201,6 +201,7 @@ def test_static_bearer_verifier_keeps_read_and_operator_tokens_separate():
         "cloud:write",
         "findings:write",
         "identity:write",
+        "scan:write",
         "shield:write",
         "ticketing:write",
     }
@@ -217,9 +218,12 @@ def test_static_operator_token_authorizes_every_registered_write_family():
     assert operator_access is not None
     server_root = Path(__file__).resolve().parents[1] / "src" / "agent_bom"
     required_scopes = {
-        match for path in server_root.glob("mcp_server_*.py") for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
+        match
+        for path in server_root.glob("mcp_server_*.py")
+        for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
+        if match.endswith(":write")
     }
-    assert required_scopes == {"cloud:write", "findings:write", "identity:write", "shield:write", "ticketing:write"}
+    assert required_scopes == {"cloud:write", "findings:write", "identity:write", "scan:write", "shield:write", "ticketing:write"}
     for required_scope in required_scopes:
         denial = authorize_destructive_tool(
             "write-tool",

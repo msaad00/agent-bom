@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (84):
+Tools (86):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     intel_lookup        — Look up a CVE, GHSA, or OSV advisory from local threat intel
@@ -15,6 +15,8 @@ Tools (84):
     youcom_search       — Search You.com for current web/news context when YDC_API_KEY is configured
     blast_radius        — Look up blast radius for a specific CVE
     exposure_paths      — Return ranked ExposurePath JSON for headless agents and MCP clients
+    graph_correlate     — Create an immutable correlation from exact snapshot receipts
+    graph_correlation_status — Read correlation state, receipts, and analysis bounds
     should_i_deploy     — Return allow/warn/block from ExposurePath risk
     policy_check        — Evaluate a policy against scan results
     registry_lookup     — Query the MCP server security metadata registry
@@ -180,6 +182,8 @@ _GUIDED_TOOL_NAMES = frozenset(
         "gateway_status",
         "generate_sbom",
         "graph_export",
+        "graph_correlate",
+        "graph_correlation_status",
         "intel_lookup",
         "inventory_asset",
         "inventory_list",
@@ -297,6 +301,7 @@ class _StaticBearerTokenVerifier:
                     "cloud:write",
                     "findings:write",
                     "identity:write",
+                    "scan:write",
                     "shield:write",
                     "ticketing:write",
                 ],

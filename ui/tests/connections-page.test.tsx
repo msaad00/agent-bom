@@ -925,7 +925,7 @@ describe("ConnectionsPage — Connect segment", () => {
 
     const drawer = await screen.findByRole("dialog", { name: /Connect a coding agent/ });
     expect(within(drawer).getByText("agent-bom mcp-server")).toBeInTheDocument();
-    expect(within(drawer).getByText(/84 MCP tools/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/86 MCP tools/)).toBeInTheDocument();
   });
 
   it("syncs the segmented tab to the URL", async () => {

@@ -42,6 +42,16 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "graph_correlate",
+        "description": "Create a bounded immutable correlation over exact tenant-scoped graph snapshot receipts",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "graph_correlation_status",
+        "description": "Read correlation state, source receipts, freshness, conflicts, output snapshot, and analysis bounds",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
         "name": "should_i_deploy",
         "description": (
             "Pre-deployment gate: resolves a candidate (package, CVE, resource, or graph node) against the"
@@ -444,6 +454,8 @@ _TOOL_CAPABILITY_CLASSES = {
     "intel_daily_brief": ["READ", "THREAT_INTEL", "INVENTORY"],
     "blast_radius": ["READ", "ANALYZE"],
     "exposure_paths": ["READ", "GRAPH", "ANALYZE"],
+    "graph_correlate": ["WRITE", "GRAPH", "ANALYZE", "PROVENANCE"],
+    "graph_correlation_status": ["READ", "GRAPH", "PROVENANCE"],
     "should_i_deploy": ["READ", "GRAPH", "POLICY"],
     "policy_check": ["READ", "POLICY"],
     "registry_lookup": ["READ", "REGISTRY"],

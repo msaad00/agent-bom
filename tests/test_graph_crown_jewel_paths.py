@@ -15,7 +15,7 @@ from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 
 
-def _crown_jewel_graph() -> UnifiedGraph:
+def _crown_jewel_graph(*, evidence_backed: bool = True) -> UnifiedGraph:
     g = UnifiedGraph(scan_id="cj", tenant_id="t")
     # An internet-exposed, vulnerable VM that reaches a PCI data store.
     g.add_node(
@@ -43,8 +43,31 @@ def _crown_jewel_graph() -> UnifiedGraph:
             attributes={"data_sensitivity": "sensitive", "data_regulatory_frameworks": ["PCI-DSS"]},
         )
     )
-    g.add_edge(UnifiedEdge(source="cloud:vm", target="vuln:rce", relationship=RelationshipType.VULNERABLE_TO))
-    g.add_edge(UnifiedEdge(source="cloud:vm", target="ds:pay", relationship=RelationshipType.EXPOSED_TO))
+    edge_evidence = (
+        {
+            "source_scan_id": "cj",
+            "evidence": {"source_kind": "cloud_inventory", "freshness": "fresh"},
+            "provenance": {"source": "test-cloud-inventory"},
+        }
+        if evidence_backed
+        else {}
+    )
+    g.add_edge(
+        UnifiedEdge(
+            source="cloud:vm",
+            target="vuln:rce",
+            relationship=RelationshipType.VULNERABLE_TO,
+            **edge_evidence,
+        )
+    )
+    g.add_edge(
+        UnifiedEdge(
+            source="cloud:vm",
+            target="ds:pay",
+            relationship=RelationshipType.EXPOSED_TO,
+            **edge_evidence,
+        )
+    )
     return g
 
 
@@ -66,6 +89,17 @@ def test_crown_jewel_ranks_at_top_of_derived_paths():
     assert all_paths
     top = max(all_paths, key=lambda p: p.composite_risk)
     assert "Crown jewel" in top.summary and top.composite_risk >= 95
+    assert top.reachability == "confirmed"
+    assert all(receipt["complete"] for receipt in top.hop_evidence)
+
+
+def test_structural_crown_jewel_remains_visible_but_is_not_presented_as_confirmed():
+    paths = _derived_attack_paths(_crown_jewel_graph(evidence_backed=False))
+
+    crown_jewel = next(path for path in paths if "Crown jewel" in path.summary)
+    assert crown_jewel.reachability == "unknown"
+    assert crown_jewel.composite_risk <= 39
+    assert "incomplete_hop_evidence" in crown_jewel.reachability_basis
 
 
 def test_single_factor_is_not_a_toxic_combination():

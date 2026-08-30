@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "document-review": {
+      "command": "python",
+      "args": ["-m", "reference_lab.server"],
+      "tools": [
+        {
+          "name": "render_untrusted_image",
+          "stable_id": "mcp-tool:reference-lab:render-untrusted-image"
+        }
+      ]
+    }
+  }
+}

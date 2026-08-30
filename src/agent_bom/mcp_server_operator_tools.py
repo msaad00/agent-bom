@@ -37,6 +37,7 @@ def register_operator_tools(
         list_exceptions_impl,
         request_exception_impl,
     )
+    from agent_bom.mcp_tools.graph import graph_correlate_impl, graph_correlation_status_impl
     from agent_bom.mcp_tools.identity import (
         identity_grant_jit_impl,
         identity_issue_impl,
@@ -78,6 +79,59 @@ def register_operator_tools(
     from agent_bom.mcp_tools.scanning import code_scan_impl
     from agent_bom.mcp_tools.side_scan import cloud_side_scan_impl
     from agent_bom.mcp_tools.triage import findings_triage_impl
+
+    @mcp.tool(annotations=write_idempotent, title="Graph Correlate")
+    async def graph_correlate(
+        name: Annotated[str, Field(min_length=1, max_length=160, description="Human-readable correlation run name.")],
+        scan_ids: Annotated[
+            list[str],
+            Field(min_length=2, max_length=32, description="Two to 32 exact immutable source snapshot ids."),
+        ],
+        max_age_hours: Annotated[int, Field(ge=1, le=8760, description="Required source-evidence freshness bound in hours.")],
+        idempotency_key: Annotated[
+            str,
+            Field(min_length=1, max_length=200, description="Caller-stable retry key for this exact correlation request."),
+        ],
+        reason: Annotated[str, Field(min_length=8, max_length=500, description="Human audit reason for creating the correlation.")],
+        allow_stale: Annotated[bool, Field(description="Admit stale evidence while preserving its stale label.")] = False,
+        operator_role: Annotated[str, Field(description="Operator role for this write action (audit).")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes (audit).")] = "",
+        tenant_id: Annotated[str, Field(description="Tenant scope bound by MCP authentication context.")] = "default",
+    ) -> str:
+        """Create one bounded, provenance-rich correlation snapshot."""
+
+        return await execute_tool_async(
+            "graph_correlate",
+            graph_correlate_impl,
+            destructive=True,
+            required_scope="scan:write",
+            name=name,
+            scan_ids=scan_ids,
+            max_age_hours=max_age_hours,
+            idempotency_key=idempotency_key,
+            reason=reason,
+            allow_stale=allow_stale,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Graph Correlation Status")
+    async def graph_correlation_status(
+        correlation_id: Annotated[str, Field(min_length=1, description="Correlation id returned by graph_correlate.")],
+        tenant_id: Annotated[str, Field(description="Tenant scope bound by MCP authentication context.")] = "default",
+    ) -> str:
+        """Read run state, receipts, freshness, conflicts, and analysis bounds."""
+
+        return await execute_tool_async(
+            "graph_correlation_status",
+            graph_correlation_status_impl,
+            required_scope="graph:read",
+            correlation_id=correlation_id,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
 
     # ── Tool 13: diff ─────────────────────────────────────────────
 

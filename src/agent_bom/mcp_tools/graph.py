@@ -5,14 +5,150 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from typing import Any
 
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.severity import severity_rank
-from agent_bom.mcp_errors import CODE_INTERNAL_UNEXPECTED, CODE_VALIDATION_INVALID_ARGUMENT, mcp_error_json
+from agent_bom.mcp_errors import (
+    CODE_INTERNAL_UNEXPECTED,
+    CODE_NOT_FOUND_RESOURCE,
+    CODE_VALIDATION_INVALID_ARGUMENT,
+    CODE_VALIDATION_MISSING_REQUIRED,
+    mcp_error_json,
+)
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 
 logger = logging.getLogger(__name__)
+
+
+async def graph_correlate_impl(
+    *,
+    name: str,
+    scan_ids: list[str],
+    max_age_hours: int,
+    idempotency_key: str,
+    reason: str,
+    allow_stale: bool = False,
+    tenant_id: str = "default",
+    _service=None,
+    _truncate_response=None,
+    _authenticated_actor: str = "",
+    **_audit: str,
+) -> str:
+    """Create a tenant-scoped immutable graph correlation."""
+
+    from agent_bom.graph.correlation_service import CorrelationRequest, CorrelationServiceError, get_graph_correlation_service
+
+    if not name.strip():
+        return mcp_error_json(CODE_VALIDATION_MISSING_REQUIRED, "name is required", details={"argument": "name"})
+    if not idempotency_key.strip():
+        return mcp_error_json(
+            CODE_VALIDATION_MISSING_REQUIRED,
+            "idempotency_key is required",
+            details={"argument": "idempotency_key"},
+        )
+    if len(reason.strip()) < 8:
+        return mcp_error_json(
+            CODE_VALIDATION_INVALID_ARGUMENT,
+            "reason must be at least 8 characters",
+            details={"argument": "reason"},
+        )
+    if not 2 <= len(scan_ids) <= 32 or len(set(scan_ids)) != len(scan_ids) or any(not item.strip() for item in scan_ids):
+        return mcp_error_json(
+            CODE_VALIDATION_INVALID_ARGUMENT,
+            "scan_ids must contain between 2 and 32 distinct non-empty snapshot ids",
+            details={"argument": "scan_ids"},
+        )
+    if not 1 <= max_age_hours <= 8760:
+        return mcp_error_json(
+            CODE_VALIDATION_INVALID_ARGUMENT,
+            "max_age_hours must be between 1 and 8760",
+            details={"argument": "max_age_hours", "value": max_age_hours},
+        )
+    tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
+    try:
+        if _service is None:
+            from agent_bom.api.stores import _get_graph_store
+
+            _service = await get_graph_correlation_service(_get_graph_store(), tenant_id)
+        run = await _service.submit(
+            CorrelationRequest(
+                correlation_id=str(uuid.uuid4()),
+                tenant_id=tenant_id,
+                idempotency_key=idempotency_key,
+                name=name.strip(),
+                scan_ids=tuple(scan_ids),
+                max_age_hours=max_age_hours,
+                allow_stale=allow_stale,
+            )
+        )
+        from agent_bom.api.audit_log import log_action
+
+        log_action(
+            "graph.correlation.create",
+            actor=(_authenticated_actor or "mcp-operator").strip(),
+            resource=f"graph/correlation/{run.correlation_id}",
+            tenant_id=tenant_id,
+            source_count=len(run.input_manifest),
+            max_age_hours=run.max_age_hours,
+            allow_stale=run.allow_stale,
+            reason_provided=True,
+        )
+        encoded = json.dumps(run.to_dict(), indent=2, default=str)
+        return _truncate_response(encoded) if _truncate_response is not None else encoded
+    except CorrelationServiceError as exc:
+        code = CODE_NOT_FOUND_RESOURCE if exc.code == "input_snapshot_not_found" else CODE_VALIDATION_INVALID_ARGUMENT
+        return mcp_error_json(code, exc.code)
+    except ValueError:
+        return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "idempotency_key_conflict")
+    except Exception:
+        logger.exception("MCP graph correlation creation failed")
+        return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
+
+
+async def graph_correlation_status_impl(
+    correlation_id: str,
+    *,
+    tenant_id: str = "default",
+    _get_graph_store=None,
+    _truncate_response=None,
+) -> str:
+    """Read one tenant-scoped graph correlation run."""
+
+    if not correlation_id.strip():
+        return mcp_error_json(
+            CODE_VALIDATION_MISSING_REQUIRED,
+            "correlation_id is required",
+            details={"argument": "correlation_id"},
+        )
+    tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
+    try:
+        if _get_graph_store is None:
+            from agent_bom.api.stores import _get_graph_store as _default_get_graph_store
+
+            _get_graph_store = _default_get_graph_store
+        run = await asyncio.to_thread(
+            _get_graph_store().get_correlation_run,
+            tenant_id=tenant_id,
+            correlation_id=correlation_id,
+        )
+        if run is None:
+            return mcp_error_json(CODE_NOT_FOUND_RESOURCE, "correlation_not_found")
+        from agent_bom.api.audit_log import log_action
+
+        log_action(
+            "graph.correlation.read",
+            actor="mcp-reader",
+            resource=f"graph/correlation/{correlation_id}",
+            tenant_id=tenant_id,
+            status=run.status.value,
+        )
+        encoded = json.dumps(run.to_dict(), indent=2, default=str)
+        return _truncate_response(encoded) if _truncate_response is not None else encoded
+    except Exception:
+        logger.exception("MCP graph correlation status failed")
+        return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
 
 
 def _node_role(node: Any) -> str:

@@ -47,7 +47,7 @@ docker compose -f deploy/docker-compose.pilot.yml up -d
 
 - Deployment chooser (Docker / Helm / EKS / Postgres):
   [`../site-docs/deployment/overview.md`](../site-docs/deployment/overview.md)
-- API contract (400 operations): [`../docs/openapi/v1.json`](openapi/v1.json)
+- API contract (404 operations): [`../docs/openapi/v1.json`](openapi/v1.json)
 - Enterprise auth, tenancy, RBAC: [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md),
   [`PERMISSIONS.md`](PERMISSIONS.md)
 - Runtime proxy/gateway enforcement: [`MCP_SERVER.md`](MCP_SERVER.md) and the
@@ -103,12 +103,12 @@ scan a repo by URL.
 
 ```bash
 pip install 'agent-bom[mcp-server]'
-agent-bom mcp server                      # stdio MCP server: 84 tools, 6 resources, 8 prompts
+agent-bom mcp server                      # stdio MCP server: 86 tools, 6 resources, 8 prompts
 ```
 
 - MCP server setup + client guides: [`MCP_SERVER.md`](MCP_SERVER.md),
   [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md)
-- Tool catalog (84 tools; sensitive writes remain admin-gated): see the
+- Tool catalog (86 tools; sensitive writes remain admin-gated): see the
   `Tools (77)` block in
   [`../src/agent_bom/mcp_server.py`](../src/agent_bom/mcp_server.py)
 - Typed control-plane clients: [`PYTHON_API.md`](PYTHON_API.md),

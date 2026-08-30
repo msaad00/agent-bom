@@ -202,6 +202,11 @@ for missing, replaced, purged, or manifest-mismatched output revokes the cache.
 File-backed reachability remains supported and graph enforcement remains
 globally off unless selected.
 
+Deploy the runtime-facts publisher and gateway from the same Agent-Bom release.
+The gateway rejects unsupported envelope schemas; in strict `deny` mode, that
+version mismatch fails closed instead of silently falling back to stale or
+unverified graph evidence.
+
 ```bash
 agent-bom gateway serve \
   --graph-reachability-enforcement enforce \

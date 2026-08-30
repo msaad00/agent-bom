@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:0912b4e14f7d6b6535c35902c746eb4844460a03860b8baf04dadd9e2fe2370b",
+  "artifact_sha256": "sha256:4f3e958765f3479f7f636e55c9f8f7cba7e00f0dcae1764f1f8c61f2c7b6827e",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -1309,7 +1309,7 @@
         ]
       }
     ],
-    "manifest_sha256": "sha256:6570ece1de94119d03613a9e18d1dc46b2b9036f72b5c75b17daebc0ba360bf0",
+    "manifest_sha256": "sha256:d0d6106e7790237f34bcf5487b2a1f0f60d686b2e4d4d4fb54a3f2f4a10a3a59",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -1431,6 +1431,7 @@
       "output": {
         "attack_path_count": 1,
         "edge_count": 8,
+        "graph_digest_sha256": "sha256:2f4b28034c99a1d95923da92178b3637dcf594e843351900e13b0a14596485db",
         "node_count": 9,
         "scan_id": "reference-evidence-correlation-v1"
       },

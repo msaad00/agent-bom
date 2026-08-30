@@ -25,6 +25,12 @@ def _record(provider: str = "aws") -> SimpleNamespace:
         id="conn-1",
         tenant_id="t-conn",
         provider=provider,
+        role_ref="arn:example:readonly",
+        external_id_encrypted="encrypted",
+        regions=["us-east-1"],
+        auth_params={},
+        capability_probe_status="not_run",
+        verified_capabilities=[],
         to_public_dict=lambda: {"id": "conn-1", "provider": provider},
     )
 
@@ -52,13 +58,85 @@ def wired(monkeypatch):
 
 def test_test_connection_offloads_broker(monkeypatch, wired):
     record, offloaded = wired
-    monkeypatch.setattr(cloud_connections, "_test_connection_broker", lambda record: None)
+    monkeypatch.setattr(
+        cloud_connections,
+        "_test_connection_broker",
+        lambda record: SimpleNamespace(capabilities=("bedrock:list-agents",)),
+    )
 
     result = asyncio.run(cloud_connections.test_connection(request=object(), connection_id="conn-1"))
 
     assert len(offloaded) == 1, f"test_connection must offload the broker call exactly once; saw {offloaded}"
     assert result["status"] == "ok"
     assert result["connection_id"] == "conn-1"
+    assert result["capability_probe_status"] == "verified"
+    assert result["verified_capabilities"] == ["bedrock:list-agents"]
+
+
+def test_test_connection_permission_failure_is_stable_and_marks_unverified(monkeypatch, wired):
+    _record, _offloaded = wired
+    marks: list[dict] = []
+    monkeypatch.setattr(cloud_connections, "_mark_connection", lambda record, **kwargs: marks.append(kwargs))
+
+    def _denied(record):
+        raise type("AccessDeniedException", (Exception,), {})("private-role secret-token")
+
+    monkeypatch.setattr(cloud_connections, "_test_connection_broker", _denied)
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(cloud_connections.test_connection(request=object(), connection_id="conn-1"))
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == "Cloud capability probe was denied. Verify the provider read permissions."
+    assert "private-role" not in str(exc_info.value.detail)
+    assert marks[0]["status"] == cloud_connections.STATUS_ERROR
+    assert marks[0]["capability_probe_status"] == "permission_denied"
+    assert marks[0]["verified_capabilities"] == []
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected_status", "expected_detail"),
+    [
+        (
+            type("NoCredentialsError", (Exception,), {})("secret credential"),
+            "invalid_credentials",
+            "Cloud capability probe could not authenticate. Verify the configured credential.",
+        ),
+        (
+            TimeoutError("https://private.provider.invalid"),
+            "timeout",
+            "Cloud capability probe timed out. Verify the provider endpoint and network path.",
+        ),
+    ],
+)
+def test_test_connection_probe_failures_use_stable_public_states(
+    monkeypatch,
+    wired,
+    exc: Exception,
+    expected_status: str,
+    expected_detail: str,
+):
+    _record, _offloaded = wired
+    marks: list[dict] = []
+    monkeypatch.setattr(cloud_connections, "_mark_connection", lambda record, **kwargs: marks.append(kwargs))
+
+    def _fail(record):
+        raise exc
+
+    monkeypatch.setattr(cloud_connections, "_test_connection_broker", _fail)
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(cloud_connections.test_connection(request=object(), connection_id="conn-1"))
+
+    assert exc_info.value.detail == expected_detail
+    assert "private" not in str(exc_info.value.detail)
+    assert "secret" not in str(exc_info.value.detail)
+    assert marks[0]["capability_probe_status"] == expected_status
+    assert marks[0]["verified_capabilities"] == []
 
 
 def test_scan_connection_queues_without_provider_io(monkeypatch, wired):
@@ -227,6 +305,7 @@ async def test_slow_connection_test_keeps_event_loop_responsive(monkeypatch, wir
 
     def _slow_broker(record):
         time.sleep(block_seconds)
+        return SimpleNamespace(capabilities=("bedrock:list-agents",))
 
     monkeypatch.setattr(cloud_connections, "_test_connection_broker", _slow_broker)
 

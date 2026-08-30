@@ -575,38 +575,22 @@ def _control_plane_detail(body: str) -> str:
     return detail[:_MAX_DETAIL_CHARS]
 
 
-def _readonly_probe(provider: str, brokered: object, regions: list[str]) -> str:
-    """Run a trivial, bounded, read-only call against a brokered credential.
+def _readonly_probe(
+    provider: str,
+    brokered: object,
+    regions: list[str],
+    auth_params: dict[str, str],
+) -> str:
+    """Run the shared provider-specific read-capability probe."""
+    from agent_bom.cloud.capability_probe import probe_read_capability
 
-    Proves the read-only credential actually works. Returns a short, non-secret
-    description of what the probe saw (e.g. the AWS account id) — never the
-    connection secret.
-    """
-    if provider == "aws":
-        identity = brokered.client("sts").get_caller_identity()  # type: ignore[attr-defined]
-        account = str(identity.get("Account") or "").strip()
-        return f"AWS account {account}" if account else "AWS caller identity confirmed"
-    if provider == "azure":
-        # Bounded token acquisition against ARM — read-only, no resource calls.
-        brokered.get_token("https://management.azure.com/.default")  # type: ignore[attr-defined]
-        return "Azure Reader credential acquired a management token"
-    if provider == "gcp":
-        import google.auth.transport.requests as _ga_requests
-
-        brokered.refresh(_ga_requests.Request())  # type: ignore[attr-defined]
-        return "GCP read-only service-account credential refreshed"
-    if provider == "snowflake":
-        try:
-            cursor = brokered.cursor()  # type: ignore[attr-defined]
-            cursor.execute("SELECT CURRENT_VERSION()")
-            cursor.fetchone()
-        finally:
-            try:
-                brokered.close()  # type: ignore[attr-defined]
-            except Exception:  # noqa: BLE001 - close best-effort
-                pass
-        return "Snowflake read-only key-pair connection opened"
-    return "credential brokered"
+    result = probe_read_capability(
+        provider,
+        brokered,
+        regions=regions,
+        auth_params=auth_params,
+    )
+    return ", ".join(result.capabilities)
 
 
 def _local_verify(
@@ -644,7 +628,7 @@ def _local_verify(
             auth_params=auth_params,
         ) as record:
             brokered = broker_session(record, session_name="agent-bom-cli-verify")
-            detail = _readonly_probe(source.name, brokered, regions)
+            detail = _readonly_probe(source.name, brokered, regions, auth_params)
     except CloudDiscoveryError as exc:
         # Missing SDK extra — the broker's own install hint is already actionable.
         # Escape so the ``[extra]`` in the hint is not swallowed as rich markup.
@@ -709,7 +693,10 @@ def _register_via_server(
         connection_id = str(created.get("id") or "")
         con.print(f"[green]Registered[/green] {source.title} connection [bold]{connection_id}[/bold] on {server}.")  # type: ignore[attr-defined]
         test = client.test_cloud_connection(connection_id)
-        con.print(f"[green]Test:[/green] read-only broker check -> {test.get('status', 'ok')}.")  # type: ignore[attr-defined]
+        raw_capabilities = test.get("verified_capabilities", [])
+        capabilities = ", ".join(str(item) for item in raw_capabilities) if isinstance(raw_capabilities, list) else ""
+        detail = f" ({capabilities})" if capabilities else ""
+        con.print(f"[green]Test:[/green] read-only capability probe -> {test.get('capability_probe_status', 'unknown')}{detail}.")  # type: ignore[attr-defined]
         if do_scan:
             scan = client.scan_cloud_connection(connection_id)
             con.print(f"[green]Scan:[/green] launched (scan_id {scan.get('scan_id', '?')}).")  # type: ignore[attr-defined]

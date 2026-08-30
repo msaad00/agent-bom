@@ -18,6 +18,7 @@ function cloud(overrides: Partial<CloudConnectionRecord> = {}): CloudConnectionR
     display_name: "Production account",
     role_ref: "arn:aws:iam::123456789012:role/agent-bom-readonly",
     has_external_id: true,
+    credential_present: true,
     regions: ["us-east-1"],
     status: "active",
     status_detail: "",
@@ -27,6 +28,8 @@ function cloud(overrides: Partial<CloudConnectionRecord> = {}): CloudConnectionR
     last_event_at: null,
     last_scan_id: "scan-1",
     scan_interval_minutes: 60,
+    capability_probe_status: "verified",
+    verified_capabilities: ["bedrock:list-agents"],
     ...overrides,
   };
 }

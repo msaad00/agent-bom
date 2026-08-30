@@ -72,7 +72,9 @@ class PostgresConnectionStore:
                     last_event_at         TEXT,
                     inventory_scope       TEXT NOT NULL DEFAULT 'account',
                     scan_mode             TEXT NOT NULL DEFAULT 'full',
-                    auto_scan_on_create   BOOLEAN NOT NULL DEFAULT TRUE
+                    auto_scan_on_create   BOOLEAN NOT NULL DEFAULT TRUE,
+                    capability_probe_status TEXT NOT NULL DEFAULT 'not_run',
+                    verified_capabilities TEXT NOT NULL DEFAULT '[]'
                 )
             """)
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_interval_minutes INTEGER")
@@ -84,6 +86,8 @@ class PostgresConnectionStore:
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS inventory_scope TEXT NOT NULL DEFAULT 'account'")
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_mode TEXT NOT NULL DEFAULT 'full'")
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE")
+            conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS capability_probe_status TEXT NOT NULL DEFAULT 'not_run'")
+            conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS verified_capabilities TEXT NOT NULL DEFAULT '[]'")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -99,8 +103,9 @@ class PostgresConnectionStore:
                     (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
                      regions, status, status_detail, created_at, updated_at, last_scan_at,
                      last_scan_id, scan_interval_minutes, auth_params, last_event_at,
-                     inventory_scope, scan_mode, auto_scan_on_create)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     inventory_scope, scan_mode, auto_scan_on_create,
+                     capability_probe_status, verified_capabilities)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     provider = EXCLUDED.provider,
                     display_name = EXCLUDED.display_name,
@@ -117,7 +122,9 @@ class PostgresConnectionStore:
                     last_event_at = EXCLUDED.last_event_at,
                     inventory_scope = EXCLUDED.inventory_scope,
                     scan_mode = EXCLUDED.scan_mode,
-                    auto_scan_on_create = EXCLUDED.auto_scan_on_create
+                    auto_scan_on_create = EXCLUDED.auto_scan_on_create,
+                    capability_probe_status = EXCLUDED.capability_probe_status,
+                    verified_capabilities = EXCLUDED.verified_capabilities
                 """,
                 (
                     record.id,
@@ -139,6 +146,8 @@ class PostgresConnectionStore:
                     _decode_inventory_scope(record.inventory_scope),
                     _decode_scan_mode(record.scan_mode),
                     bool(record.auto_scan_on_create),
+                    record.capability_probe_status,
+                    json.dumps(record.verified_capabilities),
                 ),
             )
             conn.commit()
@@ -149,7 +158,7 @@ class PostgresConnectionStore:
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
                 "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
-                "scan_mode, auto_scan_on_create "
+                "scan_mode, auto_scan_on_create, capability_probe_status, verified_capabilities "
                 "FROM cloud_connections WHERE tenant_id = %s AND id = %s",
                 (tenant_id, connection_id),
             ).fetchone()
@@ -161,7 +170,7 @@ class PostgresConnectionStore:
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
                 "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
-                "scan_mode, auto_scan_on_create "
+                "scan_mode, auto_scan_on_create, capability_probe_status, verified_capabilities "
                 "FROM cloud_connections WHERE tenant_id = %s ORDER BY created_at, id",
                 (tenant_id,),
             ).fetchall()
@@ -188,7 +197,7 @@ class PostgresConnectionStore:
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
                 "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
-                "scan_mode, auto_scan_on_create "
+                "scan_mode, auto_scan_on_create, capability_probe_status, verified_capabilities "
                 "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
             ).fetchall()
         return [_row_to_record(row) for row in rows]
@@ -203,7 +212,7 @@ class PostgresConnectionStore:
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
                 "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
-                "scan_mode, auto_scan_on_create "
+                "scan_mode, auto_scan_on_create, capability_probe_status, verified_capabilities "
                 "FROM cloud_connections WHERE scan_mode = %s ORDER BY created_at, id",
                 (SCAN_MODE_CONTINUOUS,),
             ).fetchall()

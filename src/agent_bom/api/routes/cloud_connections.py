@@ -664,6 +664,8 @@ def _mark_connection(
     *,
     status: str,
     status_detail: str = "",
+    capability_probe_status: str | None = None,
+    verified_capabilities: list[str] | None = None,
     last_scan_at: str | None = None,
     last_scan_id: str | None = None,
 ) -> None:
@@ -676,6 +678,10 @@ def _mark_connection(
     """
     record.status = status
     record.status_detail = status_detail[:_MAX_STATUS_DETAIL]
+    if capability_probe_status is not None:
+        record.capability_probe_status = capability_probe_status
+    if verified_capabilities is not None:
+        record.verified_capabilities = list(verified_capabilities)
     record.updated_at = _now()
     if last_scan_at is not None:
         record.last_scan_at = last_scan_at
@@ -811,25 +817,24 @@ def _scan_audit_metadata(note: str) -> dict[str, Any]:
     return {"read_only": True, "writes_performed": False, "note": note}
 
 
-def _test_connection_broker(record: CloudConnectionRecord) -> None:
-    """Validate that the broker can materialize read-only credentials.
+def _test_connection_broker(record: CloudConnectionRecord) -> Any:
+    """Broker credentials and prove a provider-specific read capability.
 
-    This deliberately does not run inventory, CIS, or persistence. It only proves
-    that the encrypted connection secret can be decrypted and exchanged for the
-    provider credential/session the scan path will later use.
+    This deliberately does not run inventory, CIS, or persistence. Bedrock and
+    Vertex onboarding must not become active after credential construction
+    alone, so the shared CLI/API capability probe executes one bounded read.
     """
 
+    from agent_bom.cloud.capability_probe import probe_read_capability
     from agent_bom.cloud.connection_broker import broker_session
 
     brokered = broker_session(record, session_name=f"agent-bom-test-{record.id[:8]}")
-    # Providers that broker a live DB-API connection (Snowflake, database) hand
-    # back an open connection the test must close; credential-only providers
-    # (AWS/Azure/GCP) return a session object with nothing to close.
-    if (record.provider or "").strip().lower() in {"snowflake", "database", "postgres", "postgresql", "rds"}:
-        try:
-            brokered.close()
-        except Exception:  # noqa: BLE001 - close best-effort; never mask broker success
-            _logger.debug("Broker connection close failed for test connection %s", record.id)
+    return probe_read_capability(
+        (record.provider or "").strip().lower(),
+        brokered,
+        regions=list(record.regions),
+        auth_params=dict(record.auth_params),
+    )
 
 
 def _reject_showcase_connection(record: CloudConnectionRecord) -> None:
@@ -1441,10 +1446,14 @@ def execute_queued_connection_scan(job: ScanJob) -> dict[str, Any]:
         # enter the durable job error or progress fields.
         raise RuntimeError(detail) from None
 
+    from agent_bom.cloud.capability_probe import scan_verified_capabilities
+
     _mark_connection(
         record,
         status=STATUS_ACTIVE,
         status_detail="",
+        capability_probe_status="verified",
+        verified_capabilities=list(scan_verified_capabilities(record.provider)),
         last_scan_at=_now(),
         last_scan_id=job.job_id,
     )
@@ -1545,7 +1554,12 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
         # worker thread under backpressure so a hung endpoint can never stall
         # the event loop (a burst sheds with a 429 instead).
         async with adaptive_backpressure("cloud_connection_test"):
-            await anyio.to_thread.run_sync(_test_connection_broker, record)
+            with anyio.fail_after(15):
+                probe_result = await anyio.to_thread.run_sync(
+                    _test_connection_broker,
+                    record,
+                    abandon_on_cancel=True,
+                )
     except BackpressureRejectedError as exc:
         # A shed request never reached the broker — do not flip the connection
         # to error, just ask the caller to retry.
@@ -1554,9 +1568,27 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
             detail=exc.to_dict(),
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
-    except Exception as exc:  # noqa: BLE001 - broker failure
-        detail = _safe_connection_detail(exc)
-        _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
+    except Exception as exc:  # noqa: BLE001 - broker/provider failure
+        from agent_bom.cloud.capability_probe import (
+            CapabilityProbeError,
+            classify_probe_failure,
+            probe_failure_detail,
+        )
+
+        classified = classify_probe_failure(exc)
+        if isinstance(exc, (CapabilityProbeError, TimeoutError)) or classified != "unavailable":
+            probe_status = classified
+            detail = probe_failure_detail(probe_status)
+        else:
+            probe_status = "unavailable"
+            detail = _safe_connection_detail(exc)
+        _mark_connection(
+            record,
+            status=STATUS_ERROR,
+            status_detail=detail,
+            capability_probe_status=probe_status,
+            verified_capabilities=[],
+        )
         _logger.error("Cloud connection test failed for connection %s", record.id)
         log_action(
             "cloud_connection.test",
@@ -1570,7 +1602,14 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
         # caller, not a "see server logs" dead end.
         raise HTTPException(status_code=502, detail=detail) from exc
 
-    _mark_connection(record, status=STATUS_ACTIVE, status_detail="")
+    capabilities = list(probe_result.capabilities)
+    _mark_connection(
+        record,
+        status=STATUS_ACTIVE,
+        status_detail="",
+        capability_probe_status="verified",
+        verified_capabilities=capabilities,
+    )
     log_action(
         "cloud_connection.test",
         actor=actor,
@@ -1585,6 +1624,9 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
         "tenant_id": tenant_id,
         "provider": record.provider,
         "status": "ok",
+        "credential_present": bool(record.external_id_encrypted and record.role_ref),
+        "capability_probe_status": "verified",
+        "verified_capabilities": capabilities,
         "audit_metadata": _scan_audit_metadata(
             "Connection test brokered a read-only credential only; no inventory, CIS, findings, or resource writes ran."
         ),

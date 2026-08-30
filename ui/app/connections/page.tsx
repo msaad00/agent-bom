@@ -1058,7 +1058,7 @@ function ConnectionsHub() {
     try {
       const result = await api.testCloudConnection(connection.id);
       setTestResults((prev) => ({ ...prev, [connection.id]: result }));
-      setMessage(`${connection.display_name} read-only credential verified.`);
+      setMessage(`${connection.display_name} read-only provider capability verified.`);
       await refresh();
     } catch (err) {
       const detail = err instanceof Error ? err.message : "Connection test failed.";
@@ -1694,11 +1694,11 @@ function ConnectSegment({
   onConnect: () => void;
 }) {
   const verifiedConnectionsCount = connections.filter(
-    (connection) => connection.status === "active",
+    (connection) => connection.capability_probe_status === "verified",
   ).length;
   const scannedConnectionsCount = connections.filter(
     (connection) =>
-      connection.status === "active" && Boolean(connection.last_scan_at || connection.last_scan_id),
+      connection.capability_probe_status === "verified" && Boolean(connection.last_scan_at || connection.last_scan_id),
   ).length;
 
   return (
@@ -3022,7 +3022,7 @@ function ConnectionDetailDrawer({
           </button>
           <button
             onClick={() => onScan(connection)}
-            disabled={isBusy || !canManage || !scannable || connection.status !== "active"}
+            disabled={isBusy || !canManage || !scannable || connection.capability_probe_status !== "verified"}
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ShieldCheck className="h-3.5 w-3.5" /> {isBusy ? "Working…" : "Run scan"}
@@ -3041,7 +3041,8 @@ function ConnectionDetailDrawer({
         {result ? <ScanResultPanel result={result} /> : null}
         {!result && testResult ? (
           <div className="rounded-xl border border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/20 p-3 text-xs text-emerald-700 dark:text-emerald-200">
-            Read-only credential verified. No inventory, CIS, findings, or resource writes ran.
+            Provider read capability verified: {testResult.verified_capabilities.join(", ")}. No inventory, CIS,
+            findings, or resource writes ran.
           </div>
         ) : null}
         {!result && handoffScanId ? <ScanHandoffLinks scanId={handoffScanId} /> : null}

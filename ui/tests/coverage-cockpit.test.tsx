@@ -18,6 +18,7 @@ describe("CoverageCockpit", () => {
           display_name: "Prod AWS",
           role_ref: "arn:aws:iam::123:role/read",
           has_external_id: true,
+          credential_present: true,
           regions: ["us-east-1"],
           status: "active",
           status_detail: "",
@@ -27,6 +28,8 @@ describe("CoverageCockpit", () => {
           last_event_at: null,
           last_scan_id: "scan-1",
           scan_interval_minutes: 1440,
+          capability_probe_status: "verified",
+          verified_capabilities: ["bedrock:list-agents"],
         },
       ],
     });

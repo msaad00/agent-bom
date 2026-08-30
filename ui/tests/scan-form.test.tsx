@@ -74,6 +74,7 @@ const mockConnection = {
   display_name: "Prod AWS",
   role_ref: "arn:aws:iam::123456789012:role/AgentBomReadOnly",
   has_external_id: true,
+  credential_present: true,
   regions: ["us-east-1"],
   status: "active",
   status_detail: "",
@@ -84,6 +85,8 @@ const mockConnection = {
   last_scan_id: null,
   scan_interval_minutes: null,
   auth_params: {},
+  capability_probe_status: "verified",
+  verified_capabilities: ["bedrock:list-agents"],
 };
 
 const mockSource = {

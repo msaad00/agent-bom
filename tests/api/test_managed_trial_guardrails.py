@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -303,7 +304,11 @@ def test_connection_test_and_scan_revalidate_stale_trial_records_before_executio
     record = _stored_connection(**updates)
     broker_calls: list[str] = []
     scan_calls: list[str] = []
-    monkeypatch.setattr(cloud_connections, "_test_connection_broker", lambda _record: broker_calls.append("test"))
+    monkeypatch.setattr(
+        cloud_connections,
+        "_test_connection_broker",
+        lambda _record: broker_calls.append("test") or SimpleNamespace(capabilities=("bedrock:list-agents",)),
+    )
     monkeypatch.setattr(
         cloud_connections,
         "_run_connection_scan",

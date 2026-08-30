@@ -1002,20 +1002,28 @@ def test_sqlite_scan_mode_and_auto_scan_columns_migrate_and_round_trip(tmp_path:
     assert legacy is not None
     assert legacy.scan_mode == "full"
     assert legacy.auto_scan_on_create is True
+    assert legacy.capability_probe_status == "not_run"
+    assert legacy.verified_capabilities == []
 
     columns = {row[1] for row in sqlite3.connect(db_path).execute("PRAGMA table_info(cloud_connections)").fetchall()}
     assert "scan_mode" in columns
     assert "auto_scan_on_create" in columns
+    assert "capability_probe_status" in columns
+    assert "verified_capabilities" in columns
 
     updated = _record("tenant-a")
     updated.id = "legacy-sm"
     updated.scan_mode = "continuous"
     updated.auto_scan_on_create = False
+    updated.capability_probe_status = "verified"
+    updated.verified_capabilities = ["bedrock:list-agents"]
     store.put(updated)
     fetched = store.get("tenant-a", "legacy-sm")
     assert fetched is not None
     assert fetched.scan_mode == "continuous"
     assert fetched.auto_scan_on_create is False
+    assert fetched.capability_probe_status == "verified"
+    assert fetched.verified_capabilities == ["bedrock:list-agents"]
 
 
 # --------------------------------------------------------------------------- #
@@ -1684,7 +1692,7 @@ def test_scan_missing_connection_404(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_connection_test_brokers_without_scan_persistence(monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_bom.api.store import InMemoryJobStore
     from agent_bom.api.stores import _get_store, set_job_store
-    from agent_bom.cloud import connection_broker
+    from agent_bom.cloud import capability_probe, connection_broker
 
     calls: dict[str, Any] = {}
     set_job_store(InMemoryJobStore())
@@ -1695,6 +1703,11 @@ def test_connection_test_brokers_without_scan_persistence(monkeypatch: pytest.Mo
         return _BROKER_SESSION_SENTINEL
 
     monkeypatch.setattr(connection_broker, "broker_session", _fake_broker)
+    monkeypatch.setattr(
+        capability_probe,
+        "probe_read_capability",
+        lambda *args, **kwargs: capability_probe.CapabilityProbeResult(("bedrock:list-agents",)),
+    )
     client = TestClient(_app())
     cid = _seed_connection("tenant-alpha")
 

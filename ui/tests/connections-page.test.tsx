@@ -1069,12 +1069,20 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
       tenant_id: "tenant-acme",
       provider: "aws",
       status: "ok",
+      credential_present: true,
+      capability_probe_status: "verified",
+      verified_capabilities: ["bedrock:list-agents"],
       audit_metadata: {
         read_only: true,
         writes_performed: false,
         note: "Connection test brokered a read-only credential only.",
       },
-      connection: { ...CREATED_RECORD, status: "active" },
+      connection: {
+        ...CREATED_RECORD,
+        status: "active",
+        capability_probe_status: "verified",
+        verified_capabilities: ["bedrock:list-agents"],
+      },
     });
 
     render(<ConnectionsPage />);
@@ -1084,7 +1092,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     await waitFor(() => expect(apiMock.testCloudConnection).toHaveBeenCalledWith("conn-1"));
     expect(apiMock.scanCloudConnection).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(screen.getByText("Production account read-only credential verified.")).toBeInTheDocument(),
+      expect(screen.getByText("Production account read-only provider capability verified.")).toBeInTheDocument(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Production account" }));

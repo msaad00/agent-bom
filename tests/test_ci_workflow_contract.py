@@ -190,10 +190,14 @@ def test_pull_request_correctness_is_sharded_behind_required_aggregator() -> Non
     assert "scripts/pytest_ci_plan.py shard" in shard_run
     assert "not graph_performance" in shard_run
 
+    core = jobs["test-core"]
+    assert "test-pr-shard" in core["needs"]
+    assert "graph-performance" in core["needs"]
+
     required = jobs["test"]
     assert required["name"] == "Test (Python 3.13)"
-    assert "test-pr-shard" in required["needs"]
-    assert "graph-performance" in required["needs"]
+    assert "test-core" in required["needs"]
+    assert "docker" in required["needs"]
 
 
 def test_python_smoke_gate_combines_changed_domain_and_cross_surface_contracts() -> None:
@@ -249,11 +253,11 @@ def test_output_scale_budgets_run_in_a_dedicated_uninstrumented_lane() -> None:
     main_run = next(step["run"] for step in jobs["test-main"]["steps"] if step.get("name") == "Run full correctness suite")
     assert "not slow" in main_run
 
-    required = jobs["test"]
-    assert "output-scale-performance" in required["needs"]
-    required_run = next(step["run"] for step in required["steps"] if step.get("name") == "Require every applicable correctness lane")
-    assert "OUTPUT_SCALE_RESULT" in required_run
-    assert '"$OUTPUT_SCALE_RESULT"' in required_run
+    core = jobs["test-core"]
+    assert "output-scale-performance" in core["needs"]
+    core_run = next(step["run"] for step in core["steps"] if step.get("name") == "Require every applicable correctness lane")
+    assert "OUTPUT_SCALE_RESULT" in core_run
+    assert '"$OUTPUT_SCALE_RESULT"' in core_run
 
     scale_test = (ROOT / "tests" / "test_release_output_scale_contract.py").read_text(encoding="utf-8")
     assert "pytest.mark.slow" in scale_test

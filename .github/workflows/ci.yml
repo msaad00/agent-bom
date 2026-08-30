@@ -906,9 +906,10 @@ jobs:
 
   # 3. Python correctness
   # Fast changed-domain/product-boundary feedback starts package proof while
-  # the exhaustive PR shards continue in parallel. The small aggregator below
-  # preserves the branch-protection context `Test (Python 3.13)` and requires
-  # every applicable shard plus measured graph evidence.
+  # the exhaustive PR shards continue in parallel. The core aggregator below
+  # requires every applicable shard plus measured graph evidence. The existing
+  # branch-protection context `Test (Python 3.13)` is finalized after the
+  # conditional release-image gate so Docker input PRs cannot merge early.
   test-smoke:
     name: Python changed-domain and contract smoke
     runs-on: ubuntu-latest
@@ -1151,8 +1152,8 @@ jobs:
           uv run pytest tests/test_release_output_scale_contract.py -q
           --tb=short --durations=10 -m output_performance -p no:randomly
 
-  test:
-    name: Test (Python 3.13)
+  test-core:
+    name: Python correctness aggregation
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -1744,7 +1745,7 @@ jobs:
       !cancelled() &&
       needs.security.result == 'success' &&
       needs.lint.result == 'success' &&
-      needs.test.result == 'success' && (
+      needs.test-core.result == 'success' && (
         (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         (github.event_name == 'pull_request' &&
          needs.changes.result == 'success' &&
@@ -1754,7 +1755,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-    needs: [changes, security, lint, test]
+    needs: [changes, security, lint, test-core]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1839,6 +1840,45 @@ jobs:
           except Exception as e:
               print(f'OS scan parse error (non-blocking): {e}')
           " || true
+
+  # Preserve the existing required branch-protection context while making the
+  # conditional release-shaped Docker build part of that context. A new job
+  # name alone is not automatically required by branch protection.
+  test:
+    name: Test (Python 3.13)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    needs: [changes, test-core, docker]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Require correctness and applicable release-image proof
+        env:
+          CORE_RESULT: ${{ needs.test-core.result }}
+          DOCKER_RESULT: ${{ needs.docker.result }}
+          DOCKER_REQUIRED: >-
+            ${{
+              (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+              (github.event_name == 'pull_request' &&
+               needs.changes.result == 'success' &&
+               needs.changes.outputs.alpine_full == 'true')
+            }}
+        run: |
+          set -euo pipefail
+          if [ "$CORE_RESULT" != "success" ]; then
+            echo "Core correctness aggregation ended with: $CORE_RESULT" >&2
+            exit 1
+          fi
+          if [ "$DOCKER_REQUIRED" = "true" ] && [ "$DOCKER_RESULT" != "success" ]; then
+            echo "Required release-image proof ended with: $DOCKER_RESULT" >&2
+            exit 1
+          fi
+          case "$DOCKER_RESULT" in
+            success|skipped) ;;
+            *) echo "Release-image lane ended with: $DOCKER_RESULT" >&2; exit 1 ;;
+          esac
+          echo "Correctness and applicable release-image proof passed."
 
   # 6. Dogfood GitHub Action (test action.yml via uses: ./)
   action-dogfood:

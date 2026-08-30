@@ -1,11 +1,11 @@
 {
   "schema": "agent-bom.graph-correlation-benchmark/v1",
-  "captured_at": "2026-08-30T19:09:00Z",
-  "source_commit": "eac1779f94de4c564338daa1dc64663e44efb65f",
+  "captured_at": "2026-08-30T21:18:11Z",
+  "source_commit": "11a7411a9f0dcf83d694924205ea30feceb360f2",
   "scope": "Local SQLite end-to-end correlation benchmark; not a Postgres, concurrent API, or deployment SLO claim.",
   "methodology": {
     "inputs": "Two immutable package snapshots with 20 percent exact-PURL overlap and directed depends_on chains.",
-    "timed_path": "Admission validation, source loading, deterministic merge, attack-path fusion, manifest generation, and atomic SQLite output persistence.",
+    "timed_path": "Admission validation, source loading, deterministic merge, attack-path fusion, graph-digest and manifest generation, and atomic SQLite output persistence.",
     "excluded_from_wall_time": "Synthetic input generation and persistence.",
     "memory": "Process RSS sampled every 5 ms; delta is measured from the persisted-input baseline.",
     "query_plan_note": "SQLite selected full table scans because each source snapshot occupies roughly half of its table; this is recorded, not generalized to Postgres."
@@ -21,18 +21,19 @@
       "input_nodes": 6000,
       "input_edges": 5998,
       "setup_seconds": 0.218,
-      "correlation_wall_seconds": 0.571,
-      "baseline_rss_mb": 82.016,
-      "peak_rss_mb": 137.844,
-      "rss_delta_mb": 55.828,
-      "db_bytes": 19853312,
+      "correlation_wall_seconds": 0.776,
+      "baseline_rss_mb": 104.781,
+      "peak_rss_mb": 181.359,
+      "rss_delta_mb": 76.578,
+      "db_bytes": 20807680,
       "status": "complete",
-      "manifest_sha256": "sha256:a1ded6c8de1ad600edbc28cbaee23e9d32d3ad54217ad718fffda60f92ed6eef",
+      "manifest_sha256": "sha256:3890b79eb84b213ef131ab61a92b327a4676a1df46959bed70585ea127eb6a2f",
       "output": {
         "scan_id": "correlation-5000",
         "node_count": 5000,
         "edge_count": 4999,
-        "attack_path_count": 0
+        "attack_path_count": 0,
+        "graph_digest_sha256": "sha256:43dc99a849d668007d1188f1f91b7ab5ba4aa337c599da3901474c51d28d4b76"
       },
       "query_plans": {
         "snapshot_receipts": ["SCAN graph_snapshots"],
@@ -44,19 +45,20 @@
       "output_node_envelope": 25000,
       "input_nodes": 30000,
       "input_edges": 29998,
-      "setup_seconds": 1.113,
-      "correlation_wall_seconds": 3.102,
-      "baseline_rss_mb": 84.719,
-      "peak_rss_mb": 304.031,
-      "rss_delta_mb": 219.312,
-      "db_bytes": 101122048,
+      "setup_seconds": 1.131,
+      "correlation_wall_seconds": 4.1,
+      "baseline_rss_mb": 90.5,
+      "peak_rss_mb": 434.203,
+      "rss_delta_mb": 343.703,
+      "db_bytes": 105730048,
       "status": "complete",
-      "manifest_sha256": "sha256:6809b556c00de3a03c2e3d807cb0bbba519d10e6d4edeb921a52070eb0d887f9",
+      "manifest_sha256": "sha256:2354e41c5957dadf43d25d2762317009f097c2f8070e9965e810fb23e9ee278f",
       "output": {
         "scan_id": "correlation-25000",
         "node_count": 25000,
         "edge_count": 24999,
-        "attack_path_count": 0
+        "attack_path_count": 0,
+        "graph_digest_sha256": "sha256:bf5add87753697e190219d9607d46551ddf4b25c94e1a1dbc5a71059da98ebc0"
       },
       "query_plans": {
         "snapshot_receipts": ["SCAN graph_snapshots"],
@@ -68,19 +70,20 @@
       "output_node_envelope": 80000,
       "input_nodes": 96000,
       "input_edges": 95998,
-      "setup_seconds": 3.56,
-      "correlation_wall_seconds": 10.609,
-      "baseline_rss_mb": 85.969,
-      "peak_rss_mb": 860.219,
-      "rss_delta_mb": 774.25,
-      "db_bytes": 326160384,
+      "setup_seconds": 3.876,
+      "correlation_wall_seconds": 13.944,
+      "baseline_rss_mb": 112.953,
+      "peak_rss_mb": 871.547,
+      "rss_delta_mb": 758.594,
+      "db_bytes": 340246528,
       "status": "complete",
-      "manifest_sha256": "sha256:ae41146389d73c57e827ae44e3f4a94fe77da878dc9577caf0ebcb99aa92743c",
+      "manifest_sha256": "sha256:a51170f9e155aa49f08f79cddc7e43785a07e110a3651988354411085b84e5cf",
       "output": {
         "scan_id": "correlation-80000",
         "node_count": 80000,
         "edge_count": 79999,
-        "attack_path_count": 0
+        "attack_path_count": 0,
+        "graph_digest_sha256": "sha256:a346ec15c357f576070d44e4b7974bd4a13dc7a7e5c779cdde6e35802b309783"
       },
       "query_plans": {
         "snapshot_receipts": ["SCAN graph_snapshots"],
@@ -91,7 +94,7 @@
   ],
   "limitations": [
     "The synthetic envelope contains no vulnerabilities, so attack_path_count is intentionally zero.",
-    "The 80k-node run completed but consumed 774.25 MB above the persisted-input baseline; no low-memory claim is made.",
+    "The 80k-node run completed but consumed 758.594 MB above the persisted-input baseline; no low-memory claim is made.",
     "Postgres parity, concurrent submissions, API latency percentiles, and deployment autoscaling remain outside this local measurement."
   ]
 }

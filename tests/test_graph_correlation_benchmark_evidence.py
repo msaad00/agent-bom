@@ -11,7 +11,7 @@ def test_graph_correlation_benchmark_records_required_envelopes_and_limits() -> 
     payload = json.loads(EVIDENCE.read_text(encoding="utf-8"))
 
     assert payload["schema"] == "agent-bom.graph-correlation-benchmark/v1"
-    assert payload["source_commit"] == "eac1779f94de4c564338daa1dc64663e44efb65f"
+    assert payload["source_commit"] == "11a7411a9f0dcf83d694924205ea30feceb360f2"
     assert "not a Postgres" in payload["scope"]
     assert "no low-memory claim" in " ".join(payload["limitations"])
 
@@ -22,4 +22,5 @@ def test_graph_correlation_benchmark_records_required_envelopes_and_limits() -> 
     assert all(item["correlation_wall_seconds"] > 0 for item in results)
     assert all(item["peak_rss_mb"] >= item["baseline_rss_mb"] for item in results)
     assert all(item["manifest_sha256"].startswith("sha256:") for item in results)
+    assert all(item["output"]["graph_digest_sha256"].startswith("sha256:") for item in results)
     assert all(set(item["query_plans"]) == {"snapshot_receipts", "snapshot_nodes", "snapshot_edges"} for item in results)

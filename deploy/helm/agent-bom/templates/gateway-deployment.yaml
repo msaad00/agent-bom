@@ -96,6 +96,24 @@ spec:
             {{- if .Values.gateway.requireSharedRateLimit }}
             - --require-shared-rate-limit
             {{- end }}
+            {{- with .Values.gateway.graphReachability }}
+            - --graph-reachability-enforcement
+            - {{ .enforcement | default "off" | quote }}
+            {{- if .bundleUrl }}
+            - --graph-reachability-bundle-url
+            - {{ .bundleUrl | quote }}
+            - --graph-reachability-bundle-tenant
+            - {{ .tenant | default "default" | quote }}
+            - --graph-reachability-bundle-poll-seconds
+            - {{ .pollSeconds | default 30 | quote }}
+            - --graph-reachability-failure-mode
+            - {{ .failureMode | default "allow" | quote }}
+            {{- if .signingKeyFile }}
+            - --graph-reachability-bundle-signing-key-file
+            - {{ .signingKeyFile | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if ne $profileEnforcement "off" }}
             - --profile-enforcement
             - {{ .Values.gateway.profileEnforcement | quote }}

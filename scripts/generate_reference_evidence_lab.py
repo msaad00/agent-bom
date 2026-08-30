@@ -24,7 +24,9 @@ from agent_bom.scanners.package_scan import default_scan_options, scan_packages 
 
 LAB = ROOT / "examples" / "reference-evidence-lab"
 OUTPUT = LAB / "generated" / "correlation-proof.json"
+OUTPUT_DIGEST = LAB / "generated" / "correlation-proof.sha256"
 PINNED_PACKAGE_INPUT = LAB / "pinned-package.txt"
+RUNTIME_EVENTS = LAB / "runtime-events.jsonl"
 TENANT = "reference-lab"
 CORRELATION_ID = "reference-evidence-correlation-v1"
 CREATED = datetime(2026, 8, 30, 4, 0, tzinfo=timezone.utc)
@@ -143,6 +145,28 @@ async def _scanner_evidence() -> dict[str, Any]:
     }
 
 
+def _runtime_control() -> dict[str, Any]:
+    events = [json.loads(line) for line in RUNTIME_EVENTS.read_text(encoding="utf-8").splitlines() if line.strip()]
+    observed = next((event for event in events if event.get("observed") is True and event.get("decision") == "allow"), None)
+    blocked = next((event for event in events if event.get("decision") == "block"), None)
+    if observed is None or blocked is None:
+        raise RuntimeError("reference lab runtime evidence must contain an observed event and a strict block")
+    if observed.get("tool_id") != blocked.get("tool_id") or observed.get("runtime_id") != blocked.get("runtime_id"):
+        raise RuntimeError("reference lab runtime observation and block must bind the same canonical tool and runtime")
+    return {
+        "evidence_input": str(RUNTIME_EVENTS.relative_to(ROOT)),
+        "evidence_sha256": f"sha256:{hashlib.sha256(RUNTIME_EVENTS.read_bytes()).hexdigest()}",
+        "observed_event": observed["event_id"],
+        "strict_block": "verified",
+        "blocked_event": blocked["event_id"],
+        "policy_id": blocked.get("policy_id", ""),
+        "runtime_id": blocked["runtime_id"],
+        "tool_id": blocked["tool_id"],
+        "failure_mode": "deny",
+        "global_default": "off",
+    }
+
+
 def _snapshots() -> list[UnifiedGraph]:
     repo = _graph("reference-repository-scan", 0)
     repo.add_node(
@@ -185,7 +209,7 @@ def _snapshots() -> list[UnifiedGraph]:
         _node(
             "container:sbom:reference-api",
             EntityType.CONTAINER,
-            f"reference-evidence-api@{IMAGE_DIGEST[:19]}…",
+            f"reference-evidence-api@{IMAGE_DIGEST}",
             source="cyclonedx_sbom",
             attributes={"image_digest": IMAGE_DIGEST, "sbom": "sbom.cdx.json"},
             index=1,
@@ -269,7 +293,7 @@ def _snapshots() -> list[UnifiedGraph]:
         _node(
             "container:iac:reference-api",
             EntityType.CONTAINER,
-            f"reference-evidence-api@{IMAGE_DIGEST[:19]}…",
+            f"reference-evidence-api@{IMAGE_DIGEST}",
             source="kubernetes_iac",
             attributes={"image_digest": IMAGE_DIGEST, "modeled": True},
             index=2,
@@ -428,6 +452,7 @@ def _snapshots() -> list[UnifiedGraph]:
 
 async def _build_payload() -> dict[str, Any]:
     scanner_evidence = await _scanner_evidence()
+    runtime_control = _runtime_control()
     with tempfile.TemporaryDirectory(prefix="agent-bom-reference-evidence-") as temp_dir:
         store = SQLiteGraphStore(Path(temp_dir) / "graph.db")
         graphs = _snapshots()
@@ -502,15 +527,23 @@ async def _build_payload() -> dict[str, Any]:
                     "source_snapshots": ["reference-runtime-observation", "reference-identity-permission-scan"],
                 },
             ],
-            "runtime_control": {
-                "observed_event": "reference-observed-1",
-                "strict_block": "verified",
-                "blocked_event": "reference-blocked-1",
-                "failure_mode": "deny",
-                "global_default": "off",
-            },
+            "runtime_control": runtime_control,
             "correlation": completed.to_dict(),
             "proof_path": proof.to_dict(),
+            "capture_fixture": {
+                "graph": output.to_dict(),
+                "snapshots": [
+                    {
+                        "scan_id": graph.scan_id,
+                        "created_at": graph.created_at,
+                        "node_count": len(graph.nodes),
+                        "edge_count": len(graph.edges),
+                        "risk_summary": graph.stats()["severity_counts"],
+                        "snapshot_kind": "scan",
+                    }
+                    for graph in graphs
+                ],
+            },
             "output_counts": {
                 "nodes": len(output.nodes),
                 "edges": len(output.edges),
@@ -531,13 +564,20 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="Fail when the committed generated proof is stale.")
     args = parser.parse_args()
     rendered = _render(asyncio.run(_build_payload()))
+    rendered_digest = f"sha256:{hashlib.sha256(rendered.encode('utf-8')).hexdigest()}\n"
     if args.check:
-        if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != rendered:
+        if (
+            not OUTPUT.exists()
+            or OUTPUT.read_text(encoding="utf-8") != rendered
+            or not OUTPUT_DIGEST.exists()
+            or OUTPUT_DIGEST.read_text(encoding="utf-8") != rendered_digest
+        ):
             print(f"stale generated reference evidence: run {Path(__file__).relative_to(ROOT)}")
             return 1
         return 0
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(rendered, encoding="utf-8")
+    OUTPUT_DIGEST.write_text(rendered_digest, encoding="utf-8")
     print(f"wrote {OUTPUT.relative_to(ROOT)}")
     return 0
 

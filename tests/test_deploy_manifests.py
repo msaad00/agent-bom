@@ -491,6 +491,14 @@ def test_helm_gateway_service_account_defaults():
     assert gateway["detectVisualLeaks"] is False
     assert gateway["allowVisualLeakBestEffort"] is False
     assert gateway["profileEnforcement"] == "off"
+    assert gateway["graphReachability"] == {
+        "enforcement": "off",
+        "bundleUrl": "",
+        "tenant": "default",
+        "signingKeyFile": "",
+        "pollSeconds": 30,
+        "failureMode": "allow",
+    }
     assert gateway["profileEnvironment"] == ""
     assert gateway["profileIssuer"] == "agent-bom"
     assert gateway["stateDir"] == "/tmp/agent-bom"
@@ -528,6 +536,9 @@ def test_helm_gateway_template_wires_control_plane_and_runtime_flags():
     assert "--allow-visual-leak-best-effort" in template
     assert "--profile-enforcement" in template
     assert ".Values.gateway.profileEnforcement" in template
+    assert ".Values.gateway.graphReachability" in template
+    assert "--graph-reachability-bundle-url" in template
+    assert "--graph-reachability-failure-mode" in template
     assert "--profile-environment" in template
     assert ".Values.gateway.profileEnvironment" in template
     assert "--profile-issuer" in template

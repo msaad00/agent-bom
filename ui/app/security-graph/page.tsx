@@ -23,6 +23,7 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
 import { PageLaneHeader } from "@/components/page-lane";
 import type { RankedPathRow } from "@/components/ranked-path-list";
 import { AttackPathTechniqueChain } from "@/components/attack-path-technique-chain";
+import { AttackPathCorrelationProof } from "@/components/attack-path-correlation-proof";
 import { ExposurePathCommandCenter, type ExposurePathView } from "@/components/exposure-path-command-center";
 import {
   InvestigationFilterDrawer,
@@ -103,6 +104,7 @@ const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
 function AttackPathInvestigationContent() {
   const captureMode = useCaptureMode();
   const searchParams = useSearchParams();
+  const correlationCaptureMode = captureMode && searchParams.get("correlation") === "1";
   const router = useRouter();
   const pathname = usePathname();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
@@ -935,7 +937,15 @@ function AttackPathInvestigationContent() {
                 view={pathView}
                 onViewChange={setPathView}
                 techniquesSlot={
-                  selectedAttackPath ? <AttackPathTechniqueChain path={selectedAttackPath} /> : null
+                  selectedAttackPath ? (
+                    <>
+                      <AttackPathCorrelationProof
+                        path={selectedAttackPath}
+                        riskReasons={selectedFixFirstCard?.risk_reasons}
+                      />
+                      <AttackPathTechniqueChain path={selectedAttackPath} />
+                    </>
+                  ) : null
                 }
                 graphSlot={
                   graphData && selectedAttackPath ? (
@@ -982,7 +992,7 @@ function AttackPathInvestigationContent() {
         defaultOpen={false}
       >
         <div className="space-y-4">
-          {!captureMode && snapshots.length > 0 ? (
+          {(!captureMode || correlationCaptureMode) && snapshots.length > 0 ? (
             <GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={selectSnapshot} />
           ) : null}
           <div className="flex flex-wrap items-start justify-between gap-3">

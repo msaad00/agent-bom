@@ -34,9 +34,13 @@ better-sqlite3@9.0.0  (npm package)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Package risk is only the start. agent-bom maps the reachable path from a vulnerable package instance to MCP servers, agents, credential names, tools, and runtime context.
+Package risk is only the start. The committed **Reference evidence lab —
+modeled local infrastructure** correlates real parser and bundled-advisory
+output for `pillow@9.0.0` / `CVE-2023-4863` with exact image, Kubernetes, MCP,
+identity, and runtime receipts. It is local modeled proof, not customer or
+live-cloud evidence.
 
-![Path-first investigation with a ranked finding, attack path, evidence, owner, remediation, and verification workflow](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png)
+![Reference evidence lab confirmed path for CVE-2023-4863 with exact canonical joins, per-hop provenance and freshness, runtime proof, and remediation handoff](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/correlation-path-live.png)
 
 Start with the highest-ranked path, confirm why it is reachable, assign an
 owner and SLA, remediate, then verify against the next scan.

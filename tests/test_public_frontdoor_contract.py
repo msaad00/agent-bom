@@ -93,14 +93,23 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
 
     journey = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
     stages = ["read-only connection", "collect", "inventory", "findings", "graph", "owner", "re-scan", "verify"]
-    images = ["workflow-dark.svg", "jobs-pipeline-live.png", "security-graph-live.png"]
+    images = ["workflow-dark.svg", "correlation-receipts-live.png", "correlation-path-live.png"]
     normalized = " ".join(journey.lower().split())
     assert all(stage in normalized for stage in stages)
     assert all(image in journey for image in images)
     assert [journey.index(image) for image in images] == sorted(journey.index(image) for image in images)
     assert 'width="920"' in journey
     assert "[Open the full product gallery](docs/GALLERY.md)" in journey
-    for removed_thumbnail in ("inventory-live.png", "lineage-graph-live.png", "remediation-live.png"):
+    assert "reference evidence lab — modeled local infrastructure" in normalized
+    assert "CVE-2023-4863" in journey
+    assert "DEMO-VULN" not in journey
+    for removed_thumbnail in (
+        "jobs-pipeline-live.png",
+        "security-graph-live.png",
+        "inventory-live.png",
+        "lineage-graph-live.png",
+        "remediation-live.png",
+    ):
         assert removed_thumbnail not in journey
 
 
@@ -145,6 +154,8 @@ def test_gallery_retains_full_size_product_screens() -> None:
     for image in (
         "dashboard-live.png",
         "dependency-map-live.png",
+        "correlation-receipts-live.png",
+        "correlation-path-live.png",
         "security-graph-live.png",
         "remediation-live.png",
         "lineage-graph-live.png",
@@ -198,7 +209,7 @@ def test_docs_home_leads_with_product_value_and_attack_path_proof() -> None:
     home = (ROOT / "site-docs" / "index.md").read_text(encoding="utf-8")
 
     assert home.index("**Open security scanner") < home.index('!!! info "Canonical docs tree"')
-    assert home.index("security-graph-live.png") < home.index('!!! info "Canonical docs tree"')
+    assert home.index("correlation-path-live.png") < home.index('!!! info "Canonical docs tree"')
 
 
 def test_release_highlights_prepend_three_changelog_bullets() -> None:

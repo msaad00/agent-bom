@@ -28,8 +28,8 @@ function run(status: "pending" | "complete"): GraphCorrelationRun {
     max_age_hours: 168,
     allow_stale: false,
     input_manifest: [
-      { scan_id: "image", freshness: "fresh", node_count: 8, edge_count: 7 },
-      { scan_id: "repo", freshness: "fresh", node_count: 4, edge_count: 3 },
+      { scan_id: "image", freshness: "fresh", node_count: 8, edge_count: 7, source_kinds: ["cyclonedx_sbom"], digest: `sha256:${"b".repeat(64)}` },
+      { scan_id: "repo", freshness: "fresh", node_count: 4, edge_count: 3, source_kinds: ["repository_parser"], digest: `sha256:${"c".repeat(64)}` },
     ],
     result_manifest: status === "complete" ? {
       correlation_merge: { conflict_count: 1 },
@@ -75,6 +75,9 @@ describe("GraphCorrelationWorkflow", () => {
     }));
     expect(await screen.findByText("1 conflicting field set retained")).toBeInTheDocument();
     expect(screen.getByText("2 confirmed attack paths")).toBeInTheDocument();
+    expect(screen.getByLabelText("Correlation source receipt graph")).toBeInTheDocument();
+    expect(screen.getByText("Immutable correlated snapshot")).toBeInTheDocument();
+    expect(screen.getByText("cyclonedx_sbom")).toBeInTheDocument();
   });
 
   it("opens the completed correlated snapshot", async () => {

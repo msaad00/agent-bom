@@ -27,6 +27,15 @@ Current detection positioning:
   metadata, grants, tags, and lineage today, with Snowflake as the strongest
   lane. Full DSPM across cloud object stores and databases still requires
   classifier-backed content inspection and access-to-data mapping.
+- Snapshot correlation proves joins only across exact canonical identifiers and
+  retained same-tenant inputs. It does not infer identity from labels, mutable
+  image tags, or similar names. Modeled infrastructure remains labeled.
+- A confirmed path means every hop is directed, traversable, and
+  provenance-backed within recorded analysis bounds. It is not proof that an
+  attacker executed the chain.
+- Graph-derived gateway enforcement is opt-in and globally off by default.
+  `failure_mode=allow` preserves legacy missing-evidence behavior;
+  `failure_mode=deny` is an explicit strict deployment choice.
 
 ## First Proofs
 

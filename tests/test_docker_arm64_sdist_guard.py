@@ -46,5 +46,5 @@ def test_docker_input_prs_run_the_release_shaped_multiarch_gate() -> None:
     required_job = workflow.split("\n  test:\n", 1)[1].split("\n  # 6. Dogfood", 1)[0]
     assert "name: Test (Python 3.13)" in required_job
     assert "needs: [changes, test-core, docker]" in required_job
-    assert 'DOCKER_RESULT: ${{ needs.docker.result }}' in required_job
+    assert "DOCKER_RESULT: ${{ needs.docker.result }}" in required_job
     assert 'if [ "$DOCKER_REQUIRED" = "true" ] && [ "$DOCKER_RESULT" != "success" ]' in required_job

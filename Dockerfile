@@ -28,12 +28,22 @@ COPY src/ ./src/
 COPY deploy/supabase/postgres/ ./deploy/supabase/postgres/
 COPY deploy/docker/runtime-security-requirements.txt ./deploy/docker/runtime-security-requirements.txt
 
+# tree-sitter-typescript 0.23.2 has no musllinux aarch64 wheel and its PyPI
+# sdist omits the internal header needed to compile the bundled grammars.
+# Keep the exact upstream v0.23.2 header in the build context so Python 3.14
+# arm64 builds do not depend on an incomplete sdist. See the adjacent README
+# and license for provenance and the pinned source digest.
+COPY deploy/docker/vendor/tree-sitter-typescript-0.23.2/tree_sitter/parser.h \
+    /usr/local/include/tree_sitter/parser.h
+
 # Extras baked into the published control-plane image. Cloud SDKs (aws/azure/gcp)
 # ship by default so self-hosted BYOC (connect an AWS/Azure/GCP account read-only,
 # incl. IRSA/workload-identity) works out of the box (#3832). Override at build
 # time for a lean image, e.g. --build-arg AGENT_BOM_EXTRAS=api,snowflake,postgres.
 ARG AGENT_BOM_EXTRAS=api,snowflake,postgres,aws,azure,gcp
 RUN set -eu; \
+    test "$(sha256sum /usr/local/include/tree_sitter/parser.h | cut -d ' ' -f 1)" = \
+        "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a"; \
     sync_args=""; \
     for extra in $(printf '%s' "${AGENT_BOM_EXTRAS}" | tr ',' ' '); do \
         case "${extra}" in *[!a-zA-Z0-9_-]*|'') exit 2 ;; esac; \

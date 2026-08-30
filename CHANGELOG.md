@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Alpine arm64 API image builds now supply the exact missing
+  `tree-sitter-typescript` 0.23.2 parser header, and Docker input changes run
+  the release-shaped multi-architecture gate before merge.
+
 ## [0.103.0] - 2026-08-29
 
 This release expands repository and architecture evidence beyond MCP-only

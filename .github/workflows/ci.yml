@@ -1735,15 +1735,26 @@ jobs:
           path: dist/
 
   # 5. Docker Build + Scan (multi-arch)
-  # Runs on main push only — Docker builds are slow and not needed per-PR
+  # Runs on main and on PRs that change release-image inputs. The PR path is
+  # intentionally narrow because the emulated arm64 build is slow, but it must
+  # run before a Dockerfile/lockfile change can reach a tag-triggered release.
   docker:
     name: Docker (multi-arch)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      !cancelled() &&
+      needs.security.result == 'success' &&
+      needs.lint.result == 'success' &&
+      needs.test.result == 'success' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'pull_request' &&
+         needs.changes.result == 'success' &&
+         needs.changes.outputs.alpine_full == 'true')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
-    needs: [security, lint, test]
+    needs: [changes, security, lint, test]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

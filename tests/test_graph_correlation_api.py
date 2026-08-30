@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from starlette.applications import Starlette
@@ -187,6 +187,44 @@ def test_runtime_facts_returns_a_tenant_bound_verifiable_bundle(correlation_clie
     assert verified.manifest_sha256 == status["manifest_sha256"]
     assert verified.analysis_complete is True
     assert bundle["signature"]["key_id"] == "test-key"
+
+
+def test_runtime_facts_refetch_rejects_inputs_that_aged_out_after_correlation(correlation_client, monkeypatch) -> None:
+    from agent_bom.runtime import correlation_facts
+
+    client, _store = correlation_client
+    signing_key = "correlation-runtime-facts-test-key-32-bytes"
+    monkeypatch.setattr("agent_bom.config.RUNTIME_FACTS_HMAC_KEY", signing_key)
+    monkeypatch.setattr("agent_bom.config.RUNTIME_FACTS_HMAC_KEY_FILE", "")
+    created = client.post(
+        "/v1/graph/correlations",
+        headers={"Idempotency-Key": "idem-runtime-aging"},
+        json={"name": "runtime", "scan_ids": ["repo-scan", "image-scan"], "max_age_hours": 1},
+    ).json()
+
+    deadline = time.monotonic() + 2
+    status = created
+    while status["status"] not in {"complete", "failed"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+        status = client.get(f"/v1/graph/correlations/{created['correlation_id']}").json()
+    assert status["status"] == "complete"
+
+    first = client.get(f"/v1/graph/correlations/{created['correlation_id']}/runtime-facts")
+    assert first.status_code == 200, first.text
+    first_issued_at = datetime.fromisoformat(first.json()["payload"]["issued_at"])
+
+    class _AgedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            aged = first_issued_at + timedelta(hours=2)
+            return aged if tz is None else aged.astimezone(tz)
+
+    monkeypatch.setattr(correlation_facts, "datetime", _AgedClock)
+    second = client.get(f"/v1/graph/correlations/{created['correlation_id']}/runtime-facts")
+
+    assert second.status_code == 409
+    assert second.json()["detail"] == "correlation_inputs_stale"
+    assert second.json()["error"]["code"] == "CONFLICT"
 
 
 def test_runtime_facts_rejects_a_purged_completed_output(correlation_client, monkeypatch) -> None:

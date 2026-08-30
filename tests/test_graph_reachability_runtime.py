@@ -18,9 +18,10 @@ tests cover the consume direction:
 
 from __future__ import annotations
 
+import hmac
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -309,6 +310,20 @@ def _bundle_settings(
     return settings
 
 
+def _resign_runtime_bundle(bundle: dict[str, Any]) -> None:
+    signature_input = {
+        "algorithm": bundle["signature"]["algorithm"],
+        "key_id": bundle["signature"]["key_id"],
+        "payload": bundle["payload"],
+    }
+    encoded = json.dumps(signature_input, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    bundle["signature"]["value"] = hmac.digest(
+        b"runtime-facts-signing-key-32-bytes!!",
+        encoded,
+        "sha256",
+    ).hex()
+
+
 def test_signed_bundle_blocks_first_jsonrpc_tool_call():
     async def _fetch():
         return _signed_bundle()
@@ -372,6 +387,33 @@ def test_explicit_deny_blocks_when_bundle_is_unavailable():
         "policy_source": "graph_reachability_evidence",
     }
     assert any(event.get("action") == "gateway.graph_reachability_evidence_unavailable" for event in audit)
+
+
+def test_strict_gateway_fails_closed_when_signed_input_receipts_age_out() -> None:
+    issued_at = datetime.now(timezone.utc) - timedelta(minutes=61)
+    bundle = _signed_bundle(tool="rotate_keys")
+    bundle["payload"]["issued_at"] = issued_at.isoformat()
+    bundle["payload"]["expires_at"] = (issued_at + timedelta(hours=2)).isoformat()
+    bundle["payload"]["input_freshness"] = {
+        "max_age_hours": 1,
+        "allow_stale": False,
+        "snapshots": [
+            {"scan_id": "repo", "created_at": issued_at.isoformat()},
+            {"scan_id": "runtime", "created_at": issued_at.isoformat()},
+        ],
+    }
+    _resign_runtime_bundle(bundle)
+
+    async def _fetch():
+        return bundle
+
+    audit: list[dict[str, Any]] = []
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, failure_mode="deny", audit=audit))) as client:
+        response = client.post("/mcp/filesystem", json=_call(tool="read_secret"))
+
+    assert _is_blocked(response), response.text
+    unavailable = next(event for event in audit if event.get("action") == "gateway.graph_reachability_evidence_unavailable")
+    assert unavailable["reason_code"] == "correlation_inputs_stale"
 
 
 def test_explicit_deny_does_not_fall_back_to_static_facts_when_configured_bundle_is_unavailable(tmp_path: Path):

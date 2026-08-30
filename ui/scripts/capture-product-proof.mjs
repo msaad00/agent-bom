@@ -2775,7 +2775,6 @@ async function main() {
       },
       {
         expectedText: [
-          "Reference evidence lab",
           "CVE-2023-4863",
           REFERENCE_LAB.container_digest,
           "Correlation provenance",

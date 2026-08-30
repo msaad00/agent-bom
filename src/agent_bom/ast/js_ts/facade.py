@@ -858,6 +858,14 @@ def scan_js_ts_file(
             )
 
     except (ImportError, unavailable_error_type):
+        from agent_bom.coverage import record_scan_input_warning
+
+        record_scan_input_warning(
+            scanner="ast-js-ts",
+            path=rel_path,
+            reason="ast_engine_unavailable",
+            detail="Structured JS/TS analysis did not complete; regex fallback coverage is partial.",
+        )
         for call_name, pattern in _JS_FALLBACK_DANGEROUS_PATTERNS:
             if pattern.search(source):
                 dangerous_call_names.add(call_name)

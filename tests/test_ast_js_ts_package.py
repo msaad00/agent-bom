@@ -82,6 +82,9 @@ def test_legacy_engine_module_delegates_to_package():
 
 def test_scan_degrades_to_regex_when_engine_unavailable(tmp_path, monkeypatch):
     from agent_bom.ast.js_ts import JSTSAstUnavailableError, engine, scan_js_ts_file
+    from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
+
+    reset_scan_warnings()
 
     def _unavailable(source: str, *, language_hint: str = "javascript"):
         raise JSTSAstUnavailableError("forced unavailable for fallback test")
@@ -94,6 +97,16 @@ def test_scan_degrades_to_regex_when_engine_unavailable(tmp_path, monkeypatch):
 
     assert analysis is None
     assert any(finding.category == "js_ts_dangerous_call" for finding in findings)
+    assert consume_coverage_warnings() == [
+        {
+            "ecosystem": "ast-js-ts",
+            "release": "ast-js-ts:tool.js",
+            "reason": "ast_engine_unavailable",
+            "detail": "Structured JS/TS analysis did not complete; regex fallback coverage is partial.",
+            "package_count": 0,
+            "advisory_rows": 0,
+        }
+    ]
 
 
 def test_legacy_modules_warn_deprecation():

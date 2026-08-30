@@ -42,10 +42,26 @@ def _resign(bundle: dict) -> None:
     bundle["signature"]["value"] = hmac.digest(KEY, encoded, "sha256").hex()
 
 
-def _completed_run(graph: UnifiedGraph, *, freshness: str = "fresh") -> tuple[GraphCorrelationRun, dict[str, object]]:
+def _completed_run(
+    graph: UnifiedGraph,
+    *,
+    freshness: str = "fresh",
+    input_created_at: datetime | None = None,
+    max_age_hours: int = 24,
+) -> tuple[GraphCorrelationRun, dict[str, object]]:
+    observed = input_created_at or (NOW - timedelta(hours=25 if freshness == "stale_allowed" else 1))
+    inputs = [
+        {"scan_id": "repo", "created_at": observed.isoformat(), "freshness": freshness},
+        {"scan_id": "runtime", "created_at": observed.isoformat(), "freshness": freshness},
+    ]
     graph_digest = correlation_graph_digest(graph)
     result_manifest = {
         "correlation_id": graph.scan_id,
+        "freshness_policy": {
+            "max_age_hours": max_age_hours,
+            "allow_stale": freshness == "stale_allowed",
+        },
+        "input_snapshots": inputs,
         "output": {
             "scan_id": graph.scan_id,
             "node_count": len(graph.nodes),
@@ -60,12 +76,9 @@ def _completed_run(graph: UnifiedGraph, *, freshness: str = "fresh") -> tuple[Gr
         idempotency_key=f"idem-{graph.scan_id}",
         name="runtime facts",
         status=CorrelationRunStatus.COMPLETE,
-        max_age_hours=24,
+        max_age_hours=max_age_hours,
         allow_stale=freshness == "stale_allowed",
-        input_manifest=[
-            {"scan_id": "repo", "freshness": "fresh"},
-            {"scan_id": "runtime", "freshness": freshness},
-        ],
+        input_manifest=inputs,
         result_manifest=result_manifest,
         manifest_sha256=manifest_sha256,
         output_scan_id=graph.scan_id,
@@ -275,6 +288,60 @@ def test_completed_correlation_produces_bundle_from_proven_graph_edges() -> None
 
     assert verified.reachability.reaches_privileged("agent-a", "read_secret") is not None
     assert verified.analysis_complete is True
+
+
+def test_correlation_bundle_recomputes_immutable_input_age_at_each_issuance() -> None:
+    graph = _runtime_graph(scan_id="corr-aging")
+    run, metadata = _completed_run(
+        graph,
+        input_created_at=NOW - timedelta(hours=23),
+        max_age_hours=24,
+    )
+
+    fresh = create_runtime_facts_bundle_from_correlation(
+        run,
+        graph,
+        snapshot_metadata=metadata,
+        signing_key=KEY,
+        ttl_seconds=300,
+        now=NOW,
+    )
+
+    assert fresh["payload"]["evidence_freshness"] == "fresh"
+    assert fresh["payload"]["input_freshness"]["max_age_hours"] == 24
+    assert fresh["payload"]["input_freshness"]["snapshots"] == [
+        {"scan_id": "repo", "created_at": (NOW - timedelta(hours=23)).isoformat()},
+        {"scan_id": "runtime", "created_at": (NOW - timedelta(hours=23)).isoformat()},
+    ]
+
+    with pytest.raises(RuntimeFactsBundleError, match="correlation_inputs_stale"):
+        create_runtime_facts_bundle_from_correlation(
+            run,
+            graph,
+            snapshot_metadata=metadata,
+            signing_key=KEY,
+            ttl_seconds=300,
+            now=NOW + timedelta(hours=2),
+        )
+
+
+def test_correlation_bundle_rejects_future_dated_input_receipts_beyond_clock_skew() -> None:
+    graph = _runtime_graph(scan_id="corr-future-input")
+    run, metadata = _completed_run(
+        graph,
+        input_created_at=NOW + timedelta(minutes=6),
+        max_age_hours=24,
+    )
+
+    with pytest.raises(RuntimeFactsBundleError, match="invalid_input_freshness"):
+        create_runtime_facts_bundle_from_correlation(
+            run,
+            graph,
+            snapshot_metadata=metadata,
+            signing_key=KEY,
+            ttl_seconds=300,
+            now=NOW,
+        )
 
 
 @pytest.mark.parametrize(

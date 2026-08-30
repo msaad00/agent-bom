@@ -54,6 +54,21 @@ def test_pure_no_auth_viewer_gets_effective_session_and_read_only_routes(
     assert pure_no_auth_client.get("/v1/scan/drivers").status_code == 200
 
 
+def test_unset_no_auth_role_defaults_to_viewer_and_denies_scan(
+    pure_no_auth_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AGENT_BOM_NO_AUTH_ROLE")
+
+    session = pure_no_auth_client.get("/v1/auth/me")
+    response = pure_no_auth_client.post("/v1/scan", json={"dry_run": True})
+
+    assert session.status_code == 200
+    assert session.json()["role"] == "viewer"
+    assert response.status_code == 403
+    assert "anonymous access has viewer" in response.json()["detail"]
+
+
 @pytest.mark.parametrize(
     ("method", "path", "payload"),
     [
@@ -115,6 +130,19 @@ def test_pure_no_auth_analyst_uses_the_route_role_matrix(
     assert pure_no_auth_client.delete("/v1/scan/missing").status_code == 403
     # Analyst reaches scan request validation instead of being rejected by RBAC.
     assert pure_no_auth_client.post("/v1/scan", json={"unknown": True}).status_code == 422
+
+
+def test_explicit_local_analyst_role_can_submit_a_scan(
+    pure_no_auth_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "analyst")
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", lambda _job: None)
+
+    response = pure_no_auth_client.post("/v1/scan", json={"dry_run": True})
+
+    assert response.status_code == 202
+    assert response.json()["triggered_by"] == "anonymous"
 
 
 def test_pure_no_auth_admin_can_use_protected_source_mutations(

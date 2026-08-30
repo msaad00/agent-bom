@@ -29,7 +29,9 @@ RUNTIME_FACTS_CACHE_INVALIDATING_ERRORS = frozenset(
         "correlation_output_mismatch",
         "correlation_output_replaced",
         "correlation_output_unavailable",
+        "correlation_inputs_stale",
         "invalid_analysis_bounds",
+        "invalid_input_freshness",
         "invalid_signature",
         "runtime_facts_empty",
         "tenant_mismatch",
@@ -155,6 +157,57 @@ def _validated_analysis_bounds(value: Mapping[str, Any] | None) -> dict[str, Any
     return normalized
 
 
+def _validated_input_freshness(
+    value: Mapping[str, Any],
+    *,
+    at: datetime,
+) -> tuple[dict[str, Any], str, datetime]:
+    """Validate signed source receipts and derive freshness at ``at``."""
+
+    raw_max_age = value.get("max_age_hours")
+    allow_stale = value.get("allow_stale")
+    raw_snapshots = value.get("snapshots")
+    if (
+        not isinstance(raw_max_age, int)
+        or isinstance(raw_max_age, bool)
+        or not 1 <= raw_max_age <= 8760
+        or not isinstance(allow_stale, bool)
+        or not isinstance(raw_snapshots, list)
+        or not 2 <= len(raw_snapshots) <= 32
+    ):
+        raise RuntimeFactsBundleError("invalid_input_freshness")
+
+    moment = _utc(at)
+    snapshots: list[dict[str, str]] = []
+    scan_ids: set[str] = set()
+    fresh_until: datetime | None = None
+    for raw_snapshot in raw_snapshots:
+        if not isinstance(raw_snapshot, Mapping):
+            raise RuntimeFactsBundleError("invalid_input_freshness")
+        scan_id = str(raw_snapshot.get("scan_id") or "").strip()
+        try:
+            created_at = _parse_timestamp(raw_snapshot.get("created_at"))
+        except RuntimeFactsBundleError as exc:
+            raise RuntimeFactsBundleError("invalid_input_freshness") from exc
+        if not scan_id or scan_id in scan_ids or created_at - moment > timedelta(seconds=_MAX_CLOCK_SKEW_SECONDS):
+            raise RuntimeFactsBundleError("invalid_input_freshness")
+        scan_ids.add(scan_id)
+        snapshots.append({"scan_id": scan_id, "created_at": created_at.isoformat()})
+        snapshot_fresh_until = created_at + timedelta(hours=raw_max_age)
+        fresh_until = min(fresh_until, snapshot_fresh_until) if fresh_until is not None else snapshot_fresh_until
+
+    assert fresh_until is not None  # length is validated above
+    stale = moment > fresh_until
+    if stale and not allow_stale:
+        raise RuntimeFactsBundleError("correlation_inputs_stale")
+    normalized: dict[str, Any] = {
+        "max_age_hours": raw_max_age,
+        "allow_stale": allow_stale,
+        "snapshots": snapshots,
+    }
+    return normalized, "stale_allowed" if stale else "fresh", fresh_until
+
+
 def create_runtime_facts_bundle(
     *,
     correlation_id: str,
@@ -167,6 +220,7 @@ def create_runtime_facts_bundle(
     key_id: str = "",
     evidence_freshness: str = "fresh",
     analysis_bounds: Mapping[str, Any] | None = None,
+    input_freshness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create an HMAC-authenticated runtime-facts envelope."""
 
@@ -182,6 +236,20 @@ def create_runtime_facts_bundle(
         raise RuntimeFactsBundleError("invalid_evidence_freshness")
     bounds = _validated_analysis_bounds(analysis_bounds)
     issued = _utc(now or datetime.now(timezone.utc))
+    normalized_input_freshness: dict[str, Any] | None = None
+    fresh_until: datetime | None = None
+    if input_freshness is not None:
+        normalized_input_freshness, derived_freshness, fresh_until = _validated_input_freshness(
+            input_freshness,
+            at=issued,
+        )
+        if evidence_freshness != derived_freshness:
+            raise RuntimeFactsBundleError("invalid_input_freshness")
+    expires_at = issued + timedelta(seconds=ttl_seconds)
+    if fresh_until is not None and evidence_freshness == "fresh":
+        expires_at = min(expires_at, fresh_until)
+        if expires_at <= issued:
+            raise RuntimeFactsBundleError("correlation_inputs_stale")
     payload = {
         "schema_version": _SCHEMA,
         "correlation_id": correlation_id,
@@ -190,9 +258,11 @@ def create_runtime_facts_bundle(
         "evidence_freshness": evidence_freshness,
         "analysis_bounds": bounds,
         "issued_at": issued.isoformat(),
-        "expires_at": (issued + timedelta(seconds=ttl_seconds)).isoformat(),
+        "expires_at": expires_at.isoformat(),
         "facts": _facts(reachability),
     }
+    if normalized_input_freshness is not None:
+        payload["input_freshness"] = normalized_input_freshness
     signature = hmac.digest(signing_key, _signature_input(payload, key_id=key_id), "sha256").hex()
     return {
         "payload": payload,
@@ -319,8 +389,32 @@ def create_runtime_facts_bundle_from_correlation(
     reachability, analysis_bounds = _reachability_from_correlation_graph(graph)
     if not reachability:
         raise RuntimeFactsBundleError("runtime_facts_empty")
-    evidence_freshness = (
-        "stale_allowed" if any(str(item.get("freshness") or "") == "stale_allowed" for item in run.input_manifest) else "fresh"
+    freshness_policy = run.result_manifest.get("freshness_policy")
+    input_snapshots = run.result_manifest.get("input_snapshots")
+    if not isinstance(freshness_policy, Mapping) or not isinstance(input_snapshots, list):
+        raise RuntimeFactsBundleError("correlation_manifest_invalid")
+    if (
+        freshness_policy.get("max_age_hours") != run.max_age_hours
+        or freshness_policy.get("allow_stale") is not run.allow_stale
+        or input_snapshots != run.input_manifest
+    ):
+        raise RuntimeFactsBundleError("correlation_manifest_mismatch")
+    input_freshness = {
+        "max_age_hours": freshness_policy.get("max_age_hours"),
+        "allow_stale": freshness_policy.get("allow_stale"),
+        "snapshots": [
+            {
+                "scan_id": item.get("scan_id"),
+                "created_at": item.get("created_at"),
+            }
+            for item in input_snapshots
+            if isinstance(item, Mapping)
+        ],
+    }
+    issued = _utc(now or datetime.now(timezone.utc))
+    _normalized_input_freshness, evidence_freshness, _fresh_until = _validated_input_freshness(
+        input_freshness,
+        at=issued,
     )
     return create_runtime_facts_bundle(
         correlation_id=run.correlation_id,
@@ -329,10 +423,11 @@ def create_runtime_facts_bundle_from_correlation(
         reachability=reachability,
         signing_key=signing_key,
         ttl_seconds=ttl_seconds,
-        now=now,
+        now=issued,
         key_id=key_id,
         evidence_freshness=evidence_freshness,
         analysis_bounds=analysis_bounds,
+        input_freshness=input_freshness,
     )
 
 
@@ -384,6 +479,20 @@ def verify_runtime_facts_bundle(
         raise RuntimeFactsBundleError("invalid_expiry")
     if moment >= expires_at:
         raise RuntimeFactsBundleError("bundle_expired")
+    raw_input_freshness = payload.get("input_freshness")
+    if raw_input_freshness is not None:
+        if not isinstance(raw_input_freshness, Mapping):
+            raise RuntimeFactsBundleError("invalid_input_freshness")
+        _normalized_at_issue, freshness_at_issue, _fresh_until = _validated_input_freshness(
+            raw_input_freshness,
+            at=issued_at,
+        )
+        if freshness_at_issue != evidence_freshness:
+            raise RuntimeFactsBundleError("invalid_input_freshness")
+        _normalized_now, evidence_freshness, _fresh_until = _validated_input_freshness(
+            raw_input_freshness,
+            at=moment,
+        )
 
     by_agent: dict[str, AgentReachability] = {}
     raw_facts = payload.get("facts")

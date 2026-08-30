@@ -184,9 +184,7 @@ def run_cloud_discovery(
             else:
                 # Warning-bearing results that preserve some assets are successful
                 # partial collections; scan_run records the incomplete coverage.
-                ctx.cloud_provider_successes.append(
-                    {"provider": provider_name, "stage": "discovery", "item_count": len(cloud_agents)}
-                )
+                ctx.cloud_provider_successes.append({"provider": provider_name, "stage": "discovery", "item_count": len(cloud_agents)})
         except Exception as exc:  # noqa: BLE001 - isolate requested collectors so later providers still run
             if not quiet:
                 con.print(f"\n  [red]{provider_name.upper()} discovery error: {_safe_error(exc)}[/red]")

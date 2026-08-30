@@ -2049,12 +2049,8 @@ def scan(
             (record for record in ctx.cloud_provider_successes if str(record.get("provider") or "cloud") == _provider),
             None,
         )
-        _has_warning = any(
-            str(record.get("provider") or "cloud") == _provider for record in ctx.cloud_provider_warnings
-        )
-        _has_failure = any(
-            str(record.get("provider") or "cloud") == _provider for record in ctx.cloud_provider_failures
-        )
+        _has_warning = any(str(record.get("provider") or "cloud") == _provider for record in ctx.cloud_provider_warnings)
+        _has_failure = any(str(record.get("provider") or "cloud") == _provider for record in ctx.cloud_provider_failures)
         if _has_failure and _success is None:
             _scope_status = ScanScopeStatus.UNAVAILABLE
             _scope_count = None

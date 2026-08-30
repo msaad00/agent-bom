@@ -460,8 +460,7 @@ def compute_exit_code(
         if not quiet:
             providers = ", ".join(sorted({str(f.get("provider", "?")) for f in ctx.cloud_provider_failures}))
             con.print(
-                f"\n  [red]Exiting with code 1: cloud provider discovery failed for {providers} "
-                "(collector unavailable or incomplete)[/red]"
+                f"\n  [red]Exiting with code 1: cloud provider discovery failed for {providers} (collector unavailable or incomplete)[/red]"
             )
         exit_code = 1
 

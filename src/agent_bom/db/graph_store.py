@@ -42,6 +42,7 @@ from agent_bom.graph.analysis import (
     not_recorded_analysis_status,
 )
 from agent_bom.graph.container import GraphCompleteness, resolve_node_budget
+from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun, validate_correlation_update
 from agent_bom.graph.severity_floor import severity_floor_sql
 from agent_bom.security import sanitize_text
 
@@ -52,7 +53,7 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 
 DEFAULT_GRAPH_TENANT_ID = "default"
-_GRAPH_SCHEMA_VERSION = 3
+_GRAPH_SCHEMA_VERSION = 4
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
 _DEFAULT_GRAPH_RETENTION_DAYS = 180
 _FINDING_ENTITY_TYPES = {
@@ -77,6 +78,7 @@ _GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "graph_nodes": ("id", "scan_id"),
     "graph_edges": ("source_id", "target_id", "relationship", "scan_id"),
     "graph_snapshots": ("scan_id",),
+    "graph_correlation_runs": ("correlation_id",),
     "attack_paths": ("source_node", "target_node", "scan_id"),
     "interaction_risks": ("pattern", "agents", "scan_id"),
 }
@@ -204,9 +206,33 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     risk_summary    TEXT DEFAULT '{}',
     node_type_counts TEXT DEFAULT NULL,
     analysis_status TEXT DEFAULT '{}',
+    snapshot_kind   TEXT NOT NULL DEFAULT 'scan' CHECK (snapshot_kind IN ('scan', 'correlation')),
+    correlation_id  TEXT DEFAULT NULL,
+    evidence_manifest_sha256 TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (scan_id, tenant_id)
 );
 CREATE INDEX IF NOT EXISTS idx_gs_recent ON graph_snapshots(tenant_id, created_at DESC);
+
+-- ── Immutable graph correlation requests + monotonic execution state ──
+CREATE TABLE IF NOT EXISTS graph_correlation_runs (
+    correlation_id  TEXT NOT NULL,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    idempotency_key TEXT NOT NULL,
+    name            TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL CHECK (status IN ('pending', 'running', 'complete', 'failed')),
+    max_age_hours   INTEGER NOT NULL CHECK (max_age_hours BETWEEN 1 AND 8760),
+    allow_stale     INTEGER NOT NULL DEFAULT 0 CHECK (allow_stale IN (0, 1)),
+    input_manifest  TEXT NOT NULL DEFAULT '[]',
+    manifest_sha256 TEXT NOT NULL DEFAULT '',
+    output_scan_id  TEXT NOT NULL DEFAULT '',
+    failure_code    TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL,
+    started_at      TEXT NOT NULL DEFAULT '',
+    completed_at    TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (correlation_id, tenant_id),
+    UNIQUE (tenant_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_gcr_recent ON graph_correlation_runs(tenant_id, created_at DESC);
 
 -- ── Attack paths (per scan) ──
 CREATE TABLE IF NOT EXISTS attack_paths (
@@ -392,6 +418,13 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN node_type_counts TEXT DEFAULT NULL")
     if "analysis_status" not in snapshot_columns:
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN analysis_status TEXT DEFAULT '{}'")
+    if "snapshot_kind" not in snapshot_columns:
+        conn.execute("ALTER TABLE graph_snapshots ADD COLUMN snapshot_kind TEXT NOT NULL DEFAULT 'scan'")
+    if "correlation_id" not in snapshot_columns:
+        conn.execute("ALTER TABLE graph_snapshots ADD COLUMN correlation_id TEXT DEFAULT NULL")
+    if "evidence_manifest_sha256" not in snapshot_columns:
+        conn.execute("ALTER TABLE graph_snapshots ADD COLUMN evidence_manifest_sha256 TEXT NOT NULL DEFAULT ''")
+    conn.execute("INSERT OR IGNORE INTO graph_schema_version (version) VALUES (?)", (_GRAPH_SCHEMA_VERSION,))
     if backfill_legacy_tenants:
         _backfill_empty_tenant_ids(conn)
     conn.commit()
@@ -763,6 +796,9 @@ def save_graph_streaming(
     interaction_risks: Iterable[InteractionRisk] = (),
     analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
     created_at: str = "",
+    snapshot_kind: str = "scan",
+    correlation_id: str = "",
+    evidence_manifest_sha256: str = "",
 ) -> dict[str, int]:
     """Persist a graph snapshot from streamed node/edge iterables.
 
@@ -789,6 +825,10 @@ def save_graph_streaming(
     tenant = normalize_graph_tenant_id(tenant_id)
     scan = scan_id
     now = created_at or _now_iso()
+    if snapshot_kind not in {"scan", "correlation"}:
+        raise ValueError("snapshot_kind must be 'scan' or 'correlation'")
+    if snapshot_kind == "correlation" and correlation_id != scan:
+        raise ValueError("correlation snapshot ID must equal correlation_id")
     batch_size = _graph_write_batch_size()
     previous_scan = latest_snapshot_id(conn, tenant_id=tenant)
     if previous_scan == scan:
@@ -1039,8 +1079,10 @@ def save_graph_streaming(
     conn.execute(
         """
         INSERT OR REPLACE INTO graph_snapshots
-            (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary, node_type_counts, analysis_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary,
+             node_type_counts, analysis_status, snapshot_kind, correlation_id,
+             evidence_manifest_sha256)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             scan,
@@ -1051,6 +1093,9 @@ def save_graph_streaming(
             json.dumps(dict(severity_counts)),
             json.dumps(dict(type_counts)),
             json.dumps(analysis_status_map_to_dict(analysis_status or {})),
+            snapshot_kind,
+            correlation_id or None,
+            evidence_manifest_sha256,
         ),
     )
 
@@ -1632,7 +1677,8 @@ def list_snapshots(
     params.append(limit)
     rows = conn.execute(
         f"""\
-        SELECT scan_id, created_at, node_count, edge_count, risk_summary, analysis_status
+        SELECT scan_id, created_at, node_count, edge_count, risk_summary, analysis_status,
+               snapshot_kind, correlation_id, evidence_manifest_sha256
         FROM graph_snapshots
         {where}
         ORDER BY created_at DESC LIMIT ?
@@ -1647,9 +1693,159 @@ def list_snapshots(
             "edge_count": r["edge_count"],
             "risk_summary": json.loads(r["risk_summary"]),
             "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(json.loads(r["analysis_status"] or "{}"))),
+            "snapshot_kind": r["snapshot_kind"] or "scan",
+            "correlation_id": r["correlation_id"] or "",
+            "evidence_manifest_sha256": r["evidence_manifest_sha256"] or "",
         }
         for r in rows
     ]
+
+
+def _correlation_run_from_row(row: sqlite3.Row) -> GraphCorrelationRun:
+    return GraphCorrelationRun.from_mapping(
+        {
+            "correlation_id": row["correlation_id"],
+            "tenant_id": row["tenant_id"],
+            "idempotency_key": row["idempotency_key"],
+            "name": row["name"],
+            "status": row["status"],
+            "max_age_hours": row["max_age_hours"],
+            "allow_stale": bool(row["allow_stale"]),
+            "input_manifest": json.loads(row["input_manifest"] or "[]"),
+            "manifest_sha256": row["manifest_sha256"],
+            "output_scan_id": row["output_scan_id"],
+            "failure_code": row["failure_code"],
+            "created_at": row["created_at"],
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+        }
+    )
+
+
+def get_correlation_run(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    correlation_id: str,
+) -> GraphCorrelationRun | None:
+    tenant = normalize_graph_tenant_id(tenant_id)
+    row = conn.execute(
+        "SELECT * FROM graph_correlation_runs WHERE tenant_id = ? AND correlation_id = ?",
+        (tenant, correlation_id),
+    ).fetchone()
+    return _correlation_run_from_row(row) if row is not None else None
+
+
+def create_correlation_run(
+    conn: sqlite3.Connection,
+    run: GraphCorrelationRun,
+) -> tuple[GraphCorrelationRun, bool]:
+    """Create an immutable request or return its tenant-scoped idempotent replay."""
+
+    tenant = normalize_graph_tenant_id(run.tenant_id)
+    existing = conn.execute(
+        "SELECT * FROM graph_correlation_runs WHERE tenant_id = ? AND idempotency_key = ?",
+        (tenant, run.idempotency_key),
+    ).fetchone()
+    if existing is not None:
+        replay = _correlation_run_from_row(existing)
+        if replay.request_fingerprint() != run.request_fingerprint():
+            raise ValueError("idempotency key was already used for a different correlation request")
+        return replay, False
+    collision = get_correlation_run(conn, tenant_id=tenant, correlation_id=run.correlation_id)
+    if collision is not None:
+        raise ValueError("correlation_id already exists with a different idempotency key")
+    conn.execute(
+        """
+        INSERT INTO graph_correlation_runs (
+            correlation_id, tenant_id, idempotency_key, name, status,
+            max_age_hours, allow_stale, input_manifest, manifest_sha256,
+            output_scan_id, failure_code, created_at, started_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run.correlation_id,
+            tenant,
+            run.idempotency_key,
+            run.name,
+            run.status.value,
+            run.max_age_hours,
+            int(run.allow_stale),
+            json.dumps(run.input_manifest, sort_keys=True, separators=(",", ":")),
+            run.manifest_sha256,
+            run.output_scan_id,
+            run.failure_code,
+            run.created_at,
+            run.started_at,
+            run.completed_at,
+        ),
+    )
+    conn.commit()
+    created = get_correlation_run(conn, tenant_id=tenant, correlation_id=run.correlation_id)
+    if created is None:  # pragma: no cover - defensive persistence invariant
+        raise RuntimeError("correlation run was not persisted")
+    return created, True
+
+
+def list_correlation_runs(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    limit: int = 100,
+) -> list[GraphCorrelationRun]:
+    tenant = normalize_graph_tenant_id(tenant_id)
+    rows = conn.execute(
+        "SELECT * FROM graph_correlation_runs WHERE tenant_id = ? ORDER BY created_at DESC, correlation_id DESC LIMIT ?",
+        (tenant, max(1, min(int(limit), 1000))),
+    ).fetchall()
+    return [_correlation_run_from_row(row) for row in rows]
+
+
+def update_correlation_run(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    correlation_id: str,
+    status: CorrelationRunStatus,
+    manifest_sha256: str = "",
+    output_scan_id: str = "",
+    failure_code: str = "",
+    started_at: str = "",
+    completed_at: str = "",
+) -> GraphCorrelationRun:
+    existing = get_correlation_run(conn, tenant_id=tenant_id, correlation_id=correlation_id)
+    if existing is None:
+        raise KeyError("correlation run not found")
+    resolved_manifest, resolved_output, resolved_failure = validate_correlation_update(
+        existing,
+        status=status,
+        manifest_sha256=manifest_sha256,
+        output_scan_id=output_scan_id,
+        failure_code=failure_code,
+    )
+    conn.execute(
+        """
+        UPDATE graph_correlation_runs
+        SET status = ?, manifest_sha256 = ?, output_scan_id = ?, failure_code = ?,
+            started_at = ?, completed_at = ?
+        WHERE tenant_id = ? AND correlation_id = ?
+        """,
+        (
+            status.value,
+            resolved_manifest,
+            resolved_output,
+            resolved_failure,
+            started_at or existing.started_at,
+            completed_at or existing.completed_at,
+            normalize_graph_tenant_id(tenant_id),
+            correlation_id,
+        ),
+    )
+    conn.commit()
+    updated = get_correlation_run(conn, tenant_id=tenant_id, correlation_id=correlation_id)
+    if updated is None:  # pragma: no cover - defensive persistence invariant
+        raise RuntimeError("correlation run disappeared after update")
+    return updated
 
 
 def _diff_summary_counts(diff: dict[str, Any]) -> dict[str, int]:

@@ -170,7 +170,19 @@ def test_streaming_snapshot_tally_matches_nodes(monkeypatch):
 
     # graph_snapshots row: counts plus serialized analysis execution state.
     assert conn.snapshot_params is not None
-    scan, tenant, _now, node_count, edge_count, risk_summary, node_type_counts, analysis_status = conn.snapshot_params
+    (
+        scan,
+        tenant,
+        _now,
+        node_count,
+        edge_count,
+        risk_summary,
+        node_type_counts,
+        analysis_status,
+        snapshot_kind,
+        correlation_id,
+        evidence_manifest_sha256,
+    ) = conn.snapshot_params
     assert (scan, tenant, node_count, edge_count) == ("scan-2", "t1", 4, 0)
     import json
 
@@ -185,6 +197,9 @@ def test_streaming_snapshot_tally_matches_nodes(monkeypatch):
         "limits": {"max_nodes": 5000},
         "observed": {"node_count": 5001},
     }
+    assert snapshot_kind == "scan"
+    assert correlation_id is None
+    assert evidence_manifest_sha256 == ""
     # The DML-only runtime role performs one durable snapshot commit. Planner
     # maintenance runs separately under a table-owner role.
     assert conn.committed == 1
@@ -376,7 +391,7 @@ def test_snapshot_history_accepts_psycopg_jsonb_objects_and_text(monkeypatch, ri
         def execute(self, sql, params=None):
             low = " ".join(sql.strip().lower().split())
             if low.startswith("select scan_id, created_at, node_count, edge_count, risk_summary, analysis_status"):
-                return _FakeCursor([("scan-json", "2026-07-17T00:00:00Z", 3, 2, risk_summary, analysis_status)])
+                return _FakeCursor([("scan-json", "2026-07-17T00:00:00Z", 3, 2, risk_summary, analysis_status, "scan", None, "")])
             return super().execute(sql, params)
 
     store = _make_store(_SnapshotConn(), monkeypatch)

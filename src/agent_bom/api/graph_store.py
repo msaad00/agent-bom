@@ -41,6 +41,7 @@ from agent_bom.graph.completeness import (
     graph_completeness,
     impact_completeness,
 )
+from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 from agent_bom.graph.severity_floor import severity_floor_sql
 
@@ -174,7 +175,29 @@ class GraphStoreProtocol(Protocol):
         interaction_risks: Iterable[Any] = (),
         analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
         created_at: str = "",
+        snapshot_kind: str = "scan",
+        correlation_id: str = "",
+        evidence_manifest_sha256: str = "",
     ) -> dict[str, int]: ...
+
+    def create_correlation_run(self, run: GraphCorrelationRun) -> tuple[GraphCorrelationRun, bool]: ...
+
+    def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> GraphCorrelationRun | None: ...
+
+    def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list[GraphCorrelationRun]: ...
+
+    def update_correlation_run(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        status: CorrelationRunStatus,
+        manifest_sha256: str = "",
+        output_scan_id: str = "",
+        failure_code: str = "",
+        started_at: str = "",
+        completed_at: str = "",
+    ) -> GraphCorrelationRun: ...
 
     def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = "") -> "PriorSnapshotDigest": ...
 
@@ -1541,6 +1564,9 @@ class SQLiteGraphStore:
         interaction_risks: Iterable[Any] = (),
         analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
         created_at: str = "",
+        snapshot_kind: str = "scan",
+        correlation_id: str = "",
+        evidence_manifest_sha256: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables without materialising a graph.
 
@@ -1560,6 +1586,9 @@ class SQLiteGraphStore:
                 interaction_risks=interaction_risks,
                 analysis_status=analysis_status,
                 created_at=created_at,
+                snapshot_kind=snapshot_kind,
+                correlation_id=correlation_id,
+                evidence_manifest_sha256=evidence_manifest_sha256,
             )
             self._refresh_snapshot_search_index(conn, tenant_id=tenant_id, scan_id=scan_id)
             sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
@@ -1708,6 +1737,53 @@ class SQLiteGraphStore:
             return sqlite_graph_store.list_snapshots(conn, tenant_id=tenant_id, limit=limit, since=since)
         finally:
             conn.close()
+
+    def create_correlation_run(self, run: GraphCorrelationRun) -> tuple[GraphCorrelationRun, bool]:
+        with sqlite_graph_store.open_graph_db(self._db_path) as conn:
+            return sqlite_graph_store.create_correlation_run(conn, run)
+
+    def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> GraphCorrelationRun | None:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return None
+        try:
+            return sqlite_graph_store.get_correlation_run(conn, tenant_id=tenant_id, correlation_id=correlation_id)
+        finally:
+            conn.close()
+
+    def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list[GraphCorrelationRun]:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return []
+        try:
+            return sqlite_graph_store.list_correlation_runs(conn, tenant_id=tenant_id, limit=limit)
+        finally:
+            conn.close()
+
+    def update_correlation_run(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        status: CorrelationRunStatus,
+        manifest_sha256: str = "",
+        output_scan_id: str = "",
+        failure_code: str = "",
+        started_at: str = "",
+        completed_at: str = "",
+    ) -> GraphCorrelationRun:
+        with sqlite_graph_store.open_graph_db(self._db_path) as conn:
+            return sqlite_graph_store.update_correlation_run(
+                conn,
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                status=status,
+                manifest_sha256=manifest_sha256,
+                output_scan_id=output_scan_id,
+                failure_code=failure_code,
+                started_at=started_at,
+                completed_at=completed_at,
+            )
 
     def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)

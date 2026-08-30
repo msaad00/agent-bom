@@ -5,7 +5,12 @@ import json
 import pytest
 
 from agent_bom.api import stores as api_stores
-from agent_bom.api.neptune_graph import NeptuneGraphConfig, NeptuneGraphStore, NeptuneGraphStoreConfigError
+from agent_bom.api.neptune_graph import (
+    NeptuneGraphConfig,
+    NeptuneGraphStore,
+    NeptuneGraphStoreConfigError,
+    NeptuneGraphStoreUnsupportedOperationError,
+)
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 
@@ -169,3 +174,20 @@ def test_neptune_backend_selection_accepts_injected_client(monkeypatch: pytest.M
 
     assert isinstance(store, NeptuneGraphStore)
     assert store.config.endpoint == "wss://neptune.example:8182/gremlin"
+
+
+def test_neptune_correlation_persistence_is_explicitly_unsupported() -> None:
+    client = FakeGremlinClient()
+    store = NeptuneGraphStore(NeptuneGraphConfig(endpoint="wss://neptune.example:8182/gremlin"), client=client)
+
+    with pytest.raises(NeptuneGraphStoreUnsupportedOperationError, match="create_correlation_run"):
+        store.create_correlation_run(None)  # type: ignore[arg-type]
+    with pytest.raises(NeptuneGraphStoreUnsupportedOperationError, match="correlation snapshot persistence"):
+        store.save_graph_streaming(
+            scan_id="corr-1",
+            tenant_id="tenant-a",
+            nodes=(),
+            edges=(),
+            snapshot_kind="correlation",
+            correlation_id="corr-1",
+        )

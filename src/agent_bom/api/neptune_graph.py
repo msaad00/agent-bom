@@ -20,6 +20,7 @@ from agent_bom.graph.container import apply_node_budget
 from agent_bom.graph.severity_floor import node_passes_severity_floor
 
 if TYPE_CHECKING:
+    from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 
@@ -262,6 +263,9 @@ class NeptuneGraphStore:
         interaction_risks: Iterable[Any] = (),
         analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
         created_at: str = "",
+        snapshot_kind: str = "scan",
+        correlation_id: str = "",
+        evidence_manifest_sha256: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables.
 
@@ -271,6 +275,8 @@ class NeptuneGraphStore:
         NOT yet realise the #4055 peak-RSS bound the SQLite/Postgres streaming
         paths do — see the PR notes. Neptune is not the millions-of-nodes target.
         """
+        if snapshot_kind != "scan" or correlation_id or evidence_manifest_sha256:
+            self._unsupported("correlation snapshot persistence")
         graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id, created_at=created_at)
         for node in nodes:
             graph.add_node(node)
@@ -319,6 +325,29 @@ class NeptuneGraphStore:
             bindings,
         )
         return [self._snapshot_from_record(row) for row in rows]
+
+    def create_correlation_run(self, run: "GraphCorrelationRun") -> tuple["GraphCorrelationRun", bool]:
+        self._unsupported("create_correlation_run")
+
+    def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> "GraphCorrelationRun | None":
+        self._unsupported("get_correlation_run")
+
+    def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list["GraphCorrelationRun"]:
+        self._unsupported("list_correlation_runs")
+
+    def update_correlation_run(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        status: "CorrelationRunStatus",
+        manifest_sha256: str = "",
+        output_scan_id: str = "",
+        failure_code: str = "",
+        started_at: str = "",
+        completed_at: str = "",
+    ) -> "GraphCorrelationRun":
+        self._unsupported("update_correlation_run")
 
     def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]:
         self._unsupported("graph_history")

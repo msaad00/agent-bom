@@ -239,6 +239,7 @@ class SAMLConfig:
                 "wantAssertionsSigned": True,
                 "wantAssertionsEncrypted": False,
                 "requestedAuthnContext": False,
+                "rejectDeprecatedAlgorithm": True,
             },
         }
 

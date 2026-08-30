@@ -25,52 +25,84 @@ import asyncio
 import json
 import os
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from agent_bom.mcp_server import create_mcp_server
+from agent_bom.mcp_server_metadata import _SERVER_CARD_TOOLS
 
 _TRACEBACK_MARKERS = ("Traceback (most recent call last)", 'File "', '  File "')
+_REAL_HOME = Path.home().resolve()
 
 
 @pytest.fixture(scope="module")
-def mcp_server() -> Any:
+def isolated_mcp_environment(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Path]]:
+    """Redirect every MCP fixture write away from the executing user's home."""
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    real_fixture_path = _REAL_HOME / f".agent_bom_test_mcp_contract_{worker_id}"
+    before = real_fixture_path.stat() if real_fixture_path.exists() else None
+
+    root = tmp_path_factory.mktemp(f"mcp-output-contract-{worker_id}")
+    home = root / "home"
+    state = root / "state"
+    config = root / "config"
+    cache = root / "cache"
+    data = root / "data"
+    for path in (home, state, config, cache, data):
+        path.mkdir(parents=True, exist_ok=True)
+
+    patcher = pytest.MonkeyPatch()
+    patcher.setenv("HOME", str(home))
+    patcher.setenv("USERPROFILE", str(home))
+    patcher.setenv("XDG_CONFIG_HOME", str(config))
+    patcher.setenv("XDG_CACHE_HOME", str(cache))
+    patcher.setenv("XDG_DATA_HOME", str(data))
+    patcher.setenv("AGENT_BOM_STATE_DIR", str(state))
+    patcher.setenv("AGENT_BOM_CONFIG", str(config / "config.toml"))
+    patcher.setenv("AGENT_BOM_DB", str(state / "agent-bom.db"))
+    patcher.setenv("AGENT_BOM_GRAPH_DB", str(state / "graph.db"))
+    patcher.setenv("AGENT_BOM_DB_PATH", str(state / "vulns.db"))
+    try:
+        yield {
+            "root": root,
+            "home": home,
+            "state": state,
+            "config": config,
+            "cache": cache,
+        }
+    finally:
+        patcher.undo()
+        after = real_fixture_path.stat() if real_fixture_path.exists() else None
+        assert after == before, "MCP output-contract fixtures modified the real home directory"
+
+
+@pytest.fixture(scope="module")
+def mcp_server(isolated_mcp_environment: dict[str, Path]) -> Any:
+    from agent_bom.mcp_server import create_mcp_server
+
+    assert Path.home().resolve() == isolated_mcp_environment["home"].resolve()
     return create_mcp_server()
 
 
 @pytest.fixture(scope="module")
-def workdir() -> Any:
-    """A populated work directory UNDER ``$HOME``.
+def workdir(isolated_mcp_environment: dict[str, Path]) -> Any:
+    """A populated work directory under an isolated temporary ``$HOME``.
 
     Several scanning tools confine path arguments to the operator's home
-    directory via ``_safe_path`` (anti directory-traversal). A pytest tmp dir
-    lives outside ``$HOME``, so we materialize the fixture under home and clean
-    it up afterwards. The contents give path-driven tools real targets.
+    directory via ``_safe_path`` (anti directory-traversal). The contents give
+    path-driven tools real targets without reading or mutating the real home.
     """
-    # Worker-unique path: this is a module-scoped fixture, but under an xdist
-    # work-stealing distribution the module's tests are split across workers, so
-    # each worker instantiates its own copy of the fixture. A fixed shared path
-    # under $HOME then races between workers (one worker's rmtree/mkdir runs while
-    # another is mid-setup) and raises FileNotFoundError. Suffixing the path with
-    # the xdist worker id isolates each worker. It must stay under $HOME because
-    # the scanned tools confine path args to the home directory via _safe_path.
-    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
-    base = Path.home() / f".agent_bom_test_mcp_contract_{worker_id}"
-    if base.exists():
-        shutil.rmtree(base, ignore_errors=True)
-    base.mkdir(parents=True)
+    base = isolated_mcp_environment["home"] / "workspace"
+    base.mkdir(parents=True, exist_ok=True)
     (base / "requirements.txt").write_text("requests==2.31.0\n")
     (base / "pyproject.toml").write_text("[project]\nname='x'\nversion='0'\n")
     (base / "Dockerfile").write_text("FROM python:3.12\n")
     (base / "skill.md").write_text("# Example skill\nDo a thing.\n")
     (base / "app.py").write_text("import os\nprint(os.getcwd())\n")
     (base / "empty_config.json").write_text("{}\n")
-    try:
-        yield base
-    finally:
-        shutil.rmtree(base, ignore_errors=True)
+    yield base
 
 
 def _minimal_args(name: str, workdir: Path) -> dict[str, Any]:
@@ -142,8 +174,11 @@ _REQUIRES_BINARY = {"code_scan": "semgrep"}
 
 
 def _tool_names() -> list[str]:
-    server = create_mcp_server()
-    return sorted(server._tool_manager._tools.keys())
+    return sorted(str(tool["name"]) for tool in _SERVER_CARD_TOOLS)
+
+
+def test_output_contract_fixture_isolated_from_real_home(workdir: Path) -> None:
+    assert not workdir.resolve().is_relative_to(_REAL_HOME)
 
 
 @pytest.mark.parametrize("tool_name", _tool_names())

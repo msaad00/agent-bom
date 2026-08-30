@@ -3534,6 +3534,52 @@ components:
       - returned
       title: GraphCompletenessResponse
       type: object
+    GraphCorrelationCreate:
+      additionalProperties: false
+      properties:
+        allow_stale:
+          default: false
+          title: Allow Stale
+          type: boolean
+        max_age_hours:
+          maximum: 8760.0
+          minimum: 1.0
+          title: Max Age Hours
+          type: integer
+        name:
+          maxLength: 160
+          minLength: 1
+          title: Name
+          type: string
+        scan_ids:
+          items:
+            type: string
+          maxItems: 32
+          minItems: 2
+          title: Scan Ids
+          type: array
+      required:
+      - name
+      - scan_ids
+      - max_age_hours
+      title: GraphCorrelationCreate
+      type: object
+    GraphCorrelationList:
+      properties:
+        count:
+          title: Count
+          type: integer
+        items:
+          items:
+            additionalProperties: true
+            type: object
+          title: Items
+          type: array
+      required:
+      - items
+      - count
+      title: GraphCorrelationList
+      type: object
     GraphDeployDecisionRequest:
       additionalProperties: false
       properties:
@@ -16052,6 +16098,128 @@ paths:
       summary: Get Graph Compliance
       tags:
       - graph
+  /v1/graph/correlations:
+    get:
+      operationId: list_graph_correlations_v1_graph_correlations_get
+      parameters:
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 50
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphCorrelationList'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: List Graph Correlations
+      tags:
+      - graph-correlations
+    post:
+      operationId: create_graph_correlation_v1_graph_correlations_post
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          maxLength: 200
+          minLength: 1
+          title: Idempotency-Key
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphCorrelationCreate'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Create Graph Correlation V1 Graph Correlations Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Create Graph Correlation
+      tags:
+      - graph-correlations
+  /v1/graph/correlations/{correlation_id}:
+    get:
+      operationId: get_graph_correlation_v1_graph_correlations__correlation_id__get
+      parameters:
+      - in: path
+        name: correlation_id
+        required: true
+        schema:
+          title: Correlation Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Graph Correlation V1 Graph Correlations  Correlation
+                  Id  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Graph Correlation
+      tags:
+      - graph-correlations
+  /v1/graph/correlations/{correlation_id}/runtime-facts:
+    get:
+      operationId: get_graph_correlation_runtime_facts_v1_graph_correlations__correlation_id__runtime_facts_get
+      parameters:
+      - in: path
+        name: correlation_id
+        required: true
+        schema:
+          title: Correlation Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Graph Correlation Runtime Facts V1 Graph Correlations  Correlation
+                  Id  Runtime Facts Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Graph Correlation Runtime Facts
+      tags:
+      - graph-correlations
   /v1/graph/diff:
     get:
       description: "Diff two scan snapshots \u2014 nodes/edges added, removed, changed."

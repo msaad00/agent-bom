@@ -3,22 +3,23 @@
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
-resources, or runtime targets. 19 write-annotated tools cover scan-history
+resources, or runtime targets. 20 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
-review, finding triage and exception approval, remediation campaigns, and ticket workflows.
+review, snapshot correlation, finding triage and exception approval, remediation campaigns, and ticket workflows.
 They fail closed unless a remote caller uses the operator token and supplies an
 admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.
 
 `agent-bom mcp server` and the programmatic server both expose the complete
-84-tool catalog by default. Use `--profile guided` only when a client needs the
+86-tool catalog by default. Use `--profile guided` only when a client needs the
 smaller workflow-oriented context envelope.
 
 <details>
-<summary>Complete current catalog (84 tools)</summary>
+<summary>Complete current catalog (86 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
-`intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
+`intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `graph_correlate`,
+`graph_correlation_status`, `should_i_deploy`,
 `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`,
 `skill_scan`, `skill_verify`, `skill_trust`, `verify`, `inventory_summary`,
 `inventory_list`, `inventory_asset`, `where`, `tool_risk_assessment`,

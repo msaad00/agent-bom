@@ -45,7 +45,7 @@
 <rect x="659" y="158" width="586" height="88" rx="8" fill="none" stroke="#fb7185" opacity="0.4"/>
 <text x="669" y="182" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fb7185">OUTCOME</text>
 <text x="749" y="182" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Agent-native inventory</text>
-<text x="749" y="203" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">400 API ops · 84 MCP tools</text>
+<text x="749" y="203" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">404 API ops · 86 MCP tools</text>
 <text x="669" y="228" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fb7185">PROOF</text>
 <text x="749" y="228" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">AI BOM · graph · runtime</text>
 <rect x="23" y="274" width="610" height="242" rx="12" fill="#38bdf8"/>

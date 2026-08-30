@@ -209,9 +209,19 @@ class GraphCorrelationRun:
                 "name": self.name,
                 "max_age_hours": self.max_age_hours,
                 "allow_stale": self.allow_stale,
-                "input_manifest": sorted(
-                    (deepcopy(item) for item in self.input_manifest),
-                    key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":"), default=str),
+                # Freshness and age are observations captured at admission and
+                # therefore change across retries. Idempotency binds only to
+                # immutable source receipts plus the caller's policy.
+                "source_receipts": sorted(
+                    (
+                        {
+                            "scan_id": str(item.get("scan_id") or ""),
+                            "created_at": str(item.get("created_at") or ""),
+                            "digest": str(item.get("digest") or ""),
+                        }
+                        for item in self.input_manifest
+                    ),
+                    key=lambda item: (item["scan_id"], item["created_at"], item["digest"]),
                 ),
             }
         )

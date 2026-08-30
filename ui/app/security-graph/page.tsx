@@ -36,6 +36,7 @@ import { Collapsible } from "@/components/collapsible";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import { GraphAnalysisStatusBanner, graphAnalysisStatusCopy } from "@/components/graph-analysis-status";
 import { GraphCampaignPanel } from "@/components/graph-campaign-panel";
+import { GraphCorrelationWorkflow } from "@/components/graph-correlation-workflow";
 import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import {
   GraphPresetControls,
@@ -981,6 +982,9 @@ function AttackPathInvestigationContent() {
         defaultOpen={false}
       >
         <div className="space-y-4">
+          {!captureMode && snapshots.length > 0 ? (
+            <GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={selectSnapshot} />
+          ) : null}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">

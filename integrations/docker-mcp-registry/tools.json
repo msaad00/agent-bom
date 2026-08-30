@@ -203,6 +203,73 @@
     ]
   },
   {
+    "name": "graph_correlate",
+    "description": "Create a bounded immutable correlation over exact tenant-scoped graph snapshot receipts.",
+    "arguments": [
+      {
+        "name": "name",
+        "type": "string",
+        "desc": "Human-readable correlation run name"
+      },
+      {
+        "name": "scan_ids",
+        "type": "array",
+        "desc": "Two to 32 distinct exact immutable source snapshot ids"
+      },
+      {
+        "name": "max_age_hours",
+        "type": "integer",
+        "desc": "Required source-evidence freshness bound in hours (1-8760)"
+      },
+      {
+        "name": "idempotency_key",
+        "type": "string",
+        "desc": "Caller-stable retry key for this exact correlation request"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "desc": "Human audit reason for creating the correlation"
+      },
+      {
+        "name": "allow_stale",
+        "type": "boolean",
+        "desc": "Admit stale evidence while preserving its stale label"
+      },
+      {
+        "name": "operator_role",
+        "type": "string",
+        "desc": "Operator role for this write action (audit)"
+      },
+      {
+        "name": "operator_scopes",
+        "type": "string",
+        "desc": "Comma-separated operator scopes (audit)"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope bound by the authenticated MCP server context"
+      }
+    ]
+  },
+  {
+    "name": "graph_correlation_status",
+    "description": "Read correlation state, source receipts, freshness, conflicts, output snapshot, and analysis bounds.",
+    "arguments": [
+      {
+        "name": "correlation_id",
+        "type": "string",
+        "desc": "Correlation id returned by graph_correlate"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope bound by the authenticated MCP server context"
+      }
+    ]
+  },
+  {
     "name": "should_i_deploy",
     "description": "Return allow/warn/block deployment guidance from ExposurePath risk.",
     "arguments": [

@@ -43,7 +43,7 @@ _logger = logging.getLogger(__name__)
 _FUSION_SOURCE = "attack-path-fusion"
 
 # ── Bounds (mirror effective_permissions' caps) ──────────────────────────────
-_MAX_DEPTH = 6  # max hops (edges) in a single chain
+_MAX_DEPTH = 8  # max hops (edges) in a single chain
 _MAX_NODES = 5000  # node budget: skip fusion on graphs larger than this
 _MAX_VISITED_PER_ENTRY = 2000  # per-entry traversal node budget
 _MAX_ENTRIES = 200  # cap distinct internet-exposed entry points walked

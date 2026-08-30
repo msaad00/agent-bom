@@ -1,0 +1,21 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:63979269-9366-57a3-8574-ddaf194e8d68",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "container",
+      "name": "reference-evidence-api",
+      "version": "sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "pillow",
+      "version": "9.0.0",
+      "purl": "pkg:pypi/pillow@9.0.0"
+    }
+  ]
+}

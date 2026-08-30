@@ -36,6 +36,14 @@ def _source_snapshot_ids(edge: UnifiedEdge, graph: UnifiedGraph) -> list[str]:
     return sorted(set(item for item in values if item))
 
 
+def _has_relationship_provenance(edge: UnifiedEdge) -> bool:
+    """Require an edge-level receipt; snapshot membership alone is structural."""
+
+    correlation = _correlation_provenance(edge)
+    source_ids = correlation.get("source_scan_ids")
+    return bool(edge.source_scan_id or (isinstance(source_ids, list) and source_ids) or edge.provenance)
+
+
 def _freshness(edge: UnifiedEdge) -> str:
     correlation = _correlation_provenance(edge)
     value = correlation.get("freshness") or edge.evidence.get("freshness")
@@ -130,7 +138,13 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                 "runtime_observed_state": _runtime_state(edge),
                 "direction": edge.direction,
                 "traversable": bool(edge.traversable),
-                "complete": bool(edge.traversable and source_ids and edge.source == source and edge.target == target),
+                "complete": bool(
+                    edge.traversable
+                    and source_ids
+                    and _has_relationship_provenance(edge)
+                    and edge.source == source
+                    and edge.target == target
+                ),
                 "truncated": False,
             }
         )
@@ -154,6 +168,10 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
         path.reachability = "likely"
         if "stale_evidence_allowed" not in path.reachability_basis:
             path.reachability_basis.append("stale_evidence_allowed")
+    elif all_complete and path.reachability in {"unknown", "likely"}:
+        path.reachability = "confirmed"
+        if "directed_provenance_backed_hops" not in path.reachability_basis:
+            path.reachability_basis.append("directed_provenance_backed_hops")
     return path
 
 

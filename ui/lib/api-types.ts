@@ -164,6 +164,63 @@ export interface GraphSnapshot {
   edge_count: number;
   risk_summary: Record<string, number>;
   analysis_status?: import("./graph-schema").GraphStats["analysis_status"] | undefined;
+  snapshot_kind?: "scan" | "correlation" | undefined;
+  correlation_id?: string | undefined;
+  evidence_manifest_sha256?: string | undefined;
+}
+
+export interface GraphCorrelationReceipt {
+  scan_id: string;
+  created_at?: string | undefined;
+  digest?: string | undefined;
+  node_count?: number | undefined;
+  edge_count?: number | undefined;
+  source_kinds?: string[] | undefined;
+  freshness?: "fresh" | "stale_allowed" | undefined;
+  age_hours?: number | undefined;
+}
+
+export interface GraphCorrelationRun {
+  correlation_id: string;
+  tenant_id: string;
+  name: string;
+  status: "pending" | "running" | "complete" | "failed";
+  max_age_hours: number;
+  allow_stale: boolean;
+  input_manifest: GraphCorrelationReceipt[];
+  result_manifest: {
+    correlation_merge?: {
+      node_conflict_count?: number | undefined;
+      edge_conflict_count?: number | undefined;
+      conflict_count?: number | undefined;
+    } | undefined;
+    output?: {
+      scan_id?: string | undefined;
+      node_count?: number | undefined;
+      edge_count?: number | undefined;
+      attack_path_count?: number | undefined;
+      exposure_path_count?: number | undefined;
+    } | undefined;
+    analysis_bounds?: Record<string, unknown> | undefined;
+  };
+  manifest_sha256: string;
+  output_scan_id: string;
+  failure_code: string;
+  created_at: string;
+  started_at: string;
+  completed_at: string;
+}
+
+export interface GraphCorrelationCreate {
+  name: string;
+  scan_ids: string[];
+  max_age_hours: number;
+  allow_stale: boolean;
+}
+
+export interface GraphCorrelationList {
+  items: GraphCorrelationRun[];
+  count: number;
 }
 
 export type GraphScenarioChange =

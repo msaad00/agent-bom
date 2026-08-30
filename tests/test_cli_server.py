@@ -462,7 +462,7 @@ def test_mcp_server_help_does_not_require_an_optional_extra():
     assert "pip install 'agent-bom[mcp-server]'" not in result.output
     assert "included in the standard agent-bom install" in result.output
     assert "--profile [guided|full]" in result.output
-    assert "full 84-tool catalog" in result.output
+    assert "full 86-tool catalog" in result.output
 
 
 def test_mcp_server_cmd_invalid_port_is_usage_error():

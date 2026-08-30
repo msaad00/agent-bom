@@ -298,9 +298,11 @@ main.add_command(mesh_cmd, "mesh")
 # `graph` is a leaf command (positional SCAN_FILE), so ranked-path queries live
 # in a sibling group `graph-paths` (mirrors the existing `graph-evidence`/`mesh`
 # siblings) rather than as subcommands that would shadow `agent-bom graph <file>`.
+from agent_bom.cli._graph_correlate_group import graph_correlate_cmd  # noqa: E402
 from agent_bom.cli._graph_paths_group import graph_paths_cmd  # noqa: E402
 
 main.add_command(graph_paths_cmd, "graph-paths")
+main.add_command(graph_correlate_cmd, "graph-correlate")
 
 # ---------------------------------------------------------------------------
 # Report command group — `agent-bom report [history|diff|rescan|query|analytics|dashboard]`

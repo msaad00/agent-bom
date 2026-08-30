@@ -403,6 +403,28 @@ export interface AttackPath {
   /** Executability evidence tier; optional on legacy graph snapshots. */
   reachability?: "confirmed" | "likely" | "unknown" | "unlikely" | string;
   reachability_basis?: string[];
+  /** Immutable source receipts for every directed hop in correlated snapshots. */
+  hop_evidence?: Array<{
+    source_node_id: string;
+    target_node_id: string;
+    relationship: string;
+    source_snapshot_ids: string[];
+    evidence_tier: "static_evidence" | "modeled_infrastructure" | "runtime_observed" | "unknown" | string;
+    confidence: number;
+    freshness: "fresh" | "stale_allowed" | "unknown" | string;
+    runtime_observed_state: "observed" | "blocked" | "not_observed" | string;
+    direction: string;
+    traversable: boolean;
+    complete: boolean;
+    truncated: boolean;
+  }>;
+  /** Completeness and limits for the analysis that produced this path. */
+  analysis?: {
+    status?: "complete" | "limited" | "skipped" | "failed" | "not_recorded" | string;
+    reason_codes?: string[];
+    limits?: Record<string, number>;
+    observed?: Record<string, number>;
+  };
   /**
    * Potential ATT&CK/ATLAS techniques mapped from this path's observed
    * evidence, ordered by hop. Optional so older graph snapshots without the

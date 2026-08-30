@@ -23,6 +23,10 @@ from agent_bom.graph.correlation import (
 
 logger = logging.getLogger(__name__)
 
+_shared_service: GraphCorrelationService | None = None
+_shared_service_store: object | None = None
+_shared_service_loop: asyncio.AbstractEventLoop | None = None
+
 
 def _manifest_digest(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
@@ -85,16 +89,24 @@ class GraphCorrelationService:
         self._max_output_edges = max_output_edges
         self._workers: list[asyncio.Task[None]] = []
         self._queued: set[tuple[str, str]] = set()
+        self._reconciled_tenants: set[str] = set()
 
     async def start(self, *, tenants: Sequence[str] = ()) -> None:
-        if self._workers:
-            return
-        self._workers = [asyncio.create_task(self._worker(), name=f"graph-correlation-{index}") for index in range(self._worker_count)]
+        if not self._workers:
+            self._workers = [asyncio.create_task(self._worker(), name=f"graph-correlation-{index}") for index in range(self._worker_count)]
         for tenant_id in tenants:
-            runs = await asyncio.to_thread(self._store.list_correlation_runs, tenant_id=tenant_id, limit=1000)
-            for run in reversed(runs):
-                if run.status in {CorrelationRunStatus.PENDING, CorrelationRunStatus.RUNNING}:
-                    await self._enqueue(run.tenant_id, run.correlation_id, wait_for_capacity=True)
+            await self.reconcile_tenant(tenant_id)
+
+    async def reconcile_tenant(self, tenant_id: str) -> None:
+        """Requeue durable unfinished work once per tenant after a process start."""
+
+        if tenant_id in self._reconciled_tenants:
+            return
+        runs = await asyncio.to_thread(self._store.list_correlation_runs, tenant_id=tenant_id, limit=1000)
+        for run in reversed(runs):
+            if run.status in {CorrelationRunStatus.PENDING, CorrelationRunStatus.RUNNING}:
+                await self._enqueue(run.tenant_id, run.correlation_id, wait_for_capacity=True)
+        self._reconciled_tenants.add(tenant_id)
 
     async def stop(self) -> None:
         if not self._workers:
@@ -104,6 +116,7 @@ class GraphCorrelationService:
         await asyncio.gather(*self._workers)
         self._workers.clear()
         self._queued.clear()
+        self._reconciled_tenants.clear()
 
     async def submit(self, request: CorrelationRequest) -> GraphCorrelationRun:
         manifest = await self._validate_inputs(request)
@@ -284,6 +297,9 @@ class GraphCorrelationService:
 
             await asyncio.to_thread(apply_attack_path_fusion, merged.graph)
             await asyncio.to_thread(apply_attack_path_technique_mappings, merged.graph)
+            merge_output = merged.manifest.get("output", {})
+            node_conflicts = int(merge_output.get("node_conflict_count") or 0)
+            edge_conflicts = int(merge_output.get("edge_conflict_count") or 0)
             result_manifest = {
                 "schema_version": "agent-bom.graph-correlation-manifest/v1",
                 "correlation_id": correlation_id,
@@ -294,6 +310,11 @@ class GraphCorrelationService:
                     "allow_stale": run.allow_stale,
                 },
                 "input_snapshots": run.input_manifest,
+                "correlation_merge": {
+                    "node_conflict_count": node_conflicts,
+                    "edge_conflict_count": edge_conflicts,
+                    "conflict_count": node_conflicts + edge_conflicts,
+                },
                 "analysis_bounds": {
                     "correlation_merge": {
                         "status": "complete",
@@ -339,4 +360,17 @@ class GraphCorrelationService:
                 )
 
 
-__all__ = ["CorrelationRequest", "CorrelationServiceError", "GraphCorrelationService"]
+async def get_graph_correlation_service(store: GraphStoreProtocol, tenant_id: str) -> GraphCorrelationService:
+    """Return the process-local worker pool without importing the HTTP surface."""
+
+    global _shared_service, _shared_service_loop, _shared_service_store
+    loop = asyncio.get_running_loop()
+    if _shared_service is None or _shared_service_store is not store or _shared_service_loop is not loop:
+        _shared_service = GraphCorrelationService(store)
+        _shared_service_store = store
+        _shared_service_loop = loop
+    await _shared_service.start(tenants=[tenant_id])
+    return _shared_service
+
+
+__all__ = ["CorrelationRequest", "CorrelationServiceError", "GraphCorrelationService", "get_graph_correlation_service"]

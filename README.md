@@ -275,10 +275,10 @@ exposing it.
 | GitHub CI | `uses: msaad00/agent-bom@v0.103.1` | SARIF, PR summary, and a policy exit code |
 | Cloud evidence | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` | Deploy the read-only grant, then connect and scan |
 | Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
-| Agent interface | `agent-bom mcp server` | 84 MCP tools, 6 resources, and 8 workflow prompts |
+| Agent interface | `agent-bom mcp server` | 86 MCP tools, 6 resources, and 8 workflow prompts |
 | Agent distribution | [Smithery manifest](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |
 
-MCP server mode exposes 84 MCP tools, 6 resources, and 8 workflow prompts, all
+MCP server mode exposes 86 MCP tools, 6 resources, and 8 workflow prompts, all
 read-first: discovery and analysis never mutate a scanned target.
 
 Set `YDC_API_KEY` to enable the optional `youcom_search` MCP tool for live web

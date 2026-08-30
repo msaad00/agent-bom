@@ -339,6 +339,10 @@ so they cannot regress silently, but they are not part of this reference.
 ## Runtime → graph incident feedback
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_RUNTIME_FACTS_HMAC_KEY` | `str` | `''` | Signed graph-correlation facts consumed by the opt-in runtime gateway. The file mount is preferred for production secrets; the inline value exists for local/self-hosted parity. Empty defaults keep runtime graph enforcement off. |
+| `AGENT_BOM_RUNTIME_FACTS_HMAC_KEY_FILE` | `str` | `''` | — |
+| `AGENT_BOM_RUNTIME_FACTS_KEY_ID` | `str` | `''` | — |
+| `AGENT_BOM_RUNTIME_FACTS_TTL_SECONDS` | `int` | `300` | — |
 | `AGENT_BOM_RUNTIME_FEEDBACK_PATH` | `str` | `''` | The feedback direction of the agentic moat: the runtime ProtectionEngine appends observed incidents (credential reach, lateral movement, kill-switch) to a durable JSONL sink at this path; the next scan's graph builder ingests them so the gr |
 
 ## Scan Cache

@@ -319,6 +319,30 @@ export function SecurityGraphInvestigation({
       }),
     [captureMode, displayEdges.length, focusMode, layout.nodes.length],
   );
+  const evidenceBadges = useMemo(() => {
+    if (!attackPath) return [] as Array<{ label: string; tone: string }>;
+    const receipts = attackPath.hop_evidence ?? [];
+    const badges: Array<{ label: string; tone: string }> = [];
+    if (receipts.some((receipt) => receipt.evidence_tier === "static_evidence")) {
+      badges.push({ label: "Static evidence", tone: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300" });
+    }
+    if (receipts.some((receipt) => receipt.evidence_tier === "modeled_infrastructure")) {
+      badges.push({ label: "Modeled infrastructure", tone: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300" });
+    }
+    if (receipts.some((receipt) => receipt.runtime_observed_state === "observed")) {
+      badges.push({ label: "Runtime observed", tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" });
+    }
+    if (receipts.some((receipt) => receipt.runtime_observed_state === "blocked")) {
+      badges.push({ label: "Runtime blocked", tone: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300" });
+    }
+    if (receipts.some((receipt) => receipt.freshness === "stale_allowed")) {
+      badges.push({ label: "Stale allowed", tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300" });
+    }
+    if (attackPath.analysis?.status && attackPath.analysis.status !== "complete") {
+      badges.push({ label: "Bounded analysis", tone: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300" });
+    }
+    return badges;
+  }, [attackPath]);
   const presentationScope = useMemo(
     () => ({
       tenantId: session?.tenant_id || "local",
@@ -464,6 +488,23 @@ export function SecurityGraphInvestigation({
           <FullscreenButton />
         </div>
       </div>
+
+      {attackPath && evidenceBadges.length > 0 ? (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2"
+          data-testid="attack-path-evidence-badges"
+        >
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Path proof</span>
+          {evidenceBadges.map((badge) => (
+            <span key={badge.label} className={`rounded-full border px-2 py-1 text-[10px] font-medium ${badge.tone}`}>
+              {badge.label}
+            </span>
+          ))}
+          <span className="text-[10px] text-[color:var(--text-tertiary)]">
+            {attackPath.hop_evidence?.filter((receipt) => receipt.complete).length ?? 0}/{Math.max(attackPath.hops.length - 1, 0)} directed hops evidenced
+          </span>
+        </div>
+      ) : null}
 
       {rendererDecision.kind === "react-flow" && layout.nodes.length > 0 ? (
         <div

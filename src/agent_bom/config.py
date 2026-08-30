@@ -692,6 +692,13 @@ def resolved_vault_addr() -> str:
 # value is re-read dynamically by agent_bom.runtime.incident_feedback so it can
 # be set per-process; this declaration is the canonical default.
 RUNTIME_FEEDBACK_PATH = _str("AGENT_BOM_RUNTIME_FEEDBACK_PATH", "")
+# Signed graph-correlation facts consumed by the opt-in runtime gateway. The
+# file mount is preferred for production secrets; the inline value exists for
+# local/self-hosted parity. Empty defaults keep runtime graph enforcement off.
+RUNTIME_FACTS_HMAC_KEY = _str("AGENT_BOM_RUNTIME_FACTS_HMAC_KEY", "")
+RUNTIME_FACTS_HMAC_KEY_FILE = _str("AGENT_BOM_RUNTIME_FACTS_HMAC_KEY_FILE", "")
+RUNTIME_FACTS_KEY_ID = _str("AGENT_BOM_RUNTIME_FACTS_KEY_ID", "")
+RUNTIME_FACTS_TTL_SECONDS = _int("AGENT_BOM_RUNTIME_FACTS_TTL_SECONDS", 300)
 
 
 # ── Collector push mTLS ─────────────────────────────────────────────────

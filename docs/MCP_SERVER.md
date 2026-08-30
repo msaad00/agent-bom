@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 84 MCP tools as an MCP server. Any MCP-compatible client can
+agent-bom exposes 86 MCP tools as an MCP server. Any MCP-compatible client can
 connect and get vulnerability scanning, blast radius analysis, compliance
 checks, runtime posture, and supply-chain verification through natural
 conversation.
@@ -57,7 +57,7 @@ Add to `~/.snowflake/cortex/mcp.json`:
 }
 ```
 
-CoCo can then call the same 84 `agent-bom` tools over MCP.
+CoCo can then call the same 86 `agent-bom` tools over MCP.
 
 agent-bom also discovers Cortex auxiliary security files alongside `mcp.json`:
 
@@ -165,13 +165,13 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (84 tools)
+## Tool Categories (86 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|
 | **Scan** | `scan`, `code_scan`, `vector_db_scan`, `gpu_infra_scan`, `ai_inventory_scan` | Discover agents; execute Semgrep SAST with typed findings/clean/skipped/failed status; scan packages, vector stores, GPU infra, and AI usage |
 | **Check** | `check`, `verify`, `marketplace_check`, `license_compliance_scan` | Pre-install CVE gate, integrity verification, marketplace trust, and license policy |
-| **Blast Radius** | `blast_radius`, `exposure_paths`, `should_i_deploy` | Map package → vulnerability finding → MCP server (tools + credential env names) → connected agents; return ranked ExposurePath JSON and allow/warn/block deploy guidance for headless agents |
+| **Blast Radius** | `blast_radius`, `exposure_paths`, `graph_correlate`, `graph_correlation_status`, `should_i_deploy` | Map package → vulnerability finding → MCP server (tools + credential env names) → connected agents; correlate exact snapshot receipts; return ranked ExposurePath JSON and allow/warn/block deploy guidance for headless agents |
 | **Registry** | `registry_lookup`, `inventory`, `where`, `fleet_scan` | Query the MCP registry, inspect discovery paths, and summarize fleet inventories |
 | **Compliance** | `compliance`, `cis_benchmark`, `aisvs_benchmark` | Run OWASP, NIST, MITRE ATLAS, CIS, and AISVS-aligned posture checks |
 | **Policy** | `policy_check`, `remediate` | Evaluate policies and generate guided remediation plans |
@@ -182,10 +182,11 @@ agent-bom proxy-bootstrap \
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan`, `runtime_evidence_ingest` | Scan AI artifacts, prompts, model files, and browser extensions; import tool-agnostic SARIF/SBOM/scanner evidence without executing its producer; merge CWPP runtime signals |
 
 <details>
-<summary>Complete current catalog (84 tools)</summary>
+<summary>Complete current catalog (86 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
-`intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
+`intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `graph_correlate`,
+`graph_correlation_status`, `should_i_deploy`,
 `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`,
 `skill_scan`, `skill_verify`, `skill_trust`, `verify`, `inventory_summary`,
 `inventory_list`, `inventory_asset`, `where`, `tool_risk_assessment`,
@@ -242,11 +243,11 @@ live runtime traffic rather than static reachability.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  The 19 write-annotated tools cover scan-history diff, Shield, identity,
+  The 20 write-annotated tools cover scan-history diff, Shield, identity,
   external ingest, CWPP runtime-evidence ingest, access review, finding
-  triage and exception approval, remediation campaigns, and ticket workflows. They require an
+  triage and exception approval, snapshot correlation, remediation campaigns, and ticket workflows. They require an
   authenticated MCP operator token plus admin role, their specific write
-  scope (`cloud:write`, `findings:write`, `identity:write`, `shield:write`,
+  scope (`cloud:write`, `findings:write`, `identity:write`, `scan:write`, `shield:write`,
   or `ticketing:write`), and an audit reason; stdio cannot invoke them.
 - **No credential storage**: Never stores, logs, or transmits your credentials.
 - **No network exfiltration**: Scans local configs, queries public CVE databases.

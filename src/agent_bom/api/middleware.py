@@ -1278,6 +1278,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/sources/", "analyst"),
         ("POST", "/v1/baseline/compare", "analyst"),
         ("POST", "/v1/graph/presets", "analyst"),
+        ("POST", "/v1/graph/correlations", "analyst"),
         # Model-key broker: registering / deleting a REAL provider credential is a
         # root-credential write (admin, via the unmatched-mutating fallback below).
         # Minting a scoped short-lived virtual key, authorizing it, and revoking it
@@ -1305,6 +1306,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("DELETE", "/v1/cloud/connections/", "cloud.connection:write"),
         ("GET", "/v1/findings", "finding:read"),
         ("GET", "/v1/graph", "graph:read"),
+        ("POST", "/v1/graph/correlations", "scan:write"),
         ("GET", "/v1/graph/scenarios", "graph:read"),
         ("POST", "/v1/graph/scenarios", "scan:write"),
         ("PUT", "/v1/graph/scenarios/", "scan:write"),

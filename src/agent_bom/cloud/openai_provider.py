@@ -1,4 +1,4 @@
-"""OpenAI platform discovery — assistants, fine-tuned models, and files.
+"""OpenAI platform discovery — assistants and completed fine-tuning jobs.
 
 Requires ``openai``.  Install with::
 
@@ -13,7 +13,7 @@ import logging
 import os
 
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
-from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, ServerSurface, TransportType
 
 from .base import CloudDiscoveryError
 from .normalization import build_cloud_origin
@@ -77,9 +77,7 @@ def discover(
         discovery_scope=tuple(scope),
         permissions_used=(
             "openai:assistants:list",
-            "openai:assistants:retrieve",
             "openai:fine_tuning.jobs:list",
-            "openai:models:list",
         ),
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
     )
@@ -161,6 +159,7 @@ def _discover_assistants(
                     packages=packages,
                     tools=mcp_tools,
                     env={"OPENAI_API_KEY": "***REDACTED***"},
+                    surface=ServerSurface.AI_INVENTORY,
                 )
 
                 agent = Agent(
@@ -241,6 +240,7 @@ def _discover_fine_tunes(
                     transport=TransportType.UNKNOWN,
                     packages=packages,
                     env={"OPENAI_API_KEY": "***REDACTED***"},
+                    surface=ServerSurface.AI_INVENTORY,
                 )
 
                 # Add training file info as a tool descriptor

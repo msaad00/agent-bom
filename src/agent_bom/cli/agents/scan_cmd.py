@@ -1997,7 +1997,7 @@ def scan(
         for _agent in agents:
             _agent.discovered_at = _pinned_ts
             _agent.last_seen = _pinned_ts
-    from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
+    from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun, ScanScope, ScanScopeStatus
 
     _scan_issues = [
         ScanIssue(
@@ -2015,7 +2015,7 @@ def scan(
             stage=str(_warning.get("stage") or "discovery"),
             source=str(_warning.get("provider") or "cloud"),
             message=str(_warning.get("warning") or "Cloud collector warning"),
-            affects_coverage=False,
+            affects_coverage=True,
         )
         for _warning in ctx.cloud_provider_warnings
     )
@@ -2033,6 +2033,44 @@ def scan(
     _scan_outcome = (
         ScanOutcome.FAILED if ctx.cloud_provider_failures and not ctx.cloud_provider_successes and not agents else ScanOutcome.COMPLETE
     )
+    _cloud_scope_names = list(
+        dict.fromkeys(
+            str(record.get("provider") or "cloud")
+            for record in [
+                *ctx.cloud_provider_successes,
+                *ctx.cloud_provider_warnings,
+                *ctx.cloud_provider_failures,
+            ]
+        )
+    )
+    _cloud_scopes: list[ScanScope] = []
+    for _provider in _cloud_scope_names:
+        _success = next(
+            (record for record in ctx.cloud_provider_successes if str(record.get("provider") or "cloud") == _provider),
+            None,
+        )
+        _has_warning = any(str(record.get("provider") or "cloud") == _provider for record in ctx.cloud_provider_warnings)
+        _has_failure = any(str(record.get("provider") or "cloud") == _provider for record in ctx.cloud_provider_failures)
+        if _has_failure and _success is None:
+            _scope_status = ScanScopeStatus.UNAVAILABLE
+            _scope_count = None
+            _scope_message = "Requested cloud collector did not complete."
+        elif _has_failure or _has_warning:
+            _scope_status = ScanScopeStatus.PARTIAL
+            _scope_count = int(_success.get("item_count", 0)) if _success is not None else None
+            _scope_message = "Requested cloud collector returned incomplete evidence."
+        else:
+            _scope_status = ScanScopeStatus.COMPLETE
+            _scope_count = int(_success.get("item_count", 0)) if _success is not None else 0
+            _scope_message = ""
+        _cloud_scopes.append(
+            ScanScope(
+                name=f"cloud:{_provider}",
+                status=_scope_status,
+                item_count=_scope_count,
+                message=_scope_message,
+            )
+        )
     _codeowners: list[dict[str, object]] = []
     try:
         _project_root = Path(project or ".").resolve()
@@ -2047,7 +2085,7 @@ def scan(
         blast_radii=blast_radii,
         findings=_findings,
         scan_sources=_scan_sources,
-        scan_run=ScanRun(outcome=_scan_outcome, issues=_scan_issues),
+        scan_run=ScanRun(outcome=_scan_outcome, issues=_scan_issues, scopes=_cloud_scopes),
         scan_id=_scan_id,
         endpoint_inventory_data=_endpoint_inventory_data,
         codeowners=_codeowners,

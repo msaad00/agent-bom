@@ -28,7 +28,7 @@ else:
 
 
 class JSTSAstUnavailableError(RuntimeError):
-    """Raised when the parser runtime is unavailable."""
+    """Raised when structured JS/TS analysis cannot produce complete evidence."""
 
 
 @dataclass
@@ -867,6 +867,8 @@ def analyze_js_ts_block(source: str, *, language_hint: str = "javascript") -> JS
     parser = parser_cls(_language_for_hint(language_hint))
     source_bytes = source.encode("utf-8", errors="replace")
     tree = parser.parse(source_bytes)
+    if tree.root_node.has_error:
+        raise JSTSAstUnavailableError("JS/TS source contains syntax the structured parser could not fully analyze")
     analysis = JSTSAstAnalysis()
 
     _collect_import_aliases(tree.root_node, source_bytes, analysis)

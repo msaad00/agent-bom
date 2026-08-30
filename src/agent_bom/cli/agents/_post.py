@@ -459,7 +459,9 @@ def compute_exit_code(
     if ctx.cloud_provider_failures:
         if not quiet:
             providers = ", ".join(sorted({str(f.get("provider", "?")) for f in ctx.cloud_provider_failures}))
-            con.print(f"\n  [red]Exiting with code 1: cloud provider discovery failed for {providers} (missing SDK or credentials)[/red]")
+            con.print(
+                f"\n  [red]Exiting with code 1: cloud provider discovery failed for {providers} (collector unavailable or incomplete)[/red]"
+            )
         exit_code = 1
 
     # Evidence quality is an automation boundary, independent of finding gates.

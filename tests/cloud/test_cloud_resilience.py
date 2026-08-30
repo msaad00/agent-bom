@@ -35,6 +35,27 @@ def test_provider_resilience_gaps_are_explicit() -> None:
     assert {gap["provider"] for gap in gaps} >= {"azure", "gcp", "databricks"}
 
 
+def test_synthetic_scale_target_is_not_self_reported_as_verified_without_a_load_proof() -> None:
+    from agent_bom.cloud.resilience import provider_resilience_profiles
+
+    unsupported_claims = [
+        profile.provider
+        for profile in provider_resilience_profiles()
+        if profile.synthetic_scale_target is not None and profile.status == "verified"
+    ]
+
+    assert unsupported_claims == []
+
+
+def test_openai_resilience_surface_matches_exercised_inventory_calls() -> None:
+    from agent_bom.cloud.resilience import provider_resilience_profiles
+
+    profile = next(profile for profile in provider_resilience_profiles() if profile.provider == "openai")
+
+    assert profile.surface == "OpenAI assistants and completed fine-tuning jobs with referenced training-file IDs"
+    assert profile.status == "partial"
+
+
 def test_cloud_resilience_json_command() -> None:
     from agent_bom.cli import main
 

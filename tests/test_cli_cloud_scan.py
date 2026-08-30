@@ -481,6 +481,59 @@ class TestRequestedProviderHardFailExits:
         assert r.exit_code == 0
         assert "cloud provider discovery failed" not in r.output
 
+    def test_warning_only_requested_provider_is_failed_not_factual_zero(self, monkeypatch, tmp_path):
+        from agent_bom.cli import main
+
+        monkeypatch.setattr(
+            "agent_bom.cloud.discover_from_provider",
+            lambda provider, **kwargs: ([], [f"Could not enumerate {provider} resources"]),
+        )
+        output = tmp_path / "warning-failed.json"
+
+        result = CliRunner().invoke(
+            main,
+            ["scan", "--openai", "--no-discover", "--offline", "--format", "json", "-o", str(output)],
+        )
+
+        assert result.exit_code == 1
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["scan_run"]["outcome"] == "failed"
+        assert payload["scan_run"]["scopes"] == [
+            {
+                "name": "cloud:openai",
+                "status": "unavailable",
+                "requested": True,
+                "item_count": None,
+                "message": "Requested cloud collector did not complete.",
+            }
+        ]
+        assert all(issue["affects_coverage"] for issue in payload["scan_run"]["issues"])
+        assert "cloud:openai" not in payload["scan_sources"]
+
+    def test_warning_with_assets_preserves_assets_and_marks_partial(self, monkeypatch, tmp_path):
+        from agent_bom.cli import main
+        from agent_bom.models import Agent, AgentType
+
+        agent = Agent(name="openai:test", agent_type=AgentType.CUSTOM, config_path="openai://test")
+        monkeypatch.setattr(
+            "agent_bom.cloud.discover_from_provider",
+            lambda provider, **kwargs: ([agent], ["Fine-tune enumeration failed"]),
+        )
+        output = tmp_path / "warning-partial.json"
+
+        result = CliRunner().invoke(
+            main,
+            ["scan", "--openai", "--no-discover", "--offline", "--format", "json", "-o", str(output)],
+        )
+
+        assert result.exit_code == 1
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["scan_run"]["outcome"] == "partial"
+        assert payload["agents"][0]["name"] == "openai:test"
+        assert payload["scan_run"]["scopes"][0]["status"] == "partial"
+        assert payload["scan_run"]["scopes"][0]["item_count"] == 1
+        assert "cloud:openai" in payload["scan_sources"]
+
     def test_single_requested_provider_failure_is_failed_in_json(self, monkeypatch, tmp_path):
         from agent_bom.cli import main
         from agent_bom.cloud import CloudDiscoveryError

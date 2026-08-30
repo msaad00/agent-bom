@@ -4,7 +4,12 @@ pytest.importorskip("tree_sitter")
 pytest.importorskip("tree_sitter_javascript")
 pytest.importorskip("tree_sitter_typescript")
 
-from agent_bom.ast.js_ts import analyze_js_ts_block
+from agent_bom.ast.js_ts import JSTSAstUnavailableError, analyze_js_ts_block
+
+
+def test_parse_error_does_not_return_complete_structured_analysis():
+    with pytest.raises(JSTSAstUnavailableError):
+        analyze_js_ts_block("const broken = ;", language_hint="javascript")
 
 
 def test_analyze_js_ts_block_resolves_named_import_alias():

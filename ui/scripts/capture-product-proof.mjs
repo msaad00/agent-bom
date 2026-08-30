@@ -2735,6 +2735,7 @@ async function main() {
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
       "correlation-receipts-live.png",
       async (proofPage) => {
+        await proofPage.getByRole("button", { name: /Evidence scope/i }).click();
         const workflow = proofPage.getByTestId("graph-correlation-workflow");
         await workflow.waitFor({ state: "visible", timeout: 30_000 });
         await proofPage.getByLabel("Correlation name").fill("Reference evidence lab — modeled local infrastructure");

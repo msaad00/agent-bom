@@ -325,6 +325,25 @@ def test_correlation_bundle_recomputes_immutable_input_age_at_each_issuance() ->
         )
 
 
+def test_correlation_bundle_rejects_future_dated_input_receipts_beyond_clock_skew() -> None:
+    graph = _runtime_graph(scan_id="corr-future-input")
+    run, metadata = _completed_run(
+        graph,
+        input_created_at=NOW + timedelta(minutes=6),
+        max_age_hours=24,
+    )
+
+    with pytest.raises(RuntimeFactsBundleError, match="invalid_input_freshness"):
+        create_runtime_facts_bundle_from_correlation(
+            run,
+            graph,
+            snapshot_metadata=metadata,
+            signing_key=KEY,
+            ttl_seconds=300,
+            now=NOW,
+        )
+
+
 @pytest.mark.parametrize(
     ("metadata_update", "expected_code"),
     [

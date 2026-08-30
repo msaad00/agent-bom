@@ -391,9 +391,7 @@ def test_snapshot_history_accepts_psycopg_jsonb_objects_and_text(monkeypatch, ri
         def execute(self, sql, params=None):
             low = " ".join(sql.strip().lower().split())
             if low.startswith("select scan_id, created_at, node_count, edge_count, risk_summary, analysis_status"):
-                return _FakeCursor(
-                    [("scan-json", "2026-07-17T00:00:00Z", 3, 2, risk_summary, analysis_status, "scan", None, "")]
-                )
+                return _FakeCursor([("scan-json", "2026-07-17T00:00:00Z", 3, 2, risk_summary, analysis_status, "scan", None, "")])
             return super().execute(sql, params)
 
     store = _make_store(_SnapshotConn(), monkeypatch)

@@ -524,9 +524,7 @@ def merge_graph_snapshots(
             "node_conflict_count": sum(
                 bool(node.attributes.get(_CORRELATION_ATTR, {}).get("conflict_fields")) for node in output.nodes.values()
             ),
-            "edge_conflict_count": sum(
-                bool(edge.provenance.get(_CORRELATION_ATTR, {}).get("conflict_fields")) for edge in output.edges
-            ),
+            "edge_conflict_count": sum(bool(edge.provenance.get(_CORRELATION_ATTR, {}).get("conflict_fields")) for edge in output.edges),
         },
     }
     return CorrelationMergeResult(graph=output, manifest=manifest, manifest_sha256=_digest(manifest))

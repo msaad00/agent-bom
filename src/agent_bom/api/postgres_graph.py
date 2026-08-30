@@ -418,8 +418,7 @@ class PostgresGraphStore:
                 """
             )
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pg_graph_correlation_runs_recent "
-                "ON graph_correlation_runs(tenant_id, created_at DESC)"
+                "CREATE INDEX IF NOT EXISTS idx_pg_graph_correlation_runs_recent ON graph_correlation_runs(tenant_id, created_at DESC)"
             )
             conn.execute(
                 """
@@ -2306,8 +2305,7 @@ class PostgresGraphStore:
         tenant = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
-                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs "
-                "WHERE tenant_id = %s AND correlation_id = %s",  # nosec B608 - static internal column list
+                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs WHERE tenant_id = %s AND correlation_id = %s",  # nosec B608 - static internal column list
                 (tenant, correlation_id),
             ).fetchone()
         return _correlation_run_from_row(row) if row is not None else None
@@ -2316,8 +2314,7 @@ class PostgresGraphStore:
         tenant = normalize_graph_tenant_id(run.tenant_id)
         with _tenant_connection(self._pool) as conn:
             existing = conn.execute(
-                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs "
-                "WHERE tenant_id = %s AND idempotency_key = %s",  # nosec B608 - static internal column list
+                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs WHERE tenant_id = %s AND idempotency_key = %s",  # nosec B608 - static internal column list
                 (tenant, run.idempotency_key),
             ).fetchone()
             if existing is not None:
@@ -2353,8 +2350,7 @@ class PostgresGraphStore:
                 conn.commit()
                 return _correlation_run_from_row(row), True
             replay_row = conn.execute(
-                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs "
-                "WHERE tenant_id = %s AND idempotency_key = %s",  # nosec B608 - static internal column list
+                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs WHERE tenant_id = %s AND idempotency_key = %s",  # nosec B608 - static internal column list
                 (tenant, run.idempotency_key),
             ).fetchone()
             if replay_row is None:

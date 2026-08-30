@@ -3578,8 +3578,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 analysis_incomplete = bool(verified_runtime_facts is not None and not verified_runtime_facts.analysis_complete)
                 bundle_unavailable = runtime_facts_configured and (verified_runtime_facts is None or analysis_incomplete)
                 strict_evidence_missing = settings.graph_reachability_failure_mode == "deny" and (
-                    analysis_incomplete
-                    or (verified_runtime_facts is None and (runtime_facts_configured or not reachability_map))
+                    analysis_incomplete or (verified_runtime_facts is None and (runtime_facts_configured or not reachability_map))
                 )
                 if bundle_unavailable or strict_evidence_missing:
                     if request_tenant_mismatch:

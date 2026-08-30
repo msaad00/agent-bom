@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 
 DEFAULT_GRAPH_TENANT_ID = "default"
+GRAPH_SNAPSHOT_KINDS = frozenset({"scan", "correlation"})
 _GRAPH_SCHEMA_VERSION = 5
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
 _DEFAULT_GRAPH_RETENTION_DAYS = 180
@@ -701,30 +702,51 @@ def open_graph_db(db_path: str | Path) -> Generator[sqlite3.Connection, None, No
         conn.close()
 
 
-def latest_snapshot_id(conn: sqlite3.Connection, *, tenant_id: str = "") -> str:
-    """Return the newest snapshot ID for a tenant, or ``""`` when absent."""
+def normalize_snapshot_kind(snapshot_kind: str) -> str:
+    """Validate the immutable snapshot product selected by a graph consumer."""
+    normalized = str(snapshot_kind or "").strip().lower()
+    if normalized not in GRAPH_SNAPSHOT_KINDS:
+        raise ValueError("snapshot_kind must be 'scan' or 'correlation'")
+    return normalized
+
+
+def latest_snapshot_id(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    snapshot_kind: str = "scan",
+) -> str:
+    """Return the newest same-kind snapshot ID for a tenant, or ``""``."""
     tenant_id = normalize_graph_tenant_id(tenant_id)
+    snapshot_kind = normalize_snapshot_kind(snapshot_kind)
     row = conn.execute(
         """\
         SELECT scan_id
         FROM graph_snapshots
-        WHERE tenant_id = ?
+        WHERE tenant_id = ? AND snapshot_kind = ?
         ORDER BY created_at DESC, scan_id DESC
         LIMIT 1
         """,
-        (tenant_id,),
+        (tenant_id, snapshot_kind),
     ).fetchone()
     return str(row["scan_id"]) if row else ""
 
 
-def previous_snapshot_id(conn: sqlite3.Connection, *, tenant_id: str = "", before_scan_id: str = "") -> str:
-    """Return the snapshot immediately before ``before_scan_id`` for a tenant."""
+def previous_snapshot_id(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    before_scan_id: str = "",
+    snapshot_kind: str = "scan",
+) -> str:
+    """Return the same-kind snapshot immediately before ``before_scan_id``."""
     tenant_id = normalize_graph_tenant_id(tenant_id)
+    snapshot_kind = normalize_snapshot_kind(snapshot_kind)
     if not before_scan_id:
         return ""
     current = conn.execute(
-        "SELECT created_at FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
-        (tenant_id, before_scan_id),
+        "SELECT created_at FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ? AND snapshot_kind = ?",
+        (tenant_id, before_scan_id, snapshot_kind),
     ).fetchone()
     if not current:
         return ""
@@ -732,11 +754,11 @@ def previous_snapshot_id(conn: sqlite3.Connection, *, tenant_id: str = "", befor
         """\
         SELECT scan_id
         FROM graph_snapshots
-        WHERE tenant_id = ? AND created_at < ?
+        WHERE tenant_id = ? AND snapshot_kind = ? AND created_at < ?
         ORDER BY created_at DESC, scan_id DESC
         LIMIT 1
         """,
-        (tenant_id, current["created_at"]),
+        (tenant_id, snapshot_kind, current["created_at"]),
     ).fetchone()
     return str(row["scan_id"]) if row else ""
 

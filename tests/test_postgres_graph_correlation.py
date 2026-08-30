@@ -93,6 +93,34 @@ class _Pool:
         return self.conn
 
 
+class _SnapshotConn:
+    def __init__(self):
+        self.snapshots = [
+            ("scan-1", "acme", "scan", "2026-08-30T00:00:00+00:00"),
+            ("corr-1", "acme", "correlation", "2026-08-30T00:01:00+00:00"),
+            ("scan-other", "other", "scan", "2026-08-30T00:02:00+00:00"),
+        ]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def execute(self, sql, params=None):
+        low = " ".join(sql.strip().lower().split())
+        params = tuple(params or ())
+        if low.startswith("select set_config"):
+            return _Cursor()
+        if low.startswith("select scan_id") and "from graph_snapshots" in low:
+            assert "snapshot_kind = %s" in low
+            tenant_id, snapshot_kind = params
+            matches = [row for row in self.snapshots if row[1] == tenant_id and row[2] == snapshot_kind]
+            matches.sort(key=lambda row: (row[3], row[0]), reverse=True)
+            return _Cursor([(matches[0][0],)] if matches else [])
+        return _Cursor()
+
+
 def _store(monkeypatch):
     from agent_bom.api import postgres_graph
 
@@ -148,6 +176,21 @@ def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None
     assert complete.status is CorrelationRunStatus.COMPLETE
     assert json.loads(conn.rows[("acme", "corr-1")][7]) == _run().input_manifest
     assert conn.commits == 3
+
+
+def test_postgres_latest_snapshot_selection_is_scoped_by_kind_and_tenant(monkeypatch) -> None:
+    from agent_bom.api import postgres_graph
+
+    monkeypatch.setattr(postgres_graph.PostgresGraphStore, "_init_tables", lambda self: None)
+    monkeypatch.setattr(postgres_graph.PostgresGraphStore, "_init_optional_search_indexes", lambda self: None)
+    store = postgres_graph.PostgresGraphStore(pool=_Pool(_SnapshotConn()))
+
+    assert store.latest_snapshot_id(tenant_id="acme") == "scan-1"
+    assert store.latest_snapshot_id(tenant_id="acme", snapshot_kind="correlation") == "corr-1"
+    assert store.latest_snapshot_id(tenant_id="other", snapshot_kind="correlation") == ""
+
+    with pytest.raises(ValueError, match="snapshot_kind"):
+        store.latest_snapshot_id(tenant_id="acme", snapshot_kind="inventory")
 
 
 def test_postgres_correlation_rejects_idempotency_key_reuse_for_different_request(monkeypatch) -> None:

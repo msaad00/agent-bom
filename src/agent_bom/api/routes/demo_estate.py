@@ -182,7 +182,7 @@ def _build_demo_estate_status(tenant_id: str) -> DemoEstateStatus:
 
     graph_store = _get_graph_store()
     bootstrap = get_demo_estate_bootstrap_status(tenant_id=tenant_id)
-    owner = str(graph_store.latest_snapshot_id(tenant_id=tenant_id) or "")
+    owner = str(graph_store.latest_snapshot_id(tenant_id=tenant_id, snapshot_kind="scan") or "")
     bootstrap_owner = str(bootstrap.get("graph_owner_scan_id") or "")
     showcase_stats = graph_store.snapshot_stats(tenant_id=tenant_id, scan_id=SHOWCASE_SCAN_ID)
     showcase_available = int(showcase_stats.get("total_nodes") or 0) > 0

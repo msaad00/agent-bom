@@ -368,6 +368,20 @@ def test_explicit_deny_blocks_when_bundle_is_unavailable():
     assert any(event.get("action") == "gateway.graph_reachability_evidence_unavailable" for event in audit)
 
 
+def test_explicit_deny_does_not_fall_back_to_static_facts_when_configured_bundle_is_unavailable(tmp_path: Path):
+    async def _fetch():
+        raise RuntimeError("do not expose")
+
+    facts = _write_facts(tmp_path, tool="different_tool")
+    settings = _bundle_settings(_fetch, failure_mode="deny")
+    settings.graph_reachability_path = facts
+    with TestClient(create_gateway_app(settings)) as client:
+        resp = client.post("/mcp/filesystem", json=_call(tool="read_secret"))
+
+    assert _is_blocked(resp), resp.text
+    assert resp.json()["error"]["data"]["policy_source"] == "graph_reachability_evidence"
+
+
 def test_tenant_mismatched_bundle_is_not_accepted():
     async def _fetch():
         return _signed_bundle(tenant_id="other-tenant")

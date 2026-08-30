@@ -12,6 +12,8 @@ from agent_bom.runtime.graph_reachability import AgentReachability, Reachability
 
 _SCHEMA = "agent-bom.runtime-facts/v1"
 _ALGORITHM = "HMAC-SHA256"
+_MAX_TTL_SECONDS = 86400
+_MAX_CLOCK_SKEW_SECONDS = 300
 
 
 def _canonical(value: object) -> bytes:
@@ -90,7 +92,7 @@ def create_runtime_facts_bundle(
         raise RuntimeFactsBundleError("invalid_identity")
     if not manifest_sha256.startswith("sha256:") or len(manifest_sha256) != 71:
         raise RuntimeFactsBundleError("invalid_manifest_hash")
-    if not 1 <= ttl_seconds <= 86400:
+    if not 1 <= ttl_seconds <= _MAX_TTL_SECONDS:
         raise RuntimeFactsBundleError("invalid_ttl")
     if evidence_freshness not in {"fresh", "stale_allowed"}:
         raise RuntimeFactsBundleError("invalid_evidence_freshness")
@@ -225,6 +227,11 @@ def verify_runtime_facts_bundle(
         raise RuntimeFactsBundleError("unsupported_schema")
     if str(payload.get("tenant_id") or "") != tenant_id:
         raise RuntimeFactsBundleError("tenant_mismatch")
+    if not str(payload.get("correlation_id") or "").strip():
+        raise RuntimeFactsBundleError("invalid_identity")
+    manifest_sha256 = str(payload.get("manifest_sha256") or "")
+    if not manifest_sha256.startswith("sha256:") or len(manifest_sha256) != 71:
+        raise RuntimeFactsBundleError("invalid_manifest_hash")
     evidence_freshness = str(payload.get("evidence_freshness") or "")
     if evidence_freshness not in {"fresh", "stale_allowed"}:
         raise RuntimeFactsBundleError("invalid_evidence_freshness")
@@ -232,7 +239,9 @@ def verify_runtime_facts_bundle(
     issued_at = _parse_timestamp(payload.get("issued_at"))
     expires_at = _parse_timestamp(payload.get("expires_at"))
     moment = _utc(now or datetime.now(timezone.utc))
-    if expires_at <= issued_at:
+    if issued_at - moment > timedelta(seconds=_MAX_CLOCK_SKEW_SECONDS):
+        raise RuntimeFactsBundleError("bundle_not_yet_valid")
+    if expires_at <= issued_at or expires_at - issued_at > timedelta(seconds=_MAX_TTL_SECONDS):
         raise RuntimeFactsBundleError("invalid_expiry")
     if moment >= expires_at:
         raise RuntimeFactsBundleError("bundle_expired")
@@ -262,7 +271,7 @@ def verify_runtime_facts_bundle(
     return VerifiedRuntimeFacts(
         correlation_id=str(payload.get("correlation_id") or ""),
         tenant_id=tenant_id,
-        manifest_sha256=str(payload.get("manifest_sha256") or ""),
+        manifest_sha256=manifest_sha256,
         issued_at=issued_at,
         expires_at=expires_at,
         key_id=str(signature.get("key_id") or ""),

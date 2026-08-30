@@ -206,6 +206,70 @@ def test_same_label_without_shared_identity_does_not_merge_or_fabricate_edges() 
     assert (edge.source, edge.target) == ("resource:right", "data:right")
 
 
+def test_same_fallback_graph_id_without_exact_cloud_identity_remains_snapshot_scoped() -> None:
+    left = _graph("scan-1")
+    right = _graph("scan-2")
+    for graph in (left, right):
+        graph.add_node(
+            UnifiedNode(
+                id="cloud_resource:production-api",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label="production-api",
+            )
+        )
+
+    unproven = merge_graph_snapshots(
+        correlation_id="corr-cloud-unproven",
+        tenant_id="acme",
+        snapshots=[CorrelationSnapshot.from_graph(left), CorrelationSnapshot.from_graph(right)],
+    )
+    assert len(unproven.graph.nodes) == 2
+
+    arn = "arn:aws:ecs:us-east-1:123456789012:service/prod/production-api"
+    for graph in (left, right):
+        graph.nodes["cloud_resource:production-api"].attributes.update(
+            {"arn": arn, "cloud_provider": "aws", "cloud_account_id": "123456789012"}
+        )
+    proven = merge_graph_snapshots(
+        correlation_id="corr-cloud-proven",
+        tenant_id="acme",
+        snapshots=[CorrelationSnapshot.from_graph(left), CorrelationSnapshot.from_graph(right)],
+    )
+    assert len(proven.graph.nodes) == 1
+    assert next(iter(proven.graph.nodes.values())).attributes["correlation"]["identity_basis"] == "cloud_resource_id"
+
+
+def test_runtime_and_provider_identity_require_explicit_stable_identifiers() -> None:
+    left = _graph("scan-1")
+    right = _graph("scan-2")
+    for graph in (left, right):
+        graph.add_node(UnifiedNode(id="agent:reviewer", entity_type=EntityType.AGENT, label="reviewer"))
+        graph.add_node(UnifiedNode(id="role:runtime", entity_type=EntityType.ROLE, label="runtime-role"))
+
+    unproven = merge_graph_snapshots(
+        correlation_id="corr-identities-unproven",
+        tenant_id="acme",
+        snapshots=[CorrelationSnapshot.from_graph(left), CorrelationSnapshot.from_graph(right)],
+    )
+    assert len(unproven.graph.nodes) == 4
+
+    for graph in (left, right):
+        graph.nodes["agent:reviewer"].attributes["runtime_id"] = "runtime-reviewer-01"
+        graph.nodes["role:runtime"].attributes.update(
+            {"principal_id": "AROAXAMPLE", "cloud_provider": "aws", "cloud_account_id": "123456789012"}
+        )
+    proven = merge_graph_snapshots(
+        correlation_id="corr-identities-proven",
+        tenant_id="acme",
+        snapshots=[CorrelationSnapshot.from_graph(left), CorrelationSnapshot.from_graph(right)],
+    )
+    assert len(proven.graph.nodes) == 2
+    assert {node.attributes["correlation"]["identity_basis"] for node in proven.graph.nodes.values()} == {
+        "provider_identity_id",
+        "runtime_stable_id",
+    }
+
+
 def test_edge_observations_are_union_preserved_after_endpoint_remap() -> None:
     left = _graph("scan-1")
     right = _graph("scan-2")

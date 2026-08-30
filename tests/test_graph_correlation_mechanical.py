@@ -11,6 +11,7 @@ from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion, compute
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
+from agent_bom.graph.path_evidence import annotate_attack_path_evidence
 from agent_bom.graph.types import EntityType, RelationshipType
 
 
@@ -185,6 +186,25 @@ def test_evidence_annotation_preserves_fused_path_identity_when_provenance_is_in
     assert path.reachability == "unknown"
     assert path.composite_risk <= 39.0
     assert path.hop_evidence[0]["complete"] is False
+
+
+def test_zero_hop_structural_candidate_cannot_be_confirmed() -> None:
+    graph = UnifiedGraph(scan_id="scan-a", tenant_id="tenant-a")
+    graph.add_node(UnifiedNode(id="finding:only", entity_type=EntityType.MISCONFIGURATION, label="finding"))
+    path = AttackPath(
+        source="finding:only",
+        target="finding:only",
+        hops=["finding:only"],
+        composite_risk=91.0,
+        reachability="likely",
+    )
+
+    annotate_attack_path_evidence(path, graph)
+
+    assert path.hop_evidence == []
+    assert path.reachability == "unknown"
+    assert path.composite_risk <= 39.0
+    assert "incomplete_hop_evidence" in path.reachability_basis
 
 
 def test_confirmed_path_carries_complete_per_hop_evidence() -> None:

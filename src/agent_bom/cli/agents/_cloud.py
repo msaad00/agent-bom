@@ -168,9 +168,25 @@ def run_cloud_discovery(
                 )
             if cloud_agents:
                 ctx.agents.extend(cloud_agents)
-            ctx.cloud_provider_successes.append({"provider": provider_name, "stage": "discovery"})
             for warning in cloud_warnings:
                 ctx.cloud_provider_warnings.append({"provider": provider_name, "stage": "discovery", "warning": str(warning)})
+            if cloud_warnings and not cloud_agents:
+                # Provider implementations historically returned fatal credential,
+                # permission, and enumeration errors as warning strings. An empty
+                # warning-bearing result is not a verified empty inventory.
+                ctx.cloud_provider_failures.append(
+                    {
+                        "provider": provider_name,
+                        "stage": "discovery",
+                        "error": "Requested cloud collector did not complete.",
+                    }
+                )
+            else:
+                # Warning-bearing results that preserve some assets are successful
+                # partial collections; scan_run records the incomplete coverage.
+                ctx.cloud_provider_successes.append(
+                    {"provider": provider_name, "stage": "discovery", "item_count": len(cloud_agents)}
+                )
         except Exception as exc:  # noqa: BLE001 - isolate requested collectors so later providers still run
             if not quiet:
                 con.print(f"\n  [red]{provider_name.upper()} discovery error: {_safe_error(exc)}[/red]")

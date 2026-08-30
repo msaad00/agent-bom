@@ -58,6 +58,7 @@ class TestWandbDiscover:
             agents, warnings = wandb_provider.discover(api_key="test-key", entity="testuser", project="testproj")
             assert len(agents) >= 1
             assert agents[0].name == "wandb-run:test-run"
+            assert agents[0].mcp_servers[0].is_mcp_surface is False
             origin = agents[0].metadata["cloud_origin"]
             assert origin["provider"] == "wandb"
             assert origin["resource_type"] == "run"
@@ -244,6 +245,7 @@ class TestMlflowDiscover:
             agents, warnings = mlflow_provider.discover(tracking_uri="http://localhost:5000")
             model_agents = [a for a in agents if "mlflow-model:" in a.name]
             assert len(model_agents) >= 1
+            assert model_agents[0].mcp_servers[0].is_mcp_surface is False
             origin = model_agents[0].metadata["cloud_origin"]
             assert origin["provider"] == "mlflow"
             assert origin["resource_type"] == "model"
@@ -407,6 +409,18 @@ class TestOpenAIDiscover:
             asst_agents = [a for a in agents if "openai-asst:" in a.name]
             assert len(asst_agents) >= 1
             assert asst_agents[0].name == "openai-asst:Test Assistant"
+            assert asst_agents[0].mcp_servers[0].is_mcp_surface is False
+            assert asst_agents[0].discovery_envelope is not None
+            assert asst_agents[0].discovery_envelope["permissions_used"] == [
+                "openai:assistants:list",
+                "openai:fine_tuning.jobs:list",
+            ]
+            mock_client.models.list.assert_not_called()
+            from agent_bom.models import AIBOMReport
+
+            report = AIBOMReport(agents=agents)
+            assert report.total_servers == 0
+            assert report.total_packages >= 1
             origin = asst_agents[0].metadata["cloud_origin"]
             assert origin["provider"] == "openai"
             assert origin["resource_type"] == "assistant"
@@ -440,6 +454,7 @@ class TestOpenAIDiscover:
             agents, warnings = openai_provider.discover(api_key="sk-test")
             ft_agents = [a for a in agents if "openai-ft:" in a.name]
             assert len(ft_agents) >= 1
+            assert ft_agents[0].mcp_servers[0].is_mcp_surface is False
             origin = ft_agents[0].metadata["cloud_origin"]
             assert origin["provider"] == "openai"
             assert origin["resource_type"] == "job"
@@ -760,3 +775,31 @@ def test_cloud_container_image_autoscan_skips_already_populated():
 
     mock_scan.assert_not_called()
     assert server.packages == [existing_pkg]  # unchanged
+
+
+def test_requested_provider_warning_is_not_recorded_as_complete():
+    """A warning-bearing requested collector cannot claim factual-zero success."""
+    from unittest.mock import patch
+
+    from rich.console import Console
+
+    from agent_bom.cli.agents._cloud import run_cloud_discovery
+    from agent_bom.cli.agents._context import ScanContext
+
+    ctx = ScanContext(con=Console(quiet=True))
+
+    with patch(
+        "agent_bom.cloud.discover_from_provider",
+        return_value=([], ["Could not list OpenAI assistants"]),
+    ):
+        run_cloud_discovery(ctx, **{**_CLOUD_DISCOVERY_NO_PROVIDERS, "openai_flag": True})
+
+    assert ctx.cloud_provider_successes == []
+    assert [failure["provider"] for failure in ctx.cloud_provider_failures] == ["openai"]
+    assert ctx.cloud_provider_warnings == [
+        {
+            "provider": "openai",
+            "stage": "discovery",
+            "warning": "Could not list OpenAI assistants",
+        }
+    ]

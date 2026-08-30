@@ -841,6 +841,21 @@ def save_graph_streaming(
         raise ValueError("snapshot_kind must be 'scan' or 'correlation'")
     if snapshot_kind == "correlation" and correlation_id != scan:
         raise ValueError("correlation snapshot ID must equal correlation_id")
+    existing_snapshot = conn.execute(
+        "SELECT snapshot_kind FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
+        (tenant, scan),
+    ).fetchone()
+    if existing_snapshot is not None:
+        if str(existing_snapshot["snapshot_kind"] or "scan") == "correlation":
+            raise ValueError("correlation snapshot is immutable")
+        if snapshot_kind == "correlation":
+            raise ValueError("correlation snapshot ID collides with an existing scan")
+    reserved_correlation = conn.execute(
+        "SELECT correlation_id FROM graph_correlation_runs WHERE tenant_id = ? AND correlation_id = ?",
+        (tenant, scan),
+    ).fetchone()
+    if reserved_correlation is not None and snapshot_kind != "correlation":
+        raise ValueError("correlation output identifier is reserved")
     batch_size = _graph_write_batch_size()
     previous_scan = latest_snapshot_id(conn, tenant_id=tenant)
     if previous_scan == scan:

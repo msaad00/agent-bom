@@ -194,9 +194,18 @@ If you need cross-agent correlation and the broader 8-detector runtime engine, u
 
 The gateway can optionally poll the authenticated runtime-facts endpoint for a
 completed graph correlation. Bundles are signed, tenant-bound, expiring, and
-cached as the last valid evidence during a transient control-plane outage.
+content-bound to the immutable correlation output. The v2 envelope signs an
+`analysis_bounds` block that distinguishes complete evaluation from depth- or
+visited-node-limited evaluation. Bundles are cached as the last valid evidence
+during a transient control-plane outage, but a control-plane integrity response
+for missing, replaced, purged, or manifest-mismatched output revokes the cache.
 File-backed reachability remains supported and graph enforcement remains
 globally off unless selected.
+
+Deploy the runtime-facts publisher and gateway from the same Agent-Bom release.
+The gateway rejects unsupported envelope schemas; in strict `deny` mode, that
+version mismatch fails closed instead of silently falling back to stale or
+unverified graph evidence.
 
 ```bash
 agent-bom gateway serve \
@@ -211,8 +220,9 @@ agent-bom gateway serve \
 `allow` is the compatibility default when graph evidence is missing or no
 valid cached bundle exists. `deny` is explicit fail-closed behavior for strict
 evidence labs and production environments whose availability design can
-support it. An expired, invalidly signed, or cross-tenant bundle is never used
-as fresh verification.
+support it. Strict mode also denies when signed analysis is incomplete. An
+expired, invalidly signed, cross-tenant, or content-mismatched bundle is never
+used as fresh verification.
 
 ### Enforce mode
 

@@ -192,6 +192,48 @@ def test_snapshot_metadata_round_trips_without_changing_legacy_defaults(tmp_path
     assert by_id["corr-1"]["evidence_manifest_sha256"] == "sha256:" + "b" * 64
 
 
+def test_completed_correlation_snapshot_cannot_be_replaced_by_a_scan_retry(tmp_path) -> None:
+    db = tmp_path / "graph.db"
+    with graph_store.open_graph_db(db) as conn:
+        correlated = UnifiedGraph(scan_id="corr-1", tenant_id="acme")
+        correlated.add_node(UnifiedNode(id="agent:original", entity_type=EntityType.AGENT, label="original"))
+        graph_store.save_graph_streaming(
+            conn,
+            scan_id="corr-1",
+            tenant_id="acme",
+            nodes=correlated.nodes.values(),
+            edges=(),
+            snapshot_kind="correlation",
+            correlation_id="corr-1",
+            evidence_manifest_sha256="sha256:" + "b" * 64,
+        )
+        replacement = UnifiedGraph(scan_id="corr-1", tenant_id="acme")
+        replacement.add_node(UnifiedNode(id="agent:replacement", entity_type=EntityType.AGENT, label="replacement"))
+
+        with pytest.raises(ValueError, match="correlation snapshot is immutable"):
+            graph_store.save_graph(conn, replacement)
+
+        restored = graph_store.load_graph(conn, tenant_id="acme", scan_id="corr-1")
+        metadata = graph_store.snapshots_by_ids(conn, tenant_id="acme", scan_ids={"corr-1"})[0]
+
+    assert set(restored.nodes) == {"agent:original"}
+    assert metadata["snapshot_kind"] == "correlation"
+    assert metadata["evidence_manifest_sha256"] == "sha256:" + "b" * 64
+
+
+def test_correlation_run_reserves_its_output_id_even_when_snapshot_is_missing(tmp_path) -> None:
+    db = tmp_path / "graph.db"
+    with graph_store.open_graph_db(db) as conn:
+        graph_store.create_correlation_run(conn, _run())
+        collision = UnifiedGraph(scan_id="corr-1", tenant_id="acme")
+        collision.add_node(UnifiedNode(id="agent:collision", entity_type=EntityType.AGENT, label="collision"))
+
+        with pytest.raises(ValueError, match="correlation output identifier is reserved"):
+            graph_store.save_graph(conn, collision)
+
+        assert graph_store.list_snapshots(conn, tenant_id="acme") == []
+
+
 def test_retention_purges_correlated_snapshot_but_keeps_immutable_run_receipt(tmp_path) -> None:
     db = tmp_path / "graph.db"
     with graph_store.open_graph_db(db) as conn:

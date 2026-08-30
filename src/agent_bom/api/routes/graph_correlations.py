@@ -179,8 +179,15 @@ async def get_graph_correlation_runtime_facts(request: Request, correlation_id: 
     run = await asyncio.to_thread(_get_run, tenant_id, correlation_id)
     if run.status is not CorrelationRunStatus.COMPLETE:
         raise HTTPException(status_code=409, detail="correlation_not_complete")
+    store = api_stores._get_graph_store()
+    snapshot_rows = await asyncio.to_thread(
+        store.snapshots_by_ids,
+        tenant_id=tenant_id,
+        scan_ids={correlation_id},
+    )
+    snapshot_metadata = snapshot_rows[0] if snapshot_rows else None
     graph = await asyncio.to_thread(
-        api_stores._get_graph_store().load_graph,
+        store.load_graph,
         tenant_id=tenant_id,
         scan_id=correlation_id,
     )
@@ -188,6 +195,7 @@ async def get_graph_correlation_runtime_facts(request: Request, correlation_id: 
         bundle = create_runtime_facts_bundle_from_correlation(
             run,
             graph,
+            snapshot_metadata=snapshot_metadata,
             signing_key=_signing_key(),
             ttl_seconds=_facts_ttl_seconds(),
             key_id=agent_config.RUNTIME_FACTS_KEY_ID.strip(),

@@ -7,11 +7,76 @@ from copy import deepcopy
 import pytest
 
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
-from agent_bom.graph.correlation import CorrelationSnapshot, merge_graph_snapshots
+from agent_bom.graph.correlation import (
+    CorrelationSnapshot,
+    correlation_graph_digest,
+    correlation_manifest_digest,
+    merge_graph_snapshots,
+    validate_correlation_output_manifest,
+)
 
 
 def _graph(scan_id: str, tenant_id: str = "acme") -> UnifiedGraph:
     return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id, created_at=f"2026-08-{10 + int(scan_id[-1])}T12:00:00+00:00")
+
+
+def test_output_manifest_accepts_a_nonempty_graph_with_zero_edges() -> None:
+    graph = UnifiedGraph(scan_id="corr-zero-edge", tenant_id="acme", created_at="2026-08-30T12:00:00+00:00")
+    graph.add_node(UnifiedNode(id="agent:one", entity_type=EntityType.AGENT, label="one"))
+    result_manifest = {
+        "output": {
+            "scan_id": graph.scan_id,
+            "node_count": 1,
+            "edge_count": 0,
+            "graph_digest_sha256": correlation_graph_digest(graph),
+        }
+    }
+
+    validate_correlation_output_manifest(
+        graph,
+        result_manifest=result_manifest,
+        manifest_sha256=correlation_manifest_digest(result_manifest),
+    )
+
+
+def test_output_manifest_rejects_an_empty_graph() -> None:
+    graph = UnifiedGraph(scan_id="corr-empty", tenant_id="acme", created_at="2026-08-30T12:00:00+00:00")
+    result_manifest = {
+        "output": {
+            "scan_id": graph.scan_id,
+            "node_count": 0,
+            "edge_count": 0,
+            "graph_digest_sha256": correlation_graph_digest(graph),
+        }
+    }
+
+    with pytest.raises(ValueError, match="nonempty graph output"):
+        validate_correlation_output_manifest(
+            graph,
+            result_manifest=result_manifest,
+            manifest_sha256=correlation_manifest_digest(result_manifest),
+        )
+
+
+@pytest.mark.parametrize(("field", "value"), [("node_count", "1"), ("edge_count", "0"), ("edge_count", False)])
+def test_output_manifest_rejects_non_integer_counts(field: str, value: object) -> None:
+    graph = UnifiedGraph(scan_id="corr-count-type", tenant_id="acme", created_at="2026-08-30T12:00:00+00:00")
+    graph.add_node(UnifiedNode(id="agent:one", entity_type=EntityType.AGENT, label="one"))
+    output: dict[str, object] = {
+        "scan_id": graph.scan_id,
+        "node_count": 1,
+        "edge_count": 0,
+        "graph_digest_sha256": correlation_graph_digest(graph),
+    }
+    output[field] = value
+    result_manifest = {"output": output}
+
+    with pytest.raises(ValueError, match=f"{field} must be a non-negative integer"):
+        validate_correlation_output_manifest(
+            graph,
+            result_manifest=result_manifest,
+            manifest_sha256=correlation_manifest_digest(result_manifest),
+        )
 
 
 def _package(graph: UnifiedGraph, *, node_id: str, owner: str, severity: str, risk: float, source: str) -> None:

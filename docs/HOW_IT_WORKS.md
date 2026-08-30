@@ -94,7 +94,9 @@ control plane and gateway consume that same evidence instead of rebuilding it.
 Graph-derived enforcement remains globally `off` by default. An operator can
 poll a signed, expiring runtime-facts bundle and retain the last valid bundle;
 legacy missing-evidence behavior is `allow`, while
-`--graph-reachability-failure-mode deny` is the explicit strict choice.
+`--graph-reachability-failure-mode deny` is the explicit strict choice. Signed
+v2 bundles bind the immutable correlation output and expose analysis
+completeness; strict mode rejects missing, replaced, purged, or bounded output.
 
 ## Where to go next
 

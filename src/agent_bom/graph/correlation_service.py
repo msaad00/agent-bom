@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,6 +16,8 @@ from agent_bom.graph.correlation import (
     CorrelationRunStatus,
     CorrelationSnapshot,
     GraphCorrelationRun,
+    correlation_graph_digest,
+    correlation_manifest_digest,
     merge_graph_snapshots,
 )
 
@@ -26,11 +26,6 @@ logger = logging.getLogger(__name__)
 _shared_service: GraphCorrelationService | None = None
 _shared_service_store: object | None = None
 _shared_service_loop: asyncio.AbstractEventLoop | None = None
-
-
-def _manifest_digest(value: object) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _timestamp(value: str) -> datetime:
@@ -331,9 +326,10 @@ class GraphCorrelationService:
                     "node_count": len(merged.graph.nodes),
                     "edge_count": len(merged.graph.edges),
                     "attack_path_count": len(merged.graph.attack_paths),
+                    "graph_digest_sha256": correlation_graph_digest(merged.graph),
                 },
             }
-            manifest_sha256 = _manifest_digest(result_manifest)
+            manifest_sha256 = correlation_manifest_digest(result_manifest)
             await asyncio.to_thread(
                 self._store.complete_correlation_run,
                 merged.graph,

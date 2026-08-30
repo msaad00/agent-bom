@@ -16,7 +16,8 @@ from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, se
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.middleware import APIKeyMiddleware
 from agent_bom.api.server import app, configure_api
-from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+from agent_bom.db import graph_store as sqlite_graph_store
+from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.runtime.correlation_facts import verify_runtime_facts_bundle
 
 
@@ -32,6 +33,24 @@ def _snapshot(scan_id: str, *, tenant_id: str = "default") -> UnifiedGraph:
             entity_type=EntityType.PACKAGE,
             label=scan_id,
             attributes={"purl": f"pkg:pypi/{scan_id}@1.0.0"},
+        )
+    )
+    graph.add_node(
+        UnifiedNode(
+            id="agent:runtime",
+            entity_type=EntityType.AGENT,
+            label="runtime-agent",
+            attributes={"runtime_id": "runtime-agent"},
+        )
+    )
+    graph.add_node(UnifiedNode(id="tool:secret", entity_type=EntityType.TOOL, label="read_secret"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="agent:runtime",
+            target="tool:secret",
+            relationship=RelationshipType.REACHES_TOOL,
+            source_scan_id=scan_id,
+            provenance={"source": "runtime"},
         )
     )
     return graph
@@ -161,12 +180,48 @@ def test_runtime_facts_returns_a_tenant_bound_verifiable_bundle(correlation_clie
 
     assert status["status"] == "complete"
     response = client.get(f"/v1/graph/correlations/{created['correlation_id']}/runtime-facts")
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     bundle = response.json()
     verified = verify_runtime_facts_bundle(bundle, signing_key=signing_key.encode(), tenant_id="default")
     assert verified.correlation_id == created["correlation_id"]
     assert verified.manifest_sha256 == status["manifest_sha256"]
+    assert verified.analysis_complete is True
     assert bundle["signature"]["key_id"] == "test-key"
+
+
+def test_runtime_facts_rejects_a_purged_completed_output(correlation_client, monkeypatch) -> None:
+    client, store = correlation_client
+    signing_key = "correlation-runtime-facts-test-key-32-bytes"
+    monkeypatch.setattr("agent_bom.config.RUNTIME_FACTS_HMAC_KEY", signing_key)
+    monkeypatch.setattr("agent_bom.config.RUNTIME_FACTS_HMAC_KEY_FILE", "")
+    created = client.post(
+        "/v1/graph/correlations",
+        headers={"Idempotency-Key": "idem-runtime-purge"},
+        json={"name": "runtime", "scan_ids": ["repo-scan", "image-scan"], "max_age_hours": 168},
+    ).json()
+    deadline = time.monotonic() + 2
+    status = created
+    while status["status"] not in {"complete", "failed"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+        status = client.get(f"/v1/graph/correlations/{created['correlation_id']}").json()
+    assert status["status"] == "complete"
+
+    with sqlite_graph_store.open_graph_db(store._db_path) as conn:
+        conn.execute(
+            "UPDATE graph_snapshots SET created_at = ? WHERE tenant_id = ? AND scan_id = ?",
+            ("2026-01-01T00:00:00+00:00", "default", created["correlation_id"]),
+        )
+        sqlite_graph_store.purge_expired_graph_snapshots(
+            conn,
+            retention_days=1,
+            now=datetime(2026, 8, 30, tzinfo=timezone.utc),
+            tenant_id="default",
+        )
+
+    response = client.get(f"/v1/graph/correlations/{created['correlation_id']}/runtime-facts")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "correlation_output_unavailable"
 
 
 def test_correlation_routes_enforce_scan_write_and_graph_read_scopes() -> None:

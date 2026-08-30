@@ -758,6 +758,21 @@ class PostgresGraphStore:
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                 (f"{tenant}\x1f{scan}",),
             )
+            existing_snapshot = conn.execute(
+                "SELECT snapshot_kind FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s",
+                (tenant, scan),
+            ).fetchone()
+            if existing_snapshot is not None:
+                if str(existing_snapshot[0] or "scan") == "correlation":
+                    raise ValueError("correlation snapshot is immutable")
+                if snapshot_kind == "correlation":
+                    raise ValueError("correlation snapshot ID collides with an existing scan")
+            reserved_correlation = conn.execute(
+                "SELECT correlation_id FROM graph_correlation_runs WHERE tenant_id = %s AND correlation_id = %s",
+                (tenant, scan),
+            ).fetchone()
+            if reserved_correlation is not None and snapshot_kind != "correlation":
+                raise ValueError("correlation output identifier is reserved")
             previous_row = conn.execute(
                 """
                 SELECT scan_id, created_at
@@ -2419,6 +2434,13 @@ class PostgresGraphStore:
         manifest_sha256: str,
         completed_at: str = "",
     ) -> GraphCorrelationRun:
+        from agent_bom.graph.correlation import validate_correlation_output_manifest
+
+        validate_correlation_output_manifest(
+            graph,
+            result_manifest=result_manifest,
+            manifest_sha256=manifest_sha256,
+        )
         self.save_graph_streaming(
             scan_id=graph.scan_id,
             tenant_id=graph.tenant_id,

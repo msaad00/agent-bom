@@ -4,20 +4,54 @@ from __future__ import annotations
 
 import hmac
 import json
+import re
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Mapping
 
 from agent_bom.runtime.graph_reachability import AgentReachability, ReachabilityMap
 
-_SCHEMA = "agent-bom.runtime-facts/v1"
+_SCHEMA = "agent-bom.runtime-facts/v2"
 _ALGORITHM = "HMAC-SHA256"
 _MAX_TTL_SECONDS = 86400
 _MAX_CLOCK_SKEW_SECONDS = 300
+_DEPTH_LIMIT = 6
+_VISITED_NODE_LIMIT = 5000
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_MAX_KEY_ID_BYTES = 512
+RUNTIME_FACTS_CACHE_INVALIDATING_ERRORS = frozenset(
+    {
+        "correlation_manifest_invalid",
+        "correlation_manifest_mismatch",
+        "correlation_output_changed",
+        "correlation_output_empty",
+        "correlation_output_mismatch",
+        "correlation_output_replaced",
+        "correlation_output_unavailable",
+        "invalid_analysis_bounds",
+        "invalid_signature",
+        "runtime_facts_empty",
+        "tenant_mismatch",
+        "unsupported_schema",
+    }
+)
 
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+
+
+def _validated_key_id(value: object) -> str:
+    if not isinstance(value, str) or value != value.strip() or len(value.encode("utf-8")) > _MAX_KEY_ID_BYTES:
+        raise RuntimeFactsBundleError("invalid_key_id")
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise RuntimeFactsBundleError("invalid_key_id")
+    return value
+
+
+def _signature_input(payload: Mapping[str, Any], *, key_id: str) -> bytes:
+    return _canonical({"algorithm": _ALGORITHM, "key_id": key_id, "payload": payload})
 
 
 def _utc(value: datetime) -> datetime:
@@ -56,6 +90,8 @@ class VerifiedRuntimeFacts:
     expires_at: datetime
     key_id: str
     evidence_freshness: str
+    analysis_complete: bool
+    analysis_bounds: dict[str, Any]
     reachability: ReachabilityMap
 
 
@@ -73,6 +109,52 @@ def _facts(reachability: ReachabilityMap) -> list[dict[str, Any]]:
     ]
 
 
+def _validated_analysis_bounds(value: Mapping[str, Any] | None) -> dict[str, Any]:
+    raw = value or {
+        "status": "complete",
+        "complete": True,
+        "depth_limit": _DEPTH_LIMIT,
+        "visited_node_limit": _VISITED_NODE_LIMIT,
+        "limit_reasons": [],
+    }
+    status = str(raw.get("status") or "")
+    complete = raw.get("complete")
+    reasons = raw.get("limit_reasons")
+    try:
+        depth_limit = int(str(raw.get("depth_limit") or ""))
+        visited_node_limit = int(str(raw.get("visited_node_limit") or ""))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeFactsBundleError("invalid_analysis_bounds") from exc
+    if (
+        status not in {"complete", "limited"}
+        or not isinstance(complete, bool)
+        or complete != (status == "complete")
+        or not isinstance(reasons, list)
+        or any(not isinstance(reason, str) or not reason for reason in reasons)
+        or depth_limit < 1
+        or visited_node_limit < 1
+        or (complete and reasons)
+        or (not complete and not reasons)
+    ):
+        raise RuntimeFactsBundleError("invalid_analysis_bounds")
+    normalized: dict[str, Any] = {
+        "status": status,
+        "complete": complete,
+        "depth_limit": depth_limit,
+        "visited_node_limit": visited_node_limit,
+        "limit_reasons": sorted(set(reasons)),
+    }
+    if "max_visited_nodes_per_agent" in raw:
+        try:
+            maximum = int(str(raw["max_visited_nodes_per_agent"]))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeFactsBundleError("invalid_analysis_bounds") from exc
+        if maximum < 0 or maximum > visited_node_limit:
+            raise RuntimeFactsBundleError("invalid_analysis_bounds")
+        normalized["max_visited_nodes_per_agent"] = maximum
+    return normalized
+
+
 def create_runtime_facts_bundle(
     *,
     correlation_id: str,
@@ -84,18 +166,21 @@ def create_runtime_facts_bundle(
     now: datetime | None = None,
     key_id: str = "",
     evidence_freshness: str = "fresh",
+    analysis_bounds: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create an HMAC-authenticated runtime-facts envelope."""
 
     _validate_key(signing_key)
+    key_id = _validated_key_id(key_id)
     if not correlation_id or not tenant_id:
         raise RuntimeFactsBundleError("invalid_identity")
-    if not manifest_sha256.startswith("sha256:") or len(manifest_sha256) != 71:
+    if _SHA256_RE.fullmatch(manifest_sha256) is None:
         raise RuntimeFactsBundleError("invalid_manifest_hash")
     if not 1 <= ttl_seconds <= _MAX_TTL_SECONDS:
         raise RuntimeFactsBundleError("invalid_ttl")
     if evidence_freshness not in {"fresh", "stale_allowed"}:
         raise RuntimeFactsBundleError("invalid_evidence_freshness")
+    bounds = _validated_analysis_bounds(analysis_bounds)
     issued = _utc(now or datetime.now(timezone.utc))
     payload = {
         "schema_version": _SCHEMA,
@@ -103,11 +188,12 @@ def create_runtime_facts_bundle(
         "tenant_id": tenant_id,
         "manifest_sha256": manifest_sha256,
         "evidence_freshness": evidence_freshness,
+        "analysis_bounds": bounds,
         "issued_at": issued.isoformat(),
         "expires_at": (issued + timedelta(seconds=ttl_seconds)).isoformat(),
         "facts": _facts(reachability),
     }
-    signature = hmac.digest(signing_key, _canonical(payload), "sha256").hex()
+    signature = hmac.digest(signing_key, _signature_input(payload, key_id=key_id), "sha256").hex()
     return {
         "payload": payload,
         "signature": {
@@ -118,11 +204,13 @@ def create_runtime_facts_bundle(
     }
 
 
-def _reachability_from_correlation_graph(graph: Any) -> ReachabilityMap:
+def _reachability_from_correlation_graph(graph: Any) -> tuple[ReachabilityMap, dict[str, Any]]:
     from agent_bom.graph.types import EntityType
 
     target_types = {EntityType.TOOL, EntityType.CREDENTIAL, EntityType.CREDENTIAL_REF}
     by_agent: dict[str, AgentReachability] = {}
+    limit_reasons: set[str] = set()
+    max_visited = 0
     for agent in sorted(graph.nodes.values(), key=lambda node: node.id):
         if agent.entity_type is not EntityType.AGENT:
             continue
@@ -138,17 +226,25 @@ def _reachability_from_correlation_graph(graph: Any) -> ReachabilityMap:
             continue
         node_ids: set[str] = set()
         node_labels: set[str] = set()
-        queue: list[tuple[str, int]] = [(agent.id, 0)]
+        queue: deque[tuple[str, int]] = deque([(agent.id, 0)])
         visited = {agent.id}
-        while queue and len(visited) <= 5000:
-            source, depth = queue.pop(0)
-            if depth >= 6:
+        while queue:
+            source, depth = queue.popleft()
+            if depth >= _DEPTH_LIMIT:
+                if any(
+                    edge.traversable and edge.target not in visited and edge.target in graph.nodes
+                    for edge in graph.adjacency.get(source, [])
+                ):
+                    limit_reasons.add("depth_cap_reached")
                 continue
             for edge in graph.adjacency.get(source, []):
                 correlation = edge.provenance.get("correlation") if isinstance(edge.provenance, dict) else None
                 source_ids = correlation.get("source_scan_ids") if isinstance(correlation, dict) else None
                 has_provenance = bool(source_ids or edge.source_scan_id or graph.scan_id)
                 if not edge.traversable or not has_provenance or edge.target in visited:
+                    continue
+                if len(visited) >= _VISITED_NODE_LIMIT:
+                    limit_reasons.add("visited_node_cap_reached")
                     continue
                 visited.add(edge.target)
                 target = graph.nodes.get(edge.target)
@@ -158,6 +254,7 @@ def _reachability_from_correlation_graph(graph: Any) -> ReachabilityMap:
                     node_ids.add(target.id)
                     node_labels.add(target.label or target.id)
                 queue.append((target.id, depth + 1))
+        max_visited = max(max_visited, len(visited))
         if node_ids or node_labels:
             by_agent[runtime_id.lower()] = AgentReachability(
                 agent_id=runtime_id,
@@ -165,13 +262,22 @@ def _reachability_from_correlation_graph(graph: Any) -> ReachabilityMap:
                 node_labels=frozenset(node_labels),
                 detail="Derived from directed, traversable correlation graph relationships.",
             )
-    return ReachabilityMap(by_agent=by_agent)
+    complete = not limit_reasons
+    return ReachabilityMap(by_agent=by_agent), {
+        "status": "complete" if complete else "limited",
+        "complete": complete,
+        "depth_limit": _DEPTH_LIMIT,
+        "visited_node_limit": _VISITED_NODE_LIMIT,
+        "max_visited_nodes_per_agent": max_visited,
+        "limit_reasons": sorted(limit_reasons),
+    }
 
 
 def create_runtime_facts_bundle_from_correlation(
     run: Any,
     graph: Any,
     *,
+    snapshot_metadata: Mapping[str, Any] | None,
     signing_key: bytes,
     ttl_seconds: int,
     now: datetime | None = None,
@@ -183,10 +289,36 @@ def create_runtime_facts_bundle_from_correlation(
 
     if run.status is not CorrelationRunStatus.COMPLETE:
         raise RuntimeFactsBundleError("correlation_not_complete")
+    if not isinstance(snapshot_metadata, Mapping):
+        raise RuntimeFactsBundleError("correlation_output_unavailable")
     if run.output_scan_id != run.correlation_id or graph.scan_id != run.correlation_id:
         raise RuntimeFactsBundleError("correlation_output_mismatch")
     if graph.tenant_id != run.tenant_id:
         raise RuntimeFactsBundleError("tenant_mismatch")
+    if (
+        str(snapshot_metadata.get("scan_id") or "") != run.correlation_id
+        or str(snapshot_metadata.get("snapshot_kind") or "") != "correlation"
+        or str(snapshot_metadata.get("correlation_id") or "") != run.correlation_id
+    ):
+        raise RuntimeFactsBundleError("correlation_output_replaced")
+    if str(snapshot_metadata.get("evidence_manifest_sha256") or "") != run.manifest_sha256:
+        raise RuntimeFactsBundleError("correlation_manifest_mismatch")
+    if not graph.nodes or int(snapshot_metadata.get("node_count") or 0) < 1:
+        raise RuntimeFactsBundleError("correlation_output_empty")
+    from agent_bom.graph.correlation import correlation_graph_digest, correlation_manifest_digest
+
+    if not hmac.compare_digest(correlation_manifest_digest(run.result_manifest), run.manifest_sha256):
+        raise RuntimeFactsBundleError("correlation_manifest_mismatch")
+    output = run.result_manifest.get("output") if isinstance(run.result_manifest, Mapping) else None
+    expected_digest = str(output.get("graph_digest_sha256") or "") if isinstance(output, Mapping) else ""
+    if not expected_digest.startswith("sha256:") or len(expected_digest) != 71:
+        raise RuntimeFactsBundleError("correlation_manifest_invalid")
+
+    if not hmac.compare_digest(correlation_graph_digest(graph), expected_digest):
+        raise RuntimeFactsBundleError("correlation_output_changed")
+    reachability, analysis_bounds = _reachability_from_correlation_graph(graph)
+    if not reachability:
+        raise RuntimeFactsBundleError("runtime_facts_empty")
     evidence_freshness = (
         "stale_allowed" if any(str(item.get("freshness") or "") == "stale_allowed" for item in run.input_manifest) else "fresh"
     )
@@ -194,12 +326,13 @@ def create_runtime_facts_bundle_from_correlation(
         correlation_id=run.correlation_id,
         tenant_id=run.tenant_id,
         manifest_sha256=run.manifest_sha256,
-        reachability=_reachability_from_correlation_graph(graph),
+        reachability=reachability,
         signing_key=signing_key,
         ttl_seconds=ttl_seconds,
         now=now,
         key_id=key_id,
         evidence_freshness=evidence_freshness,
+        analysis_bounds=analysis_bounds,
     )
 
 
@@ -219,22 +352,28 @@ def verify_runtime_facts_bundle(
         raise RuntimeFactsBundleError("malformed_bundle")
     if signature.get("algorithm") != _ALGORITHM:
         raise RuntimeFactsBundleError("unsupported_signature_algorithm")
+    key_id = _validated_key_id(signature.get("key_id", ""))
     supplied = str(signature.get("value") or "")
-    expected = hmac.digest(signing_key, _canonical(payload), "sha256").hex()
+    expected = hmac.digest(signing_key, _signature_input(payload, key_id=key_id), "sha256").hex()
     if not supplied or not hmac.compare_digest(supplied, expected):
         raise RuntimeFactsBundleError("invalid_signature")
     if payload.get("schema_version") != _SCHEMA:
         raise RuntimeFactsBundleError("unsupported_schema")
     if str(payload.get("tenant_id") or "") != tenant_id:
         raise RuntimeFactsBundleError("tenant_mismatch")
-    if not str(payload.get("correlation_id") or "").strip():
-        raise RuntimeFactsBundleError("invalid_identity")
+    correlation_id = str(payload.get("correlation_id") or "").strip()
     manifest_sha256 = str(payload.get("manifest_sha256") or "")
-    if not manifest_sha256.startswith("sha256:") or len(manifest_sha256) != 71:
+    if not correlation_id:
+        raise RuntimeFactsBundleError("invalid_identity")
+    if _SHA256_RE.fullmatch(manifest_sha256) is None:
         raise RuntimeFactsBundleError("invalid_manifest_hash")
     evidence_freshness = str(payload.get("evidence_freshness") or "")
     if evidence_freshness not in {"fresh", "stale_allowed"}:
         raise RuntimeFactsBundleError("invalid_evidence_freshness")
+    raw_analysis_bounds = payload.get("analysis_bounds")
+    if not isinstance(raw_analysis_bounds, Mapping):
+        raise RuntimeFactsBundleError("invalid_analysis_bounds")
+    analysis_bounds = _validated_analysis_bounds(raw_analysis_bounds)
 
     issued_at = _parse_timestamp(payload.get("issued_at"))
     expires_at = _parse_timestamp(payload.get("expires_at"))
@@ -269,13 +408,15 @@ def verify_runtime_facts_bundle(
             detail=str(raw.get("detail") or ""),
         )
     return VerifiedRuntimeFacts(
-        correlation_id=str(payload.get("correlation_id") or ""),
+        correlation_id=correlation_id,
         tenant_id=tenant_id,
         manifest_sha256=manifest_sha256,
         issued_at=issued_at,
         expires_at=expires_at,
-        key_id=str(signature.get("key_id") or ""),
+        key_id=key_id,
         evidence_freshness=evidence_freshness,
+        analysis_complete=bool(analysis_bounds["complete"]),
+        analysis_bounds=analysis_bounds,
         reachability=ReachabilityMap(by_agent=by_agent),
     )
 
@@ -309,6 +450,8 @@ class RuntimeFactsPoller:
             )
         except RuntimeFactsBundleError as exc:
             self.last_error = exc.code
+            if exc.code in RUNTIME_FACTS_CACHE_INVALIDATING_ERRORS:
+                self._current = None
             return False
         except Exception:  # noqa: BLE001 - external details are intentionally discarded
             self.last_error = "bundle_fetch_failed"
@@ -327,6 +470,7 @@ class RuntimeFactsPoller:
 
 __all__ = [
     "RuntimeFactsBundleError",
+    "RUNTIME_FACTS_CACHE_INVALIDATING_ERRORS",
     "RuntimeFactsPoller",
     "VerifiedRuntimeFacts",
     "create_runtime_facts_bundle",

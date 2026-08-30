@@ -38,7 +38,13 @@ def test_release_image_installs_the_missing_headers_before_uv_sync() -> None:
 def test_docker_input_prs_run_the_release_shaped_multiarch_gate() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     docker_job = workflow.split("\n  docker:\n", 1)[1].split("\n  action-dogfood:\n", 1)[0]
-    assert "needs: [changes, security, lint, test]" in docker_job
+    assert "needs: [changes, security, lint, test-core]" in docker_job
     assert "github.event_name == 'pull_request'" in docker_job
     assert "needs.changes.outputs.alpine_full == 'true'" in docker_job
     assert "--platform linux/amd64,linux/arm64" in docker_job
+
+    required_job = workflow.split("\n  test:\n", 1)[1].split("\n  # 6. Dogfood", 1)[0]
+    assert "name: Test (Python 3.13)" in required_job
+    assert "needs: [changes, test-core, docker]" in required_job
+    assert 'DOCKER_RESULT: ${{ needs.docker.result }}' in required_job
+    assert 'if [ "$DOCKER_REQUIRED" = "true" ] && [ "$DOCKER_RESULT" != "success" ]' in required_job

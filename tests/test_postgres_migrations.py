@@ -38,6 +38,7 @@ RUNTIME_SCHEMA_SQL = POSTGRES_DIR / "runtime-schema.sql"
 HUB_LEDGER_SCAN_ID = VERSIONS_DIR / "20260818_01_hub_ledger_scan_id.py"
 TENANT_BINDING_AUTHORITY = VERSIONS_DIR / "20260819_01_tenant_binding_authority.py"
 HUB_OVERVIEW_REVISION = VERSIONS_DIR / "20260827_01_hub_overview_revision.py"
+GRAPH_CORRELATIONS = VERSIONS_DIR / "20260830_01_graph_correlations.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -49,7 +50,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260827_01"
+ALEMBIC_HEAD = "20260830_01"
 
 
 def _canonical_sql(text: str) -> str:
@@ -86,6 +87,21 @@ def test_hub_overview_revision_is_durable_chained_and_tenant_isolated() -> None:
     assert "tenant_id = public.abom_current_tenant()" in sql
     assert "GRANT SELECT, INSERT, UPDATE, DELETE ON hub_overview_revisions TO agent_bom_app" in sql
     assert "VALUES ('compliance_hub', 2, now())" in sql
+
+
+def test_graph_correlation_migration_is_additive_chained_and_tenant_isolated() -> None:
+    sql = GRAPH_CORRELATIONS.read_text()
+    assert re.search(r'revision\s*=\s*"20260830_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260827_01"', sql)
+    assert "CREATE TABLE IF NOT EXISTS graph_correlation_runs" in sql
+    assert "UNIQUE (tenant_id, idempotency_key)" in sql
+    assert "ADD COLUMN IF NOT EXISTS snapshot_kind" in sql
+    assert "ADD COLUMN IF NOT EXISTS correlation_id" in sql
+    assert "ADD COLUMN IF NOT EXISTS evidence_manifest_sha256" in sql
+    assert "ENABLE ROW LEVEL SECURITY" in sql
+    assert "FORCE ROW LEVEL SECURITY" in sql
+    assert "graph_correlation_runs_tenant_isolation" in sql
+    assert "VALUES ('graph', 2, now())" in sql
 
 
 def test_managed_trial_invitation_migration_is_chained_and_secret_minimal() -> None:

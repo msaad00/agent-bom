@@ -34,6 +34,7 @@ from agent_bom.graph.completeness import (
     graph_completeness,
     impact_completeness,
 )
+from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun, validate_correlation_update
 from agent_bom.graph.severity_floor import severity_floor_sql
 from agent_bom.security import sanitize_text
 
@@ -47,6 +48,7 @@ from .postgres_common import (
 )
 
 logger = logging.getLogger(__name__)
+_GRAPH_STORAGE_SCHEMA_VERSION = 2
 
 
 def select_expired_snapshot_ids(
@@ -115,6 +117,7 @@ _GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "graph_nodes": ("id", "scan_id"),
     "graph_edges": ("source_id", "target_id", "relationship", "scan_id"),
     "graph_snapshots": ("scan_id",),
+    "graph_correlation_runs": ("correlation_id",),
     "attack_paths": ("source_node", "target_node", "scan_id"),
     "interaction_risks": ("pattern", "agents", "scan_id"),
     "graph_filter_presets": ("name",),
@@ -215,6 +218,34 @@ def _decode_json_array(value: Any, *, field: str) -> list[Any]:
     return list(decoded)
 
 
+_CORRELATION_RUN_COLUMNS = """
+    correlation_id, tenant_id, idempotency_key, name, status,
+    max_age_hours, allow_stale, input_manifest, manifest_sha256,
+    output_scan_id, failure_code, created_at, started_at, completed_at
+"""
+
+
+def _correlation_run_from_row(row: Sequence[Any]) -> GraphCorrelationRun:
+    return GraphCorrelationRun.from_mapping(
+        {
+            "correlation_id": row[0],
+            "tenant_id": row[1],
+            "idempotency_key": row[2],
+            "name": row[3],
+            "status": row[4],
+            "max_age_hours": row[5],
+            "allow_stale": bool(row[6]),
+            "input_manifest": _decode_json_array(row[7], field="input_manifest"),
+            "manifest_sha256": row[8],
+            "output_scan_id": row[9],
+            "failure_code": row[10],
+            "created_at": row[11],
+            "started_at": row[12],
+            "completed_at": row[13],
+        }
+    )
+
+
 def _diff_summary_counts(diff: dict[str, Any]) -> dict[str, int]:
     return {
         "nodes_added": len(diff.get("nodes_added") or []),
@@ -258,7 +289,7 @@ class PostgresGraphStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "graph"):
+            if not ensure_postgres_schema_version(conn, "graph", _GRAPH_STORAGE_SCHEMA_VERSION):
                 return
             conn.execute(
                 """
@@ -350,6 +381,9 @@ class PostgresGraphStore:
                     risk_summary TEXT DEFAULT '{}',
                     node_type_counts TEXT DEFAULT NULL,
                     analysis_status TEXT NOT NULL DEFAULT '{}',
+                    snapshot_kind TEXT NOT NULL DEFAULT 'scan' CHECK (snapshot_kind IN ('scan', 'correlation')),
+                    correlation_id TEXT DEFAULT NULL,
+                    evidence_manifest_sha256 TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (scan_id, tenant_id)
                 )
                 """
@@ -357,7 +391,36 @@ class PostgresGraphStore:
             # Additive and nullable, matching the SQLite column: snapshots written
             # before it existed read NULL and fall back to the live GROUP BY.
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS node_type_counts TEXT DEFAULT NULL")
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_kind TEXT NOT NULL DEFAULT 'scan'")
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS correlation_id TEXT DEFAULT NULL")
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS evidence_manifest_sha256 TEXT NOT NULL DEFAULT ''")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_snapshots_recent ON graph_snapshots(tenant_id, created_at DESC)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS graph_correlation_runs (
+                    correlation_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    idempotency_key TEXT NOT NULL,
+                    name TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'complete', 'failed')),
+                    max_age_hours INTEGER NOT NULL CHECK (max_age_hours BETWEEN 1 AND 8760),
+                    allow_stale INTEGER NOT NULL DEFAULT 0 CHECK (allow_stale IN (0, 1)),
+                    input_manifest TEXT NOT NULL DEFAULT '[]',
+                    manifest_sha256 TEXT NOT NULL DEFAULT '',
+                    output_scan_id TEXT NOT NULL DEFAULT '',
+                    failure_code TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    started_at TEXT NOT NULL DEFAULT '',
+                    completed_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (correlation_id, tenant_id),
+                    UNIQUE (tenant_id, idempotency_key)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pg_graph_correlation_runs_recent "
+                "ON graph_correlation_runs(tenant_id, created_at DESC)"
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS attack_paths (
@@ -471,6 +534,7 @@ class PostgresGraphStore:
             _ensure_tenant_rls(conn, "graph_nodes", "tenant_id")
             _ensure_tenant_rls(conn, "graph_edges", "tenant_id")
             _ensure_tenant_rls(conn, "graph_snapshots", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_correlation_runs", "tenant_id")
             _ensure_tenant_rls(conn, "attack_paths", "tenant_id")
             _ensure_tenant_rls(conn, "interaction_risks", "tenant_id")
             _ensure_tenant_rls(conn, "graph_filter_presets", "tenant_id")
@@ -607,6 +671,9 @@ class PostgresGraphStore:
         interaction_risks: Iterable[Any] = (),
         analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
         created_at: str = "",
+        snapshot_kind: str = "scan",
+        correlation_id: str = "",
+        evidence_manifest_sha256: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables without materialising a graph.
 
@@ -625,6 +692,10 @@ class PostgresGraphStore:
         scan = scan_id or ""
         tenant = normalize_graph_tenant_id(tenant_id)
         now = created_at or datetime.now(timezone.utc).isoformat()
+        if snapshot_kind not in {"scan", "correlation"}:
+            raise ValueError("snapshot_kind must be 'scan' or 'correlation'")
+        if snapshot_kind == "correlation" and correlation_id != scan:
+            raise ValueError("correlation snapshot ID must equal correlation_id")
         batch_size = _graph_write_batch_size()
 
         node_count = 0
@@ -982,15 +1053,20 @@ class PostgresGraphStore:
             conn.execute(
                 """
                 INSERT INTO graph_snapshots
-                    (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary, node_type_counts, analysis_status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary,
+                     node_type_counts, analysis_status, snapshot_kind, correlation_id,
+                     evidence_manifest_sha256)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (scan_id, tenant_id) DO UPDATE SET
                     created_at = EXCLUDED.created_at,
                     node_count = EXCLUDED.node_count,
                     edge_count = EXCLUDED.edge_count,
                     risk_summary = EXCLUDED.risk_summary,
                     node_type_counts = EXCLUDED.node_type_counts,
-                    analysis_status = EXCLUDED.analysis_status
+                    analysis_status = EXCLUDED.analysis_status,
+                    snapshot_kind = EXCLUDED.snapshot_kind,
+                    correlation_id = EXCLUDED.correlation_id,
+                    evidence_manifest_sha256 = EXCLUDED.evidence_manifest_sha256
                 """,
                 (
                     scan,
@@ -1001,6 +1077,9 @@ class PostgresGraphStore:
                     json.dumps(dict(severity_counts)),
                     json.dumps(dict(type_counts)),
                     json.dumps(analysis_status_map_to_dict(analysis_status or {})),
+                    snapshot_kind,
+                    correlation_id or None,
+                    evidence_manifest_sha256,
                 ),
             )
             conn.commit()
@@ -2199,7 +2278,8 @@ class PostgresGraphStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 f"""
-                SELECT scan_id, created_at, node_count, edge_count, risk_summary, analysis_status
+                SELECT scan_id, created_at, node_count, edge_count, risk_summary, analysis_status,
+                       snapshot_kind, correlation_id, evidence_manifest_sha256
                 FROM graph_snapshots
                 {where}
                 ORDER BY created_at DESC
@@ -2215,9 +2295,133 @@ class PostgresGraphStore:
                     "edge_count": row[3],
                     "risk_summary": _decode_json_object(row[4]),
                     "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(_decode_json_object(row[5]))),
+                    "snapshot_kind": row[6] or "scan",
+                    "correlation_id": row[7] or "",
+                    "evidence_manifest_sha256": row[8] or "",
                 }
                 for row in rows
             ]
+
+    def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> GraphCorrelationRun | None:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs "
+                "WHERE tenant_id = %s AND correlation_id = %s",  # nosec B608 - static internal column list
+                (tenant, correlation_id),
+            ).fetchone()
+        return _correlation_run_from_row(row) if row is not None else None
+
+    def create_correlation_run(self, run: GraphCorrelationRun) -> tuple[GraphCorrelationRun, bool]:
+        tenant = normalize_graph_tenant_id(run.tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            existing = conn.execute(
+                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs "
+                "WHERE tenant_id = %s AND idempotency_key = %s",  # nosec B608 - static internal column list
+                (tenant, run.idempotency_key),
+            ).fetchone()
+            if existing is not None:
+                replay = _correlation_run_from_row(existing)
+                if replay.request_fingerprint() != run.request_fingerprint():
+                    raise ValueError("idempotency key was already used for a different correlation request")
+                return replay, False
+            row = conn.execute(
+                f"""
+                INSERT INTO graph_correlation_runs ({_CORRELATION_RUN_COLUMNS})
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                RETURNING {_CORRELATION_RUN_COLUMNS}
+                """,  # nosec B608 - static internal column list
+                (
+                    run.correlation_id,
+                    tenant,
+                    run.idempotency_key,
+                    run.name,
+                    run.status.value,
+                    run.max_age_hours,
+                    int(run.allow_stale),
+                    json.dumps(run.input_manifest, sort_keys=True, separators=(",", ":")),
+                    run.manifest_sha256,
+                    run.output_scan_id,
+                    run.failure_code,
+                    run.created_at,
+                    run.started_at,
+                    run.completed_at,
+                ),
+            ).fetchone()
+            if row is not None:
+                conn.commit()
+                return _correlation_run_from_row(row), True
+            replay_row = conn.execute(
+                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs "
+                "WHERE tenant_id = %s AND idempotency_key = %s",  # nosec B608 - static internal column list
+                (tenant, run.idempotency_key),
+            ).fetchone()
+            if replay_row is None:
+                raise ValueError("correlation_id already exists with a different idempotency key")
+            concurrent_replay = _correlation_run_from_row(replay_row)
+            if concurrent_replay.request_fingerprint() != run.request_fingerprint():
+                raise ValueError("idempotency key was already used for a different correlation request")
+            return concurrent_replay, False
+
+    def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list[GraphCorrelationRun]:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs "
+                "WHERE tenant_id = %s ORDER BY created_at DESC, correlation_id DESC LIMIT %s",  # nosec B608
+                (tenant, max(1, min(int(limit), 1000))),
+            ).fetchall()
+        return [_correlation_run_from_row(row) for row in rows]
+
+    def update_correlation_run(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        status: CorrelationRunStatus,
+        manifest_sha256: str = "",
+        output_scan_id: str = "",
+        failure_code: str = "",
+        started_at: str = "",
+        completed_at: str = "",
+    ) -> GraphCorrelationRun:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        existing = self.get_correlation_run(tenant_id=tenant, correlation_id=correlation_id)
+        if existing is None:
+            raise KeyError("correlation run not found")
+        resolved_manifest, resolved_output, resolved_failure = validate_correlation_update(
+            existing,
+            status=status,
+            manifest_sha256=manifest_sha256,
+            output_scan_id=output_scan_id,
+            failure_code=failure_code,
+        )
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                f"""
+                UPDATE graph_correlation_runs
+                SET status = %s, manifest_sha256 = %s, output_scan_id = %s,
+                    failure_code = %s, started_at = %s, completed_at = %s
+                WHERE tenant_id = %s AND correlation_id = %s AND status = %s
+                RETURNING {_CORRELATION_RUN_COLUMNS}
+                """,  # nosec B608 - static internal column list
+                (
+                    status.value,
+                    resolved_manifest,
+                    resolved_output,
+                    resolved_failure,
+                    started_at or existing.started_at,
+                    completed_at or existing.completed_at,
+                    tenant,
+                    correlation_id,
+                    existing.status.value,
+                ),
+            ).fetchone()
+            if row is None:
+                raise ValueError("correlation run status changed concurrently")
+            conn.commit()
+            return _correlation_run_from_row(row)
 
     def _snapshot_digests(self, conn: Any, *, tenant_id: str, scan_id: str) -> tuple[str, str, dict[str, int]]:
         graph_rows: dict[str, list[dict[str, Any]]] = {"nodes": [], "edges": []}

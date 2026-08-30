@@ -524,10 +524,35 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     risk_summary TEXT DEFAULT '{}',
     node_type_counts TEXT DEFAULT NULL,
     analysis_status TEXT NOT NULL DEFAULT '{}',
+    snapshot_kind TEXT NOT NULL DEFAULT 'scan' CHECK (snapshot_kind IN ('scan', 'correlation')),
+    correlation_id TEXT DEFAULT NULL,
+    evidence_manifest_sha256 TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (scan_id, tenant_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pg_graph_snapshots_recent ON graph_snapshots(tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS graph_correlation_runs (
+    correlation_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    idempotency_key TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'complete', 'failed')),
+    max_age_hours INTEGER NOT NULL CHECK (max_age_hours BETWEEN 1 AND 8760),
+    allow_stale INTEGER NOT NULL DEFAULT 0 CHECK (allow_stale IN (0, 1)),
+    input_manifest TEXT NOT NULL DEFAULT '[]',
+    manifest_sha256 TEXT NOT NULL DEFAULT '',
+    output_scan_id TEXT NOT NULL DEFAULT '',
+    failure_code TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    started_at TEXT NOT NULL DEFAULT '',
+    completed_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (correlation_id, tenant_id),
+    UNIQUE (tenant_id, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_graph_correlation_runs_recent
+    ON graph_correlation_runs(tenant_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS attack_paths (
     source_node         TEXT NOT NULL,
@@ -1163,6 +1188,24 @@ BEGIN
 END
 $$;
 
+ALTER TABLE graph_correlation_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_correlation_runs FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_correlation_runs'
+          AND policyname = 'graph_correlation_runs_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_correlation_runs_tenant_isolation ON graph_correlation_runs
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
 ALTER TABLE attack_paths ENABLE ROW LEVEL SECURITY;
 ALTER TABLE attack_paths FORCE ROW LEVEL SECURITY;
 
@@ -1677,6 +1720,7 @@ $$;
 --   graph_nodes        — per-scan graph entities with severity/risk ordering
 --   graph_edges        — per-scan traversable relationships
 --   graph_snapshots    — graph snapshot summary + recency cursor
+--   graph_correlation_runs — immutable multi-snapshot correlation requests and state
 --   attack_paths       — persisted fix-first attack-path projections
 --   interaction_risks  — agent interaction / toxic-combo risk overlays
 --   graph_filter_presets — tenant-scoped saved graph filters

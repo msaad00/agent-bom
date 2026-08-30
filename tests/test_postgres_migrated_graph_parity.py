@@ -123,6 +123,48 @@ def test_attack_paths_round_trip_on_migration_owned_schema(migrated_fresh_databa
     assert [m.technique_id for m in got.technique_mappings] == ["T1078"]
 
 
+def test_graph_correlation_round_trip_on_migration_owned_schema(migrated_fresh_database):
+    from agent_bom.api.postgres_graph import PostgresGraphStore
+    from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun
+
+    store = PostgresGraphStore()
+    run = GraphCorrelationRun(
+        correlation_id="corr-migration-parity",
+        tenant_id="default",
+        idempotency_key="idem-migration-parity",
+        name="migration parity",
+        status=CorrelationRunStatus.PENDING,
+        max_age_hours=168,
+        allow_stale=False,
+        input_manifest=[{"scan_id": "scan-a"}, {"scan_id": "scan-b"}],
+        created_at="2026-08-30T00:00:00+00:00",
+    )
+
+    created, was_created = store.create_correlation_run(run)
+    replayed, replay_created = store.create_correlation_run(run)
+    running = store.update_correlation_run(
+        tenant_id="default",
+        correlation_id=run.correlation_id,
+        status=CorrelationRunStatus.RUNNING,
+        started_at="2026-08-30T00:01:00+00:00",
+    )
+    complete = store.update_correlation_run(
+        tenant_id="default",
+        correlation_id=run.correlation_id,
+        status=CorrelationRunStatus.COMPLETE,
+        manifest_sha256="sha256:" + "a" * 64,
+        output_scan_id=run.correlation_id,
+        completed_at="2026-08-30T00:02:00+00:00",
+    )
+
+    assert was_created is True
+    assert replay_created is False
+    assert replayed.correlation_id == created.correlation_id
+    assert running.status is CorrelationRunStatus.RUNNING
+    assert complete.status is CorrelationRunStatus.COMPLETE
+    assert complete.output_scan_id == run.correlation_id
+
+
 def test_audit_fork_guard_unique_index_present_after_migrate_to_head(migrated_fresh_database):
     """The hash-chain fork guard must exist in a schema built ONLY by Alembic.
 

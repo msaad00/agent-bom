@@ -877,19 +877,22 @@ def test_demo_estate_survives_job_ttl_cleanup(demo_estate_client: TestClient) ->
 
 
 def test_demo_estate_exposure_paths_materialized(demo_estate_client: TestClient) -> None:
-    """The materialized exposure-path queue (read by /v1/graph/exposure-paths) is
-    non-empty and headlines the seeded hero chains."""
-    payload = demo_estate_client.get("/v1/graph/exposure-paths", headers=VIEWER, params={"limit": 10}).json()
-    assert payload.get("count", 0) >= 3, payload
-    assert payload.get("total", 0) >= 3, payload
+    """The bounded exposure-path queue reports materialized output truthfully.
 
-    findings = {f for p in payload.get("paths", []) for f in (p.get("findings") or [])}
-    creds = {c for p in payload.get("paths", []) for c in (p.get("exposedCredentials") or [])}
-    tools = {t for p in payload.get("paths", []) for t in (p.get("reachableTools") or [])}
-    # The PyYAML RCE → run_shell → AWS-secret hero chain materializes.
-    assert "CVE-2020-14343" in findings, findings
-    assert "AWS_SECRET_ACCESS_KEY" in creds, creds
-    assert "run_shell" in tools, tools
+    The broader synthetic estate can contain thousands of mixed governance and
+    vulnerability candidates. Do not require a hand-authored demo chain to
+    outrank stronger evidence in the first page; the reference evidence lab
+    owns the real-CVE end-to-end proof contract.
+    """
+    payload = demo_estate_client.get("/v1/graph/exposure-paths", headers=VIEWER, params={"limit": 10}).json()
+    paths = payload.get("paths") or []
+
+    assert payload.get("count") == len(paths) == 10, payload
+    assert payload.get("total", 0) > len(paths), payload
+    assert payload.get("completeness", {}).get("truncated") is True, payload
+    assert payload.get("completeness", {}).get("reason") == "path_limit_or_filter", payload
+    risks = [float(path.get("riskScore", 0.0)) for path in paths]
+    assert risks == sorted(risks, reverse=True)
 
 
 def test_demo_estate_nhi_governance_tells_a_story(demo_estate_client: TestClient) -> None:

@@ -284,6 +284,7 @@ def test_server_card_tools_expose_capability_classes():
         "identity_revoke_jit",
         "ingest_external_scan",
         "runtime_evidence_ingest",
+        "graph_correlate",
         # Triggers an agentless Azure/GCP disk side-scan: creates then tears down a
         # temporary snapshot/scan-disk (destructive cloud write, read-only intent).
         "cloud_side_scan",
@@ -386,6 +387,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "create_ticket",
         "diff",
         "findings_triage",
+        "graph_correlate",
         "identity_grant_jit",
         "identity_issue",
         "identity_revoke",
@@ -401,7 +403,14 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "sync_ticket_status",
     ]
     assert f"{len(write_tools)} write-annotated tools" in docs
-    for required_scope in ("cloud:write", "findings:write", "identity:write", "shield:write", "ticketing:write"):
+    for required_scope in (
+        "cloud:write",
+        "findings:write",
+        "identity:write",
+        "scan:write",
+        "shield:write",
+        "ticketing:write",
+    ):
         assert required_scope in docs
     for resource in card["resources"]:
         assert resource["uri"] in docs

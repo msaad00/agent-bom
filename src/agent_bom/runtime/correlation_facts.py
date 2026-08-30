@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import re
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,8 @@ _MAX_TTL_SECONDS = 86400
 _MAX_CLOCK_SKEW_SECONDS = 300
 _DEPTH_LIMIT = 6
 _VISITED_NODE_LIMIT = 5000
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_MAX_KEY_ID_BYTES = 512
 RUNTIME_FACTS_CACHE_INVALIDATING_ERRORS = frozenset(
     {
         "correlation_manifest_invalid",
@@ -37,6 +40,18 @@ RUNTIME_FACTS_CACHE_INVALIDATING_ERRORS = frozenset(
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+
+
+def _validated_key_id(value: object) -> str:
+    if not isinstance(value, str) or value != value.strip() or len(value.encode("utf-8")) > _MAX_KEY_ID_BYTES:
+        raise RuntimeFactsBundleError("invalid_key_id")
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise RuntimeFactsBundleError("invalid_key_id")
+    return value
+
+
+def _signature_input(payload: Mapping[str, Any], *, key_id: str) -> bytes:
+    return _canonical({"algorithm": _ALGORITHM, "key_id": key_id, "payload": payload})
 
 
 def _utc(value: datetime) -> datetime:
@@ -156,9 +171,10 @@ def create_runtime_facts_bundle(
     """Create an HMAC-authenticated runtime-facts envelope."""
 
     _validate_key(signing_key)
+    key_id = _validated_key_id(key_id)
     if not correlation_id or not tenant_id:
         raise RuntimeFactsBundleError("invalid_identity")
-    if not manifest_sha256.startswith("sha256:") or len(manifest_sha256) != 71:
+    if _SHA256_RE.fullmatch(manifest_sha256) is None:
         raise RuntimeFactsBundleError("invalid_manifest_hash")
     if not 1 <= ttl_seconds <= _MAX_TTL_SECONDS:
         raise RuntimeFactsBundleError("invalid_ttl")
@@ -177,7 +193,7 @@ def create_runtime_facts_bundle(
         "expires_at": (issued + timedelta(seconds=ttl_seconds)).isoformat(),
         "facts": _facts(reachability),
     }
-    signature = hmac.digest(signing_key, _canonical(payload), "sha256").hex()
+    signature = hmac.digest(signing_key, _signature_input(payload, key_id=key_id), "sha256").hex()
     return {
         "payload": payload,
         "signature": {
@@ -336,8 +352,9 @@ def verify_runtime_facts_bundle(
         raise RuntimeFactsBundleError("malformed_bundle")
     if signature.get("algorithm") != _ALGORITHM:
         raise RuntimeFactsBundleError("unsupported_signature_algorithm")
+    key_id = _validated_key_id(signature.get("key_id", ""))
     supplied = str(signature.get("value") or "")
-    expected = hmac.digest(signing_key, _canonical(payload), "sha256").hex()
+    expected = hmac.digest(signing_key, _signature_input(payload, key_id=key_id), "sha256").hex()
     if not supplied or not hmac.compare_digest(supplied, expected):
         raise RuntimeFactsBundleError("invalid_signature")
     if payload.get("schema_version") != _SCHEMA:
@@ -348,7 +365,7 @@ def verify_runtime_facts_bundle(
     manifest_sha256 = str(payload.get("manifest_sha256") or "")
     if not correlation_id:
         raise RuntimeFactsBundleError("invalid_identity")
-    if not manifest_sha256.startswith("sha256:") or len(manifest_sha256) != 71:
+    if _SHA256_RE.fullmatch(manifest_sha256) is None:
         raise RuntimeFactsBundleError("invalid_manifest_hash")
     evidence_freshness = str(payload.get("evidence_freshness") or "")
     if evidence_freshness not in {"fresh", "stale_allowed"}:
@@ -396,7 +413,7 @@ def verify_runtime_facts_bundle(
         manifest_sha256=manifest_sha256,
         issued_at=issued_at,
         expires_at=expires_at,
-        key_id=str(signature.get("key_id") or ""),
+        key_id=key_id,
         evidence_freshness=evidence_freshness,
         analysis_complete=bool(analysis_bounds["complete"]),
         analysis_bounds=analysis_bounds,

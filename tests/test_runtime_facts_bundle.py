@@ -32,6 +32,16 @@ NOW = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
 KEY = b"runtime-facts-test-key-material-32-bytes"
 
 
+def _resign(bundle: dict) -> None:
+    signature_input = {
+        "algorithm": bundle["signature"]["algorithm"],
+        "key_id": bundle["signature"]["key_id"],
+        "payload": bundle["payload"],
+    }
+    encoded = json.dumps(signature_input, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    bundle["signature"]["value"] = hmac.digest(KEY, encoded, "sha256").hex()
+
+
 def _completed_run(graph: UnifiedGraph, *, freshness: str = "fresh") -> tuple[GraphCorrelationRun, dict[str, object]]:
     graph_digest = correlation_graph_digest(graph)
     result_manifest = {
@@ -150,6 +160,30 @@ def test_tampered_bundle_is_rejected() -> None:
         verify_runtime_facts_bundle(bundle, signing_key=KEY, tenant_id="tenant-a", now=NOW)
 
 
+def test_tampered_key_id_is_rejected_as_unauthenticated_metadata() -> None:
+    bundle = _bundle()
+    bundle["signature"]["key_id"] = "attacker-controlled-label"
+
+    with pytest.raises(RuntimeFactsBundleError, match="invalid_signature"):
+        verify_runtime_facts_bundle(bundle, signing_key=KEY, tenant_id="tenant-a", now=NOW)
+
+
+def test_manifest_hash_requires_a_canonical_sha256_digest() -> None:
+    bundle = _bundle()
+    bundle["payload"]["manifest_sha256"] = "sha256:" + "z" * 64
+
+    with pytest.raises(RuntimeFactsBundleError, match="invalid_manifest_hash"):
+        create_runtime_facts_bundle(
+            correlation_id="corr-1",
+            tenant_id="tenant-a",
+            manifest_sha256=bundle["payload"]["manifest_sha256"],
+            reachability=ReachabilityMap(),
+            signing_key=KEY,
+            ttl_seconds=300,
+            now=NOW,
+        )
+
+
 def test_verifier_rejects_future_issued_and_overlong_signed_bundles() -> None:
     future = _bundle(now=NOW + timedelta(minutes=6))
     with pytest.raises(RuntimeFactsBundleError, match="bundle_not_yet_valid"):
@@ -157,8 +191,7 @@ def test_verifier_rejects_future_issued_and_overlong_signed_bundles() -> None:
 
     overlong = _bundle()
     overlong["payload"]["expires_at"] = (NOW + timedelta(days=2)).isoformat()
-    encoded = json.dumps(overlong["payload"], sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-    overlong["signature"]["value"] = hmac.digest(KEY, encoded, "sha256").hex()
+    _resign(overlong)
     with pytest.raises(RuntimeFactsBundleError, match="invalid_expiry"):
         verify_runtime_facts_bundle(overlong, signing_key=KEY, tenant_id="tenant-a", now=NOW)
 
@@ -166,8 +199,7 @@ def test_verifier_rejects_future_issued_and_overlong_signed_bundles() -> None:
 def test_verifier_rejects_signed_bundle_without_correlation_receipts() -> None:
     malformed = _bundle()
     malformed["payload"]["correlation_id"] = ""
-    encoded = json.dumps(malformed["payload"], sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-    malformed["signature"]["value"] = hmac.digest(KEY, encoded, "sha256").hex()
+    _resign(malformed)
     with pytest.raises(RuntimeFactsBundleError, match="invalid_identity"):
         verify_runtime_facts_bundle(malformed, signing_key=KEY, tenant_id="tenant-a", now=NOW)
 

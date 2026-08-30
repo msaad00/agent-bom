@@ -73,22 +73,22 @@ export function RankedPathList({
             aria-pressed={active}
             aria-controls={controlsId}
             onClick={() => onSelect(row.selectionKey)}
-            className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-xl border px-3 py-2.5 text-left transition sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-center sm:gap-3 ${
+            className={`grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition sm:gap-3 ${
               active
                 ? "border-orange-400/70 bg-orange-500/10 ring-1 ring-orange-400/60"
                 : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] hover:border-[color:var(--border-strong)]"
             }`}
           >
-            <span
-              className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                row.rank === 1
-                  ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
-                  : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
-              }`}
-            >
-              {row.rank === 1 ? "#1 fix first" : `#${row.rank}`}
-            </span>
             <span className="min-w-0 flex-1">
+              <span
+                className={`mb-1 inline-flex rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                  row.rank === 1
+                    ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
+                    : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
+                }`}
+              >
+                {row.rank === 1 ? "#1 fix first" : `#${row.rank}`}
+              </span>
               {advisory ? (
                 <span
                   data-testid="ranked-path-advisory"
@@ -135,7 +135,7 @@ export function RankedPathList({
                 </span>
               ) : null}
             </span>
-            <span className="col-span-2 col-start-2 justify-self-start rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-left sm:col-span-1 sm:col-start-auto sm:justify-self-auto sm:text-right">
+            <span className="justify-self-auto rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-right">
               <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-red-300/80">
                 Path risk
               </span>
@@ -144,7 +144,7 @@ export function RankedPathList({
               </span>
             </span>
             <ChevronRight
-              className={`col-start-3 row-start-1 h-4 w-4 shrink-0 self-center transition sm:col-start-auto sm:row-start-auto ${
+              className={`h-4 w-4 shrink-0 self-center transition ${
                 active ? "text-orange-300" : "text-[color:var(--text-tertiary)]"
               }`}
               aria-hidden="true"

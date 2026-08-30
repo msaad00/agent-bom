@@ -1265,8 +1265,8 @@ class _RecordingGraphStore:
         self.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
         self.presets: dict[str, dict] = {}
 
-    def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
-        self.calls.append(("latest_snapshot_id", tenant_id))
+    def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str | None = None) -> str:
+        self.calls.append(("latest_snapshot_id", tenant_id, snapshot_kind))
         return self.graph.scan_id
 
     def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
@@ -1727,7 +1727,7 @@ class TestGraphStoreBackendSelection:
         assert body["attack_paths"][0]["exposure_path"]["severity"] == "high"
         assert body["stats"]["analysis_status"]["attack_path_fusion"]["status"] == "limited"
         assert attack_path_response.json()["stats"]["analysis_status"]["attack_path_fusion"]["status"] == "limited"
-        assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
+        assert ("latest_snapshot_id", "default", "scan") in recording_graph_store.calls
         assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
 
     def test_graph_edge_history_routes_use_pluggable_store(self, recording_graph_store):
@@ -2459,9 +2459,9 @@ class TestGraphStoreBackendSelection:
 
         original_latest_snapshot_id = recording_graph_store.latest_snapshot_id
 
-        def _slow_latest_snapshot_id(*, tenant_id: str = "") -> str:
+        def _slow_latest_snapshot_id(*, tenant_id: str = "", snapshot_kind: str | None = None) -> str:
             time.sleep(0.01)
-            return original_latest_snapshot_id(tenant_id=tenant_id)
+            return original_latest_snapshot_id(tenant_id=tenant_id, snapshot_kind=snapshot_kind)
 
         monkeypatch.setattr(recording_graph_store, "latest_snapshot_id", _slow_latest_snapshot_id)
         client = TestClient(app)

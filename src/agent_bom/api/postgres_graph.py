@@ -25,7 +25,12 @@ from agent_bom.api.graph_store import (
 )
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS
-from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, graph_retention_policy, normalize_graph_tenant_id
+from agent_bom.db.graph_store import (
+    DEFAULT_GRAPH_TENANT_ID,
+    graph_retention_policy,
+    normalize_graph_tenant_id,
+    normalize_snapshot_kind,
+)
 from agent_bom.graph import EntityType, technique_mappings_from_json
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.graph.completeness import (
@@ -573,18 +578,19 @@ class PostgresGraphStore:
                 conn.rollback()
                 logger.warning("Skipping optional Postgres graph trigram indexes: %s", type(exc).__name__)
 
-    def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
+    def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str = "scan") -> str:
         tenant_id = normalize_graph_tenant_id(tenant_id)
+        snapshot_kind = normalize_snapshot_kind(snapshot_kind)
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 """
                 SELECT scan_id
                 FROM graph_snapshots
-                WHERE tenant_id = %s
+                WHERE tenant_id = %s AND snapshot_kind = %s
                 ORDER BY created_at DESC, scan_id DESC
                 LIMIT 1
                 """,
-                (tenant_id,),
+                (tenant_id, snapshot_kind),
             ).fetchone()
             return str(row[0]) if row else ""
 
@@ -611,14 +617,21 @@ class PostgresGraphStore:
             dimensions=NodeDimensions.from_dict(_decode_json_object(row[15], field="node dimensions")),
         )
 
-    def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
+    def previous_snapshot_id(
+        self,
+        *,
+        tenant_id: str = "",
+        before_scan_id: str = "",
+        snapshot_kind: str = "scan",
+    ) -> str:
         tenant_id = normalize_graph_tenant_id(tenant_id)
+        snapshot_kind = normalize_snapshot_kind(snapshot_kind)
         if not before_scan_id:
             return ""
         with _tenant_connection(self._pool) as conn:
             current = conn.execute(
-                "SELECT created_at FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s",
-                (tenant_id, before_scan_id),
+                "SELECT created_at FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s AND snapshot_kind = %s",
+                (tenant_id, before_scan_id, snapshot_kind),
             ).fetchone()
             if not current:
                 return ""
@@ -626,11 +639,11 @@ class PostgresGraphStore:
                 """
                 SELECT scan_id
                 FROM graph_snapshots
-                WHERE tenant_id = %s AND created_at < %s
+                WHERE tenant_id = %s AND snapshot_kind = %s AND created_at < %s
                 ORDER BY created_at DESC, scan_id DESC
                 LIMIT 1
                 """,
-                (tenant_id, current[0]),
+                (tenant_id, snapshot_kind, current[0]),
             ).fetchone()
             return str(row[0]) if row else ""
 

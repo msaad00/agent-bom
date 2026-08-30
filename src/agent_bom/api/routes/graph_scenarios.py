@@ -219,7 +219,11 @@ def _ensure_supported_graph_backend() -> Any:
 async def _snapshot_state(graph_store: Any, tenant_id: str, scan_id: str) -> tuple[bool, bool, str]:
     try:
         snapshots = await asyncio.to_thread(graph_store.list_snapshots, tenant_id=tenant_id, limit=10_000)
-        latest = await asyncio.to_thread(graph_store.latest_snapshot_id, tenant_id=tenant_id)
+        latest = await asyncio.to_thread(
+            graph_store.latest_snapshot_id,
+            tenant_id=tenant_id,
+            snapshot_kind="scan",
+        )
     except NeptuneGraphStoreUnsupportedOperationError as exc:
         raise HTTPException(status_code=501, detail=sanitize_error(exc)) from exc
     except Exception as exc:

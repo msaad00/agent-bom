@@ -192,6 +192,69 @@ def test_snapshot_metadata_round_trips_without_changing_legacy_defaults(tmp_path
     assert by_id["corr-1"]["evidence_manifest_sha256"] == "sha256:" + "b" * 64
 
 
+def test_latest_snapshot_selection_is_scoped_by_kind_and_tenant(tmp_path) -> None:
+    db = tmp_path / "graph.db"
+    with graph_store.open_graph_db(db) as conn:
+        prior = UnifiedGraph(
+            scan_id="scan-0",
+            tenant_id="acme",
+            created_at="2026-08-29T23:59:00+00:00",
+        )
+        prior.add_node(UnifiedNode(id="agent:prior", entity_type=EntityType.AGENT, label="prior"))
+        graph_store.save_graph(conn, prior)
+
+        scan = UnifiedGraph(
+            scan_id="scan-1",
+            tenant_id="acme",
+            created_at="2026-08-30T00:00:00+00:00",
+        )
+        scan.add_node(UnifiedNode(id="agent:scan", entity_type=EntityType.AGENT, label="scan"))
+        graph_store.save_graph(conn, scan)
+
+        correlated = UnifiedGraph(
+            scan_id="corr-1",
+            tenant_id="acme",
+            created_at="2026-08-30T00:01:00+00:00",
+        )
+        correlated.add_node(UnifiedNode(id="agent:corr", entity_type=EntityType.AGENT, label="correlation"))
+        graph_store.save_graph_streaming(
+            conn,
+            scan_id="corr-1",
+            tenant_id="acme",
+            nodes=correlated.nodes.values(),
+            edges=(),
+            created_at=correlated.created_at,
+            snapshot_kind="correlation",
+            correlation_id="corr-1",
+        )
+
+        other = UnifiedGraph(
+            scan_id="scan-other",
+            tenant_id="other",
+            created_at="2026-08-30T00:02:00+00:00",
+        )
+        other.add_node(UnifiedNode(id="agent:other", entity_type=EntityType.AGENT, label="other"))
+        graph_store.save_graph(conn, other)
+
+        assert graph_store.latest_snapshot_id(conn, tenant_id="acme") == "scan-1"
+        assert graph_store.latest_snapshot_id(conn, tenant_id="acme", snapshot_kind="scan") == "scan-1"
+        assert graph_store.latest_snapshot_id(conn, tenant_id="acme", snapshot_kind="correlation") == "corr-1"
+        assert graph_store.latest_snapshot_id(conn, tenant_id="other", snapshot_kind="correlation") == ""
+        assert graph_store.previous_snapshot_id(conn, tenant_id="acme", before_scan_id="scan-1") == "scan-0"
+        assert (
+            graph_store.previous_snapshot_id(
+                conn,
+                tenant_id="acme",
+                before_scan_id="corr-1",
+                snapshot_kind="correlation",
+            )
+            == ""
+        )
+
+        with pytest.raises(ValueError, match="snapshot_kind"):
+            graph_store.latest_snapshot_id(conn, tenant_id="acme", snapshot_kind="inventory")
+
+
 def test_completed_correlation_snapshot_cannot_be_replaced_by_a_scan_retry(tmp_path) -> None:
     db = tmp_path / "graph.db"
     with graph_store.open_graph_db(db) as conn:

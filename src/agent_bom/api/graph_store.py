@@ -158,9 +158,15 @@ _DYNAMIC_RELATIONSHIP_VALUES = {
 class GraphStoreProtocol(Protocol):
     """Shared graph store contract used by the API pipeline and routes."""
 
-    def latest_snapshot_id(self, *, tenant_id: str = "") -> str: ...
+    def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str = "scan") -> str: ...
 
-    def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str: ...
+    def previous_snapshot_id(
+        self,
+        *,
+        tenant_id: str = "",
+        before_scan_id: str = "",
+        snapshot_kind: str = "scan",
+    ) -> str: ...
 
     def save_graph(self, graph: UnifiedGraph) -> None: ...
 
@@ -1542,23 +1548,34 @@ class SQLiteGraphStore:
         finally:
             conn.close()
 
-    def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
+    def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str = "scan") -> str:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return ""
         try:
-            return sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id)
+            return sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id, snapshot_kind=snapshot_kind)
         finally:
             conn.close()
 
-    def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
+    def previous_snapshot_id(
+        self,
+        *,
+        tenant_id: str = "",
+        before_scan_id: str = "",
+        snapshot_kind: str = "scan",
+    ) -> str:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return ""
         try:
-            return sqlite_graph_store.previous_snapshot_id(conn, tenant_id=tenant_id, before_scan_id=before_scan_id)
+            return sqlite_graph_store.previous_snapshot_id(
+                conn,
+                tenant_id=tenant_id,
+                before_scan_id=before_scan_id,
+                snapshot_kind=snapshot_kind,
+            )
         finally:
             conn.close()
 

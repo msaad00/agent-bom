@@ -135,9 +135,27 @@ def test_screenshot_manifest_release_version_is_owned_by_the_release_bump() -> N
     pattern, template = entries[0]
     payload = '{"release_version":"0.101.0","screenshots":[{"visible_version":"0.101.0"}]}'
     rewritten, count = pattern.subn(template.format(v="0.102.0"), payload)
-    assert count == 2
+    assert count == 1
     assert '"release_version":"0.102.0"' in rewritten
-    assert '"visible_version":"0.102.0"' in rewritten
+    assert '"visible_version":"0.101.0"' in rewritten
+
+
+def test_public_release_pins_are_owned_by_the_release_bump() -> None:
+    bump = _load_script("bump-version.py")
+    cases = {
+        "README.md": "    rev: v0.101.0\n",
+        "docs/PUBLISHING.md": "  --expected 0.101.0 \\\n",
+    }
+    for path, payload in cases.items():
+        entries = [(pattern, template) for rel, pattern, template in bump.DOC_TEST_LOCATIONS if rel == path]
+        rewritten = payload
+        count = 0
+        for pattern, template in entries:
+            rewritten, matches = pattern.subn(template.format(v="0.102.0", v_underscore="0_102_0"), rewritten)
+            count += matches
+        assert count == 1, path
+        assert "0.102.0" in rewritten, path
+        assert "0.101.0" not in rewritten, path
 
 
 def test_each_sdk_manifest_is_registered_exactly_once_for_the_bump() -> None:

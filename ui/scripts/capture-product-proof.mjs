@@ -2440,7 +2440,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     captured_at: new Date().toISOString(),
     ...provenance,
     capture_note:
-      "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No customer or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
+      "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No external or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or production-environment evidence.",
     screenshots,
   };
   await fs.writeFile(path.join(outputDir, path.basename(SCREENSHOT_MANIFEST)), `${JSON.stringify(manifest, null, 2)}\n`);

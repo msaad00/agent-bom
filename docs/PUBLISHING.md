@@ -118,7 +118,7 @@ npm install -g clawhub@latest
 clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 clawhub publish integrations/openclaw/scan \
   --slug agent-bom-scan --name "agent-bom scan" \
-  --version "0.103.0"
+  --version "0.103.1"
 ```
 
 Release automation uses the same official `clawhub` CLI flow, not a custom
@@ -145,7 +145,7 @@ both the released version marker and the exact released MCP tool count.
 
 ```bash
 python scripts/check_glama_listing.py \
-  --expected 0.103.0 \
+  --expected 0.103.1 \
   --expected-tool-count 84
 ```
 
@@ -189,8 +189,8 @@ Images published:
 Tag push triggers the full pipeline automatically:
 
 ```bash
-git tag v0.103.0
-git push origin v0.103.0
+git tag v0.103.1
+git push origin v0.103.1
 ```
 
 This triggers:

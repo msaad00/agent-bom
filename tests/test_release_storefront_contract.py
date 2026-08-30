@@ -70,7 +70,7 @@ def test_release_manifest_covers_dark_light_and_mobile_product_proof() -> None:
 
     note = str(manifest["capture_note"])
     assert "deterministic" in note.lower()
-    assert "customer" in note.lower()
+    assert "external" in note.lower()
 
 
 def test_release_manifest_carries_reproducible_sanitized_provenance() -> None:
@@ -89,6 +89,20 @@ def test_release_manifest_carries_reproducible_sanitized_provenance() -> None:
     paths = {entry["path"] for entry in manifest["screenshots"]}
     assert {"agent-lifecycle-live.png", "jobs-pipeline-live.png"} <= paths
     assert {"remediation-live.png", "remediation-light-live.png", "remediation-mobile-live.png"} <= paths
+
+
+def test_release_manifest_rejects_a_future_visible_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    manifest = json.loads((ROOT / "docs/images/product-screenshots.json").read_text(encoding="utf-8"))
+    manifest["screenshots"][0]["visible_version"] = "999.0.0"
+    candidate = tmp_path / "product-screenshots.json"
+    candidate.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(check_release_consistency, "PRODUCT_SCREENSHOTS", candidate)
+
+    with pytest.raises(SystemExit):
+        check_release_consistency._assert_product_screenshots_current(check_release_consistency._load_version())
+    assert "newer than the release" in capsys.readouterr().err
 
 
 def test_capture_runbook_matches_the_local_authenticated_release_workflow() -> None:

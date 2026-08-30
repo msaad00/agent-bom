@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.103.1] - 2026-08-29
+
+This patch restores Alpine arm64 API-image publication and makes the
+release-shaped multi-architecture image proof merge-blocking for relevant
+Docker and dependency changes.
+
 ### Fixed
 
 - Alpine arm64 API image builds now supply the exact missing
@@ -3459,7 +3465,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.103.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.103.1...HEAD
+[0.103.1]: https://github.com/msaad00/agent-bom/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/msaad00/agent-bom/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/msaad00/agent-bom/compare/v0.101.0...v0.102.0
 [0.101.0]: https://github.com/msaad00/agent-bom/compare/v0.100.0...v0.101.0

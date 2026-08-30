@@ -85,6 +85,7 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
         re.compile(r"(oci://ghcr\.io/msaad00/charts/agent-bom --version )\d+\.\d+\.\d+"),
         r"\g<1>{v}",
     ),
+    ("README.md", re.compile(r"(\brev:\s+v)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/archive/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
@@ -130,7 +131,7 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("docs/PRODUCT_METRICS.json", re.compile(r'("version":\s*")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     (
         "docs/images/product-screenshots.json",
-        re.compile(r'("(?:release_version|visible_version)":\s*")\d+\.\d+\.\d+(")'),
+        re.compile(r'("release_version":\s*")\d+\.\d+\.\d+(")'),
         r"\g<1>{v}\g<2>",
     ),
     ("docs/RELEASE_VERIFICATION.md", re.compile(r"^(TAG=v)\d+\.\d+\.\d+$", re.M), r"\g<1>{v}"),
@@ -148,6 +149,7 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ),
     # PUBLISHING.md — version examples
     ("docs/PUBLISHING.md", re.compile(r'(--version\s+")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    ("docs/PUBLISHING.md", re.compile(r"(--expected\s+)\d+\.\d+\.\d+", re.M), r"\g<1>{v}"),
     ("docs/PUBLISHING.md", re.compile(r"(git tag v)\S+", re.M), r"\g<1>{v}"),
     ("docs/PUBLISHING.md", re.compile(r"(git push origin v)\S+", re.M), r"\g<1>{v}"),
     ("ui/tests/nav.test.tsx", re.compile(r"(version:\s*')\d+\.\d+\.\d+(')"), r"\g<1>{v}\g<2>"),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import click
 from agent_bom.samples import write_first_run_sample
 
 QUICKSTART_SCAN_TIMEOUT_SECONDS = 300
+DURABLE_LOCAL_CONTROL_PLANE_DB = Path.home() / ".agent-bom" / "control-plane.db"
 
 
 @click.command("quickstart")
@@ -104,7 +106,7 @@ def quickstart_cmd(
     click.echo("")
     click.echo("Local API/UI:")
     click.echo("  pip install 'agent-bom[ui]'")
-    click.echo(f"  agent-bom serve --host 127.0.0.1 --port {port} --allow-insecure-no-auth")
+    click.echo(f"  agent-bom serve --persist ~/.agent-bom/control-plane.db --host 127.0.0.1 --port {port} --allow-insecure-no-auth")
     click.echo("  # loopback demo runs unauthenticated so the cockpit can load; on a shared host drop")
     click.echo("  # --allow-insecure-no-auth and pass --api-key <key> (send it as a Bearer / X-API-Key header).")
     click.echo(f"  API docs: http://127.0.0.1:{port}/docs")
@@ -145,8 +147,8 @@ def _run_quickstart(
             "Could not locate the 'agent-bom' executable to run the scan. "
             f"Run it manually: {_sample_scan_command(sample_dir, offline=offline)}"
         )
-    # --context-graph triggers persistence of the unified graph to the local
-    # control-plane store (~/.agent-bom/db/graph.db) that `agent-bom serve` reads,
+    # --context-graph triggers persistence of the unified graph to the same
+    # local control-plane store that the printed durable `serve` command reads,
     # so the security-graph cockpit is populated on first run.
     report_path = sample_dir / "agent-bom-report.json"
     scan_args = [
@@ -170,9 +172,14 @@ def _run_quickstart(
     else:
         scan_args.append("--enrich")
     click.echo(f"[2/3] Scanning sample stack: {' '.join(scan_args[1:])}")
+    scan_env = os.environ.copy()
+    # Preserve an operator's explicit database override; otherwise align the
+    # generated scan and serve handoff on the documented restart-safe path.
+    scan_env.setdefault("AGENT_BOM_DB", str(DURABLE_LOCAL_CONTROL_PLANE_DB))
     result = subprocess.run(  # noqa: S603 - args built from validated inputs
         scan_args,
         check=False,
+        env=scan_env,
         timeout=QUICKSTART_SCAN_TIMEOUT_SECONDS,
     )
     if result.returncode != 0:
@@ -192,7 +199,7 @@ def _run_quickstart(
     click.echo("Onboarding complete. The security graph is now populated locally.")
     click.echo("")
     click.echo("Open the cockpit:")
-    click.echo(f"  agent-bom serve --host 127.0.0.1 --port {port} --allow-insecure-no-auth")
+    click.echo(f"  agent-bom serve --persist ~/.agent-bom/control-plane.db --host 127.0.0.1 --port {port} --allow-insecure-no-auth")
     click.echo("  # loopback demo runs unauthenticated so the cockpit can load; on a shared host drop")
     click.echo("  # --allow-insecure-no-auth and pass --api-key <key> (send it as a Bearer / X-API-Key header).")
     click.echo(f"  Security graph: http://127.0.0.1:{port}/security-graph")

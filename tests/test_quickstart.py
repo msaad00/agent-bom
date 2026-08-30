@@ -13,15 +13,25 @@ from click.testing import CliRunner
 from agent_bom.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
+DURABLE_LOCAL_CONTROL_PLANE = "agent-bom serve --persist ~/.agent-bom/control-plane.db"
 
 
 @pytest.fixture()
 def _fake_scan(monkeypatch):
     """Capture the scan subprocess instead of running a real scan."""
-    calls: list[list[str]] = []
+
+    class CapturedScanCalls(list[list[str]]):
+        environments: list[dict[str, str] | None]
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.environments = []
+
+    calls = CapturedScanCalls()
 
     def fake_run(args, check=False, **kwargs):  # noqa: ANN001, ANN003
         calls.append(list(args))
+        calls.environments.append(kwargs.get("env"))
         return subprocess.CompletedProcess(args, 0)
 
     monkeypatch.setattr("agent_bom.cli._quickstart._resolve_agent_bom", lambda: "agent-bom")
@@ -37,7 +47,7 @@ def test_quickstart_dry_run_offline_prints_local_next_steps():
     assert "agent-bom scan --demo --offline" in result.output
     assert "agent-bom quickstart --write-sample --sample-dir agent-bom-first-run" in result.output
     assert "agent-bom scan --inventory agent-bom-first-run/inventory.json -p agent-bom-first-run --offline" in result.output
-    assert "agent-bom serve --host 127.0.0.1 --port 8422" in result.output
+    assert f"{DURABLE_LOCAL_CONTROL_PLANE} --host 127.0.0.1 --port 8422" in result.output
     assert "http://127.0.0.1:8422/docs" in result.output
     assert "agent-bom[all]" in result.output
     assert "MLflow remains separate" in result.output
@@ -68,8 +78,9 @@ def test_quickstart_rejects_dry_run_with_run():
     assert "--dry-run cannot be combined with --run" in result.output
 
 
-def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fake_scan):
+def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fake_scan, monkeypatch):
     sample_dir = tmp_path / "stack"
+    monkeypatch.delenv("AGENT_BOM_DB", raising=False)
 
     result = CliRunner().invoke(main, ["quickstart", "--run", "--offline", "--sample-dir", str(sample_dir)])
 
@@ -86,6 +97,9 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     assert "-o" in scan_args
     assert str(sample_dir / "agent-bom-report.json") in scan_args
     assert str(sample_dir / "inventory.json") in scan_args
+    scan_env = _fake_scan.environments[0]
+    assert scan_env is not None
+    assert scan_env["AGENT_BOM_DB"] == str(Path.home() / ".agent-bom" / "control-plane.db")
     # secure-by-default gateway baseline seeded and valid
     policy_path = sample_dir / "gateway-baseline-policy.json"
     assert policy_path.exists()
@@ -96,7 +110,7 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     assert "Onboarding complete" in result.output
     assert "/security-graph" in result.output
     # cockpit handoff must pass a flag that actually lets /v1/overview load on loopback
-    assert "agent-bom serve --host 127.0.0.1 --port 8422 --allow-insecure-no-auth" in result.output
+    assert f"{DURABLE_LOCAL_CONTROL_PLANE} --host 127.0.0.1 --port 8422 --allow-insecure-no-auth" in result.output
     assert "--api-key <key>" in result.output
 
 

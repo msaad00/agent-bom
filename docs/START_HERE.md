@@ -40,7 +40,7 @@ You want the API, dashboard, gateway, and a deployment you own.
 
 ```bash
 pip install 'agent-bom[ui]'
-agent-bom serve                           # local API + bundled dashboard
+agent-bom serve --persist ~/.agent-bom/control-plane.db  # restart-safe local API + dashboard
 # or a self-hosted pilot:
 docker compose -f deploy/docker-compose.pilot.yml up -d
 ```

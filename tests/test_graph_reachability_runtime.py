@@ -28,7 +28,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
-from agent_bom.runtime.correlation_facts import create_runtime_facts_bundle
+from agent_bom.runtime.correlation_facts import RuntimeFactsBundleError, create_runtime_facts_bundle
 from agent_bom.runtime.graph_reachability import (
     REACHABILITY_RULE_ID,
     AgentReachability,
@@ -263,7 +263,12 @@ def test_malformed_facts_file_is_noop(tmp_path: Path):
     assert _is_allowed(resp), resp.text
 
 
-def _signed_bundle(*, tenant_id: str = "default", tool: str = "read_secret") -> dict[str, Any]:
+def _signed_bundle(
+    *,
+    tenant_id: str = "default",
+    tool: str = "read_secret",
+    analysis_bounds: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     reachability = ReachabilityMap(
         by_agent={
             "agent-a": AgentReachability(
@@ -282,6 +287,7 @@ def _signed_bundle(*, tenant_id: str = "default", tool: str = "read_secret") -> 
         ttl_seconds=300,
         now=datetime.now(timezone.utc),
         key_id="lab-key",
+        analysis_bounds=analysis_bounds,
     )
 
 
@@ -380,6 +386,51 @@ def test_explicit_deny_does_not_fall_back_to_static_facts_when_configured_bundle
 
     assert _is_blocked(resp), resp.text
     assert resp.json()["error"]["data"]["policy_source"] == "graph_reachability_evidence"
+
+
+def test_explicit_deny_blocks_when_signed_analysis_is_incomplete():
+    async def _fetch():
+        return _signed_bundle(
+            analysis_bounds={
+                "status": "limited",
+                "complete": False,
+                "depth_limit": 6,
+                "visited_node_limit": 5000,
+                "limit_reasons": ["depth_cap_reached"],
+            }
+        )
+
+    audit: list[dict[str, Any]] = []
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, failure_mode="deny", audit=audit))) as client:
+        resp = client.post("/mcp/filesystem", json=_call(tool="list_files"))
+
+    assert _is_blocked(resp), resp.text
+    unavailable = next(event for event in audit if event.get("action") == "gateway.graph_reachability_evidence_unavailable")
+    assert unavailable["reason_code"] == "analysis_incomplete"
+
+
+def test_explicit_deny_revokes_cached_bundle_after_output_is_purged():
+    calls = 0
+
+    async def _fetch():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _signed_bundle()
+        raise RuntimeFactsBundleError("correlation_output_unavailable")
+
+    audit: list[dict[str, Any]] = []
+    with TestClient(create_gateway_app(_bundle_settings(_fetch, failure_mode="deny", poll_seconds=0.01, audit=audit))) as client:
+        assert _is_allowed(client.post("/mcp/filesystem", json=_call(tool="list_files")))
+        deadline = time.monotonic() + 1
+        while calls < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert calls >= 2
+        resp = client.post("/mcp/filesystem", json=_call(tool="list_files"))
+
+    assert _is_blocked(resp), resp.text
+    unavailable = [event for event in audit if event.get("action") == "gateway.graph_reachability_evidence_unavailable"][-1]
+    assert unavailable["reason_code"] == "correlation_output_unavailable"
 
 
 def test_tenant_mismatched_bundle_is_not_accepted():

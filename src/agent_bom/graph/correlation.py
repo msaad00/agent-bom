@@ -77,6 +77,60 @@ def _digest(value: Any) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+def correlation_manifest_digest(value: Mapping[str, Any]) -> str:
+    """Return the canonical digest used for durable correlation receipts."""
+
+    return _digest(value)
+
+
+def correlation_graph_digest(graph: UnifiedGraph) -> str:
+    """Hash persisted graph content consumed by correlation runtime facts.
+
+    Load-time pagination metadata and derived UI statistics are intentionally
+    excluded. Edge defaults are normalized exactly as persistence does, making
+    the digest stable before save and after a complete backend round trip.
+    """
+
+    edges: list[dict[str, Any]] = []
+    for edge in graph.edges:
+        payload = edge.to_dict()
+        payload["valid_from"] = edge.valid_from or edge.first_seen or graph.created_at
+        payload["source_scan_id"] = edge.source_scan_id or graph.scan_id
+        edges.append(payload)
+    return _digest(
+        {
+            "scan_id": graph.scan_id,
+            "tenant_id": graph.tenant_id,
+            "nodes": sorted((node.to_dict() for node in graph.nodes.values()), key=lambda item: str(item["id"])),
+            "edges": sorted(edges, key=lambda item: str(item["canonical_id"])),
+        }
+    )
+
+
+def validate_correlation_output_manifest(
+    graph: UnifiedGraph,
+    *,
+    result_manifest: Mapping[str, Any],
+    manifest_sha256: str,
+) -> None:
+    """Require a completion receipt to bind the exact persisted graph output."""
+
+    if correlation_manifest_digest(result_manifest) != manifest_sha256:
+        raise ValueError("completed correlation manifest hash does not match result_manifest")
+    output = result_manifest.get("output")
+    if not isinstance(output, Mapping):
+        raise ValueError("completed correlation manifest requires output metadata")
+    if str(output.get("scan_id") or "") != graph.scan_id:
+        raise ValueError("completed correlation manifest output must equal graph scan_id")
+    if int(output.get("node_count") or -1) != len(graph.nodes) or int(output.get("edge_count") or -1) != len(graph.edges):
+        raise ValueError("completed correlation manifest counts do not match graph output")
+    expected_digest = str(output.get("graph_digest_sha256") or "")
+    if not expected_digest.startswith("sha256:") or len(expected_digest) != 71:
+        raise ValueError("completed correlation manifest requires a graph digest")
+    if expected_digest != correlation_graph_digest(graph):
+        raise ValueError("completed correlation manifest graph digest does not match output")
+
+
 def _non_empty(value: Any) -> bool:
     return value not in _EMPTY_VALUES
 
@@ -651,7 +705,10 @@ __all__ = [
     "CorrelationRunStatus",
     "CorrelationSnapshot",
     "GraphCorrelationRun",
+    "correlation_graph_digest",
     "correlation_identity",
+    "correlation_manifest_digest",
     "merge_graph_snapshots",
+    "validate_correlation_output_manifest",
     "validate_correlation_update",
 ]

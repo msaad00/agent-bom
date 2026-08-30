@@ -91,7 +91,12 @@ from agent_bom.runtime.audit_delivery import (
     audit_delivery_paths,
     canonical_runtime_state_path,
 )
-from agent_bom.runtime.correlation_facts import RuntimeFactsPoller, VerifiedRuntimeFacts
+from agent_bom.runtime.correlation_facts import (
+    RUNTIME_FACTS_CACHE_INVALIDATING_ERRORS,
+    RuntimeFactsBundleError,
+    RuntimeFactsPoller,
+    VerifiedRuntimeFacts,
+)
 from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
 from agent_bom.runtime.gateway_events import (
     GatewayRuntimeEventType,
@@ -2104,6 +2109,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             headers["Authorization"] = f"Bearer {settings.graph_reachability_bundle_bearer_token}"
         async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)) as client:
             response = await client.get(settings.graph_reachability_bundle_url, headers=headers)
+            if response.status_code == 409:
+                try:
+                    failure_payload = response.json()
+                except (TypeError, ValueError):
+                    failure_payload = None
+                failure_code = str(failure_payload.get("detail") or "") if isinstance(failure_payload, Mapping) else ""
+                if failure_code in RUNTIME_FACTS_CACHE_INVALIDATING_ERRORS:
+                    raise RuntimeFactsBundleError(failure_code)
             response.raise_for_status()
             if len(response.content) > 8 * 1024 * 1024:
                 raise ValueError("bundle_response_too_large")
@@ -3562,15 +3575,17 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 request_tenant_mismatch = bool(fetched_runtime_facts is not None and fetched_runtime_facts.tenant_id != tenant_id)
                 verified_runtime_facts = None if request_tenant_mismatch else fetched_runtime_facts
                 effective_reachability = verified_runtime_facts.reachability if verified_runtime_facts is not None else reachability_map
-                bundle_unavailable = runtime_facts_configured and verified_runtime_facts is None
-                strict_evidence_missing = (
-                    settings.graph_reachability_failure_mode == "deny"
-                    and verified_runtime_facts is None
-                    and (runtime_facts_configured or not reachability_map)
+                analysis_incomplete = bool(verified_runtime_facts is not None and not verified_runtime_facts.analysis_complete)
+                bundle_unavailable = runtime_facts_configured and (verified_runtime_facts is None or analysis_incomplete)
+                strict_evidence_missing = settings.graph_reachability_failure_mode == "deny" and (
+                    analysis_incomplete
+                    or (verified_runtime_facts is None and (runtime_facts_configured or not reachability_map))
                 )
                 if bundle_unavailable or strict_evidence_missing:
                     if request_tenant_mismatch:
                         reason_code = "request_tenant_mismatch"
+                    elif analysis_incomplete:
+                        reason_code = "analysis_incomplete"
                     elif runtime_facts_config_error:
                         reason_code = runtime_facts_config_error
                     elif runtime_facts_poller is not None and runtime_facts_poller.last_error:

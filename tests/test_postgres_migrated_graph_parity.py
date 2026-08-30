@@ -125,7 +125,13 @@ def test_attack_paths_round_trip_on_migration_owned_schema(migrated_fresh_databa
 
 def test_graph_correlation_round_trip_on_migration_owned_schema(migrated_fresh_database):
     from agent_bom.api.postgres_graph import PostgresGraphStore
-    from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun
+    from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+    from agent_bom.graph.correlation import (
+        CorrelationRunStatus,
+        GraphCorrelationRun,
+        correlation_graph_digest,
+        correlation_manifest_digest,
+    )
 
     store = PostgresGraphStore()
     run = GraphCorrelationRun(
@@ -148,14 +154,31 @@ def test_graph_correlation_round_trip_on_migration_owned_schema(migrated_fresh_d
         status=CorrelationRunStatus.RUNNING,
         started_at="2026-08-30T00:01:00+00:00",
     )
-    complete = store.update_correlation_run(
+    output = UnifiedGraph(
+        scan_id=run.correlation_id,
         tenant_id="default",
-        correlation_id=run.correlation_id,
-        status=CorrelationRunStatus.COMPLETE,
-        manifest_sha256="sha256:" + "a" * 64,
-        output_scan_id=run.correlation_id,
+        created_at="2026-08-30T00:02:00+00:00",
+    )
+    output.add_node(UnifiedNode(id="agent:migration", entity_type=EntityType.AGENT, label="migration"))
+    result_manifest = {
+        "schema_version": "agent-bom.graph-correlation-manifest/v1",
+        "correlation_id": run.correlation_id,
+        "tenant_id": "default",
+        "output": {
+            "scan_id": run.correlation_id,
+            "node_count": 1,
+            "edge_count": 0,
+            "graph_digest_sha256": correlation_graph_digest(output),
+        },
+    }
+    manifest_sha256 = correlation_manifest_digest(result_manifest)
+    complete = store.complete_correlation_run(
+        output,
+        result_manifest=result_manifest,
+        manifest_sha256=manifest_sha256,
         completed_at="2026-08-30T00:02:00+00:00",
     )
+    snapshots = store.snapshots_by_ids(tenant_id="default", scan_ids={run.correlation_id})
 
     assert was_created is True
     assert replay_created is False
@@ -163,6 +186,10 @@ def test_graph_correlation_round_trip_on_migration_owned_schema(migrated_fresh_d
     assert running.status is CorrelationRunStatus.RUNNING
     assert complete.status is CorrelationRunStatus.COMPLETE
     assert complete.output_scan_id == run.correlation_id
+    assert complete.manifest_sha256 == manifest_sha256
+    assert complete.result_manifest == result_manifest
+    assert snapshots[0]["snapshot_kind"] == "correlation"
+    assert snapshots[0]["evidence_manifest_sha256"] == manifest_sha256
 
 
 def test_audit_fork_guard_unique_index_present_after_migrate_to_head(migrated_fresh_database):

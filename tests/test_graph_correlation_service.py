@@ -9,7 +9,7 @@ import pytest
 
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.graph.container import UnifiedGraph
-from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun
+from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun, correlation_manifest_digest
 from agent_bom.graph.correlation_service import CorrelationRequest, CorrelationServiceError, GraphCorrelationService
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -335,4 +335,48 @@ def test_atomic_completion_rolls_back_snapshot_on_manifest_mismatch(tmp_path: Pa
 
     assert store.load_graph(tenant_id="tenant-a", scan_id="corr-atomic").nodes == {}
     running = store.get_correlation_run(tenant_id="tenant-a", correlation_id="corr-atomic")
+    assert running is not None and running.status is CorrelationRunStatus.RUNNING
+
+
+def test_atomic_completion_rejects_a_manifest_bound_to_different_graph_content(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    run = GraphCorrelationRun(
+        correlation_id="corr-content",
+        tenant_id="tenant-a",
+        idempotency_key="idem-content",
+        name="content bound",
+        status=CorrelationRunStatus.PENDING,
+        max_age_hours=24,
+        allow_stale=False,
+        input_manifest=[{"scan_id": "one"}, {"scan_id": "two"}],
+        created_at=NOW.isoformat(),
+    )
+    store.create_correlation_run(run)
+    store.update_correlation_run(
+        tenant_id="tenant-a",
+        correlation_id="corr-content",
+        status=CorrelationRunStatus.RUNNING,
+        started_at=NOW.isoformat(),
+    )
+    output = _graph("corr-content", NOW.isoformat())
+    result_manifest = {
+        "correlation_id": "corr-content",
+        "output": {
+            "scan_id": "corr-content",
+            "node_count": len(output.nodes),
+            "edge_count": len(output.edges),
+            "graph_digest_sha256": "sha256:" + "f" * 64,
+        },
+    }
+
+    with pytest.raises(ValueError, match="graph digest"):
+        store.complete_correlation_run(
+            output,
+            result_manifest=result_manifest,
+            manifest_sha256=correlation_manifest_digest(result_manifest),
+            completed_at=NOW.isoformat(),
+        )
+
+    assert store.load_graph(tenant_id="tenant-a", scan_id="corr-content").nodes == {}
+    running = store.get_correlation_run(tenant_id="tenant-a", correlation_id="corr-content")
     assert running is not None and running.status is CorrelationRunStatus.RUNNING

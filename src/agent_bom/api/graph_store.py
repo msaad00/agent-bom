@@ -1778,6 +1778,13 @@ class SQLiteGraphStore:
         manifest_sha256: str,
         completed_at: str = "",
     ) -> GraphCorrelationRun:
+        from agent_bom.graph.correlation import validate_correlation_output_manifest
+
+        validate_correlation_output_manifest(
+            graph,
+            result_manifest=result_manifest,
+            manifest_sha256=manifest_sha256,
+        )
         with sqlite_graph_store.open_graph_db(self._db_path) as conn:
             sqlite_graph_store.save_graph_streaming(
                 conn,

@@ -354,7 +354,7 @@ gateway:
     signingKeyFile: ""
     pollSeconds: 30
     # allow preserves legacy missing-evidence behavior. deny is explicit strict
-    # fail-closed mode for environments that require a valid cached bundle.
+    # fail-closed mode and requires a valid, content-bound, complete v2 bundle.
     failureMode: "allow"
   # Canonical managed client-profile enforcement. Set profileEnvironment when
   # using warn/enforce. Enforced gateways must share the control plane's

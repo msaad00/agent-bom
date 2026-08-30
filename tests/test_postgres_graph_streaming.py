@@ -240,6 +240,44 @@ def test_streaming_serializes_and_replaces_same_snapshot(monkeypatch):
     ]
 
 
+def test_streaming_cannot_replace_a_correlation_snapshot(monkeypatch):
+    class _CorrelationSnapshotConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            recorded = super().execute(sql, params)
+            if low.startswith("select snapshot_kind from graph_snapshots"):
+                return _FakeCursor([("correlation",)])
+            return recorded
+
+    conn = _CorrelationSnapshotConn()
+    store = _make_store(conn, monkeypatch)
+
+    with pytest.raises(ValueError, match="correlation snapshot is immutable"):
+        store.save_graph_streaming(scan_id="corr-1", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
+
+    assert conn.deleted_tables == []
+    assert conn.node_rows == []
+
+
+def test_streaming_cannot_claim_an_id_reserved_by_a_correlation_run(monkeypatch):
+    class _ReservedCorrelationConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            recorded = super().execute(sql, params)
+            if low.startswith("select correlation_id from graph_correlation_runs"):
+                return _FakeCursor([("corr-1",)])
+            return recorded
+
+    conn = _ReservedCorrelationConn()
+    store = _make_store(conn, monkeypatch)
+
+    with pytest.raises(ValueError, match="correlation output identifier is reserved"):
+        store.save_graph_streaming(scan_id="corr-1", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
+
+    assert conn.deleted_tables == []
+    assert conn.node_rows == []
+
+
 def test_same_scan_retry_does_not_checkout_nested_connection(monkeypatch):
     """A one-connection pool must not deadlock while resolving prior history."""
 

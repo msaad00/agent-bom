@@ -538,7 +538,12 @@ def _analytics_summary_rows(
     help="Host to bind to (non-loopback requires --api-key / OIDC or --allow-insecure-no-auth).",
 )
 @click.option("--port", default=8422, show_default=True, type=LISTEN_PORT_RANGE, help="API server port")
-@click.option("--persist", default=None, metavar="DB_PATH", help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
+@click.option(
+    "--persist",
+    default=None,
+    metavar="DB_PATH",
+    help="Enable persistent job storage via SQLite (for example ~/.agent-bom/control-plane.db).",
+)
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
 @click.option(
     "--api-key",
@@ -660,7 +665,7 @@ def serve_cmd(
       Remote with auth:
         agent-bom serve --host 0.0.0.0 --api-key <key>
       Persistent jobs:
-        agent-bom serve --port 8422 --persist jobs.db
+        agent-bom serve --persist ~/.agent-bom/control-plane.db --port 8422
     """
     from agent_bom.logging_config import setup_logging
 
@@ -676,8 +681,9 @@ def serve_cmd(
 
     if demo_estate:
         _os.environ["AGENT_BOM_DEMO_ESTATE"] = "1"
-    if persist:
-        _os.environ["AGENT_BOM_DB"] = str(Path(persist).resolve())
+    persist_path = str(Path(persist).expanduser().resolve()) if persist else None
+    if persist_path:
+        _os.environ["AGENT_BOM_DB"] = persist_path
     if cors_allow_all:
         _os.environ["AGENT_BOM_CORS_ALL"] = "1"
     # REST-only mode: signal the API app (imported below) to skip mounting the
@@ -711,7 +717,7 @@ def serve_cmd(
         else None
     )
 
-    from agent_bom.api.server import configure_api, set_dev_api_key
+    from agent_bom.api.server import configure_api, set_dev_api_key, set_job_store
 
     configure_api(
         cors_allow_all=cors_allow_all,
@@ -719,6 +725,13 @@ def serve_cmd(
         allow_unauthenticated=allow_insecure_no_auth,
     )
     set_dev_api_key(dev_api_key)
+    if persist_path:
+        # Do not rely only on the server module's first-import environment
+        # selection. Embedded callers and tests can import the app before the
+        # CLI command runs; an explicit flag must still select durable jobs.
+        from agent_bom.api.store import SQLiteJobStore
+
+        set_job_store(SQLiteJobStore(db_path=persist_path))
 
     _ui_dist = Path(__file__).resolve().parents[1] / "ui_dist"
     rows = [
@@ -741,7 +754,7 @@ def serve_cmd(
             ),
         ),
         ("TLS", "app-native mTLS" if tls_kwargs.get("ssl_ca_certs") else ("server TLS" if tls_kwargs else "delegated/none")),
-        ("Storage", _storage_summary(persist=persist)),
+        ("Storage", _storage_summary(persist=persist_path)),
         *_analytics_summary_rows(
             resolved_backend=resolved_backend,
             resolved_url=resolved_url,

@@ -91,7 +91,7 @@ and a separate strict opt-in block before the remediation handoff.
 | Developer / AI engineer | `agent-bom scan .` | See dependencies, secrets, IaC, agents, MCP, and whether Click, Flask, or FastAPI entry points can reach vulnerable packages before shipping |
 | AppSec / product security | `agent-bom agents --gha . --offline` | Inventory remote actions and reusable workflows with their refs, source provenance, and CI-hardening findings |
 | Cloud security | Add a read-only connection, then run a scan | Build scoped cloud, identity, and posture inventory with explicit coverage and provenance |
-| Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve` | Schedule scans, centralize evidence, assign owners and SLAs, and verify remediation |
+| Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve --persist ~/.agent-bom/control-plane.db` | Schedule scans, centralize evidence, assign owners and SLAs, and verify remediation |
 | GRC / audit | `agent-bom report compliance-narrative scan.json` | Export mapped evidence while preserving unavailable, partial, and not-assessed states |
 | CISO / engineering leader | Open **Architecture** in the self-hosted graph | Compare observed **Current** state with modeled **Proposed** and **Difference** views; proposals remain labeled as not observed or deployed |
 
@@ -131,13 +131,18 @@ alias for `--project`.
 
 Use this path when the source is an account or platform rather than a local
 target. Start the customer-controlled control plane, open **Connections**, add
-the provider's read-only grant, and run the first scan. Connections default to
-auto-scan on creation; scheduled scans are an explicit operator opt-in.
+the provider's read-only grant, and run the first scan. The browser flow
+defaults to an explicit first scan after verification; scheduled scans are an
+explicit operator opt-in.
 
 ```bash
 pip install 'agent-bom[ui]'
-agent-bom serve
+agent-bom serve --persist ~/.agent-bom/control-plane.db
 ```
+
+The explicit SQLite path keeps scan jobs, findings, compliance history, and
+graph inventory available together after a restart. Omit `--persist` only for
+an intentionally ephemeral process.
 
 For headless onboarding, `agent-bom connect <provider>` prints the exact grant,
 credential boundary, verification step, and next scan command. The
@@ -243,7 +248,7 @@ Start the loopback evaluation profile:
 
 ```bash
 pip install 'agent-bom[ui]'
-agent-bom serve
+agent-bom serve --persist ~/.agent-bom/control-plane.db
 ```
 
 Then open **Connections** to add a source or **New Scan** to target a repository,

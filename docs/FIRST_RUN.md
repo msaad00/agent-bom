@@ -150,8 +150,12 @@ fixture dependencies:
 
 ```bash
 pip install 'agent-bom[ui]'
-agent-bom serve
+agent-bom serve --persist ~/.agent-bom/control-plane.db
 ```
+
+That SQLite path keeps scan history, findings, compliance posture, and graph
+inventory available after the local process restarts. A bare `agent-bom serve`
+remains available for an intentionally ephemeral session.
 
 For the curated dashboard demo:
 

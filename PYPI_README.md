@@ -61,7 +61,7 @@ agent-bom check flask@2.2.0 --ecosystem pypi     # Pre-install package verdict
 agent-bom image nginx:latest                     # Container image scan
 agent-bom scan -p . --remediate remediation.md # Fix-first remediation plan
 pip install 'agent-bom[ui]'                      # once, if you want the dashboard
-agent-bom serve                                  # API + dashboard + graph explorer
+agent-bom serve --persist ~/.agent-bom/control-plane.db  # restart-safe local control plane
 ```
 
 The base wheel is the scanner/CLI path. Install optional surfaces explicitly:

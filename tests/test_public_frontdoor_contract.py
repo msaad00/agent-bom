@@ -9,6 +9,7 @@ from scripts.render_release_highlights import render_highlights
 from scripts.render_social_preview_svg import render as render_social_preview
 
 ROOT = Path(__file__).resolve().parents[1]
+DURABLE_LOCAL_CONTROL_PLANE = "agent-bom serve --persist ~/.agent-bom/control-plane.db"
 
 
 def test_social_preview_is_portable_and_evidence_focused() -> None:
@@ -172,9 +173,36 @@ def test_persona_routes_start_with_their_actual_work() -> None:
     assert "| Developer / AI engineer | `agent-bom scan .`" in personas
     assert "| AppSec / product security | `agent-bom agents --gha . --offline`" in personas
     assert "| Cloud security | Add a read-only connection, then run a scan" in personas
-    assert "| Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve`" in personas
+    assert f"| Platform / DevOps | `pip install 'agent-bom[ui]' && {DURABLE_LOCAL_CONTROL_PLANE}`" in personas
     assert "| CISO / engineering leader | Open **Architecture** in the self-hosted graph" in personas
     assert "owners and slas" in personas.lower()
+
+
+def test_primary_local_control_plane_first_runs_use_one_durable_sqlite_path() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    pypi = (ROOT / "PYPI_README.md").read_text(encoding="utf-8")
+    start_here = (ROOT / "docs" / "START_HERE.md").read_text(encoding="utf-8")
+    first_run = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
+
+    personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
+    path_b = readme.split("### Path B — connect a source, then scan", 1)[1].split("\n### ", 1)[0]
+    self_host = readme.split("## Self-host", 1)[1].split("\n## ", 1)[0]
+    pypi_starts = pypi.split("## Recommended starting points", 1)[1].split("\n## ", 1)[0]
+    platform_start = start_here.split("## Platform / SRE", 1)[1].split("\n## ", 1)[0]
+    dashboard_start = first_run.split("## 3. Open the Dashboard", 1)[1].split("\n## ", 1)[0]
+
+    for surface in (personas, path_b, self_host, pypi_starts, platform_start, dashboard_start):
+        assert DURABLE_LOCAL_CONTROL_PLANE in surface
+
+    assert readme.count(DURABLE_LOCAL_CONTROL_PLANE) == 3
+
+
+def test_readme_connection_first_run_requires_an_explicit_scan_after_verification() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    path_b = readme.split("### Path B — connect a source, then scan", 1)[1].split("\n### ", 1)[0]
+
+    assert "explicit first scan after verification" in path_b
+    assert "Connections default to auto-scan on creation" not in path_b
 
 
 def test_cloud_connect_leads_with_wheel_safe_emit_before_optional_terraform() -> None:

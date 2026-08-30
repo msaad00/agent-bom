@@ -8,6 +8,50 @@ from click.testing import CliRunner
 from agent_bom.cli import main
 
 
+def test_serve_persist_rehydrates_completed_scan_history_after_restart(monkeypatch, tmp_path):
+    """The durable first-run flag must select a restart-safe scan job store."""
+    import uvicorn
+
+    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+    from agent_bom.api.server import set_job_store
+    from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
+    from agent_bom.api.stores import _get_store
+
+    database = tmp_path / "control-plane.db"
+    args = ["serve", "--no-ui", "--persist", str(database)]
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: None)
+    monkeypatch.setenv("AGENT_BOM_DB", str(database))
+
+    try:
+        first = CliRunner().invoke(main, args)
+        assert first.exit_code == 0, first.output
+        first_store = _get_store()
+        assert isinstance(first_store, SQLiteJobStore)
+        first_store.put(
+            ScanJob(
+                job_id="first-run-scan",
+                tenant_id="default",
+                status=JobStatus.DONE,
+                created_at="2026-08-30T19:59:59+00:00",
+                completed_at="2026-08-30T20:00:00+00:00",
+                request=ScanRequest(offline=True),
+                result={"findings": [{"id": "finding-1", "severity": "high"}]},
+            )
+        )
+
+        restarted = CliRunner().invoke(main, args)
+        assert restarted.exit_code == 0, restarted.output
+        restarted_store = _get_store()
+        persisted = restarted_store.get("first-run-scan", tenant_id="default")
+
+        assert isinstance(restarted_store, SQLiteJobStore)
+        assert persisted is not None
+        assert persisted.status is JobStatus.DONE
+        assert persisted.result == {"findings": [{"id": "finding-1", "severity": "high"}]}
+    finally:
+        set_job_store(InMemoryJobStore())
+
+
 def test_serve_requires_uvicorn(monkeypatch):
     """serve exits with error when uvicorn is not installed."""
     runner = CliRunner()

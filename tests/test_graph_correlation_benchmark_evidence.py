@@ -11,7 +11,7 @@ def test_graph_correlation_benchmark_records_required_envelopes_and_limits() -> 
     payload = json.loads(EVIDENCE.read_text(encoding="utf-8"))
 
     assert payload["schema"] == "agent-bom.graph-correlation-benchmark/v1"
-    assert payload["source_commit"] == "11a7411a9f0dcf83d694924205ea30feceb360f2"
+    assert payload["source_commit"] == "aa1a48096296497a4bb5d458db7b9b6404cddb7d"
     assert "not a Postgres" in payload["scope"]
     assert "no low-memory claim" in " ".join(payload["limitations"])
 

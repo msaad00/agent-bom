@@ -1,7 +1,7 @@
 {
   "schema": "agent-bom.graph-correlation-benchmark/v1",
   "captured_at": "2026-08-30T21:18:11Z",
-  "source_commit": "11a7411a9f0dcf83d694924205ea30feceb360f2",
+  "source_commit": "aa1a48096296497a4bb5d458db7b9b6404cddb7d",
   "scope": "Local SQLite end-to-end correlation benchmark; not a Postgres, concurrent API, or deployment SLO claim.",
   "methodology": {
     "inputs": "Two immutable package snapshots with 20 percent exact-PURL overlap and directed depends_on chains.",

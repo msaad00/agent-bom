@@ -13,7 +13,7 @@ import logging
 import os
 
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
-from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, ServerSurface, TransportType
 from agent_bom.security import sanitize_text
 
 from .base import CloudDiscoveryError
@@ -151,6 +151,7 @@ def _discover_registered_models(
                 name=f"mlflow-model:{model_name}",
                 transport=TransportType.UNKNOWN,
                 packages=packages,
+                surface=ServerSurface.AI_INVENTORY,
             )
 
             if description:
@@ -241,6 +242,7 @@ def _discover_experiments(
                 name=f"mlflow-exp:{exp_name}",
                 transport=TransportType.UNKNOWN,
                 packages=packages,
+                surface=ServerSurface.AI_INVENTORY,
             )
 
             agent = Agent(

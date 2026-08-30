@@ -13,7 +13,7 @@ import logging
 import os
 
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
-from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, Package, ServerSurface, TransportType
 from agent_bom.security import sanitize_text
 
 from .base import CloudDiscoveryError
@@ -151,6 +151,7 @@ def _run_to_agent(run, entity: str, project: str | None) -> Agent | None:
         name=f"wandb-run:{run_name}",
         transport=TransportType.UNKNOWN,
         packages=packages,
+        surface=ServerSurface.AI_INVENTORY,
     )
 
     return Agent(
@@ -210,6 +211,7 @@ def _discover_artifacts(
                         name=f"wandb-{art_type}:{art_name}",
                         transport=TransportType.UNKNOWN,
                         packages=packages,
+                        surface=ServerSurface.AI_INVENTORY,
                     )
 
                     agent = Agent(

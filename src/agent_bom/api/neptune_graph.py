@@ -14,6 +14,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, NoReturn, Protocol, cast
 
+from agent_bom.db.graph_store import normalize_snapshot_kind
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.graph.container import apply_node_budget
@@ -300,11 +301,23 @@ class NeptuneGraphStore:
         graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
         return digest_from_graph(graph)
 
-    def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
+    def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str = "scan") -> str:
+        snapshot_kind = normalize_snapshot_kind(snapshot_kind)
+        if snapshot_kind != "scan":
+            return ""
         snapshots = self.list_snapshots(tenant_id=tenant_id, limit=1)
         return snapshots[0]["scan_id"] if snapshots else ""
 
-    def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
+    def previous_snapshot_id(
+        self,
+        *,
+        tenant_id: str = "",
+        before_scan_id: str = "",
+        snapshot_kind: str = "scan",
+    ) -> str:
+        snapshot_kind = normalize_snapshot_kind(snapshot_kind)
+        if snapshot_kind != "scan":
+            return ""
         snapshots = self.list_snapshots(tenant_id=tenant_id, limit=1000)
         for index, snapshot in enumerate(snapshots):
             if snapshot["scan_id"] == before_scan_id and index + 1 < len(snapshots):

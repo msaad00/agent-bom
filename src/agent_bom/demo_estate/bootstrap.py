@@ -347,7 +347,7 @@ def _graph_owner_scan_id(graph_store: Any, tenant_id: str) -> str:
     try:
         latest = getattr(graph_store, "latest_snapshot_id", None)
         if callable(latest):
-            return str(latest(tenant_id=tenant_id) or "")
+            return str(latest(tenant_id=tenant_id, snapshot_kind="scan") or "")
     except Exception:  # noqa: BLE001 - never block the demo boot on a read
         _logger.debug("could not resolve graph owner scan id", exc_info=True)
     return ""

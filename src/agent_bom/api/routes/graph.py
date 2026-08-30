@@ -2457,7 +2457,11 @@ async def get_scoped_graph(
 
     tenant = _tenant(request)
     graph_store = _get_graph_store_or_503()
-    if not scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+    if not scan_id and not await _graph_store_call(
+        graph_store.latest_snapshot_id,
+        tenant_id=tenant,
+        snapshot_kind="scan",
+    ):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
     graph = await _load_graph_for_investigation(
         graph_store,
@@ -2512,7 +2516,11 @@ async def get_graph(
     graph_store = _get_graph_store_or_503()
     requested_scan_id = _coalesce_alias(scan_id, scan, primary_name="scan_id", alias_name="scan")
 
-    if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+    if not requested_scan_id and not await _graph_store_call(
+        graph_store.latest_snapshot_id,
+        tenant_id=tenant,
+        snapshot_kind="scan",
+    ):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
 
     et_set = _parse_entity_type_filter(entity_types)
@@ -2671,7 +2679,11 @@ async def get_fix_first_graph_view(
     graph_store = _get_graph_store_or_503()
     requested_scan_id = scan_id or ""
 
-    if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+    if not requested_scan_id and not await _graph_store_call(
+        graph_store.latest_snapshot_id,
+        tenant_id=tenant,
+        snapshot_kind="scan",
+    ):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
 
     graph = await _load_graph_for_investigation(
@@ -3200,7 +3212,11 @@ async def get_graph_clusters(
     tenant = _tenant(request)
     graph_store = _get_graph_store_or_503()
     requested_scan_id = scan_id or ""
-    if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+    if not requested_scan_id and not await _graph_store_call(
+        graph_store.latest_snapshot_id,
+        tenant_id=tenant,
+        snapshot_kind="scan",
+    ):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
 
     selected_kinds = {kind.strip() for kind in kinds.split(",") if kind.strip()} if kinds else set(SEMANTIC_CLUSTER_KINDS)
@@ -3241,7 +3257,11 @@ async def list_graph_agents(
             offset=offset,
             limit=limit,
         )
-        effective_scan_id = scan_id or await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant_id)
+        effective_scan_id = scan_id or await _graph_store_call(
+            graph_store.latest_snapshot_id,
+            tenant_id=tenant_id,
+            snapshot_kind="scan",
+        )
         created_at = ""
     else:
         effective_scan_id, created_at, agents, total, next_cursor = await _graph_store_call(
@@ -4365,7 +4385,11 @@ async def get_graph_rollup(
     graph_store = _get_graph_store_or_503()
     requested_scan_id = scan_id or ""
 
-    if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+    if not requested_scan_id and not await _graph_store_call(
+        graph_store.latest_snapshot_id,
+        tenant_id=tenant,
+        snapshot_kind="scan",
+    ):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
 
     if min_severity and min_severity.lower() not in SEVERITY_RANK:

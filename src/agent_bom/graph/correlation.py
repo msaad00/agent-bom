@@ -169,7 +169,18 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
     if entity_type in _CLOUD_RESOURCE_ENTITY_TYPES:
         exact = _exact_attribute_identity(
             node,
-            keys=("arn", "resource_arn", "kubernetes_uid", "uid", "resource_id", "provider_id", "object_fqn", "self_link"),
+            keys=(
+                "arn",
+                "resource_arn",
+                "kubernetes_uid",
+                "uid",
+                "resource_id",
+                "provider_id",
+                "object_fqn",
+                "self_link",
+                "canonical_id",
+                "stable_id",
+            ),
             basis="cloud_resource_id",
         )
         return exact or _snapshot_scoped_identity(node, scan_id=scan_id)
@@ -185,6 +196,8 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
                 "subject_id",
                 "arn",
                 "client_id",
+                "canonical_id",
+                "stable_id",
             ),
             basis="provider_identity_id",
         )
@@ -193,7 +206,7 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
     if entity_type in _RUNTIME_ENTITY_TYPES:
         exact = _exact_attribute_identity(
             node,
-            keys=("runtime_id", "stable_id"),
+            keys=("runtime_id", "stable_id", "canonical_id"),
             basis="runtime_stable_id",
         )
         return exact or _snapshot_scoped_identity(node, scan_id=scan_id)

@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:68048af066d5109c44234da97b4d51e6b9242d067b998beee33e1547690a4af7",
+  "artifact_sha256": "sha256:0912b4e14f7d6b6535c35902c746eb4844460a03860b8baf04dadd9e2fe2370b",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -738,7 +738,7 @@
             "cloud_resource_id": "local:object-store:customer-records",
             "correlation": {
               "conflict_fields": [],
-              "identity_basis": "snapshot_scoped_missing_exact_identity",
+              "identity_basis": "cloud_resource_id",
               "observation_count": 1,
               "observations": [
                 {
@@ -843,7 +843,7 @@
             "canonical_id": "kubernetes-uid:9ba1b7ae-3bd2-5cb6-951a-5935ad4fc3a1",
             "correlation": {
               "conflict_fields": [],
-              "identity_basis": "snapshot_scoped_missing_exact_identity",
+              "identity_basis": "runtime_stable_id",
               "observation_count": 1,
               "observations": [
                 {

@@ -83,6 +83,13 @@ def correlation_manifest_digest(value: Mapping[str, Any]) -> str:
     return _digest(value)
 
 
+def _correlation_output_count(output: Mapping[str, Any], field: str) -> int:
+    value = output.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"completed correlation manifest {field} must be a non-negative integer")
+    return value
+
+
 def correlation_graph_digest(graph: UnifiedGraph) -> str:
     """Hash persisted graph content consumed by correlation runtime facts.
 
@@ -122,7 +129,11 @@ def validate_correlation_output_manifest(
         raise ValueError("completed correlation manifest requires output metadata")
     if str(output.get("scan_id") or "") != graph.scan_id:
         raise ValueError("completed correlation manifest output must equal graph scan_id")
-    if int(output.get("node_count") or -1) != len(graph.nodes) or int(output.get("edge_count") or -1) != len(graph.edges):
+    node_count = _correlation_output_count(output, "node_count")
+    edge_count = _correlation_output_count(output, "edge_count")
+    if node_count == 0 or not graph.nodes:
+        raise ValueError("completed correlation manifest requires a nonempty graph output")
+    if node_count != len(graph.nodes) or edge_count != len(graph.edges):
         raise ValueError("completed correlation manifest counts do not match graph output")
     expected_digest = str(output.get("graph_digest_sha256") or "")
     if not expected_digest.startswith("sha256:") or len(expected_digest) != 71:

@@ -1,6 +1,7 @@
 """LLM-harnessed red-team foundation: offline-safe, variants flow into coverage."""
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock, patch
 
 from agent_bom.red_team import run_red_team
@@ -63,3 +64,20 @@ def test_empty_payloads_are_skipped():
     ):
         variants = asyncio.run(generate_attack_variants(variants_per_category=1))
     assert variants == []
+
+
+def test_provider_failures_never_log_exception_content(caplog):
+    leaky = RuntimeError("provider failed token=SUPER_SECRET https://user:password@example.invalid")
+    with (
+        patch("agent_bom.ai_enrich._has_any_provider", return_value=True),
+        patch("agent_bom.ai_enrich._resolve_model", return_value="ollama/llama3.2"),
+        patch("agent_bom.ai_enrich._call_llm_structured", new=AsyncMock(side_effect=leaky)),
+        caplog.at_level(logging.WARNING, logger="agent_bom.red_team_llm"),
+    ):
+        variants = asyncio.run(generate_attack_variants(categories=("jailbreak",)))
+
+    assert variants == []
+    assert "RuntimeError" in caplog.text
+    assert "SUPER_SECRET" not in caplog.text
+    assert "password" not in caplog.text
+    assert "example.invalid" not in caplog.text

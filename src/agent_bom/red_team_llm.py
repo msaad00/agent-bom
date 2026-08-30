@@ -94,7 +94,11 @@ async def generate_attack_variants(
                 max_tokens=600,
             )
         except Exception as exc:  # noqa: BLE001 — generation is best-effort
-            logger.warning("LLM red-team: variant generation failed for %s: %s", category, exc)
+            logger.warning(
+                "LLM red-team: variant generation failed for category=%s provider_error_type=%s",
+                category,
+                type(exc).__name__,
+            )
             continue
         if not isinstance(result, _GeneratedVariants):
             continue

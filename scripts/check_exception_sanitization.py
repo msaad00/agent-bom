@@ -61,6 +61,7 @@ INCLUDE_DIRS: tuple[str, ...] = (
 INCLUDE_FILES: tuple[str, ...] = (
     "src/agent_bom/gateway_server.py",
     "src/agent_bom/proxy.py",
+    "src/agent_bom/red_team_llm.py",
 )
 
 EXCLUDE_FRAGMENTS: tuple[str, ...] = (

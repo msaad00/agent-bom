@@ -38,7 +38,7 @@ export function DemoEstateLabel() {
         : "Open the synthetic enterprise demo story"}
     >
       {referenceEvidenceLab
-        ? "Reference evidence lab — modeled local infrastructure"
+        ? <><span className="sm:hidden">Reference lab — modeled local</span><span className="hidden sm:inline">Reference evidence lab — modeled local infrastructure</span></>
         : "Demo data — sample environment"}
     </Link>
   );

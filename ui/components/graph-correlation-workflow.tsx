@@ -165,7 +165,7 @@ export function GraphCorrelationWorkflow({
                   <StepIcon className="h-3.5 w-3.5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-[color:var(--foreground)]">{step.label}</p>
+                  <p className="text-xs font-semibold leading-4 text-[color:var(--foreground)]">{step.label}</p>
                   <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{done ? "Complete" : state.detail || step.detail}</p>
                 </div>
               </div>

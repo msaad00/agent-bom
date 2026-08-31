@@ -2694,7 +2694,8 @@ async function main() {
       const proof = proofPage.getByTestId("attack-path-correlation-proof");
       await proof.waitFor({ state: "visible", timeout: 30_000 });
       await proof.scrollIntoViewIfNeeded();
-      await proofPage.evaluate(() => window.scrollBy({ top: -300, behavior: "instant" }));
+      const topOffset = (proofPage.viewportSize()?.width ?? 1440) < 640 ? -88 : -300;
+      await proofPage.evaluate((offset) => window.scrollBy({ top: offset, behavior: "instant" }), topOffset);
       await proofPage.waitForTimeout(500);
     };
     const correlationReceiptAssertions = {

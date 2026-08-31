@@ -50,6 +50,7 @@ from agent_bom.ast_java import scan_java_file as _scan_java_file
 from agent_bom.ast_models import (
     ApplicationEntrypoint,
     ASTAnalysisResult,
+    ASTCoverageGap,
     CallEdge,
     DependencySymbolReach,
     _CSharpMethodAnalysis,
@@ -329,6 +330,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         kotlin_files,
     ) = tuple([path for path in group if path in selected] for group in file_groups)
     if eligible_count > len(selected):
+        result.analysis_coverage.status = "partial"
         warning = f"AST analysis stopped at {len(selected)} of {eligible_count} eligible source files"
         result.warnings.append(warning)
         from agent_bom.scanners.state import record_coverage_warning
@@ -355,6 +357,8 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         + len(swift_files)
         + len(kotlin_files)
     )
+    result.analysis_coverage.eligible_files = eligible_count
+    result.analysis_coverage.analyzed_files = result.files_analyzed
     selected_source_files = [path for group in file_groups for path in group if path in selected]
     result.application_entrypoints = detect_application_entrypoints(project, selected_source_files)
     function_analyses: list[_FunctionAnalysis] = []
@@ -412,6 +416,16 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         result.flow_findings.extend(flow_findings)
         result.frameworks_detected.extend(frameworks)
         result.call_edges.extend(js_ts_call_edges)
+        if js_ts_analysis is None:
+            result.analysis_coverage.status = "partial"
+            result.analysis_coverage.partial_files.append(
+                ASTCoverageGap(
+                    file_path=rel,
+                    language="typescript" if js_ts_file.suffix.lower() in {".ts", ".tsx"} else "javascript",
+                    reason="structured_analysis_unavailable",
+                )
+            )
+            result.warnings.append(f"Partial JS/TS structured analysis for {rel}; fallback findings were retained")
         if js_ts_analysis is not None:
             for js_ts_function in js_ts_analysis.functions.values():
                 js_ts_functions[_js_ts_function_key(js_ts_function.module_name, js_ts_function.name)] = js_ts_function

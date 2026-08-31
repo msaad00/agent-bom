@@ -118,6 +118,40 @@ class ApplicationEntrypoint:
     provenance: str
 
 
+@dataclass(frozen=True)
+class ASTCoverageGap:
+    """One source file without complete structured AST evidence."""
+
+    file_path: str
+    language: str
+    reason: str
+
+    def to_dict(self) -> dict:
+        return {
+            "file": self.file_path,
+            "language": self.language,
+            "reason": self.reason,
+        }
+
+
+@dataclass
+class ASTAnalysisCoverage:
+    """Structured completeness receipt for native source analysis."""
+
+    status: str = "complete"
+    eligible_files: int = 0
+    analyzed_files: int = 0
+    partial_files: list[ASTCoverageGap] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "eligible_files": self.eligible_files,
+            "analyzed_files": self.analyzed_files,
+            "partial_files": [item.to_dict() for item in self.partial_files],
+        }
+
+
 @dataclass
 class ASTAnalysisResult:
     """Complete AST analysis result for a project."""
@@ -133,6 +167,7 @@ class ASTAnalysisResult:
     frameworks_detected: list[str] = field(default_factory=list)
     files_analyzed: int = 0
     warnings: list[str] = field(default_factory=list)
+    analysis_coverage: ASTAnalysisCoverage = field(default_factory=ASTAnalysisCoverage)
 
     def to_dict(self) -> dict:
         """Serialize for JSON output / AIBOMReport."""
@@ -256,6 +291,7 @@ class ASTAnalysisResult:
             "frameworks": self.frameworks_detected,
             "files_analyzed": self.files_analyzed,
             "warnings": self.warnings,
+            "analysis_coverage": self.analysis_coverage.to_dict(),
             "stats": {
                 "total_prompts": len(self.prompts),
                 "total_guardrails": len(self.guardrails),

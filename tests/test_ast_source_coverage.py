@@ -19,6 +19,9 @@ from agent_bom.ast_rust import scan_rust_file
 from agent_bom.ast_swift import scan_swift_file
 from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run, vulnerability_coverage_incomplete
 from agent_bom.models import AIBOMReport
+from agent_bom.output.html import to_html
+from agent_bom.output.json_fmt import to_json
+from agent_bom.output.sarif import to_sarif
 from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
 
 _MAX_AST_SOURCE_SIZE = 512 * 1024
@@ -156,6 +159,32 @@ def test_ast_warning_marks_run_partial_without_invalidating_vulnerability_covera
     assert vulnerability_coverage_incomplete(report) is False
 
 
+def test_partial_js_ts_metadata_and_warning_project_to_json_sarif_and_html(tmp_path: Path) -> None:
+    from agent_bom.ast_analyzer import analyze_project
+
+    (tmp_path / "server.ts").write_text(
+        'import * as cp from "node:child_process";\nserver.tool("run", "Run", async () => cp.execSync("id"));\nfunction unfinished(\n',
+        encoding="utf-8",
+    )
+    result = analyze_project(tmp_path)
+    report = AIBOMReport(
+        ai_inventory_data={"ast_analysis": result.to_dict()},
+        coverage_warnings=consume_coverage_warnings(),
+    )
+
+    json_report = to_json(report)
+    sarif_run = to_sarif(report)["runs"][0]
+    html = to_html(report, [])
+
+    assert json_report["ai_inventory"]["ast_analysis"]["analysis_coverage"]["status"] == "partial"
+    assert json_report["scan_run"]["outcome"] == "partial"
+    notification = sarif_run["invocations"][0]["toolExecutionNotifications"][0]
+    assert notification["descriptor"]["id"] == "scanner_coverage_gap"
+    assert sarif_run["properties"]["scan_outcome"] == "partial"
+    assert "PARTIAL COVERAGE" in html
+    assert "CLEAN" not in html
+
+
 def test_project_file_budget_prioritizes_entrypoints_and_records_partial_coverage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -178,6 +207,7 @@ def test_project_file_budget_prioritizes_entrypoints_and_records_partial_coverag
     result = ast_analyzer.analyze_project(tmp_path)
 
     assert result.files_analyzed == 2
+    assert result.analysis_coverage.status == "partial"
     assert any(tool.name == "late_tool" and tool.file_path == "zzzz/mcp_server.py" for tool in result.tools)
     assert result.warnings == ["AST analysis stopped at 2 of 4 eligible source files"]
     assert consume_coverage_warnings() == [

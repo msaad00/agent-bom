@@ -113,7 +113,11 @@ const BUDGETS = {
   // together (overview journey copy was removed; no dependency was added).
   // Keep 59.6 KiB / 1.55% bounded headroom at 3904 KiB so routine UI changes
   // do not fail on the line; largest-chunk and shared-runtime caps stay fixed.
-  totalClientJsBytes: 3_997_696,
+  // The progressive-disclosure correlation journey and compact eight-hop proof
+  // measure 3908.4 KiB locally (+4.4 KiB over the prior ceiling) with no new
+  // dependency. Keep 11.6 KiB of bounded headroom at 3920 KiB; the largest-
+  // chunk and shared-runtime caps remain unchanged.
+  totalClientJsBytes: 4_014_080,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

@@ -109,7 +109,8 @@ describe("product proof capture contract", () => {
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
     expect(source).toContain('window.scrollTo({ top: workflowTop - 88, behavior: "instant" })');
     expect(source).toContain("assertNoHorizontalOverflow: true");
-    expect(source).toContain("< 640 ? -88 : -300");
+    expect(source).toContain('getByTestId("selected-exposure-path")');
+    expect(source).toContain("< 640 ? -72 : -300");
   });
 
   it("keeps the base graph fixture from swallowing graph subroutes", () => {

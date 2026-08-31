@@ -2693,8 +2693,9 @@ async function main() {
     const prepareCorrelationPath = async (proofPage) => {
       const proof = proofPage.getByTestId("attack-path-correlation-proof");
       await proof.waitFor({ state: "visible", timeout: 30_000 });
-      await proof.scrollIntoViewIfNeeded();
-      const topOffset = (proofPage.viewportSize()?.width ?? 1440) < 640 ? -88 : -300;
+      const selectedPath = proofPage.getByTestId("selected-exposure-path");
+      await selectedPath.scrollIntoViewIfNeeded();
+      const topOffset = (proofPage.viewportSize()?.width ?? 1440) < 640 ? -72 : -300;
       await proofPage.evaluate((offset) => window.scrollBy({ top: offset, behavior: "instant" }), topOffset);
       await proofPage.waitForTimeout(500);
     };

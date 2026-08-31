@@ -129,7 +129,7 @@ export function GraphCorrelationWorkflow({
     { done: receiptCount >= 2, detail: receiptCount > 0 ? `${receiptCount} receipts` : "Evidence" },
     { done: isComplete, detail: isFailed ? "Failed" : run?.status ?? "Exact IDs" },
     { done: isComplete && attackPaths > 0, detail: isComplete ? `${attackPaths} paths` : "Paths" },
-    { done: false, detail: hasRuntimeReceipt ? "Runtime observed" : "Opt-in runtime" },
+    { done: false, detail: hasRuntimeReceipt ? "Observed" : "Opt-in runtime" },
   ];
   const activeFreshnessBound = run?.max_age_hours ?? maxAgeHours;
 

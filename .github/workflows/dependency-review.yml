@@ -58,11 +58,13 @@ jobs:
         with:
           fail-on-severity: high
           retry-on-snapshot-warnings: true
+          # regex includes code derived from CPython 2.6/3.1 and accurately
+          # declares Apache-2.0 AND CNRI-Python in its wheel metadata.
           allow-licenses: >-
             Apache-2.0, MIT, MIT-0, MIT-CMU, BSD-2-Clause, BSD-3-Clause,
             ISC, PSF-2.0, Python-2.0, Python-2.0.1, 0BSD, Unlicense,
             CC0-1.0, MPL-2.0, OFL-1.1, ZPL-2.1, HPND-Markus-Kuhn,
-            LGPL-3.0-only, Zlib
+            LGPL-3.0-only, Zlib, CNRI-Python
           # Packages whitelisted by PURL:
           # - jinja2/werkzeug/flask/requests: permissive licenses but GitHub can return null
           # - recharts: Apache-2.0 but npm metadata returns null

@@ -1912,7 +1912,7 @@ async function installRoutes(page) {
   });
   await page.route((url) => url.pathname === "/v1/graph/correlations", (route) => {
     if (route.request().method() === "POST") return fulfill(route, REFERENCE_LAB.correlation, 202);
-    return fulfill(route, { correlations: [REFERENCE_LAB.correlation], count: 1 });
+    return fulfill(route, { items: [REFERENCE_LAB.correlation], count: 1 });
   });
   await page.route(
     (url) => url.pathname === `/v1/graph/correlations/${REFERENCE_CORRELATION_ID}`,
@@ -2729,7 +2729,7 @@ async function main() {
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: 'section[aria-label="Selected exposure path graph"]',
     });
-    const correlationPage = await newCapturePage("dark", { width: 1440, height: 1120 });
+    const correlationPage = await newCapturePage("dark", { width: 1440, height: 820 });
     await capture(
       correlationPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
@@ -2738,13 +2738,14 @@ async function main() {
         await proofPage.getByRole("button", { name: /^Evidence scope Current scan/i }).click();
         const workflow = proofPage.getByTestId("graph-correlation-workflow");
         await workflow.waitFor({ state: "visible", timeout: 30_000 });
-        await proofPage.getByLabel("Correlation name").fill("Reference evidence lab — modeled local infrastructure");
-        for (const snapshot of REFERENCE_LAB.capture_fixture.snapshots) {
-          await proofPage.getByLabel(snapshot.scan_id).check();
-        }
-        await proofPage.getByLabel(/I confirm the 7-day freshness bound/i).check();
-        await proofPage.getByRole("button", { name: "Correlate selected evidence" }).click();
         await proofPage.getByTestId("graph-correlation-receipt-dag").waitFor({ state: "visible", timeout: 30_000 });
+        // Give the viewport enough trailing room to place Evidence scope just
+        // below the fixed product header. Without this capture-only spacer the
+        // browser hits the document's maximum scroll position and leaves the
+        // previous path card in the hero frame.
+        await proofPage.evaluate(() => {
+          document.body.style.paddingBottom = "900px";
+        });
         const workflowTop = await workflow.evaluate(
           (element) => element.getBoundingClientRect().top + window.scrollY,
         );
@@ -2755,11 +2756,11 @@ async function main() {
       },
       {
         expectedText: [
-          "Correlate evidence snapshots",
-          "Immutable correlated snapshot",
-          "reference-image-sbom-scan",
-          "gateway_runtime",
-          "1 confirmed attack paths",
+          "Continuous evidence journey",
+          "Evidence correlation complete",
+          "Image + SBOM",
+          "Runtime",
+          "1 confirmed attack path",
         ],
         expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
         readySelector: '[data-testid="graph-correlation-receipt-dag"]',
@@ -2782,7 +2783,7 @@ async function main() {
         expectedText: [
           "CVE-2023-4863",
           REFERENCE_LAB.container_digest,
-          "Correlation provenance",
+          "Path verified",
           "Runtime observed",
           "Runtime block verified",
           "Patch Pillow and re-run correlation",

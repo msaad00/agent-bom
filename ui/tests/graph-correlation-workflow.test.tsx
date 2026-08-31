@@ -8,6 +8,7 @@ const { apiMock } = vi.hoisted(() => ({
   apiMock: {
     createGraphCorrelation: vi.fn(),
     getGraphCorrelation: vi.fn(),
+    listGraphCorrelations: vi.fn(),
   },
 }));
 
@@ -49,20 +50,42 @@ describe("GraphCorrelationWorkflow", () => {
   beforeEach(() => {
     apiMock.createGraphCorrelation.mockReset();
     apiMock.getGraphCorrelation.mockReset();
+    apiMock.listGraphCorrelations.mockReset();
     apiMock.createGraphCorrelation.mockResolvedValue(run("complete"));
+    apiMock.listGraphCorrelations.mockResolvedValue({ items: [], count: 0 });
   });
 
-  it("requires two scan snapshots and explicit confirmation of the visible seven-day bound", async () => {
+  it("loads the latest completed correlation as the primary automated evidence view", async () => {
+    apiMock.listGraphCorrelations.mockResolvedValue({ items: [run("complete")], count: 1 });
+
     render(<GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={vi.fn()} />);
 
+    expect(await screen.findByText("Evidence correlation complete")).toBeInTheDocument();
+    expect(screen.getByText("Connect")).toBeInTheDocument();
+    expect(screen.getByText("Discover")).toBeInTheDocument();
+    expect(screen.getByText("Scan")).toBeInTheDocument();
+    expect(screen.getByText("Correlate")).toBeInTheDocument();
+    expect(screen.getByText("Prioritize")).toBeInTheDocument();
+    expect(screen.getByText("Enforce & verify")).toBeInTheDocument();
+    expect(screen.getByText("Image + SBOM")).toBeInTheDocument();
+    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("2 confirmed attack paths")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Correlation name")).not.toBeVisible();
+    expect(apiMock.createGraphCorrelation).not.toHaveBeenCalled();
+  });
+
+  it("keeps custom correlation behind progressive disclosure with safe defaults", async () => {
+    render(<GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={vi.fn()} />);
+
+    await waitFor(() => expect(apiMock.listGraphCorrelations).toHaveBeenCalledWith(20));
+    fireEvent.click(screen.getByText("Run custom correlation"));
     expect(screen.getByLabelText("Maximum evidence age (hours)")).toHaveValue(168);
     expect(screen.getByLabelText("old-correlation")).toBeDisabled();
+    expect(screen.getByLabelText("repo")).toBeChecked();
+    expect(screen.getByLabelText("image")).toBeChecked();
     const create = screen.getByRole("button", { name: "Correlate selected evidence" });
     expect(create).toBeDisabled();
 
-    fireEvent.click(screen.getByLabelText("repo"));
-    fireEvent.click(screen.getByLabelText("image"));
-    expect(create).toBeDisabled();
     fireEvent.click(screen.getByLabelText(/I confirm the 7-day freshness bound/i));
     expect(create).toBeEnabled();
 
@@ -73,18 +96,17 @@ describe("GraphCorrelationWorkflow", () => {
       max_age_hours: 168,
       allow_stale: false,
     }));
-    expect(await screen.findByText("1 conflicting field set retained")).toBeInTheDocument();
+    expect(await screen.findByText("1 conflict retained · bounded analysis")).toBeInTheDocument();
     expect(screen.getByText("2 confirmed attack paths")).toBeInTheDocument();
     expect(screen.getByLabelText("Correlation source receipt graph")).toBeInTheDocument();
-    expect(screen.getByText("Immutable correlated snapshot")).toBeInTheDocument();
-    expect(screen.getByText("cyclonedx_sbom")).toBeInTheDocument();
+    expect(screen.getByText("Evidence correlation complete")).toBeInTheDocument();
+    expect(screen.getByText("Image + SBOM")).toBeInTheDocument();
   });
 
   it("opens the completed correlated snapshot", async () => {
     const onOpenSnapshot = vi.fn();
     render(<GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={onOpenSnapshot} />);
-    fireEvent.click(screen.getByLabelText("repo"));
-    fireEvent.click(screen.getByLabelText("image"));
+    fireEvent.click(screen.getByText("Run custom correlation"));
     fireEvent.click(screen.getByLabelText(/I confirm the 7-day freshness bound/i));
     fireEvent.click(screen.getByRole("button", { name: "Correlate selected evidence" }));
 

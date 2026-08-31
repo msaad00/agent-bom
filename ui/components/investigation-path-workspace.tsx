@@ -85,7 +85,7 @@ export function InvestigationPathWorkspace({
     <section
       aria-label="Investigation workspace"
       data-layout="responsive-split"
-      className="grid gap-4 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] lg:items-start"
+      className="grid gap-4 lg:grid-cols-[minmax(16rem,18rem)_minmax(0,1fr)] lg:items-start"
     >
       <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
         <div>

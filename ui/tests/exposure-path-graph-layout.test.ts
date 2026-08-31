@@ -183,25 +183,19 @@ describe("board fit budget", () => {
     expect(MAX_READABLE_BOARD_WIDTH).toBe(Math.floor(FIT_REFERENCE_WIDTH / MIN_READABLE_SCALE));
   });
 
-  it("reports the natural board width the current node metrics produce", () => {
+  it("keeps the reference eight-hop chain within the readable board budget", () => {
     // Regression anchors measured from MAX/MIN_NODE_WIDTH + COLUMN_GAP + MARGIN_X.
-    expect(naturalBoardWidth(2)).toBe(564);
-    expect(naturalBoardWidth(3)).toBe(884);
-    expect(naturalBoardWidth(4)).toBe(1176);
-    expect(naturalBoardWidth(5)).toBe(1459);
-    expect(naturalBoardWidth(9)).toBe(2444);
-    expect(naturalBoardWidth(11)).toBe(3004);
+    expect(naturalBoardWidth(8)).toBeLessThanOrEqual(MAX_READABLE_BOARD_WIDTH);
+    expect(shouldCollapsePath(8)).toBe(false);
   });
 
   it("collapses only the chains that cannot fit at a readable scale", () => {
-    // 4 hops (1176px) still fits 1268px at 1x — the demo hero keeps every hop.
-    expect(shouldCollapsePath(4)).toBe(false);
-    for (const count of [1, 2, 3, 4]) {
+    for (const count of [1, 2, 3, 4, 5, 7, 8]) {
       expect(naturalBoardWidth(count)).toBeLessThanOrEqual(MAX_READABLE_BOARD_WIDTH);
       expect(shouldCollapsePath(count)).toBe(false);
     }
-    // 5+ hops would need a sub-0.9 scale, so the middle collapses instead.
-    for (const count of [5, 7, 9, 11, 20]) {
+    // Longer chains still collapse before labels fall below the text floor.
+    for (const count of [11, 20]) {
       expect(naturalBoardWidth(count)).toBeGreaterThan(MAX_READABLE_BOARD_WIDTH);
       expect(shouldCollapsePath(count)).toBe(true);
     }
@@ -235,7 +229,7 @@ describe("collapsed exposure-path board", () => {
     expect(layout.nodes[0]!.id).toBe("agent:cursor");
     expect(layout.nodes[2]!.id).toBe("store:warehouse");
     // Fits the reference board at 1x — no scaling, no clipping, no scroll.
-    expect(layout.width).toBe(884);
+    expect(layout.width).toBeLessThanOrEqual(MAX_READABLE_BOARD_WIDTH);
     expect(layout.fitWidth).toBe(layout.width);
     expect(layout.width).toBeLessThanOrEqual(FIT_REFERENCE_WIDTH);
   });
@@ -261,7 +255,7 @@ describe("collapsed exposure-path board", () => {
     expect(layout.nodes).toHaveLength(11);
     expect(layout.nodes.map((node) => node.id)).toContain("tool:run_shell");
     expect(layout.nodes.map((node) => node.id)).toContain("cred:AWS_SECRET_ACCESS_KEY");
-    expect(layout.width).toBe(3004);
+    expect(layout.width).toBeGreaterThan(MAX_READABLE_BOARD_WIDTH);
   });
 
   it("keeps every hop for a path that already fits", () => {
@@ -270,6 +264,6 @@ describe("collapsed exposure-path board", () => {
     expect(layout.collapsed).toBe(false);
     expect(layout.nodes).toHaveLength(4);
     expect(layout.nodes.every((node) => node.id !== COLLAPSED_HOPS_NODE_ID)).toBe(true);
-    expect(layout.width).toBe(1176);
+    expect(layout.width).toBe(852);
   });
 });

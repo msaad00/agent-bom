@@ -68,6 +68,10 @@ and bundled advisory scanner for `pillow@9.0.0` / `CVE-2023-4863`, then
 correlates exact OCI digest, Kubernetes UID, MCP tool, workload identity, and
 runtime receipts. It is not customer evidence or a live-cloud claim.
 
+Investigation loads the latest completed correlation automatically and shows
+the source-to-path journey first. Custom snapshot selection remains available
+as an explicit advanced workflow with the freshness policy visible.
+
 <p align="center">
   <a href="docs/images/correlation-receipts-live.png"><img src="docs/images/correlation-receipts-live.png" alt="Reference evidence lab source receipts from repository, image and SBOM, Kubernetes IaC, MCP configuration, identity, and runtime flowing into one immutable correlated snapshot" width="920" /></a>
 </p>

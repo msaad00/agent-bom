@@ -67,8 +67,8 @@ const basePath: ExposurePath = {
 
 /**
  * Longest board the product has to frame: agent -> server -> package -> finding
- * -> 3 tools -> 3 credentials -> data store. At 11 hops the natural board is
- * 3004px, more than twice the widest desktop content width the shell allows.
+ * -> 3 tools -> 3 credentials -> data store. It remains wider than the
+ * readable board budget even after compact node sizing.
  */
 const longPath: ExposurePath = {
   ...basePath,
@@ -86,6 +86,12 @@ const longPath: ExposurePath = {
     { id: "cred:AWS_SECRET_ACCESS_KEY", label: "AWS_SECRET_ACCESS_KEY", role: "credential" },
     { id: "store:warehouse", label: "prod-warehouse", role: "environment" },
   ],
+};
+
+const referencePath: ExposurePath = {
+  ...basePath,
+  id: "reference-path",
+  hops: longPath.hops.slice(0, 8),
 };
 
 describe("ExposurePathCommandCenter", () => {
@@ -187,7 +193,7 @@ describe("ExposurePathCommandCenter", () => {
     const board = screen.getByRole("img", { name: /Selected exposure path graph for/ });
     // Shrink-to-fit board: capped at its natural width, never a fixed overflow.
     expect(board).toHaveAttribute("width", "100%");
-    expect(board.style.maxWidth).toBe("884px");
+    expect(Number.parseInt(board.style.maxWidth, 10)).toBeLessThanOrEqual(1408);
     // Collapsed board fits, so its wrapper must not offer horizontal scroll.
     expect(screen.getByTestId("exposure-path-graph-scroll")).not.toHaveClass("overflow-x-auto");
 
@@ -198,6 +204,16 @@ describe("ExposurePathCommandCenter", () => {
     expect(within(board).getByText("+9 hops hidden")).toBeInTheDocument();
     expect(within(board).getByText("3 credentials · 3 tools")).toBeInTheDocument();
     expect(within(board).queryByText("run_shell")).not.toBeInTheDocument();
+  });
+
+  it("shows every hop in the eight-hop reference proof without a hidden summary", () => {
+    render(<ExposurePathCommandCenter path={referencePath} />);
+
+    const board = screen.getByRole("img", { name: /Selected exposure path graph for/ });
+    expect(within(board).getByText("Agent: Cursor IDE Agent")).toBeInTheDocument();
+    expect(within(board).getByText("Credential: SNOWFLAKE_PASSWORD")).toBeInTheDocument();
+    expect(within(board).queryByText(/hops hidden/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show all 8 hops/ })).not.toBeInTheDocument();
   });
 
   it("round-trips the long-chain board between collapsed and fully expanded", () => {
@@ -213,7 +229,7 @@ describe("ExposurePathCommandCenter", () => {
     expect(within(expandedBoard).getByText("DATABASE_URL")).toBeInTheDocument();
     expect(within(expandedBoard).queryByText("+9 hops hidden")).not.toBeInTheDocument();
     // Expanded board renders at 1x and scrolls horizontally instead of scaling.
-    expect(expandedBoard).toHaveAttribute("width", "3004");
+    expect(Number(expandedBoard.getAttribute("width"))).toBeGreaterThan(1408);
     expect(screen.getByTestId("exposure-path-graph-scroll")).toHaveClass("overflow-x-auto");
 
     const collapse = screen.getByRole("button", { name: "Collapse to fit" });

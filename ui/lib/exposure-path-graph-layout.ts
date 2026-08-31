@@ -5,14 +5,14 @@ import { GRAPH_ROLE_STYLE } from "@/lib/exposure-path-graph-style";
 // 2-node path must not balloon into two canvas-filling boxes). As the path
 // grows the boxes shrink toward a readable floor so the whole board stays
 // compact and no single node dominates the viewport.
-export const MAX_NODE_WIDTH = 188;
-export const MIN_NODE_WIDTH = 148;
+export const MAX_NODE_WIDTH = 176;
+export const MIN_NODE_WIDTH = 100;
 export const MAX_NODE_HEIGHT = 92;
 export const MIN_NODE_HEIGHT = 82;
 
 const MARGIN_X = 28;
 const MARGIN_Y = 30;
-const COLUMN_GAP = 132;
+const COLUMN_GAP = 48;
 // Path view is always a single horizontal kill-chain. Multi-row wrap made long
 // paths look like a broken DAG (vertical connector + orphan stubs on narrow
 // boards). Long chains collapse their middle instead — see `shouldCollapsePath`.
@@ -35,8 +35,8 @@ export const MIN_READABLE_SCALE = 0.9;
 
 /**
  * Widest natural board that still fits `FIT_REFERENCE_WIDTH` without pushing
- * text under `MIN_READABLE_SCALE`. Naively shrink-to-fitting an 11-hop board
- * (3004px) into the reference width is a 0.42 scale — ~5px hop labels — so
+ * text under `MIN_READABLE_SCALE`. Shrinking a dense 11-hop board into the
+ * reference width would push relationship labels below the text floor, so
  * anything wider collapses its middle instead of scaling into illegibility.
  *
  * The budget is keyed to the reference width, not to the live container: the

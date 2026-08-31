@@ -219,4 +219,39 @@ describe("InventoryIndex whole-query truth", () => {
     expect(screen.getByRole("link", { name: /^AI agents/ })).toHaveAttribute("href", "/inventory/agents");
     expect(api.getGraph).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { count: 0, expected: "none yet", theme: "light" },
+    { count: 1, expected: "identity", theme: "dark" },
+    { count: 396, expected: "identities", theme: "light" },
+    { count: 396, expected: "identities", theme: "dark" },
+  ])("renders the identity inventory count for $count in $theme theme", async ({ count, expected, theme }) => {
+    document.documentElement.dataset.theme = theme;
+    const identityFacets = facets();
+    identityFacets.type.buckets.push({ value: "user", count });
+    vi.mocked(api.getInventorySummary).mockResolvedValue(
+      summary({
+        total_assets: 1000 + count,
+        facets: identityFacets,
+      }),
+    );
+    vi.mocked(api.getInventoryAssets).mockResolvedValue(
+      page([], {
+        facets: identityFacets,
+        pagination: { total: 1000 + count, offset: 0, limit: 100, next_cursor: "", has_more: false, facet_filtered: false },
+      }),
+    );
+
+    render(
+      <InventoryProvider>
+        <InventoryIndex />
+      </InventoryProvider>,
+    );
+
+    const identities = await screen.findByRole("link", { name: /^Identities & credentials/ });
+    expect(within(identities).getByText(count.toLocaleString())).toBeInTheDocument();
+    expect(within(identities).getByText(expected)).toBeInTheDocument();
+    expect(within(identities).queryByText("identitys")).not.toBeInTheDocument();
+    delete document.documentElement.dataset.theme;
+  });
 });

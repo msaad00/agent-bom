@@ -158,7 +158,7 @@ export function InventoryIndex() {
                     {total.toLocaleString()}
                   </span>
                   <span className="ml-1 text-[11px] text-[color:var(--text-tertiary)]">
-                    {empty ? "none yet" : total === 1 ? kind.singular : `${kind.singular}s`}
+                    {empty ? "none yet" : total === 1 ? kind.singular : (kind.countPlural ?? kind.label)}
                   </span>
                 </div>
                 <span className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">whole-query facet</span>

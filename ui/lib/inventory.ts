@@ -42,6 +42,8 @@ export interface AssetKindConfig {
   label: string;
   /** Singular, e.g. "package". */
   singular: string;
+  /** Count-specific plural when the plural display label includes qualifiers. */
+  countPlural?: string;
   /** One-line description of what this page lists. */
   description: string;
   /** Canonical graph entity_type values that roll up into this kind. */
@@ -131,6 +133,7 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     id: "identities",
     label: "Identities & credentials",
     singular: "identity",
+    countPlural: "identities",
     description:
       "Human and non-human identities, credentials, roles, and access policies (NHI) linked to your estate.",
     entityTypes: [

@@ -24,7 +24,7 @@ repos:
   # between those releases, so the hook and CI were formatting to two different
   # targets with nothing comparing them. `make format-check` now does.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.4
+    rev: v0.16.5
     hooks:
       - id: ruff
         args: [--fix]

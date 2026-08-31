@@ -1305,6 +1305,29 @@ def test_analyze_project_resolves_cross_file_module_alias_when_names_are_ambiguo
     )
 
 
+def test_analyze_project_reports_partial_typescript_coverage_without_dropping_fallback_findings(tmp_path: Path):
+    (tmp_path / "server.ts").write_text(
+        'import * as cp from "node:child_process";\nserver.tool("run", "Run", async () => cp.execSync("id"));\nfunction unfinished(\n',
+        encoding="utf-8",
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert result.flow_findings
+    assert result.analysis_coverage.to_dict() == {
+        "status": "partial",
+        "eligible_files": 1,
+        "analyzed_files": 1,
+        "partial_files": [
+            {
+                "file": "server.ts",
+                "language": "typescript",
+                "reason": "structured_analysis_unavailable",
+            }
+        ],
+    }
+
+
 def test_code_command_json_includes_ai_component_inventory(tmp_path: Path):
     (tmp_path / "index.js").write_text('import OpenAI from "openai";\n')
     runner = CliRunner()

@@ -66,10 +66,10 @@ describe("JobPipelinePanel evidence explainability", () => {
           outcome: "partial",
           issues: [
             {
-              code: "collector_permission_denied",
+              code: "scanner_coverage_gap",
               stage: "scanning",
-              source: "gcp-iam",
-              message: "Collector could not enumerate service accounts",
+              source: "ast-js-ts",
+              message: "Structured JS/TS analysis did not complete; regex fallback coverage is partial.",
               severity: "warning",
               affects_coverage: true,
             },
@@ -96,9 +96,9 @@ describe("JobPipelinePanel evidence explainability", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Select scanning stage" }));
     expect(screen.getByText("9 vulnerabilities")).toBeInTheDocument();
-    expect(screen.getByText("gcp-iam")).toBeInTheDocument();
-    expect(screen.getByText("collector_permission_denied")).toBeInTheDocument();
-    expect(screen.getByText("Collector could not enumerate service accounts")).toBeInTheDocument();
+    expect(screen.getByText("ast-js-ts")).toBeInTheDocument();
+    expect(screen.getByText("scanner_coverage_gap")).toBeInTheDocument();
+    expect(screen.getByText("Structured JS/TS analysis did not complete; regex fallback coverage is partial.")).toBeInTheDocument();
     expect(screen.getByText("Coverage affected")).toBeInTheDocument();
   });
 });

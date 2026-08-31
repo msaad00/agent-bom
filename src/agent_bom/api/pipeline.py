@@ -911,6 +911,13 @@ def _ast_result_for_symbol_reach(paths: Iterable[str]) -> Any | None:
                 merged.application_entrypoints.extend(result.application_entrypoints)
             if result.dependency_symbol_reach:
                 merged.dependency_symbol_reach.extend(result.dependency_symbol_reach)
+            merged.files_analyzed += result.files_analyzed
+            merged.analysis_coverage.eligible_files += result.analysis_coverage.eligible_files
+            merged.analysis_coverage.analyzed_files += result.analysis_coverage.analyzed_files
+            if result.analysis_coverage.status == "partial":
+                merged.analysis_coverage.status = "partial"
+                merged.analysis_coverage.partial_files.extend(result.analysis_coverage.partial_files)
+            merged.warnings.extend(result.warnings)
     return merged
 
 
@@ -1422,12 +1429,15 @@ def _run_scan_sync(job: ScanJob) -> None:
             outcome = ScanOutcome.FAILED if coverage_warning_messages and not has_usable_evidence else ScanOutcome.COMPLETE
             return ScanRun(outcome=outcome, issues=issues)
 
+        _ast_only_result = None
         if not agents:
+            _ast_only_result = _ast_result_for_symbol_reach(_project_paths_for_symbol_reach(req, extra_paths=extra_symbol_paths))
             if (
                 skill_audit_data is not None
                 or iac_findings_data is not None
                 or repo_ai_inventory_data is not None
                 or repo_sast_data is not None
+                or _ast_only_result is not None
             ):
                 pipeline.skip_step("extraction", "No agents to extract")
                 pipeline.skip_step("scanning", "No packages to scan")
@@ -1455,11 +1465,17 @@ def _run_scan_sync(job: ScanJob) -> None:
                 if repo_ai_inventory_data is not None:
                     report.ai_inventory_data = repo_ai_inventory_data
                     _promote_repo_dependency_inventory(report, repo_ai_inventory_data)
+                if _ast_only_result is not None:
+                    report.ai_inventory_data = report.ai_inventory_data or {}
+                    report.ai_inventory_data["ast_analysis"] = _ast_only_result.to_dict()
                 if repo_sast_data is not None:
                     report.sast_data = repo_sast_data
                 if repo_trust_data is not None:
                     report.repo_trust_data = repo_trust_data
                 report.codeowners = dict(repo_codeowners)
+                from agent_bom.scanners import consume_coverage_warnings
+
+                report.coverage_warnings = consume_coverage_warnings()
                 _apply_tenant_workflow_metadata(report, tenant_id=job.tenant_id or "default")
                 report_json = to_json(report)
                 report_json["status"] = "findings_only"
@@ -1633,6 +1649,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             _min = _sev_order.get(req.min_severity.lower(), 0)
             blast_radii = [br for br in blast_radii if _sev_order.get(br.vulnerability.severity.value.lower(), 0) >= _min]
 
+        _ast_for_reach = None
         try:
             from agent_bom.api.stores import _get_exception_store
             from agent_bom.suppression_rules import apply_tenant_suppression_rules
@@ -1705,6 +1722,9 @@ def _run_scan_sync(job: ScanJob) -> None:
             scan_id=job.job_id,
             scan_run=_build_scan_run(has_usable_evidence=True),
         )
+        if _ast_for_reach is not None:
+            report.ai_inventory_data = report.ai_inventory_data or {}
+            report.ai_inventory_data["ast_analysis"] = _ast_for_reach.to_dict()
         if skill_audit_data is not None:
             report.skill_audit_data = skill_audit_data
             from agent_bom.parsers.skill_audit import replace_skill_findings

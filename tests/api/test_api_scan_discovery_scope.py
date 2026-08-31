@@ -76,3 +76,22 @@ def test_scan_opts_into_host_discovery_explicitly(monkeypatch):
     _run(store, ScanRequest(offline=True, enrich=False, discover_host=True))
 
     assert None in calls, "discover_host=True must run ambient host-wide discovery"
+
+
+def test_api_scan_projects_partial_js_ts_coverage_into_result(monkeypatch, tmp_path):
+    store = InMemoryJobStore()
+    _record_discovery(monkeypatch, store)
+    project = tmp_path / "tenant-project"
+    project.mkdir()
+    (project / "server.ts").write_text(
+        'import * as cp from "node:child_process";\nserver.tool("run", "Run", async () => cp.execSync("id"));\nfunction unfinished(\n',
+        encoding="utf-8",
+    )
+
+    job = _run(store, ScanRequest(agent_projects=[str(project)], offline=True, enrich=False))
+
+    assert job is not None
+    assert job.result is not None
+    assert job.result["ai_inventory"]["ast_analysis"]["analysis_coverage"]["status"] == "partial"
+    assert job.result["scan_run"]["outcome"] == "partial"
+    assert any(issue["source"] == "ast-js-ts" for issue in job.result["scan_run"]["issues"])

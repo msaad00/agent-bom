@@ -1727,6 +1727,39 @@ def test_zero_finding_partial_secret_scan_is_preserved_and_fails_closed(monkeypa
     ]
 
 
+def test_partially_parseable_typescript_retains_findings_and_marks_cli_json_partial(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "server.ts").write_text(
+        'import * as cp from "node:child_process";\nserver.tool("run", "Run", async () => cp.execSync("id"));\nfunction unfinished(\n',
+        encoding="utf-8",
+    )
+    output = tmp_path / "partial-ast.json"
+
+    result = _run(
+        [
+            "scan",
+            str(project),
+            "--no-scan",
+            "--offline",
+            "--no-auto-update-db",
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    ast_analysis = payload["ai_inventory"]["ast_analysis"]
+    assert ast_analysis["flow_findings"]
+    assert ast_analysis["analysis_coverage"]["status"] == "partial"
+    assert payload["scan_run"]["outcome"] == "partial"
+    assert any(issue["source"] == "ast-js-ts" for issue in payload["scan_run"]["issues"])
+    assert "CLEAN" not in result.output
+
+
 def test_model_scan_refusal_is_preserved_and_fails_closed(tmp_path):
     output = tmp_path / "model-refusal.json"
 

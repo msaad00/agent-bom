@@ -42,8 +42,8 @@ export interface AssetKindConfig {
   label: string;
   /** Singular, e.g. "package". */
   singular: string;
-  /** Explicit plural, e.g. "identities". */
-  plural: string;
+  /** Count-specific plural when the plural display label includes qualifiers. */
+  countPlural?: string;
   /** One-line description of what this page lists. */
   description: string;
   /** Canonical graph entity_type values that roll up into this kind. */
@@ -70,7 +70,6 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     id: "packages",
     label: "Packages",
     singular: "package",
-    plural: "packages",
     description:
       "Open-source dependencies discovered across your agents, images, and repositories (SBOM / SCA).",
     entityTypes: ["package"],
@@ -84,7 +83,6 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     id: "servers",
     label: "MCP servers",
     singular: "MCP server",
-    plural: "MCP servers",
     description:
       "Model Context Protocol servers your agents connect to, with transport, tools, and correlated findings.",
     entityTypes: ["server", "tool", "tool_call"],
@@ -98,7 +96,6 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     id: "agents",
     label: "AI agents",
     singular: "agent",
-    plural: "agents",
     description:
       "AI agents and clients discovered in the estate, correlated to the servers, credentials, and findings they touch.",
     entityTypes: ["agent", "model", "framework", "dataset"],
@@ -112,7 +109,6 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     id: "cloud",
     label: "Cloud resources",
     singular: "cloud resource",
-    plural: "cloud resources",
     description:
       "Compute, storage, databases, and network resources from connected cloud accounts (CSPM inventory).",
     entityTypes: [
@@ -137,7 +133,7 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     id: "identities",
     label: "Identities & credentials",
     singular: "identity",
-    plural: "identities",
+    countPlural: "identities",
     description:
       "Human and non-human identities, credentials, roles, and access policies (NHI) linked to your estate.",
     entityTypes: [
@@ -164,7 +160,6 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     id: "containers",
     label: "Container images",
     singular: "container image",
-    plural: "container images",
     description:
       "Container images scanned for vulnerable layers and packages, correlated to the agents that run them.",
     entityTypes: ["container"],
@@ -178,7 +173,6 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     id: "code",
     label: "Code & repositories",
     singular: "code asset",
-    plural: "code assets",
     description:
       "Applications, source modules, config files, and CI jobs from scanned repositories (SAST / IaC surface).",
     entityTypes: [

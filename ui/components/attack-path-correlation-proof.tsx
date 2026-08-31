@@ -20,6 +20,15 @@ export function AttackPathCorrelationProof({
   const receipts = path.hop_evidence ?? [];
   if (receipts.length === 0) return null;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const anchors = path.hops
+    .map((nodeId) => nodeById.get(nodeId))
+    .filter((node): node is UnifiedNode => Boolean(node))
+    .filter((node) => {
+      const kind = node.entity_type.toLowerCase();
+      return kind === "container" || kind === "package" || kind === "vulnerability" || kind === "finding";
+    });
+  const completeHopCount = receipts.filter((receipt) => receipt.complete).length;
+  const sourceCount = new Set(receipts.flatMap((receipt) => receipt.source_snapshot_ids)).size;
 
   const kinds = new Map<string, string>();
   for (const receipt of receipts) {
@@ -44,9 +53,9 @@ export function AttackPathCorrelationProof({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-[color:var(--foreground)]">Correlation provenance</p>
+          <p className="text-xs font-semibold text-[color:var(--foreground)]">Path verified</p>
           <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
-            {receipts.filter((receipt) => receipt.complete).length}/{Math.max(path.hops.length - 1, 0)} directed traversable hops evidenced · freshness retained per source
+            {completeHopCount}/{Math.max(path.hops.length - 1, 0)} directed traversable hops evidenced
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -57,38 +66,29 @@ export function AttackPathCorrelationProof({
           ))}
         </div>
       </div>
-      <div className="mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-          Exact joined chain
-        </p>
-        <ol className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-          {path.hops.map((nodeId, index) => {
-            const node = nodeById.get(nodeId);
-            return (
-              <li
-                key={`${nodeId}-${index}`}
-                className="min-w-0 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-1.5"
-              >
-                <p className="text-[9px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
-                  {index + 1}. {node?.entity_type?.replaceAll("_", " ") ?? "entity"}
-                </p>
-                <p className="mt-0.5 break-all font-mono text-[9px] leading-3 text-[color:var(--foreground)]">
-                  {node?.label || nodeId}
-                </p>
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-      <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-        {receipts.map((receipt, index) => (
-          <div key={`${receipt.source_node_id}-${receipt.target_node_id}-${index}`} className="min-w-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-2 text-[10px]">
-            <p className="truncate font-mono text-[color:var(--foreground)]">{index + 1}. {receipt.relationship}</p>
-            <p className="mt-1 truncate text-[color:var(--text-secondary)]">{receipt.source_snapshot_ids.join(" + ")}</p>
-            <p className="mt-1 text-[color:var(--text-tertiary)]">{receipt.evidence_tier.replaceAll("_", " ")} · {receipt.freshness.replaceAll("_", " ")} · {receipt.runtime_observed_state.replaceAll("_", " ")}</p>
-          </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5">
+        <span className="text-[10px] font-medium text-[color:var(--text-tertiary)]">Exact anchors</span>
+        {anchors.map((node) => (
+          <span key={node.id} className="max-w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-1 font-mono text-[9px] text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+            {node.label || node.id}
+          </span>
         ))}
+        <span className="ml-auto text-[10px] text-[color:var(--text-tertiary)]">{sourceCount} source snapshots</span>
       </div>
+      <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+        <summary className="cursor-pointer list-none px-3 py-2 text-[10px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+          Inspect {receipts.length} hop receipts
+        </summary>
+        <div className="grid gap-1.5 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2">
+          {receipts.map((receipt, index) => (
+            <div key={`${receipt.source_node_id}-${receipt.target_node_id}-${index}`} className="min-w-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-2 text-[10px]">
+              <p className="truncate font-mono text-[color:var(--foreground)]">{index + 1}. {receipt.relationship}</p>
+              <p className="mt-1 truncate text-[color:var(--text-secondary)]">{receipt.source_snapshot_ids.join(" + ")}</p>
+              <p className="mt-1 text-[color:var(--text-tertiary)]">{receipt.evidence_tier.replaceAll("_", " ")} · {receipt.freshness.replaceAll("_", " ")} · {receipt.runtime_observed_state.replaceAll("_", " ")}</p>
+            </div>
+          ))}
+        </div>
+      </details>
     </section>
   );
 }

@@ -1,7 +1,7 @@
 {
   "release_version": "0.103.1",
-  "captured_at": "2026-08-30T21:38:51.484Z",
-  "source_commit": "0495b65301e7913678bbf63ec8b27f3fe9d923f6",
+  "captured_at": "2026-08-31T07:07:46.145Z",
+  "source_commit": "a80353016afc484bac5bfc9c2577e2858b07b9e5",
   "source_tree": "clean",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
@@ -43,7 +43,7 @@
       "page": "/connections?capture=1",
       "scope": "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
       "visible_version": "0.103.1",
-      "sha256": "sha256:835a4466afc9e13d61110bf41f60f6d6f00b05aadff693a1db34df41af78f69b"
+      "sha256": "sha256:decdcd2813d8049f79184c9fd4d9a3eed806ad2c146c78972dabe6aea429154b"
     },
     {
       "presentation": "dark desktop",
@@ -91,7 +91,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.103.1",
-      "sha256": "sha256:41de7a09b2359a75e45716f144866ae439aaf416648f36263638632d5d240b63"
+      "sha256": "sha256:a7c76a07e4dff48433026c20d205f4e26cd060478a9da6c23205ea4aafa4dd97"
     },
     {
       "presentation": "dark desktop",
@@ -102,7 +102,7 @@
       "evidence_sha256": "sha256:e3996fcee80a299e3b51449119fce30df2c1e867a7c7d834e0e27889cf5f85cf",
       "correlation_manifest_sha256": "sha256:d0d6106e7790237f34bcf5487b2a1f0f60d686b2e4d4d4fb54a3f2f4a10a3a59",
       "visible_version": "0.103.1",
-      "sha256": "sha256:abb93f994d20321a2640eeb5fcdc6358d411692455046f1ec8fb166632be10ea"
+      "sha256": "sha256:00540a8077bf322de486784c19efc29f73470afbc42972c055723338fed0d831"
     },
     {
       "presentation": "dark desktop",
@@ -113,7 +113,7 @@
       "evidence_sha256": "sha256:e3996fcee80a299e3b51449119fce30df2c1e867a7c7d834e0e27889cf5f85cf",
       "correlation_manifest_sha256": "sha256:d0d6106e7790237f34bcf5487b2a1f0f60d686b2e4d4d4fb54a3f2f4a10a3a59",
       "visible_version": "0.103.1",
-      "sha256": "sha256:f625d7398914d469e5d747337974669e9c221f53a51e138b7d5186fe9152e49c"
+      "sha256": "sha256:2c19621961b413a15a1a3dd5870361a5230fe209694f44273f0bad4353be16f0"
     },
     {
       "presentation": "light desktop",
@@ -121,7 +121,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.103.1",
-      "sha256": "sha256:1c81fe2e7874ffef10d439e85a3e02139f593d6cb411e08c35aa83a8d8a6b16e"
+      "sha256": "sha256:06dc1567b7c084050963910df6fb8a1a96b19fdf037d8036a8500fdfd511210c"
     },
     {
       "presentation": "dark mobile",
@@ -169,7 +169,7 @@
       "page": "/inventory?capture=1",
       "scope": "Unified asset-kind roll-up across discovered packages, MCP servers, agents, cloud, identities, containers, and code",
       "visible_version": "0.103.1",
-      "sha256": "sha256:5195fc3ae63e9c8d2af268fd282ec453ec6db929624b8a0dcc72eb141776d3c2"
+      "sha256": "sha256:d2e895b7483eb39cd165769b30e89c597dc487ef21e2b846ef79a6c69568e6ab"
     },
     {
       "presentation": "dark desktop",

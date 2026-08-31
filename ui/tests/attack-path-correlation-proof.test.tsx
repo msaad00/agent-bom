@@ -6,7 +6,7 @@ import type { GraphAttackPath } from "@/lib/api-types";
 import type { UnifiedNode } from "@/lib/graph-schema";
 
 describe("AttackPathCorrelationProof", () => {
-  it("renders the exact ordered identities and every numbered source receipt", () => {
+  it("summarizes verified proof and keeps exact per-hop receipts inspectable", () => {
     const digest = "sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a";
     const nodes = [
       { id: "service:api", entity_type: "server", label: "Public API" },
@@ -67,10 +67,15 @@ describe("AttackPathCorrelationProof", () => {
 
     render(<AttackPathCorrelationProof path={path} nodes={nodes} />);
 
-    expect(screen.getByText("Exact joined chain")).toBeInTheDocument();
+    expect(screen.getByText("Path verified")).toBeInTheDocument();
+    expect(screen.getByText("3/3 directed traversable hops evidenced")).toBeInTheDocument();
     expect(screen.getByText(`reference-api@${digest}`)).toBeInTheDocument();
     expect(screen.getByText("pillow@9.0.0")).toBeInTheDocument();
     expect(screen.getByText("CVE-2023-4863")).toBeInTheDocument();
+    expect(screen.queryByText("reference-kubernetes-iac-scan")).not.toBeVisible();
+    expect(screen.getByText("Inspect 3 hop receipts")).toBeInTheDocument();
+
+    screen.getByText("Inspect 3 hop receipts").click();
     expect(screen.getByText("reference-kubernetes-iac-scan")).toBeInTheDocument();
     expect(screen.getAllByText("reference-image-sbom-scan")).toHaveLength(2);
     expect(screen.getByText("3. vulnerable_to")).toBeInTheDocument();

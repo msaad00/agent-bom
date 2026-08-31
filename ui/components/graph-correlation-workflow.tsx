@@ -28,6 +28,12 @@ const JOURNEY = [
   { label: "Enforce & verify", detail: "Runtime", icon: CheckCircle2 },
 ] as const;
 
+function freshnessBoundLabel(hours: number): string {
+  return hours % 24 === 0
+    ? `${hours / 24}-day freshness bound`
+    : `${hours}-hour freshness bound`;
+}
+
 function sourceLabel(sourceKinds: string[] | undefined, scanId: string): string {
   const value = `${sourceKinds?.join(" ") ?? ""} ${scanId}`.toLowerCase();
   if (value.includes("sbom") || value.includes("cyclonedx") || value.includes("image")) return "Image + SBOM";
@@ -41,9 +47,11 @@ function sourceLabel(sourceKinds: string[] | undefined, scanId: string): string 
 
 export function GraphCorrelationWorkflow({
   snapshots,
+  initialRun = null,
   onOpenSnapshot,
 }: {
   snapshots: GraphSnapshot[];
+  initialRun?: GraphCorrelationRun | null;
   onOpenSnapshot: (scanId: string) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -51,7 +59,7 @@ export function GraphCorrelationWorkflow({
   const [maxAgeHours, setMaxAgeHours] = useState(DEFAULT_MAX_AGE_HOURS);
   const [allowStale, setAllowStale] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [run, setRun] = useState<GraphCorrelationRun | null>(null);
+  const [run, setRun] = useState<GraphCorrelationRun | null>(initialRun);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eligible = useMemo(
@@ -68,22 +76,11 @@ export function GraphCorrelationWorkflow({
   }, [eligible]);
 
   useEffect(() => {
-    let active = true;
-    void api.listGraphCorrelations(20)
-      .then((result) => {
-        if (!active) return;
-        const latest = result.items.find((candidate) => candidate.status === "complete" && candidate.output_scan_id);
-        if (latest) setRun(latest);
-      })
-      .catch(() => {
-        // Reading prior runs is an enhancement. Keep the manual/API/CLI/MCP
-        // path available without turning a transient history-read failure into
-        // a false correlation failure.
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (!initialRun) return;
+    setRun((current) =>
+      !current || initialRun.created_at > current.created_at ? initialRun : current,
+    );
+  }, [initialRun]);
 
   useEffect(() => {
     if (!run || !["pending", "running"].includes(run.status)) return;
@@ -123,7 +120,18 @@ export function GraphCorrelationWorkflow({
   const conflicts = run?.result_manifest.correlation_merge?.conflict_count ?? 0;
   const attackPaths = run?.result_manifest.output?.attack_path_count ?? 0;
   const isComplete = run?.status === "complete";
+  const isFailed = run?.status === "failed";
   const hasRuntimeReceipt = run?.input_manifest.some((receipt) => sourceLabel(receipt.source_kinds, receipt.scan_id) === "Runtime") ?? false;
+  const receiptCount = run?.input_manifest.length ?? 0;
+  const journeyState = [
+    { done: receiptCount > 0, detail: receiptCount > 0 ? `${receiptCount} sources` : "Add sources" },
+    { done: run?.input_manifest.some((receipt) => (receipt.node_count ?? 0) > 0) ?? eligible.length > 0, detail: "Inventory" },
+    { done: receiptCount >= 2, detail: receiptCount > 0 ? `${receiptCount} receipts` : "Evidence" },
+    { done: isComplete, detail: isFailed ? "Failed" : run?.status ?? "Exact IDs" },
+    { done: isComplete && attackPaths > 0, detail: isComplete ? `${attackPaths} paths` : "Paths" },
+    { done: false, detail: hasRuntimeReceipt ? "Runtime observed" : "Opt-in runtime" },
+  ];
+  const activeFreshnessBound = run?.max_age_hours ?? maxAgeHours;
 
   return (
     <section
@@ -134,20 +142,21 @@ export function GraphCorrelationWorkflow({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
-            <Network className="h-4 w-4 text-emerald-500" /> Continuous evidence journey
+            <Network className="h-4 w-4 text-emerald-500" /> Evidence journey
           </p>
           <p className="mt-1 max-w-3xl text-xs text-[color:var(--text-secondary)]">
-            Connected sources produce immutable scan evidence; the latest completed correlation is selected automatically. Exact identifiers form joins—similar labels and mutable tags never do.
+            Connected and local sources produce immutable scan evidence; the latest completed correlation is selected automatically. Exact identifiers form joins—similar labels and mutable tags never do.
           </p>
         </div>
         <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300">
-          7-day freshness policy
+          {freshnessBoundLabel(activeFreshnessBound)}
         </span>
       </div>
 
       <ol aria-label="Evidence journey" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         {JOURNEY.map((step, index) => {
-          const done = index < 3 ? eligible.length > 0 : index < 5 ? isComplete : isComplete && hasRuntimeReceipt;
+          const state = journeyState[index]!;
+          const done = state.done;
           const StepIcon = step.icon;
           return (
             <li key={step.label} className="relative rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2.5">
@@ -157,7 +166,7 @@ export function GraphCorrelationWorkflow({
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-[color:var(--foreground)]">{step.label}</p>
-                  <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{done ? "Complete" : step.detail}</p>
+                  <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{done ? "Complete" : state.detail || step.detail}</p>
                 </div>
               </div>
               {index < JOURNEY.length - 1 ? <ArrowRight className="absolute -right-2.5 top-4 z-10 hidden h-4 w-4 text-[color:var(--text-tertiary)] xl:block" aria-hidden="true" /> : null}
@@ -167,16 +176,17 @@ export function GraphCorrelationWorkflow({
       </ol>
 
       {run ? (
-        <div className="mt-4 rounded-xl border border-emerald-500/30 bg-[color:var(--surface)] p-3 text-xs">
+        <div className={`mt-4 rounded-xl border bg-[color:var(--surface)] p-3 text-xs ${isFailed ? "border-red-500/30" : isComplete ? "border-emerald-500/30" : "border-sky-500/30"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="flex items-center gap-2 font-semibold text-[color:var(--foreground)]">
-                {isComplete ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Loader2 className="h-4 w-4 animate-spin text-sky-500" />}
-                {isComplete ? "Evidence correlation complete" : `Evidence correlation ${run.status}`}
+                {isComplete ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : isFailed ? <AlertTriangle className="h-4 w-4 text-red-500" /> : <Loader2 className="h-4 w-4 animate-spin text-sky-500" />}
+                {isComplete ? "Evidence correlation complete" : isFailed ? "Evidence correlation failed" : `Evidence correlation ${run.status}`}
               </p>
               <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
                 {run.input_manifest.length} immutable source receipts · {run.max_age_hours}h bound · {run.allow_stale ? "stale inputs labeled" : "fresh inputs required"}
               </p>
+              {isFailed && run.failure_code ? <p className="mt-1 font-mono text-[10px] text-red-600 dark:text-red-300">Failure code: {run.failure_code}</p> : null}
             </div>
             {run.output_scan_id ? (
               <button type="button" onClick={() => onOpenSnapshot(run.output_scan_id)} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 font-medium text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
@@ -184,7 +194,7 @@ export function GraphCorrelationWorkflow({
               </button>
             ) : null}
           </div>
-          <div
+          {isComplete ? <div
             aria-label="Correlation source receipt graph"
             data-testid="graph-correlation-receipt-dag"
             className="mt-3 grid items-center gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(13rem,0.32fr)]"
@@ -209,7 +219,7 @@ export function GraphCorrelationWorkflow({
               </p>
               <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">{conflicts} conflict{conflicts === 1 ? "" : "s"} retained · bounded analysis</p>
             </div>
-          </div>
+          </div> : null}
           <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)]">
             <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[10px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
               <span>Inspect signed source receipts</span>
@@ -306,7 +316,7 @@ export function GraphCorrelationWorkflow({
             checked={confirmed}
             onChange={(event) => setConfirmed(event.target.checked)}
           />
-          I confirm the 7-day freshness bound ({maxAgeHours} hours)
+          I confirm the {freshnessBoundLabel(maxAgeHours)} ({maxAgeHours} hours)
         </label>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={allowStale} onChange={(event) => setAllowStale(event.target.checked)} />

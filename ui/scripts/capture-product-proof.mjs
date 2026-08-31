@@ -2502,6 +2502,42 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
     },
     {
+      path: "correlation-receipts-light-live.png",
+      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
+      scope: "Reference evidence lab automatic journey and manifest-bound source receipts in the light theme",
+      presentation: "light desktop",
+      evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
+      evidence_sha256: referenceLabActualDigest,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+    },
+    {
+      path: "correlation-path-light-live.png",
+      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      scope: "Reference evidence lab confirmed path and hop receipts in the light theme",
+      presentation: "light desktop",
+      evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
+      evidence_sha256: referenceLabActualDigest,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+    },
+    {
+      path: "correlation-receipts-mobile-live.png",
+      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
+      scope: "Reference evidence lab automatic journey and manifest-bound source receipts at a 390 by 844 viewport",
+      presentation: "dark mobile",
+      evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
+      evidence_sha256: referenceLabActualDigest,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+    },
+    {
+      path: "correlation-path-mobile-live.png",
+      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      scope: "Reference evidence lab confirmed path and hop receipts at a 390 by 844 viewport",
+      presentation: "dark mobile",
+      evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
+      evidence_sha256: referenceLabActualDigest,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+    },
+    {
       path: "security-graph-light-live.png",
       page: `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`,
       scope: "Prioritized attack path in the light theme",
@@ -2634,6 +2670,56 @@ async function main() {
       }, theme);
       return capturePage;
     };
+    const prepareCorrelationReceipts = async (proofPage) => {
+      await proofPage.getByRole("button", { name: /^Evidence scope Current scan/i }).click();
+      const workflow = proofPage.getByTestId("graph-correlation-workflow");
+      await workflow.waitFor({ state: "visible", timeout: 30_000 });
+      await proofPage.getByTestId("graph-correlation-receipt-dag").waitFor({ state: "visible", timeout: 30_000 });
+      // Give the viewport enough trailing room to place Evidence scope just
+      // below the fixed product header. Without this capture-only spacer the
+      // browser hits the document's maximum scroll position and leaves the
+      // previous path card in the hero frame.
+      await proofPage.evaluate(() => {
+        document.body.style.paddingBottom = "900px";
+      });
+      const workflowTop = await workflow.evaluate(
+        (element) => element.getBoundingClientRect().top + window.scrollY,
+      );
+      await proofPage.evaluate((workflowTop) => {
+        window.scrollTo({ top: workflowTop - 88, behavior: "instant" });
+      }, workflowTop);
+      await proofPage.waitForTimeout(500);
+    };
+    const prepareCorrelationPath = async (proofPage) => {
+      const proof = proofPage.getByTestId("attack-path-correlation-proof");
+      await proof.waitFor({ state: "visible", timeout: 30_000 });
+      await proof.scrollIntoViewIfNeeded();
+      await proofPage.evaluate(() => window.scrollBy({ top: -300, behavior: "instant" }));
+      await proofPage.waitForTimeout(500);
+    };
+    const correlationReceiptAssertions = {
+      expectedText: [
+        "Evidence journey",
+        "Evidence correlation complete",
+        "Image + SBOM",
+        "Runtime",
+        "1 confirmed attack path",
+      ],
+      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
+      readySelector: '[data-testid="graph-correlation-receipt-dag"]',
+    };
+    const correlationPathAssertions = {
+      expectedText: [
+        "CVE-2023-4863",
+        REFERENCE_LAB.container_digest,
+        "Path verified",
+        "Runtime observed",
+        "Runtime block verified",
+        "Patch Pillow and re-run correlation",
+      ],
+      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
+      readySelector: '[data-testid="attack-path-correlation-proof"]',
+    };
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
     await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
@@ -2734,37 +2820,8 @@ async function main() {
       correlationPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
       "correlation-receipts-live.png",
-      async (proofPage) => {
-        await proofPage.getByRole("button", { name: /^Evidence scope Current scan/i }).click();
-        const workflow = proofPage.getByTestId("graph-correlation-workflow");
-        await workflow.waitFor({ state: "visible", timeout: 30_000 });
-        await proofPage.getByTestId("graph-correlation-receipt-dag").waitFor({ state: "visible", timeout: 30_000 });
-        // Give the viewport enough trailing room to place Evidence scope just
-        // below the fixed product header. Without this capture-only spacer the
-        // browser hits the document's maximum scroll position and leaves the
-        // previous path card in the hero frame.
-        await proofPage.evaluate(() => {
-          document.body.style.paddingBottom = "900px";
-        });
-        const workflowTop = await workflow.evaluate(
-          (element) => element.getBoundingClientRect().top + window.scrollY,
-        );
-        await proofPage.evaluate((workflowTop) => {
-          window.scrollTo({ top: workflowTop - 88, behavior: "instant" });
-        }, workflowTop);
-        await proofPage.waitForTimeout(500);
-      },
-      {
-        expectedText: [
-          "Continuous evidence journey",
-          "Evidence correlation complete",
-          "Image + SBOM",
-          "Runtime",
-          "1 confirmed attack path",
-        ],
-        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
-        readySelector: '[data-testid="graph-correlation-receipt-dag"]',
-      },
+      prepareCorrelationReceipts,
+      correlationReceiptAssertions,
     );
     await correlationPage.close();
 
@@ -2773,24 +2830,8 @@ async function main() {
       page,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
       "correlation-path-live.png",
-      async (proofPage) => {
-        await proofPage.getByTestId("attack-path-correlation-proof").waitFor({ state: "visible", timeout: 30_000 });
-        await proofPage.getByTestId("attack-path-correlation-proof").scrollIntoViewIfNeeded();
-        await proofPage.evaluate(() => window.scrollBy({ top: -300, behavior: "instant" }));
-        await proofPage.waitForTimeout(500);
-      },
-      {
-        expectedText: [
-          "CVE-2023-4863",
-          REFERENCE_LAB.container_digest,
-          "Path verified",
-          "Runtime observed",
-          "Runtime block verified",
-          "Patch Pillow and re-run correlation",
-        ],
-        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
-        readySelector: '[data-testid="attack-path-correlation-proof"]',
-      },
+      prepareCorrelationPath,
+      correlationPathAssertions,
     );
     await page.setViewportSize({ width: 1440, height: 980 });
     const currentCanvasPage = await newCapturePage("dark", { width: 1512, height: 811 });
@@ -3020,6 +3061,20 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
+    await capture(
+      lightPage,
+      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
+      "correlation-receipts-light-live.png",
+      prepareCorrelationReceipts,
+      correlationReceiptAssertions,
+    );
+    await capture(
+      lightPage,
+      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      "correlation-path-light-live.png",
+      prepareCorrelationPath,
+      correlationPathAssertions,
+    );
     await capture(lightPage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-light-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
@@ -3041,6 +3096,20 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
+    await capture(
+      mobilePage,
+      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
+      "correlation-receipts-mobile-live.png",
+      prepareCorrelationReceipts,
+      { ...correlationReceiptAssertions, assertNoHorizontalOverflow: true },
+    );
+    await capture(
+      mobilePage,
+      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      "correlation-path-mobile-live.png",
+      prepareCorrelationPath,
+      { ...correlationPathAssertions, assertNoHorizontalOverflow: true },
+    );
     await capture(mobilePage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-mobile-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })

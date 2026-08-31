@@ -95,6 +95,12 @@ describe("product proof capture contract", () => {
   it("captures the reference-lab receipt DAG and confirmed path from one pinned artifact", () => {
     expect(source).toContain('path: "correlation-receipts-live.png"');
     expect(source).toContain('path: "correlation-path-live.png"');
+    expect(source).toContain('path: "correlation-receipts-light-live.png"');
+    expect(source).toContain('path: "correlation-path-light-live.png"');
+    expect(source).toContain('path: "correlation-receipts-mobile-live.png"');
+    expect(source).toContain('path: "correlation-path-mobile-live.png"');
+    expect(source).toContain('presentation: "light desktop"');
+    expect(source).toContain('presentation: "dark mobile"');
     expect(source).toContain('getByTestId("graph-correlation-receipt-dag")');
     expect(source).toContain('getByTestId("attack-path-correlation-proof")');
     expect(source).toContain("referenceLabActualDigest");
@@ -102,6 +108,7 @@ describe("product proof capture contract", () => {
     expect(source).toContain("Runtime block verified");
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
     expect(source).toContain('window.scrollTo({ top: workflowTop - 88, behavior: "instant" })');
+    expect(source).toContain("assertNoHorizontalOverflow: true");
   });
 
   it("keeps the base graph fixture from swallowing graph subroutes", () => {

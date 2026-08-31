@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-08-24",
-  "_total_servers": 1112,
+  "_updated": "2026-08-31",
+  "_total_servers": 1123,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "_sources": [
@@ -731,7 +731,7 @@
     "awslabs.bedrock-kb-retrieval-mcp-server": {
       "package": "awslabs.bedrock-kb-retrieval-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "1.0.25",
+      "latest_version": "1.1.0",
       "description": "AWS Bedrock Knowledge Base queries",
       "name": "AWS Bedrock KB",
       "risk_justification": "Read-only access to AWS Bedrock Knowledge Bases via AWS credentials. Token exposure enables knowledge base queries across the account.",
@@ -950,7 +950,7 @@
     "mcp-server-kubernetes": {
       "package": "mcp-server-kubernetes",
       "ecosystem": "npm",
-      "latest_version": "4.1.4",
+      "latest_version": "4.1.6",
       "description": "Kubernetes cluster management",
       "name": "Kubernetes",
       "risk_justification": "Full Kubernetes cluster management via KUBECONFIG. Can apply manifests, scale deployments, and delete resources.",
@@ -1149,7 +1149,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "1.1.0",
+      "latest_version": "1.3.0",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -2730,7 +2730,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.7.1-2",
+      "latest_version": "2026.8.1",
       "description": "OpenClaw personal AI assistant — multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessag…",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2940,7 +2940,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.15.0",
+      "latest_version": "2.17.0",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",
@@ -22349,9 +22349,250 @@
       "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
       "version_source": "official-registry",
       "auto_enriched": true
+    },
+    "ae.propick/propick": {
+      "package": "ae.propick/propick",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Manage your real-estate stock on Propick (Dubai): bulk listing sync, lookups and run reports.",
+      "name": "ae.propick/propick",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ae.propick/propick",
+        "propick"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.advisorsai/service-navigator": {
+      "package": "ai.advisorsai/service-navigator",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Read-only service discovery, public-page checks, and request-link preparation.",
+      "name": "ai.advisorsai/service-navigator",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.advisorsai/service-navigator",
+        "service-navigator"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.agentgates/mcp": {
+      "package": "ai.agentgates/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Confidential compute and inference sold to agents over x402 USDC, plus an agent wallet over MCP.",
+      "name": "ai.agentgates/mcp",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agentgates/mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.agentlookups/greenlight": {
+      "package": "ai.agentlookups/greenlight",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "US plug-in solar (balcony solar) law registry with a daily UL 3700 certification watch.",
+      "name": "ai.agentlookups/greenlight",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agentlookups/greenlight",
+        "greenlight"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.aislabs/gateway": {
+      "package": "ai.aislabs/gateway",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.3.0",
+      "description": "Daily CVE priorities (KEV+EPSS) + Agent Flight Recorder: dead-man alerts & resume for AI agents",
+      "name": "ai.aislabs/gateway",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.aislabs/gateway",
+        "gateway"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.alpic.alpix/Alpix": {
+      "package": "ai.alpic.alpix/Alpix",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.0.1",
+      "description": "A pixel wars MCP server: ask your agent to collaboratively draw pixels in a huge square",
+      "name": "ai.alpic.alpix/Alpix",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.alpic.alpix/Alpix",
+        "Alpix"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.askline/askline": {
+      "package": "ai.askline/askline",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Askline shows what ChatGPT says about a brand, then the SEO that feeds it.",
+      "name": "ai.askline/askline",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.askline/askline",
+        "askline"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.askmiles/catalog": {
+      "package": "ai.askmiles/catalog",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Miles' public credit-card catalog: facts, transfer partners, valuations. Keyless, read-only.",
+      "name": "ai.askmiles/catalog",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.askmiles/catalog",
+        "catalog"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.blopus/search": {
+      "package": "ai.blopus/search",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.28.1",
+      "description": "Live web search, image search, topic filters and full-text fetch over our own crawled index.",
+      "name": "ai.blopus/search",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.blopus/search",
+        "search"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.bridgeapp/bridgeapp": {
+      "package": "ai.bridgeapp/bridgeapp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "BridgeApp workspace over MCP: tasks, chats, threads, pages, and projects.",
+      "name": "ai.bridgeapp/bridgeapp",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bridgeapp/bridgeapp",
+        "bridgeapp"
+      ],
+      "source_url": "https://github.com/MathAndMagic/bridgeapp-plugin",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.buildwithorbit/orbit": {
+      "package": "ai.buildwithorbit/orbit",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Turn any task into the right API calls: discover, evaluate, and integrate public APIs.",
+      "name": "ai.buildwithorbit/orbit",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.buildwithorbit/orbit",
+        "orbit"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-31T16:26:28Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
     }
   },
-  "_mcp_registry_sync": "2026-08-24T09:33:04Z",
+  "_mcp_registry_sync": "2026-08-31T16:26:31Z",
   "_mcp_registry_sync_source": "mcp-official",
   "_cve_enriched": "2026-08-24"
 }

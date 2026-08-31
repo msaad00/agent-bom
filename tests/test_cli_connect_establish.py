@@ -37,11 +37,18 @@ def _make_fake_boto3(*, assume_fails: bool = False) -> types.ModuleType:
         def get_caller_identity(self) -> dict[str, str]:
             return {"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/ro/x"}
 
+    class FakeBedrockClient:
+        def list_agents(self, **kwargs: object) -> dict[str, object]:
+            assert kwargs == {"maxResults": 1}
+            return {"agentSummaries": []}
+
     class FakeSession:
         def __init__(self, **_kwargs: object) -> None:
             pass
 
-        def client(self, _service: str) -> FakeStsClient:
+        def client(self, service: str) -> object:
+            if service == "bedrock-agent":
+                return FakeBedrockClient()
             return FakeStsClient()
 
     module = types.ModuleType("boto3")
@@ -101,7 +108,8 @@ class TestLocalVerify:
         )
         assert r.exit_code == 0
         assert "Verified" in r.output
-        assert "123456789012" in r.output  # non-secret probe result
+        assert "bedrock:list-agents" in r.output
+        assert "123456789012" not in r.output  # provider identity is not surfaced
         assert SECRET not in r.output
 
     def test_failure_is_clean_and_hides_secret(self, fake_boto3) -> None:

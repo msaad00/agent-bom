@@ -89,6 +89,11 @@ class CloudConnectionRecord:
     # When true (Create default), PR2 will enqueue a scan after create. Stored
     # now so the flag is durable before the runtime honors it.
     auto_scan_on_create: bool = True
+    # Credential configuration and verified provider capability are distinct.
+    # ``not_run`` is deliberately the legacy/default state: an older ``active``
+    # row proved only that a broker object could be constructed.
+    capability_probe_status: str = "not_run"
+    verified_capabilities: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Promote a legacy ``auth_params`` inventory scope into the column.
@@ -120,6 +125,11 @@ class CloudConnectionRecord:
         data = asdict(self)
         data.pop("external_id_encrypted", None)
         data["has_external_id"] = bool(self.external_id_encrypted)
+        data["credential_present"] = bool(self.external_id_encrypted and self.role_ref)
+        if data["status"] == STATUS_ACTIVE and self.capability_probe_status != "verified":
+            # Legacy active rows only proved broker construction. Require a new
+            # capability probe before presenting them as ready after upgrade.
+            data["status"] = STATUS_PENDING
         return data
 
 
@@ -181,6 +191,8 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                 "inventory_scope",
                 "scan_mode",
                 "auto_scan_on_create",
+                "capability_probe_status",
+                "verified_capabilities",
             ),
             ddl_by_backend={
                 "sqlite": (
@@ -193,7 +205,9 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}', "
                     "last_event_at TEXT, inventory_scope TEXT NOT NULL DEFAULT 'account', "
                     "scan_mode TEXT NOT NULL DEFAULT 'full', "
-                    "auto_scan_on_create INTEGER NOT NULL DEFAULT 1)"
+                    "auto_scan_on_create INTEGER NOT NULL DEFAULT 1, "
+                    "capability_probe_status TEXT NOT NULL DEFAULT 'not_run', "
+                    "verified_capabilities TEXT NOT NULL DEFAULT '[]')"
                 ),
                 "postgres": (
                     "CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY, "
@@ -205,7 +219,9 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}', "
                     "last_event_at TEXT, inventory_scope TEXT NOT NULL DEFAULT 'account', "
                     "scan_mode TEXT NOT NULL DEFAULT 'full', "
-                    "auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE)"
+                    "auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE, "
+                    "capability_probe_status TEXT NOT NULL DEFAULT 'not_run', "
+                    "verified_capabilities TEXT NOT NULL DEFAULT '[]')"
                 ),
             },
         ),
@@ -286,8 +302,8 @@ def _decode_auto_scan_on_create(raw: Any) -> bool:
 def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
     """Map a ``cloud_connections`` row tuple to a record (shared by backends).
 
-    Durable backends use the canonical 19-column shape with ``scan_mode`` and
-    ``auto_scan_on_create``. Older 15–17-column shapes remain readable; trailing
+    Durable backends use the canonical 21-column shape with explicit capability
+    verification. Older 15–19-column shapes remain readable; trailing
     columns keep the same relative order, so length checks select indexes.
     """
     has_last_scan_id = len(row) >= 16
@@ -317,6 +333,8 @@ def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
         inventory_scope=_decode_inventory_scope(row[scope_idx]) if len(row) > scope_idx else INVENTORY_SCOPE_ACCOUNT,
         scan_mode=_decode_scan_mode(row[scan_mode_idx]) if len(row) > scan_mode_idx else SCAN_MODE_FULL,
         auto_scan_on_create=(_decode_auto_scan_on_create(row[auto_scan_idx]) if len(row) > auto_scan_idx else True),
+        capability_probe_status=(str(row[19] or "not_run") if len(row) > 19 else "not_run"),
+        verified_capabilities=_decode_regions(row[20]) if len(row) > 20 else [],
     )
 
 
@@ -334,6 +352,7 @@ def _copy_record(record: CloudConnectionRecord) -> CloudConnectionRecord:
         inventory_scope=str(record.inventory_scope or INVENTORY_SCOPE_ACCOUNT),
         scan_mode=_decode_scan_mode(record.scan_mode),
         auto_scan_on_create=bool(record.auto_scan_on_create),
+        verified_capabilities=list(record.verified_capabilities),
     )
 
 
@@ -439,6 +458,10 @@ class SQLiteConnectionStore:
             self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN scan_mode TEXT NOT NULL DEFAULT 'full'")
         if "auto_scan_on_create" not in columns:
             self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN auto_scan_on_create INTEGER NOT NULL DEFAULT 1")
+        if "capability_probe_status" not in columns:
+            self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN capability_probe_status TEXT NOT NULL DEFAULT 'not_run'")
+        if "verified_capabilities" not in columns:
+            self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN verified_capabilities TEXT NOT NULL DEFAULT '[]'")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -452,8 +475,9 @@ class SQLiteConnectionStore:
                 (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
                  regions, status, status_detail, created_at, updated_at, last_scan_at,
                  last_scan_id, scan_interval_minutes, auth_params, last_event_at,
-                 inventory_scope, scan_mode, auto_scan_on_create)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 inventory_scope, scan_mode, auto_scan_on_create,
+                 capability_probe_status, verified_capabilities)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.id,
@@ -475,6 +499,8 @@ class SQLiteConnectionStore:
                 _decode_inventory_scope(record.inventory_scope),
                 _decode_scan_mode(record.scan_mode),
                 1 if bool(record.auto_scan_on_create) else 0,
+                record.capability_probe_status,
+                json.dumps(record.verified_capabilities),
             ),
         )
         self._conn.commit()
@@ -484,7 +510,7 @@ class SQLiteConnectionStore:
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
             "regions, status, status_detail, created_at, updated_at, last_scan_at, "
             "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
-            "scan_mode, auto_scan_on_create "
+            "scan_mode, auto_scan_on_create, capability_probe_status, verified_capabilities "
             "FROM cloud_connections WHERE tenant_id = ? AND id = ?",
             (tenant_id, connection_id),
         ).fetchone()
@@ -495,7 +521,7 @@ class SQLiteConnectionStore:
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
             "regions, status, status_detail, created_at, updated_at, last_scan_at, "
             "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
-            "scan_mode, auto_scan_on_create "
+            "scan_mode, auto_scan_on_create, capability_probe_status, verified_capabilities "
             "FROM cloud_connections WHERE tenant_id = ? ORDER BY created_at, id",
             (tenant_id,),
         ).fetchall()
@@ -514,7 +540,7 @@ class SQLiteConnectionStore:
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
             "regions, status, status_detail, created_at, updated_at, last_scan_at, "
             "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
-            "scan_mode, auto_scan_on_create "
+            "scan_mode, auto_scan_on_create, capability_probe_status, verified_capabilities "
             "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
         ).fetchall()
         return [_row_to_record(row) for row in rows]
@@ -524,7 +550,7 @@ class SQLiteConnectionStore:
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
             "regions, status, status_detail, created_at, updated_at, last_scan_at, "
             "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
-            "scan_mode, auto_scan_on_create "
+            "scan_mode, auto_scan_on_create, capability_probe_status, verified_capabilities "
             "FROM cloud_connections WHERE scan_mode = ? ORDER BY created_at, id",
             (SCAN_MODE_CONTINUOUS,),
         ).fetchall()

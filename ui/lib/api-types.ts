@@ -4363,6 +4363,8 @@ export interface CloudConnectionRecord {
   role_ref: string;
   /** True when an encrypted secret is stored. The secret itself never leaves the API. */
   has_external_id: boolean;
+  /** Credential configuration only; this does not imply provider capability. */
+  credential_present: boolean;
   regions: string[];
   status: CloudConnectionStatus | string;
   status_detail: string;
@@ -4383,6 +4385,18 @@ export interface CloudConnectionRecord {
   scan_mode?: "full" | "continuous" | string;
   /** When true (Create default), a follow-up path may enqueue a scan after create. */
   auto_scan_on_create?: boolean;
+  /** Result of the bounded provider capability probe. */
+  capability_probe_status:
+    | "not_run"
+    | "verified"
+    | "invalid_credentials"
+    | "permission_denied"
+    | "timeout"
+    | "invalid_configuration"
+    | "unavailable"
+    | string;
+  /** Stable, non-secret provider reads proved by the latest successful probe. */
+  verified_capabilities: string[];
 }
 
 export interface CloudConnectionsResponse {
@@ -4471,6 +4485,9 @@ export interface CloudConnectionTestResponse {
   tenant_id: string;
   provider: string;
   status: "ok" | string;
+  credential_present: boolean;
+  capability_probe_status: "verified" | string;
+  verified_capabilities: string[];
   audit_metadata: {
     read_only: boolean;
     writes_performed: boolean;

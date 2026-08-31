@@ -40,6 +40,7 @@ TENANT_BINDING_AUTHORITY = VERSIONS_DIR / "20260819_01_tenant_binding_authority.
 HUB_OVERVIEW_REVISION = VERSIONS_DIR / "20260827_01_hub_overview_revision.py"
 GRAPH_CORRELATIONS = VERSIONS_DIR / "20260830_01_graph_correlations.py"
 ATTACK_PATH_EVIDENCE = VERSIONS_DIR / "20260830_02_graph_correlation_mechanical.py"
+CLOUD_CONNECTION_CAPABILITY_EVIDENCE = VERSIONS_DIR / "20260830_03_cloud_connection_capability_evidence.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -51,7 +52,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260830_02"
+ALEMBIC_HEAD = "20260830_03"
 
 
 def _canonical_sql(text: str) -> str:
@@ -414,6 +415,21 @@ def test_cloud_connections_scope_columns_migration_is_idempotent_and_chained() -
         "ADD COLUMN IF NOT EXISTS auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE",
     ):
         assert f"ALTER TABLE IF EXISTS cloud_connections {column_ddl}" in sql
+    assert "VALUES ('cloud_connections', 1, now())" in sql
+    assert "ON CONFLICT(component) DO UPDATE SET" in sql
+
+
+def test_cloud_connection_capability_evidence_is_idempotent_and_chained() -> None:
+    sql = CLOUD_CONNECTION_CAPABILITY_EVIDENCE.read_text()
+    normalized_sql = re.sub(r'"\s*\n\s*"', "", sql)
+    normalized_sql = re.sub(r"\s+", " ", normalized_sql)
+    assert re.search(r'revision\s*=\s*"20260830_03"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260830_02"', sql)
+    for column_ddl in (
+        "ADD COLUMN IF NOT EXISTS capability_probe_status TEXT NOT NULL DEFAULT 'not_run'",
+        "ADD COLUMN IF NOT EXISTS verified_capabilities TEXT NOT NULL DEFAULT '[]'",
+    ):
+        assert f"ALTER TABLE IF EXISTS cloud_connections {column_ddl}" in normalized_sql
     assert "VALUES ('cloud_connections', 1, now())" in sql
     assert "ON CONFLICT(component) DO UPDATE SET" in sql
 

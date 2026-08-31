@@ -95,3 +95,28 @@ def test_scan_mode_and_auto_scan_on_create_round_trip_postgres(monkeypatch):
     assert restored.scan_mode == "continuous"
     assert restored.auto_scan_on_create is False
     assert restored.last_scan_id is None
+
+
+def test_capability_verification_round_trips_through_postgres(monkeypatch):
+    pool = _Pool()
+    monkeypatch.setattr("agent_bom.api.postgres_connection._tenant_connection", lambda _pool: pool.connection())
+    store = PostgresConnectionStore(pool=pool)
+    record = CloudConnectionRecord(
+        id="conn-capability",
+        tenant_id="acme",
+        provider="gcp",
+        display_name="Vertex read-only",
+        role_ref="reader@example.invalid",
+        external_id_encrypted="encrypted",
+        created_at="2026-08-30T00:00:00Z",
+        updated_at="2026-08-30T00:00:01Z",
+        capability_probe_status="verified",
+        verified_capabilities=["vertex-ai:list-endpoints"],
+    )
+
+    store.put(record)
+
+    restored = store.get("acme", "conn-capability")
+    assert restored is not None
+    assert restored.capability_probe_status == "verified"
+    assert restored.verified_capabilities == ["vertex-ai:list-endpoints"]

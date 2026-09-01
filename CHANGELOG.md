@@ -25,6 +25,8 @@ while advancing the maintained dependency and MCP-registry baseline.
   verified.
 - Python, JavaScript, MCP, and CodeQL dependencies plus the bundled MCP registry
   are refreshed under their existing release and serialization contracts.
+- Private SQLite graph-build workspaces avoid durable fsync overhead while
+  retaining transactional staging semantics; durable graph stores are unchanged.
 
 ## [0.103.1] - 2026-08-29
 

@@ -159,7 +159,14 @@ class _SQLiteWorkspaceBackend:
             self._path = Path(db_path)
             self._owns_file = False
         self._conn = sqlite3.connect(str(self._path))
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        # This database is a private, process-local staging workspace that is
+        # discarded after the graph is persisted.  WAL + full fsync semantics
+        # turn the producer's many bounded upserts into runner-disk latency and
+        # provide no recovery value: a crashed build is never selectable.  Keep
+        # the journal in memory and disable synchronous flushes while retaining
+        # SQLite's transactional statement semantics for the live build.
+        self._conn.execute("PRAGMA journal_mode=MEMORY")
+        self._conn.execute("PRAGMA synchronous=OFF")
         # ``entity_type`` (nodes) and ``source_id``/``target_id`` (edges) back the
         # random-access read indexes; kept in lock-step with the Postgres backend
         # (graph_build_workspace_nodes/_edges). SQLite workspace DBs are private

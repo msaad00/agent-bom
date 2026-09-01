@@ -124,9 +124,10 @@ _SERVER_CARD_TOOLS = [
         "name": "tool_risk_assessment",
         "description": (
             "Live-introspect configured MCP servers via tools/list and score each exposed tool by capability"
-            " (filesystem, network, code execution, credential access) to rate per-tool and per-server blast radius"
+            " (filesystem, network, code execution, credential access) to rate per-tool and per-server blast radius;"
+            " launching an unblocked stdio command requires explicit opt-in"
         ),
-        "annotations": {"readOnlyHint": True},
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {
         "name": "inventory",
@@ -470,7 +471,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "inventory_summary": ["READ", "GRAPH", "INVENTORY"],
     "inventory_list": ["READ", "GRAPH", "INVENTORY"],
     "inventory_asset": ["READ", "GRAPH", "INVENTORY", "ANALYZE"],
-    "tool_risk_assessment": ["READ", "ANALYZE"],
+    "tool_risk_assessment": ["READ", "ANALYZE", "PROCESS_EXECUTION"],
     "inventory": ["READ", "LOCAL_FILE_READ"],
     "diff": ["WRITE", "READ", "LOCAL_FILE_READ", "ANALYZE", "HISTORY"],
     "marketplace_check": ["READ", "REGISTRY"],

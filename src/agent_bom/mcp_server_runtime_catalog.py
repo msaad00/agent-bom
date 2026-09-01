@@ -11,6 +11,7 @@ def register_runtime_catalog_tools(
     mcp,
     *,
     read_only,
+    runtime_introspection,
     execute_tool_sync_async: Callable[..., Awaitable[str]],
     safe_path,
     truncate_response,
@@ -81,10 +82,14 @@ def register_runtime_catalog_tools(
             _truncate_response=truncate_response,
         )
 
-    @mcp.tool(annotations=read_only, title="Tool Capability Risk")
+    @mcp.tool(annotations=runtime_introspection, title="Tool Capability Risk")
     async def tool_risk_assessment(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
-        timeout: Annotated[float, Field(description="Per-server introspection timeout in seconds.")] = 10.0,
+        timeout: Annotated[float, Field(ge=0.1, le=60.0, description="Per-server introspection timeout in seconds.")] = 10.0,
+        allow_command_execution: Annotated[
+            bool,
+            Field(description="Explicitly allow launching unblocked stdio server commands. False only connects to HTTP/SSE servers."),
+        ] = False,
     ) -> str:
         """Live-introspect MCP servers and score each tool's capability risk.
 
@@ -98,6 +103,8 @@ def register_runtime_catalog_tools(
             config_path: MCP client config directory to read; auto-discovers all
                 supported clients when omitted.
             timeout: Per-server introspection timeout in seconds.
+            allow_command_execution: Explicit opt-in required before launching
+                discovered stdio server commands.
 
         Returns:
             JSON with per-server tool inventories, per-tool capability classes
@@ -111,5 +118,8 @@ def register_runtime_catalog_tools(
             tool_risk_assessment_impl,
             config_path=config_path,
             timeout=timeout,
+            allow_command_execution=allow_command_execution,
+            _safe_path=safe_path,
             _truncate_response=truncate_response,
+            destructive=allow_command_execution,
         )

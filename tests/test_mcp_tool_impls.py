@@ -1017,10 +1017,64 @@ def test_tool_risk_assessment_impl_success():
         patch("agent_bom.discovery.discover_all", return_value=[agent]),
         patch("agent_bom.mcp_introspect.introspect_servers_sync", return_value=report),
     ):
-        result = tool_risk_assessment_impl(config_path=None, timeout=5.0, _truncate_response=_trunc)
+        result = tool_risk_assessment_impl(
+            config_path=None,
+            timeout=5.0,
+            allow_command_execution=True,
+            _safe_path=lambda value: value,
+            _truncate_response=_trunc,
+        )
     data = json.loads(result)
     assert data["summary"]["total_servers"] == 1
     assert data["servers"][0]["capability_risk_level"] == "high"
+
+
+def test_tool_risk_assessment_requires_opt_in_before_stdio_execution():
+    from agent_bom.mcp_introspect import IntrospectionReport
+    from agent_bom.mcp_tools.runtime import tool_risk_assessment_impl
+
+    server = MagicMock()
+    server.name = "local-stdio"
+    server.command = "must-not-run"
+    server.transport.value = "stdio"
+    agent = MagicMock()
+    agent.mcp_servers = [server]
+
+    with (
+        patch("agent_bom.discovery.discover_all", return_value=[agent]),
+        patch("agent_bom.mcp_introspect.introspect_servers_sync", return_value=IntrospectionReport()) as introspect,
+    ):
+        result = tool_risk_assessment_impl(
+            config_path=None,
+            timeout=5.0,
+            allow_command_execution=False,
+            _safe_path=lambda value: value,
+            _truncate_response=_trunc,
+        )
+
+    data = json.loads(result)
+    assert data["summary"]["command_execution_allowed"] is False
+    introspect.assert_called_once_with([server], timeout=5.0, allow_stdio=False)
+
+
+def test_tool_risk_assessment_validates_requested_config_path_before_discovery():
+    from agent_bom.mcp_tools.runtime import tool_risk_assessment_impl
+
+    with (
+        patch("agent_bom.discovery.discover_all") as discover,
+        patch("agent_bom.mcp_introspect.introspect_servers_sync") as introspect,
+    ):
+        result = tool_risk_assessment_impl(
+            config_path="/outside/allowed/root",
+            timeout=5.0,
+            allow_command_execution=False,
+            _safe_path=MagicMock(side_effect=ValueError("path is outside allowed roots")),
+            _truncate_response=_trunc,
+        )
+
+    assert "error" in json.loads(result)
+    discover.assert_not_called()
+    introspect.assert_not_called()
 
 
 @pytest.mark.asyncio

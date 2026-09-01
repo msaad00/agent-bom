@@ -31,6 +31,13 @@ while advancing the maintained dependency and MCP-registry baseline.
 - Private SQLite graph-build workspaces avoid durable fsync overhead while
   retaining transactional staging semantics; durable graph stores are unchanged.
 
+### Fixed
+
+- MCP runtime introspection now rejects security-blocked servers before any
+  transport is opened, keeps stdio process launch disabled by default, and
+  requires both explicit opt-in and authenticated operator authority before a
+  discovered command can run.
+
 ## [0.103.1] - 2026-08-29
 
 This patch restores Alpine arm64 API-image publication and makes the

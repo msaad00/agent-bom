@@ -304,6 +304,7 @@ def test_server_card_tools_expose_capability_classes():
         # Assigns, tickets, and verifies persisted remediation campaigns.
         "risk_campaign_workflow",
     }
+    process_execution_tools = {"tool_risk_assessment"}
     # Writes that tear down or invalidate state advertise destructiveHint; issuing
     # an identity or granting access creates state and is non-destructive.
     # ingest_external_scan mutates the control plane (bulk-ingest + reconcile
@@ -324,6 +325,7 @@ def test_server_card_tools_expose_capability_classes():
         "approve_exception",
         "risk_campaign_workflow",
         "cloud_side_scan",
+        "tool_risk_assessment",
     }
     card = build_server_card()
     for tool in card["tools"]:
@@ -334,6 +336,10 @@ def test_server_card_tools_expose_capability_classes():
             assert "WRITE" in classes, tool["name"]
             assert tool["annotations"]["readOnlyHint"] is False
             assert tool["annotations"]["destructiveHint"] is (tool["name"] in destructive_writes), tool["name"]
+        elif tool["name"] in process_execution_tools:
+            assert "PROCESS_EXECUTION" in classes, tool["name"]
+            assert tool["annotations"]["readOnlyHint"] is False
+            assert tool["annotations"]["destructiveHint"] is True
         else:
             assert "READ" in classes, tool["name"]
             assert tool["annotations"]["readOnlyHint"] is True
@@ -379,8 +385,8 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     assert f"{len(card['tools'])} MCP tools" in docs
     assert "Most tools are read-only" in docs
     assert "AGENT_BOM_MCP_OPERATOR_TOKEN" in docs
-    write_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
-    assert sorted(write_tools) == [
+    non_read_only_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
+    assert sorted(non_read_only_tools) == [
         "access_review",
         "approve_exception",
         "cloud_side_scan",
@@ -401,8 +407,12 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "shield_start",
         "shield_unblock",
         "sync_ticket_status",
+        "tool_risk_assessment",
     ]
+    write_tools = [tool["name"] for tool in card["tools"] if "WRITE" in tool.get("capability_classes", [])]
+    process_execution_tools = [tool["name"] for tool in card["tools"] if "PROCESS_EXECUTION" in tool.get("capability_classes", [])]
     assert f"{len(write_tools)} write-annotated tools" in docs
+    assert f"{len(process_execution_tools)} process-execution tool" in docs
     for required_scope in (
         "cloud:write",
         "findings:write",

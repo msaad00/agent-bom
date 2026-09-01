@@ -69,6 +69,8 @@ jobs:
           # - jinja2/werkzeug/flask/requests: permissive licenses but GitHub can return null
           # - recharts: Apache-2.0 but npm metadata returns null
           # - victory-vendor: ISC+JSON+MIT (JSON not in allow list)
+          # - caniuse-lite: CC-BY-4.0 browser compatibility data used by UI
+          #   build tooling; keep this exception PURL-scoped.
           # - uv.lock transitive deps with LicenseRef-scancode-* identifiers
           #   (scancode can't map to standard SPDX; packages are permissive)
           # - mmh3: upstream PyPI metadata and the 5.2.1 sdist declare MIT.
@@ -83,6 +85,7 @@ jobs:
             pkg:pypi/requests,
             pkg:npm/recharts,
             pkg:npm/victory-vendor,
+            pkg:npm/caniuse-lite,
             pkg:pypi/aiohappyeyeballs,
             pkg:pypi/azure-core,
             pkg:pypi/azure-identity,

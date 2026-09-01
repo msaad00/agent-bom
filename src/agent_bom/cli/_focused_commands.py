@@ -16,6 +16,7 @@ Usage::
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -393,7 +394,7 @@ def secrets_cmd(
     output_format = _validate_json_or_console_format("secrets", output_format)
     setup_logging(level="ERROR" if quiet else "INFO", json_output=log_json, log_file=log_file)
 
-    report_con = Console(file=click.get_text_stream("stdout"), quiet=quiet, no_color=no_color)
+    report_con = Console(file=sys.stdout, quiet=quiet, no_color=no_color)
     diagnostic_con = Console(stderr=True, quiet=quiet, no_color=no_color)
     result = scan_secrets(path, detect_entropy=detect_entropy)
 

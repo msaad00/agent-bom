@@ -719,7 +719,7 @@ def scan(
     is_null_sink = _is_null_device(output)
     con = Console(stderr=True, quiet=quiet or is_stdout, no_color=no_color)
     report_con = Console(
-        file=click.get_text_stream("stdout"),
+        file=sys.stdout,
         quiet=quiet or is_stdout,
         no_color=no_color,
     )

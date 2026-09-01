@@ -324,3 +324,13 @@ def test_dependency_review_keeps_mmh3_license_exception_package_scoped() -> None
     assert "CC-BY-4.0" not in global_allowlist
     assert "bibliography metadata" in workflow
     assert "sdist declare MIT" in workflow
+
+
+def test_dependency_review_accepts_regex_declared_dual_license() -> None:
+    """The regex wheel accurately declares its inherited CPython license."""
+    workflow = (ROOT / ".github" / "workflows" / "dependency-review.yml").read_text(encoding="utf-8")
+    global_allowlist = workflow.split("allow-licenses:", 1)[1].split("# Packages whitelisted by PURL:", 1)[0]
+
+    assert "Apache-2.0" in global_allowlist
+    assert "CNRI-Python" in global_allowlist
+    assert "derived from CPython 2.6/3.1" in workflow

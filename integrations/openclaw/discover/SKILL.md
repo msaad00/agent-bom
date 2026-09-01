@@ -8,7 +8,7 @@ version: 0.103.1
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required.
-  Registry data (1112 MCP servers) is bundled in-package with zero network calls.
+  Registry data (1123 MCP servers) is bundled in-package with zero network calls.
 metadata:
   author: msaad00
   homepage: https://github.com/msaad00/agent-bom
@@ -100,7 +100,7 @@ metadata:
 
 Discovers AI agents, MCP servers, and their configurations across 22+ AI tools
 on this machine. Shows what's installed, configured, and registered in the
-bundled 1112-entry MCP server registry.
+bundled 1123-entry MCP server registry.
 
 ## Install
 

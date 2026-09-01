@@ -23,6 +23,9 @@ while advancing the maintained dependency and MCP-registry baseline.
 - Correlated path proof now distinguishes complete, directed, traversable hop
   evidence from incomplete or truncated receipts before presenting a path as
   verified.
+- Mobile Investigation renders long attack paths as readable sequential hops
+  and directed relationships instead of shrinking the complete chain into a
+  miniature canvas.
 - Python, JavaScript, MCP, and CodeQL dependencies plus the bundled MCP registry
   are refreshed under their existing release and serialization contracts.
 - Private SQLite graph-build workspaces avoid durable fsync overhead while

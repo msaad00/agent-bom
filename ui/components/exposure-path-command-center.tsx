@@ -33,6 +33,7 @@ import { formatExposureEntityTitle } from "@/lib/entity-display";
 import {
   COLLAPSED_HOPS_NODE_ID,
   buildPathGraphLayout,
+  humanizeRelationship,
   shouldCollapsePath,
   wrapGraphText,
   truncateGraphText,
@@ -322,7 +323,8 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 
   return (
     <div className="space-y-2">
-      <div className={scrollable ? "overflow-x-auto p-2" : "p-2"} data-testid="exposure-path-graph-scroll">
+      <MobileExposurePathSequence path={path} />
+      <div className={`${scrollable ? "overflow-x-auto p-2" : "p-2"} hidden sm:block`} data-testid="exposure-path-graph-scroll">
         <svg
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           {...(scrollable
@@ -446,7 +448,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
       </div>
 
       {collapsible ? (
-        <div className="flex items-center justify-center gap-2 pb-1 text-[11px]">
+        <div className="hidden items-center justify-center gap-2 pb-1 text-[11px] sm:flex">
           <button
             type="button"
             aria-expanded={expanded}
@@ -463,6 +465,57 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function MobileExposurePathSequence({ path }: { path: ExposurePath }) {
+  return (
+    <ol
+      aria-label={`Selected exposure path steps for ${pathDisplayTitle(path)}`}
+      className="space-y-0 p-2 sm:hidden"
+      data-testid="exposure-path-mobile-sequence"
+    >
+      {path.hops.map((hop, index) => {
+        const meta = ROLE_META[hop.role] ?? ROLE_META.unknown;
+        const Icon = meta.icon;
+        const previous = index > 0 ? path.hops[index - 1] : undefined;
+        const relationship = previous
+          ? path.relationships.find(
+              (candidate) => candidate.source === previous.id && candidate.target === hop.id,
+            )?.relationship ?? path.relationships[index - 1]?.relationship ?? "reaches"
+          : undefined;
+
+        return (
+          <li key={`${hop.id}-${index}`}>
+            {relationship ? (
+              <div className="ml-4 flex min-h-8 items-center gap-2 border-l border-[color:var(--border-strong)] pl-4 text-[10px] font-medium text-[color:var(--text-tertiary)]">
+                <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5">
+                  {humanizeRelationship(relationship)}
+                </span>
+              </div>
+            ) : null}
+            <div className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${meta.tint}`}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-current/20 bg-[color:var(--surface-elevated)]">
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] opacity-75">
+                  {index + 1}. {meta.label}
+                </p>
+                <p className="mt-0.5 break-words text-xs font-semibold text-[color:var(--foreground)]">
+                  {hop.label}
+                </p>
+                {hop.subtitle ? (
+                  <p className="mt-0.5 break-words text-[10px] text-[color:var(--text-secondary)]">
+                    {hop.subtitle}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

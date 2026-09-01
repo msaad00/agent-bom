@@ -214,6 +214,15 @@ describe("ExposurePathCommandCenter", () => {
     expect(within(board).getByText("Credential: SNOWFLAKE_PASSWORD")).toBeInTheDocument();
     expect(within(board).queryByText(/hops hidden/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Show all 8 hops/ })).not.toBeInTheDocument();
+
+    const mobileSequence = screen.getByRole("list", {
+      name: /Selected exposure path steps for/,
+    });
+    expect(mobileSequence).toHaveClass("sm:hidden");
+    expect(within(mobileSequence).getByText("1. Agent")).toBeInTheDocument();
+    expect(within(mobileSequence).getByText("8. Credential")).toBeInTheDocument();
+    expect(within(mobileSequence).getByText("Cursor IDE Agent")).toBeInTheDocument();
+    expect(within(mobileSequence).getByText("SNOWFLAKE_PASSWORD")).toBeInTheDocument();
   });
 
   it("round-trips the long-chain board between collapsed and fully expanded", () => {

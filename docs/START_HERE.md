@@ -25,7 +25,7 @@ New here? [`FIRST_RUN.md`](FIRST_RUN.md) is the canonical quickstart —
 CI gate (GitHub Action):
 
 ```yaml
-- uses: msaad00/agent-bom@v0.103.1
+- uses: msaad00/agent-bom@v0.103.2
 ```
 
 - Output formats, exit codes, and the full command set:

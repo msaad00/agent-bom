@@ -114,3 +114,27 @@ def test_live_access_review_and_diff_annotations_are_not_read_only() -> None:
         assert annotations is not None, f"{name} should carry annotations"
         assert annotations.readOnlyHint is not True, f"{name} live annotation must not be readOnlyHint=True"
     assert tools["diff"].annotations.destructiveHint is True
+
+
+def test_tool_risk_assessment_is_labeled_as_process_execution() -> None:
+    """Runtime stdio discovery can launch a configured process and needs approval."""
+    tool = {item["name"]: item for item in build_server_card()["tools"]}["tool_risk_assessment"]
+    classes = set(tool.get("capability_classes", []))
+    annotations = tool.get("annotations", {}) or {}
+
+    assert "PROCESS_EXECUTION" in classes
+    assert annotations.get("readOnlyHint") is False
+    assert annotations.get("destructiveHint") is True
+
+
+def test_live_tool_risk_assessment_requires_opt_in_and_operator_approval() -> None:
+    pytest.importorskip("mcp", reason="mcp SDK not installed")
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    tool = {item.name: item for item in asyncio.run(server.list_tools())}["tool_risk_assessment"]
+    properties = tool.inputSchema["properties"]
+
+    assert tool.annotations.readOnlyHint is False
+    assert tool.annotations.destructiveHint is True
+    assert properties["allow_command_execution"]["default"] is False

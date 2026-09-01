@@ -201,6 +201,52 @@ class TestToolMetrics:
         assert payload["timed_out"] is True
 
     @pytest.mark.asyncio
+    async def test_execute_tool_sync_async_blocks_destructive_without_operator(self, monkeypatch):
+        import agent_bom.mcp_server as mod
+
+        called = False
+
+        def _must_not_run():
+            nonlocal called
+            called = True
+            return "unexpected"
+
+        monkeypatch.setattr(
+            mod,
+            "_current_tool_request",
+            lambda: {
+                "caller": "read-client",
+                "client_id": "read-client",
+                "request_id": "request-1",
+                "auth_scopes": "read",
+            },
+        )
+
+        result = await _execute_tool_sync_async("runtime_process", _must_not_run, destructive=True)
+
+        assert json.loads(result)["status"] == "blocked"
+        assert called is False
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_sync_async_allows_authenticated_operator(self, monkeypatch):
+        import agent_bom.mcp_server as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_current_tool_request",
+            lambda: {
+                "caller": "operator-client",
+                "client_id": "operator-client",
+                "request_id": "request-2",
+                "auth_scopes": "admin",
+            },
+        )
+
+        result = await _execute_tool_sync_async("runtime_process", lambda **_: "ok", destructive=True)
+
+        assert result == "ok"
+
+    @pytest.mark.asyncio
     async def test_execute_tool_async_returns_sanitized_error_payload(self):
         async def _boom():
             raise RuntimeError("failed token=abc123 at /tmp/private/path")

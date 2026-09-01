@@ -245,7 +245,9 @@ live runtime traffic rather than static reachability.
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
   The 20 write-annotated tools cover scan-history diff, Shield, identity,
   external ingest, CWPP runtime-evidence ingest, access review, finding
-  triage and exception approval, snapshot correlation, remediation campaigns, and ticket workflows. They require an
+  triage and exception approval, snapshot correlation, remediation campaigns,
+  and ticket workflows. One process-execution tool can launch a discovered
+  local MCP server only with explicit authorization. These tools require an
   authenticated MCP operator token plus admin role, their specific write
   scope (`cloud:write`, `findings:write`, `identity:write`, `scan:write`, `shield:write`,
   or `ticketing:write`), and an audit reason; stdio cannot invoke them.

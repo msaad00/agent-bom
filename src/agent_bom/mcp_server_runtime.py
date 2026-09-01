@@ -585,9 +585,42 @@ async def execute_tool_sync_async(
     get_tool_semaphore_fn: Callable[[], asyncio.Semaphore],
     sanitize_error_fn: Callable[[Exception], str],
     logger,
+    destructive: bool = False,
+    required_scope: str | None = None,
     **kwargs,
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
+    if destructive:
+        authenticated_actor = request_meta.get("client_id") or request_meta.get("caller") or "mcp-operator"
+        kwargs.setdefault("_authenticated_actor", authenticated_actor)
+        auth_scopes = str(request_meta.get("auth_scopes", "") or "")
+        denial = authorize_destructive_tool(
+            tool_name,
+            operator_role=str(kwargs.get("operator_role", "") or ""),
+            operator_scopes=str(kwargs.get("operator_scopes", "") or ""),
+            auth_scopes=auth_scopes,
+            required_scope=required_scope,
+        )
+        if denial is not None:
+            log_caller = _log_value(request_meta["caller"])
+            log_actor = _log_value(str(authenticated_actor or "unset"))
+            record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="forbidden")
+            record_tool_request_fn(
+                tool_name,
+                caller=request_meta["caller"],
+                client_id=request_meta["client_id"],
+                request_id=request_meta["request_id"],
+                status="forbidden",
+                elapsed_ms=0,
+                error="forbidden",
+            )
+            logger.warning(
+                "mcp tool forbidden: %s caller=%s actor=%r",
+                tool_name,
+                log_caller,
+                log_actor,
+            )
+            return truncate_response_fn(json.dumps(denial))
     log_caller = _log_value(request_meta["caller"])
     log_request_id = _log_value(request_meta["request_id"])
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")

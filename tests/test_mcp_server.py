@@ -1277,6 +1277,34 @@ def test_inventory_no_agents(mock_discover):
     assert result["status"] == "no_agents_found"
 
 
+@patch("agent_bom.discovery.discover_all")
+def test_tool_risk_assessment_default_does_not_require_process_approval(mock_discover):
+    """The default protocol-read-only path remains usable without stdio launch."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    mock_discover.return_value = []
+    result = _call_tool(create_mcp_server(), "tool_risk_assessment", {})
+
+    assert result["status"] == "no_servers_found"
+    mock_discover.assert_called_once_with(project_dir=None)
+
+
+@patch("agent_bom.discovery.discover_all")
+def test_tool_risk_assessment_stdio_opt_in_requires_authenticated_operator(mock_discover):
+    """A tool argument cannot self-authorize host process execution."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    result = _call_tool(
+        create_mcp_server(),
+        "tool_risk_assessment",
+        {"allow_command_execution": True},
+    )
+
+    assert result["status"] == "blocked"
+    assert "authenticated operator token" in result["error"]
+    mock_discover.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Tool: diff (mocked pipeline)
 # ---------------------------------------------------------------------------

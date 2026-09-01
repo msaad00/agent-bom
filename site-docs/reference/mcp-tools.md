@@ -5,7 +5,9 @@ runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
 resources, or runtime targets. 20 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
-review, snapshot correlation, finding triage and exception approval, remediation campaigns, and ticket workflows.
+review, snapshot correlation, finding triage and exception approval,
+remediation campaigns, and ticket workflows. 1 process-execution tool can
+launch a discovered local MCP server only with explicit authorization.
 They fail closed unless a remote caller uses the operator token and supplies an
 admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.

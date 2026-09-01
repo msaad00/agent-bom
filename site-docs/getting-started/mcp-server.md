@@ -5,7 +5,9 @@ The server card also advertises 6 resources and 8 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
 Most tools are read-only. 20 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
-review, snapshot correlation, finding triage and exception approval, remediation campaigns, and ticket workflows.
+review, snapshot correlation, finding triage and exception approval,
+remediation campaigns, and ticket workflows. 1 process-execution tool can
+launch a discovered local MCP server only with explicit authorization.
 Each requires `operator_role=admin`, its tool-specific write scope, and an audit
 reason. The registered scope families are `cloud:write`, `findings:write`,
 `identity:write`, `scan:write`, `shield:write`, and `ticketing:write`.

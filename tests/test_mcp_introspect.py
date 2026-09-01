@@ -2,7 +2,7 @@
 
 import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -487,6 +487,49 @@ async def test_introspect_server_no_url():
         result = await introspect_server(server, timeout=1.0)
     assert not result.success
     assert "No URL" in result.error
+
+
+@pytest.mark.asyncio
+async def test_introspect_server_rejects_security_blocked_before_transport():
+    """A discovery block is an execution boundary, not advisory metadata."""
+    from agent_bom.mcp_introspect import introspect_server
+
+    server = MCPServer(
+        name="blocked-server",
+        transport=TransportType.STDIO,
+        command="must-not-run",
+        security_blocked=True,
+    )
+
+    with (
+        patch("agent_bom.mcp_introspect._check_mcp_sdk") as sdk_check,
+        patch("agent_bom.mcp_introspect._introspect_stdio", new_callable=AsyncMock) as stdio,
+    ):
+        result = await introspect_server(server, timeout=1.0)
+
+    assert result.success is False
+    assert result.error == "Introspection blocked by security policy"
+    sdk_check.assert_not_called()
+    stdio.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_introspect_servers_skips_security_blocked_with_visible_warning():
+    from agent_bom.mcp_introspect import introspect_servers
+
+    blocked = MCPServer(
+        name="blocked-server",
+        transport=TransportType.STDIO,
+        command="must-not-run",
+        security_blocked=True,
+    )
+
+    with patch("agent_bom.mcp_introspect._check_mcp_sdk") as sdk_check:
+        report = await introspect_servers([blocked], timeout=1.0)
+
+    assert report.results == []
+    assert report.warnings == ["Skipping blocked-server: introspection blocked by security policy"]
+    sdk_check.assert_not_called()
 
 
 @pytest.mark.asyncio

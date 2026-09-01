@@ -169,6 +169,25 @@ async def test_health_check_skips_ineligible_servers():
 
 
 @pytest.mark.asyncio
+async def test_health_check_reports_security_blocked_without_probing():
+    blocked = _stdio_server("blocked")
+    blocked.security_blocked = True
+
+    with (
+        patch("agent_bom.mcp_introspect._check_mcp_sdk") as sdk_check,
+        patch("agent_bom.mcp_introspect.introspect_server") as introspect,
+    ):
+        statuses = await health_check_servers([blocked], timeout=5.0)
+
+    assert len(statuses) == 1
+    assert statuses[0].server_name == "blocked"
+    assert statuses[0].reachable is False
+    assert statuses[0].error == "Introspection blocked by security policy"
+    sdk_check.assert_not_called()
+    introspect.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_health_check_empty_list():
     with patch("agent_bom.mcp_introspect._check_mcp_sdk"):
         statuses = await health_check_servers([], timeout=5.0)

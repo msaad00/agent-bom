@@ -1,6 +1,6 @@
 """MCP Runtime Introspection — connect to live MCP servers for tool/resource discovery.
 
-Read-only introspection: connects to running MCP servers via the MCP protocol,
+Protocol-read-only introspection: connects to running MCP servers via the MCP protocol,
 calls ``tools/list``, ``resources/list``, and ``prompts/list`` to discover actual runtime capabilities,
 and compares them against config-declared data to detect drift.
 
@@ -9,8 +9,10 @@ Requires ``mcp`` SDK.  Install with::
     pip install mcp
 
 Security guarantees:
-- **Read-only**: Only calls ``initialize``, ``tools/list``, ``resources/list``, and ``prompts/list``.
+- **Protocol read-only**: Only calls ``initialize``, ``tools/list``, ``resources/list``, and ``prompts/list``.
   Never calls ``tools/call``.
+- **Execution-gated**: Security-blocked servers are never connected to or launched;
+  callers can also disable stdio process execution entirely.
 - **Timeout-guarded**: Every connection attempt has a configurable timeout.
 - **Clean shutdown**: All server subprocesses are terminated on exit.
 """
@@ -32,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 # Default timeout for connecting to an MCP server (seconds)
 DEFAULT_TIMEOUT = 10.0
+INTROSPECTION_BLOCKED_ERROR = "Introspection blocked by security policy"
+STDIO_APPROVAL_REQUIRED_ERROR = "Stdio command execution requires explicit approval"
 _PATH_HINT_RE = re.compile(r"(path|file|dir|cwd|workspace)", re.IGNORECASE)
 _URL_HINT_RE = re.compile(r"(url|uri|endpoint|host|domain|webhook)", re.IGNORECASE)
 _SHELL_HINT_RE = re.compile(r"(cmd|command|shell|exec|script)", re.IGNORECASE)
@@ -347,6 +351,8 @@ def _apply_runtime_risk(server: MCPServer, result: ServerIntrospection) -> None:
 async def introspect_server(
     server: MCPServer,
     timeout: float = DEFAULT_TIMEOUT,
+    *,
+    allow_stdio: bool = True,
 ) -> ServerIntrospection:
     """Introspect a single MCP server.
 
@@ -355,8 +361,6 @@ async def introspect_server(
 
     Only stdio and SSE transports are supported for introspection.
     """
-    _check_mcp_sdk()
-
     result = ServerIntrospection(
         server_name=server.name,
         success=False,
@@ -367,6 +371,15 @@ async def introspect_server(
         configured_resource_count=len(server.resources),
         configured_prompt_count=len(server.prompts),
     )
+
+    if server.security_blocked:
+        result.error = INTROSPECTION_BLOCKED_ERROR
+        return result
+    if server.transport == TransportType.STDIO and not allow_stdio:
+        result.error = STDIO_APPROVAL_REQUIRED_ERROR
+        return result
+
+    _check_mcp_sdk()
 
     if server.transport == TransportType.STDIO:
         if not server.command:
@@ -557,6 +570,8 @@ async def introspect_servers(
     servers: list[MCPServer],
     timeout: float = DEFAULT_TIMEOUT,
     max_concurrent: int = 5,
+    *,
+    allow_stdio: bool = True,
 ) -> IntrospectionReport:
     """Introspect multiple MCP servers with concurrency control.
 
@@ -568,19 +583,21 @@ async def introspect_servers(
     Returns:
         IntrospectionReport with all results and warnings.
     """
-    _check_mcp_sdk()
-
     report = IntrospectionReport()
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def _introspect_with_semaphore(server: MCPServer) -> ServerIntrospection:
         async with semaphore:
-            return await introspect_server(server, timeout)
+            return await introspect_server(server, timeout, allow_stdio=allow_stdio)
 
     # Only introspect servers that have enough config to connect
     introspectable = []
     for server in servers:
-        if server.transport == TransportType.STDIO and server.command:
+        if server.security_blocked:
+            report.warnings.append(f"Skipping {_safe_runtime_text(server.name, max_len=300)}: {INTROSPECTION_BLOCKED_ERROR.lower()}")
+        elif server.transport == TransportType.STDIO and server.command and not allow_stdio:
+            report.warnings.append(f"Skipping {_safe_runtime_text(server.name, max_len=300)}: {STDIO_APPROVAL_REQUIRED_ERROR.lower()}")
+        elif server.transport == TransportType.STDIO and server.command:
             introspectable.append(server)
         elif server.transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP) and server.url:
             introspectable.append(server)
@@ -588,8 +605,11 @@ async def introspect_servers(
             report.warnings.append(f"Skipping {server.name}: no command/URL for {server.transport.value} transport")
 
     if not introspectable:
-        report.warnings.append("No servers eligible for introspection")
+        if not report.warnings:
+            report.warnings.append("No servers eligible for introspection")
         return report
+
+    _check_mcp_sdk()
 
     tasks = [_introspect_with_semaphore(s) for s in introspectable]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -613,9 +633,11 @@ async def introspect_servers(
 def introspect_servers_sync(
     servers: list[MCPServer],
     timeout: float = DEFAULT_TIMEOUT,
+    *,
+    allow_stdio: bool = True,
 ) -> IntrospectionReport:
     """Synchronous wrapper for introspect_servers."""
-    return asyncio.run(introspect_servers(servers, timeout))
+    return asyncio.run(introspect_servers(servers, timeout, allow_stdio=allow_stdio))
 
 
 # ── Health Checks ────────────────────────────────────────────────────────────
@@ -655,8 +677,6 @@ async def health_check_servers(
     """
     import time
 
-    _check_mcp_sdk()
-
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def _probe(server: MCPServer) -> HealthStatus:
@@ -673,19 +693,25 @@ async def health_check_servers(
                 error=result.error,
             )
 
+    blocked = [HealthStatus(server_name=s.name, reachable=False, error=INTROSPECTION_BLOCKED_ERROR) for s in servers if s.security_blocked]
     eligible = [
         s
         for s in servers
-        if (s.transport == TransportType.STDIO and s.command)
-        or (s.transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP) and s.url)
+        if not s.security_blocked
+        and (
+            (s.transport == TransportType.STDIO and s.command)
+            or (s.transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP) and s.url)
+        )
     ]
 
     if not eligible:
-        return []
+        return blocked
+
+    _check_mcp_sdk()
 
     tasks = [_probe(s) for s in eligible]
     outcomes = await asyncio.gather(*tasks, return_exceptions=True)
-    results: list[HealthStatus] = []
+    results: list[HealthStatus] = blocked
     for server, outcome in zip(eligible, outcomes, strict=False):
         if isinstance(outcome, BaseException):
             results.append(

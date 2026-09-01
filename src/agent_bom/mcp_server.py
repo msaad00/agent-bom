@@ -493,6 +493,8 @@ async def _execute_tool_sync_async(
     /,
     *args,
     tool_timeout: float | None = None,
+    destructive: bool = False,
+    required_scope: str | None = None,
     **kwargs,
 ) -> _ToolReturn | str:
     """Run a sync MCP tool under the shared async governance envelope."""
@@ -511,6 +513,8 @@ async def _execute_tool_sync_async(
         get_tool_semaphore_fn=_get_tool_semaphore,
         sanitize_error_fn=sanitize_error,
         logger=logger,
+        destructive=destructive,
+        required_scope=required_scope,
         **kwargs,
     )
 
@@ -539,6 +543,10 @@ _WRITE_ACTION = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempo
 # recomputes and upserts campaign status). It is a WRITE — never readOnlyHint —
 # but non-destructive and idempotent.
 _WRITE_IDEMPOTENT = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+# Runtime capability inspection is protocol-read-only, but stdio discovery may
+# launch a configured process. Advertise the host-side execution truthfully so
+# MCP clients can require approval before the explicit opt-in is accepted.
+_RUNTIME_INTROSPECTION = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True)
 
 
 def _check_mcp_sdk() -> None:
@@ -1400,6 +1408,7 @@ def create_mcp_server(
     _register_runtime_catalog_tools(
         mcp,
         read_only=_READ_ONLY,
+        runtime_introspection=_RUNTIME_INTROSPECTION,
         execute_tool_sync_async=_execute_tool_sync_async,
         safe_path=_safe_path,
         truncate_response=_truncate_response,

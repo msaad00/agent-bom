@@ -319,6 +319,11 @@ def test_store_backed_producer_peak_advantage_widens_with_scale() -> None:
 
     ratio_small = store_small / ram_small
     ratio_large = store_large / ram_large
+    print(
+        f"graph-scale nodes={n_small}/{n_large} "
+        f"store_peaks={store_small}/{store_large} ram_peaks={ram_small}/{ram_large} "
+        f"ratios={ratio_small:.3f}/{ratio_large:.3f}"
+    )
 
     assert ratio_small < 0.65, f"store/in-RAM producer peak too high at ~{n_small} nodes: {ratio_small:.3f}"
     assert ratio_large < 0.48, f"store/in-RAM producer peak too high at ~{n_large} nodes: {ratio_large:.3f}"

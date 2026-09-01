@@ -111,6 +111,16 @@ def test_postgres_workspace_cleanup_stays_tenant_bound() -> None:
     assert all("tenant_id = %s" in sql for sql, _params in conn.executed if sql.startswith("DELETE FROM graph_build_workspace_"))
 
 
+def test_sqlite_workspace_uses_ephemeral_write_pragmas() -> None:
+    """Private build staging must not inherit durable database fsync costs."""
+    backend = _SQLiteWorkspaceBackend()
+    try:
+        assert backend._conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "memory"
+        assert backend._conn.execute("PRAGMA synchronous").fetchone()[0] == 0
+    finally:
+        backend.close()
+
+
 def _synthetic_graph(scan: str, n: int, tenant: str = "t1") -> UnifiedGraph:
     g = UnifiedGraph(scan_id=scan, tenant_id=tenant)
     for i in range(n):

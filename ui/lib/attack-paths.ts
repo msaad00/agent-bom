@@ -357,14 +357,27 @@ export function toExposurePathFromAttackPath(
   const target = nodeById.get(path.target)
     ? exposureRefFromUnifiedNode(nodeById.get(path.target)!)
     : hops[hops.length - 1] ?? fallbackExposureRef(path.target, "unknown");
-  const relationships: ExposureRelationshipRef[] = path.edges.map((edgeId, index) => ({
-    id: edgeId,
-    source: path.hops[index] ?? source.id,
-    target: path.hops[index + 1] ?? target.id,
-    relationship: edgeId.includes(":") ? edgeId.split(":")[0] ?? "related" : "related",
-    direction: "directed",
-    traversable: true,
-  }));
+  const relationships: ExposureRelationshipRef[] = path.hops.slice(0, -1).map((sourceId, index) => {
+    const targetId = path.hops[index + 1] ?? target.id;
+    const receipt = path.hop_evidence?.find(
+      (candidate) => candidate.source_node_id === sourceId && candidate.target_node_id === targetId,
+    );
+    const edgeValue = path.edges[index]?.trim();
+    // Persisted attack paths store relationship labels in `edges`; a few
+    // legacy fixtures store opaque `edge:*` identifiers instead. Never render
+    // an opaque identifier as if it described traversal semantics.
+    const edgeRelationship = edgeValue && !edgeValue.startsWith("edge:") ? edgeValue : undefined;
+    return {
+      id: `${sourceId}->${targetId}`,
+      source: sourceId,
+      target: targetId,
+      relationship: receipt?.relationship || edgeRelationship || "related",
+      direction: receipt?.direction === "bidirectional" ? "bidirectional" : "directed",
+      traversable: receipt?.traversable ?? true,
+      confidence: receipt?.confidence,
+      evidenceCount: receipt?.source_snapshot_ids.length,
+    };
+  });
   const packages = hops.filter((hop) => hop.role === "package");
   const servers = hops.filter((hop) => hop.role === "server");
   const affectedAgents = uniqueExposureValues(labelsForAttackPathType(path, nodeById, "agent"));

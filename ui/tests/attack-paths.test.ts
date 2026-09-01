@@ -428,6 +428,22 @@ describe("attack path helpers", () => {
       credential_exposure: ["DATABASE_URL"],
       tool_exposure: ["execute_sql"],
       vuln_ids: ["CVE-2026-0002"],
+      hop_evidence: [
+        {
+          source_node_id: "pkg-1",
+          target_node_id: "server-1",
+          relationship: "deployed_on",
+          source_snapshot_ids: ["image-scan", "runtime-scan"],
+          evidence_tier: "runtime_observed",
+          confidence: 0.98,
+          freshness: "fresh",
+          runtime_observed_state: "observed",
+          direction: "directed",
+          traversable: true,
+          complete: true,
+          truncated: false,
+        },
+      ],
     };
     const nodes = new Map<string, UnifiedNode>([
       ["cve-1", graphNode("cve-1", EntityType.VULNERABILITY, "CVE-2026-0002")],
@@ -446,6 +462,17 @@ describe("attack path helpers", () => {
     expect(exposure.reachableTools).toEqual(["execute_sql"]);
     expect(exposure.exposedCredentials).toEqual(["DATABASE_URL"]);
     expect(exposure.provenance).toEqual({ source: "graph_attack_path", scanId: "scan-1" });
+    expect(exposure.relationships).toEqual([
+      expect.objectContaining({ source: "cve-1", target: "pkg-1", relationship: "related" }),
+      expect.objectContaining({
+        source: "pkg-1",
+        target: "server-1",
+        relationship: "deployed_on",
+        confidence: 0.98,
+        evidenceCount: 2,
+      }),
+      expect.objectContaining({ source: "server-1", target: "agent-1", relationship: "related" }),
+    ]);
   });
 
   it("matches a focused attack path by cve, package, and agent labels", () => {

@@ -3114,13 +3114,13 @@ async function main() {
     );
     await capture(mobilePage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-mobile-live.png", async (securityGraphPage) => {
       await securityGraphPage
-        .getByRole("img", { name: /Selected exposure path graph for/i })
+        .getByTestId("exposure-path-mobile-sequence")
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
       expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
-      readySelector: 'section[aria-label="Selected exposure path graph"]',
+      readySelector: '[data-testid="exposure-path-mobile-sequence"]',
       rejectedText: [/Loading/i],
       assertNoHorizontalOverflow: true,
     });

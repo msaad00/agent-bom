@@ -9,6 +9,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.103.2] - 2026-09-01
+
+This patch makes the correlated-evidence journey automatic and easier to read,
+while advancing the maintained dependency and MCP-registry baseline.
+
+### Changed
+
+- Investigation selects the newest completed correlation when no explicit
+  snapshot is deep-linked, keeps correlation setup secondary to the resulting
+  graph, and presents the evidence journey clearly across desktop, mobile,
+  light, and dark views.
+- Correlated path proof now distinguishes complete, directed, traversable hop
+  evidence from incomplete or truncated receipts before presenting a path as
+  verified.
+- Python, JavaScript, MCP, and CodeQL dependencies plus the bundled MCP registry
+  are refreshed under their existing release and serialization contracts.
+
 ## [0.103.1] - 2026-08-29
 
 This patch restores Alpine arm64 API-image publication and makes the
@@ -3465,7 +3482,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.103.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.103.2...HEAD
+[0.103.2]: https://github.com/msaad00/agent-bom/compare/v0.103.1...v0.103.2
 [0.103.1]: https://github.com/msaad00/agent-bom/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/msaad00/agent-bom/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/msaad00/agent-bom/compare/v0.101.0...v0.102.0

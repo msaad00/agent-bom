@@ -385,9 +385,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     assert f"{len(card['tools'])} MCP tools" in docs
     assert "Most tools are read-only" in docs
     assert "AGENT_BOM_MCP_OPERATOR_TOKEN" in docs
-    non_read_only_tools = [
-        tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False
-    ]
+    non_read_only_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
     assert sorted(non_read_only_tools) == [
         "access_review",
         "approve_exception",
@@ -412,9 +410,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "tool_risk_assessment",
     ]
     write_tools = [tool["name"] for tool in card["tools"] if "WRITE" in tool.get("capability_classes", [])]
-    process_execution_tools = [
-        tool["name"] for tool in card["tools"] if "PROCESS_EXECUTION" in tool.get("capability_classes", [])
-    ]
+    process_execution_tools = [tool["name"] for tool in card["tools"] if "PROCESS_EXECUTION" in tool.get("capability_classes", [])]
     assert f"{len(write_tools)} write-annotated tools" in docs
     assert f"{len(process_execution_tools)} process-execution tool" in docs
     for required_scope in (

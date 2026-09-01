@@ -80,4 +80,36 @@ describe("AttackPathCorrelationProof", () => {
     expect(screen.getAllByText("reference-image-sbom-scan")).toHaveLength(2);
     expect(screen.getByText("3. vulnerable_to")).toBeInTheDocument();
   });
+
+  it("does not call an incomplete or non-traversable chain verified", () => {
+    const path = {
+      source: "service:api",
+      target: "package:pillow",
+      hops: ["service:api", "container:api", "package:pillow"],
+      edges: ["contains", "contains"],
+      hop_evidence: [
+        {
+          source_node_id: "service:api",
+          target_node_id: "container:api",
+          relationship: "contains",
+          source_snapshot_ids: ["iac-scan"],
+          evidence_tier: "modeled_infrastructure",
+          confidence: 1,
+          freshness: "stale_allowed",
+          runtime_observed_state: "not_observed",
+          direction: "directed",
+          traversable: false,
+          complete: true,
+          truncated: false,
+        },
+      ],
+    } as GraphAttackPath;
+
+    render(<AttackPathCorrelationProof path={path} />);
+
+    expect(screen.getByText("Path evidence incomplete")).toBeInTheDocument();
+    expect(screen.getByText("0/2 directed traversable hops evidenced")).toBeInTheDocument();
+    expect(screen.getByText("Stale allowed")).toHaveClass("text-amber-700");
+    expect(screen.queryByText("Path verified")).not.toBeInTheDocument();
+  });
 });

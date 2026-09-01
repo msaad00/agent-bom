@@ -5,6 +5,7 @@ function badgeTone(kind: string): string {
   if (kind === "runtime_observed") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
   if (kind === "runtime_blocked") return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
   if (kind === "modeled_infrastructure") return "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300";
+  if (kind === "stale_allowed" || kind === "bounded_analysis") return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
   return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
 }
 
@@ -27,7 +28,15 @@ export function AttackPathCorrelationProof({
       const kind = node.entity_type.toLowerCase();
       return kind === "container" || kind === "package" || kind === "vulnerability" || kind === "finding";
     });
-  const completeHopCount = receipts.filter((receipt) => receipt.complete).length;
+  const expectedHopCount = Math.max(path.hops.length - 1, 0);
+  const completeHopCount = receipts.filter(
+    (receipt) =>
+      receipt.complete &&
+      receipt.direction === "directed" &&
+      receipt.traversable &&
+      !receipt.truncated,
+  ).length;
+  const pathVerified = expectedHopCount > 0 && completeHopCount === expectedHopCount && receipts.length === expectedHopCount;
   const sourceCount = new Set(receipts.flatMap((receipt) => receipt.source_snapshot_ids)).size;
 
   const kinds = new Map<string, string>();
@@ -53,9 +62,9 @@ export function AttackPathCorrelationProof({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-[color:var(--foreground)]">Path verified</p>
+          <p className="text-xs font-semibold text-[color:var(--foreground)]">{pathVerified ? "Path verified" : "Path evidence incomplete"}</p>
           <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
-            {completeHopCount}/{Math.max(path.hops.length - 1, 0)} directed traversable hops evidenced
+            {completeHopCount}/{expectedHopCount} directed traversable hops evidenced
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">

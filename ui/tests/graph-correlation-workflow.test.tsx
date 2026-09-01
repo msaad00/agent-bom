@@ -8,7 +8,6 @@ const { apiMock } = vi.hoisted(() => ({
   apiMock: {
     createGraphCorrelation: vi.fn(),
     getGraphCorrelation: vi.fn(),
-    listGraphCorrelations: vi.fn(),
   },
 }));
 
@@ -20,7 +19,7 @@ const snapshots: GraphSnapshot[] = [
   { scan_id: "old-correlation", created_at: "2026-08-30T00:02:00Z", node_count: 9, edge_count: 8, risk_summary: {}, snapshot_kind: "correlation", correlation_id: "old-correlation" },
 ];
 
-function run(status: "pending" | "complete"): GraphCorrelationRun {
+function run(status: GraphCorrelationRun["status"]): GraphCorrelationRun {
   return {
     correlation_id: "corr-1",
     tenant_id: "default",
@@ -39,7 +38,7 @@ function run(status: "pending" | "complete"): GraphCorrelationRun {
     } : {},
     manifest_sha256: status === "complete" ? `sha256:${"a".repeat(64)}` : "",
     output_scan_id: status === "complete" ? "corr-1" : "",
-    failure_code: "",
+    failure_code: status === "failed" ? "analysis_budget_exceeded" : "",
     created_at: "2026-08-30T00:03:00Z",
     started_at: "",
     completed_at: status === "complete" ? "2026-08-30T00:04:00Z" : "",
@@ -50,15 +49,11 @@ describe("GraphCorrelationWorkflow", () => {
   beforeEach(() => {
     apiMock.createGraphCorrelation.mockReset();
     apiMock.getGraphCorrelation.mockReset();
-    apiMock.listGraphCorrelations.mockReset();
     apiMock.createGraphCorrelation.mockResolvedValue(run("complete"));
-    apiMock.listGraphCorrelations.mockResolvedValue({ items: [], count: 0 });
   });
 
   it("loads the latest completed correlation as the primary automated evidence view", async () => {
-    apiMock.listGraphCorrelations.mockResolvedValue({ items: [run("complete")], count: 1 });
-
-    render(<GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={vi.fn()} />);
+    render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} onOpenSnapshot={vi.fn()} />);
 
     expect(await screen.findByText("Evidence correlation complete")).toBeInTheDocument();
     expect(screen.getByText("Connect")).toBeInTheDocument();
@@ -72,12 +67,12 @@ describe("GraphCorrelationWorkflow", () => {
     expect(screen.getByText("2 confirmed attack paths")).toBeInTheDocument();
     expect(screen.queryByLabelText("Correlation name")).not.toBeVisible();
     expect(apiMock.createGraphCorrelation).not.toHaveBeenCalled();
+    expect(screen.getByText("Opt-in runtime")).toBeInTheDocument();
   });
 
   it("keeps custom correlation behind progressive disclosure with safe defaults", async () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={vi.fn()} />);
 
-    await waitFor(() => expect(apiMock.listGraphCorrelations).toHaveBeenCalledWith(20));
     fireEvent.click(screen.getByText("Run custom correlation"));
     expect(screen.getByLabelText("Maximum evidence age (hours)")).toHaveValue(168);
     expect(screen.getByLabelText("old-correlation")).toBeDisabled();
@@ -101,6 +96,24 @@ describe("GraphCorrelationWorkflow", () => {
     expect(screen.getByLabelText("Correlation source receipt graph")).toBeInTheDocument();
     expect(screen.getByText("Evidence correlation complete")).toBeInTheDocument();
     expect(screen.getByText("Image + SBOM")).toBeInTheDocument();
+  });
+
+  it("keeps an edited freshness bound truthful", () => {
+    render(<GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={vi.fn()} />);
+    fireEvent.click(screen.getByText("Run custom correlation"));
+    fireEvent.change(screen.getByLabelText("Maximum evidence age (hours)"), { target: { value: "24" } });
+
+    expect(screen.getByText("1-day freshness bound")).toBeInTheDocument();
+    expect(screen.getByLabelText(/I confirm the 1-day freshness bound \(24 hours\)/i)).toBeInTheDocument();
+    expect(screen.queryByText(/7-day freshness/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a terminal failure without a running spinner", () => {
+    render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("failed")} onOpenSnapshot={vi.fn()} />);
+
+    expect(screen.getByText("Evidence correlation failed")).toBeInTheDocument();
+    expect(screen.getByText("Failure code: analysis_budget_exceeded")).toBeInTheDocument();
+    expect(screen.queryByText("Correlated snapshot")).not.toBeInTheDocument();
   });
 
   it("opens the completed correlated snapshot", async () => {

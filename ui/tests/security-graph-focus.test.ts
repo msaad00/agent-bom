@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFocusedGraphData } from "@/lib/security-graph-focus";
+import {
+  buildFocusedGraphData,
+  latestCompletedCorrelation,
+  selectInitialGraphSnapshot,
+} from "@/lib/security-graph-focus";
+import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api-types";
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 
 function graphFixture(): UnifiedGraphData {
@@ -172,5 +177,46 @@ describe("buildFocusedGraphData", () => {
         edges: [],
       }),
     ).toBeNull();
+  });
+});
+
+describe("initial Investigation snapshot", () => {
+  const snapshots = [
+    { scan_id: "newer-scan", node_count: 2, edge_count: 1 },
+    { scan_id: "corr-output", node_count: 8, edge_count: 7, snapshot_kind: "correlation" },
+  ] as GraphSnapshot[];
+  const correlation = {
+    correlation_id: "corr-output",
+    output_scan_id: "corr-output",
+    status: "complete",
+  } as GraphCorrelationRun;
+
+  it("prefers an explicit deep link over automatic correlation selection", () => {
+    expect(selectInitialGraphSnapshot(snapshots, "newer-scan", correlation)).toBe("newer-scan");
+  });
+
+  it("selects the latest completed correlation output when no scan is requested", () => {
+    expect(selectInitialGraphSnapshot(snapshots, "", correlation)).toBe("corr-output");
+  });
+
+  it("finds the latest completed correlation even when API items are unordered", () => {
+    const latest = latestCompletedCorrelation([
+      { ...correlation, correlation_id: "older", created_at: "2026-08-29T00:00:00Z" },
+      { ...correlation, correlation_id: "newest", created_at: "2026-08-31T00:00:00Z" },
+      { ...correlation, correlation_id: "middle", created_at: "2026-08-30T00:00:00Z" },
+    ]);
+
+    expect(latest?.correlation_id).toBe("newest");
+  });
+
+  it("falls back to the first retained snapshot when the output was removed", () => {
+    expect(selectInitialGraphSnapshot(snapshots, "", { ...correlation, output_scan_id: "removed" })).toBe("newer-scan");
+  });
+
+  it("ignores pending and failed correlation runs", () => {
+    expect(latestCompletedCorrelation([
+      { ...correlation, status: "pending" },
+      { ...correlation, status: "failed" },
+    ])).toBeNull();
   });
 });

@@ -55,6 +55,7 @@ import {
   type FixFirstGraphViewResponse,
   type FixFirstPathCard,
   type GraphAttackCampaign,
+  type GraphCorrelationRun,
   type GraphSnapshot,
   type PostureResponse,
   type UnifiedGraphResponse,
@@ -84,6 +85,10 @@ import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
+  latestCompletedCorrelation,
+  selectInitialGraphSnapshot,
+} from "@/lib/security-graph-focus";
+import {
   collectPathEnvironments,
   filterAttackPathsForInvestigation,
 } from "@/lib/investigation-path-filters";
@@ -108,6 +113,7 @@ function AttackPathInvestigationContent() {
   const router = useRouter();
   const pathname = usePathname();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
+  const [latestCorrelationRun, setLatestCorrelationRun] = useState<GraphCorrelationRun | null>(null);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
   const [fixFirstView, setFixFirstView] = useState<FixFirstGraphViewResponse | null>(null);
@@ -212,21 +218,23 @@ function AttackPathInvestigationContent() {
     async function load() {
       setLoadingSnapshots(true);
       try {
-        const [snapshotList, postureData] = await Promise.all([
+        const [snapshotList, postureData, correlationList] = await Promise.all([
           // windowDays: 0 keeps all retained snapshots visible (#4009).
           api.getGraphSnapshots(25, 0),
           api.getPosture().catch(() => null),
+          api.listGraphCorrelations(20).catch(() => null),
         ]);
         if (cancelled) return;
         setSnapshots(snapshotList);
         setPosture(postureData);
+        const latestCorrelation = latestCompletedCorrelation(correlationList?.items ?? []);
+        setLatestCorrelationRun(latestCorrelation);
         const requestedScanId = focus.scanId;
-        const initialScanId =
-          requestedScanId && snapshotList.some((snapshot) => snapshot.scan_id === requestedScanId)
-            ? requestedScanId
-            : requestedScanId
-              ? ""
-              : snapshotList[0]?.scan_id ?? "";
+        const initialScanId = selectInitialGraphSnapshot(
+          snapshotList,
+          requestedScanId,
+          latestCorrelation,
+        );
         setSelectedScanId(initialScanId);
         setApiError(null);
         setGraphLoadError(null);
@@ -235,6 +243,7 @@ function AttackPathInvestigationContent() {
         setApiError(userFacingApiErrorMessage(error, "Failed to load graph snapshots"));
         setApiErrorKind(_classifyGraphErrorKind(error));
         setSnapshots([]);
+        setLatestCorrelationRun(null);
         setGraphData(null);
         setFixFirstView(null);
         setGraphLoadError(null);
@@ -994,7 +1003,11 @@ function AttackPathInvestigationContent() {
       >
         <div className="space-y-4">
           {(!captureMode || correlationCaptureMode) && snapshots.length > 0 ? (
-            <GraphCorrelationWorkflow snapshots={snapshots} onOpenSnapshot={selectSnapshot} />
+            <GraphCorrelationWorkflow
+              snapshots={snapshots}
+              initialRun={latestCorrelationRun}
+              onOpenSnapshot={selectSnapshot}
+            />
           ) : null}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

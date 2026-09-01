@@ -160,7 +160,7 @@ export function ExposurePathCommandCenter({
         : "from-sky-500/50 via-sky-500/10 to-transparent";
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(160deg,var(--surface),var(--surface-elevated))] shadow-xl shadow-black/20">
+    <div data-testid="selected-exposure-path" className="relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(160deg,var(--surface),var(--surface-elevated))] shadow-xl shadow-black/20">
       <div className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${severityTone}`} aria-hidden="true" />
       <div className="space-y-5 p-4 pl-5 sm:p-5 sm:pl-6">
         <div className="flex flex-wrap items-start justify-between gap-4">

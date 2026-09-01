@@ -1,4 +1,33 @@
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
+import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api-types";
+
+export function latestCompletedCorrelation(
+  correlations: GraphCorrelationRun[],
+): GraphCorrelationRun | null {
+  return correlations.reduce<GraphCorrelationRun | null>((latest, candidate) => {
+    if (candidate.status !== "complete" || !candidate.output_scan_id) return latest;
+    return !latest || candidate.created_at > latest.created_at ? candidate : latest;
+  }, null);
+}
+
+export function selectInitialGraphSnapshot(
+  snapshots: GraphSnapshot[],
+  requestedScanId: string,
+  latestCorrelation: GraphCorrelationRun | null,
+): string {
+  if (requestedScanId) {
+    return snapshots.some((snapshot) => snapshot.scan_id === requestedScanId)
+      ? requestedScanId
+      : "";
+  }
+  if (
+    latestCorrelation?.output_scan_id &&
+    snapshots.some((snapshot) => snapshot.scan_id === latestCorrelation.output_scan_id)
+  ) {
+    return latestCorrelation.output_scan_id;
+  }
+  return snapshots[0]?.scan_id ?? "";
+}
 
 export function buildFocusedGraphData(
   graph: UnifiedGraphData,

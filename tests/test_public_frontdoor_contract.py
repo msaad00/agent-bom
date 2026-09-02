@@ -66,8 +66,12 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
     assert "tint-" not in svg
     assert "Codex CLI" not in svg
     assert "OpenAI · GPT" not in svg
+    for brand_color in ("#EA4335", "#4285F4", "#34A853", "#FBBC05"):
+        assert brand_color in svg
     assert 'href="vendor/openai-blossom-white.svg" x="-15" y="-15" width="94" height="94"' in template_svg
     assert 'href="vendor/simple-icons/clickhouse.svg"' in template_svg
+    assert 'href="vendor/google-cloud-mark.svg"' in template_svg
+    assert 'href="vendor/simple-icons/googlecloud.svg"' not in template_svg
     assert "Also supports VS Code · Okta · ClickHouse" not in template_svg
     assert svg.count("<symbol ") == 13
     assert svg.count('href="#embedded-') == 14
@@ -80,7 +84,7 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         "vendor/simple-icons/githubcopilot.svg",
         "vendor/simple-icons/amazonwebservices.svg",
         "vendor/simple-icons/microsoftazure.svg",
-        "vendor/simple-icons/googlecloud.svg",
+        "vendor/google-cloud-mark.svg",
         "vendor/simple-icons/kubernetes.svg",
         "vendor/simple-icons/snowflake.svg",
         "vendor/simple-icons/databricks.svg",

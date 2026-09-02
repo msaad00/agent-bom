@@ -31,6 +31,14 @@
       "terms": "Google provides the official icon library for diagrams and technical documentation. Google Cloud marks remain Google property."
     },
     {
+      "path": "docs/images/vendor/google-cloud-mark.svg",
+      "vendor": "Google Cloud",
+      "source_page": "https://cloud.google.com/icons",
+      "source_path": "ui/public/logos/gcp.svg",
+      "sha256": "4b01381301db013f41a5daac9bae641116d31de9d4fae43ac9d235169b5aeffe",
+      "terms": "Native four-color Google Cloud mark used only to identify the supported provider in technical documentation. Google Cloud marks remain Google property."
+    },
+    {
       "path": "docs/images/vendor/simple-icons/amazonwebservices.svg",
       "vendor": "Amazon Web Services",
       "source_page": "https://simpleicons.org/?q=amazonwebservices",

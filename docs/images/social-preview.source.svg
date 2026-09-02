@@ -101,7 +101,7 @@
       </g>
       <g transform="translate(764)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/googlecloud.svg" x="10" y="10" width="44" height="44" filter="url(#tint-gcp)"/>
+        <image href="vendor/google-cloud-mark.svg" x="10" y="10" width="44" height="44"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">GCP</text>
       </g>
       <g transform="translate(852)">

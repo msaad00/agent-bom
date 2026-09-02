@@ -33,10 +33,13 @@
     {
       "path": "docs/images/vendor/google-cloud-mark.svg",
       "vendor": "Google Cloud",
+      "source_kind": "brand_reference",
       "source_page": "https://cloud.google.com/icons",
+      "source_repo": "https://github.com/msaad00/agent-bom",
+      "source_commit": "6eaa9215169d759a851e8de38ef2f5aa08f2f532",
       "source_path": "ui/public/logos/gcp.svg",
       "sha256": "4b01381301db013f41a5daac9bae641116d31de9d4fae43ac9d235169b5aeffe",
-      "terms": "Native four-color Google Cloud mark used only to identify the supported provider in technical documentation. Google Cloud marks remain Google property."
+      "terms": "Exact bytes pinned to the repository commit that introduced the native four-color Google Cloud mark; used only to identify the supported provider in technical documentation. Google Cloud marks remain Google property."
     },
     {
       "path": "docs/images/vendor/simple-icons/amazonwebservices.svg",

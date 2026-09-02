@@ -208,6 +208,18 @@ def _validated_input_freshness(
     return normalized, "stale_allowed" if stale else "fresh", fresh_until
 
 
+def _immutable_input_receipts(value: object) -> list[dict[str, Any]] | None:
+    """Project source-bound fields while allowing execution-time freshness."""
+
+    if not isinstance(value, list) or any(not isinstance(item, Mapping) for item in value):
+        return None
+    return [
+        {str(key): item[key] for key in sorted(item) if key not in {"age_hours", "freshness"}}
+        for item in value
+        if isinstance(item, Mapping)
+    ]
+
+
 def create_runtime_facts_bundle(
     *,
     correlation_id: str,
@@ -396,7 +408,7 @@ def create_runtime_facts_bundle_from_correlation(
     if (
         freshness_policy.get("max_age_hours") != run.max_age_hours
         or freshness_policy.get("allow_stale") is not run.allow_stale
-        or input_snapshots != run.input_manifest
+        or _immutable_input_receipts(input_snapshots) != _immutable_input_receipts(run.input_manifest)
     ):
         raise RuntimeFactsBundleError("correlation_manifest_mismatch")
     input_freshness = {

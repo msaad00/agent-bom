@@ -13,8 +13,11 @@ import json
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
+
+from packageurl import PackageURL
 
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
@@ -75,6 +78,30 @@ _RUNTIME_ENTITY_TYPES = frozenset(
 def _digest(value: Any) -> str:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _timestamp_instant(value: str) -> datetime:
+    """Parse one evidence timestamp into a comparable UTC instant."""
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("correlation timestamps must be valid ISO-8601 values") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("correlation timestamps must include a timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _timestamp_sort_key(value: str) -> tuple[datetime, str]:
+    return _timestamp_instant(value), value
+
+
+def _oldest_timestamp(values: Sequence[str]) -> str:
+    return min(values, key=_timestamp_sort_key)
+
+
+def _newest_timestamp(values: Sequence[str]) -> str:
+    return max(values, key=_timestamp_sort_key)
 
 
 def correlation_manifest_digest(value: Mapping[str, Any]) -> str:
@@ -207,7 +234,11 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
     if entity_type == EntityType.PACKAGE.value:
         purl = node.attributes.get("purl")
         if isinstance(purl, str) and purl.strip():
-            return entity_type, purl.strip().lower(), "purl"
+            try:
+                canonical_purl = PackageURL.from_string(purl.strip()).to_string()
+            except ValueError:
+                return _snapshot_scoped_identity(node, scan_id=scan_id)
+            return entity_type, canonical_purl, "purl"
         return _snapshot_scoped_identity(node, scan_id=scan_id)
 
     if entity_type in _REPOSITORY_ENTITY_TYPES:
@@ -515,7 +546,10 @@ def _node_observation_receipt(observation: _NodeObservation) -> dict[str, Any]:
 
 
 def _merge_node(observations: Sequence[_NodeObservation]) -> UnifiedNode:
-    ordered = sorted(observations, key=lambda item: (item.snapshot.created_at, item.snapshot.scan_id, item.node.id))
+    ordered = sorted(
+        observations,
+        key=lambda item: (_timestamp_instant(item.snapshot.created_at), item.snapshot.scan_id, item.node.id),
+    )
     newest = ordered[-1].node
     attributes = _project_mapping(item.node.attributes for item in ordered)
     source_scan_ids = sorted({item.snapshot.scan_id for item in ordered})
@@ -530,7 +564,11 @@ def _merge_node(observations: Sequence[_NodeObservation]) -> UnifiedNode:
 
     severity_source = max(
         ordered,
-        key=lambda item: (SEVERITY_RANK.get((item.node.severity or "").lower(), 0), item.node.risk_score, item.snapshot.created_at),
+        key=lambda item: (
+            SEVERITY_RANK.get((item.node.severity or "").lower(), 0),
+            item.node.risk_score,
+            _timestamp_instant(item.snapshot.created_at),
+        ),
     ).node
     dimensions = NodeDimensions()
     for item in ordered:
@@ -549,8 +587,8 @@ def _merge_node(observations: Sequence[_NodeObservation]) -> UnifiedNode:
         risk_score=max(float(item.node.risk_score) for item in ordered),
         severity=severity_source.severity,
         severity_id=severity_source.severity_id,
-        first_seen=min(first_seen_values) if first_seen_values else "",
-        last_seen=max(last_seen_values) if last_seen_values else "",
+        first_seen=_oldest_timestamp(first_seen_values) if first_seen_values else "",
+        last_seen=_newest_timestamp(last_seen_values) if last_seen_values else "",
         attributes=attributes,
         compliance_tags=sorted({tag for item in ordered for tag in item.node.compliance_tags}),
         data_sources=sorted({source for item in ordered for source in item.node.data_sources}),
@@ -578,7 +616,10 @@ def _merge_edge(
     target_id: str,
     correlation_id: str,
 ) -> UnifiedEdge:
-    ordered = sorted(observations, key=lambda item: (item.snapshot.created_at, item.snapshot.scan_id, item.edge.id))
+    ordered = sorted(
+        observations,
+        key=lambda item: (_timestamp_instant(item.snapshot.created_at), item.snapshot.scan_id, item.edge.id),
+    )
     newest = ordered[-1].edge
     first_seen_values = [item.edge.first_seen for item in ordered if item.edge.first_seen]
     last_seen_values = [item.edge.last_seen for item in ordered if item.edge.last_seen]
@@ -604,9 +645,11 @@ def _merge_edge(
         direction="bidirectional" if all(item.edge.direction == "bidirectional" for item in ordered) else "directed",
         weight=max(float(item.edge.weight) for item in ordered),
         traversable=all(bool(item.edge.traversable) for item in ordered),
-        first_seen=min(first_seen_values) if first_seen_values else "",
-        last_seen=max(last_seen_values) if last_seen_values else "",
-        valid_from=min((item.edge.valid_from for item in ordered if item.edge.valid_from), default=""),
+        first_seen=_oldest_timestamp(first_seen_values) if first_seen_values else "",
+        last_seen=_newest_timestamp(last_seen_values) if last_seen_values else "",
+        valid_from=_oldest_timestamp([item.edge.valid_from for item in ordered if item.edge.valid_from])
+        if any(item.edge.valid_from for item in ordered)
+        else "",
         valid_to=newest.valid_to,
         source_scan_id=correlation_id,
         source_run_id=correlation_id,
@@ -637,7 +680,7 @@ def merge_graph_snapshots(
     if any(not snapshot.graph.nodes for snapshot in snapshots):
         raise ValueError("Correlation inputs must be non-empty graph snapshots")
 
-    ordered_snapshots = sorted(snapshots, key=lambda item: (item.created_at, item.scan_id))
+    ordered_snapshots = sorted(snapshots, key=lambda item: (_timestamp_instant(item.created_at), item.scan_id))
     node_groups: dict[tuple[str, str], list[_NodeObservation]] = {}
     source_to_key: dict[tuple[str, str], tuple[str, str]] = {}
     for snapshot in ordered_snapshots:

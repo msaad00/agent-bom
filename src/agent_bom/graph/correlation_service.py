@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Sequence
 
 from agent_bom.api.graph_store import GraphStoreProtocol
@@ -23,6 +23,8 @@ from agent_bom.graph.correlation import (
 
 logger = logging.getLogger(__name__)
 
+_MAX_FUTURE_SNAPSHOT_SKEW = timedelta(minutes=5)
+
 _shared_service: GraphCorrelationService | None = None
 _shared_service_store: object | None = None
 _shared_service_loop: asyncio.AbstractEventLoop | None = None
@@ -36,6 +38,31 @@ def _timestamp(value: str) -> datetime:
     if parsed.tzinfo is None:
         raise CorrelationServiceError("invalid_snapshot_timestamp")
     return parsed.astimezone(timezone.utc)
+
+
+def _manifest_with_current_freshness(
+    manifest: Sequence[dict[str, object]],
+    *,
+    now: datetime,
+    max_age_hours: int,
+    allow_stale: bool,
+) -> list[dict[str, object]]:
+    """Recompute freshness at the decision point without changing receipts."""
+
+    refreshed: list[dict[str, object]] = []
+    for item in manifest:
+        created_at = _timestamp(str(item.get("created_at") or ""))
+        if created_at - now > _MAX_FUTURE_SNAPSHOT_SKEW:
+            raise CorrelationServiceError("input_snapshot_in_future")
+        age_hours = max(0.0, (now - created_at).total_seconds() / 3600.0)
+        freshness = "fresh" if age_hours <= max_age_hours else "stale_allowed"
+        if freshness != "fresh" and not allow_stale:
+            raise CorrelationServiceError("stale_input")
+        receipt = dict(item)
+        receipt["freshness"] = freshness
+        receipt["age_hours"] = round(age_hours, 6)
+        refreshed.append(receipt)
+    return refreshed
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,11 +211,6 @@ class GraphCorrelationService:
             if int(row.get("node_count") or 0) < 1:
                 raise CorrelationServiceError("empty_input_snapshot")
             created_at = str(row.get("created_at") or "")
-            age_hours = max(0.0, (now - _timestamp(created_at)).total_seconds() / 3600.0)
-            freshness = "fresh" if age_hours <= request.max_age_hours else "stale_allowed"
-            if freshness != "fresh" and not request.allow_stale:
-                raise CorrelationServiceError("stale_input")
-
             graph = await asyncio.to_thread(
                 self._store.load_graph,
                 tenant_id=request.tenant_id,
@@ -203,11 +225,14 @@ class GraphCorrelationService:
                     "node_count": len(graph.nodes),
                     "edge_count": len(graph.edges),
                     "source_kinds": sorted({source for node in graph.nodes.values() for source in node.data_sources}),
-                    "freshness": freshness,
-                    "age_hours": round(age_hours, 6),
                 }
             )
-        return manifest
+        return _manifest_with_current_freshness(
+            manifest,
+            now=now,
+            max_age_hours=request.max_age_hours,
+            allow_stale=request.allow_stale,
+        )
 
     async def _enqueue(self, tenant_id: str, correlation_id: str, *, wait_for_capacity: bool = False) -> None:
         key = (tenant_id, correlation_id)
@@ -270,6 +295,12 @@ class GraphCorrelationService:
                 if snapshot.digest != str(item.get("digest") or ""):
                     raise CorrelationServiceError("input_snapshot_changed")
                 snapshots.append(snapshot)
+            execution_manifest = _manifest_with_current_freshness(
+                run.input_manifest,
+                now=self._now().astimezone(timezone.utc),
+                max_age_hours=run.max_age_hours,
+                allow_stale=run.allow_stale,
+            )
             merged = await asyncio.to_thread(
                 merge_graph_snapshots,
                 correlation_id=correlation_id,
@@ -279,7 +310,7 @@ class GraphCorrelationService:
             )
             if len(merged.graph.nodes) > self._max_output_nodes or len(merged.graph.edges) > self._max_output_edges:
                 raise CorrelationServiceError("correlation_budget_exceeded")
-            freshness_by_scan = {str(item["scan_id"]): str(item["freshness"]) for item in run.input_manifest}
+            freshness_by_scan = {str(item["scan_id"]): str(item["freshness"]) for item in execution_manifest}
             for edge in merged.graph.edges:
                 correlation = edge.provenance.get("correlation")
                 if not isinstance(correlation, dict):
@@ -304,7 +335,7 @@ class GraphCorrelationService:
                     "max_age_hours": run.max_age_hours,
                     "allow_stale": run.allow_stale,
                 },
-                "input_snapshots": run.input_manifest,
+                "input_snapshots": execution_manifest,
                 "correlation_merge": {
                     "node_conflict_count": node_conflicts,
                     "edge_conflict_count": edge_conflicts,

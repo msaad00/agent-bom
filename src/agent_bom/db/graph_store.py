@@ -1864,6 +1864,20 @@ def get_correlation_run(
     return _correlation_run_from_row(row) if row is not None else None
 
 
+def get_correlation_run_by_idempotency_key(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    idempotency_key: str,
+) -> GraphCorrelationRun | None:
+    tenant = normalize_graph_tenant_id(tenant_id)
+    row = conn.execute(
+        "SELECT * FROM graph_correlation_runs WHERE tenant_id = ? AND idempotency_key = ?",
+        (tenant, idempotency_key),
+    ).fetchone()
+    return _correlation_run_from_row(row) if row is not None else None
+
+
 def create_correlation_run(
     conn: sqlite3.Connection,
     run: GraphCorrelationRun,

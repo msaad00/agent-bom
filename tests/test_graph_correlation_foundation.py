@@ -189,6 +189,100 @@ def test_packages_without_exact_purl_remain_snapshot_scoped() -> None:
     assert len(merged.graph.nodes) == 2
 
 
+def test_case_sensitive_purl_components_do_not_create_a_cross_snapshot_bridge() -> None:
+    left = _graph("scan-1")
+    right = _graph("scan-2")
+    left.add_node(UnifiedNode(id="service:public", entity_type=EntityType.SERVER, label="public service"))
+    left.add_node(
+        UnifiedNode(
+            id="package:alpha",
+            entity_type=EntityType.PACKAGE,
+            label="foo@1.0.0-Alpha",
+            attributes={"purl": "pkg:npm/foo@1.0.0-Alpha"},
+        )
+    )
+    left.add_edge(UnifiedEdge(source="service:public", target="package:alpha", relationship=RelationshipType.CONTAINS))
+    right.add_node(
+        UnifiedNode(
+            id="package:lower",
+            entity_type=EntityType.PACKAGE,
+            label="foo@1.0.0-alpha",
+            attributes={"purl": "pkg:npm/foo@1.0.0-alpha"},
+        )
+    )
+    right.add_node(UnifiedNode(id="vuln:CVE-2026-1", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+    right.add_edge(UnifiedEdge(source="package:lower", target="vuln:CVE-2026-1", relationship=RelationshipType.VULNERABLE_TO))
+
+    merged = merge_graph_snapshots(
+        correlation_id="corr-case-sensitive-purl",
+        tenant_id="acme",
+        snapshots=[CorrelationSnapshot.from_graph(left), CorrelationSnapshot.from_graph(right)],
+    ).graph
+
+    package_nodes = [node for node in merged.nodes.values() if node.entity_type == EntityType.PACKAGE]
+    assert len(package_nodes) == 2
+    assert merged.shortest_path("service:public", "vuln:CVE-2026-1") is None
+
+
+def test_invalid_purls_remain_snapshot_scoped() -> None:
+    left = _graph("scan-1")
+    right = _graph("scan-2")
+    for graph in (left, right):
+        graph.add_node(
+            UnifiedNode(
+                id="package:invalid",
+                entity_type=EntityType.PACKAGE,
+                label="invalid package reference",
+                attributes={"purl": "not-a-purl"},
+            )
+        )
+
+    merged = merge_graph_snapshots(
+        correlation_id="corr-invalid-purl",
+        tenant_id="acme",
+        snapshots=[CorrelationSnapshot.from_graph(left), CorrelationSnapshot.from_graph(right)],
+    )
+
+    assert len(merged.graph.nodes) == 2
+
+
+def test_merge_orders_offset_timestamps_by_utc_instant() -> None:
+    older = UnifiedGraph(scan_id="scan-older", tenant_id="acme", created_at="2026-09-01T00:30:00+02:00")
+    newer = UnifiedGraph(scan_id="scan-newer", tenant_id="acme", created_at="2026-08-31T23:00:00+00:00")
+    older.add_node(
+        UnifiedNode(
+            id="package:older",
+            entity_type=EntityType.PACKAGE,
+            label="older projection",
+            first_seen="2026-09-01T00:20:00+02:00",
+            last_seen="2026-09-01T00:30:00+02:00",
+            attributes={"purl": "pkg:pypi/pillow@9.0.0", "owner": "older"},
+        )
+    )
+    newer.add_node(
+        UnifiedNode(
+            id="package:newer",
+            entity_type=EntityType.PACKAGE,
+            label="newer projection",
+            first_seen="2026-08-31T22:50:00+00:00",
+            last_seen="2026-08-31T23:10:00+00:00",
+            attributes={"purl": "pkg:pypi/pillow@9.0.0", "owner": "newer"},
+        )
+    )
+
+    merged = merge_graph_snapshots(
+        correlation_id="corr-offset-order",
+        tenant_id="acme",
+        snapshots=[CorrelationSnapshot.from_graph(newer), CorrelationSnapshot.from_graph(older)],
+    )
+    node = next(iter(merged.graph.nodes.values()))
+
+    assert node.label == "newer projection"
+    assert node.attributes["owner"] == "newer"
+    assert node.first_seen == "2026-09-01T00:20:00+02:00"
+    assert node.last_seen == "2026-08-31T23:10:00+00:00"
+
+
 def test_repository_nodes_require_exact_commit_and_path_identity() -> None:
     left = _graph("scan-1")
     right = _graph("scan-2")

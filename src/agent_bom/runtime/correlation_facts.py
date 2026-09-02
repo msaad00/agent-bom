@@ -208,6 +208,18 @@ def _validated_input_freshness(
     return normalized, "stale_allowed" if stale else "fresh", fresh_until
 
 
+def _immutable_input_receipts(value: object) -> list[dict[str, Any]] | None:
+    """Project source-bound fields while allowing execution-time freshness."""
+
+    if not isinstance(value, list) or any(not isinstance(item, Mapping) for item in value):
+        return None
+    return [
+        {str(key): item[key] for key in sorted(item) if key not in {"age_hours", "freshness"}}
+        for item in value
+        if isinstance(item, Mapping)
+    ]
+
+
 def create_runtime_facts_bundle(
     *,
     correlation_id: str,
@@ -281,6 +293,13 @@ def _reachability_from_correlation_graph(graph: Any) -> tuple[ReachabilityMap, d
     by_agent: dict[str, AgentReachability] = {}
     limit_reasons: set[str] = set()
     max_visited = 0
+
+    def directed_evidence_edge(edge: Any) -> bool:
+        correlation = edge.provenance.get("correlation") if isinstance(edge.provenance, dict) else None
+        source_ids = correlation.get("source_scan_ids") if isinstance(correlation, dict) else None
+        has_provenance = bool(source_ids or edge.source_scan_id or graph.scan_id)
+        return bool(edge.traversable and edge.direction == "directed" and has_provenance)
+
     for agent in sorted(graph.nodes.values(), key=lambda node: node.id):
         if agent.entity_type is not EntityType.AGENT:
             continue
@@ -302,16 +321,13 @@ def _reachability_from_correlation_graph(graph: Any) -> tuple[ReachabilityMap, d
             source, depth = queue.popleft()
             if depth >= _DEPTH_LIMIT:
                 if any(
-                    edge.traversable and edge.target not in visited and edge.target in graph.nodes
+                    directed_evidence_edge(edge) and edge.target not in visited and edge.target in graph.nodes
                     for edge in graph.adjacency.get(source, [])
                 ):
                     limit_reasons.add("depth_cap_reached")
                 continue
             for edge in graph.adjacency.get(source, []):
-                correlation = edge.provenance.get("correlation") if isinstance(edge.provenance, dict) else None
-                source_ids = correlation.get("source_scan_ids") if isinstance(correlation, dict) else None
-                has_provenance = bool(source_ids or edge.source_scan_id or graph.scan_id)
-                if not edge.traversable or not has_provenance or edge.target in visited:
+                if not directed_evidence_edge(edge) or edge.target in visited:
                     continue
                 if len(visited) >= _VISITED_NODE_LIMIT:
                     limit_reasons.add("visited_node_cap_reached")
@@ -396,7 +412,7 @@ def create_runtime_facts_bundle_from_correlation(
     if (
         freshness_policy.get("max_age_hours") != run.max_age_hours
         or freshness_policy.get("allow_stale") is not run.allow_stale
-        or input_snapshots != run.input_manifest
+        or _immutable_input_receipts(input_snapshots) != _immutable_input_receipts(run.input_manifest)
     ):
         raise RuntimeFactsBundleError("correlation_manifest_mismatch")
     input_freshness = {

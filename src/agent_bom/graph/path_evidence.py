@@ -140,6 +140,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                 "traversable": bool(edge.traversable),
                 "complete": bool(
                     edge.traversable
+                    and edge.direction == "directed"
                     and source_ids
                     and _has_relationship_provenance(edge)
                     and edge.source == source
@@ -160,15 +161,20 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
     # A path must contain at least one relationship. Without this guard a
     # single-node structural finding satisfies ``all([])`` and is promoted to
     # confirmed despite having no directed, provenance-backed hop.
-    all_complete = bool(receipts) and len(receipts) == max(len(path.hops) - 1, 0) and all(receipt["complete"] for receipt in receipts)
+    all_complete = (
+        bool(receipts)
+        and len(receipts) == max(len(path.hops) - 1, 0)
+        and all(receipt["complete"] and not receipt["truncated"] for receipt in receipts)
+    )
     stale = any(str(receipt["freshness"]).startswith("stale") for receipt in receipts)
     if not all_complete and path.reachability != "unlikely":
         path.reachability = "unknown"
         path.composite_risk = min(path.composite_risk, 39.0)
         if "incomplete_hop_evidence" not in path.reachability_basis:
             path.reachability_basis.append("incomplete_hop_evidence")
-    elif stale and path.reachability == "confirmed":
-        path.reachability = "likely"
+    elif stale:
+        if path.reachability == "confirmed":
+            path.reachability = "likely"
         if "stale_evidence_allowed" not in path.reachability_basis:
             path.reachability_basis.append("stale_evidence_allowed")
     elif all_complete and path.reachability in {"unknown", "likely"}:

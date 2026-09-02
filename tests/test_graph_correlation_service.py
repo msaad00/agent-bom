@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -139,6 +139,73 @@ async def test_allowed_stale_input_remains_visibly_stale(tmp_path: Path) -> None
     assert {item["freshness"] for item in completed.result_manifest["input_snapshots"]} == {"fresh", "stale_allowed"}
     output = store.load_graph(tenant_id="tenant-a", scan_id="corr-stale-allowed")
     assert output.edges[0].provenance["correlation"]["freshness"] == "stale_allowed"
+
+
+@pytest.mark.asyncio
+async def test_restart_revalidates_inputs_that_expired_while_queued(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    created_at = (NOW - timedelta(minutes=30)).isoformat()
+    store.save_graph(_graph("repo", created_at))
+    store.save_graph(_graph("image", created_at))
+    dormant = GraphCorrelationService(store, now=lambda: NOW)
+    await dormant.submit(CorrelationRequest("corr-expired-in-queue", "tenant-a", "idem-expired-in-queue", "queued", ("repo", "image"), 1))
+
+    resumed = GraphCorrelationService(store, now=lambda: NOW + timedelta(hours=2))
+    await resumed.start(tenants=["tenant-a"])
+    try:
+        failed = await resumed.wait("tenant-a", "corr-expired-in-queue", timeout_seconds=5)
+    finally:
+        await resumed.stop()
+
+    assert failed.status is CorrelationRunStatus.FAILED
+    assert failed.failure_code == "stale_input"
+    assert store.load_graph(tenant_id="tenant-a", scan_id="corr-expired-in-queue").nodes == {}
+
+
+@pytest.mark.asyncio
+async def test_restart_relabels_expired_inputs_when_stale_is_allowed(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    created_at = (NOW - timedelta(minutes=30)).isoformat()
+    store.save_graph(_graph("repo", created_at))
+    store.save_graph(_graph("image", created_at))
+    dormant = GraphCorrelationService(store, now=lambda: NOW)
+    await dormant.submit(
+        CorrelationRequest(
+            "corr-expired-allowed",
+            "tenant-a",
+            "idem-expired-allowed",
+            "queued stale allowed",
+            ("repo", "image"),
+            1,
+            allow_stale=True,
+        )
+    )
+
+    resumed = GraphCorrelationService(store, now=lambda: NOW + timedelta(hours=2))
+    await resumed.start(tenants=["tenant-a"])
+    try:
+        completed = await resumed.wait("tenant-a", "corr-expired-allowed", timeout_seconds=5)
+    finally:
+        await resumed.stop()
+
+    assert completed.status is CorrelationRunStatus.COMPLETE
+    assert {item["freshness"] for item in completed.result_manifest["input_snapshots"]} == {"stale_allowed"}
+    output = store.load_graph(tenant_id="tenant-a", scan_id="corr-expired-allowed")
+    assert {edge.provenance["correlation"]["freshness"] for edge in output.edges} == {"stale_allowed"}
+
+
+@pytest.mark.asyncio
+async def test_service_rejects_input_beyond_runtime_clock_skew(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    future = (NOW + timedelta(minutes=6)).isoformat()
+    store.save_graph(_graph("future", future))
+    store.save_graph(_graph("current", NOW.isoformat()))
+    service = GraphCorrelationService(store, now=lambda: NOW)
+
+    with pytest.raises(CorrelationServiceError, match="input_snapshot_in_future"):
+        await service.submit(CorrelationRequest("corr-future", "tenant-a", "idem-future", "future rejected", ("future", "current"), 1))
+
+    assert store.get_correlation_run(tenant_id="tenant-a", correlation_id="corr-future") is None
 
 
 @pytest.mark.asyncio
@@ -284,6 +351,43 @@ async def test_idempotent_replay_does_not_duplicate_run(tmp_path: Path) -> None:
 
     assert replay.correlation_id == first.correlation_id
     assert len(store.list_correlation_runs(tenant_id="tenant-a")) == 1
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_does_not_revalidate_aged_inputs(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    created_at = (NOW - timedelta(minutes=30)).isoformat()
+    store.save_graph(_graph("repo", created_at))
+    store.save_graph(_graph("image", created_at))
+    clock = {"now": NOW}
+    service = GraphCorrelationService(store, now=lambda: clock["now"], queue_capacity=2)
+    request = CorrelationRequest(
+        correlation_id="corr-replay-aged",
+        tenant_id="tenant-a",
+        idempotency_key="idem-replay-aged",
+        name="replay aged",
+        scan_ids=("repo", "image"),
+        max_age_hours=1,
+    )
+
+    first = await service.submit(request)
+    clock["now"] = NOW + timedelta(hours=2)
+    replay = await service.submit(request)
+
+    assert replay == first
+    assert replay.status is CorrelationRunStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_rejects_changed_immutable_request(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))
+    store.save_graph(_graph("image", "2026-08-30T11:00:00+00:00"))
+    service = GraphCorrelationService(store, now=lambda: NOW, queue_capacity=2)
+    await service.submit(CorrelationRequest("corr-replay-conflict", "tenant-a", "idem-conflict", "first", ("repo", "image"), 24))
+
+    with pytest.raises(ValueError, match="different correlation request"):
+        await service.submit(CorrelationRequest("corr-replay-conflict-new", "tenant-a", "idem-conflict", "changed", ("repo", "image"), 24))
 
 
 @pytest.mark.asyncio

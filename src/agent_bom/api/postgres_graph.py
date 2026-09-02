@@ -2439,6 +2439,20 @@ class PostgresGraphStore:
             ).fetchone()
         return _correlation_run_from_row(row) if row is not None else None
 
+    def get_correlation_run_by_idempotency_key(
+        self,
+        *,
+        tenant_id: str,
+        idempotency_key: str,
+    ) -> GraphCorrelationRun | None:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                f"SELECT {_CORRELATION_RUN_COLUMNS} FROM graph_correlation_runs WHERE tenant_id = %s AND idempotency_key = %s",  # nosec B608 - static internal column list
+                (tenant, idempotency_key),
+            ).fetchone()
+        return _correlation_run_from_row(row) if row is not None else None
+
     def complete_correlation_run(
         self,
         graph: UnifiedGraph,

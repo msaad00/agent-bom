@@ -7,6 +7,7 @@ from typing import Any
 
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.routes.graph import _derived_attack_paths
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion, compute_fused_attack_paths
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
@@ -202,6 +203,104 @@ def test_zero_hop_structural_candidate_cannot_be_confirmed() -> None:
     annotate_attack_path_evidence(path, graph)
 
     assert path.hop_evidence == []
+    assert path.reachability == "unknown"
+    assert path.composite_risk <= 39.0
+    assert "incomplete_hop_evidence" in path.reachability_basis
+
+
+def test_bidirectional_hop_remains_structural_not_confirmed() -> None:
+    graph = UnifiedGraph(scan_id="scan-a", tenant_id="tenant-a")
+    graph.add_node(UnifiedNode(id="workload:public", entity_type=EntityType.CLOUD_RESOURCE, label="public workload"))
+    graph.add_node(UnifiedNode(id="data_store:crown", entity_type=EntityType.DATA_STORE, label="crown jewel"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="workload:public",
+            target="data_store:crown",
+            relationship=RelationshipType.CAN_ACCESS,
+            direction="bidirectional",
+            traversable=True,
+            source_scan_id="scan-a",
+            provenance={"source": "modeled_policy"},
+        )
+    )
+    path = AttackPath(
+        source="workload:public",
+        target="data_store:crown",
+        hops=["workload:public", "data_store:crown"],
+        edges=[RelationshipType.CAN_ACCESS.value],
+        composite_risk=90.0,
+        reachability="likely",
+    )
+
+    annotate_attack_path_evidence(path, graph)
+
+    assert path.hop_evidence[0]["direction"] == "bidirectional"
+    assert path.hop_evidence[0]["complete"] is False
+    assert path.reachability == "unknown"
+    assert path.composite_risk <= 39.0
+
+
+def test_stale_allowed_hop_cannot_be_promoted_to_confirmed() -> None:
+    graph = UnifiedGraph(scan_id="corr-stale", tenant_id="tenant-a")
+    graph.add_node(UnifiedNode(id="workload:public", entity_type=EntityType.CLOUD_RESOURCE, label="public workload"))
+    graph.add_node(UnifiedNode(id="data_store:crown", entity_type=EntityType.DATA_STORE, label="crown jewel"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="workload:public",
+            target="data_store:crown",
+            relationship=RelationshipType.CAN_ACCESS,
+            source_scan_id="corr-stale",
+            provenance={"correlation": {"source_scan_ids": ["scan-a"], "freshness": "stale_allowed"}},
+        )
+    )
+    path = AttackPath(
+        source="workload:public",
+        target="data_store:crown",
+        hops=["workload:public", "data_store:crown"],
+        edges=[RelationshipType.CAN_ACCESS.value],
+        composite_risk=80.0,
+        reachability="likely",
+    )
+
+    annotate_attack_path_evidence(path, graph)
+
+    assert path.hop_evidence[0]["complete"] is True
+    assert path.reachability == "likely"
+    assert "stale_evidence_allowed" in path.reachability_basis
+    assert "directed_provenance_backed_hops" not in path.reachability_basis
+
+
+def test_bounded_analysis_cannot_promote_a_path_to_confirmed() -> None:
+    graph = UnifiedGraph(scan_id="corr-limited", tenant_id="tenant-a")
+    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+        status=GraphAnalysisState.LIMITED,
+        reason_codes=("path_limit_reached",),
+        limits={"path_limit": 1},
+        observed={"path_count": 1},
+    )
+    graph.add_node(UnifiedNode(id="workload:public", entity_type=EntityType.CLOUD_RESOURCE, label="public workload"))
+    graph.add_node(UnifiedNode(id="data_store:crown", entity_type=EntityType.DATA_STORE, label="crown jewel"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="workload:public",
+            target="data_store:crown",
+            relationship=RelationshipType.CAN_ACCESS,
+            source_scan_id="corr-limited",
+            provenance={"source": "modeled_policy"},
+        )
+    )
+    path = AttackPath(
+        source="workload:public",
+        target="data_store:crown",
+        hops=["workload:public", "data_store:crown"],
+        edges=[RelationshipType.CAN_ACCESS.value],
+        composite_risk=80.0,
+        reachability="likely",
+    )
+
+    annotate_attack_path_evidence(path, graph)
+
+    assert path.hop_evidence[0]["truncated"] is True
     assert path.reachability == "unknown"
     assert path.composite_risk <= 39.0
     assert "incomplete_hop_evidence" in path.reachability_basis

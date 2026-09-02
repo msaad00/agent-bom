@@ -199,6 +199,13 @@ class GraphStoreProtocol(Protocol):
 
     def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> GraphCorrelationRun | None: ...
 
+    def get_correlation_run_by_idempotency_key(
+        self,
+        *,
+        tenant_id: str,
+        idempotency_key: str,
+    ) -> GraphCorrelationRun | None: ...
+
     def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list[GraphCorrelationRun]: ...
 
     def update_correlation_run(
@@ -1834,6 +1841,24 @@ class SQLiteGraphStore:
             return None
         try:
             return sqlite_graph_store.get_correlation_run(conn, tenant_id=tenant_id, correlation_id=correlation_id)
+        finally:
+            conn.close()
+
+    def get_correlation_run_by_idempotency_key(
+        self,
+        *,
+        tenant_id: str,
+        idempotency_key: str,
+    ) -> GraphCorrelationRun | None:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return None
+        try:
+            return sqlite_graph_store.get_correlation_run_by_idempotency_key(
+                conn,
+                tenant_id=tenant_id,
+                idempotency_key=idempotency_key,
+            )
         finally:
             conn.close()
 

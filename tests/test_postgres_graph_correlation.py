@@ -153,6 +153,8 @@ def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None
     assert replay_created is False
     assert replay.correlation_id == created.correlation_id == "corr-1"
     assert store.get_correlation_run(tenant_id="other", correlation_id="corr-1") is None
+    assert store.get_correlation_run_by_idempotency_key(tenant_id="acme", idempotency_key="idem-1") == created
+    assert store.get_correlation_run_by_idempotency_key(tenant_id="other", idempotency_key="idem-1") is None
     assert [run.correlation_id for run in store.list_correlation_runs(tenant_id="acme")] == ["corr-1"]
 
     running = store.update_correlation_run(

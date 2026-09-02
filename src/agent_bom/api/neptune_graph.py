@@ -348,6 +348,14 @@ class NeptuneGraphStore:
     def get_correlation_run(self, *, tenant_id: str, correlation_id: str) -> "GraphCorrelationRun | None":
         self._unsupported("get_correlation_run")
 
+    def get_correlation_run_by_idempotency_key(
+        self,
+        *,
+        tenant_id: str,
+        idempotency_key: str,
+    ) -> "GraphCorrelationRun | None":
+        self._unsupported("get_correlation_run_by_idempotency_key")
+
     def complete_correlation_run(
         self,
         graph: UnifiedGraph,

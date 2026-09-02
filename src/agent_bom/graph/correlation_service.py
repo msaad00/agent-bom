@@ -141,6 +141,21 @@ class GraphCorrelationService:
         self._reconciled_tenants.clear()
 
     async def submit(self, request: CorrelationRequest) -> GraphCorrelationRun:
+        replay = await asyncio.to_thread(
+            self._store.get_correlation_run_by_idempotency_key,
+            tenant_id=request.tenant_id,
+            idempotency_key=request.idempotency_key,
+        )
+        if replay is not None:
+            replay_scan_ids = tuple(sorted(str(item.get("scan_id") or "") for item in replay.input_manifest))
+            if (
+                replay.name != request.name
+                or replay.max_age_hours != request.max_age_hours
+                or replay.allow_stale is not request.allow_stale
+                or replay_scan_ids != tuple(sorted(request.scan_ids))
+            ):
+                raise ValueError("idempotency key was already used for a different correlation request")
+            return replay
         manifest = await self._validate_inputs(request)
         now = self._now().astimezone(timezone.utc).isoformat()
         run = GraphCorrelationRun(

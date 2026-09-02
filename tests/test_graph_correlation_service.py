@@ -354,6 +354,43 @@ async def test_idempotent_replay_does_not_duplicate_run(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_idempotent_replay_does_not_revalidate_aged_inputs(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    created_at = (NOW - timedelta(minutes=30)).isoformat()
+    store.save_graph(_graph("repo", created_at))
+    store.save_graph(_graph("image", created_at))
+    clock = {"now": NOW}
+    service = GraphCorrelationService(store, now=lambda: clock["now"], queue_capacity=2)
+    request = CorrelationRequest(
+        correlation_id="corr-replay-aged",
+        tenant_id="tenant-a",
+        idempotency_key="idem-replay-aged",
+        name="replay aged",
+        scan_ids=("repo", "image"),
+        max_age_hours=1,
+    )
+
+    first = await service.submit(request)
+    clock["now"] = NOW + timedelta(hours=2)
+    replay = await service.submit(request)
+
+    assert replay == first
+    assert replay.status is CorrelationRunStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_rejects_changed_immutable_request(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))
+    store.save_graph(_graph("image", "2026-08-30T11:00:00+00:00"))
+    service = GraphCorrelationService(store, now=lambda: NOW, queue_capacity=2)
+    await service.submit(CorrelationRequest("corr-replay-conflict", "tenant-a", "idem-conflict", "first", ("repo", "image"), 24))
+
+    with pytest.raises(ValueError, match="different correlation request"):
+        await service.submit(CorrelationRequest("corr-replay-conflict-new", "tenant-a", "idem-conflict", "changed", ("repo", "image"), 24))
+
+
+@pytest.mark.asyncio
 async def test_queue_backpressure_fails_second_run_without_output(tmp_path: Path) -> None:
     store = SQLiteGraphStore(tmp_path / "graph.db")
     store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))

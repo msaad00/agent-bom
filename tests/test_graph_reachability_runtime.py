@@ -340,6 +340,51 @@ def test_signed_bundle_blocks_first_jsonrpc_tool_call():
     assert blocked["evidence_freshness"] == "fresh"
 
 
+def test_runtime_facts_ignore_bidirectional_structural_hops() -> None:
+    from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+    from agent_bom.graph.container import AttackPath
+    from agent_bom.graph.path_evidence import annotate_attack_path_evidence
+    from agent_bom.runtime.correlation_facts import _reachability_from_correlation_graph
+
+    graph = UnifiedGraph(scan_id="corr-bidirectional", tenant_id="default")
+    graph.add_node(
+        UnifiedNode(
+            id="agent:runtime",
+            entity_type=EntityType.AGENT,
+            label="runtime",
+            attributes={"runtime_id": "agent-a"},
+        )
+    )
+    graph.add_node(UnifiedNode(id="tool:delete-db", entity_type=EntityType.TOOL, label="delete_db"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="agent:runtime",
+            target="tool:delete-db",
+            relationship=RelationshipType.REACHES_TOOL,
+            direction="bidirectional",
+            traversable=True,
+            source_scan_id="source-a",
+            provenance={"correlation": {"source_scan_ids": ["source-a"]}},
+        )
+    )
+    path = AttackPath(
+        source="agent:runtime",
+        target="tool:delete-db",
+        hops=["agent:runtime", "tool:delete-db"],
+        edges=[RelationshipType.REACHES_TOOL.value],
+        reachability="likely",
+        composite_risk=80.0,
+    )
+
+    annotate_attack_path_evidence(path, graph)
+    reachability, analysis = _reachability_from_correlation_graph(graph)
+
+    assert path.reachability == "unknown"
+    assert path.hop_evidence[0]["complete"] is False
+    assert reachability.reaches_privileged("agent-a", "delete_db") is None
+    assert analysis["complete"] is True
+
+
 def test_bundle_hot_refresh_replaces_reachability_without_restart():
     calls = 0
 

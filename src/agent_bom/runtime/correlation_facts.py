@@ -293,6 +293,13 @@ def _reachability_from_correlation_graph(graph: Any) -> tuple[ReachabilityMap, d
     by_agent: dict[str, AgentReachability] = {}
     limit_reasons: set[str] = set()
     max_visited = 0
+
+    def directed_evidence_edge(edge: Any) -> bool:
+        correlation = edge.provenance.get("correlation") if isinstance(edge.provenance, dict) else None
+        source_ids = correlation.get("source_scan_ids") if isinstance(correlation, dict) else None
+        has_provenance = bool(source_ids or edge.source_scan_id or graph.scan_id)
+        return bool(edge.traversable and edge.direction == "directed" and has_provenance)
+
     for agent in sorted(graph.nodes.values(), key=lambda node: node.id):
         if agent.entity_type is not EntityType.AGENT:
             continue
@@ -314,16 +321,13 @@ def _reachability_from_correlation_graph(graph: Any) -> tuple[ReachabilityMap, d
             source, depth = queue.popleft()
             if depth >= _DEPTH_LIMIT:
                 if any(
-                    edge.traversable and edge.target not in visited and edge.target in graph.nodes
+                    directed_evidence_edge(edge) and edge.target not in visited and edge.target in graph.nodes
                     for edge in graph.adjacency.get(source, [])
                 ):
                     limit_reasons.add("depth_cap_reached")
                 continue
             for edge in graph.adjacency.get(source, []):
-                correlation = edge.provenance.get("correlation") if isinstance(edge.provenance, dict) else None
-                source_ids = correlation.get("source_scan_ids") if isinstance(correlation, dict) else None
-                has_provenance = bool(source_ids or edge.source_scan_id or graph.scan_id)
-                if not edge.traversable or not has_provenance or edge.target in visited:
+                if not directed_evidence_edge(edge) or edge.target in visited:
                     continue
                 if len(visited) >= _VISITED_NODE_LIMIT:
                     limit_reasons.add("visited_node_cap_reached")

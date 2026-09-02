@@ -189,6 +189,14 @@ describe("board fit budget", () => {
     expect(shouldCollapsePath(8)).toBe(false);
   });
 
+  it("collapses the same chain inside a narrow master-detail panel", () => {
+    expect(shouldCollapsePath(8, 740)).toBe(true);
+    const layout = buildPathGraphLayout(makePath(8), { availableWidth: 740 });
+    expect(layout.collapsed).toBe(true);
+    expect(layout.nodes).toHaveLength(3);
+    expect(layout.width * MIN_READABLE_SCALE).toBeLessThanOrEqual(740);
+  });
+
   it("collapses only the chains that cannot fit at a readable scale", () => {
     for (const count of [1, 2, 3, 4, 5, 7, 8]) {
       expect(naturalBoardWidth(count)).toBeLessThanOrEqual(MAX_READABLE_BOARD_WIDTH);

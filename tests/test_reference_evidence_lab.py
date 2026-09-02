@@ -62,8 +62,10 @@ def test_reference_lab_proves_exact_end_to_end_chain() -> None:
     }
     assert any(receipt["runtime_observed_state"] == "observed" for receipt in proof["hop_evidence"])
     assert payload["runtime_control"]["strict_block"] == "verified"
-    assert payload["runtime_control"]["evidence_input"] == "examples/reference-evidence-lab/runtime-events.jsonl"
-    assert payload["runtime_control"]["evidence_sha256"].startswith("sha256:")
+    assert payload["runtime_control"]["verification"] == "live_jsonrpc_gateway_smoke"
+    assert payload["runtime_control"]["allow_result"] == "upstream_called"
+    assert payload["runtime_control"]["blocked_error_code"] == -32001
+    assert payload["runtime_control"]["policy_source"] == "graph_reachability"
     assert payload["runtime_control"]["tool_id"] == "mcp-tool:reference-lab:render-untrusted-image"
     assert proof["analysis"]["status"] == "complete"
 
@@ -72,6 +74,22 @@ def test_reference_lab_proves_exact_end_to_end_chain() -> None:
     assert capture["graph"]["attack_paths"] == [proof]
     assert len(capture["snapshots"]) == 6
     assert all(snapshot["snapshot_kind"] == "scan" for snapshot in capture["snapshots"])
+
+
+def test_reference_lab_receipts_bind_real_input_artifacts_and_parsers() -> None:
+    payload = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    receipts = payload["source_artifacts"]
+
+    assert set(receipts) == {"dependency", "sbom", "kubernetes", "mcp", "identity"}
+    assert receipts["dependency"]["parser"] == "agent_bom.parsers.scan_project_directory"
+    assert receipts["sbom"]["parser"] == "agent_bom.sbom.load_sbom"
+    assert receipts["kubernetes"]["parser"] == "agent_bom.iac.scan_iac_with_context + yaml.safe_load_all"
+    assert receipts["mcp"]["parser"] == "agent_bom.discovery.parse_mcp_config"
+    assert receipts["identity"]["parser"] == "strict local identity model parser"
+    for receipt in receipts.values():
+        source = ROOT / receipt["path"]
+        assert source.is_file()
+        assert receipt["sha256"] == f"sha256:{hashlib.sha256(source.read_bytes()).hexdigest()}"
 
 
 def test_reference_lab_never_uses_mutable_identity_for_cross_source_joins() -> None:

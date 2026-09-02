@@ -215,7 +215,7 @@ test("scan flow reaches result view and exports graph JSON", async ({ page }) =>
 
   await expect(page).toHaveURL(/\/scan\?id=job-e2e/);
   await expect(page.getByRole("heading", { name: "Scan Results" })).toBeVisible();
-  await expect(page.getByText("Vulnerabilities")).toBeVisible();
+  await expect(page.getByText("Vulnerabilities", { exact: true })).toBeVisible();
   await expect(page.getByText("Blast Radius (1)")).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");

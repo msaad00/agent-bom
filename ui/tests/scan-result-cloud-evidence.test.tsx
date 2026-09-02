@@ -99,6 +99,14 @@ describe("ScanResultView cloud evidence", () => {
     expect(
       screen.getByText(/Cloud inventory and posture evidence was persisted/i),
     ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Continue from this scan" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Findings/i })).toHaveAttribute("href", "/findings?scan=scan-cloud-1");
+    expect(screen.getByRole("link", { name: /Investigation/i })).toHaveAttribute(
+      "href",
+      "/security-graph?scan=scan-cloud-1&investigate=1&lens=attack-path",
+    );
+    expect(screen.getByText("Open graph evidence; no attack path is asserted")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Remediation/i })).toHaveAttribute("href", "/remediation?scan=scan-cloud-1");
   });
 
   it("filters and paginates dense blast-radius evidence instead of rendering every path", async () => {

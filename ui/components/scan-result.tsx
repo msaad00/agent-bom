@@ -268,6 +268,37 @@ export function ScanResultView({ id }: { id: string }) {
         </div>
       )}
 
+      {job?.status === "done" && result ? (
+        <section aria-label="Continue from this scan" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Continue from this scan</h2>
+            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+              Review persisted evidence, investigate graph relationships, then hand verified fixes to remediation.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Link href={`/findings?scan=${encodeURIComponent(id)}`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">
+              <span className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]"><AlertTriangle className="h-4 w-4 text-amber-500" /> Findings</span>
+              <span className="mt-1 block text-[11px] text-[color:var(--text-secondary)]">
+                {summary ? `${summary.total_vulnerabilities} vulnerabilities recorded` : "Review findings persisted by this scan"}
+              </span>
+            </Link>
+            <Link href={`/security-graph?scan=${encodeURIComponent(id)}&investigate=1&lens=attack-path`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">
+              <span className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]"><GitBranch className="h-4 w-4 text-emerald-500" /> Investigation</span>
+              <span className="mt-1 block text-[11px] text-[color:var(--text-secondary)]">
+                {blastRadius.length > 0 ? `${blastRadius.length} path candidates available` : "Open graph evidence; no attack path is asserted"}
+              </span>
+            </Link>
+            <Link href={`/remediation?scan=${encodeURIComponent(id)}`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">
+              <span className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]"><Wrench className="h-4 w-4 text-sky-500" /> Remediation</span>
+              <span className="mt-1 block text-[11px] text-[color:var(--text-secondary)]">
+                {result.remediation_plan?.length ? `${result.remediation_plan.length} recommendations available` : "No remediation recommendation was generated"}
+              </span>
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       {repoUrl && result ? (
         <RepoScanOverviewPanel
           scanId={id}
@@ -298,18 +329,18 @@ export function ScanResultView({ id }: { id: string }) {
             </button>
             <div className="flex flex-wrap items-center gap-2">
               <Link
-                href={`/scan?id=${id}&view=mesh`}
+                href={`/security-graph?scan=${encodeURIComponent(id)}&lens=mesh`}
                 className="flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-700 transition-colors hover:text-cyan-900 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-300 dark:hover:text-cyan-200"
               >
                 <Server className="w-3 h-3" />
-                View Mesh
+                Open agent mesh
               </Link>
               <Link
-                href={`/scan?id=${id}&view=attack-flow`}
+                href={`/security-graph?scan=${encodeURIComponent(id)}&investigate=1&lens=attack-path`}
                 className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-700 transition-colors hover:text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:text-emerald-200"
               >
                 <GitBranch className="w-3 h-3" />
-                View Attack Flow
+                Open Investigation
               </Link>
             </div>
           </div>

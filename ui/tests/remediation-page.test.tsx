@@ -105,6 +105,16 @@ describe("RemediationPage", () => {
     expect(screen.getByText(/25 per page/i)).toBeInTheDocument();
   });
 
+  it("loads remediation for an explicit scan handoff instead of the latest job", async () => {
+    navigationState.query = "scan=scan-from-results";
+    apiMock.getRemediation.mockResolvedValue([remediationItem("openssl", "critical")]);
+
+    render(<RemediationPage />);
+
+    await waitFor(() => expect(apiMock.getRemediation).toHaveBeenCalledWith("scan-from-results"));
+    expect(apiMock.listJobs).not.toHaveBeenCalled();
+  });
+
   it("singularizes the caption for a single matching package", async () => {
     apiMock.getRemediation.mockResolvedValue([remediationItem("openssl", "critical")]);
 

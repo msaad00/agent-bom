@@ -24,9 +24,25 @@ const JOURNEY = [
   { label: "Discover", detail: "Inventory", icon: Search },
   { label: "Scan", detail: "Evidence", icon: ShieldCheck },
   { label: "Correlate", detail: "Exact IDs", icon: Network },
-  { label: "Prioritize", detail: "Paths", icon: GitBranch },
-  { label: "Enforce & verify", detail: "Runtime", icon: CheckCircle2 },
+  { label: "Investigate", detail: "Paths", icon: GitBranch },
+  { label: "Enforce", detail: "Opt-in", icon: CheckCircle2 },
 ] as const;
+
+type EvidenceAge = "fresh" | "stale" | "future" | "unknown";
+
+function evidenceAge(createdAt: string | undefined, maxAgeHours: number, now = Date.now()): EvidenceAge {
+  const observedAt = Date.parse(createdAt ?? "");
+  if (!Number.isFinite(observedAt)) return "unknown";
+  if (observedAt - now > 5 * 60 * 1000) return "future";
+  return now - observedAt <= maxAgeHours * 60 * 60 * 1000 ? "fresh" : "stale";
+}
+
+function evidenceAgeLabel(age: EvidenceAge): string {
+  if (age === "fresh") return "Fresh";
+  if (age === "stale") return "Outside freshness bound";
+  if (age === "future") return "Future timestamp rejected";
+  return "Timestamp unavailable";
+}
 
 function freshnessBoundLabel(hours: number): string {
   return hours % 24 === 0
@@ -66,14 +82,21 @@ export function GraphCorrelationWorkflow({
     () => snapshots.filter((snapshot) => snapshot.node_count > 0 && (snapshot.snapshot_kind ?? "scan") === "scan"),
     [snapshots],
   );
+  const selectable = useMemo(
+    () => eligible.filter((snapshot) => {
+      const age = evidenceAge(snapshot.created_at, maxAgeHours);
+      return age === "fresh" || (allowStale && age === "stale");
+    }),
+    [allowStale, eligible, maxAgeHours],
+  );
 
   useEffect(() => {
-    const eligibleIds = eligible.slice(0, 32).map((snapshot) => snapshot.scan_id).sort();
+    const eligibleIds = selectable.slice(0, 32).map((snapshot) => snapshot.scan_id).sort();
     setSelected((current) => {
       const retained = current.filter((scanId) => eligibleIds.includes(scanId));
       return retained.length > 0 ? retained : eligibleIds;
     });
-  }, [eligible]);
+  }, [selectable]);
 
   useEffect(() => {
     if (!initialRun) return;
@@ -129,7 +152,7 @@ export function GraphCorrelationWorkflow({
     { done: receiptCount >= 2, detail: receiptCount > 0 ? `${receiptCount} receipts` : "Evidence" },
     { done: isComplete, detail: isFailed ? "Failed" : run?.status ?? "Exact IDs" },
     { done: isComplete && attackPaths > 0, detail: isComplete ? `${attackPaths} paths` : "Paths" },
-    { done: false, detail: hasRuntimeReceipt ? "Observed" : "Opt-in runtime" },
+    { done: false, detail: hasRuntimeReceipt ? "Observed; block opt-in" : "Opt-in runtime" },
   ];
   const activeFreshnessBound = run?.max_age_hours ?? maxAgeHours;
 
@@ -203,8 +226,12 @@ export function GraphCorrelationWorkflow({
               {run.input_manifest.map((receipt) => (
                 <div key={receipt.scan_id} className="min-w-[8.5rem] flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">
                   <p className="font-medium text-[color:var(--foreground)]">{sourceLabel(receipt.source_kinds, receipt.scan_id)}</p>
-                  <p className={receipt.freshness === "stale_allowed" ? "mt-1 text-[10px] text-amber-600 dark:text-amber-300" : "mt-1 text-[10px] text-emerald-600 dark:text-emerald-300"}>
-                    {receipt.freshness === "stale_allowed" ? "Stale allowed" : "Fresh receipt"}
+                  <p className={receipt.freshness === "stale_allowed" || evidenceAge(receipt.created_at, run.max_age_hours) === "stale" ? "mt-1 text-[10px] text-amber-700 dark:text-amber-300" : "mt-1 text-[10px] text-emerald-700 dark:text-emerald-300"}>
+                    {receipt.freshness === "stale_allowed"
+                      ? "Stale allowed at run"
+                      : evidenceAge(receipt.created_at, run.max_age_hours) === "stale"
+                        ? "Expired since run"
+                        : "Fresh receipt"}
                   </p>
                 </div>
               ))}
@@ -279,7 +306,8 @@ export function GraphCorrelationWorkflow({
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {snapshots.map((snapshot) => {
           const nested = (snapshot.snapshot_kind ?? "scan") !== "scan";
-          const disabled = nested || snapshot.node_count < 1;
+          const age = evidenceAge(snapshot.created_at, maxAgeHours);
+          const disabled = nested || snapshot.node_count < 1 || age === "future" || age === "unknown" || (!allowStale && age === "stale");
           return (
             <label
               key={snapshot.scan_id}
@@ -303,6 +331,11 @@ export function GraphCorrelationWorkflow({
                   {snapshot.node_count} nodes · {snapshot.edge_count} edges · {formatDate(snapshot.created_at)}
                 </span>
                 {nested ? <span className="mt-1 block text-amber-600 dark:text-amber-300">Nested correlation excluded in v1</span> : null}
+                {!nested && snapshot.node_count > 0 ? (
+                  <span className={`mt-1 block ${age === "fresh" ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
+                    {evidenceAgeLabel(age)}
+                  </span>
+                ) : null}
               </span>
             </label>
           );

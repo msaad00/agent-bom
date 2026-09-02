@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GraphCorrelationWorkflow } from "@/components/graph-correlation-workflow";
 import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api";
@@ -47,9 +47,14 @@ function run(status: GraphCorrelationRun["status"]): GraphCorrelationRun {
 
 describe("GraphCorrelationWorkflow", () => {
   beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-31T00:00:00Z"));
     apiMock.createGraphCorrelation.mockReset();
     apiMock.getGraphCorrelation.mockReset();
     apiMock.createGraphCorrelation.mockResolvedValue(run("complete"));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("loads the latest completed correlation as the primary automated evidence view", async () => {
@@ -60,14 +65,30 @@ describe("GraphCorrelationWorkflow", () => {
     expect(screen.getByText("Discover")).toBeInTheDocument();
     expect(screen.getByText("Scan")).toBeInTheDocument();
     expect(screen.getByText("Correlate")).toBeInTheDocument();
-    expect(screen.getByText("Prioritize")).toBeInTheDocument();
-    expect(screen.getByText("Enforce & verify")).toBeInTheDocument();
+    expect(screen.getByText("Investigate")).toBeInTheDocument();
+    expect(screen.getByText("Enforce")).toBeInTheDocument();
     expect(screen.getByText("Image + SBOM")).toBeInTheDocument();
     expect(screen.getByText("Repository")).toBeInTheDocument();
     expect(screen.getByText("2 confirmed attack paths")).toBeInTheDocument();
     expect(screen.queryByLabelText("Correlation name")).not.toBeVisible();
     expect(apiMock.createGraphCorrelation).not.toHaveBeenCalled();
     expect(screen.getByText("Opt-in runtime")).toBeInTheDocument();
+  });
+
+  it("does not preselect evidence outside the confirmed freshness bound", () => {
+    const stale = { ...snapshots[0]!, scan_id: "stale-repo", created_at: "2026-08-01T00:00:00Z" };
+    render(<GraphCorrelationWorkflow snapshots={[stale, snapshots[1]!]} onOpenSnapshot={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Run custom correlation"));
+    expect(screen.getByLabelText("stale-repo")).toBeDisabled();
+    expect(screen.getByLabelText("stale-repo")).not.toBeChecked();
+    expect(screen.getByText("Outside freshness bound")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Allow stale inputs and label them stale"));
+    expect(screen.getByLabelText("stale-repo")).toBeEnabled();
+    expect(screen.getByLabelText("stale-repo")).not.toBeChecked();
+    fireEvent.click(screen.getByLabelText("stale-repo"));
+    expect(screen.getByLabelText("stale-repo")).toBeChecked();
   });
 
   it("keeps custom correlation behind progressive disclosure with safe defaults", async () => {

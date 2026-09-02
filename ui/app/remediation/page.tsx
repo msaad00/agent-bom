@@ -358,6 +358,7 @@ export default function RemediationPageWrapper() {
 function RemediationPage() {
   const searchParams = useSearchParams();
   const queryParam = (searchParams.get("q") ?? "").trim().toLowerCase();
+  const scanParam = (searchParams.get("scan") ?? "").trim();
   const [items, setItems] = useState<RemediationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -377,21 +378,24 @@ function RemediationPage() {
     setLoading(true);
     setError("");
     try {
-      const jobsResp = await api.listJobs();
-      const doneJob = jobsResp.jobs
-        .filter((j) => j.status === "done")
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() -
-            new Date(a.created_at).getTime()
-        )[0];
-
-      if (!doneJob) {
+      let targetJobId = scanParam;
+      if (!targetJobId) {
+        const jobsResp = await api.listJobs();
+        const doneJob = jobsResp.jobs
+          .filter((j) => j.status === "done")
+          .sort(
+            (a, b) =>
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime()
+          )[0];
+        targetJobId = doneJob?.job_id ?? "";
+      }
+      if (!targetJobId) {
         setItems([]);
         return;
       }
 
-      const remediation = await api.getRemediation(doneJob.job_id);
+      const remediation = await api.getRemediation(targetJobId);
       setItems(remediation);
 
       // Non-fatal: surface any tickets already filed for these findings so the
@@ -409,7 +413,7 @@ function RemediationPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scanParam]);
 
   const upsertTicket = useCallback((ticket: TicketLink) => {
     setTicketsByFinding((prev) => ({ ...prev, [ticket.dedupe_key]: ticket }));

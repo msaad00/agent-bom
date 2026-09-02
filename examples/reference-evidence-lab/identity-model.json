@@ -1,0 +1,18 @@
+{
+  "schema_version": "agent-bom.reference-identity-model/v1",
+  "workload_identity": {
+    "runtime_id": "reference-evidence-workload",
+    "provider_identity_id": "local:reference-evidence-workload"
+  },
+  "permissions": [
+    {
+      "relationship": "has_permission",
+      "target": {
+        "resource_id": "local:object-store:customer-records",
+        "label": "Modeled customer records",
+        "data_sensitivity": "restricted",
+        "data_classification_tier": "crown_jewel"
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:4f3e958765f3479f7f636e55c9f8f7cba7e00f0dcae1764f1f8c61f2c7b6827e",
+  "artifact_sha256": "sha256:145d4c2ae7acb5fd8098ef07cae43836b996b7da8c0420fff3583bac3eaec304",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -190,7 +190,7 @@
             "directed_provenance_backed_hops"
           ],
           "source": "service:reference-api",
-          "summary": "Internet-exposed Public reference API service moves to reference-evidence-api workload; moves to reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a; moves to pillow@9.0.0; exploits vulnerability CVE-2023-4863; moves to render_untrusted_image; moves to reference-evidence-workload; uses effective permission to reach Modeled customer records — reaching sensitive data (7 hop chain).",
+          "summary": "Internet-exposed Public reference-evidence-api service moves to reference-evidence-api workload; moves to reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a; moves to pillow@9.0.0; exploits vulnerability CVE-2023-4863; moves to render_untrusted_image; moves to reference-evidence-workload; uses effective permission to reach Modeled customer records — reaching sensitive data (7 hop chain).",
           "target": "data-store:reference-customer-records",
           "technique_mappings": [
             {
@@ -636,7 +636,7 @@
               "observation_count": 1,
               "observations": [
                 {
-                  "attribute_digest": "sha256:7deb5d99b38f44e2d651f3242209cd5a82ad4ae6ae3b3bdaeebe5b92f24d6304",
+                  "attribute_digest": "sha256:97d8c3e82c5107658027db1923a02dd257ce767dc3e49e49c936a5dd080793b3",
                   "data_sources": [
                     "kubernetes_iac"
                   ],
@@ -652,7 +652,8 @@
               ]
             },
             "modeled": true,
-            "runtime_id": "reference-evidence-workload"
+            "runtime_id": "reference-evidence-workload",
+            "service_account": "reference-evidence-workload"
           },
           "canonical_id": "kubernetes-uid:495b5f42-47ae-51f8-918f-5f86cb1e9ad5",
           "category_uid": 5,
@@ -681,7 +682,7 @@
               "observation_count": 2,
               "observations": [
                 {
-                  "attribute_digest": "sha256:350f0b711aa4b4672e3fcf78ddde1eafc46d8954ef7a46f83031303f65b8ec25",
+                  "attribute_digest": "sha256:d62dfbc511d29d6e636df6af8d6094fba8311e766c87028f1b7c1e131b3693ca",
                   "data_sources": [
                     "cyclonedx_sbom"
                   ],
@@ -710,7 +711,7 @@
             },
             "image_digest": "sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a",
             "modeled": true,
-            "sbom": "sbom.cdx.json"
+            "sbom": "examples/reference-evidence-lab/sbom.cdx.json"
           },
           "canonical_id": "96ba397c-b3d9-5d6a-8121-e4e9d99aa521",
           "category_uid": 5,
@@ -876,7 +877,7 @@
           "entity_type": "server",
           "first_seen": "2026-08-30T04:02:00+00:00",
           "id": "service:reference-api",
-          "label": "Public reference API service",
+          "label": "Public reference-evidence-api service",
           "last_seen": "2026-08-30T04:02:00+00:00",
           "risk_score": 8.0,
           "severity": "high",
@@ -893,7 +894,7 @@
               "observation_count": 2,
               "observations": [
                 {
-                  "attribute_digest": "sha256:dd33cc07d5be69303ff7f726c5b3f5d1d840672ff8146e2d1a42adeab2416cc1",
+                  "attribute_digest": "sha256:c6a5a1225dbbf58c9f1b02d35d46c806d39411325b9a67e9e217dd03f447f2e2",
                   "data_sources": [
                     "gateway_runtime"
                   ],
@@ -921,7 +922,8 @@
               ]
             },
             "modeled": true,
-            "provider_identity_id": "local:reference-evidence-workload"
+            "provider_identity_id": "local:reference-evidence-workload",
+            "runtime_id": "reference-evidence-workload"
           },
           "canonical_id": "provider-identity:local:reference-evidence-workload",
           "category_uid": 3,
@@ -945,13 +947,14 @@
         },
         {
           "attributes": {
+            "content_sha256": "sha256:9e6856a1d9cd2758fdd94a6547fa4ba41f07b9689770cc417cb382363a36f579",
             "correlation": {
               "conflict_fields": [],
-              "identity_basis": "repository_commit_path",
+              "identity_basis": "snapshot_scoped_missing_exact_identity",
               "observation_count": 1,
               "observations": [
                 {
-                  "attribute_digest": "sha256:213f9794e65b1a1edce00c3a22f2524cc6b26b15ebdcb590074e9a6ec7b0fb68",
+                  "attribute_digest": "sha256:ac0b6ab3f03c96d7e7c7ecc305b29afd94048a0f9ff4dd56bd72144eb99341d9",
                   "data_sources": [
                     "repository_parser"
                   ],
@@ -966,7 +969,6 @@
                 "reference-repository-scan"
               ]
             },
-            "repository_commit": "a9f53db346d078d26f8f53c6cc6ee98e3230f284",
             "repository_path": "examples/reference-evidence-lab/pinned-package.txt"
           },
           "canonical_id": "1d50f955-4bfc-5013-b023-5a92383660ae",
@@ -1012,7 +1014,7 @@
                   "source_node_id": "tool:mcp:render-untrusted-image"
                 },
                 {
-                  "attribute_digest": "sha256:54ae7c9fd01a7f0a0b6b3157de7117f037e2d318e3d3476150561c1147e8432f",
+                  "attribute_digest": "sha256:b0d00c0152bffc92c760bb9a5662805b9ef88b8daa132cc0d93565cb242eae9e",
                   "data_sources": [
                     "gateway_runtime"
                   ],
@@ -1028,6 +1030,7 @@
                 "reference-runtime-observation"
               ]
             },
+            "observation": "live-jsonrpc-allow",
             "stable_id": "mcp-tool:reference-lab:render-untrusted-image"
           },
           "canonical_id": "mcp-tool:reference-lab:render-untrusted-image",
@@ -1250,7 +1253,7 @@
       {
         "age_hours": 0.083333,
         "created_at": "2026-08-30T04:01:00+00:00",
-        "digest": "sha256:43ae07eea524a12fa1c705f617cb047e2d60e156080848bdd1b9fb1013f74c05",
+        "digest": "sha256:05cc7f026527282428afea8d2ad300715e518b21b321282225528508e9abaaa1",
         "edge_count": 2,
         "freshness": "fresh",
         "node_count": 3,
@@ -1263,7 +1266,7 @@
       {
         "age_hours": 0.066667,
         "created_at": "2026-08-30T04:02:00+00:00",
-        "digest": "sha256:aa238a3c6ee09272c3b478a7349cfae0ad122343f429d5ea3159aa458c7369b6",
+        "digest": "sha256:7d00b67fe7aac20b4dece0b68254715235bfd1f2a8e4b7dc98655eb7a73f8941",
         "edge_count": 2,
         "freshness": "fresh",
         "node_count": 3,
@@ -1287,7 +1290,7 @@
       {
         "age_hours": 0.1,
         "created_at": "2026-08-30T04:00:00+00:00",
-        "digest": "sha256:0ed16da9085cec78d09d92bad624ce3e6e8053fdec42ee4a075c5779cf5906ac",
+        "digest": "sha256:845804f1cb3b0b85631ef2760b1a8b62aee70d3bfc3ca89b058fa5b8b32f3e79",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1299,7 +1302,7 @@
       {
         "age_hours": 0.033333,
         "created_at": "2026-08-30T04:04:00+00:00",
-        "digest": "sha256:ae75a03e5813908f631cbd6d5ecf93cd8bf8d7286ca54c15323791026f470981",
+        "digest": "sha256:a18e6616997dade12ec3f365d88236da77ac140381c52e811412525fbe765d9c",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1309,7 +1312,7 @@
         ]
       }
     ],
-    "manifest_sha256": "sha256:d0d6106e7790237f34bcf5487b2a1f0f60d686b2e4d4d4fb54a3f2f4a10a3a59",
+    "manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -1369,7 +1372,7 @@
         {
           "age_hours": 0.083333,
           "created_at": "2026-08-30T04:01:00+00:00",
-          "digest": "sha256:43ae07eea524a12fa1c705f617cb047e2d60e156080848bdd1b9fb1013f74c05",
+          "digest": "sha256:05cc7f026527282428afea8d2ad300715e518b21b321282225528508e9abaaa1",
           "edge_count": 2,
           "freshness": "fresh",
           "node_count": 3,
@@ -1382,7 +1385,7 @@
         {
           "age_hours": 0.066667,
           "created_at": "2026-08-30T04:02:00+00:00",
-          "digest": "sha256:aa238a3c6ee09272c3b478a7349cfae0ad122343f429d5ea3159aa458c7369b6",
+          "digest": "sha256:7d00b67fe7aac20b4dece0b68254715235bfd1f2a8e4b7dc98655eb7a73f8941",
           "edge_count": 2,
           "freshness": "fresh",
           "node_count": 3,
@@ -1406,7 +1409,7 @@
         {
           "age_hours": 0.1,
           "created_at": "2026-08-30T04:00:00+00:00",
-          "digest": "sha256:0ed16da9085cec78d09d92bad624ce3e6e8053fdec42ee4a075c5779cf5906ac",
+          "digest": "sha256:845804f1cb3b0b85631ef2760b1a8b62aee70d3bfc3ca89b058fa5b8b32f3e79",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1418,7 +1421,7 @@
         {
           "age_hours": 0.033333,
           "created_at": "2026-08-30T04:04:00+00:00",
-          "digest": "sha256:ae75a03e5813908f631cbd6d5ecf93cd8bf8d7286ca54c15323791026f470981",
+          "digest": "sha256:a18e6616997dade12ec3f365d88236da77ac140381c52e811412525fbe765d9c",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1431,7 +1434,7 @@
       "output": {
         "attack_path_count": 1,
         "edge_count": 8,
-        "graph_digest_sha256": "sha256:2f4b28034c99a1d95923da92178b3637dcf594e843351900e13b0a14596485db",
+        "graph_digest_sha256": "sha256:c57cdac42dd6efcc03eda31d2d84e19031661b832a744f5f69b8de6e59b8002c",
         "node_count": 9,
         "scan_id": "reference-evidence-correlation-v1"
       },
@@ -1662,7 +1665,7 @@
       "directed_provenance_backed_hops"
     ],
     "source": "service:reference-api",
-    "summary": "Internet-exposed Public reference API service moves to reference-evidence-api workload; moves to reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a; moves to pillow@9.0.0; exploits vulnerability CVE-2023-4863; moves to render_untrusted_image; moves to reference-evidence-workload; uses effective permission to reach Modeled customer records — reaching sensitive data (7 hop chain).",
+    "summary": "Internet-exposed Public reference-evidence-api service moves to reference-evidence-api workload; moves to reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a; moves to pillow@9.0.0; exploits vulnerability CVE-2023-4863; moves to render_untrusted_image; moves to reference-evidence-workload; uses effective permission to reach Modeled customer records — reaching sensitive data (7 hop chain).",
     "target": "data-store:reference-customer-records",
     "technique_mappings": [
       {
@@ -1705,16 +1708,20 @@
     ]
   },
   "runtime_control": {
-    "blocked_event": "reference-blocked-1",
-    "evidence_input": "examples/reference-evidence-lab/runtime-events.jsonl",
-    "evidence_sha256": "sha256:b653a330bed8fb2f190975a5c4b9621d98da235f05242542cde37cca6d8b9ce8",
+    "allow_result": "upstream_called",
+    "blocked_error_code": -32001,
+    "blocked_event": "gateway.graph_reachability_blocked",
+    "correlation_id": "reference-evidence-correlation-v1",
     "failure_mode": "deny",
     "global_default": "off",
-    "observed_event": "reference-observed-1",
+    "manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+    "observed_event": "live-jsonrpc-allow",
     "policy_id": "strict-correlated-evidence",
+    "policy_source": "graph_reachability",
     "runtime_id": "reference-evidence-workload",
     "strict_block": "verified",
-    "tool_id": "mcp-tool:reference-lab:render-untrusted-image"
+    "tool_id": "mcp-tool:reference-lab:render-untrusted-image",
+    "verification": "live_jsonrpc_gateway_smoke"
   },
   "scanner_evidence": {
     "advisory": "CVE-2023-4863",
@@ -1728,5 +1735,32 @@
     "scanner_manifest": "isolated temporary requirements.txt",
     "severity": "high"
   },
-  "schema_version": "agent-bom.reference-evidence-lab/v1"
+  "schema_version": "agent-bom.reference-evidence-lab/v1",
+  "source_artifacts": {
+    "dependency": {
+      "parser": "agent_bom.parsers.scan_project_directory",
+      "path": "examples/reference-evidence-lab/pinned-package.txt",
+      "sha256": "sha256:9e6856a1d9cd2758fdd94a6547fa4ba41f07b9689770cc417cb382363a36f579"
+    },
+    "identity": {
+      "parser": "strict local identity model parser",
+      "path": "examples/reference-evidence-lab/identity-model.json",
+      "sha256": "sha256:0e3ab00f3cfe9d348656859e1c440fcd946e4e866a765d0262955644a769b653"
+    },
+    "kubernetes": {
+      "parser": "agent_bom.iac.scan_iac_with_context + yaml.safe_load_all",
+      "path": "examples/reference-evidence-lab/deployment.yaml",
+      "sha256": "sha256:ae3c6d1a95a039ef5c193c55ab90de779d514dd1cacb683265d528dd8322d9e9"
+    },
+    "mcp": {
+      "parser": "agent_bom.discovery.parse_mcp_config",
+      "path": "examples/reference-evidence-lab/mcp.json",
+      "sha256": "sha256:a23c2d4c439471af9f00dd7bbf3d1a83931fbb7a6f50829ddc00000a3f6accbd"
+    },
+    "sbom": {
+      "parser": "agent_bom.sbom.load_sbom",
+      "path": "examples/reference-evidence-lab/sbom.cdx.json",
+      "sha256": "sha256:19d5021f30ce4dd57bca1cb94da4a75709648eb8f3854c0fd6795cc8979600a2"
+    }
+  }
 }

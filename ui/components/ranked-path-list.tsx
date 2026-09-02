@@ -136,10 +136,10 @@ export function RankedPathList({
               ) : null}
             </span>
             <span className="justify-self-auto rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-right">
-              <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-red-300/80">
+              <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-red-700 dark:text-red-200">
                 Path risk
               </span>
-              <span className="block font-mono text-sm font-semibold leading-4 text-red-200">
+              <span className="block font-mono text-sm font-semibold leading-4 text-red-800 dark:text-red-100">
                 {row.riskScore.toFixed(1)}
               </span>
             </span>

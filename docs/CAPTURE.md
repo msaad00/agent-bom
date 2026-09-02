@@ -38,9 +38,10 @@ before replacing any published product image.
    cannot enter published assets.
 
    The harness independently hashes
-   `examples/reference-evidence-lab/generated/correlation-proof.json` and
-   compares it with `correlation-proof.sha256` before opening a browser. A
-   stale or hand-edited artifact stops capture.
+   `examples/reference-evidence-lab/generated/correlation-proof.json`, compares
+   it with `correlation-proof.sha256`, then verifies every repository, SBOM,
+   Kubernetes, MCP, and identity source receipt before opening a browser. A
+   stale, hand-edited, or source-divergent artifact stops capture.
 
 3. Inspect all 30 PNGs and the manifest at the final README display size. The
    harness stages files and publishes them only after every page passes.

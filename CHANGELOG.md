@@ -16,6 +16,15 @@ while advancing the maintained dependency and MCP-registry baseline.
 
 ### Changed
 
+- The committed reference evidence lab now executes the real repository,
+  CycloneDX, Kubernetes IaC, MCP configuration, advisory, correlation, and
+  authenticated gateway paths. Its generated proof binds every input artifact,
+  exact-identity join, signed runtime-facts bundle, live allow receipt, and
+  strict pre-upstream block receipt.
+- The evidence journey is labeled Connect, Discover, Scan, Correlate,
+  Investigate, and Enforce (opt-in); fresh snapshots are selected by default,
+  stale or future-dated inputs remain explicit, and completed scans always
+  offer truthful Findings, Investigation, and Remediation handoffs.
 - Investigation selects the newest completed correlation when no explicit
   snapshot is deep-linked, keeps correlation setup secondary to the resulting
   graph, and presents the evidence journey clearly across desktop, mobile,
@@ -26,6 +35,9 @@ while advancing the maintained dependency and MCP-registry baseline.
 - Mobile Investigation renders long attack paths as readable sequential hops
   and directed relationships instead of shrinking the complete chain into a
   miniature canvas.
+- Attack-path layout now collapses according to measured canvas width before
+  labels become unreadable, and light-theme risk cards use accessible text
+  contrast without changing risk semantics.
 - Python, JavaScript, MCP, and CodeQL dependencies plus the bundled MCP registry
   are refreshed under their existing release and serialization contracts.
 - Private SQLite graph-build workspaces avoid durable fsync overhead while

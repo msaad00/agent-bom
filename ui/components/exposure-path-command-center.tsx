@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
@@ -315,8 +315,24 @@ function MetricPill({
 
 function ExposurePathGraph({ path }: { path: ExposurePath }) {
   const [expanded, setExpanded] = useState(false);
-  const collapsible = shouldCollapsePath(path.hops.length);
-  const layout = buildPathGraphLayout(path, { expanded });
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const updateWidth = (width: number) => {
+      if (width > 0) setAvailableWidth(Math.floor(width));
+    };
+    updateWidth(board.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => updateWidth(entries[0]?.contentRect.width ?? 0));
+    observer.observe(board);
+    return () => observer.disconnect();
+  }, []);
+
+  const collapsible = shouldCollapsePath(path.hops.length, availableWidth);
+  const layout = buildPathGraphLayout(path, { expanded, availableWidth });
   // Only the fully expanded board is wider than its container, so scrolling is
   // opt-in: the collapsed board shrinks to fit and never clips a hop.
   const scrollable = collapsible && expanded;
@@ -324,7 +340,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
   return (
     <div className="space-y-2">
       <MobileExposurePathSequence path={path} />
-      <div className={`${scrollable ? "overflow-x-auto p-2" : "p-2"} hidden sm:block`} data-testid="exposure-path-graph-scroll">
+      <div ref={boardRef} className={`${scrollable ? "overflow-x-auto p-2" : "p-2"} hidden sm:block`} data-testid="exposure-path-graph-scroll">
         <svg
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           {...(scrollable

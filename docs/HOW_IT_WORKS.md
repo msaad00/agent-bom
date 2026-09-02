@@ -41,10 +41,11 @@ exposure paths, and limited analysis stays labeled rather than presented as
 complete.
 
 The credential-free [reference evidence lab](../examples/reference-evidence-lab/README.md)
-proves this loop with real parser and bundled-advisory output for
-`pillow@9.0.0` / `CVE-2023-4863` plus modeled local Kubernetes, MCP, identity,
-data, and runtime evidence. Its label is **Reference evidence lab — modeled
-local infrastructure**; it is not buyer or live-cloud evidence.
+proves this loop with real dependency, SBOM, Kubernetes IaC, and MCP parsers,
+bundled-advisory output for `pillow@9.0.0` / `CVE-2023-4863`, a strict modeled
+identity input, and live local JSON-RPC gateway allow/block smokes. Its label is
+**Reference evidence lab — modeled local infrastructure**; it is not buyer or
+live-cloud evidence.
 
 ## Why it's different: symbol-level CVE reachability
 

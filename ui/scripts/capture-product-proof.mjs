@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 
 const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const REPO_ROOT = path.resolve(UI_ROOT, "..");
+const execFileAsync = promisify(execFile);
 const IMAGE_DIR = path.join(REPO_ROOT, "docs", "images");
 const SCREENSHOT_MANIFEST = path.join(IMAGE_DIR, "product-screenshots.json");
 const REFERENCE_LAB_PROOF_PATH = path.join(
@@ -48,6 +49,28 @@ if (
 ) {
   throw new Error("Reference evidence lab proof does not contain a completed correlated snapshot");
 }
+for (const receipt of Object.values(REFERENCE_LAB.source_artifacts ?? {})) {
+  const relativePath = receipt?.path;
+  const expectedDigest = receipt?.sha256;
+  if (typeof relativePath !== "string" || typeof expectedDigest !== "string") {
+    throw new Error("Reference evidence lab proof contains an invalid source receipt");
+  }
+  const sourcePath = path.resolve(REPO_ROOT, relativePath);
+  if (sourcePath !== REPO_ROOT && !sourcePath.startsWith(`${REPO_ROOT}${path.sep}`)) {
+    throw new Error("Reference evidence lab proof contains a source outside the repository");
+  }
+  const actualDigest = `sha256:${createHash("sha256").update(await fs.readFile(sourcePath)).digest("hex")}`;
+  if (actualDigest !== expectedDigest) {
+    throw new Error(`Reference evidence lab source receipt is stale: ${relativePath}`);
+  }
+}
+if (
+  REFERENCE_LAB.runtime_control?.manifest_sha256 !== REFERENCE_LAB.correlation?.manifest_sha256
+  || REFERENCE_LAB.runtime_control?.verification !== "live_jsonrpc_gateway_smoke"
+  || REFERENCE_LAB.runtime_control?.strict_block !== "verified"
+) {
+  throw new Error("Reference evidence lab runtime proof is not bound to the completed correlation");
+}
 const REFERENCE_CORRELATION_ID = REFERENCE_LAB.correlation.correlation_id;
 const referenceGraph = REFERENCE_LAB.capture_fixture.graph;
 const referenceSnapshots = [
@@ -73,7 +96,6 @@ if (baseUrlFromEnv) {
 const PORT = Number(process.env.CAPTURE_PORT || "3137");
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 let captureOutputDir = IMAGE_DIR;
-const execFileAsync = promisify(execFile);
 
 async function captureSourceProvenance() {
   const [{ stdout: commit }, { stdout: status }] = await Promise.all([

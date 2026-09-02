@@ -116,8 +116,9 @@ export function naturalBoardWidth(hopCount: number): number {
  * boards pin the entry and end hops and summarise the middle, so the security
  * payoff is named in the first frame instead of scrolling off it.
  */
-export function shouldCollapsePath(hopCount: number): boolean {
-  return hopCount > COLLAPSED_NODE_COUNT && naturalBoardWidth(hopCount) > MAX_READABLE_BOARD_WIDTH;
+export function shouldCollapsePath(hopCount: number, availableWidth = FIT_REFERENCE_WIDTH): boolean {
+  const readableBoardWidth = Math.min(MAX_READABLE_BOARD_WIDTH, Math.floor(availableWidth / MIN_READABLE_SCALE));
+  return hopCount > COLLAPSED_NODE_COUNT && naturalBoardWidth(hopCount) > readableBoardWidth;
 }
 
 /**
@@ -185,6 +186,8 @@ export interface BuildPathGraphLayoutOptions {
    * (`false`) collapses chains wider than `MAX_READABLE_BOARD_WIDTH`.
    */
   expanded?: boolean | undefined;
+  /** Measured board width. Narrow master-detail panels collapse before text scales below the readable floor. */
+  availableWidth?: number | undefined;
 }
 
 export function buildPathGraphLayout(
@@ -192,7 +195,7 @@ export function buildPathGraphLayout(
   options: BuildPathGraphLayoutOptions = {},
 ): PathGraphLayout {
   const totalHopCount = path.hops.length;
-  const collapsed = options.expanded !== true && shouldCollapsePath(totalHopCount);
+  const collapsed = options.expanded !== true && shouldCollapsePath(totalHopCount, options.availableWidth);
   const hiddenHops = collapsed ? path.hops.slice(1, -1) : [];
   const hiddenHopSummary = summarizeHiddenHops(hiddenHops);
   const visibleHops: ExposureEntityRef[] = collapsed

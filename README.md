@@ -20,7 +20,7 @@
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
-<p align="center">Scan repositories, software supply chains, identity, and data infrastructure locally in under a minute. Connect read-only sources when the team is ready. Keep raw data, credentials, findings, and policy decisions inside your environment.</p>
+<p align="center">Start with a local repository, image, SBOM, or MCP configuration, or connect read-only infrastructure sources in the self-hosted control plane. Keep raw data, credentials, findings, and policy decisions inside your environment.</p>
 
 <p align="center">
   <a href="#quick-start"><b>Quick start</b></a> ·
@@ -63,10 +63,11 @@ compliance exports, and runtime enforcement in your own environment.
 ### Product proof: independent evidence, one verifiable path
 
 The views below come from the committed **Reference evidence lab — modeled
-local infrastructure**. The credential-free run uses the real repository parser
-and bundled advisory scanner for `pillow@9.0.0` / `CVE-2023-4863`, then
-correlates exact OCI digest, Kubernetes UID, MCP tool, workload identity, and
-runtime receipts. It is not customer evidence or a live-cloud claim.
+local infrastructure**. The credential-free run uses the real repository,
+CycloneDX, Kubernetes IaC, and MCP parsers plus the bundled advisory scanner for
+`pillow@9.0.0` / `CVE-2023-4863`, then correlates exact OCI digest, Kubernetes
+UID, MCP tool, workload identity, and live local gateway receipts. It is not
+customer evidence or a live-cloud claim.
 
 Investigation loads the latest completed correlation automatically and shows
 the source-to-path journey first. Custom snapshot selection remains available

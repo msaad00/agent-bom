@@ -12,6 +12,9 @@ describe("product proof capture contract", () => {
     expect(source).toContain("REFERENCE_LAB_PROOF_PATH");
     expect(source).toContain("REFERENCE_LAB_DIGEST_PATH");
     expect(source).toContain("Reference evidence lab proof is stale");
+    expect(source).toContain("Reference evidence lab source receipt is stale");
+    expect(source).toContain("Reference evidence lab runtime proof is not bound to the completed correlation");
+    expect(source).toContain("REFERENCE_LAB.source_artifacts");
     expect(source).toContain("CVE-2023-4863");
     expect(source).toContain("DEMO-VULN-");
     expect(source).not.toContain('source: "nvd"');

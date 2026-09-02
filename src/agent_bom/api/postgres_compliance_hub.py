@@ -1121,10 +1121,9 @@ class PostgresComplianceHubStore:
         if not clean:
             return
         now = _now_utc_iso()
-        # observed_at is batch-level: ensure its monthly partition exists once
-        # per batch so a backdated bulk import (older than the pre-provisioned
-        # behind=1 window) does not raise a raw CheckViolation -> 500. Out of
-        # the bounded window raises ObservationPartitionRangeError -> 4xx.
+        # observed_at is batch-level: verify its migration-owned monthly child
+        # once per batch. Runtime roles are intentionally DML-only; a stale
+        # deploy returns a sanitized 503 instead of attempting schema DDL.
         from agent_bom.api.hub_observations_partition import ensure_observation_partition_for
 
         ensure_observation_partition_for(conn, observed_at)

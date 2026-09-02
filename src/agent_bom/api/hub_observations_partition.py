@@ -229,17 +229,27 @@ def provision_observation_partition_runway(
     now: datetime | None = None,
     months_ahead: int = OBSERVATION_PARTITION_RUNWAY_MONTHS,
 ) -> int:
-    """Top the partition runway up to *months_ahead* months past *now*.
+    """Provision retained history plus *months_ahead* months past *now*.
 
     The deploy-time entry point, run by the migration owner (the only principal
     that may create a child and force RLS on it). Idempotent: re-running in the
     same month creates nothing, and a later run fills only the new gap, so it is
     safe to call on every ``alembic upgrade``.
 
-    ``months_behind=0`` so a top-up never resurrects a month that retention has
-    already detached and dropped.
+    Historical connector evidence is valid anywhere inside the configured
+    retention horizon. Provisioning that whole bounded window keeps runtime
+    roles DML-only while allowing those backfills; retention later drops only
+    children wholly outside the same horizon.
     """
-    return ensure_observation_partitions(conn, now=now, months_ahead=months_ahead, months_behind=0)
+    anchor = (now or _utc_now()).date()
+    oldest = anchor - timedelta(days=max(0, HUB_OBSERVATIONS_RETENTION_DAYS))
+    months_behind = max(0, _month_index(anchor) - _month_index(oldest))
+    return ensure_observation_partitions(
+        conn,
+        now=now,
+        months_ahead=months_ahead,
+        months_behind=months_behind,
+    )
 
 
 def observation_runway_end(conn: Any) -> date | None:
@@ -281,6 +291,14 @@ class ObservationPartitionRangeError(ValueError):
         )
 
 
+class ObservationPartitionUnavailableError(RuntimeError):
+    """A migration-owned child partition is missing for an in-range timestamp."""
+
+    def __init__(self, partition: str) -> None:
+        self.partition = partition
+        super().__init__("observation_partition_unavailable")
+
+
 def _month_index(value: date) -> int:
     return value.year * 12 + (value.month - 1)
 
@@ -311,14 +329,12 @@ def ensure_observation_partition_for(
 ) -> bool:
     """Ensure the monthly partition covering *observed_at* exists.
 
-    Returns ``True`` when a partition was created. Bulk/connector ingest with an
-    ``observed_at`` older than the pre-provisioned window (behind=1) previously
-    raised a raw ``CheckViolation`` -> 500. This creates the covering partition
-    on demand within a bounded window so historical backfills succeed, and raises
-    :class:`ObservationPartitionRangeError` (mapped to 4xx by the route) for
-    values so far past/future they are almost certainly bad data. Unparseable or
-    non-partitioned tables are a no-op (the legacy single table has no partition
-    constraint, and downstream normalisation owns bad timestamps).
+    Returns ``False`` when the partition exists. Runtime roles are DML-only, so
+    this function never attempts DDL. A missing in-range child raises
+    :class:`ObservationPartitionUnavailableError` (mapped to a sanitized 503),
+    while values far outside the bounded window raise
+    :class:`ObservationPartitionRangeError` (mapped to 4xx). Unparseable or
+    non-partitioned tables remain a no-op.
     """
     if not is_observations_partitioned(conn):
         return False
@@ -342,8 +358,7 @@ def ensure_observation_partition_for(
     ).fetchone()
     if exists:
         return False
-    _create_observation_partition(conn, month.year, month.month)
-    return True
+    raise ObservationPartitionUnavailableError(child)
 
 
 def _partition_end_date(partition_name: str) -> date | None:

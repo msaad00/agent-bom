@@ -2609,7 +2609,10 @@ async def ingest_compliance_findings(request: Request) -> dict:
     # (mirrors the bulk ingest and read paths). See ``hub_ingest_store_writes`` /
     # ``hub_store_call``.
     from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
-    from agent_bom.api.hub_observations_partition import ObservationPartitionRangeError
+    from agent_bom.api.hub_observations_partition import (
+        ObservationPartitionRangeError,
+        ObservationPartitionUnavailableError,
+    )
 
     try:
         store_result = await hub_store_call(
@@ -2627,6 +2630,11 @@ async def ingest_compliance_findings(request: Request) -> dict:
         # clean 422 instead of a raw partition CheckViolation 500 (mirrors the
         # bulk ingest route).
         raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
+    except ObservationPartitionUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Observation storage is not provisioned for this timestamp; run database migrations.",
+        ) from exc
     new_total = store_result["new_total"]
     reconciled = store_result["reconciled"]
     delta_results = store_result["delta_results"]

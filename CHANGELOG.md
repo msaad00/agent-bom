@@ -33,6 +33,10 @@ while advancing the maintained dependency and MCP-registry baseline.
 
 ### Fixed
 
+- Postgres observation migrations provision the full retained-history window as
+  well as the future runway, so backdated connector evidence no longer attempts
+  partition DDL through the least-privilege application role; stale deployments
+  receive a sanitized retryable response instead of a raw database failure.
 - MCP runtime introspection now rejects security-blocked servers before any
   transport is opened, keeps stdio process launch disabled by default, and
   requires both explicit opt-in and authenticated operator authority before a

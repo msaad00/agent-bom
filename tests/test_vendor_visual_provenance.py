@@ -69,11 +69,7 @@ def _first_party(assets: list[dict]) -> list[dict]:
 
 def _icon_set(assets: list[dict]) -> list[dict]:
     return [
-        asset
-        for asset in assets
-        if "source_repo" in asset
-        and "source_page" in asset
-        and asset.get("source_kind") != "brand_reference"
+        asset for asset in assets if "source_repo" in asset and "source_page" in asset and asset.get("source_kind") != "brand_reference"
     ]
 
 
@@ -98,10 +94,7 @@ def test_vendor_diagram_assets_have_first_party_pinned_provenance() -> None:
 
     # Every asset must declare exactly one pin. An entry with neither is
     # unpinned; an entry with both hides which guarantee actually applies.
-    assert (
-        len(first_party) + len(icon_set) + len(repository_pinned) + len(brand_reference)
-        == len(assets)
-    )
+    assert len(first_party) + len(icon_set) + len(repository_pinned) + len(brand_reference) == len(assets)
     assert not [a for a in assets if "source_archive" in a and "source_repo" in a]
 
     assert {asset["vendor"] for asset in first_party} == FIRST_PARTY_VENDORS

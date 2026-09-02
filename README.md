@@ -16,7 +16,7 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<h1 align="center">Turn scattered infrastructure evidence into prioritized, verifiable action</h1>
+<h1 align="center">Turn scattered infrastructure evidence into prioritized, correlated, and verifiable action</h1>
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 

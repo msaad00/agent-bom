@@ -88,3 +88,25 @@ def test_bulk_ingest_out_of_range_observed_at_returns_422(monkeypatch) -> None:
     )
 
     assert resp.status_code == 422, resp.text
+
+
+def test_bulk_ingest_missing_partition_returns_sanitized_503(monkeypatch) -> None:
+    from agent_bom.api.hub_observations_partition import ObservationPartitionUnavailableError
+
+    client = TestClient(app, raise_server_exceptions=False)
+    client.headers.update(proxy_headers(role="analyst", tenant=f"partition-{uuid4().hex}"))
+
+    def _raise_unavailable(*args, **kwargs):
+        raise ObservationPartitionUnavailableError("hub_findings_current_observations_y2026m07")
+
+    monkeypatch.setattr(scan_routes, "_bulk_ingest_store_writes", _raise_unavailable)
+    resp = client.post(
+        "/v1/findings/bulk",
+        json={"source": "agent-runtime", "findings": [{"id": "f-1", "title": "one", "severity": "high"}]},
+    )
+
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["detail"] == "Observation storage is not provisioned for this timestamp; run database migrations."
+    assert body["error"]["details"] == body["detail"]
+    assert "y2026m07" not in resp.text

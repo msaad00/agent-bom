@@ -102,6 +102,20 @@ def test_provisioned_runway_reaches_at_least_twelve_months_past_today(monkeypatc
     assert OBSERVATION_PARTITION_RUNWAY_MONTHS >= 12
 
 
+def test_provisioned_window_covers_the_full_retention_horizon(monkeypatch) -> None:
+    """A deploy must provision every retained month so historical ingest stays DML-only."""
+    monkeypatch.setattr(partitions, "_ensure_observation_partition_rls", lambda *_a: None)
+    frozen_now = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    conn = _FakePartitionedConn()
+
+    provision_observation_partition_runway(conn, now=frozen_now)
+
+    months = conn.created_months()
+    oldest_retained = frozen_now.date() - timedelta(days=partitions.HUB_OBSERVATIONS_RETENTION_DAYS)
+    assert months[0] == (oldest_retained.year, oldest_retained.month)
+    assert (2026, 7) in months
+
+
 @pytest.mark.parametrize(
     "frozen_now",
     [
@@ -119,7 +133,8 @@ def test_runway_crosses_year_boundaries_without_a_gap(monkeypatch, frozen_now: d
     provision_observation_partition_runway(conn, now=frozen_now)
 
     months = conn.created_months()
-    assert months[0] == (frozen_now.year, frozen_now.month)
+    oldest_retained = frozen_now.date() - timedelta(days=partitions.HUB_OBSERVATIONS_RETENTION_DAYS)
+    assert months[0] == (oldest_retained.year, oldest_retained.month)
     indexes = [year * 12 + (month - 1) for year, month in months]
     assert indexes == list(range(indexes[0], indexes[0] + len(indexes))), "gap in the provisioned month sequence"
     assert _runway_end_of(months) - frozen_now.date() >= timedelta(days=365)
@@ -131,7 +146,9 @@ def test_runway_top_up_is_idempotent_and_only_fills_the_gap(monkeypatch) -> None
     frozen_now = datetime(2026, 7, 31, tzinfo=timezone.utc)
     conn = _FakePartitionedConn()
     first = provision_observation_partition_runway(conn, now=frozen_now)
-    assert first == OBSERVATION_PARTITION_RUNWAY_MONTHS + 1
+    oldest_retained = frozen_now.date() - timedelta(days=partitions.HUB_OBSERVATIONS_RETENTION_DAYS)
+    retained_months = (frozen_now.year * 12 + frozen_now.month) - (oldest_retained.year * 12 + oldest_retained.month)
+    assert first == retained_months + OBSERVATION_PARTITION_RUNWAY_MONTHS + 1
 
     conn.statements.clear()
     assert provision_observation_partition_runway(conn, now=frozen_now) == 0
@@ -152,7 +169,9 @@ def test_every_new_partition_child_gets_forced_tenant_rls(monkeypatch) -> None:
     provision_observation_partition_runway(conn, now=datetime(2026, 7, 31, tzinfo=timezone.utc))
 
     assert protected == [partition_table_name(y, m) for y, m in conn.created_months()]
-    assert len(protected) == OBSERVATION_PARTITION_RUNWAY_MONTHS + 1
+    oldest_retained = date(2026, 7, 31) - timedelta(days=partitions.HUB_OBSERVATIONS_RETENTION_DAYS)
+    retained_months = (2026 * 12 + 7) - (oldest_retained.year * 12 + oldest_retained.month)
+    assert len(protected) == retained_months + OBSERVATION_PARTITION_RUNWAY_MONTHS + 1
 
 
 def test_provisioning_is_a_noop_on_an_unpartitioned_table() -> None:

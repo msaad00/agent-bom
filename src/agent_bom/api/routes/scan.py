@@ -3922,7 +3922,10 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     # upsert + reconcile + delta emission) to a worker thread so concurrent bulk
     # ingest cannot freeze the event loop and unrelated requests (mirrors the
     # read path). See ``_bulk_ingest_store_writes`` / ``_hub_store_call``.
-    from agent_bom.api.hub_observations_partition import ObservationPartitionRangeError
+    from agent_bom.api.hub_observations_partition import (
+        ObservationPartitionRangeError,
+        ObservationPartitionUnavailableError,
+    )
 
     try:
         store_result = await _hub_store_call(
@@ -3939,6 +3942,11 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
         # observed_at is so far past/future it is almost certainly bad data — a
         # clean 4xx instead of a raw partition CheckViolation 500.
         raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
+    except ObservationPartitionUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Observation storage is not provisioned for this timestamp; run database migrations.",
+        ) from exc
     new_total = store_result["new_total"]
     reconciled = store_result["reconciled"]
     delta_results = store_result["delta_results"]

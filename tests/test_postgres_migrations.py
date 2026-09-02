@@ -41,6 +41,7 @@ HUB_OVERVIEW_REVISION = VERSIONS_DIR / "20260827_01_hub_overview_revision.py"
 GRAPH_CORRELATIONS = VERSIONS_DIR / "20260830_01_graph_correlations.py"
 ATTACK_PATH_EVIDENCE = VERSIONS_DIR / "20260830_02_graph_correlation_mechanical.py"
 CLOUD_CONNECTION_CAPABILITY_EVIDENCE = VERSIONS_DIR / "20260830_03_cloud_connection_capability_evidence.py"
+OBSERVATION_PARTITION_RETENTION_WINDOW = VERSIONS_DIR / "20260901_01_observation_partition_retention_window.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -52,7 +53,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260830_03"
+ALEMBIC_HEAD = "20260901_01"
 
 
 def _canonical_sql(text: str) -> str:
@@ -586,6 +587,16 @@ def test_observation_partition_runway_migration_uses_the_psycopg_driver_connecti
     module.upgrade()
 
     assert seen == [driver_connection]
+
+
+def test_observation_partition_retention_window_is_migration_owned_and_forward_only() -> None:
+    sql = OBSERVATION_PARTITION_RETENTION_WINDOW.read_text()
+    assert re.search(r'revision\s*=\s*"20260901_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260830_03"', sql)
+    assert "provision_observation_partition_runway" in sql
+    assert "driver_connection" in sql
+    assert "DROP TABLE" not in sql
+    assert "CREATE TABLE" not in sql
 
 
 def test_graph_edge_snapshot_key_index_is_chained_and_matches_bootstrap() -> None:

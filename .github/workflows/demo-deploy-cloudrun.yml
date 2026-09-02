@@ -36,9 +36,11 @@ on:
 permissions: {} # all permissions denied by default; the job declares only what it needs
 
 concurrency:
-  # Never let two deploys race on the same Cloud Run service.
+  # Only the newest release is useful. Supersede an obsolete run even when it
+  # is waiting for protected-environment approval so it cannot block the
+  # current release indefinitely.
   group: demo-deploy-cloudrun
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:

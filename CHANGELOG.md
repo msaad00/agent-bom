@@ -49,6 +49,11 @@ while advancing the maintained dependency and MCP-registry baseline.
   well as the future runway, so backdated connector evidence no longer attempts
   partition DDL through the least-privilege application role; stale deployments
   receive a sanitized retryable response instead of a raw database failure.
+- Correlation now canonicalizes exact package URLs without merging invalid or
+  case-distinct identities, compares observation times as UTC instants,
+  revalidates freshness when queued work executes, rejects excessive future
+  skew, and confirms only complete directed, traversable, provenance-backed
+  paths within their recorded analysis bounds.
 - MCP runtime introspection now rejects security-blocked servers before any
   transport is opened, keeps stdio process launch disabled by default, and
   requires both explicit opt-in and authenticated operator authority before a

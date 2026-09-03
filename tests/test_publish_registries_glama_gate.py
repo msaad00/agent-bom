@@ -47,6 +47,13 @@ def test_glama_job_verifies_provider_managed_sync_without_inventing_an_api() -> 
     assert "--verify-manifest --git-ref" in job
     assert '--expected "$EXPECTED_VERSION"' in job
     assert '--expected-tool-count "$EXPECTED_TOOL_COUNT"' in job
+    assert "--write-tool-names /tmp/glama-expected-tool-names.json" in job
+    assert '--git-ref "${{ needs.release.outputs.release_sha }}"' in job
+    assert "Validate released public server card for Glama" in job
+    assert "glama-expected-tool-names.json" in job
+    assert "--expected-tool-names-file /tmp/glama-expected-tool-names.json" in job
+    assert "glama-actual-server-card-tool-names.json" in job
+    assert "cmp -s /tmp/glama-expected-tool-names.json /tmp/glama-actual-server-card-tool-names.json" in job
 
 
 def test_stale_glama_directory_fails_with_supported_recovery_guidance() -> None:

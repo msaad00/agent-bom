@@ -9,6 +9,8 @@ import urllib.error
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -81,6 +83,88 @@ def test_glama_listing_accepts_exact_public_api_tool_inventory(monkeypatch, caps
     assert payload["status"] == "fresh"
     assert payload["tool_count"] == 77
     assert payload["expected_tool_count"] == 77
+
+
+def test_glama_listing_rejects_same_count_with_a_different_tool(monkeypatch, capsys, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    expected_names = ["graph_correlate", "graph_correlation_status"]
+    names_file = tmp_path / "expected-tools.json"
+    names_file.write_text(json.dumps(expected_names), encoding="utf-8")
+    current_page = "v0.103.2 MCP server mode exposes 2 MCP tools"
+
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: current_page)
+    monkeypatch.setattr(
+        script,
+        "_fetch_json",
+        lambda _url, _timeout: {"tools": [{"name": "graph_correlate"}, {"name": "unrelated_tool"}]},
+    )
+
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "2",
+                "--expected-tool-names-file",
+                str(names_file),
+                "--json",
+                "--retries",
+                "1",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "stale"
+    assert payload["exact_tool_set"] is False
+    assert "missing expected tools: graph_correlation_status" in payload["error"]
+    assert "unexpected tools: unrelated_tool" in payload["error"]
+
+
+@pytest.mark.parametrize("bad_name", [None, ["nested"], {"nested": "value"}, " scan "])
+def test_glama_listing_reports_malformed_tool_names_as_stale(monkeypatch, capsys, tmp_path, bad_name):
+    script = _load_script("check_glama_listing.py")
+    names_file = tmp_path / "expected-tools.json"
+    names_file.write_text(json.dumps(["scan", "check"]), encoding="utf-8")
+    current_page = "v0.103.2 MCP server mode exposes 2 MCP tools"
+
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: current_page)
+    monkeypatch.setattr(script, "_fetch_json", lambda _url, _timeout: {"tools": [{"name": "scan"}, {"name": bad_name}]})
+
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "2",
+                "--expected-tool-names-file",
+                str(names_file),
+                "--json",
+                "--retries",
+                "1",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "stale"
+    assert payload["exact_tool_set"] is False
+    assert "tool without a name" in payload["error"]
+
+
+def test_glama_tool_names_are_extracted_inertly_from_the_release_ref(tmp_path):
+    script = _load_script("check_glama_listing.py")
+    destination = tmp_path / "tool-names.json"
+
+    assert script.main(["--write-tool-names", str(destination), "--git-ref", "HEAD"]) == 0
+    names = json.loads(destination.read_text(encoding="utf-8"))
+
+    assert names == sorted(names)
+    assert len(names) == len(set(names)) == 86
+    assert "graph_correlate" in names
+    assert "graph_correlation_status" in names
 
 
 def test_glama_listing_accepts_exact_public_schema_when_directory_api_is_empty(monkeypatch, capsys):

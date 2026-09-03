@@ -17,10 +17,12 @@ import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 _AUTH_PATH = "/oauth/authorize"
+_SMITHERY_CALLBACK_HOST = "server.smithery.ai"
+_SMITHERY_CALLBACK_PATH = "/oauth/callback"
 _MAX_RELEASE_BYTES = 2 * 1024 * 1024
 _URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
@@ -37,7 +39,45 @@ def _strings(value: Any) -> Iterator[str]:
 
 
 def _origin(parts: Any) -> tuple[str, str, int | None]:
-    return parts.scheme.lower(), (parts.hostname or "").lower(), parts.port
+    scheme = parts.scheme.lower()
+    port = parts.port
+    if port is None and scheme == "https":
+        port = 443
+    return scheme, (parts.hostname or "").lower(), port
+
+
+def _endpoint(parts: Any) -> tuple[str, str, int | None, str]:
+    return (*_origin(parts), parts.path)
+
+
+def _authorization_callback_url(authorization_url: str) -> str:
+    authorization = urlsplit(authorization_url)
+    if (
+        authorization.scheme.lower() != "https"
+        or not authorization.hostname
+        or authorization.username
+        or authorization.password
+        or authorization.path != _AUTH_PATH
+    ):
+        raise ValueError("authorization URL must use the trusted HTTPS endpoint")
+
+    redirect_values = parse_qs(authorization.query, keep_blank_values=True).get("redirect_uri", [])
+    if len(redirect_values) != 1:
+        raise ValueError("authorization URL must contain one Smithery redirect_uri")
+    callback = urlsplit(redirect_values[0])
+    if (
+        callback.scheme.lower() != "https"
+        or not callback.hostname
+        or callback.hostname.lower().rstrip(".") != _SMITHERY_CALLBACK_HOST
+        or _origin(callback)[2] != 443
+        or callback.path != _SMITHERY_CALLBACK_PATH
+        or callback.username
+        or callback.password
+        or callback.query
+        or callback.fragment
+    ):
+        raise ValueError("Smithery redirect_uri must use a trusted HTTPS origin")
+    return redirect_values[0]
 
 
 def extract_authorization_url(release: Any, upstream_url: str) -> str | None:
@@ -59,9 +99,30 @@ class _BoundedRedirectHandler(HTTPRedirectHandler):
     max_redirections = 5
     max_repeats = 2
 
+    def __init__(self, *, authorization_url: str, callback_url: str) -> None:
+        super().__init__()
+        self._authorization_endpoint = _endpoint(urlsplit(authorization_url))
+        self._callback_endpoint = _endpoint(urlsplit(callback_url))
+        self.allowed_origins = {
+            _origin(urlsplit(authorization_url)),
+            _origin(urlsplit(callback_url)),
+        }
 
-def _default_opener(request: Request, *, timeout: float):
-    return build_opener(_BoundedRedirectHandler()).open(request, timeout=timeout)
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
+        destination = urlsplit(newurl)
+        if (
+            _endpoint(urlsplit(req.full_url)) != self._authorization_endpoint
+            or destination.scheme.lower() != "https"
+            or destination.username
+            or destination.password
+            or _endpoint(destination) != self._callback_endpoint
+        ):
+            raise ValueError("authorization redirect must use one exact callback on a trusted HTTPS origin")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _default_opener(request: Request, *, timeout: float, redirect_handler: _BoundedRedirectHandler):
+    return build_opener(redirect_handler).open(request, timeout=timeout)
 
 
 def complete_authorization(
@@ -70,15 +131,18 @@ def complete_authorization(
     opener: Callable[..., Any] = _default_opener,
 ) -> None:
     """Follow the registered PKCE authorization callback with strict bounds."""
+    callback_url = _authorization_callback_url(authorization_url)
+    redirect_handler = _BoundedRedirectHandler(authorization_url=authorization_url, callback_url=callback_url)
     request = Request(
         authorization_url,
         headers={"User-Agent": "agent-bom-registry-reconciler/1"},
         method="GET",
     )
-    with opener(request, timeout=30.0) as response:
+    with opener(request, timeout=30.0, redirect_handler=redirect_handler) as response:
         status = int(getattr(response, "status", 200))
         response.read(4096)
-    if status >= 400:
+        final_url = response.geturl()
+    if status >= 400 or _endpoint(urlsplit(final_url)) != _endpoint(urlsplit(callback_url)):
         raise RuntimeError("Smithery scan authorization callback failed")
 
 

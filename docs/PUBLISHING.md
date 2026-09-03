@@ -44,10 +44,12 @@ remote deployment metadata, and non-empty tools.
 5. Click **Continue**
 
 **Option B — Automated**:
-The `publish-registries.yml` workflow compares the released server-card tool
-names with Smithery's public catalog before publishing. If they already match,
-the workflow skips a duplicate deployment. If capabilities changed, it creates
-an external release using:
+The `publish-registries.yml` workflow parses the static server-card tool names
+from the immutable release commit, then compares that contract with both the
+live server card and Smithery's public catalog before publishing. If they
+already match and the latest successful release is bound to the configured
+upstream URL, the workflow skips a duplicate deployment. If capabilities or
+the upstream changed, it creates an external release using:
 - `SMITHERY_API_TOKEN`
 
 `SMITHERY_MCP_URL` is retained only for the external-upstream publish mode. It
@@ -59,10 +61,11 @@ reserves the `Authorization` header for OAuth. If a capability scan pauses as
 `AUTH_REQUIRED`, the workflow reads the release through Smithery's authenticated
 API, accepts only an authorization URL on the configured Agent-Bom origin,
 follows the bounded machine-to-machine PKCE callback without logging its OAuth
-state, and resumes the same release. It never creates a duplicate while a
-matching release remains active. The workflow retries every six hours and
-fails honestly if the provider still requires authorization or the exact
-catalog does not converge.
+state. The only permitted redirect is the configured authorization endpoint to
+Smithery's exact HTTPS callback; a second redirect or alternate host, port, or
+path fails closed. The workflow never creates a duplicate while a matching
+release remains active, retries every six hours, and fails honestly if the
+provider still requires authorization or the exact catalog does not converge.
 
 ### Verification
 
@@ -146,8 +149,9 @@ as published.
 
 For an immediate provider-side refresh, open the server's admin page and use
 **Sync Server**, then dispatch **Publish to Registries** again. Verification
-requires both the released version marker and the exact released MCP tool
-count.
+requires both the released version marker and the exact MCP tool-name set
+parsed from the immutable release commit; the live server card is checked
+independently against the same contract.
 
 A Glama hosted release is separate from directory synchronization. Creating
 one remains a maintainer action in Glama: configure the Dockerfile build,

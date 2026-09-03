@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import io
 import json
 import sys
 import time
@@ -14,6 +15,9 @@ from typing import Any
 
 AUDIT_URL = "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk"
 BLOCKING_SEVERITIES = {"high", "critical"}
+VALID_SEVERITIES = {"info", "low", "moderate", "high", "critical"}
+MAX_COMPRESSED_RESPONSE_BYTES = 8 * 1024 * 1024
+MAX_DECOMPRESSED_RESPONSE_BYTES = 32 * 1024 * 1024
 
 
 def _package_name(package_path: str, record: dict[str, Any]) -> str | None:
@@ -50,11 +54,7 @@ def lockfile_payload(path: Path) -> dict[str, list[str]]:
     return {name: sorted(package_versions) for name, package_versions in sorted(versions.items())}
 
 
-def decode_report(body: bytes) -> dict[str, list[dict[str, Any]]]:
-    """Decode the bulk response, including npm's occasionally unlabelled gzip."""
-    if body.startswith(b"\x1f\x8b"):
-        body = gzip.decompress(body)
-    report = json.loads(body.decode("utf-8"))
+def _validate_report(report: Any) -> dict[str, list[dict[str, Any]]]:
     if not isinstance(report, dict):
         raise ValueError("npm advisory response must be an object")
     for package, advisories in report.items():
@@ -62,7 +62,23 @@ def decode_report(body: bytes) -> dict[str, list[dict[str, Any]]]:
             raise ValueError("npm advisory response has an invalid package entry")
         if any(not isinstance(advisory, dict) for advisory in advisories):
             raise ValueError("npm advisory response has an invalid advisory entry")
+        for advisory in advisories:
+            severity = advisory.get("severity")
+            if not isinstance(severity, str) or severity.lower() not in VALID_SEVERITIES:
+                raise ValueError("npm advisory response has an invalid severity")
     return report
+
+
+def decode_report(body: bytes) -> dict[str, list[dict[str, Any]]]:
+    """Decode a size-bounded response, including npm's unlabelled gzip."""
+    if len(body) > MAX_COMPRESSED_RESPONSE_BYTES:
+        raise ValueError("npm advisory compressed response exceeds the size limit")
+    if body.startswith(b"\x1f\x8b"):
+        with gzip.GzipFile(fileobj=io.BytesIO(body)) as stream:
+            body = stream.read(MAX_DECOMPRESSED_RESPONSE_BYTES + 1)
+        if len(body) > MAX_DECOMPRESSED_RESPONSE_BYTES:
+            raise ValueError("npm advisory decompressed response exceeds the size limit")
+    return _validate_report(json.loads(body.decode("utf-8")))
 
 
 def blocking_advisories(report: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
@@ -97,7 +113,7 @@ def fetch_report(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]
         },
     )
     with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310 -- fixed HTTPS registry URL
-        return decode_report(response.read())
+        return decode_report(response.read(MAX_COMPRESSED_RESPONSE_BYTES + 1))
 
 
 def run(path: Path) -> int:
@@ -110,7 +126,7 @@ def run(path: Path) -> int:
     report: dict[str, list[dict[str, Any]]] | None = None
     for attempt in range(1, 4):
         try:
-            report = fetch_report(payload)
+            report = _validate_report(fetch_report(payload))
             break
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             if attempt == 3:

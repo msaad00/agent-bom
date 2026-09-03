@@ -20,8 +20,6 @@
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
-<p align="center">Start with a local repository, image, SBOM, or MCP configuration, or connect read-only infrastructure sources in the self-hosted control plane. Keep raw data, credentials, findings, and policy decisions inside your environment.</p>
-
 <p align="center">
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://agent-bom-demo-82102570041.us-central1.run.app">Live demo</a> ·

@@ -48,6 +48,12 @@ def test_reference_lab_proves_exact_end_to_end_chain() -> None:
     assert payload["container_digest"].startswith("sha256:")
     assert len(payload["container_digest"]) == 71
     assert len(payload["correlation"]["input_manifest"]) == 6
+    assert all(
+        receipt["signature"]["schema_version"] == "agent-bom.correlation-receipt-signature/v1"
+        and receipt["signature"]["algorithm"] == "hmac-sha256"
+        and receipt["signature"]["key_id"] == "reference-lab-v1"
+        for receipt in payload["correlation"]["input_manifest"]
+    )
 
     proof = payload["proof_path"]
     assert proof["reachability"] == "confirmed"

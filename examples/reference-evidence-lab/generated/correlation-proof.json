@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:6ed11d0a26901636724b3d5ef8d8e59bd64ececd93e8b249139149b921b59365",
+  "artifact_sha256": "sha256:6dcb8631ffbe800824955a578fe191c1188d569d5572b6503419bb8fb826a415",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -1246,6 +1246,12 @@
         "freshness": "fresh",
         "node_count": 2,
         "scan_id": "reference-identity-permission-scan",
+        "signature": {
+          "algorithm": "hmac-sha256",
+          "key_id": "reference-lab-v1",
+          "schema_version": "agent-bom.correlation-receipt-signature/v1",
+          "value": "sha256:cedfee9e3584d20bc712e57ee12c5dc6f6e3760cffe497c4d241d74cd5ff6048"
+        },
         "source_kinds": [
           "identity_model"
         ]
@@ -1258,6 +1264,12 @@
         "freshness": "fresh",
         "node_count": 3,
         "scan_id": "reference-image-sbom-scan",
+        "signature": {
+          "algorithm": "hmac-sha256",
+          "key_id": "reference-lab-v1",
+          "schema_version": "agent-bom.correlation-receipt-signature/v1",
+          "value": "sha256:b64122d7d131d174c3c8fddcc0b93b367d6503ec6fd03ca6faf9303597181a6d"
+        },
         "source_kinds": [
           "bundled_advisory_scanner",
           "cyclonedx_sbom"
@@ -1271,6 +1283,12 @@
         "freshness": "fresh",
         "node_count": 3,
         "scan_id": "reference-kubernetes-iac-scan",
+        "signature": {
+          "algorithm": "hmac-sha256",
+          "key_id": "reference-lab-v1",
+          "schema_version": "agent-bom.correlation-receipt-signature/v1",
+          "value": "sha256:5b657c2924f76a8f73801c1fa8504ead0d753eb4d9a45867fdfe20da20126eef"
+        },
         "source_kinds": [
           "kubernetes_iac"
         ]
@@ -1283,6 +1301,12 @@
         "freshness": "fresh",
         "node_count": 2,
         "scan_id": "reference-mcp-config-scan",
+        "signature": {
+          "algorithm": "hmac-sha256",
+          "key_id": "reference-lab-v1",
+          "schema_version": "agent-bom.correlation-receipt-signature/v1",
+          "value": "sha256:7df4bb15cb75105bd6dabe5093411c3fb26241c22c8d7ad2074729ad4b43e432"
+        },
         "source_kinds": [
           "mcp_config"
         ]
@@ -1295,6 +1319,12 @@
         "freshness": "fresh",
         "node_count": 2,
         "scan_id": "reference-repository-scan",
+        "signature": {
+          "algorithm": "hmac-sha256",
+          "key_id": "reference-lab-v1",
+          "schema_version": "agent-bom.correlation-receipt-signature/v1",
+          "value": "sha256:3910cd4cbfcd65cfa05a47e1abf8b6fcc31ffc060530bdfa907c9ce9cae52560"
+        },
         "source_kinds": [
           "repository_parser"
         ]
@@ -1307,12 +1337,18 @@
         "freshness": "fresh",
         "node_count": 2,
         "scan_id": "reference-runtime-observation",
+        "signature": {
+          "algorithm": "hmac-sha256",
+          "key_id": "reference-lab-v1",
+          "schema_version": "agent-bom.correlation-receipt-signature/v1",
+          "value": "sha256:6193d044136e4d9103685f622028bd0487aed39f8d05a7e345e78af9b8d5e360"
+        },
         "source_kinds": [
           "gateway_runtime"
         ]
       }
     ],
-    "manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
+    "manifest_sha256": "sha256:658a04a6cb730d75a48a8d33752890cfabf937ecee5a4b6cb60c9d4b7989f71b",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -1365,6 +1401,12 @@
           "freshness": "fresh",
           "node_count": 2,
           "scan_id": "reference-identity-permission-scan",
+          "signature": {
+            "algorithm": "hmac-sha256",
+            "key_id": "reference-lab-v1",
+            "schema_version": "agent-bom.correlation-receipt-signature/v1",
+            "value": "sha256:cedfee9e3584d20bc712e57ee12c5dc6f6e3760cffe497c4d241d74cd5ff6048"
+          },
           "source_kinds": [
             "identity_model"
           ]
@@ -1377,6 +1419,12 @@
           "freshness": "fresh",
           "node_count": 3,
           "scan_id": "reference-image-sbom-scan",
+          "signature": {
+            "algorithm": "hmac-sha256",
+            "key_id": "reference-lab-v1",
+            "schema_version": "agent-bom.correlation-receipt-signature/v1",
+            "value": "sha256:b64122d7d131d174c3c8fddcc0b93b367d6503ec6fd03ca6faf9303597181a6d"
+          },
           "source_kinds": [
             "bundled_advisory_scanner",
             "cyclonedx_sbom"
@@ -1390,6 +1438,12 @@
           "freshness": "fresh",
           "node_count": 3,
           "scan_id": "reference-kubernetes-iac-scan",
+          "signature": {
+            "algorithm": "hmac-sha256",
+            "key_id": "reference-lab-v1",
+            "schema_version": "agent-bom.correlation-receipt-signature/v1",
+            "value": "sha256:5b657c2924f76a8f73801c1fa8504ead0d753eb4d9a45867fdfe20da20126eef"
+          },
           "source_kinds": [
             "kubernetes_iac"
           ]
@@ -1402,6 +1456,12 @@
           "freshness": "fresh",
           "node_count": 2,
           "scan_id": "reference-mcp-config-scan",
+          "signature": {
+            "algorithm": "hmac-sha256",
+            "key_id": "reference-lab-v1",
+            "schema_version": "agent-bom.correlation-receipt-signature/v1",
+            "value": "sha256:7df4bb15cb75105bd6dabe5093411c3fb26241c22c8d7ad2074729ad4b43e432"
+          },
           "source_kinds": [
             "mcp_config"
           ]
@@ -1414,6 +1474,12 @@
           "freshness": "fresh",
           "node_count": 2,
           "scan_id": "reference-repository-scan",
+          "signature": {
+            "algorithm": "hmac-sha256",
+            "key_id": "reference-lab-v1",
+            "schema_version": "agent-bom.correlation-receipt-signature/v1",
+            "value": "sha256:3910cd4cbfcd65cfa05a47e1abf8b6fcc31ffc060530bdfa907c9ce9cae52560"
+          },
           "source_kinds": [
             "repository_parser"
           ]
@@ -1426,6 +1492,12 @@
           "freshness": "fresh",
           "node_count": 2,
           "scan_id": "reference-runtime-observation",
+          "signature": {
+            "algorithm": "hmac-sha256",
+            "key_id": "reference-lab-v1",
+            "schema_version": "agent-bom.correlation-receipt-signature/v1",
+            "value": "sha256:6193d044136e4d9103685f622028bd0487aed39f8d05a7e345e78af9b8d5e360"
+          },
           "source_kinds": [
             "gateway_runtime"
           ]
@@ -1714,7 +1786,7 @@
     "correlation_id": "reference-evidence-correlation-v1",
     "failure_mode": "deny",
     "global_default": "off",
-    "manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
+    "manifest_sha256": "sha256:658a04a6cb730d75a48a8d33752890cfabf937ecee5a4b6cb60c9d4b7989f71b",
     "observed_event": "live-jsonrpc-allow",
     "policy_id": "strict-correlated-evidence",
     "policy_source": "graph_reachability",

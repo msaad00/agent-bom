@@ -77,7 +77,7 @@ def _compact_terminal_job(job: ScanJob) -> ScanJob:
 
     compact_result: dict[str, Any] = {_COMPACTED_RESULT_MARKER: True}
     if isinstance(job.result, dict):
-        for key in ("summary", "scan_timestamp", "generated_at", "scan_run", "pushed"):
+        for key in ("summary", "scan_timestamp", "generated_at", "scan_run", "pushed", "auto_correlation"):
             if key in job.result:
                 compact_result[key] = job.result[key]
         if "scan_timestamp" not in compact_result and "generated_at" in compact_result:

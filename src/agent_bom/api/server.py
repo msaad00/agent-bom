@@ -728,9 +728,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
             record_auto_correlation(outcome="skipped", reason=auto_correlation_skip_reason)
             _logger.info("Exact-batch graph correlation skipped: %s", auto_correlation_skip_reason.replace("_", " "))
         else:
-            _auto_correlation_task = asyncio.create_task(
-                auto_correlation_loop(auto_correlation_job_store, _stores._get_graph_store())
-            )
+            _auto_correlation_task = asyncio.create_task(auto_correlation_loop(auto_correlation_job_store, _stores._get_graph_store()))
             _logger.info("Exact-batch graph correlation configured; durable-store eligibility check scheduled")
 
     # ── Distributed scan dispatch ──

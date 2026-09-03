@@ -215,7 +215,7 @@ def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     persona_heading = readme.index("## Value by role")
     assert workflow_heading < workflow_link < persona_heading
     assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in readme[workflow_heading:persona_heading]
-    assert "raw data, credentials, findings, and policy decisions" in readme[:workflow_heading].lower()
+    assert "Start with a local repository, image, SBOM, or MCP configuration" not in readme[:workflow_heading]
     workflow = readme[workflow_heading:persona_heading]
     normalized_workflow = " ".join(workflow.split())
     assert "### Product proof: independent evidence, one verifiable path" in workflow

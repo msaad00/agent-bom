@@ -16,6 +16,7 @@ import logging
 import re as _re
 from pathlib import Path as _Path
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
@@ -105,7 +106,7 @@ async def connector_health(name: str) -> dict:
     try:
         from agent_bom.connectors import check_connector_health
 
-        status = check_connector_health(name)
+        status = await anyio.to_thread.run_sync(check_connector_health, name)
         return {"connector": status.connector, "state": status.state.value, "message": status.message, "api_version": status.api_version}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Connector not found") from exc

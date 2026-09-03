@@ -1666,6 +1666,30 @@ async def test_cis_benchmark_gcp_exception():
 
 
 @pytest.mark.asyncio
+async def test_cis_benchmark_recursively_sanitizes_provider_failure_artifact(monkeypatch):
+    from agent_bom.mcp_tools.compliance import cis_benchmark_impl
+
+    monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
+    leaked = "postgresql://operator:secret-token@db.example/app?token=also-secret"
+    report = MagicMock()
+    report.to_dict.return_value = {"checks": [{"status": "error", "evidence": leaked}]}
+
+    with patch("agent_bom.cloud.aws_cis_benchmark.run_benchmark", return_value=report):
+        result = await cis_benchmark_impl(
+            provider="aws",
+            region="us-east-1",
+            profile=None,
+            subscription_id=None,
+            project_id=None,
+            checks=None,
+            _truncate_response=_trunc,
+        )
+
+    assert "secret-token" not in result
+    assert "also-secret" not in result
+
+
+@pytest.mark.asyncio
 async def test_license_compliance_scan_with_policy():
     from agent_bom.mcp_tools.compliance import license_compliance_scan_impl
 

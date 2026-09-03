@@ -36,7 +36,13 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.models import RuntimeEvidenceIngestRequest, SideScanTriggerRequest
 from agent_bom.api.tenancy import require_request_tenant_id
-from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.backpressure import (
+    BackpressureRejectedError,
+    ProviderExecutionCapacityError,
+    ProviderExecutionTimeoutError,
+    adaptive_backpressure,
+    run_provider_call,
+)
 from agent_bom.cloud.ambient_credentials import (
     PROFILE_REJECTED_NOTE,
     ambient_cis_enabled,
@@ -49,9 +55,9 @@ from agent_bom.cloud.runtime_workload_evidence import (
     ingest_runtime_signals,
 )
 from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
-from agent_bom.config import CLOUD_CIS_TIMEOUT_SECONDS
+from agent_bom.config import CLOUD_CIS_TIMEOUT_SECONDS, CLOUD_DISCOVERY_TIMEOUT
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_log_label, sanitize_text
+from agent_bom.security import sanitize_log_label, sanitize_sensitive_payload, sanitize_text
 
 router = APIRouter(tags=["cloud"])
 _logger = logging.getLogger(__name__)
@@ -127,6 +133,10 @@ def _clean_tokens(values: Any, pattern: re.Pattern[str], *, cap: int = 500) -> l
 
 def _cloud_cis_timeout_seconds() -> float:
     return CLOUD_CIS_TIMEOUT_SECONDS
+
+
+def _cloud_inventory_timeout_seconds() -> float:
+    return max(float(CLOUD_DISCOVERY_TIMEOUT), 1.0)
 
 
 def _tenant(request: Request) -> str:
@@ -348,7 +358,36 @@ async def cloud_inventory(
         # scan to a worker thread under backpressure so a live inventory can never
         # stall the event loop (a burst sheds with a 429 instead).
         async with adaptive_backpressure("cloud_inventory"):
-            return await anyio.to_thread.run_sync(_build_inventory_payload, tenant_id, selected, scoped_region)
+            try:
+                return await run_provider_call(
+                    _build_inventory_payload,
+                    tenant_id,
+                    selected,
+                    scoped_region,
+                    timeout_seconds=_cloud_inventory_timeout_seconds(),
+                )
+            except ProviderExecutionTimeoutError:
+                provider_label = requested if requested != "all" else "all"
+                _logger.warning("Cloud inventory timed out for %s", provider_label)
+                return {
+                    "error": "Provider inventory timed out before completing.",
+                    "provider": provider_label,
+                    "tenant_id": tenant_id,
+                    "status": "unavailable",
+                    "timed_out": True,
+                    "audit_metadata": {
+                        "read_only": True,
+                        "writes_performed": False,
+                        "provider": provider_label,
+                        "note": "No cloud resource was mutated; retry with a scoped provider connection.",
+                    },
+                }
+            except ProviderExecutionCapacityError as exc:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Cloud provider execution capacity is exhausted; retry later.",
+                    headers={"Retry-After": "1"},
+                ) from exc
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,
@@ -437,7 +476,10 @@ def _run_cis_benchmark(
             "status": "unavailable",
         }
 
-    result: dict[str, Any] = report.to_dict()
+    sanitized_result = sanitize_sensitive_payload(report.to_dict())
+    if not isinstance(sanitized_result, dict):  # pragma: no cover - report contracts return mappings
+        raise TypeError("Provider benchmark report must be a mapping")
+    result = cast(dict[str, Any], sanitized_result)
     result.setdefault("tenant_id", tenant_id)
     result["audit_metadata"] = {
         "read_only": True,
@@ -503,21 +545,19 @@ async def cloud_cis_benchmark(
         # request must not hold an API slot indefinitely.
         async with adaptive_backpressure("cloud_cis"):
             try:
-                with anyio.fail_after(_cloud_cis_timeout_seconds()):
-                    return await anyio.to_thread.run_sync(
-                        _run_cis_benchmark,
-                        tenant_id,
-                        requested,
-                        check_list,
-                        region_arg,
-                        profile_arg,
-                        subscription_id,
-                        project_id,
-                        abandon_on_cancel=True,
-                    )
-            except TimeoutError:
-                requested_for_log = re.sub(r"[\r\n]+", "", requested)
-                _logger.warning("Cloud CIS benchmark timed out for %s", requested_for_log)
+                return await run_provider_call(
+                    _run_cis_benchmark,
+                    tenant_id,
+                    requested,
+                    check_list,
+                    region_arg,
+                    profile_arg,
+                    subscription_id,
+                    project_id,
+                    timeout_seconds=_cloud_cis_timeout_seconds(),
+                )
+            except ProviderExecutionTimeoutError:
+                _logger.warning("Cloud CIS benchmark timed out for %s", requested)
                 return {
                     "error": "Provider benchmark timed out before completing.",
                     "provider": requested,
@@ -531,6 +571,12 @@ async def cloud_cis_benchmark(
                         "note": "No cloud resource was mutated; retry with a scoped provider connection.",
                     },
                 }
+            except ProviderExecutionCapacityError as exc:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Cloud provider execution capacity is exhausted; retry later.",
+                    headers={"Retry-After": "1"},
+                ) from exc
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,

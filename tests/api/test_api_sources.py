@@ -1057,6 +1057,33 @@ def test_connector_source_test_updates_health(source_client: TestClient, monkeyp
     assert fetched_body["status"] == "healthy"
 
 
+def test_connector_source_health_runs_outside_the_api_event_loop(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sync connector adapters may call asyncio.run and must therefore be off-loop."""
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Jira async bridge",
+            "kind": "connector.registry",
+            "connector_name": "jira",
+        },
+    )
+    source_id = created.json()["source_id"]
+
+    def _health(connector_name: str) -> ConnectorStatus:
+        asyncio.run(asyncio.sleep(0))
+        return ConnectorStatus(connector=connector_name, state=ConnectorHealthState.HEALTHY, message="Connected")
+
+    monkeypatch.setattr("agent_bom.connectors.check_connector_health", _health)
+    tested = source_client.post(f"/v1/sources/{source_id}/test", headers=ANALYST_HEADERS)
+
+    assert tested.status_code == 200
+    assert tested.json()["status"] == "healthy"
+
+
 def test_connector_source_test_sanitizes_health_message_before_response_and_persistence(
     source_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

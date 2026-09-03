@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -10,12 +12,14 @@ import pytest
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun, correlation_manifest_digest
+from agent_bom.graph.correlation_receipts import verify_correlation_receipt
 from agent_bom.graph.correlation_service import CorrelationRequest, CorrelationServiceError, GraphCorrelationService
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 
 NOW = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+RECEIPT_KEY = b"correlation-receipt-test-key-material-32-bytes"
 
 
 def _graph(scan_id: str, created_at: str, *, purl: str = "pkg:pypi/pillow@9.0.0") -> UnifiedGraph:
@@ -88,6 +92,71 @@ async def test_service_persists_complete_correlation_and_manifest(tmp_path: Path
     assert snapshots["corr-1"]["snapshot_kind"] == "correlation"
     assert snapshots["corr-1"]["evidence_manifest_sha256"] == completed.manifest_sha256
     assert output.edges[0].provenance["correlation"]["freshness"] == "fresh"
+
+
+@pytest.mark.asyncio
+async def test_service_persists_and_revalidates_tenant_bound_receipt_signatures(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))
+    store.save_graph(_graph("image", "2026-08-30T11:00:00+00:00"))
+    service = GraphCorrelationService(
+        store,
+        now=lambda: NOW,
+        receipt_signing_key=RECEIPT_KEY,
+        receipt_signing_key_id="test-v1",
+    )
+    await service.start(tenants=["tenant-a"])
+    try:
+        submitted = await service.submit(
+            CorrelationRequest("corr-signed", "tenant-a", "idem-signed", "signed", ("repo", "image"), 24)
+        )
+        assert all(item["signature"]["key_id"] == "test-v1" for item in submitted.input_manifest)
+        assert all(
+            verify_correlation_receipt(
+                item,
+                signing_key=RECEIPT_KEY,
+                tenant_id="tenant-a",
+                correlation_id="corr-signed",
+                correlation_created_at=submitted.created_at,
+                max_age_hours=24,
+                allow_stale=False,
+            )
+            for item in submitted.input_manifest
+        )
+        completed = await service.wait("tenant-a", "corr-signed", timeout_seconds=5)
+    finally:
+        await service.stop()
+
+    assert completed.status is CorrelationRunStatus.COMPLETE
+    assert all("signature" in item for item in completed.result_manifest["input_snapshots"])
+
+
+@pytest.mark.asyncio
+async def test_restart_rejects_tampered_persisted_receipt_signature(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))
+    store.save_graph(_graph("image", "2026-08-30T11:00:00+00:00"))
+    dormant = GraphCorrelationService(store, now=lambda: NOW, receipt_signing_key=RECEIPT_KEY)
+    submitted = await dormant.submit(
+        CorrelationRequest("corr-tampered", "tenant-a", "idem-tampered", "tampered", ("repo", "image"), 24)
+    )
+    stored = submitted.to_dict()
+    stored["input_manifest"][0]["digest"] = "sha256:" + "f" * 64
+    with sqlite3.connect(store._db_path) as conn:
+        conn.execute(
+            "UPDATE graph_correlation_runs SET input_manifest = ? WHERE tenant_id = ? AND correlation_id = ?",
+            (json.dumps(stored["input_manifest"]), "tenant-a", "corr-tampered"),
+        )
+
+    resumed = GraphCorrelationService(store, now=lambda: NOW, receipt_signing_key=RECEIPT_KEY)
+    await resumed.start(tenants=["tenant-a"])
+    try:
+        failed = await resumed.wait("tenant-a", "corr-tampered", timeout_seconds=5)
+    finally:
+        await resumed.stop()
+
+    assert failed.status is CorrelationRunStatus.FAILED
+    assert failed.failure_code == "input_receipt_signature_invalid"
 
 
 @pytest.mark.asyncio

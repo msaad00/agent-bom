@@ -67,13 +67,16 @@ bundled `pillow@9.0.0` / `CVE-2023-4863` advisory data. The lab generator then
 assembles modeled local source snapshots from those validated artifacts and
 correlates exact OCI digest, Kubernetes UID, MCP tool, workload identity, and
 live local gateway receipts. It is not customer evidence or a live-cloud claim.
+Each receipt is signed and verified against its tenant, correlation, exact
+source digest, counts, freshness policy, and correlation timestamp before the
+path is used.
 
 Investigation loads the latest completed correlation automatically and shows
 the source-to-path journey first. Custom snapshot selection remains available
 as an explicit advanced workflow with the freshness policy visible.
 
 <p align="center">
-  <a href="docs/images/correlation-receipts-live.png"><img src="docs/images/correlation-receipts-live.png" alt="Reference evidence lab source receipts from repository, image and SBOM, Kubernetes IaC, MCP configuration, identity, and runtime flowing into one immutable correlated snapshot" width="920" /></a>
+  <a href="docs/images/correlation-receipts-live.png"><img src="docs/images/correlation-receipts-live.png" alt="Reference evidence lab with server-verified signed receipts from repository, image and SBOM, Kubernetes IaC, MCP configuration, identity, and runtime flowing into one immutable correlated snapshot" width="920" /></a>
 </p>
 
 The resulting path is confirmed only because every directed hop is traversable

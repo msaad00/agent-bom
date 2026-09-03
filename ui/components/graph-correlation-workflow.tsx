@@ -64,6 +64,22 @@ function sourceLabel(sourceKinds: string[] | undefined, scanId: string): string 
   return "Scan evidence";
 }
 
+function receiptVerificationLabel(value: GraphCorrelationRun["receipt_verification"]): string {
+  if (!value || value.status === "none") return "Receipt verification pending";
+  if (value.status === "verified") return `${value.verified}/${value.total} receipts verified`;
+  if (value.status === "legacy_hash_bound") return `${value.total} legacy hash-bound receipts`;
+  if (value.status === "verification_key_unavailable") return "Receipt verification key unavailable";
+  if (value.status === "invalid") return `${value.invalid} invalid receipt signature${value.invalid === 1 ? "" : "s"}`;
+  return `${value.verified}/${value.total} receipts verified · mixed integrity`;
+}
+
+function receiptStatusLabel(value: GraphCorrelationRun["input_manifest"][number]["verification"]): string {
+  if (value === "verified") return "Verified";
+  if (value === "invalid") return "Invalid signature";
+  if (value === "verification_key_unavailable") return "Key unavailable";
+  return "Legacy hash-bound";
+}
+
 export function GraphCorrelationWorkflow({
   snapshots,
   initialRun = null,
@@ -175,6 +191,12 @@ export function GraphCorrelationWorkflow({
   const priorityHopCount = priorityPath ? Math.max(priorityPath.hops.length - 1, 0) : 0;
   const freshReceiptCount = run?.input_manifest.filter((receipt) => receipt.freshness !== "stale_allowed").length ?? 0;
   const manifestDigest = run?.manifest_sha256 ? `sha256:${run.manifest_sha256.replace(/^sha256:/, "").slice(0, 12)}…` : "manifest pending";
+  const receiptVerification = receiptVerificationLabel(run?.receipt_verification);
+  const receiptVerificationTone = run?.receipt_verification?.status === "invalid"
+    ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
+    : run?.receipt_verification?.status === "verified"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+      : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
 
   return (
     <section
@@ -199,9 +221,16 @@ export function GraphCorrelationWorkflow({
               : "Connected and local sources produce immutable scan evidence; the latest completed correlation is selected automatically. Exact identifiers form joins—similar labels and mutable tags never do."}
           </p>
         </div>
-        <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300">
-          {freshnessBoundLabel(activeFreshnessBound)}
-        </span>
+        <div className="flex flex-wrap justify-end gap-2">
+          {run ? (
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${receiptVerificationTone}`}>
+              {receiptVerification}
+            </span>
+          ) : null}
+          <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300">
+            {freshnessBoundLabel(activeFreshnessBound)}
+          </span>
+        </div>
       </div>
 
       <details className={`group mt-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] ${isComplete ? "" : "open"}`} open={!isComplete}>
@@ -271,7 +300,10 @@ export function GraphCorrelationWorkflow({
               {run.input_manifest.map((receipt) => (
                 <div key={receipt.scan_id} className="min-w-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">
                   <p className="truncate font-medium text-[color:var(--foreground)]">{sourceLabel(receipt.source_kinds, receipt.scan_id)}</p>
-                  <p className={receipt.freshness === "stale_allowed" || evidenceAge(receipt.created_at, run.max_age_hours) === "stale" ? "mt-1 text-[10px] text-amber-700 dark:text-amber-300" : "mt-1 text-[10px] text-emerald-700 dark:text-emerald-300"}>
+                  <p className={receipt.verification === "invalid" ? "mt-1 text-[10px] text-red-700 dark:text-red-300" : receipt.verification === "verified" ? "mt-1 text-[10px] text-emerald-700 dark:text-emerald-300" : "mt-1 text-[10px] text-amber-700 dark:text-amber-300"}>
+                    {receiptStatusLabel(receipt.verification)}
+                  </p>
+                  <p className={receipt.freshness === "stale_allowed" || evidenceAge(receipt.created_at, run.max_age_hours) === "stale" ? "mt-0.5 text-[10px] text-amber-700 dark:text-amber-300" : "mt-0.5 text-[10px] text-[color:var(--text-tertiary)]"}>
                     {receipt.freshness === "stale_allowed"
                       ? "Stale allowed at run"
                       : evidenceAge(receipt.created_at, run.max_age_hours) === "stale"
@@ -313,7 +345,7 @@ export function GraphCorrelationWorkflow({
           ) : null}
           <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)]">
             <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[10px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
-              <span>View hash-bound source receipts</span>
+              <span>{run.receipt_verification?.status === "verified" ? `View ${run.receipt_verification.total} verified source receipts` : "View source receipt integrity"}</span>
               <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
             </summary>
             <div className="grid gap-2 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2">
@@ -321,6 +353,9 @@ export function GraphCorrelationWorkflow({
                 <div key={receipt.scan_id} className="min-w-0 rounded-md bg-[color:var(--surface-elevated)] px-2.5 py-2 text-[10px]">
                   <p className="truncate font-mono text-[color:var(--foreground)]">{receipt.scan_id}</p>
                   <p className="mt-1 truncate font-mono text-[color:var(--text-tertiary)]">{receipt.digest ?? "digest pending"}</p>
+                  <p className={receipt.verification === "invalid" ? "mt-1 text-red-700 dark:text-red-300" : receipt.verification === "verified" ? "mt-1 text-emerald-700 dark:text-emerald-300" : "mt-1 text-amber-700 dark:text-amber-300"}>
+                    {receiptStatusLabel(receipt.verification)}{receipt.signature?.key_id ? ` · ${receipt.signature.key_id}` : ""}
+                  </p>
                 </div>
               ))}
             </div>

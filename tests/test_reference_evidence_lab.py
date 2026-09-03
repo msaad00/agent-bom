@@ -54,6 +54,14 @@ def test_reference_lab_proves_exact_end_to_end_chain() -> None:
         and receipt["signature"]["key_id"] == "reference-lab-v1"
         for receipt in payload["correlation"]["input_manifest"]
     )
+    assert payload["correlation"]["receipt_verification"] == {
+        "status": "verified",
+        "verified": 6,
+        "legacy_hash_bound": 0,
+        "invalid": 0,
+        "verification_key_unavailable": 0,
+        "total": 6,
+    }
 
     proof = payload["proof_path"]
     assert proof["reachability"] == "confirmed"

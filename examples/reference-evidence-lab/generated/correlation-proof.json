@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:6dcb8631ffbe800824955a578fe191c1188d569d5572b6503419bb8fb826a415",
+  "artifact_sha256": "sha256:fbfc5eea2771f02d9e259777172dccff3f59b062a17aee7cbf7cf1bb2ac75486",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -1254,7 +1254,8 @@
         },
         "source_kinds": [
           "identity_model"
-        ]
+        ],
+        "verification": "verified"
       },
       {
         "age_hours": 0.083333,
@@ -1273,7 +1274,8 @@
         "source_kinds": [
           "bundled_advisory_scanner",
           "cyclonedx_sbom"
-        ]
+        ],
+        "verification": "verified"
       },
       {
         "age_hours": 0.066667,
@@ -1291,7 +1293,8 @@
         },
         "source_kinds": [
           "kubernetes_iac"
-        ]
+        ],
+        "verification": "verified"
       },
       {
         "age_hours": 0.05,
@@ -1309,7 +1312,8 @@
         },
         "source_kinds": [
           "mcp_config"
-        ]
+        ],
+        "verification": "verified"
       },
       {
         "age_hours": 0.1,
@@ -1327,7 +1331,8 @@
         },
         "source_kinds": [
           "repository_parser"
-        ]
+        ],
+        "verification": "verified"
       },
       {
         "age_hours": 0.033333,
@@ -1345,13 +1350,22 @@
         },
         "source_kinds": [
           "gateway_runtime"
-        ]
+        ],
+        "verification": "verified"
       }
     ],
     "manifest_sha256": "sha256:658a04a6cb730d75a48a8d33752890cfabf937ecee5a4b6cb60c9d4b7989f71b",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
+    "receipt_verification": {
+      "invalid": 0,
+      "legacy_hash_bound": 0,
+      "status": "verified",
+      "total": 6,
+      "verification_key_unavailable": 0,
+      "verified": 6
+    },
     "result_manifest": {
       "analysis_bounds": {
         "attack_path_fusion": {
@@ -1409,7 +1423,8 @@
           },
           "source_kinds": [
             "identity_model"
-          ]
+          ],
+          "verification": "verified"
         },
         {
           "age_hours": 0.083333,
@@ -1428,7 +1443,8 @@
           "source_kinds": [
             "bundled_advisory_scanner",
             "cyclonedx_sbom"
-          ]
+          ],
+          "verification": "verified"
         },
         {
           "age_hours": 0.066667,
@@ -1446,7 +1462,8 @@
           },
           "source_kinds": [
             "kubernetes_iac"
-          ]
+          ],
+          "verification": "verified"
         },
         {
           "age_hours": 0.05,
@@ -1464,7 +1481,8 @@
           },
           "source_kinds": [
             "mcp_config"
-          ]
+          ],
+          "verification": "verified"
         },
         {
           "age_hours": 0.1,
@@ -1482,7 +1500,8 @@
           },
           "source_kinds": [
             "repository_parser"
-          ]
+          ],
+          "verification": "verified"
         },
         {
           "age_hours": 0.033333,
@@ -1500,7 +1519,8 @@
           },
           "source_kinds": [
             "gateway_runtime"
-          ]
+          ],
+          "verification": "verified"
         }
       ],
       "output": {

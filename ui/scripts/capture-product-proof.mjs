@@ -50,9 +50,11 @@ const REFERENCE_LAB = JSON.parse(referenceLabProofBytes.toString("utf8"));
 if (
   REFERENCE_LAB.label !== "Reference evidence lab — modeled local infrastructure"
   || REFERENCE_LAB.correlation?.status !== "complete"
+  || REFERENCE_LAB.correlation?.receipt_verification?.status !== "verified"
+  || REFERENCE_LAB.correlation?.receipt_verification?.verified !== REFERENCE_LAB.correlation?.input_manifest?.length
   || REFERENCE_LAB.capture_fixture?.graph?.scan_id !== REFERENCE_LAB.correlation?.output_scan_id
 ) {
-  throw new Error("Reference evidence lab proof does not contain a completed correlated snapshot");
+  throw new Error("Reference evidence lab proof does not contain a completed correlation with server-verified receipts");
 }
 for (const receipt of Object.values(REFERENCE_LAB.source_artifacts ?? {})) {
   const relativePath = receipt?.path;
@@ -2534,7 +2536,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-receipts-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
-      scope: "Reference evidence lab source receipts flowing into one immutable, manifest-bound correlated snapshot",
+      scope: "Reference evidence lab server-verified signed source receipts flowing into one immutable, manifest-bound correlated snapshot",
       presentation: `${CAPTURE_THEME} desktop`,
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2552,7 +2554,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-receipts-light-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
-      scope: "Reference evidence lab automatic journey and manifest-bound source receipts in the light theme",
+      scope: "Reference evidence lab automatic journey and server-verified signed source receipts in the light theme",
       presentation: "light desktop",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2570,7 +2572,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-receipts-mobile-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
-      scope: "Reference evidence lab automatic journey and manifest-bound source receipts at a 390 by 844 viewport",
+      scope: "Reference evidence lab automatic journey and server-verified signed source receipts at a 390 by 844 viewport",
       presentation: "dark mobile",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,

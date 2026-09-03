@@ -30,9 +30,10 @@ function run(status: GraphCorrelationRun["status"]): GraphCorrelationRun {
     max_age_hours: 168,
     allow_stale: false,
     input_manifest: [
-      { scan_id: "image", freshness: "fresh", node_count: 8, edge_count: 7, source_kinds: ["cyclonedx_sbom"], digest: `sha256:${"b".repeat(64)}` },
-      { scan_id: "repo", freshness: "fresh", node_count: 4, edge_count: 3, source_kinds: ["repository_parser"], digest: `sha256:${"c".repeat(64)}` },
+      { scan_id: "image", freshness: "fresh", verification: "verified", signature: { schema_version: "agent-bom.correlation-receipt-signature/v1", algorithm: "hmac-sha256", key_id: "lab-v1", value: `sha256:${"d".repeat(64)}` }, node_count: 8, edge_count: 7, source_kinds: ["cyclonedx_sbom"], digest: `sha256:${"b".repeat(64)}` },
+      { scan_id: "repo", freshness: "fresh", verification: "verified", signature: { schema_version: "agent-bom.correlation-receipt-signature/v1", algorithm: "hmac-sha256", key_id: "lab-v1", value: `sha256:${"e".repeat(64)}` }, node_count: 4, edge_count: 3, source_kinds: ["repository_parser"], digest: `sha256:${"c".repeat(64)}` },
     ],
+    receipt_verification: { status: "verified", verified: 2, legacy_hash_bound: 0, invalid: 0, verification_key_unavailable: 0, total: 2 },
     result_manifest: status === "complete" ? {
       correlation_merge: { conflict_count: 1 },
       output: { scan_id: "corr-1", node_count: 11, edge_count: 12, attack_path_count: 2 },
@@ -93,6 +94,8 @@ describe("GraphCorrelationWorkflow", () => {
     expect(screen.getByText("2 confirmed attack paths")).toBeInTheDocument();
     expect(screen.getByText("CVE-2023-4863 can reach Modeled customer records")).toBeInTheDocument();
     expect(screen.getByText("Risk 58.0")).toBeInTheDocument();
+    expect(screen.getByText("2/2 receipts verified")).toBeInTheDocument();
+    expect(screen.getByText("View 2 verified source receipts")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Patch Pillow and re-run correlation" })).toHaveAttribute("href", "/remediation");
     expect(screen.queryByLabelText("Correlation name")).not.toBeVisible();
     expect(apiMock.createGraphCorrelation).not.toHaveBeenCalled();

@@ -178,6 +178,13 @@ export interface GraphCorrelationReceipt {
   source_kinds?: string[] | undefined;
   freshness?: "fresh" | "stale_allowed" | undefined;
   age_hours?: number | undefined;
+  signature?: {
+    schema_version: string;
+    algorithm: "hmac-sha256" | string;
+    key_id: string;
+    value: string;
+  } | undefined;
+  verification?: "verified" | "legacy_hash_bound" | "invalid" | "verification_key_unavailable" | undefined;
 }
 
 export interface GraphCorrelationRun {
@@ -188,6 +195,14 @@ export interface GraphCorrelationRun {
   max_age_hours: number;
   allow_stale: boolean;
   input_manifest: GraphCorrelationReceipt[];
+  receipt_verification?: {
+    status: "verified" | "legacy_hash_bound" | "invalid" | "verification_key_unavailable" | "mixed" | "none";
+    verified: number;
+    legacy_hash_bound: number;
+    invalid: number;
+    verification_key_unavailable: number;
+    total: number;
+  } | undefined;
   result_manifest: {
     correlation_merge?: {
       node_conflict_count?: number | undefined;

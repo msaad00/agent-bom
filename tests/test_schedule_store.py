@@ -299,7 +299,10 @@ def test_source_cohort_schedule_launches_one_exact_durable_cohort_per_occurrence
     _stores.set_job_store(jobs)
     _stores.set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
     dispatched: list[str] = []
-    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    # Observe actual local submissions, not recovery attempts entering the
+    # dispatch boundary. ``dispatch_scan_job`` owns the process-local claim
+    # that collapses a replay of still-pending durable children.
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", lambda job: dispatched.append(job.job_id))
     config = {"source_ids": ["source-image", "source-repo"], "max_age_hours": 24}
     try:
         first_id = _enqueue_scheduled_scan(

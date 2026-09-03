@@ -1,8 +1,10 @@
 """Exact-batch scheduling for immutable graph correlations.
 
-The scheduler deliberately uses only API scan-batch membership as its cohort
-contract.  A recurring ``source_id``, a mutable label, or a tenant's latest
-snapshots are not sufficient evidence that snapshots describe one scan event.
+The scheduler deliberately uses API scan-batch membership as its cohort
+contract, recording an explicit correlation cohort when one initiated the
+batch and the legacy batch identifier otherwise.  A recurring ``source_id``,
+a mutable label, or a tenant's latest snapshots are not sufficient evidence
+that snapshots describe one scan event.
 Supported durable control-plane stores enable this bounded workflow by default;
 unsupported stores no-op with a bounded metric reason.
 """
@@ -176,8 +178,9 @@ def _record_decision(parent: ScanJob, decision: dict[str, Any]) -> None:
         tenant_id=parent.tenant_id,
         outcome=status,
         reason=reason,
-        cohort_basis="batch_id",
+        cohort_basis=str(decision.get("cohort_basis") or "batch_id"),
         batch_id=parent.batch_id or "",
+        correlation_cohort_id=parent.correlation_cohort_id or "",
         correlation_id=str(decision.get("correlation_id") or ""),
         input_count=len(decision.get("input_scan_ids") or []),
         max_age_hours=int(decision["max_age_hours"]),
@@ -193,6 +196,16 @@ def _persist_and_record(job_store: JobStore, parent: ScanJob, decision: dict[str
         _persist_decision(job_store, parent, decision)
         _record_decision(parent, decision)
     return decision
+
+
+async def _persist_and_record_off_loop(
+    job_store: JobStore,
+    parent: ScanJob,
+    decision: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist and audit one decision without blocking the API event loop."""
+
+    return await asyncio.to_thread(_persist_and_record, job_store, parent, decision)
 
 
 def _parent_rows(job_store: JobStore, policy: AutoCorrelationPolicy) -> list[dict[str, Any]]:
@@ -257,6 +270,7 @@ async def _reconcile_parent(
     policy: AutoCorrelationPolicy,
     now: datetime,
     service: GraphCorrelationService | None,
+    active_counts: dict[str, int],
 ) -> dict[str, Any] | None:
     prior = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
     if isinstance(prior, dict) and prior.get("status") in {"complete", "failed", "skipped"}:
@@ -272,22 +286,31 @@ async def _reconcile_parent(
         )
 
     correlation_id, idempotency_key = _deterministic_identity(tenant_id=parent.tenant_id, batch_id=parent.batch_id or parent.job_id)
-    scan_ids, skip_reason = _validated_batch_children(job_store, parent)
+    scan_ids, skip_reason = await asyncio.to_thread(_validated_batch_children, job_store, parent)
     if skip_reason:
-        return _persist_and_record(
+        return await _persist_and_record_off_loop(
             job_store,
             parent,
             _decision(parent=parent, policy=policy, now=now, status="skipped", reason=skip_reason),
         )
-    snapshot_reason = _snapshot_skip_reason(graph_store, tenant_id=parent.tenant_id, scan_ids=scan_ids)
+    snapshot_reason = await asyncio.to_thread(
+        _snapshot_skip_reason,
+        graph_store,
+        tenant_id=parent.tenant_id,
+        scan_ids=scan_ids,
+    )
     if snapshot_reason:
-        return _persist_and_record(
+        return await _persist_and_record_off_loop(
             job_store,
             parent,
             _decision(parent=parent, policy=policy, now=now, status="skipped", reason=snapshot_reason, scan_ids=scan_ids),
         )
 
-    existing = graph_store.get_correlation_run(tenant_id=parent.tenant_id, correlation_id=correlation_id)
+    existing = await asyncio.to_thread(
+        graph_store.get_correlation_run,
+        tenant_id=parent.tenant_id,
+        correlation_id=correlation_id,
+    )
     existing_policy = (
         AutoCorrelationPolicy(
             enabled=True,
@@ -302,7 +325,7 @@ async def _reconcile_parent(
     if existing is not None:
         existing_scan_ids = tuple(sorted(str(item.get("scan_id") or "") for item in existing.input_manifest))
         if existing.idempotency_key != idempotency_key or existing_scan_ids != scan_ids:
-            return _persist_and_record(
+            return await _persist_and_record_off_loop(
                 job_store,
                 parent,
                 _decision(
@@ -318,7 +341,7 @@ async def _reconcile_parent(
     if existing is not None and existing.status in {CorrelationRunStatus.COMPLETE, CorrelationRunStatus.FAILED}:
         status = "complete" if existing.status is CorrelationRunStatus.COMPLETE else "failed"
         reason = "completed" if status == "complete" else existing.failure_code or "correlation_failed"
-        return _persist_and_record(
+        return await _persist_and_record_off_loop(
             job_store,
             parent,
             _decision(
@@ -334,7 +357,7 @@ async def _reconcile_parent(
 
     if existing is not None:
         await _service_for_tenant(graph_store, parent.tenant_id, service)
-        return _persist_and_record(
+        return await _persist_and_record_off_loop(
             job_store,
             parent,
             _decision(
@@ -348,10 +371,15 @@ async def _reconcile_parent(
             ),
         )
 
-    active = graph_store.list_correlation_runs(tenant_id=parent.tenant_id, limit=1000)
-    active_count = sum(run.status in {CorrelationRunStatus.PENDING, CorrelationRunStatus.RUNNING} for run in active)
-    if existing is None and active_count >= policy.max_active_per_tenant:
-        return _persist_and_record(
+    active_count = active_counts.get(parent.tenant_id)
+    if active_count is None:
+        active_count = await asyncio.to_thread(
+            graph_store.count_active_correlation_runs,
+            tenant_id=parent.tenant_id,
+        )
+        active_counts[parent.tenant_id] = active_count
+    if active_count >= policy.max_active_per_tenant:
+        return await _persist_and_record_off_loop(
             job_store,
             parent,
             _decision(
@@ -382,7 +410,7 @@ async def _reconcile_parent(
         reason = exc.code if isinstance(exc, CorrelationServiceError) else "idempotency_conflict"
         terminal = reason != "queue_capacity_exceeded"
         status = "skipped" if terminal else "deferred"
-        return _persist_and_record(
+        return await _persist_and_record_off_loop(
             job_store,
             parent,
             _decision(
@@ -398,7 +426,9 @@ async def _reconcile_parent(
 
     status = "complete" if run.status is CorrelationRunStatus.COMPLETE else "scheduled"
     reason = "completed" if status == "complete" else "scheduled"
-    return _persist_and_record(
+    if run.status in {CorrelationRunStatus.PENDING, CorrelationRunStatus.RUNNING}:
+        active_counts[parent.tenant_id] = active_count + 1
+    return await _persist_and_record_off_loop(
         job_store,
         parent,
         _decision(
@@ -427,11 +457,13 @@ async def reconcile_auto_correlations_once(
         return []
     current_time = (now or (lambda: datetime.now(timezone.utc)))().astimezone(timezone.utc)
     decisions: list[dict[str, Any]] = []
-    for row in _parent_rows(job_store, policy):
+    active_counts: dict[str, int] = {}
+    parent_rows = await asyncio.to_thread(_parent_rows, job_store, policy)
+    for row in parent_rows:
         tenant_id = str(row.get("tenant_id") or "default")
         token = set_current_tenant(tenant_id)
         try:
-            parent = job_store.get(str(row["job_id"]), tenant_id=tenant_id)
+            parent = await asyncio.to_thread(job_store.get, str(row["job_id"]), tenant_id=tenant_id)
             if parent is None:
                 continue
             decision = await _reconcile_parent(
@@ -441,6 +473,7 @@ async def reconcile_auto_correlations_once(
                 policy=policy,
                 now=current_time,
                 service=service,
+                active_counts=active_counts,
             )
             if decision is not None:
                 decisions.append(decision)

@@ -210,6 +210,8 @@ class GraphStoreProtocol(Protocol):
 
     def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list[GraphCorrelationRun]: ...
 
+    def count_active_correlation_runs(self, *, tenant_id: str) -> int: ...
+
     def update_correlation_run(
         self,
         *,
@@ -1894,6 +1896,15 @@ class SQLiteGraphStore:
             return []
         try:
             return sqlite_graph_store.list_correlation_runs(conn, tenant_id=tenant_id, limit=limit)
+        finally:
+            conn.close()
+
+    def count_active_correlation_runs(self, *, tenant_id: str) -> int:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return 0
+        try:
+            return sqlite_graph_store.count_active_correlation_runs(conn, tenant_id=tenant_id)
         finally:
             conn.close()
 

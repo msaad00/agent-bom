@@ -2570,6 +2570,19 @@ class PostgresGraphStore:
             ).fetchall()
         return [_correlation_run_from_row(row) for row in rows]
 
+    def count_active_correlation_runs(self, *, tenant_id: str) -> int:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM graph_correlation_runs WHERE tenant_id = %s AND status IN (%s, %s)",
+                (
+                    tenant,
+                    CorrelationRunStatus.PENDING.value,
+                    CorrelationRunStatus.RUNNING.value,
+                ),
+            ).fetchone()
+        return int(row[0]) if row is not None else 0
+
     def update_correlation_run(
         self,
         *,

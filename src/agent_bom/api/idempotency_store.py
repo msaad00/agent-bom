@@ -20,6 +20,8 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version, ensure_
 # (stable observation dedup key) instead of minting a fresh random batch id.
 _BATCH_ID_NAMESPACE = uuid.UUID("6f6b4b2e-2c1a-4d9e-9d3b-8a1f0c5e7d42")
 _DEFAULT_IDEMPOTENCY_TTL_HOURS = 24
+_DEFAULT_IDEMPOTENCY_RESERVATION_LEASE_SECONDS = 30
+_MAX_IDEMPOTENCY_RESERVATION_LEASE_SECONDS = 300
 _SQLITE_IDEMPOTENCY_INIT_LOCK = threading.Lock()
 
 
@@ -41,6 +43,18 @@ def _idempotency_ttl_hours() -> int:
         return max(1, int(raw))
     except ValueError:
         return _DEFAULT_IDEMPOTENCY_TTL_HOURS
+
+
+def idempotency_reservation_lease_seconds() -> int:
+    """Return the short lease used only for in-progress write reservations."""
+
+    raw = os.environ.get("AGENT_BOM_IDEMPOTENCY_RESERVATION_LEASE_SECONDS")
+    if raw is None:
+        return _DEFAULT_IDEMPOTENCY_RESERVATION_LEASE_SECONDS
+    try:
+        return min(_MAX_IDEMPOTENCY_RESERVATION_LEASE_SECONDS, max(1, int(raw)))
+    except ValueError:
+        return _DEFAULT_IDEMPOTENCY_RESERVATION_LEASE_SECONDS
 
 
 @dataclass
@@ -97,6 +111,7 @@ class IdempotencyStore(Protocol):
         response: dict[str, Any],
         *,
         request_hash: str = "",
+        reservation_lease_seconds: int | None = None,
     ) -> tuple[dict[str, Any], bool]: ...
     def release(
         self,
@@ -111,6 +126,24 @@ class IdempotencyStore(Protocol):
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _reservation_is_expired(response_json: str, created_at: str, lease_seconds: int | None) -> bool:
+    """Return whether an explicitly uncommitted reservation can be reclaimed."""
+
+    if lease_seconds is None:
+        return False
+    try:
+        response = json.loads(response_json)
+        created = datetime.fromisoformat(created_at)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if not isinstance(response, dict) or response.get("committed") is not False:
+        return False
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(1, int(lease_seconds)))
+    return created <= cutoff
 
 
 def _normalize_request_payload(value: Any) -> Any:
@@ -206,6 +239,7 @@ class InMemoryIdempotencyStore:
         response: dict[str, Any],
         *,
         request_hash: str = "",
+        reservation_lease_seconds: int | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Atomically reserve one logical write and return its stable receipt."""
         key = (endpoint, tenant_id, source_id, idempotency_key)
@@ -214,6 +248,13 @@ class InMemoryIdempotencyStore:
             existing = self._records.get(key)
             if existing is not None:
                 _ensure_request_hash_matches(existing.request_hash, request_hash)
+                if _reservation_is_expired(
+                    existing.response_json,
+                    existing.created_at,
+                    reservation_lease_seconds,
+                ):
+                    existing.created_at = _utcnow()
+                    return json.loads(existing.response_json), True
                 return json.loads(existing.response_json), False
             self._records[key] = IdempotencyRecord(
                 endpoint=endpoint,
@@ -349,6 +390,7 @@ class SQLiteIdempotencyStore:
         response: dict[str, Any],
         *,
         request_hash: str = "",
+        reservation_lease_seconds: int | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Atomically insert a reservation across threads and API processes."""
         response_json = json.dumps(response, sort_keys=True)
@@ -360,15 +402,27 @@ class SQLiteIdempotencyStore:
         )
         acquired = cursor.rowcount == 1
         row = self._conn.execute(
-            """SELECT response_json, request_hash FROM idempotency_keys
+            """SELECT response_json, request_hash, created_at FROM idempotency_keys
                WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?""",
             (endpoint, tenant_id, source_id, idempotency_key),
         ).fetchone()
+        if row is None:  # pragma: no cover - protected by same transaction
+            self._conn.rollback()
+            raise RuntimeError("Idempotency reservation was not persisted")
+        try:
+            _ensure_request_hash_matches(str(row[1] or ""), request_hash)
+        except IdempotencyConflictError:
+            self._conn.rollback()
+            raise
+        if not acquired and _reservation_is_expired(str(row[0]), str(row[2]), reservation_lease_seconds):
+            self._conn.execute(
+                """UPDATE idempotency_keys SET created_at = ?
+                   WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?""",
+                (_utcnow(), endpoint, tenant_id, source_id, idempotency_key),
+            )
+            acquired = True
         self._prune()
         self._conn.commit()
-        if row is None:  # pragma: no cover - protected by same transaction
-            raise RuntimeError("Idempotency reservation was not persisted")
-        _ensure_request_hash_matches(str(row[1] or ""), request_hash)
         return json.loads(row[0]), acquired
 
     def release(
@@ -501,6 +555,7 @@ class PostgresIdempotencyStore:
         response: dict[str, Any],
         *,
         request_hash: str = "",
+        reservation_lease_seconds: int | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Atomically reserve a write across every Postgres-backed replica."""
         response_json = json.dumps(response, sort_keys=True)
@@ -513,14 +568,23 @@ class PostgresIdempotencyStore:
                    RETURNING response_json, request_hash""",
                 (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, _utcnow()),
             ).fetchone()
-            row = (
-                inserted
-                or conn.execute(
-                    """SELECT response_json, request_hash FROM idempotency_keys
-                   WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s""",
+            row = inserted
+            if row is None:
+                row = conn.execute(
+                    """SELECT response_json, request_hash, created_at FROM idempotency_keys
+                       WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s
+                       FOR UPDATE""",
                     (endpoint, tenant_id, source_id, idempotency_key),
                 ).fetchone()
-            )
+                if row is not None:
+                    _ensure_request_hash_matches(str(row[1] or ""), request_hash)
+                    if _reservation_is_expired(str(row[0]), str(row[2]), reservation_lease_seconds):
+                        conn.execute(
+                            """UPDATE idempotency_keys SET created_at = %s
+                               WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s""",
+                            (_utcnow(), endpoint, tenant_id, source_id, idempotency_key),
+                        )
+                        inserted = row
             self._prune(conn)
             conn.commit()
         if row is None:  # pragma: no cover - protected by the unique key transaction
@@ -545,4 +609,4 @@ class PostgresIdempotencyStore:
                 (endpoint, tenant_id, source_id, idempotency_key, request_hash, request_hash),
             )
             conn.commit()
-            return cursor.rowcount == 1
+            return int(cursor.rowcount) == 1

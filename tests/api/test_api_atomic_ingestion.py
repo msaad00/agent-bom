@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from starlette.testclient import TestClient
@@ -11,7 +13,13 @@ from starlette.testclient import TestClient
 from agent_bom.api import stores
 from agent_bom.api.fleet_store import InMemoryFleetStore, SQLiteFleetStore, endpoint_summary_from_inventory
 from agent_bom.api.graph_store import SQLiteGraphStore
-from agent_bom.api.idempotency_store import InMemoryIdempotencyStore, SQLiteIdempotencyStore
+from agent_bom.api.idempotency_store import (
+    InMemoryIdempotencyStore,
+    SQLiteIdempotencyStore,
+    deterministic_batch_id,
+    idempotency_request_fingerprint,
+)
+from agent_bom.api.models import PushPayload, ScanRequest
 from agent_bom.api.server import app, set_fleet_store, set_graph_store, set_job_store
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import set_idempotency_store
@@ -135,6 +143,159 @@ def test_push_same_key_different_payload_is_rejected_without_mutation() -> None:
     endpoint = stores._get_fleet_store().get_endpoint("endpoint-a", tenant_id="default")
     assert endpoint is not None
     assert endpoint.counts["processes"] == 1
+
+
+def test_scan_retry_reclaims_expired_crash_reservation_without_duplicate_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    idem = stores._get_idempotency_store()
+    body = ScanRequest(images=["redis:7"])
+    request_hash = idempotency_request_fingerprint(body)
+    reserved_job_id = deterministic_batch_id(f"/v1/scan:default:scan:crashed-scan:{request_hash}")
+    key = ("/v1/scan", "default", "scan", "crashed-scan")
+    idem.claim(*key, {"job_id": reserved_job_id, "committed": False}, request_hash=request_hash)
+    idem._records[key].created_at = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()  # type: ignore[attr-defined]  # noqa: SLF001
+    dispatched: list[str] = []
+    monkeypatch.setenv("AGENT_BOM_IDEMPOTENCY_RESERVATION_LEASE_SECONDS", "30")
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", lambda job: dispatched.append(job.job_id))
+
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/v1/scan",
+        headers={"Idempotency-Key": "crashed-scan"},
+        json={"images": ["redis:7"]},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["job_id"] == reserved_job_id
+    assert len(stores._get_store().list_all(all_tenants=True)) == 1
+    assert dispatched == [reserved_job_id]
+    assert idem.get(*key, request_hash=request_hash) == {"job_id": reserved_job_id, "committed": True}
+
+
+def test_scan_retry_reconciles_durable_job_before_receipt_without_redispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    dispatched: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", lambda job: dispatched.append(job.job_id))
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"Idempotency-Key": "scan-crash-after-job"}
+    payload = {"images": ["redis:7"]}
+    first = client.post("/v1/scan", headers=headers, json=payload)
+    assert first.status_code == 202
+
+    idem = stores._get_idempotency_store()
+    key = ("/v1/scan", "default", "scan", "scan-crash-after-job")
+    record = idem._records[key]  # type: ignore[attr-defined]  # noqa: SLF001
+    record.response_json = json.dumps({"job_id": first.json()["job_id"], "committed": False})
+
+    replay = client.post("/v1/scan", headers=headers, json=payload)
+
+    assert replay.status_code == 202
+    assert replay.json()["job_id"] == first.json()["job_id"]
+    assert len(stores._get_store().list_all(all_tenants=True)) == 1
+    assert dispatched == [first.json()["job_id"]]
+    assert idem.get(*key)["committed"] is True
+
+
+def test_push_retry_reclaims_expired_crash_reservation_without_duplicate_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph_calls: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.api.routes.observability._persist_graph_snapshot",
+        lambda job, _report: graph_calls.append(job.job_id),
+    )
+    payload = {
+        "source_id": "endpoint-a",
+        "idempotency_key": "push-crash-after-claim",
+        "endpoint_inventory": _endpoint_inventory(),
+    }
+    body = PushPayload.model_validate(payload)
+    request_hash = idempotency_request_fingerprint(body)
+    reserved_job_id = deterministic_batch_id(f"/v1/results/push:default:endpoint-a:push-crash-after-claim:{request_hash}")
+    idem = stores._get_idempotency_store()
+    key = ("/v1/results/push", "default", "endpoint-a", "push-crash-after-claim")
+    idem.claim(*key, {"job_id": reserved_job_id, "committed": False}, request_hash=request_hash)
+    idem._records[key].created_at = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()  # type: ignore[attr-defined]  # noqa: SLF001
+    monkeypatch.setenv("AGENT_BOM_IDEMPOTENCY_RESERVATION_LEASE_SECONDS", "30")
+
+    response = TestClient(app, raise_server_exceptions=False).post("/v1/results/push", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["job_id"] == reserved_job_id
+    assert len(stores._get_store().list_all(all_tenants=True)) == 1
+    assert graph_calls == [reserved_job_id]
+    _endpoints, total = stores._get_fleet_store().query_endpoints("default")
+    assert total == 1
+    assert idem.get(*key, request_hash=request_hash)["committed"] is True
+
+
+def test_push_retry_reconciles_committed_job_before_receipt_without_duplicate_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph_calls: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.api.routes.observability._persist_graph_snapshot",
+        lambda job, _report: (
+            (
+                job.result.__setitem__("graph_persistence", {"status": "persisted", "scan_id": job.job_id})
+                if isinstance(job.result, dict)
+                else None
+            )
+            or graph_calls.append(job.job_id)
+        ),
+    )
+    payload = {
+        "source_id": "endpoint-a",
+        "idempotency_key": "push-crash-after-commit",
+        "endpoint_inventory": _endpoint_inventory(),
+    }
+    client = TestClient(app, raise_server_exceptions=False)
+    first = client.post("/v1/results/push", json=payload)
+    assert first.status_code == 201
+
+    idem = stores._get_idempotency_store()
+    key = ("/v1/results/push", "default", "endpoint-a", "push-crash-after-commit")
+    record = idem._records[key]  # type: ignore[attr-defined]  # noqa: SLF001
+    record.response_json = json.dumps({"job_id": first.json()["job_id"], "committed": False})
+
+    replay = client.post("/v1/results/push", json=payload)
+
+    assert replay.status_code == 201
+    assert replay.json() == first.json()
+    assert len(stores._get_store().list_all(all_tenants=True)) == 1
+    assert graph_calls == [first.json()["job_id"]]
+    endpoints, total = stores._get_fleet_store().query_endpoints("default")
+    assert total == 1
+    assert endpoints[0].last_scan_id == first.json()["job_id"]
+    assert idem.get(*key)["committed"] is True
+
+
+def test_push_first_job_write_failure_restores_prior_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FailFirstPutStore(InMemoryJobStore):
+        def put(self, job) -> None:
+            raise RuntimeError("job store unavailable")
+
+    fleet = stores._get_fleet_store()
+    previous = endpoint_summary_from_inventory(
+        endpoint_id="endpoint-a",
+        tenant_id="default",
+        inventory=_endpoint_inventory(processes=2),
+        scan_id="previous",
+    )
+    fleet.put_endpoint(previous)
+    set_job_store(_FailFirstPutStore())
+
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/v1/results/push",
+        json={
+            "source_id": "endpoint-a",
+            "idempotency_key": "job-write-fails",
+            "endpoint_inventory": _endpoint_inventory(processes=9),
+        },
+    )
+
+    assert response.status_code == 503
+    restored = fleet.get_endpoint("endpoint-a", tenant_id="default")
+    assert restored is not None
+    assert restored.last_scan_id == "previous"
+    assert restored.counts["processes"] == 2
 
 
 def test_push_graph_failure_rolls_back_job_endpoint_and_quota(monkeypatch: pytest.MonkeyPatch) -> None:

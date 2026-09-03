@@ -91,12 +91,24 @@ class _FakeConn:
                 return _FakeCursor([(response_json, request_hash)])
             return _FakeCursor()
 
-        if low.startswith("select response_json, request_hash from idempotency_keys"):
+        if low.startswith("select response_json, request_hash") and "from idempotency_keys" in low:
             endpoint, tenant_id, source_id, key = params
             rec = self._table.get((endpoint, tenant_id, source_id, key))
             if rec is None:
                 return _FakeCursor()
+            if "created_at" in low:
+                return _FakeCursor([(rec["response_json"], rec["request_hash"], rec["created_at"])])
             return _FakeCursor([(rec["response_json"], rec["request_hash"])])
+
+        if low.startswith("update idempotency_keys set created_at"):
+            created_at, endpoint, tenant_id, source_id, key = params
+            rec = self._table.get((endpoint, tenant_id, source_id, key))
+            if rec is None:
+                return _FakeCursor()
+            rec["created_at"] = created_at
+            cur = _FakeCursor()
+            cur.rowcount = 1
+            return cur
 
         if low.startswith("delete from idempotency_keys where created_at"):
             (cutoff,) = params
@@ -185,6 +197,30 @@ def test_postgres_idempotency_claim_has_one_winner_and_can_release() -> None:
     assert second_acquired is False
     assert store.release("/v1/scan", "tenant-a", "source-a", "key", request_hash=request_hash) is True
     assert store.get("/v1/scan", "tenant-a", "source-a", "key") is None
+
+
+def test_postgres_idempotency_claim_reclaims_expired_uncommitted_reservation() -> None:
+    pool = _FakePool()
+    store = PostgresIdempotencyStore(pool=pool)
+    request_hash = idempotency_request_fingerprint({"value": 1})
+    args = ("/v1/scan", "tenant-a", "source-a", "key")
+    store.claim(
+        *args,
+        {"job_id": "stable", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+    )
+    pool.table[args]["created_at"] = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()
+
+    recovered, acquired = store.claim(
+        *args,
+        {"job_id": "stable", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+    )
+
+    assert acquired is True
+    assert recovered == {"job_id": "stable", "committed": False}
 
 
 def test_postgres_idempotency_isolates_by_tenant_key():

@@ -57,6 +57,7 @@ from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
     deterministic_batch_id,
     idempotency_request_fingerprint,
+    idempotency_reservation_lease_seconds,
 )
 from agent_bom.api.models import (
     BrowserExtensionsRequest,
@@ -1509,8 +1510,9 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
                 tenant_id,
                 idem_source,
                 idem_key,
-                {"job_id": reserved_job_id},
+                {"job_id": reserved_job_id, "committed": False},
                 request_hash=request_hash,
+                reservation_lease_seconds=idempotency_reservation_lease_seconds(),
             )
         except IdempotencyConflictError as exc:
             raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
@@ -1518,12 +1520,32 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
             cached_job_id = str(cached.get("job_id") or "")
             existing = await _wait_for_idempotent_job(cached_job_id, tenant_id=tenant_id)
             if existing is not None:
+                idem_store.put(
+                    "/v1/scan",
+                    tenant_id,
+                    idem_source,
+                    idem_key,
+                    {"job_id": existing.job_id, "committed": True},
+                    request_hash=request_hash,
+                )
                 return _job_response_payload(existing)
             raise HTTPException(
                 status_code=409,
                 detail="An identical scan request is still being committed; retry shortly.",
                 headers={"Retry-After": "1"},
             )
+        cached_job_id = str(cached.get("job_id") or reserved_job_id)
+        existing = await asyncio.to_thread(_get_store().get, cached_job_id, tenant_id)
+        if existing is not None:
+            idem_store.put(
+                "/v1/scan",
+                tenant_id,
+                idem_source,
+                idem_key,
+                {"job_id": existing.job_id, "committed": True},
+                request_hash=request_hash,
+            )
+            return _job_response_payload(existing)
 
     try:
         job = enqueue_scan_job(
@@ -1532,6 +1554,15 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
             request_body=body,
             job_id=reserved_job_id or None,
         )
+        if claimed:
+            idem_store.put(
+                "/v1/scan",
+                tenant_id,
+                idem_source,
+                idem_key,
+                {"job_id": job.job_id, "committed": True},
+                request_hash=request_hash,
+            )
     except Exception:
         durable_job_exists = True
         if claimed:

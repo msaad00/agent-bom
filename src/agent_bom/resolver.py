@@ -267,6 +267,10 @@ async def _get_npm_latest_doc(package_name: str, client: httpx.AsyncClient) -> d
     except Exception as exc:
         if not inflight.done():
             inflight.set_exception(exc)
+            # The owner also raises directly. Mark its coordination future as
+            # observed so a no-waiter outage cannot emit an asyncio traceback;
+            # concurrent waiters still receive the stored exception.
+            inflight.exception()
         raise
     finally:
         with _RESOLVER_STATE_LOCK:
@@ -315,6 +319,9 @@ async def _get_pypi_info_doc(package_name: str, client: httpx.AsyncClient) -> di
     except Exception as exc:
         if not inflight.done():
             inflight.set_exception(exc)
+            # See the npm path above: the owner raises directly, while this
+            # retrieval prevents an orphaned-future traceback with no waiter.
+            inflight.exception()
         raise
     finally:
         with _RESOLVER_STATE_LOCK:

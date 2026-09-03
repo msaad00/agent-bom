@@ -161,6 +161,26 @@ def test_quickstart_run_no_gateway_policy_skips_file(tmp_path, _fake_scan):
     assert "Skipped gateway baseline policy" in result.output
 
 
+def test_quickstart_run_treats_a_critical_verdict_as_completed_evidence(tmp_path, monkeypatch):
+    sample_dir = tmp_path / "stack"
+    calls: list[list[str]] = []
+
+    def fake_run(args, check=False, **kwargs):  # noqa: ANN001, ANN003
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args, 0 if "--exit-zero" in args else 1)
+
+    monkeypatch.setattr("agent_bom.cli._quickstart._resolve_agent_bom", lambda: "agent-bom")
+    monkeypatch.setattr("agent_bom.cli._quickstart.subprocess.run", fake_run)
+
+    result = CliRunner().invoke(main, ["quickstart", "--run", "--offline", "--sample-dir", str(sample_dir)])
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert "--exit-zero" in calls[0]
+    assert (sample_dir / "gateway-baseline-policy.json").is_file()
+    assert "Onboarding complete" in result.output
+
+
 def test_quickstart_run_surfaces_scan_failure(tmp_path, monkeypatch):
     sample_dir = tmp_path / "stack"
     monkeypatch.setattr("agent_bom.cli._quickstart._resolve_agent_bom", lambda: "agent-bom")

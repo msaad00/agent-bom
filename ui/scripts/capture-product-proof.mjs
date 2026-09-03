@@ -2473,6 +2473,15 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
         throw new Error(`Progressive-disclosure panels are open on ${urlPath}: ${openDetails}`);
       }
     }
+    for (const selector of options.hiddenSelectors ?? []) {
+      const element = page.locator(selector).first();
+      if ((await element.count()) === 0) {
+        throw new Error(`Expected hidden proof content is missing on ${urlPath}: ${selector}`);
+      }
+      if (await element.isVisible()) {
+        throw new Error(`Progressive-disclosure content is unexpectedly visible on ${urlPath}: ${selector}`);
+      }
+    }
     if (options.viewportSelectors?.length) {
       const outsideViewport = await page.evaluate((selectors) => selectors.flatMap((selector) => {
         const element = document.querySelector(selector);
@@ -2981,17 +2990,12 @@ async function main() {
         "Open top path",
         "Inspect source receipts",
       ],
-      rejectedText: [
-        "Correlation name",
-        "Connect",
-        "Discover",
-        "Public service reaches modeled customer records through CVE-2023-4863",
-        "Open pillow@9.0.0 remediation",
-      ],
+      rejectedText: ["Correlation name", "Connect", "Discover"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
       readySelector: '[data-testid="graph-correlation-decision"]',
       assertNoHorizontalOverflow: true,
       assertCollapsedDetailsWithin: '[data-testid="graph-correlation-workflow"]',
+      hiddenSelectors: ['[data-testid="correlation-primary-action"]'],
       viewportSelectors: [
         "#demo-estate-watermark",
         '[data-testid="graph-correlation-decision"]',

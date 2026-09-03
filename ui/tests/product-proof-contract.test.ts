@@ -112,6 +112,7 @@ describe("product proof capture contract", () => {
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
     expect(source).toContain('window.scrollTo({ top: top - offset, behavior: "instant" })');
     expect(source).toContain("assertNoHorizontalOverflow: true");
+    expect(source).toContain('hiddenSelectors: [\'[data-testid="correlation-primary-action"]\']');
     expect(source).toContain('getByTestId("selected-exposure-path")');
     expect(source).toContain('readySelector: \'[data-testid="exposure-path-sequence"]\'');
     expect(source).toContain('/hops hidden/i');

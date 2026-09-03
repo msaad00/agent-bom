@@ -107,9 +107,7 @@ async def test_service_persists_and_revalidates_tenant_bound_receipt_signatures(
     )
     await service.start(tenants=["tenant-a"])
     try:
-        submitted = await service.submit(
-            CorrelationRequest("corr-signed", "tenant-a", "idem-signed", "signed", ("repo", "image"), 24)
-        )
+        submitted = await service.submit(CorrelationRequest("corr-signed", "tenant-a", "idem-signed", "signed", ("repo", "image"), 24))
         assert all(item["signature"]["key_id"] == "test-v1" for item in submitted.input_manifest)
         assert all(
             verify_correlation_receipt(
@@ -137,9 +135,7 @@ async def test_restart_rejects_tampered_persisted_receipt_signature(tmp_path: Pa
     store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))
     store.save_graph(_graph("image", "2026-08-30T11:00:00+00:00"))
     dormant = GraphCorrelationService(store, now=lambda: NOW, receipt_signing_key=RECEIPT_KEY)
-    submitted = await dormant.submit(
-        CorrelationRequest("corr-tampered", "tenant-a", "idem-tampered", "tampered", ("repo", "image"), 24)
-    )
+    submitted = await dormant.submit(CorrelationRequest("corr-tampered", "tenant-a", "idem-tampered", "tampered", ("repo", "image"), 24))
     stored = submitted.to_dict()
     stored["input_manifest"][0]["digest"] = "sha256:" + "f" * 64
     with sqlite3.connect(store._db_path) as conn:

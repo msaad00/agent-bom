@@ -111,3 +111,19 @@ def test_receipt_signing_rejects_short_keys() -> None:
             max_age_hours=168,
             allow_stale=False,
         )
+
+
+def test_receipt_signature_rejects_key_id_tampering() -> None:
+    signed = deepcopy(_signed())
+    assert isinstance(signed["signature"], dict)
+    signed["signature"]["key_id"] = "attacker-key"
+
+    assert not verify_correlation_receipt(
+        signed,
+        signing_key=KEY,
+        tenant_id="tenant-a",
+        correlation_id="corr-1",
+        correlation_created_at="2026-09-03T02:15:00+00:00",
+        max_age_hours=168,
+        allow_stale=False,
+    )

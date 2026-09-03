@@ -29,6 +29,7 @@ def _validated_key(signing_key: bytes) -> bytes:
 def _payload(
     receipt: Mapping[str, Any],
     *,
+    key_id: str,
     tenant_id: str,
     correlation_id: str,
     correlation_created_at: str,
@@ -37,6 +38,7 @@ def _payload(
 ) -> dict[str, Any]:
     return {
         "schema_version": "agent-bom.correlation-receipt/v1",
+        "key_id": key_id,
         "tenant_id": tenant_id,
         "correlation_id": correlation_id,
         "correlation_created_at": correlation_created_at,
@@ -82,6 +84,7 @@ def sign_correlation_receipt(
         _canonical_bytes(
             _payload(
                 signed,
+                key_id=key_id.strip(),
                 tenant_id=tenant_id,
                 correlation_id=correlation_id,
                 correlation_created_at=correlation_created_at,

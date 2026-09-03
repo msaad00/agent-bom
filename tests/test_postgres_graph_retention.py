@@ -58,6 +58,15 @@ class _FakeConn:
             scan, tenant, created = params[0], params[1], params[2]
             self.snapshots[(tenant, scan)] = created
             return _FakeCursor()
+        if low.startswith("delete from"):
+            table = low.split()[2]
+            self.deletes.append((table, tuple(params)))
+            if table == "graph_snapshots":
+                tenant, scan = params
+                self.snapshots.pop((tenant, scan), None)
+            cursor = _FakeCursor()
+            cursor.rowcount = 1
+            return cursor
         # previous-snapshot / latest lookups etc. — behave as empty history
         return _FakeCursor()
 
@@ -116,6 +125,23 @@ def test_purge_deletes_expired_and_keeps_recent(monkeypatch) -> None:
     for table in postgres_purge_tables():
         assert (table, ("acme", "old")) in conn.deletes
     assert conn.committed >= 1
+
+
+def test_delete_snapshot_removes_only_requested_tenant_scan(monkeypatch) -> None:
+    conn = _FakeConn(
+        {
+            ("acme", "same-scan"): RECENT,
+            ("other", "same-scan"): RECENT,
+        }
+    )
+    store = _make_store(conn, monkeypatch)
+
+    removed = store.delete_snapshot(tenant_id="acme", scan_id="same-scan")
+
+    assert removed == 6
+    assert ("acme", "same-scan") not in conn.snapshots
+    assert ("other", "same-scan") in conn.snapshots
+    assert all(params == ("acme", "same-scan") for _table, params in conn.deletes)
 
 
 def test_purge_scoped_to_tenant(monkeypatch) -> None:

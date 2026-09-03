@@ -13,6 +13,77 @@ from agent_bom.api.idempotency_store import (
 
 
 @pytest.mark.parametrize("store_factory", [InMemoryIdempotencyStore])
+def test_idempotency_claim_is_atomic_for_concurrent_callers(store_factory):
+    from concurrent.futures import ThreadPoolExecutor
+
+    store = store_factory()
+    request_hash = idempotency_request_fingerprint({"value": 1})
+
+    def _claim() -> tuple[dict, bool]:
+        return store.claim(
+            "/v1/scan",
+            "tenant-a",
+            "source-a",
+            "same-key",
+            {"job_id": "stable-job"},
+            request_hash=request_hash,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _index: _claim(), range(32)))
+
+    assert sum(1 for _response, acquired in results if acquired) == 1
+    assert {response["job_id"] for response, _acquired in results} == {"stable-job"}
+
+
+def test_sqlite_idempotency_claim_is_atomic_for_concurrent_callers(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    db_path = str(tmp_path / "idempotency.db")
+    request_hash = idempotency_request_fingerprint({"value": 1})
+
+    def _claim() -> tuple[dict, bool]:
+        store = SQLiteIdempotencyStore(db_path)
+        return store.claim(
+            "/v1/scan",
+            "tenant-a",
+            "source-a",
+            "same-key",
+            {"job_id": "stable-job"},
+            request_hash=request_hash,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _index: _claim(), range(16)))
+
+    assert sum(1 for _response, acquired in results if acquired) == 1
+    assert {response["job_id"] for response, _acquired in results} == {"stable-job"}
+
+
+@pytest.mark.parametrize("store_factory", [InMemoryIdempotencyStore])
+def test_idempotency_claim_rejects_same_key_with_different_payload(store_factory):
+    store = store_factory()
+    store.claim(
+        "/v1/scan",
+        "tenant-a",
+        "source-a",
+        "same-key",
+        {"job_id": "stable-job"},
+        request_hash=idempotency_request_fingerprint({"value": 1}),
+    )
+
+    with pytest.raises(IdempotencyConflictError):
+        store.claim(
+            "/v1/scan",
+            "tenant-a",
+            "source-a",
+            "same-key",
+            {"job_id": "other-job"},
+            request_hash=idempotency_request_fingerprint({"value": 2}),
+        )
+
+
+@pytest.mark.parametrize("store_factory", [InMemoryIdempotencyStore])
 def test_idempotency_store_replays_same_payload_and_rejects_mismatch(store_factory):
     store = store_factory()
     request_hash = idempotency_request_fingerprint({"idempotency_key": "k-1", "value": 1})

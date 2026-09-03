@@ -1316,6 +1316,7 @@ def enqueue_scan_job(
     schedule_id: str | None = None,
     quota_guarded: bool = False,
     dispatch: bool = True,
+    job_id: str | None = None,
 ) -> ScanJob:
     """Persist and optionally dispatch a scan job for async execution.
 
@@ -1329,7 +1330,7 @@ def enqueue_scan_job(
     if len(targets) > 1:
         batch_id = str(uuid.uuid4())
         now = _now()
-        parent_job_id = str(uuid.uuid4())
+        parent_job_id = job_id or str(uuid.uuid4())
         child_jobs: list[ScanJob] = []
         for index, target in enumerate(targets, start=1):
             child_jobs.append(
@@ -1395,7 +1396,7 @@ def enqueue_scan_job(
         return parent
 
     job = ScanJob(
-        job_id=str(uuid.uuid4()),
+        job_id=job_id or str(uuid.uuid4()),
         tenant_id=tenant_id,
         source_id=source_id,
         schedule_id=schedule_id,
@@ -1497,40 +1498,94 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     idem_key = _request_header(request, "Idempotency-Key")
     idem_source = _request_header(request, "X-Agent-Bom-Source-Id") or "scan"
     request_hash = idempotency_request_fingerprint(body)
+    idem_store = _get_idempotency_store()
+    claimed = False
+    reserved_job_id = ""
     if idem_key:
+        reserved_job_id = deterministic_batch_id(f"/v1/scan:{tenant_id}:{idem_source}:{idem_key}:{request_hash}")
         try:
-            cached = _get_idempotency_store().get(
+            cached, claimed = idem_store.claim(
                 "/v1/scan",
                 tenant_id,
                 idem_source,
                 idem_key,
+                {"job_id": reserved_job_id},
                 request_hash=request_hash,
             )
         except IdempotencyConflictError as exc:
             raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
-        if cached is not None:
+        if not claimed:
             cached_job_id = str(cached.get("job_id") or "")
-            existing = _jobs_get(cached_job_id) if cached_job_id else None
-            if existing is None and cached_job_id:
-                existing = _get_store().get(cached_job_id, tenant_id=tenant_id)
+            existing = await _wait_for_idempotent_job(cached_job_id, tenant_id=tenant_id)
             if existing is not None:
                 return _job_response_payload(existing)
+            raise HTTPException(
+                status_code=409,
+                detail="An identical scan request is still being committed; retry shortly.",
+                headers={"Retry-After": "1"},
+            )
 
-    job = enqueue_scan_job(
-        tenant_id=tenant_id,
-        triggered_by=_triggered_by(request),
-        request_body=body,
-    )
-    if idem_key:
-        _get_idempotency_store().put(
+    try:
+        job = enqueue_scan_job(
+            tenant_id=tenant_id,
+            triggered_by=_triggered_by(request),
+            request_body=body,
+            job_id=reserved_job_id or None,
+        )
+    except Exception:
+        durable_job_exists = True
+        if claimed:
+            try:
+                durable_job_exists = _get_store().get(reserved_job_id, tenant_id=tenant_id) is not None
+            except Exception as lookup_exc:  # noqa: BLE001
+                _logger.error(
+                    "Scan commit-state lookup failed: %s",
+                    sanitize_text(sanitize_error(lookup_exc, generic=True)),
+                )
+        if claimed and not durable_job_exists:
+            _release_scan_idempotency_claim(
+                idem_store,
+                tenant_id=tenant_id,
+                source_id=idem_source,
+                idempotency_key=idem_key,
+                request_hash=request_hash,
+            )
+        raise
+    return job
+
+
+def _release_scan_idempotency_claim(
+    store: Any,
+    *,
+    tenant_id: str,
+    source_id: str,
+    idempotency_key: str,
+    request_hash: str,
+) -> None:
+    try:
+        store.release(
             "/v1/scan",
             tenant_id,
-            idem_source,
-            idem_key,
-            {"job_id": job.job_id},
+            source_id,
+            idempotency_key,
             request_hash=request_hash,
         )
-    return job
+    except Exception as exc:  # noqa: BLE001
+        _logger.error("Scan idempotency rollback failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
+
+
+async def _wait_for_idempotent_job(job_id: str, *, tenant_id: str) -> ScanJob | None:
+    """Bounded wait for the reservation owner to durably publish its job."""
+    if not job_id:
+        return None
+    for _attempt in range(100):
+        existing = _jobs_get(job_id)
+        if existing is None:
+            existing = await asyncio.to_thread(_get_store().get, job_id, tenant_id)
+        if existing is not None:
+            return existing
+        await asyncio.sleep(0.01)
+    return None
 
 
 @router.post("/scan/check", tags=["scan"])

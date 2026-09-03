@@ -506,6 +506,21 @@ class NeptuneGraphStore:
         count = rows[0].get("count", 0) if isinstance(rows[0], dict) else rows[0]
         return int(_first(count, 0) or 0)
 
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+        """Remove one tenant-scoped snapshot from the experimental backend."""
+        rows = self._submit(
+            """
+            g.V().has('tenant_id', tenant_id).has('scan_id', scan_id).fold().
+              project('count').by(count(local)).
+              sideEffect(unfold().drop())
+            """,
+            {"tenant_id": tenant_id or "default", "scan_id": scan_id},
+        )
+        if not rows:
+            return 0
+        count = rows[0].get("count", 0) if isinstance(rows[0], dict) else rows[0]
+        return int(_first(count, 0) or 0)
+
     def snapshot_stats(
         self,
         *,

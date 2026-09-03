@@ -65,6 +65,16 @@ def test_enterprise_demo_contract_is_gated_and_packaged() -> None:
     assert "rate_limited_after_page_2" in deploy_workflow
 
 
+def test_demo_deploy_new_release_supersedes_stale_approval_wait() -> None:
+    """An obsolete protected-environment wait must not block a newer release."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "demo-deploy-cloudrun.yml").read_text(encoding="utf-8"))
+
+    assert workflow["concurrency"] == {
+        "group": "demo-deploy-cloudrun",
+        "cancel-in-progress": True,
+    }
+
+
 def test_dependency_security_skips_only_proven_docs_only_changes() -> None:
     workflow_path = ROOT / ".github" / "workflows" / "pr-security-gate.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))

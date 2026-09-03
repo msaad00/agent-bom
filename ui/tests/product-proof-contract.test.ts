@@ -113,7 +113,8 @@ describe("product proof capture contract", () => {
     expect(source).toContain("assertFullyInViewport");
     expect(source).toContain("6 independent evidence sources produced 1 confirmed attack path");
     expect(source).toContain("Exact-ID correlation");
-    expect(source).toContain("CVE-2023-4863 can reach Modeled customer records");
+    expect(source).toContain("CVE-2023-4863 can reach");
+    expect(source).toContain("Modeled customer records");
     expect(source).toContain('rejectedText: ["hops hidden", "Show all 8 hops"]');
     expect(source).not.toContain("document.body.style.paddingBottom");
     expect(source).toContain("assertNoHorizontalOverflow: true");

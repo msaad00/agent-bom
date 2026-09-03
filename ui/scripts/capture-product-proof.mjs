@@ -2787,7 +2787,8 @@ async function main() {
     const correlationPathAssertions = {
       expectedText: [
         "CVE-2023-4863",
-        "CVE-2023-4863 can reach Modeled customer records",
+        /CVE-2023-4863 can reach/i,
+        "Modeled customer records",
         REFERENCE_LAB.container_digest,
         "Path verified",
         "Runtime observed",

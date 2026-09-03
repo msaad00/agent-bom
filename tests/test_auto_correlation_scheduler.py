@@ -9,6 +9,7 @@ import pytest
 
 from agent_bom.api.auto_correlation import (
     AutoCorrelationPolicy,
+    auto_correlation_loop,
     auto_correlation_policy_from_env,
     reconcile_auto_correlations_once,
 )
@@ -86,14 +87,39 @@ def _batch(store: JobStore, *, tenant_id: str = "tenant-a", batch_id: str = "bat
     return parent
 
 
-def test_scheduler_is_disabled_by_default_and_rejects_invalid_freshness(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_scheduler_is_enabled_by_default_and_rejects_invalid_freshness(monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_bom import config
 
-    monkeypatch.setattr(config, "GRAPH_AUTO_CORRELATE", False)
+    assert AutoCorrelationPolicy().enabled is True
+    assert config.GRAPH_AUTO_CORRELATE is True
+    monkeypatch.setattr(config, "GRAPH_AUTO_CORRELATE", True)
     monkeypatch.setattr(config, "GRAPH_AUTO_CORRELATE_MAX_AGE_HOURS", 168)
-    assert auto_correlation_policy_from_env().enabled is False
+    assert auto_correlation_policy_from_env().enabled is True
     with pytest.raises(ValueError, match="max_age_hours"):
         AutoCorrelationPolicy(enabled=True, max_age_hours=0)
+
+
+@pytest.mark.asyncio
+async def test_enabled_scheduler_observably_skips_unsupported_in_memory_store(tmp_path: Path) -> None:
+    reset_for_tests()
+
+    await auto_correlation_loop(
+        InMemoryJobStore(),
+        SQLiteGraphStore(tmp_path / "graph.db"),
+        policy=AutoCorrelationPolicy(enabled=True),
+    )
+
+    metrics = "\n".join(render_prometheus_lines())
+    assert 'agent_bom_auto_correlations_total{outcome="skipped",reason="durable_job_store_required"} 1' in metrics
+
+    await auto_correlation_loop(
+        SQLiteJobStore(tmp_path / "jobs.db"),
+        type("NeptuneGraphStore", (), {})(),  # type: ignore[arg-type]
+        policy=AutoCorrelationPolicy(enabled=True),
+    )
+
+    metrics = "\n".join(render_prometheus_lines())
+    assert 'agent_bom_auto_correlations_total{outcome="skipped",reason="graph_backend_unsupported"} 1' in metrics
 
 
 def test_batch_refresh_preserves_durable_auto_correlation_receipt(monkeypatch: pytest.MonkeyPatch) -> None:

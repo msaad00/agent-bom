@@ -517,6 +517,14 @@ controlPlane:
     enabled: false
     maxConcurrency: 4
     # pollSeconds: 60
+  # Correlate each completed multi-target scan batch into one immutable graph
+  # snapshot. Enabled by default only affects supported durable job/graph stores;
+  # in-memory and experimental Neptune backends no-op with a bounded metric.
+  # Automatic runs require fresh evidence and never infer cohorts from source
+  # labels, mutable tags, or tenant-latest snapshots.
+  autoCorrelation:
+    enabled: true
+    maxAgeHours: 168
   serviceMesh:
     enabled: false
     provider: istio

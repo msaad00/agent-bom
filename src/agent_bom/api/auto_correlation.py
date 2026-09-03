@@ -1,8 +1,10 @@
-"""Opt-in exact-batch scheduling for immutable graph correlations.
+"""Exact-batch scheduling for immutable graph correlations.
 
 The scheduler deliberately uses only API scan-batch membership as its cohort
 contract.  A recurring ``source_id``, a mutable label, or a tenant's latest
 snapshots are not sufficient evidence that snapshots describe one scan event.
+Supported durable control-plane stores enable this bounded workflow by default;
+unsupported stores no-op with a bounded metric reason.
 """
 
 from __future__ import annotations
@@ -44,11 +46,11 @@ _DEFAULT_POLL_SECONDS = 5.0
 class AutoCorrelationPolicy:
     """Bounded policy for one scheduler replica.
 
-    ``enabled`` is false by default.  Freshness remains strict: automatic
+    ``enabled`` is true by default.  Freshness remains strict: automatic
     runs never set ``allow_stale``.
     """
 
-    enabled: bool = False
+    enabled: bool = True
     max_age_hours: int = 168
     max_batches_per_poll: int = 8
     max_active_per_tenant: int = 2
@@ -66,7 +68,7 @@ class AutoCorrelationPolicy:
 
 
 def auto_correlation_policy_from_env() -> AutoCorrelationPolicy:
-    """Read the process-start opt-in gate and explicit freshness bound."""
+    """Read the process-start enablement gate and explicit freshness bound."""
 
     return AutoCorrelationPolicy(
         enabled=config.GRAPH_AUTO_CORRELATE,
@@ -75,9 +77,19 @@ def auto_correlation_policy_from_env() -> AutoCorrelationPolicy:
 
 
 def auto_correlation_enabled() -> bool:
-    """Return whether exact-batch automatic correlation is explicitly enabled."""
+    """Return whether exact-batch automatic correlation is enabled."""
 
     return auto_correlation_policy_from_env().enabled
+
+
+def auto_correlation_backend_skip_reason(job_store: JobStore, graph_store: GraphStoreProtocol) -> str:
+    """Return a bounded reason when automatic correlation cannot run."""
+
+    if isinstance(job_store, InMemoryJobStore):
+        return "durable_job_store_required"
+    if graph_store.__class__.__name__ == "NeptuneGraphStore":
+        return "graph_backend_unsupported"
+    return ""
 
 
 def _deterministic_identity(*, tenant_id: str, batch_id: str) -> tuple[str, str]:
@@ -112,16 +124,22 @@ def _decision(
     }
 
 
-def initial_auto_correlation_decision(parent: ScanJob, *, policy: AutoCorrelationPolicy, now: datetime) -> dict[str, Any]:
-    """Return the durable pending handoff exposed with a new scan batch."""
+def initial_auto_correlation_decision(
+    parent: ScanJob,
+    *,
+    policy: AutoCorrelationPolicy,
+    now: datetime,
+    backend_skip_reason: str = "",
+) -> dict[str, Any]:
+    """Return the initial pending or unsupported-store handoff for a scan batch."""
 
     correlation_id, _ = _deterministic_identity(tenant_id=parent.tenant_id, batch_id=parent.batch_id or parent.job_id)
     return _decision(
         parent=parent,
         policy=policy,
         now=now,
-        status="pending",
-        reason="batch_incomplete",
+        status="skipped" if backend_skip_reason else "pending",
+        reason=backend_skip_reason or "batch_incomplete",
         correlation_id=correlation_id,
         scan_ids=tuple(sorted(parent.child_job_ids)),
     )
@@ -429,13 +447,10 @@ async def auto_correlation_loop(
     effective_policy = policy or auto_correlation_policy_from_env()
     if not effective_policy.enabled:
         return
-    if isinstance(job_store, InMemoryJobStore):
-        logger.error("automatic graph correlation requires a durable job store; scheduler disabled")
-        record_auto_correlation(outcome="failed", reason="durable_job_store_required")
-        return
-    if graph_store.__class__.__name__ == "NeptuneGraphStore":
-        logger.error("automatic graph correlation is unsupported by the experimental Neptune graph backend")
-        record_auto_correlation(outcome="failed", reason="graph_backend_unsupported")
+    backend_skip_reason = auto_correlation_backend_skip_reason(job_store, graph_store)
+    if backend_skip_reason:
+        logger.warning("automatic graph correlation skipped: %s", backend_skip_reason.replace("_", " "))
+        record_auto_correlation(outcome="skipped", reason=backend_skip_reason)
         return
     while True:
         try:
@@ -450,6 +465,7 @@ async def auto_correlation_loop(
 
 __all__ = [
     "AutoCorrelationPolicy",
+    "auto_correlation_backend_skip_reason",
     "auto_correlation_enabled",
     "auto_correlation_loop",
     "auto_correlation_policy_from_env",

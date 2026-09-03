@@ -343,10 +343,11 @@ COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS = _int("AGENT_BOM_COMPLIANCE_DETECTIV
 
 GRAPH_RETENTION_DAYS = _int("AGENT_BOM_GRAPH_RETENTION_DAYS", 180)
 
-# Completed multi-target scan batches can opt in to strict-freshness graph
-# correlation. The scheduler uses exact batch membership only; recurring source
-# ids and tenant-latest snapshots never form an automatic cohort.
-GRAPH_AUTO_CORRELATE = _bool("AGENT_BOM_GRAPH_AUTO_CORRELATE", False)
+# Supported durable control-plane stores automatically correlate completed
+# multi-target scan batches with strict freshness. The scheduler uses exact
+# batch membership only; recurring source ids and tenant-latest snapshots never
+# form an automatic cohort. Operators can disable this bounded background work.
+GRAPH_AUTO_CORRELATE = _bool("AGENT_BOM_GRAPH_AUTO_CORRELATE", True)
 # Reject older inputs; automatic runs never allow stale evidence.
 GRAPH_AUTO_CORRELATE_MAX_AGE_HOURS = _int("AGENT_BOM_GRAPH_AUTO_CORRELATE_MAX_AGE_HOURS", 168)
 

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import JobStatus, ScanRequest
 from agent_bom.api.routes import scan as scan_routes
-from agent_bom.api.store import InMemoryJobStore
-from agent_bom.api.stores import _jobs, set_job_store, set_tenant_quota_store
+from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
+from agent_bom.api.stores import _jobs, set_graph_store, set_job_store, set_tenant_quota_store
 from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
 
 
@@ -17,8 +18,12 @@ def _reset_store() -> InMemoryJobStore:
     return store
 
 
-def test_multi_target_scan_request_creates_parent_and_child_jobs(monkeypatch):
-    store = _reset_store()
+def test_multi_target_scan_request_creates_parent_and_child_jobs(monkeypatch, tmp_path):
+    store = SQLiteJobStore(tmp_path / "jobs.db")
+    set_job_store(store)
+    set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
+    set_tenant_quota_store(InMemoryTenantQuotaStore())
+    _jobs.clear()
     submitted: list[str] = []
     monkeypatch.setattr(scan_routes, "submit_scan_job", lambda job: submitted.append(job.job_id))
     monkeypatch.setattr("agent_bom.config.GRAPH_AUTO_CORRELATE", True)
@@ -53,6 +58,23 @@ def test_multi_target_scan_request_creates_parent_and_child_jobs(monkeypatch):
     assert stored_parent.result["auto_correlation"]["status"] == "pending"
     assert stored_parent.result["auto_correlation"]["correlation_id"]
     assert set(stored_parent.result["auto_correlation"]["input_scan_ids"]) == set(parent.child_job_ids)
+
+
+def test_in_memory_batch_exposes_terminal_auto_correlation_noop(monkeypatch):
+    store = _reset_store()
+    monkeypatch.setattr(scan_routes, "submit_scan_job", lambda job: None)
+    monkeypatch.setattr("agent_bom.config.GRAPH_AUTO_CORRELATE", True)
+
+    parent = scan_routes.enqueue_scan_job(
+        tenant_id="tenant-a",
+        triggered_by="api-test",
+        request_body=ScanRequest(images=["repo/a:latest", "repo/b:latest"], no_scan=True),
+    )
+
+    persisted = store.get(parent.job_id, tenant_id="tenant-a")
+    assert persisted is not None
+    assert persisted.result["auto_correlation"]["status"] == "skipped"
+    assert persisted.result["auto_correlation"]["reason"] == "durable_job_store_required"
 
 
 def test_batch_parent_rolls_up_child_results_without_failing_partial_batch(monkeypatch):

@@ -635,15 +635,16 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         _logger.info("Cross-cloud side-scan scheduler enabled")
 
     # ── Exact-batch graph correlation scheduler ──
-    # Opt-in and strict-freshness only.  It correlates the child snapshots from
-    # one explicit multi-target scan batch; it never groups tenant-latest rows,
-    # recurring source ids, mutable tags, or similar labels.
+    # Enabled by default for supported durable stores and strict-freshness only.
+    # It correlates the child snapshots from one explicit multi-target scan
+    # batch; it never groups tenant-latest rows, recurring source ids, mutable
+    # tags, or similar labels. Unsupported stores no-op with a bounded metric.
     global _auto_correlation_task
     from agent_bom.api.auto_correlation import auto_correlation_enabled, auto_correlation_loop
 
     if auto_correlation_enabled():
         _auto_correlation_task = asyncio.create_task(auto_correlation_loop(_get_store(), _stores._get_graph_store()))
-        _logger.info("Exact-batch graph correlation scheduler enabled")
+        _logger.info("Exact-batch graph correlation configured; durable-store eligibility check scheduled")
 
     # ── Distributed scan dispatch ──
     # Start a per-replica claim-loop so queued scans are stolen across the

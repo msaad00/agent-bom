@@ -109,12 +109,18 @@ def _decision(
     correlation_id: str = "",
     scan_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
+    prior = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
+    cohort_manifest_hash = parent.correlation_cohort_manifest_hash or (
+        str(prior.get("cohort_manifest_hash") or "") if isinstance(prior, dict) else ""
+    )
     return {
         "schema_version": "agent-bom.auto-correlation/v1",
         "status": status,
         "reason": reason,
-        "cohort_basis": "batch_id",
+        "cohort_basis": "correlation_cohort_id" if parent.correlation_cohort_id else "batch_id",
         "batch_id": parent.batch_id or "",
+        "correlation_cohort_id": parent.correlation_cohort_id or "",
+        "cohort_manifest_hash": cohort_manifest_hash,
         "correlation_id": correlation_id,
         "output_scan_id": correlation_id if status == "complete" else "",
         "input_scan_ids": list(scan_ids),
@@ -255,6 +261,15 @@ async def _reconcile_parent(
     prior = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
     if isinstance(prior, dict) and prior.get("status") in {"complete", "failed", "skipped"}:
         return None
+
+    if parent.correlation_max_age_hours is not None:
+        policy = AutoCorrelationPolicy(
+            enabled=policy.enabled,
+            max_age_hours=parent.correlation_max_age_hours,
+            max_batches_per_poll=policy.max_batches_per_poll,
+            max_active_per_tenant=policy.max_active_per_tenant,
+            poll_seconds=policy.poll_seconds,
+        )
 
     correlation_id, idempotency_key = _deterministic_identity(tenant_id=parent.tenant_id, batch_id=parent.batch_id or parent.job_id)
     scan_ids, skip_reason = _validated_batch_children(job_store, parent)

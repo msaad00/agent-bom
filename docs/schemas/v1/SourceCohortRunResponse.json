@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "JobStatus": {
+      "enum": [
+        "pending",
+        "running",
+        "done",
+        "failed",
+        "cancelled"
+      ],
+      "title": "JobStatus",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "auto_correlation": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Auto Correlation"
+    },
+    "child_job_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Child Job Ids",
+      "type": "array"
+    },
+    "cohort_manifest_hash": {
+      "title": "Cohort Manifest Hash",
+      "type": "string"
+    },
+    "correlation_cohort_id": {
+      "title": "Correlation Cohort Id",
+      "type": "string"
+    },
+    "max_age_hours": {
+      "title": "Max Age Hours",
+      "type": "integer"
+    },
+    "parent_job_id": {
+      "title": "Parent Job Id",
+      "type": "string"
+    },
+    "source_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Source Ids",
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/JobStatus"
+    }
+  },
+  "required": [
+    "correlation_cohort_id",
+    "cohort_manifest_hash",
+    "parent_job_id",
+    "child_job_ids",
+    "source_ids",
+    "max_age_hours",
+    "status"
+  ],
+  "title": "SourceCohortRunResponse",
+  "type": "object"
+}

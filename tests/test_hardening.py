@@ -96,7 +96,14 @@ def test_job_summary_payload_exposes_bounded_auto_correlation_handoff():
     from agent_bom.api.routes.scan import _job_summary_payload
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
 
-    job = ScanJob(job_id="summary-correlation", created_at="2026-09-03T00:00:00Z", request=ScanRequest())
+    job = ScanJob(
+        job_id="summary-correlation",
+        created_at="2026-09-03T00:00:00Z",
+        request=ScanRequest(),
+        correlation_cohort_id="2cbf4a4f-f7d6-5c85-b009-e6ad4cbf341a",
+        correlation_cohort_manifest_hash="a" * 64,
+        correlation_max_age_hours=24,
+    )
     job.status = JobStatus.DONE
     job.result = {
         "auto_correlation": {
@@ -112,6 +119,9 @@ def test_job_summary_payload_exposes_bounded_auto_correlation_handoff():
     payload = _job_summary_payload(job)
 
     assert payload["auto_correlation"] == job.result["auto_correlation"]
+    assert payload["correlation_cohort_id"] == job.correlation_cohort_id
+    assert payload["correlation_cohort_manifest_hash"] == "a" * 64
+    assert payload["correlation_max_age_hours"] == 24
 
 
 def test_jobs_bounded_eviction():

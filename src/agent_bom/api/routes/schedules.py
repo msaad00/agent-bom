@@ -26,6 +26,35 @@ router = APIRouter()
 def _validate_enabled_source_schedule(tenant_id: str, scan_config: dict) -> None:
     """Require an enabled source-backed schedule to reference a runnable source."""
     source_id = str(scan_config.get("source_id") or "").strip()
+    raw_source_ids = scan_config.get("source_ids")
+    if raw_source_ids is not None:
+        if source_id or not isinstance(raw_source_ids, list):
+            raise HTTPException(
+                status_code=422,
+                detail="Correlation schedules require an exact source_ids list without source_id",
+            )
+        source_ids = sorted(str(value).strip() for value in raw_source_ids)
+        if not 2 <= len(source_ids) <= 32 or any(not value for value in source_ids) or len(set(source_ids)) != len(source_ids):
+            raise HTTPException(status_code=422, detail="Correlation schedules require 2-32 distinct source ids")
+        max_age_hours = scan_config.get("max_age_hours", 168)
+        if isinstance(max_age_hours, bool) or not isinstance(max_age_hours, int) or not 1 <= max_age_hours <= 8760:
+            raise HTTPException(status_code=422, detail="max_age_hours must be between 1 and 8760")
+
+        from agent_bom.api.routes.sources import _request_for_source, _validate_credential_ref_for_tenant
+        from agent_bom.api.scan_batches import scan_request_targets
+
+        for member_source_id in source_ids:
+            source = _get_source_store().get(member_source_id)
+            if source is None or source.tenant_id != tenant_id or not source.enabled:
+                raise HTTPException(status_code=409, detail="Scheduled source is not available in this tenant")
+            _validate_credential_ref_for_tenant(tenant_id, source)
+            request = _request_for_source(source)
+            if len(scan_request_targets(request)) != 1:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Each correlation schedule source must resolve to exactly one scan target",
+                )
+        return
     if not source_id:
         return
     source = _get_source_store().get(source_id)

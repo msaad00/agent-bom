@@ -7075,6 +7075,39 @@
             ],
             "title": "Completed At"
           },
+          "correlation_cohort_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Cohort Id"
+          },
+          "correlation_cohort_manifest_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Cohort Manifest Hash"
+          },
+          "correlation_max_age_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Max Age Hours"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -8117,6 +8150,93 @@
           }
         },
         "title": "SkillsScanRequest",
+        "type": "object"
+      },
+      "SourceCohortRunRequest": {
+        "additionalProperties": false,
+        "description": "Exact registered sources to scan and correlate as one immutable cohort.",
+        "properties": {
+          "max_age_hours": {
+            "default": 168,
+            "maximum": 8760.0,
+            "minimum": 1.0,
+            "title": "Max Age Hours",
+            "type": "integer"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 2,
+            "title": "Source Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_ids"
+        ],
+        "title": "SourceCohortRunRequest",
+        "type": "object"
+      },
+      "SourceCohortRunResponse": {
+        "properties": {
+          "auto_correlation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Correlation"
+          },
+          "child_job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Child Job Ids",
+            "type": "array"
+          },
+          "cohort_manifest_hash": {
+            "title": "Cohort Manifest Hash",
+            "type": "string"
+          },
+          "correlation_cohort_id": {
+            "title": "Correlation Cohort Id",
+            "type": "string"
+          },
+          "max_age_hours": {
+            "title": "Max Age Hours",
+            "type": "integer"
+          },
+          "parent_job_id": {
+            "title": "Parent Job Id",
+            "type": "string"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Ids",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "correlation_cohort_id",
+          "cohort_manifest_hash",
+          "parent_job_id",
+          "child_job_ids",
+          "source_ids",
+          "max_age_hours",
+          "status"
+        ],
+        "title": "SourceCohortRunResponse",
         "type": "object"
       },
       "SourceCreate": {
@@ -36320,6 +36440,61 @@
           }
         },
         "summary": "Create Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/v1/sources/run-cohort": {
+      "post": {
+        "description": "Run exact registered sources and auto-correlate their immutable scan outputs.",
+        "operationId": "run_source_cohort_v1_sources_run_cohort_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceCohortRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCohortRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Source Cohort",
         "tags": [
           "sources"
         ]

@@ -273,6 +273,9 @@ class ScanJob(BaseModel):
     job_id: str
     tenant_id: str = "default"
     batch_id: str | None = None
+    correlation_cohort_id: str | None = None
+    correlation_cohort_manifest_hash: str | None = None
+    correlation_max_age_hours: int | None = None
     parent_job_id: str | None = None
     child_job_ids: list[str] = Field(default_factory=list)
     target: dict[str, Any] | None = None
@@ -955,6 +958,36 @@ class SourceUpdate(BaseModel):
     enabled: bool | None = None
     status: SourceStatus | None = None
     config: dict[str, Any] | None = None
+
+
+class SourceCohortRunRequest(BaseModel):
+    """Exact registered sources to scan and correlate as one immutable cohort."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_ids: list[str] = Field(min_length=2, max_length=32)
+    max_age_hours: int = Field(default=168, ge=1, le=8760)
+
+    @field_validator("source_ids")
+    @classmethod
+    def normalize_source_ids(cls, values: list[str]) -> list[str]:
+        normalized = sorted(value.strip() for value in values)
+        if any(not value for value in normalized):
+            raise ValueError("source_ids cannot contain empty values")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("source_ids must be distinct")
+        return normalized
+
+
+class SourceCohortRunResponse(BaseModel):
+    correlation_cohort_id: str
+    cohort_manifest_hash: str
+    parent_job_id: str
+    child_job_ids: list[str]
+    source_ids: list[str]
+    max_age_hours: int
+    status: JobStatus
+    auto_correlation: dict[str, Any] | None = None
 
 
 class RuntimeEvidenceSignalIn(BaseModel):

@@ -155,6 +155,40 @@ class TestResolveNpmMetadata:
         assert mock_request.call_count == 1
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("lookup", "package_name"),
+        [
+            (_get_npm_latest_doc, "unavailable-npm-package"),
+            (_get_pypi_info_doc, "unavailable-pypi-package"),
+        ],
+    )
+    async def test_registry_failure_does_not_leave_an_unhandled_inflight_future(self, lookup, package_name):
+        loop = asyncio.get_running_loop()
+        created: list[asyncio.Future] = []
+
+        class LoopProxy:
+            def create_future(self):
+                future = loop.create_future()
+                created.append(future)
+                return future
+
+        exception_was_retrieved = False
+        try:
+            with (
+                patch("agent_bom.resolver.asyncio.get_running_loop", return_value=LoopProxy()),
+                patch("agent_bom.resolver.request_with_retry", side_effect=RuntimeError("registry unavailable")),
+            ):
+                with pytest.raises(RuntimeError, match="registry unavailable"):
+                    await lookup(package_name, AsyncMock())
+            exception_was_retrieved = not created[0]._log_traceback
+        finally:
+            if created and created[0].done():
+                created[0].exception()
+
+        assert len(created) == 1
+        assert exception_was_retrieved
+
+    @pytest.mark.asyncio
     async def test_concurrent_pypi_info_requests_share_inflight_lookup(self):
         mock_response = MagicMock()
         mock_response.status_code = 200

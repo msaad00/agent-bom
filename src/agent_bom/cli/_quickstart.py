@@ -162,6 +162,10 @@ def _run_quickstart(
         "-p",
         str(sample_dir),
         "--context-graph",
+        # The sample is intentionally vulnerable. A severity verdict is still
+        # useful completed evidence and must not abort policy/UI onboarding;
+        # --exit-zero does not suppress incomplete, malicious, or policy exits.
+        "--exit-zero",
         "-o",
         str(report_path),
     ]

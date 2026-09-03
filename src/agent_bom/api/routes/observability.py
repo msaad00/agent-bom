@@ -1008,17 +1008,20 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 parent = _get_store().get(replay.parent_job_id or "", tenant_id=tenant_id)
                 if parent is None:
                     raise CorrelationCohortIngestError("invalid_receipt")
-                committed = _get_idempotency_store().put(
+                cohort_heartbeat.ensure_owned()
+                cohort_heartbeat.__exit__()
+                cohort_heartbeat = None
+                replay, parent = await asyncio.to_thread(
+                    _get_idempotency_store().commit_claim,
                     "/v1/results/push/cohort",
                     tenant_id,
                     body.source_id,
                     cohort_child_id,
                     {"job_id": cohort_child_id, "committed": True},
+                    action=lambda: (replay, parent),
                     request_hash=request_hash,
                     owner_token=cohort_owner,
                 )
-                if committed is False:
-                    raise CorrelationCohortIngestError("duplicate_result")
                 return _cohort_push_response(replay, parent)
             report = _normalize_pushed_report(body, fallback_scan_id=context.child.job_id)
             supplied_scan_id = str(report.get("scan_id") or "")
@@ -1038,26 +1041,25 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
             )
             report["scan_id"] = context.child.job_id
             report["pushed"] = True
+            cohort_heartbeat.ensure_owned()
+            cohort_heartbeat.__exit__()
+            cohort_heartbeat = None
             child, parent = await asyncio.to_thread(
-                commit_correlation_cohort_child,
-                context,
-                result=report,
-                request_hash=request_hash,
-                persist_graph=_persist_graph_snapshot,
-                ensure_owned=cohort_heartbeat.ensure_owned,
-            )
-            committed = await asyncio.to_thread(
-                _get_idempotency_store().put,
+                _get_idempotency_store().commit_claim,
                 "/v1/results/push/cohort",
                 tenant_id,
                 body.source_id,
                 cohort_child_id,
                 {"job_id": cohort_child_id, "committed": True},
+                action=lambda: commit_correlation_cohort_child(
+                    context,
+                    result=report,
+                    request_hash=request_hash,
+                    persist_graph=_persist_graph_snapshot,
+                ),
                 request_hash=request_hash,
                 owner_token=cohort_owner,
             )
-            if committed is False:
-                raise CorrelationCohortIngestError("duplicate_result")
             return _cohort_push_response(child, parent)
         except CorrelationCohortIngestError as exc:
             current = await asyncio.to_thread(_get_store().get, cohort_child_id, tenant_id)
@@ -1145,17 +1147,20 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
             tenant_id,
         )
         if existing is not None and _pushed_job_has_persisted_graph(existing):
-            committed = idempotency_store.put(
-                "/v1/results/push",
-                tenant_id,
-                idempotency_source,
-                idempotency_key,
-                {"job_id": existing.job_id, "committed": True},
-                request_hash=request_hash,
-                owner_token=idempotency_owner,
+            existing = cast(
+                ScanJob,
+                await asyncio.to_thread(
+                    idempotency_store.commit_claim,
+                    "/v1/results/push",
+                    tenant_id,
+                    idempotency_source,
+                    idempotency_key,
+                    {"job_id": existing.job_id, "committed": True},
+                    action=lambda: existing,
+                    request_hash=request_hash,
+                    owner_token=idempotency_owner,
+                ),
             )
-            if committed is False:
-                raise HTTPException(status_code=409, detail="Idempotency reservation ownership was lost")
             return _pushed_job_receipt(existing)
         idempotency_heartbeat = IdempotencyReservationHeartbeat(
             idempotency_store,
@@ -1223,20 +1228,6 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 # persistence adds its receipt to job.result. Persist once more
                 # before exposing the completed idempotency receipt.
                 job_store.put(job)
-                if claimed:
-                    if idempotency_heartbeat is not None:
-                        idempotency_heartbeat.ensure_owned()
-                    committed = idempotency_store.put(
-                        "/v1/results/push",
-                        tenant_id,
-                        idempotency_source,
-                        idempotency_key,
-                        {"job_id": job.job_id, "committed": True},
-                        request_hash=request_hash,
-                        owner_token=idempotency_owner,
-                    )
-                    if committed is False:
-                        raise IdempotencyConflictError("idempotency reservation ownership was lost")
             except Exception:
                 try:
                     _get_graph_store().delete_snapshot(
@@ -1262,7 +1253,24 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         return job_result
 
     try:
-        await asyncio.to_thread(_persist)
+        if claimed:
+            if idempotency_heartbeat is not None:
+                idempotency_heartbeat.ensure_owned()
+                idempotency_heartbeat.__exit__()
+                idempotency_heartbeat = None
+            await asyncio.to_thread(
+                idempotency_store.commit_claim,
+                "/v1/results/push",
+                tenant_id,
+                idempotency_source,
+                idempotency_key,
+                {"job_id": job.job_id, "committed": True},
+                action=_persist,
+                request_hash=request_hash,
+                owner_token=idempotency_owner,
+            )
+        else:
+            await asyncio.to_thread(_persist)
     except HTTPException:
         if claimed:
             _release_push_idempotency_claim(
@@ -1355,20 +1363,13 @@ async def _wait_for_pushed_job(
             request_hash=request_hash,
         )
         job = await asyncio.to_thread(_get_store().get, job_id, tenant_id)
-        if job is not None and receipt is not None:
-            if receipt.get("committed") is True:
-                return cast(ScanJob, job)
-            if _pushed_job_has_persisted_graph(job):
-                await asyncio.to_thread(
-                    _get_idempotency_store().put,
-                    "/v1/results/push",
-                    tenant_id,
-                    idempotency_source,
-                    idempotency_key,
-                    {"job_id": job.job_id, "committed": True},
-                    request_hash=request_hash,
-                )
-                return cast(ScanJob, job)
+        if job is not None and receipt is not None and receipt.get("committed") is True:
+            # The owner publishes this receipt only after its held-claim action
+            # commits every durable projection. The receipt is therefore the
+            # cross-replica completion fence; requiring an additional mutable
+            # marker here can incorrectly reject a successfully committed
+            # request when a backend does not project that marker into the job.
+            return cast(ScanJob, job)
         await asyncio.sleep(0.01)
     return None
 
@@ -1399,17 +1400,8 @@ async def _wait_for_cohort_child(
             parent = await asyncio.to_thread(_get_store().get, replay.parent_job_id or "", tenant_id)
             if parent is None:
                 raise CorrelationCohortIngestError("invalid_receipt")
-            if receipt is None or receipt.get("committed") is not True:
-                await asyncio.to_thread(
-                    _get_idempotency_store().put,
-                    "/v1/results/push/cohort",
-                    tenant_id,
-                    source_id,
-                    child_id,
-                    {"job_id": child_id, "committed": True},
-                    request_hash=request_hash,
-                )
-            return replay, parent
+            if receipt is not None and receipt.get("committed") is True:
+                return replay, parent
         await asyncio.sleep(0.01)
     return None
 

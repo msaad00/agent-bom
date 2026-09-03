@@ -315,6 +315,18 @@ def _reset_api_runtime_state() -> None:
     except Exception:
         pass
 
+    # Local dispatch claims live until the submitted Future completes. Tests
+    # commonly replace the submitter with a synchronous recorder, so no Future
+    # callback exists to release those claims. Clear the process-local registry
+    # with its production lock between tests; real workers release in the done
+    # callback or on submission failure.
+    try:
+        from agent_bom.api import scan_queue
+
+        scan_queue.reset_local_dispatches_for_tests()
+    except Exception:
+        pass
+
 
 def _drain_scan_executor() -> None:
     # The API scan pipeline runs jobs on a process-global ThreadPoolExecutor and

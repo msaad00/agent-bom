@@ -315,6 +315,33 @@ class TestSnowflakeJobStore:
         assert len(merge_call) > 0
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_atomic_batch_puts_share_one_transaction(self, mock_connect):
+        conn = _mock_connection()
+        mock_connect.return_value = conn
+        store = self._make_store()
+
+        store.put_many_atomic([self._make_job("parent"), self._make_job("child")])
+
+        sql_calls = [call.args[0].strip().upper() for call in conn.cursor().execute.call_args_list]
+        assert sql_calls.count("BEGIN") == 1
+        assert sum("MERGE INTO SCAN_JOBS" in sql for sql in sql_calls) == 2
+        assert sql_calls.count("COMMIT") == 1
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_atomic_insert_if_absent_returns_only_inserted_ids(self, mock_connect):
+        cur = _mock_cursor()
+        cur.execute.side_effect = [cur, cur, cur, cur]
+        cur.rowcount = 1
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+
+        assert store.put_many_if_absent_atomic([self._make_job("child")]) == ["child"]
+        sql = "\n".join(call.args[0] for call in cur.execute.call_args_list)
+        assert "WHEN MATCHED THEN UPDATE" not in sql
+        assert "WHEN NOT MATCHED THEN INSERT" in sql
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_get_found(self, mock_connect):
         job = self._make_job()
         job_json = job.model_dump_json()

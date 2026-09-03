@@ -1467,12 +1467,21 @@ def enqueue_correlation_cohort(
             ):
                 raise ValueError("persisted correlation cohort is incomplete")
         if missing_children:
-            inserted_ids = set(store.put_many_if_absent_atomic(missing_children))
+            atomic_repair = getattr(store, "put_many_if_absent_and_enqueue_atomic", None)
+            from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+            if dispatch and distributed_scans_enabled() and store_supports_dispatch(store) and callable(atomic_repair):
+                inserted_ids = set(atomic_repair(missing_children))
+            else:
+                inserted_ids = set(store.put_many_if_absent_atomic(missing_children))
             for child in missing_children:
                 if child.job_id not in inserted_ids:
                     continue
                 _jobs_put(child.job_id, child)
-                if dispatch and (child.target or {}).get("kind") != "external_ingest":
+        if dispatch:
+            for expected_child in child_jobs:
+                child = cast(ScanJob | None, store.get(expected_child.job_id, tenant_id=tenant_id))
+                if child is not None and child.status is JobStatus.PENDING and (child.target or {}).get("kind") != "external_ingest":
                     dispatch_scan_job(child)
         return existing
 
@@ -1529,8 +1538,15 @@ def enqueue_correlation_cohort(
             lambda: enforce_retained_jobs_quota(tenant_id, attempted=attempted_jobs),
         )
     )
+    dispatchable_children = [child for child in child_jobs if (child.target or {}).get("kind") != "external_ingest"]
     with admission:
-        store.put_many_atomic([parent, *child_jobs])
+        atomic_handoff = getattr(store, "put_many_and_enqueue_atomic", None)
+        from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+        if dispatch and distributed_scans_enabled() and store_supports_dispatch(store) and callable(atomic_handoff):
+            atomic_handoff([parent, *child_jobs], dispatchable_children)
+        else:
+            store.put_many_atomic([parent, *child_jobs])
         _jobs_put(parent.job_id, parent)
         for child in child_jobs:
             _jobs_put(child.job_id, child)
@@ -1544,9 +1560,8 @@ def enqueue_correlation_cohort(
             pass
 
     if dispatch:
-        for child in child_jobs:
-            if (child.target or {}).get("kind") != "external_ingest":
-                dispatch_scan_job(child)
+        for child in dispatchable_children:
+            dispatch_scan_job(child)
     return parent
 
 
@@ -1637,7 +1652,13 @@ def enqueue_scan_job(
             )
         )
         with admission:
-            store.put_many_atomic([parent, *child_jobs])
+            atomic_handoff = getattr(store, "put_many_and_enqueue_atomic", None)
+            from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+            if distributed_scans_enabled() and store_supports_dispatch(store) and callable(atomic_handoff):
+                atomic_handoff([parent, *child_jobs], child_jobs)
+            else:
+                store.put_many_atomic([parent, *child_jobs])
             _jobs_put(parent.job_id, parent)
             for child in child_jobs:
                 _jobs_put(child.job_id, child)
@@ -1767,12 +1788,21 @@ def _repair_scan_batch(parent: ScanJob, *, dispatch: bool = True) -> ScanJob:
         ):
             raise RuntimeError("Persisted scan batch membership is invalid.")
     if missing:
-        inserted_ids = set(store.put_many_if_absent_atomic(missing))
+        atomic_repair = getattr(store, "put_many_if_absent_and_enqueue_atomic", None)
+        from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+        if dispatch and distributed_scans_enabled() and store_supports_dispatch(store) and callable(atomic_repair):
+            inserted_ids = set(atomic_repair(missing))
+        else:
+            inserted_ids = set(store.put_many_if_absent_atomic(missing))
         for child in missing:
             if child.job_id not in inserted_ids:
                 continue
             _jobs_put(child.job_id, child)
-            if dispatch:
+    if dispatch:
+        for child_id in parent.child_job_ids:
+            child = cast(ScanJob | None, store.get(child_id, tenant_id=parent.tenant_id))
+            if child is not None and child.status is JobStatus.PENDING:
                 dispatch_scan_job(child)
     return parent
 
@@ -1781,12 +1811,23 @@ def dispatch_scan_job(job: ScanJob) -> None:
     """Dispatch an already-persisted scan through the configured durable queue."""
 
     store = _get_store()
-    from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+    from agent_bom.api.scan_queue import (
+        claim_local_dispatch,
+        distributed_scans_enabled,
+        release_local_dispatch,
+        store_supports_dispatch,
+    )
 
     if distributed_scans_enabled() and store_supports_dispatch(store):
         store.enqueue_for_dispatch(job)
     else:
-        submit_scan_job(job)
+        if not claim_local_dispatch(job.job_id):
+            return
+        try:
+            submit_scan_job(job)
+        except Exception:
+            release_local_dispatch(job.job_id)
+            raise
 
 
 # ─── Core Scan Endpoints ─────────────────────────────────────────────────────
@@ -1835,17 +1876,17 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
             raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
         if not claimed:
             cached_job_id = str(cached.get("job_id") or "")
-            existing = await _wait_for_idempotent_job(cached_job_id, tenant_id=tenant_id)
+            existing = await _wait_for_idempotent_job(
+                cached_job_id,
+                tenant_id=tenant_id,
+                idempotency_store=idem_store,
+                endpoint="/v1/scan",
+                source_id=idem_source,
+                idempotency_key=idem_key,
+                request_hash=request_hash,
+            )
             if existing is not None:
                 existing = await asyncio.to_thread(_repair_scan_batch, existing)
-                idem_store.put(
-                    "/v1/scan",
-                    tenant_id,
-                    idem_source,
-                    idem_key,
-                    {"job_id": existing.job_id, "committed": True},
-                    request_hash=request_hash,
-                )
                 return _job_response_payload(existing)
             raise HTTPException(
                 status_code=409,
@@ -1866,46 +1907,56 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
         cached_job_id = str(cached.get("job_id") or reserved_job_id)
         existing = await asyncio.to_thread(_get_store().get, cached_job_id, tenant_id)
         if existing is not None:
-            existing = await asyncio.to_thread(_repair_scan_batch, existing)
             heartbeat.ensure_owned()
-            committed = idem_store.put(
-                "/v1/scan",
-                tenant_id,
-                idem_source,
-                idem_key,
-                {"job_id": existing.job_id, "committed": True},
-                request_hash=request_hash,
-                owner_token=owner_token,
-            )
             heartbeat.__exit__()
             heartbeat = None
-            if committed is False:
-                raise HTTPException(status_code=409, detail="Idempotency reservation ownership was lost")
-            return _job_response_payload(existing)
+            recovered = cast(
+                ScanJob,
+                await asyncio.to_thread(
+                    idem_store.commit_claim,
+                    "/v1/scan",
+                    tenant_id,
+                    idem_source,
+                    idem_key,
+                    {"job_id": existing.job_id, "committed": True},
+                    action=lambda: _repair_scan_batch(existing),
+                    request_hash=request_hash,
+                    owner_token=owner_token,
+                ),
+            )
+            return _job_response_payload(recovered)
 
     try:
-        if heartbeat is not None:
-            heartbeat.ensure_owned()
-        job = enqueue_scan_job(
-            tenant_id=tenant_id,
-            triggered_by=_triggered_by(request),
-            request_body=body,
-            job_id=reserved_job_id or None,
-        )
         if claimed:
             if heartbeat is not None:
                 heartbeat.ensure_owned()
-            committed = idem_store.put(
-                "/v1/scan",
-                tenant_id,
-                idem_source,
-                idem_key,
-                {"job_id": job.job_id, "committed": True},
-                request_hash=request_hash,
-                owner_token=owner_token,
+                heartbeat.__exit__()
+                heartbeat = None
+            job = cast(
+                ScanJob,
+                await asyncio.to_thread(
+                    idem_store.commit_claim,
+                    "/v1/scan",
+                    tenant_id,
+                    idem_source,
+                    idem_key,
+                    {"job_id": reserved_job_id, "committed": True},
+                    action=lambda: enqueue_scan_job(
+                        tenant_id=tenant_id,
+                        triggered_by=_triggered_by(request),
+                        request_body=body,
+                        job_id=reserved_job_id,
+                    ),
+                    request_hash=request_hash,
+                    owner_token=owner_token,
+                ),
             )
-            if committed is False:
-                raise IdempotencyConflictError("idempotency reservation ownership was lost")
+        else:
+            job = enqueue_scan_job(
+                tenant_id=tenant_id,
+                triggered_by=_triggered_by(request),
+                request_body=body,
+            )
     except Exception:
         durable_job_exists = True
         if claimed:
@@ -1954,11 +2005,31 @@ def _release_scan_idempotency_claim(
         _logger.error("Scan idempotency rollback failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
 
 
-async def _wait_for_idempotent_job(job_id: str, *, tenant_id: str) -> ScanJob | None:
-    """Bounded wait for the reservation owner to durably publish its job."""
+async def _wait_for_idempotent_job(
+    job_id: str,
+    *,
+    tenant_id: str,
+    idempotency_store: Any,
+    endpoint: str,
+    source_id: str,
+    idempotency_key: str,
+    request_hash: str,
+) -> ScanJob | None:
+    """Wait until the reservation owner publishes both its receipt and job."""
     if not job_id:
         return None
     for _attempt in range(100):
+        receipt = await asyncio.to_thread(
+            idempotency_store.get,
+            endpoint,
+            tenant_id,
+            source_id,
+            idempotency_key,
+            request_hash=request_hash,
+        )
+        if receipt is None or receipt.get("committed") is not True:
+            await asyncio.sleep(0.01)
+            continue
         existing = _jobs_get(job_id)
         if existing is None:
             existing = await asyncio.to_thread(_get_store().get, job_id, tenant_id)

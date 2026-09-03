@@ -280,21 +280,23 @@ def test_source_cohort_reconciles_durable_parent_after_receipt_failure(
     class _FailCommittedReceiptOnce(InMemoryIdempotencyStore):
         failed = False
 
-        def put(self, *args, **kwargs) -> None:
-            response = args[4]
-            if args[0] == "/v1/sources/run-cohort" and response.get("committed") is True and not self.failed:
+        def commit_claim(self, *args, action, **kwargs):
+            if args[0] == "/v1/sources/run-cohort" and not self.failed:
                 self.failed = True
+                action()
                 raise RuntimeError("receipt backend interrupted")
-            super().put(*args, **kwargs)
+            return super().commit_claim(*args, action=action, **kwargs)
 
     idempotency = _FailCommittedReceiptOnce()
     _stores.set_idempotency_store(idempotency)
     dispatched: list[str] = []
-    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", lambda job: dispatched.append(job.job_id))
     headers = {**ANALYST_HEADERS, "Idempotency-Key": "durable-before-receipt"}
     payload = {"source_ids": source_ids, "max_age_hours": 24}
 
     failed = source_client.post("/v1/sources/run-cohort", headers=headers, json=payload)
+    key = ("/v1/sources/run-cohort", "tenant-alpha", "source-cohort", "durable-before-receipt")
+    idempotency._records[key].lease_expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()  # noqa: SLF001
     replay = source_client.post("/v1/sources/run-cohort", headers=headers, json=payload)
 
     assert failed.status_code == 503
@@ -341,13 +343,13 @@ def test_source_cohort_stops_heartbeat_when_post_enqueue_projection_raises(
     monkeypatch.setattr(source_routes, "_update_cohort_sources", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("injected")))
     monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda _job: None)
 
-    with pytest.raises(RuntimeError, match="injected"):
-        source_client.post(
-            "/v1/sources/run-cohort",
-            headers={**ANALYST_HEADERS, "Idempotency-Key": "heartbeat-cleanup"},
-            json={"source_ids": source_ids, "max_age_hours": 24},
-        )
+    response = source_client.post(
+        "/v1/sources/run-cohort",
+        headers={**ANALYST_HEADERS, "Idempotency-Key": "heartbeat-cleanup"},
+        json={"source_ids": source_ids, "max_age_hours": 24},
+    )
 
+    assert response.status_code == 503
     assert exits == [True]
 
 

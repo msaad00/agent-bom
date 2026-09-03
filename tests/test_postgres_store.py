@@ -478,6 +478,57 @@ def test_job_store_atomic_repair_insert_preserves_first_writer(mock_pool, mock_m
     assert mock_pool._conn._store["scan_jobs"]["repair-child"][9] == 1
 
 
+def test_job_store_atomic_batch_commits_dispatch_handoff_with_jobs(mock_pool, mock_maintenance_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
+    parent = ScanJob(
+        job_id="parent",
+        tenant_id="tenant-alpha",
+        status=JobStatus.RUNNING,
+        created_at="2026-01-01T00:00:00Z",
+        request=ScanRequest(),
+    )
+    child = ScanJob(
+        job_id="child",
+        tenant_id="tenant-alpha",
+        parent_job_id="parent",
+        status=JobStatus.PENDING,
+        created_at="2026-01-01T00:00:00Z",
+        request=ScanRequest(images=["redis:7"]),
+    )
+    mock_pool._conn.transaction_events.clear()
+
+    store.put_many_and_enqueue_atomic([parent, child], [child])
+
+    writes = [(sql, params) for sql, params in mock_pool._conn.executed if "INSERT INTO scan_" in sql]
+    assert sum("INSERT INTO scan_jobs" in sql for sql, _params in writes) == 2
+    assert sum("INSERT INTO scan_dispatch_queue" in sql for sql, _params in writes) == 1
+    assert mock_pool._conn.transaction_events == ["commit"]
+
+
+def test_job_store_atomic_repair_enqueues_only_the_insert_winner(mock_pool, mock_maintenance_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
+    child = ScanJob(
+        job_id="repair-dispatch-child",
+        tenant_id="tenant-alpha",
+        status=JobStatus.PENDING,
+        created_at="2026-01-01T00:00:00Z",
+        request=ScanRequest(images=["redis:7"]),
+    )
+
+    assert store.put_many_if_absent_and_enqueue_atomic([child]) == [child.job_id]
+    queue_writes_before = sum("INSERT INTO scan_dispatch_queue" in sql for sql, _params in mock_pool._conn.executed)
+    assert store.put_many_if_absent_and_enqueue_atomic([child]) == []
+    queue_writes_after = sum("INSERT INTO scan_dispatch_queue" in sql for sql, _params in mock_pool._conn.executed)
+
+    assert queue_writes_after == queue_writes_before == 1
+
+
 def test_job_store_get_nonexistent(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 

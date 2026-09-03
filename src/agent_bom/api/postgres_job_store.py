@@ -285,6 +285,55 @@ class PostgresJobStore:
         job_status_count_cache.invalidate_tenant(tenant_id)
         return inserted
 
+    def put_many_and_enqueue_atomic(self, jobs: list[ScanJob], dispatch_jobs: list[ScanJob]) -> None:
+        """Commit a batch and its distributed dispatch handoff together."""
+
+        if not jobs:
+            return
+        tenants = {job.tenant_id for job in jobs}
+        if len(tenants) != 1 or any(job.tenant_id not in tenants for job in dispatch_jobs):
+            raise ValueError("atomic job batches must belong to one tenant")
+        job_ids = {job.job_id for job in jobs}
+        if any(job.job_id not in job_ids for job in dispatch_jobs):
+            raise ValueError("dispatch jobs must belong to the atomic job batch")
+        tenant_id = jobs[0].tenant_id
+        with _tenant_connection(self._pool) as conn:
+            for job in jobs:
+                self._put_on_connection(conn, job)
+            for job in dispatch_jobs:
+                conn.execute(
+                    """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
+                       VALUES (%s, %s, %s, 'pending')
+                       ON CONFLICT (job_id) DO NOTHING""",
+                    (job.job_id, job.tenant_id, job.created_at),
+                )
+            conn.commit()
+        job_status_count_cache.invalidate_tenant(tenant_id)
+
+    def put_many_if_absent_and_enqueue_atomic(self, jobs: list[ScanJob]) -> list[str]:
+        """Insert missing jobs and their distributed handoff in one transaction."""
+
+        if not jobs:
+            return []
+        if len({job.tenant_id for job in jobs}) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        tenant_id = jobs[0].tenant_id
+        inserted: list[str] = []
+        with _tenant_connection(self._pool) as conn:
+            for job in jobs:
+                if self._put_on_connection(conn, job, if_absent=True) != 1:
+                    continue
+                inserted.append(job.job_id)
+                conn.execute(
+                    """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
+                       VALUES (%s, %s, %s, 'pending')
+                       ON CONFLICT (job_id) DO NOTHING""",
+                    (job.job_id, job.tenant_id, job.created_at),
+                )
+            conn.commit()
+        job_status_count_cache.invalidate_tenant(tenant_id)
+        return inserted
+
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         from .server import ScanJob
 

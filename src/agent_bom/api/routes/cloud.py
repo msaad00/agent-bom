@@ -1020,7 +1020,7 @@ async def cloud_runtime_evidence_ingest(
                     return _runtime_cohort_response(replay)
                 raise CorrelationCohortIngestError("child_commit_in_progress")
 
-            with IdempotencyReservationHeartbeat(
+            heartbeat = IdempotencyReservationHeartbeat(
                 _get_idempotency_store(),
                 "/v1/cloud/runtime-evidence/ingest/cohort",
                 tenant_id,
@@ -1029,7 +1029,10 @@ async def cloud_runtime_evidence_ingest(
                 request_hash=request_hash,
                 owner_token=owner_token,
                 lease_seconds=lease_seconds,
-            ) as heartbeat:
+            )
+            heartbeat.__enter__()
+            heartbeat_stopped = False
+            try:
                 created_at = cohort_evidence_created_at(
                     [signal.observed_at for signal in body.signals],
                     max_age_hours=cohort_receipt.max_age_hours,
@@ -1059,27 +1062,34 @@ async def cloud_runtime_evidence_ingest(
                 def _persist_runtime_graph(_job: ScanJob, _result: dict[str, Any]) -> None:
                     _get_graph_store().save_graph(graph)
 
-                child, _parent = commit_correlation_cohort_child(
-                    context,
-                    result=result_payload,
-                    request_hash=request_hash,
-                    persist_graph=_persist_runtime_graph,
-                    ensure_owned=heartbeat.ensure_owned,
-                )
                 heartbeat.ensure_owned()
-                _reconcile_runtime_projection()
-                committed = _get_idempotency_store().put(
+                heartbeat.__exit__()
+                heartbeat_stopped = True
+
+                def _commit_runtime_result() -> ScanJob:
+                    child, _parent = commit_correlation_cohort_child(
+                        context,
+                        result=result_payload,
+                        request_hash=request_hash,
+                        persist_graph=_persist_runtime_graph,
+                    )
+                    _reconcile_runtime_projection(child)
+                    return child
+
+                child = _get_idempotency_store().commit_claim(
                     "/v1/cloud/runtime-evidence/ingest/cohort",
                     tenant_id,
                     body.source_id,
                     context.child.job_id,
-                    {"job_id": context.child.job_id, "committed": True},
+                    lambda committed_child: {"job_id": committed_child.job_id, "committed": True},
+                    action=_commit_runtime_result,
                     request_hash=request_hash,
                     owner_token=owner_token,
                 )
-                if committed is False:
-                    raise CorrelationCohortIngestError("duplicate_result")
                 return _runtime_cohort_response(child)
+            finally:
+                if not heartbeat_stopped:
+                    heartbeat.__exit__()
         result = ingest_runtime_signals(
             registry=registry,
             source_id=body.source_id,

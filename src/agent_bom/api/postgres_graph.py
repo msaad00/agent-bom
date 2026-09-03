@@ -53,7 +53,9 @@ from .postgres_common import (
 )
 
 logger = logging.getLogger(__name__)
-_GRAPH_STORAGE_SCHEMA_VERSION = 2
+_GRAPH_STORAGE_SCHEMA_VERSION = 4
+_DB_NOW_ISO = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
+_DB_LEASE_ISO = "to_char(now() AT TIME ZONE 'UTC' + (%s * INTERVAL '1 second'), 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 
 
 def select_expired_snapshot_ids(
@@ -2608,27 +2610,24 @@ class PostgresGraphStore:
         now: str,
     ) -> GraphCorrelationRun | None:
         tenant = normalize_graph_tenant_id(tenant_id)
-        expires = (datetime.fromisoformat(now) + timedelta(seconds=max(1, int(lease_seconds)))).isoformat()
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 f"""
                 UPDATE graph_correlation_runs
-                SET status = %s, started_at = CASE WHEN started_at = '' THEN %s ELSE started_at END,
-                    execution_owner = %s, execution_lease_expires_at = %s
+                SET status = %s, started_at = CASE WHEN started_at = '' THEN {_DB_NOW_ISO} ELSE started_at END,
+                    execution_owner = %s, execution_lease_expires_at = {_DB_LEASE_ISO}
                 WHERE tenant_id = %s AND correlation_id = %s
-                  AND (status = %s OR (status = %s AND execution_lease_expires_at <= %s))
+                  AND (status = %s OR (status = %s AND execution_lease_expires_at <= {_DB_NOW_ISO}))
                 RETURNING {_CORRELATION_RUN_COLUMNS}
-                """,  # nosec B608 - static internal column list
+                """,  # nosec B608 - static internal column list and fixed clock expressions
                 (
                     CorrelationRunStatus.RUNNING.value,
-                    now,
                     owner_token,
-                    expires,
+                    max(1, int(lease_seconds)),
                     tenant,
                     correlation_id,
                     CorrelationRunStatus.PENDING.value,
                     CorrelationRunStatus.RUNNING.value,
-                    now,
                 ),
             ).fetchone()
             if row is None:
@@ -2646,15 +2645,14 @@ class PostgresGraphStore:
         now: str,
     ) -> bool:
         tenant = normalize_graph_tenant_id(tenant_id)
-        expires = (datetime.fromisoformat(now) + timedelta(seconds=max(1, int(lease_seconds)))).isoformat()
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
-                """
-                UPDATE graph_correlation_runs SET execution_lease_expires_at = %s
+                f"""
+                UPDATE graph_correlation_runs SET execution_lease_expires_at = {_DB_LEASE_ISO}
                 WHERE tenant_id = %s AND correlation_id = %s AND status = %s AND execution_owner = %s
                 RETURNING correlation_id
-                """,
-                (expires, tenant, correlation_id, CorrelationRunStatus.RUNNING.value, owner_token),
+                """,  # nosec B608 - fixed internal clock expression
+                (max(1, int(lease_seconds)), tenant, correlation_id, CorrelationRunStatus.RUNNING.value, owner_token),
             ).fetchone()
             if row is None:
                 return False

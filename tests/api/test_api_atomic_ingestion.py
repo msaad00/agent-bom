@@ -19,8 +19,9 @@ from agent_bom.api.idempotency_store import (
     deterministic_batch_id,
     idempotency_request_fingerprint,
 )
-from agent_bom.api.models import PushPayload, ScanRequest
+from agent_bom.api.models import JobStatus, PushPayload, ScanRequest
 from agent_bom.api.routes import scan as scan_routes
+from agent_bom.api.scan_queue import reset_local_dispatches_for_tests
 from agent_bom.api.server import app, set_fleet_store, set_graph_store, set_job_store
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import set_idempotency_store
@@ -184,6 +185,8 @@ def test_scan_retry_reconciles_durable_job_before_receipt_without_redispatch(mon
     key = ("/v1/scan", "default", "scan", "scan-crash-after-job")
     record = idem._records[key]  # type: ignore[attr-defined]  # noqa: SLF001
     record.response_json = json.dumps({"job_id": first.json()["job_id"], "committed": False})
+    record.reservation_owner = "crashed-owner"
+    record.lease_expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
 
     replay = client.post("/v1/scan", headers=headers, json=payload)
 
@@ -211,6 +214,12 @@ def test_multi_target_scan_retry_repairs_missing_child_before_committed_receipt(
     assert parent is not None
     missing_child_id = parent.child_job_ids[0]
     assert jobs.delete(missing_child_id, tenant_id="default") is True
+    for child_id in parent.child_job_ids[1:]:
+        child = jobs.get(child_id, tenant_id="default")
+        assert child is not None
+        child.status = JobStatus.RUNNING
+        jobs.put(child)
+    reset_local_dispatches_for_tests()
     dispatched.clear()
 
     replay = client.post("/v1/scan", headers=headers, json=payload)
@@ -227,7 +236,7 @@ def test_two_replicas_dispatch_only_the_winning_multi_target_child_repair(tmp_pa
     jobs = SQLiteJobStore(str(tmp_path / "jobs.db"))
     set_job_store(jobs)
     dispatched: list[str] = []
-    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    monkeypatch.setattr(scan_routes, "submit_scan_job", lambda job: dispatched.append(job.job_id))
     parent = scan_routes.enqueue_scan_job(
         tenant_id="default",
         triggered_by="api-test",
@@ -235,6 +244,12 @@ def test_two_replicas_dispatch_only_the_winning_multi_target_child_repair(tmp_pa
     )
     missing_id = parent.child_job_ids[0]
     jobs.delete(missing_id, tenant_id="default")
+    for child_id in parent.child_job_ids[1:]:
+        child = jobs.get(child_id, tenant_id="default")
+        assert child is not None
+        child.status = JobStatus.RUNNING
+        jobs.put(child)
+    reset_local_dispatches_for_tests()
     dispatched.clear()
     barrier = threading.Barrier(2)
     real_insert = jobs.put_many_if_absent_atomic
@@ -249,6 +264,47 @@ def test_two_replicas_dispatch_only_the_winning_multi_target_child_repair(tmp_pa
 
     assert [item.job_id for item in results] == [parent.job_id, parent.job_id]
     assert dispatched == [missing_id]
+
+
+def test_multi_target_retry_recovers_mid_dispatch_crash_without_duplicate_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {"images": ["redis:7", "postgres:17"], "no_scan": True}
+    body = ScanRequest.model_validate(payload)
+    request_hash = idempotency_request_fingerprint(body)
+    parent_id = deterministic_batch_id(f"/v1/scan:default:scan:mid-dispatch-crash:{request_hash}")
+    submitted: list[str] = []
+    fail_second_once = True
+
+    def _submit(job) -> None:
+        nonlocal fail_second_once
+        if len(submitted) == 1 and fail_second_once:
+            fail_second_once = False
+            raise RuntimeError("injected handoff interruption")
+        submitted.append(job.job_id)
+
+    monkeypatch.setattr(scan_routes, "submit_scan_job", _submit)
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"Idempotency-Key": "mid-dispatch-crash"}
+
+    failed = client.post("/v1/scan", headers=headers, json=payload)
+    assert failed.status_code == 500
+    parent = stores._get_store().get(parent_id, tenant_id="default")
+    assert parent is not None and len(parent.child_job_ids) == 2
+    key = ("/v1/scan", "default", "scan", "mid-dispatch-crash")
+    record = stores._get_idempotency_store()._records[key]  # type: ignore[attr-defined]  # noqa: SLF001
+    record.lease_expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+
+    replay = client.post("/v1/scan", headers=headers, json=payload)
+
+    assert replay.status_code == 202
+    assert replay.json()["job_id"] == parent_id
+    assert sorted(submitted) == sorted(parent.child_job_ids)
+    assert len(submitted) == len(set(submitted)) == 2
+    assert stores._get_idempotency_store().get(*key, request_hash=request_hash) == {
+        "job_id": parent_id,
+        "committed": True,
+    }
 
 
 def test_push_retry_reclaims_expired_crash_reservation_without_duplicate_evidence(
@@ -312,6 +368,8 @@ def test_push_retry_reconciles_committed_job_before_receipt_without_duplicate_ev
     key = ("/v1/results/push", "default", "endpoint-a", "push-crash-after-commit")
     record = idem._records[key]  # type: ignore[attr-defined]  # noqa: SLF001
     record.response_json = json.dumps({"job_id": first.json()["job_id"], "committed": False})
+    record.reservation_owner = "crashed-owner"
+    record.lease_expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
 
     replay = client.post("/v1/results/push", json=payload)
 

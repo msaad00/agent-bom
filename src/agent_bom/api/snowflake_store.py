@@ -165,34 +165,88 @@ class SnowflakeJobStore:
             conn.cursor().execute("ALTER TABLE scan_jobs ADD COLUMN IF NOT EXISTS schedule_id VARCHAR")
             _ensure_tenant_row_access_policy(conn.cursor(), ("scan_jobs",))
 
-    def put(self, job: ScanJob) -> None:
-        with self._connect() as conn:
-            conn.cursor().execute(
-                """MERGE INTO scan_jobs t USING (SELECT %s AS job_id) s
-                   ON t.job_id = s.job_id
-                   WHEN MATCHED THEN UPDATE SET
+    @staticmethod
+    def _put_on_cursor(cur, job: ScanJob, *, if_absent: bool = False) -> int:  # type: ignore[no-untyped-def]
+        matched_clause = (
+            ""
+            if if_absent
+            else """WHEN MATCHED THEN UPDATE SET
                      status = %s, created_at = %s, completed_at = %s, tenant_id = %s, schedule_id = %s,
-                     data = PARSE_JSON(%s)
+                     data = PARSE_JSON(%s)"""
+        )
+        update_params: tuple[object, ...] = ()
+        if not if_absent:
+            update_params = (
+                job.status.value,
+                job.created_at,
+                job.completed_at,
+                job.tenant_id,
+                job.schedule_id,
+                job.model_dump_json(),
+            )
+        cur.execute(
+            f"""MERGE INTO scan_jobs t USING (SELECT %s AS job_id) s
+                   ON t.job_id = s.job_id
+                   {matched_clause}
                    WHEN NOT MATCHED THEN INSERT
                      (job_id, status, created_at, completed_at, tenant_id, schedule_id, data)
-                     VALUES (%s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
-                (
-                    job.job_id,
-                    job.status.value,
-                    job.created_at,
-                    job.completed_at,
-                    job.tenant_id,
-                    job.schedule_id,
-                    job.model_dump_json(),
-                    job.job_id,
-                    job.status.value,
-                    job.created_at,
-                    job.completed_at,
-                    job.tenant_id,
-                    job.schedule_id,
-                    job.model_dump_json(),
-                ),
-            )
+                     VALUES (%s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",  # nosec B608 - fixed internal clause
+            (
+                job.job_id,
+                *update_params,
+                job.job_id,
+                job.status.value,
+                job.created_at,
+                job.completed_at,
+                job.tenant_id,
+                job.schedule_id,
+                job.model_dump_json(),
+            ),
+        )
+        return int(cur.rowcount or 0)
+
+    def put(self, job: ScanJob) -> None:
+        with self._connect() as conn:
+            self._put_on_cursor(conn.cursor(), job)
+
+    def put_many_atomic(self, jobs: list[ScanJob]) -> None:
+        """Persist a same-tenant parent/child set in one Snowflake transaction."""
+
+        if not jobs:
+            return
+        if len({job.tenant_id for job in jobs}) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("BEGIN")
+            try:
+                for job in jobs:
+                    self._put_on_cursor(cur, job)
+                cur.execute("COMMIT")
+            except Exception:
+                cur.execute("ROLLBACK")
+                raise
+
+    def put_many_if_absent_atomic(self, jobs: list[ScanJob]) -> list[str]:
+        """Insert missing same-tenant jobs without overwriting a prior writer."""
+
+        if not jobs:
+            return []
+        if len({job.tenant_id for job in jobs}) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        inserted: list[str] = []
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("BEGIN")
+            try:
+                for job in jobs:
+                    if self._put_on_cursor(cur, job, if_absent=True) > 0:
+                        inserted.append(job.job_id)
+                cur.execute("COMMIT")
+            except Exception:
+                cur.execute("ROLLBACK")
+                raise
+        return inserted
 
     def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
         with self._connect() as conn:

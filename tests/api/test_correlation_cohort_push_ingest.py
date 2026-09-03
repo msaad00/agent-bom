@@ -293,7 +293,7 @@ def test_cohort_child_claim_rejects_changed_payload_across_replica_locks(
     original = _result_payload(cohort)
     changed = _result_payload(cohort, suffix="-changed")
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with ThreadPoolExecutor(max_workers=2) as pool:
         first_future = pool.submit(
             lambda: TestClient(app, raise_server_exceptions=False).post(
                 "/v1/results/push",
@@ -302,13 +302,16 @@ def test_cohort_child_claim_rejects_changed_payload_across_replica_locks(
             )
         )
         assert first_entered.wait(timeout=3)
-        conflicting = TestClient(app, raise_server_exceptions=False).post(
-            "/v1/results/push",
-            headers=HEADERS,
-            json=changed,
+        conflicting_future = pool.submit(
+            lambda: TestClient(app, raise_server_exceptions=False).post(
+                "/v1/results/push",
+                headers=HEADERS,
+                json=changed,
+            )
         )
         release_first.set()
         first = first_future.result(timeout=3)
+        conflicting = conflicting_future.result(timeout=3)
 
     assert first.status_code == 201
     assert conflicting.status_code == 409
@@ -328,12 +331,12 @@ def test_cohort_push_reconciles_committed_child_before_durable_receipt(
     class _FailCommittedReceiptOnce(SQLiteIdempotencyStore):
         failed = False
 
-        def put(self, *args, **kwargs) -> None:
-            response = args[4]
-            if args[0] == "/v1/results/push/cohort" and response.get("committed") is True and not self.failed:
+        def commit_claim(self, *args, action, **kwargs):
+            if args[0] == "/v1/results/push/cohort" and not self.failed:
                 self.failed = True
+                action()
                 raise RuntimeError("receipt backend interrupted")
-            super().put(*args, **kwargs)
+            return super().commit_claim(*args, action=action, **kwargs)
 
     idempotency = _FailCommittedReceiptOnce(str(tmp_path / "cohort-recovery.db"))
     stores.set_idempotency_store(idempotency)
@@ -345,6 +348,11 @@ def test_cohort_push_reconciles_committed_child_before_durable_receipt(
     payload = _result_payload(cohort)
 
     failed = client.post("/v1/results/push", headers=HEADERS, json=payload)
+    idempotency._conn.execute(
+        "UPDATE idempotency_keys SET lease_expires_at = ? WHERE endpoint = ?",  # noqa: SLF001
+        ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(), "/v1/results/push/cohort"),
+    )
+    idempotency._conn.commit()  # noqa: SLF001
     replay = client.post("/v1/results/push", headers=HEADERS, json=payload)
 
     assert failed.status_code == 503

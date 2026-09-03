@@ -11,9 +11,10 @@ import pytest
 
 from agent_bom.api.auto_correlation import AutoCorrelationPolicy, reconcile_auto_correlations_once
 from agent_bom.api.graph_store import SQLiteGraphStore
-from agent_bom.api.models import ScanRequest
+from agent_bom.api.models import JobStatus, ScanRequest
 from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.scan_batches import refresh_batch_parent
+from agent_bom.api.scan_queue import reset_local_dispatches_for_tests
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import set_graph_store, set_job_store
 from agent_bom.graph.container import UnifiedGraph
@@ -69,6 +70,12 @@ def test_durable_cohort_replay_preserves_exact_membership_and_policy(tmp_path: P
 
     set_job_store(SQLiteJobStore(jobs_path))
     set_graph_store(SQLiteGraphStore(graph_path))
+    for child_id in first.child_job_ids:
+        child = jobs.get(child_id, tenant_id="tenant-a")
+        assert child is not None
+        child.status = JobStatus.RUNNING
+        jobs.put(child)
+    reset_local_dispatches_for_tests()
     dispatched.clear()
     replay = scan_routes.enqueue_correlation_cohort(
         tenant_id="tenant-a",
@@ -156,6 +163,12 @@ def test_durable_cohort_replay_repairs_a_missing_child_after_interrupted_legacy_
     )
     missing_child_id = parent.child_job_ids[0]
     assert jobs.delete(missing_child_id, tenant_id="tenant-a") is True
+    for child_id in parent.child_job_ids[1:]:
+        child = jobs.get(child_id, tenant_id="tenant-a")
+        assert child is not None
+        child.status = JobStatus.RUNNING
+        jobs.put(child)
+    reset_local_dispatches_for_tests()
     dispatched.clear()
 
     recovered = scan_routes.enqueue_correlation_cohort(
@@ -179,7 +192,7 @@ def test_two_replicas_dispatch_only_the_winning_cohort_child_repair(tmp_path: Pa
     set_job_store(jobs)
     set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
     dispatched: list[str] = []
-    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    monkeypatch.setattr(scan_routes, "submit_scan_job", lambda job: dispatched.append(job.job_id))
     cohort_id = scan_routes.correlation_cohort_id(tenant_id="tenant-a", idempotency_key="repair-race")
     parent = scan_routes.enqueue_correlation_cohort(
         tenant_id="tenant-a",
@@ -190,6 +203,12 @@ def test_two_replicas_dispatch_only_the_winning_cohort_child_repair(tmp_path: Pa
     )
     missing_id = parent.child_job_ids[0]
     jobs.delete(missing_id, tenant_id="tenant-a")
+    for child_id in parent.child_job_ids[1:]:
+        child = jobs.get(child_id, tenant_id="tenant-a")
+        assert child is not None
+        child.status = JobStatus.RUNNING
+        jobs.put(child)
+    reset_local_dispatches_for_tests()
     dispatched.clear()
     barrier = threading.Barrier(2)
     real_insert = jobs.put_many_if_absent_atomic
@@ -211,6 +230,49 @@ def test_two_replicas_dispatch_only_the_winning_cohort_child_repair(tmp_path: Pa
 
     assert [item.job_id for item in results] == [parent.job_id, parent.job_id]
     assert dispatched == [missing_id]
+
+
+def test_cohort_retry_recovers_mid_dispatch_crash_without_duplicate_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs = SQLiteJobStore(tmp_path / "jobs.db")
+    set_job_store(jobs)
+    set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
+    cohort_id = scan_routes.correlation_cohort_id(tenant_id="tenant-a", idempotency_key="mid-dispatch")
+    submitted: list[str] = []
+    fail_second_once = True
+
+    def _submit(job) -> None:
+        nonlocal fail_second_once
+        if len(submitted) == 1 and fail_second_once:
+            fail_second_once = False
+            raise RuntimeError("injected handoff interruption")
+        submitted.append(job.job_id)
+
+    monkeypatch.setattr(scan_routes, "submit_scan_job", _submit)
+    kwargs = {
+        "tenant_id": "tenant-a",
+        "triggered_by": "api-test",
+        "correlation_cohort_id": cohort_id,
+        "source_requests": _requests(),
+        "max_age_hours": 24,
+    }
+
+    with pytest.raises(RuntimeError, match="injected handoff"):
+        scan_routes.enqueue_correlation_cohort(**kwargs)
+    parent_id = scan_routes.correlation_cohort_parent_job_id(
+        tenant_id="tenant-a",
+        correlation_cohort_id=cohort_id,
+    )
+    parent = jobs.get(parent_id, tenant_id="tenant-a")
+    assert parent is not None and len(parent.child_job_ids) == 2
+
+    replay = scan_routes.enqueue_correlation_cohort(**kwargs)
+
+    assert replay.job_id == parent_id
+    assert sorted(submitted) == sorted(parent.child_job_ids)
+    assert len(submitted) == len(set(submitted)) == 2
 
 
 def test_cohort_rejects_duplicates_incomplete_members_and_id_reuse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

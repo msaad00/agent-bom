@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, cast
 from urllib.parse import urlsplit
 
 import anyio.to_thread
@@ -603,16 +603,17 @@ async def run_source_cohort(
         if isinstance(stored_response, dict) and "correlation_cohort_id" in stored_response:
             return SourceCohortRunResponse.model_validate(stored_response)
         for _attempt in range(100):
-            persisted = await asyncio.to_thread(_get_store().get, parent_job_id, tenant_id)
-            if persisted is not None:
-                try:
-                    response = _source_cohort_response(parent=persisted, sources=sources, body=body)
-                except CorrelationCohortReceiptError:
-                    response = None
-                if response is not None:
-                    _update_cohort_sources(parent=persisted, sources=sources)
-                    response_payload = response.model_dump(mode="json")
-                    return response
+            current_receipt = await asyncio.to_thread(
+                idempotency_store.get,
+                "/v1/sources/run-cohort",
+                tenant_id,
+                "source-cohort",
+                idempotency_key,
+                request_hash=request_hash,
+            )
+            stored_response = current_receipt.get("response") if current_receipt and current_receipt.get("committed") is True else None
+            if isinstance(stored_response, dict):
+                return SourceCohortRunResponse.model_validate(stored_response)
             await asyncio.sleep(0.01)
         raise HTTPException(
             status_code=409,
@@ -631,9 +632,10 @@ async def run_source_cohort(
         lease_seconds=idempotency_reservation_lease_seconds(),
     )
     heartbeat.__enter__()
+    heartbeat_stopped = False
     try:
-        try:
-            heartbeat.ensure_owned()
+
+        def _prepare_cohort() -> tuple[ScanJob, SourceCohortRunResponse]:
             parent = enqueue_correlation_cohort(
                 tenant_id=tenant_id,
                 triggered_by=f"{_actor(request)}:source-cohort",
@@ -641,6 +643,32 @@ async def run_source_cohort(
                 source_requests=source_requests,
                 external_sources=external_sources,
                 max_age_hours=body.max_age_hours,
+            )
+            _update_cohort_sources(parent=parent, sources=sources)
+            response = _source_cohort_response(parent=parent, sources=sources, body=body)
+            return parent, response
+
+        heartbeat.ensure_owned()
+        heartbeat.__exit__()
+        heartbeat_stopped = True
+        try:
+            parent, response = cast(
+                tuple[ScanJob, SourceCohortRunResponse],
+                await asyncio.to_thread(
+                    idempotency_store.commit_claim,
+                    "/v1/sources/run-cohort",
+                    tenant_id,
+                    "source-cohort",
+                    idempotency_key,
+                    lambda result: {
+                        "parent_job_id": result[0].job_id,
+                        "committed": True,
+                        "response": result[1].model_dump(mode="json"),
+                    },
+                    action=_prepare_cohort,
+                    request_hash=request_hash,
+                    owner_token=owner_token,
+                ),
             )
         except ValueError as exc:
             idempotency_store.release(
@@ -651,11 +679,12 @@ async def run_source_cohort(
                 request_hash=request_hash,
                 owner_token=owner_token,
             )
-            raise HTTPException(
-                status_code=409,
-                detail="Correlation cohort conflicts with persisted immutable state",
-            ) from exc
-        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=409, detail="Correlation cohort conflicts with persisted immutable state") from exc
+        except CorrelationCohortReceiptError as exc:
+            raise HTTPException(status_code=409, detail="Correlation cohort receipt could not be issued") from exc
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail="Idempotency reservation ownership was lost") from exc
+        except Exception as exc:  # noqa: BLE001 - durable cohort is reconciled by the next retry
             persisted = _get_store().get(parent_job_id, tenant_id=tenant_id)
             if persisted is None:
                 idempotency_store.release(
@@ -667,36 +696,6 @@ async def run_source_cohort(
                     owner_token=owner_token,
                 )
             raise HTTPException(status_code=503, detail="Correlation cohort could not be prepared") from exc
-
-        _update_cohort_sources(parent=parent, sources=sources)
-        try:
-            response = _source_cohort_response(parent=parent, sources=sources, body=body)
-        except CorrelationCohortReceiptError as exc:
-            raise HTTPException(status_code=409, detail="Correlation cohort receipt could not be issued") from exc
-        response_payload = response.model_dump(mode="json")
-        try:
-            heartbeat.ensure_owned()
-            committed = idempotency_store.put(
-                "/v1/sources/run-cohort",
-                tenant_id,
-                "source-cohort",
-                idempotency_key,
-                {"parent_job_id": parent_job_id, "committed": True, "response": response_payload},
-                request_hash=request_hash,
-                owner_token=owner_token,
-            )
-            if committed is False:
-                raise IdempotencyConflictError("idempotency reservation ownership was lost")
-        except Exception as exc:  # noqa: BLE001 - durable cohort is reconciled by the next retry
-            idempotency_store.release(
-                "/v1/sources/run-cohort",
-                tenant_id,
-                "source-cohort",
-                idempotency_key,
-                request_hash=request_hash,
-                owner_token=owner_token,
-            )
-            raise HTTPException(status_code=503, detail="Correlation cohort receipt could not be committed") from exc
         log_action(
             "source.cohort.run",
             actor=_actor(request),
@@ -708,7 +707,8 @@ async def run_source_cohort(
         )
         return response
     finally:
-        heartbeat.__exit__()
+        if not heartbeat_stopped:
+            heartbeat.__exit__()
 
 
 @router.get("/sources/{source_id}/jobs", tags=["sources"])

@@ -614,6 +614,16 @@ def test_execution_leases_are_idempotent_chained_and_monotonic() -> None:
     assert "('idempotency', 2, NOW())" in sql
     assert "('graph', 4, NOW())" in sql
     assert "GREATEST(control_plane_schema_versions.version, EXCLUDED.version)" in sql
+    assert "CREATE TABLE IF NOT EXISTS idempotency_keys" in sql
+    assert "PRIMARY KEY (endpoint, tenant_id, source_id, idempotency_key)" in sql
+    assert "CREATE INDEX IF NOT EXISTS idx_idempotency_created_at" in sql
+    assert "ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY" in sql
+    assert "ALTER TABLE idempotency_keys FORCE ROW LEVEL SECURITY" in sql
+    assert "CREATE POLICY idempotency_keys_tenant_isolation" in sql
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON idempotency_keys TO agent_bom_app" in sql
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON idempotency_keys TO agent_bom_rls_maintenance" in sql
+    assert "GRANT SELECT ON idempotency_keys TO agent_bom_readonly" in sql
+    assert sql.index("CREATE TABLE IF NOT EXISTS idempotency_keys") < sql.index("('idempotency', 2, NOW())")
     assert "DROP COLUMN" not in sql
 
 

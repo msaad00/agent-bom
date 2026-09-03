@@ -129,6 +129,7 @@ def commit_correlation_cohort_child(
     result: dict[str, Any],
     request_hash: str,
     persist_graph: Callable[[ScanJob, dict[str, Any]], None],
+    ensure_owned: Callable[[], None] | None = None,
 ) -> tuple[ScanJob, ScanJob]:
     """Persist graph + child + refreshed parent, compensating every failure."""
 
@@ -166,13 +167,24 @@ def commit_correlation_cohort_child(
         }
         child_persisted = False
         try:
+            if ensure_owned is not None:
+                ensure_owned()
             persist_graph(candidate, candidate.result)
+            if ensure_owned is not None:
+                ensure_owned()
             job_store.put(candidate)
             child_persisted = True
+            if ensure_owned is not None:
+                ensure_owned()
             parent = refresh_batch_parent(candidate.parent_job_id or "", tenant_id=tenant_id)
             if parent is None:
                 raise CorrelationCohortIngestError("invalid_receipt")
         except Exception:
+            if ensure_owned is not None:
+                try:
+                    ensure_owned()
+                except Exception:
+                    raise
             # The callback may fail after its backend committed. The child id is
             # reserved exclusively for this cohort, so compensating deletion is
             # safe even when no graph row was written.

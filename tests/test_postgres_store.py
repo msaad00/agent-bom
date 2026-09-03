@@ -125,6 +125,10 @@ class MockConnection:
                     table = "interaction_risks"
                 if table not in self._store:
                     self._store[table] = {}
+                if table == "scan_jobs" and "on conflict (job_id) do nothing" in sql_lower and params[0] in self._store[table]:
+                    cursor.rowcount = 0
+                    self._cursors.append(cursor)
+                    return cursor
                 self._store[table][params[0]] = params
         elif sql_lower.startswith("with recursive chain") and "audit_log" in sql_lower:
             # Model the chain-ordered walk (`_list_entries_chronological`): follow
@@ -449,6 +453,29 @@ def test_job_store_persists_triggered_by(mock_pool):
     assert "schedule_id" in insert_sql
     assert insert_params[11] == "sched-alpha"
     assert insert_params[12] == "analyst@example.com"
+
+
+def test_job_store_atomic_repair_insert_preserves_first_writer(mock_pool, mock_maintenance_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
+    winner = ScanJob(
+        job_id="repair-child",
+        tenant_id="tenant-alpha",
+        target_index=1,
+        status=JobStatus.PENDING,
+        created_at="2026-01-01T00:00:00Z",
+        request=ScanRequest(),
+    )
+    loser = winner.model_copy(update={"target_index": 99})
+
+    assert store.put_many_if_absent_atomic([winner]) == ["repair-child"]
+    assert store.put_many_if_absent_atomic([loser]) == []
+
+    scan_job_writes = [params for sql, params in mock_pool._conn.executed if "INSERT INTO scan_jobs" in sql]
+    assert scan_job_writes[-1][9] == 99
+    assert mock_pool._conn._store["scan_jobs"]["repair-child"][9] == 1
 
 
 def test_job_store_get_nonexistent(mock_pool, mock_maintenance_pool):

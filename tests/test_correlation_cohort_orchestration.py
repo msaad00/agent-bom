@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -81,19 +83,14 @@ def test_durable_cohort_replay_preserves_exact_membership_and_policy(tmp_path: P
     assert dispatched == []
 
 
-def test_cohort_creation_rolls_back_every_durable_and_hot_cache_row_on_partial_put(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    class FailSecondPutStore(SQLiteJobStore):
-        def __init__(self, path: Path) -> None:
-            super().__init__(path)
-            self.put_count = 0
+def test_cohort_creation_publishes_no_durable_or_hot_cache_rows_when_atomic_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FailAtomicPutStore(SQLiteJobStore):
+        def put_many_atomic(self, jobs) -> None:
+            raise RuntimeError("database password=do-not-return")
 
-        def put(self, job) -> None:
-            self.put_count += 1
-            if self.put_count == 2:
-                raise RuntimeError("database password=do-not-return")
-            super().put(job)
-
-    jobs = FailSecondPutStore(tmp_path / "jobs.db")
+    jobs = FailAtomicPutStore(tmp_path / "jobs.db")
     set_job_store(jobs)
     set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
     monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: None)
@@ -141,11 +138,14 @@ def test_correlation_decision_audit_records_the_exact_cohort_basis(monkeypatch: 
     assert records[0]["cohort_basis"] == "correlation_cohort_id"
 
 
-def test_durable_cohort_replay_rejects_an_incomplete_persisted_cohort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_durable_cohort_replay_repairs_a_missing_child_after_interrupted_legacy_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     jobs = SQLiteJobStore(tmp_path / "jobs.db")
     set_job_store(jobs)
     set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
-    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: None)
+    dispatched: list[str] = []
+    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: dispatched.append(job.job_id))
     cohort_id = scan_routes.correlation_cohort_id(tenant_id="tenant-a", idempotency_key="run-42")
     parent = scan_routes.enqueue_correlation_cohort(
         tenant_id="tenant-a",
@@ -154,16 +154,63 @@ def test_durable_cohort_replay_rejects_an_incomplete_persisted_cohort(tmp_path: 
         source_requests=_requests(),
         max_age_hours=24,
     )
-    assert jobs.delete(parent.child_job_ids[0], tenant_id="tenant-a") is True
+    missing_child_id = parent.child_job_ids[0]
+    assert jobs.delete(missing_child_id, tenant_id="tenant-a") is True
+    dispatched.clear()
 
-    with pytest.raises(ValueError, match="correlation cohort is incomplete"):
-        scan_routes.enqueue_correlation_cohort(
-            tenant_id="tenant-a",
-            triggered_by="api-test",
-            correlation_cohort_id=cohort_id,
-            source_requests=_requests(),
-            max_age_hours=24,
-        )
+    recovered = scan_routes.enqueue_correlation_cohort(
+        tenant_id="tenant-a",
+        triggered_by="api-test",
+        correlation_cohort_id=cohort_id,
+        source_requests=_requests(),
+        max_age_hours=24,
+    )
+
+    assert recovered.job_id == parent.job_id
+    repaired = jobs.get(missing_child_id, tenant_id="tenant-a")
+    assert repaired is not None
+    assert repaired.parent_job_id == parent.job_id
+    assert repaired.source_id == "source-image"
+    assert dispatched == [missing_child_id]
+
+
+def test_two_replicas_dispatch_only_the_winning_cohort_child_repair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    jobs = SQLiteJobStore(tmp_path / "jobs.db")
+    set_job_store(jobs)
+    set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
+    dispatched: list[str] = []
+    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    cohort_id = scan_routes.correlation_cohort_id(tenant_id="tenant-a", idempotency_key="repair-race")
+    parent = scan_routes.enqueue_correlation_cohort(
+        tenant_id="tenant-a",
+        triggered_by="api-test",
+        correlation_cohort_id=cohort_id,
+        source_requests=_requests(),
+        max_age_hours=24,
+    )
+    missing_id = parent.child_job_ids[0]
+    jobs.delete(missing_id, tenant_id="tenant-a")
+    dispatched.clear()
+    barrier = threading.Barrier(2)
+    real_insert = jobs.put_many_if_absent_atomic
+
+    def synchronized_insert(children):
+        barrier.wait(timeout=5)
+        return real_insert(children)
+
+    monkeypatch.setattr(jobs, "put_many_if_absent_atomic", synchronized_insert)
+    kwargs = {
+        "tenant_id": "tenant-a",
+        "triggered_by": "api-test",
+        "correlation_cohort_id": cohort_id,
+        "source_requests": _requests(),
+        "max_age_hours": 24,
+    }
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _index: scan_routes.enqueue_correlation_cohort(**kwargs), range(2)))
+
+    assert [item.job_id for item in results] == [parent.job_id, parent.job_id]
+    assert dispatched == [missing_id]
 
 
 def test_cohort_rejects_duplicates_incomplete_members_and_id_reuse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

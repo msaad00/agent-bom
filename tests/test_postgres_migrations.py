@@ -42,6 +42,7 @@ GRAPH_CORRELATIONS = VERSIONS_DIR / "20260830_01_graph_correlations.py"
 ATTACK_PATH_EVIDENCE = VERSIONS_DIR / "20260830_02_graph_correlation_mechanical.py"
 CLOUD_CONNECTION_CAPABILITY_EVIDENCE = VERSIONS_DIR / "20260830_03_cloud_connection_capability_evidence.py"
 OBSERVATION_PARTITION_RETENTION_WINDOW = VERSIONS_DIR / "20260901_01_observation_partition_retention_window.py"
+EXECUTION_LEASES = VERSIONS_DIR / "20260903_01_execution_leases.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -53,7 +54,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260901_01"
+ALEMBIC_HEAD = "20260903_01"
 
 
 def _canonical_sql(text: str) -> str:
@@ -597,6 +598,23 @@ def test_observation_partition_retention_window_is_migration_owned_and_forward_o
     assert "driver_connection" in sql
     assert "DROP TABLE" not in sql
     assert "CREATE TABLE" not in sql
+
+
+def test_execution_leases_are_idempotent_chained_and_monotonic() -> None:
+    sql = EXECUTION_LEASES.read_text()
+    assert re.search(r'revision\s*=\s*"20260903_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260901_01"', sql)
+    for column_ddl in (
+        "ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS reservation_owner TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS lease_expires_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE graph_correlation_runs ADD COLUMN IF NOT EXISTS execution_owner TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE graph_correlation_runs ADD COLUMN IF NOT EXISTS execution_lease_expires_at TEXT NOT NULL DEFAULT ''",
+    ):
+        assert column_ddl in sql
+    assert "('idempotency', 2, NOW())" in sql
+    assert "('graph', 4, NOW())" in sql
+    assert "GREATEST(control_plane_schema_versions.version, EXCLUDED.version)" in sql
+    assert "DROP COLUMN" not in sql
 
 
 def test_graph_edge_snapshot_key_index_is_chained_and_matches_bootstrap() -> None:

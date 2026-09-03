@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Sequence
@@ -105,6 +106,7 @@ class GraphCorrelationService:
         max_output_edges: int = 500_000,
         receipt_signing_key: bytes | None = None,
         receipt_signing_key_id: str = "",
+        execution_lease_seconds: int = 30,
     ) -> None:
         if queue_capacity < 1:
             raise ValueError("queue_capacity must be positive")
@@ -112,12 +114,15 @@ class GraphCorrelationService:
             raise ValueError("worker_count must be between 1 and 4")
         if max_output_nodes < 1 or max_output_edges < 1:
             raise ValueError("correlation output budgets must be positive")
+        if execution_lease_seconds < 3:
+            raise ValueError("execution_lease_seconds must be at least 3")
         self._store = store
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue(maxsize=queue_capacity)
         self._worker_count = worker_count
         self._max_output_nodes = max_output_nodes
         self._max_output_edges = max_output_edges
+        self._execution_lease_seconds = execution_lease_seconds
         self._receipt_signing_key = receipt_signing_key
         self._receipt_signing_key_id = receipt_signing_key_id.strip()
         self._workers: list[asyncio.Task[None]] = []
@@ -305,23 +310,36 @@ class GraphCorrelationService:
                 self._queue.task_done()
 
     async def _execute(self, tenant_id: str, correlation_id: str) -> None:
+        owner_token = uuid.uuid4().hex
         run = await asyncio.to_thread(
-            self._store.get_correlation_run,
+            self._store.claim_correlation_run_execution,
             tenant_id=tenant_id,
             correlation_id=correlation_id,
+            owner_token=owner_token,
+            lease_seconds=self._execution_lease_seconds,
+            now=self._now().astimezone(timezone.utc).isoformat(),
         )
-        if run is None or run.status in {CorrelationRunStatus.COMPLETE, CorrelationRunStatus.FAILED}:
+        if run is None:
             return
-        now = self._now().astimezone(timezone.utc).isoformat()
-        try:
-            if run.status is CorrelationRunStatus.PENDING:
-                run = await asyncio.to_thread(
-                    self._store.update_correlation_run,
+        lease_lost = asyncio.Event()
+
+        async def heartbeat() -> None:
+            while True:
+                await asyncio.sleep(max(1.0, self._execution_lease_seconds / 3))
+                owned = await asyncio.to_thread(
+                    self._store.heartbeat_correlation_run_execution,
                     tenant_id=tenant_id,
                     correlation_id=correlation_id,
-                    status=CorrelationRunStatus.RUNNING,
-                    started_at=now,
+                    owner_token=owner_token,
+                    lease_seconds=self._execution_lease_seconds,
+                    now=self._now().astimezone(timezone.utc).isoformat(),
                 )
+                if not owned:
+                    lease_lost.set()
+                    return
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+        try:
             for item in run.input_manifest:
                 signature = item.get("signature")
                 if signature is not None:
@@ -419,30 +437,37 @@ class GraphCorrelationService:
                 },
             }
             manifest_sha256 = correlation_manifest_digest(result_manifest)
+            if lease_lost.is_set():
+                return
             await asyncio.to_thread(
                 self._store.complete_correlation_run,
                 merged.graph,
                 result_manifest=result_manifest,
                 manifest_sha256=manifest_sha256,
                 completed_at=self._now().astimezone(timezone.utc).isoformat(),
+                execution_owner=owner_token,
             )
         except Exception as exc:  # noqa: BLE001 - persisted as a sanitized code only
             code = exc.code if isinstance(exc, CorrelationServiceError) else "correlation_execution_failed"
             logger.warning("graph correlation failed: %s", code)
-            current = await asyncio.to_thread(
-                self._store.get_correlation_run,
-                tenant_id=tenant_id,
-                correlation_id=correlation_id,
-            )
-            if current is not None and current.status in {CorrelationRunStatus.PENDING, CorrelationRunStatus.RUNNING}:
-                await asyncio.to_thread(
-                    self._store.update_correlation_run,
-                    tenant_id=tenant_id,
-                    correlation_id=correlation_id,
-                    status=CorrelationRunStatus.FAILED,
-                    failure_code=code,
-                    completed_at=self._now().astimezone(timezone.utc).isoformat(),
-                )
+            if not lease_lost.is_set():
+                try:
+                    await asyncio.to_thread(
+                        self._store.update_correlation_run,
+                        tenant_id=tenant_id,
+                        correlation_id=correlation_id,
+                        status=CorrelationRunStatus.FAILED,
+                        failure_code=code,
+                        completed_at=self._now().astimezone(timezone.utc).isoformat(),
+                        execution_owner=owner_token,
+                    )
+                except ValueError:
+                    # Another replica took over or completed after this worker
+                    # lost its lease. The stale worker must not alter that run.
+                    return
+        finally:
+            heartbeat_task.cancel()
+            await asyncio.gather(heartbeat_task, return_exceptions=True)
 
     def _load_and_merge_inputs(
         self,

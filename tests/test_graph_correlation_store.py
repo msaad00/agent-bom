@@ -52,6 +52,58 @@ def test_sqlite_migration_adds_snapshot_metadata_and_correlation_table(tmp_path)
     assert version >= 5
 
 
+def test_correlation_execution_lease_is_tenant_scoped_and_fences_stale_owner(tmp_path) -> None:
+    db = tmp_path / "graph.db"
+    with graph_store.open_graph_db(db) as conn:
+        graph_store.create_correlation_run(conn, _run())
+        first = graph_store.claim_correlation_run_execution(
+            conn,
+            tenant_id="acme",
+            correlation_id="corr-1",
+            owner_token="owner-a",
+            lease_seconds=30,
+            now="2026-08-30T00:00:00+00:00",
+        )
+        assert first is not None and first.execution_owner == "owner-a"
+        assert (
+            graph_store.claim_correlation_run_execution(
+                conn,
+                tenant_id="acme",
+                correlation_id="corr-1",
+                owner_token="owner-b",
+                lease_seconds=30,
+                now="2026-08-30T00:00:29+00:00",
+            )
+            is None
+        )
+        assert not graph_store.heartbeat_correlation_run_execution(
+            conn,
+            tenant_id="other",
+            correlation_id="corr-1",
+            owner_token="owner-a",
+            lease_seconds=30,
+            now="2026-08-30T00:00:10+00:00",
+        )
+        takeover = graph_store.claim_correlation_run_execution(
+            conn,
+            tenant_id="acme",
+            correlation_id="corr-1",
+            owner_token="owner-b",
+            lease_seconds=30,
+            now="2026-08-30T00:00:31+00:00",
+        )
+        assert takeover is not None and takeover.execution_owner == "owner-b"
+        with pytest.raises(ValueError, match="lease is not owned"):
+            graph_store.update_correlation_run(
+                conn,
+                tenant_id="acme",
+                correlation_id="corr-1",
+                status=CorrelationRunStatus.FAILED,
+                failure_code="worker_failed",
+                execution_owner="owner-a",
+            )
+
+
 def test_correlation_run_is_tenant_isolated_and_idempotent(tmp_path) -> None:
     db = tmp_path / "graph.db"
     with graph_store.open_graph_db(db) as conn:

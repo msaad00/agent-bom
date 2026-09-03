@@ -78,7 +78,7 @@ class _FakeConn:
             return _FakeCursor()
 
         if low.startswith("insert into idempotency_keys"):
-            endpoint, tenant_id, source_id, key, request_hash, response_json, created_at = params
+            endpoint, tenant_id, source_id, key, request_hash, response_json, created_at, *lease = params
             primary_key = (endpoint, tenant_id, source_id, key)
             if "do nothing" in low and primary_key in self._table:
                 return _FakeCursor()
@@ -86,6 +86,8 @@ class _FakeConn:
                 "request_hash": request_hash,
                 "response_json": response_json,
                 "created_at": created_at,
+                "reservation_owner": lease[0] if lease else "",
+                "lease_expires_at": lease[1] if lease else "",
             }
             if "returning response_json, request_hash" in low:
                 return _FakeCursor([(response_json, request_hash)])
@@ -97,17 +99,55 @@ class _FakeConn:
             if rec is None:
                 return _FakeCursor()
             if "created_at" in low:
-                return _FakeCursor([(rec["response_json"], rec["request_hash"], rec["created_at"])])
+                return _FakeCursor(
+                    [
+                        (
+                            rec["response_json"],
+                            rec["request_hash"],
+                            rec["created_at"],
+                            rec.get("reservation_owner", ""),
+                            rec.get("lease_expires_at", ""),
+                        )
+                    ]
+                )
             return _FakeCursor([(rec["response_json"], rec["request_hash"])])
 
         if low.startswith("update idempotency_keys set created_at"):
-            created_at, endpoint, tenant_id, source_id, key = params
+            created_at, owner, expires, endpoint, tenant_id, source_id, key, old_owner, old_expires = params
             rec = self._table.get((endpoint, tenant_id, source_id, key))
-            if rec is None:
+            if rec is None or rec.get("reservation_owner", "") != old_owner or rec.get("lease_expires_at", "") != old_expires:
                 return _FakeCursor()
             rec["created_at"] = created_at
+            rec["reservation_owner"] = owner
+            rec["lease_expires_at"] = expires
             cur = _FakeCursor()
             cur.rowcount = 1
+            return cur
+
+        if low.startswith("update idempotency_keys set lease_expires_at"):
+            expires, endpoint, tenant_id, source_id, key, request_hash, owner = params
+            rec = self._table.get((endpoint, tenant_id, source_id, key))
+            matched = rec is not None and rec["request_hash"] == request_hash and rec.get("reservation_owner", "") == owner
+            if matched:
+                rec["lease_expires_at"] = expires
+            cur = _FakeCursor()
+            cur.rowcount = int(matched)
+            return cur
+
+        if low.startswith("update idempotency_keys set request_hash"):
+            request_hash, response_json, created_at, new_owner, endpoint, tenant_id, source_id, key, owner = params
+            rec = self._table.get((endpoint, tenant_id, source_id, key))
+            matched = rec is not None and rec.get("reservation_owner", "") == owner
+            if matched:
+                rec.update(
+                    request_hash=request_hash,
+                    response_json=response_json,
+                    created_at=created_at,
+                    reservation_owner=new_owner,
+                    lease_expires_at="",
+                )
+            cur = _FakeCursor()
+            cur.rowcount = int(matched)
             return cur
 
         if low.startswith("delete from idempotency_keys where created_at"):
@@ -120,10 +160,14 @@ class _FakeConn:
             return cur
 
         if low.startswith("delete from idempotency_keys"):
-            endpoint, tenant_id, source_id, key, request_hash, _same_hash = params
+            endpoint, tenant_id, source_id, key, request_hash, _same_hash, owner, _same_owner = params
             primary_key = (endpoint, tenant_id, source_id, key)
             record = self._table.get(primary_key)
-            deleted = record is not None and (not request_hash or record["request_hash"] == request_hash)
+            deleted = (
+                record is not None
+                and (not request_hash or record["request_hash"] == request_hash)
+                and (not owner or record.get("reservation_owner", "") == owner)
+            )
             if deleted:
                 self._table.pop(primary_key, None)
             cur = _FakeCursor()
@@ -221,6 +265,60 @@ def test_postgres_idempotency_claim_reclaims_expired_uncommitted_reservation() -
 
     assert acquired is True
     assert recovered == {"job_id": "stable", "committed": False}
+
+
+def test_postgres_idempotency_lease_fences_stale_owner_after_takeover() -> None:
+    pool = _FakePool()
+    store = PostgresIdempotencyStore(pool=pool)
+    request_hash = idempotency_request_fingerprint({"value": 1})
+    args = ("/v1/results/push", "tenant-a", "source-a", "key")
+
+    _receipt, acquired = store.claim(
+        *args,
+        {"job_id": "stable", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+        owner_token="owner-a",
+    )
+    assert acquired is True
+    assert (
+        store.heartbeat(
+            *args,
+            request_hash=request_hash,
+            owner_token="owner-a",
+            reservation_lease_seconds=30,
+        )
+        is True
+    )
+    pool.table[args]["lease_expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+
+    _takeover, owner_b_acquired = store.claim(
+        *args,
+        {"job_id": "changed", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+        owner_token="owner-b",
+    )
+    assert owner_b_acquired is True
+    assert (
+        store.put(
+            *args,
+            {"job_id": "stale", "committed": True},
+            request_hash=request_hash,
+            owner_token="owner-a",
+        )
+        is False
+    )
+    assert store.release(*args, request_hash=request_hash, owner_token="owner-a") is False
+    assert (
+        store.put(
+            *args,
+            {"job_id": "stable", "committed": True},
+            request_hash=request_hash,
+            owner_token="owner-b",
+        )
+        is True
+    )
 
 
 def test_postgres_idempotency_isolates_by_tenant_key():

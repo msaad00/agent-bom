@@ -59,10 +59,28 @@ class _Conn:
                 return _Cursor()
             self.rows[(tenant, correlation_id)] = params
             return _Cursor([params])
-        if low.startswith("update graph_correlation_runs"):
-            status, manifest, result_manifest, output, failure, started, completed, tenant, correlation_id, expected = params
+        if low.startswith("update graph_correlation_runs") and "started_at = case" in low:
+            status, now, owner, expires, tenant, correlation_id, pending, running, cutoff = params
             row = self.rows.get((tenant, correlation_id))
-            if row is None or row[4] != expected:
+            if row is None or not (row[4] == pending or (row[4] == running and row[16] <= cutoff)):
+                return _Cursor()
+            updated = (*row[:4], status, *row[5:13], row[13] or now, row[14], owner, expires)
+            self.rows[(tenant, correlation_id)] = updated
+            return _Cursor([updated])
+        if low.startswith("update graph_correlation_runs") and "set execution_lease_expires_at" in low:
+            expires, tenant, correlation_id, status, owner = params
+            row = self.rows.get((tenant, correlation_id))
+            if row is None or row[4] != status or row[15] != owner:
+                return _Cursor()
+            updated = (*row[:16], expires)
+            self.rows[(tenant, correlation_id)] = updated
+            return _Cursor([(correlation_id,)])
+        if low.startswith("update graph_correlation_runs"):
+            status, manifest, result_manifest, output, failure, started, completed, tenant, correlation_id, expected, owner, owner_again = (
+                params
+            )
+            row = self.rows.get((tenant, correlation_id))
+            if row is None or row[4] != expected or (owner and (owner != owner_again or row[15] != owner)):
                 return _Cursor()
             updated = (
                 row[0],
@@ -80,6 +98,8 @@ class _Conn:
                 row[12],
                 started,
                 completed,
+                row[15],
+                row[16],
             )
             self.rows[(tenant, correlation_id)] = updated
             return _Cursor([updated])
@@ -186,6 +206,45 @@ def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None
     assert complete.status is CorrelationRunStatus.COMPLETE
     assert json.loads(conn.rows[("acme", "corr-1")][7]) == _run().input_manifest
     assert conn.commits == 3
+
+
+def test_postgres_correlation_execution_lease_fences_replica_takeover(monkeypatch) -> None:
+    store, _conn = _store(monkeypatch)
+    store.create_correlation_run(_run())
+    first = store.claim_correlation_run_execution(
+        tenant_id="acme",
+        correlation_id="corr-1",
+        owner_token="owner-a",
+        lease_seconds=30,
+        now="2026-08-30T00:00:00+00:00",
+    )
+    assert first is not None and first.execution_owner == "owner-a"
+    assert (
+        store.claim_correlation_run_execution(
+            tenant_id="acme",
+            correlation_id="corr-1",
+            owner_token="owner-b",
+            lease_seconds=30,
+            now="2026-08-30T00:00:29+00:00",
+        )
+        is None
+    )
+    takeover = store.claim_correlation_run_execution(
+        tenant_id="acme",
+        correlation_id="corr-1",
+        owner_token="owner-b",
+        lease_seconds=30,
+        now="2026-08-30T00:00:31+00:00",
+    )
+    assert takeover is not None and takeover.execution_owner == "owner-b"
+    with pytest.raises(ValueError, match="status changed concurrently"):
+        store.update_correlation_run(
+            tenant_id="acme",
+            correlation_id="corr-1",
+            status=CorrelationRunStatus.FAILED,
+            failure_code="worker_failed",
+            execution_owner="owner-a",
+        )
 
 
 def test_postgres_latest_snapshot_selection_is_scoped_by_kind_and_tenant(monkeypatch) -> None:

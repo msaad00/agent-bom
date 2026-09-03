@@ -310,6 +310,47 @@ def test_source_cohort_reconciles_durable_parent_after_receipt_failure(
     assert receipt["response"] == replay.json()
 
 
+def test_source_cohort_stops_heartbeat_when_post_enqueue_projection_raises(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_bom.api.routes import sources as source_routes
+
+    source_ids: list[str] = []
+    for name in ("heartbeat-one", "heartbeat-two"):
+        created = source_client.post(
+            "/v1/sources",
+            headers=ANALYST_HEADERS,
+            json={
+                "display_name": name,
+                "kind": "scan.repo",
+                "config": {"scan_request": {"repo_url": f"https://github.com/example/{name}"}},
+            },
+        )
+        source_ids.append(created.json()["source_id"])
+
+    exits: list[bool] = []
+    original_heartbeat = source_routes.IdempotencyReservationHeartbeat
+
+    class _TrackingHeartbeat(original_heartbeat):
+        def __exit__(self, *args: object) -> None:
+            exits.append(True)
+            super().__exit__(*args)
+
+    monkeypatch.setattr(source_routes, "IdempotencyReservationHeartbeat", _TrackingHeartbeat)
+    monkeypatch.setattr(source_routes, "_update_cohort_sources", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("injected")))
+    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda _job: None)
+
+    with pytest.raises(RuntimeError, match="injected"):
+        source_client.post(
+            "/v1/sources/run-cohort",
+            headers={**ANALYST_HEADERS, "Idempotency-Key": "heartbeat-cleanup"},
+            json={"source_ids": source_ids, "max_age_hours": 24},
+        )
+
+    assert exits == [True]
+
+
 def test_source_cohort_reclaims_expired_claim_before_any_dispatch(
     source_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

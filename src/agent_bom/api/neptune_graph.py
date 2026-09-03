@@ -363,6 +363,7 @@ class NeptuneGraphStore:
         result_manifest: Mapping[str, Any],
         manifest_sha256: str,
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> "GraphCorrelationRun":
         self._unsupported("complete_correlation_run")
 
@@ -371,6 +372,28 @@ class NeptuneGraphStore:
 
     def count_active_correlation_runs(self, *, tenant_id: str) -> int:
         self._unsupported("count_active_correlation_runs")
+
+    def claim_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> "GraphCorrelationRun | None":
+        self._unsupported("claim_correlation_run_execution")
+
+    def heartbeat_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> bool:
+        self._unsupported("heartbeat_correlation_run_execution")
 
     def update_correlation_run(
         self,
@@ -384,6 +407,7 @@ class NeptuneGraphStore:
         failure_code: str = "",
         started_at: str = "",
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> "GraphCorrelationRun":
         self._unsupported("update_correlation_run")
 

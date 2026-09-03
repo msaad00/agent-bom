@@ -19,6 +19,8 @@ from agent_bom.api.correlation_cohort_receipts import (
 )
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
+    IdempotencyReservationHeartbeat,
+    idempotency_owner_token,
     idempotency_request_fingerprint,
     idempotency_reservation_lease_seconds,
 )
@@ -581,6 +583,7 @@ async def run_source_cohort(
         correlation_cohort_id=cohort_id,
     )
     idempotency_store = _get_idempotency_store()
+    owner_token = idempotency_owner_token()
     try:
         receipt, claimed = idempotency_store.claim(
             "/v1/sources/run-cohort",
@@ -590,6 +593,7 @@ async def run_source_cohort(
             {"parent_job_id": parent_job_id, "committed": False},
             request_hash=request_hash,
             reservation_lease_seconds=idempotency_reservation_lease_seconds(),
+            owner_token=owner_token,
         )
     except IdempotencyConflictError as exc:
         raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
@@ -608,15 +612,6 @@ async def run_source_cohort(
                 if response is not None:
                     _update_cohort_sources(parent=persisted, sources=sources)
                     response_payload = response.model_dump(mode="json")
-                    await asyncio.to_thread(
-                        idempotency_store.put,
-                        "/v1/sources/run-cohort",
-                        tenant_id,
-                        "source-cohort",
-                        idempotency_key,
-                        {"parent_job_id": parent_job_id, "committed": True, "response": response_payload},
-                        request_hash=request_hash,
-                    )
                     return response
             await asyncio.sleep(0.01)
         raise HTTPException(
@@ -625,67 +620,95 @@ async def run_source_cohort(
             headers={"Retry-After": "1"},
         )
 
+    heartbeat = IdempotencyReservationHeartbeat(
+        idempotency_store,
+        "/v1/sources/run-cohort",
+        tenant_id,
+        "source-cohort",
+        idempotency_key,
+        request_hash=request_hash,
+        owner_token=owner_token,
+        lease_seconds=idempotency_reservation_lease_seconds(),
+    )
+    heartbeat.__enter__()
     try:
-        parent = enqueue_correlation_cohort(
-            tenant_id=tenant_id,
-            triggered_by=f"{_actor(request)}:source-cohort",
-            correlation_cohort_id=cohort_id,
-            source_requests=source_requests,
-            external_sources=external_sources,
-            max_age_hours=body.max_age_hours,
-        )
-    except ValueError as exc:
-        idempotency_store.release(
-            "/v1/sources/run-cohort",
-            tenant_id,
-            "source-cohort",
-            idempotency_key,
-            request_hash=request_hash,
-        )
-        raise HTTPException(
-            status_code=409,
-            detail="Correlation cohort conflicts with persisted immutable state",
-        ) from exc
-    except Exception as exc:  # noqa: BLE001
-        persisted = _get_store().get(parent_job_id, tenant_id=tenant_id)
-        if persisted is None:
+        try:
+            heartbeat.ensure_owned()
+            parent = enqueue_correlation_cohort(
+                tenant_id=tenant_id,
+                triggered_by=f"{_actor(request)}:source-cohort",
+                correlation_cohort_id=cohort_id,
+                source_requests=source_requests,
+                external_sources=external_sources,
+                max_age_hours=body.max_age_hours,
+            )
+        except ValueError as exc:
             idempotency_store.release(
                 "/v1/sources/run-cohort",
                 tenant_id,
                 "source-cohort",
                 idempotency_key,
                 request_hash=request_hash,
+                owner_token=owner_token,
             )
-        raise HTTPException(status_code=503, detail="Correlation cohort could not be prepared") from exc
+            raise HTTPException(
+                status_code=409,
+                detail="Correlation cohort conflicts with persisted immutable state",
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            persisted = _get_store().get(parent_job_id, tenant_id=tenant_id)
+            if persisted is None:
+                idempotency_store.release(
+                    "/v1/sources/run-cohort",
+                    tenant_id,
+                    "source-cohort",
+                    idempotency_key,
+                    request_hash=request_hash,
+                    owner_token=owner_token,
+                )
+            raise HTTPException(status_code=503, detail="Correlation cohort could not be prepared") from exc
 
-    _update_cohort_sources(parent=parent, sources=sources)
-
-    try:
-        response = _source_cohort_response(parent=parent, sources=sources, body=body)
-    except CorrelationCohortReceiptError as exc:
-        raise HTTPException(status_code=409, detail="Correlation cohort receipt could not be issued") from exc
-    response_payload = response.model_dump(mode="json")
-    try:
-        idempotency_store.put(
-            "/v1/sources/run-cohort",
-            tenant_id,
-            "source-cohort",
-            idempotency_key,
-            {"parent_job_id": parent_job_id, "committed": True, "response": response_payload},
-            request_hash=request_hash,
+        _update_cohort_sources(parent=parent, sources=sources)
+        try:
+            response = _source_cohort_response(parent=parent, sources=sources, body=body)
+        except CorrelationCohortReceiptError as exc:
+            raise HTTPException(status_code=409, detail="Correlation cohort receipt could not be issued") from exc
+        response_payload = response.model_dump(mode="json")
+        try:
+            heartbeat.ensure_owned()
+            committed = idempotency_store.put(
+                "/v1/sources/run-cohort",
+                tenant_id,
+                "source-cohort",
+                idempotency_key,
+                {"parent_job_id": parent_job_id, "committed": True, "response": response_payload},
+                request_hash=request_hash,
+                owner_token=owner_token,
+            )
+            if committed is False:
+                raise IdempotencyConflictError("idempotency reservation ownership was lost")
+        except Exception as exc:  # noqa: BLE001 - durable cohort is reconciled by the next retry
+            idempotency_store.release(
+                "/v1/sources/run-cohort",
+                tenant_id,
+                "source-cohort",
+                idempotency_key,
+                request_hash=request_hash,
+                owner_token=owner_token,
+            )
+            raise HTTPException(status_code=503, detail="Correlation cohort receipt could not be committed") from exc
+        log_action(
+            "source.cohort.run",
+            actor=_actor(request),
+            resource=f"correlation-cohort/{cohort_id}",
+            tenant_id=tenant_id,
+            source_count=len(sources),
+            max_age_hours=body.max_age_hours,
+            parent_job_id=parent.job_id,
         )
-    except Exception as exc:  # noqa: BLE001 - durable cohort is reconciled by the next retry
-        raise HTTPException(status_code=503, detail="Correlation cohort receipt could not be committed") from exc
-    log_action(
-        "source.cohort.run",
-        actor=_actor(request),
-        resource=f"correlation-cohort/{cohort_id}",
-        tenant_id=tenant_id,
-        source_count=len(sources),
-        max_age_hours=body.max_age_hours,
-        parent_job_id=parent.job_id,
-    )
-    return response
+        return response
+    finally:
+        heartbeat.__exit__()
 
 
 @router.get("/sources/{source_id}/jobs", tags=["sources"])

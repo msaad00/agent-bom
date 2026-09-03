@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import gc
 import json
 import sqlite3
@@ -304,6 +305,33 @@ async def test_pending_run_is_reconciled_after_restart(tmp_path: Path) -> None:
     finally:
         await resumed.stop()
     assert completed.status is CorrelationRunStatus.COMPLETE
+
+
+@pytest.mark.asyncio
+async def test_two_service_replicas_execute_one_durable_correlation_once(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))
+    store.save_graph(_graph("image", "2026-08-30T11:00:00+00:00"))
+    dormant = GraphCorrelationService(store, now=lambda: NOW)
+    await dormant.submit(CorrelationRequest("corr-replicas", "tenant-a", "idem-replicas", "replicas", ("repo", "image"), 24))
+
+    executions: list[str] = []
+
+    class TrackingService(GraphCorrelationService):
+        def _load_and_merge_inputs(self, **kwargs):
+            executions.append(str(kwargs["correlation_id"]))
+            return super()._load_and_merge_inputs(**kwargs)
+
+    first = TrackingService(store, now=lambda: NOW)
+    second = TrackingService(store, now=lambda: NOW)
+    await asyncio.gather(first.start(tenants=["tenant-a"]), second.start(tenants=["tenant-a"]))
+    try:
+        completed = await first.wait("tenant-a", "corr-replicas", timeout_seconds=5)
+    finally:
+        await asyncio.gather(first.stop(), second.stop())
+
+    assert completed.status is CorrelationRunStatus.COMPLETE
+    assert executions == ["corr-replicas"]
 
 
 @pytest.mark.asyncio

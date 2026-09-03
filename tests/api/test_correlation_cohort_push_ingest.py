@@ -208,6 +208,49 @@ def test_external_cohort_receipts_complete_exact_children_and_parent(cohort_clie
     assert graph_store.load_graph(tenant_id=TENANT, scan_id=completed["output_scan_id"]).nodes
 
 
+def test_runtime_cohort_distinct_payload_race_has_one_durable_winner(cohort_client, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, jobs, graph_store = cohort_client
+    cohort = _create_external_cohort(client)
+    claimed = threading.Event()
+    release = threading.Event()
+    from agent_bom.api.idempotency_store import IdempotencyReservationHeartbeat
+
+    original_enter = IdempotencyReservationHeartbeat.__enter__
+
+    def blocked_enter(self):
+        entered = original_enter(self)
+        claimed.set()
+        assert release.wait(timeout=5)
+        return entered
+
+    monkeypatch.setattr(IdempotencyReservationHeartbeat, "__enter__", blocked_enter)
+    first_payload = _runtime_payload(cohort, dedup_key="winner")
+    second_payload = _runtime_payload(cohort, dedup_key="loser")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_future = pool.submit(
+            client.post,
+            "/v1/cloud/runtime-evidence/ingest",
+            headers=ADMIN_HEADERS,
+            json=first_payload,
+        )
+        assert claimed.wait(timeout=5)
+        second = client.post(
+            "/v1/cloud/runtime-evidence/ingest",
+            headers=ADMIN_HEADERS,
+            json=second_payload,
+        )
+        release.set()
+        first = first_future.result(timeout=5)
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json()["detail"] == "Correlation cohort child already has a different result"
+    child_id = cohort["receipts"][cohort["source_ids_by_kind"]["runtime"]]["child_job_id"]
+    child = jobs.get(child_id, tenant_id=TENANT)
+    assert child is not None and child.result["correlation_cohort_ingest"]["request_hash"]
+    assert graph_store.load_graph(tenant_id=TENANT, scan_id=child_id).nodes
+
+
 def test_cohort_result_replay_is_idempotent_but_changed_duplicate_is_rejected(cohort_client) -> None:
     client, jobs, _graph_store = cohort_client
     cohort = _create_external_cohort(client)
@@ -440,6 +483,79 @@ def test_runtime_graph_commit_failure_leaves_no_selectable_cohort_snapshot(cohor
     child_id = cohort["receipts"][cohort["source_ids_by_kind"]["runtime"]]["child_job_id"]
     assert jobs.get(child_id, tenant_id=TENANT).status.value == "pending"
     assert graph_store.load_graph(tenant_id=TENANT, scan_id=child_id).nodes == {}
+
+
+def test_runtime_projection_failure_reconciles_from_committed_child_on_retry(cohort_client, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, jobs, graph_store = cohort_client
+    cohort = _create_external_cohort(client)
+
+    class FailProjectionOnce(InMemoryRuntimeWorkloadEvidenceStore):
+        failed = False
+
+        def put_batch(self, signals):
+            if not self.failed:
+                self.failed = True
+                raise RuntimeError("password=never-return")
+            return super().put_batch(signals)
+
+    evidence_store = FailProjectionOnce()
+    set_runtime_workload_evidence_store(evidence_store)
+    payload = _runtime_payload(cohort, dedup_key="projection-retry")
+    first = client.post("/v1/cloud/runtime-evidence/ingest", headers=ADMIN_HEADERS, json=payload)
+    child_id = cohort["receipts"][cohort["source_ids_by_kind"]["runtime"]]["child_job_id"]
+
+    assert first.status_code == 503
+    assert jobs.get(child_id, tenant_id=TENANT).status.value == "done"
+    assert graph_store.load_graph(tenant_id=TENANT, scan_id=child_id).nodes
+
+    monkeypatch.setattr(
+        "agent_bom.cloud.runtime_workload_evidence._now_iso",
+        lambda: (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+    )
+    replay = client.post("/v1/cloud/runtime-evidence/ingest", headers=ADMIN_HEADERS, json=payload)
+    assert replay.status_code == 200
+    projected = evidence_store.list_for_tenant(TENANT)
+    assert [signal.dedup_key for signal in projected] == ["projection-retry"]
+
+
+def test_runtime_same_hash_loser_reconciles_completed_child_before_returning(cohort_client) -> None:
+    client, jobs, graph_store = cohort_client
+    cohort = _create_external_cohort(client)
+    owner_projection_started = threading.Event()
+    release_owner = threading.Event()
+
+    class BlockFirstProjection(InMemoryRuntimeWorkloadEvidenceStore):
+        calls = 0
+
+        def put_batch(self, signals):
+            self.calls += 1
+            if self.calls == 1:
+                owner_projection_started.set()
+                assert release_owner.wait(timeout=5)
+                raise RuntimeError("first projection interrupted")
+            return super().put_batch(signals)
+
+    evidence_store = BlockFirstProjection()
+    set_runtime_workload_evidence_store(evidence_store)
+    payload = _runtime_payload(cohort, dedup_key="same-hash-race")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        owner_future = pool.submit(
+            client.post,
+            "/v1/cloud/runtime-evidence/ingest",
+            headers=ADMIN_HEADERS,
+            json=payload,
+        )
+        assert owner_projection_started.wait(timeout=5)
+        replay = client.post("/v1/cloud/runtime-evidence/ingest", headers=ADMIN_HEADERS, json=payload)
+        release_owner.set()
+        owner = owner_future.result(timeout=5)
+
+    assert replay.status_code == 200
+    assert owner.status_code == 503
+    child_id = cohort["receipts"][cohort["source_ids_by_kind"]["runtime"]]["child_job_id"]
+    assert jobs.get(child_id, tenant_id=TENANT).status.value == "done"
+    assert graph_store.load_graph(tenant_id=TENANT, scan_id=child_id).nodes
+    assert [signal.dedup_key for signal in evidence_store.list_for_tenant(TENANT)] == ["same-hash-race"]
 
 
 def test_runtime_stale_or_wrong_child_receipt_never_completes_child(cohort_client) -> None:

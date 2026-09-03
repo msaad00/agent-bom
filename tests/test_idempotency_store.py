@@ -155,6 +155,70 @@ def test_sqlite_idempotency_claim_reclaims_expired_reservation_without_cross_ten
     assert other_tenant["job_id"] == "tenant-b-job"
 
 
+@pytest.mark.parametrize("store_factory", [InMemoryIdempotencyStore, lambda: SQLiteIdempotencyStore(":memory:")])
+def test_idempotency_lease_heartbeat_and_owner_fencing(store_factory) -> None:
+    store = store_factory()
+    request_hash = idempotency_request_fingerprint({"value": 1})
+    args = ("/v1/results/push", "tenant-a", "source-a", "same-key")
+
+    _receipt, acquired = store.claim(
+        *args,
+        {"job_id": "stable-job", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+        owner_token="owner-a",
+    )
+    assert acquired is True
+    assert (
+        store.heartbeat(
+            *args,
+            request_hash=request_hash,
+            owner_token="owner-a",
+            reservation_lease_seconds=30,
+        )
+        is True
+    )
+
+    if isinstance(store, InMemoryIdempotencyStore):
+        store._records[args].lease_expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()  # noqa: SLF001
+    else:
+        store._conn.execute(  # noqa: SLF001
+            "UPDATE idempotency_keys SET lease_expires_at = ? "
+            "WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?",
+            ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(), *args),
+        )
+        store._conn.commit()  # noqa: SLF001
+
+    _takeover, owner_b_acquired = store.claim(
+        *args,
+        {"job_id": "changed-job", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+        owner_token="owner-b",
+    )
+    assert owner_b_acquired is True
+    assert (
+        store.put(
+            *args,
+            {"job_id": "stale-result", "committed": True},
+            request_hash=request_hash,
+            owner_token="owner-a",
+        )
+        is False
+    )
+    assert store.release(*args, request_hash=request_hash, owner_token="owner-a") is False
+    assert (
+        store.put(
+            *args,
+            {"job_id": "stable-job", "committed": True},
+            request_hash=request_hash,
+            owner_token="owner-b",
+        )
+        is True
+    )
+    assert store.get(*args, request_hash=request_hash) == {"job_id": "stable-job", "committed": True}
+
+
 @pytest.mark.parametrize("store_factory", [InMemoryIdempotencyStore])
 def test_idempotency_claim_rejects_same_key_with_different_payload(store_factory):
     store = store_factory()

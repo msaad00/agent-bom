@@ -56,7 +56,9 @@ from agent_bom.api.finding_reachability import project_persisted_graph_reachabil
 from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
+    IdempotencyReservationHeartbeat,
     deterministic_batch_id,
+    idempotency_owner_token,
     idempotency_request_fingerprint,
     idempotency_reservation_lease_seconds,
 )
@@ -1408,35 +1410,6 @@ def enqueue_correlation_cohort(
         )
         for source_id, _request, _source_kind in members
     ]
-    existing = cast(ScanJob | None, store.get(parent_job_id, tenant_id=tenant_id))
-    if existing is not None:
-        if (
-            existing.correlation_cohort_id != normalized_cohort_id
-            or existing.correlation_cohort_manifest_hash != manifest_hash
-            or existing.correlation_max_age_hours != max_age_hours
-        ):
-            raise ValueError("correlation cohort id was reused with different immutable inputs")
-        if existing.child_job_ids != expected_child_ids:
-            raise ValueError("persisted correlation cohort is incomplete")
-        for expected_child_id, (source_id, request_body, source_kind) in zip(expected_child_ids, members, strict=True):
-            child = cast(ScanJob | None, store.get(expected_child_id, tenant_id=tenant_id))
-            expected_target = (
-                scan_request_targets(request_body)[0]
-                if request_body is not None
-                else {"kind": "external_ingest", "source_kind": source_kind}
-            )
-            if (
-                child is None
-                or child.parent_job_id != parent_job_id
-                or child.source_id != source_id
-                or child.correlation_cohort_id != normalized_cohort_id
-                or child.correlation_cohort_manifest_hash != manifest_hash
-                or child.correlation_max_age_hours != max_age_hours
-                or child.target != expected_target
-            ):
-                raise ValueError("persisted correlation cohort is incomplete")
-        return existing
-
     now = _now()
     child_jobs: list[ScanJob] = []
     for index, ((source_id, request_body, source_kind), child_job_id) in enumerate(zip(members, expected_child_ids, strict=True), start=1):
@@ -1462,6 +1435,46 @@ def enqueue_correlation_cohort(
                 request=request_body or ScanRequest(),
             )
         )
+    existing = cast(ScanJob | None, store.get(parent_job_id, tenant_id=tenant_id))
+    if existing is not None:
+        if (
+            existing.correlation_cohort_id != normalized_cohort_id
+            or existing.correlation_cohort_manifest_hash != manifest_hash
+            or existing.correlation_max_age_hours != max_age_hours
+        ):
+            raise ValueError("correlation cohort id was reused with different immutable inputs")
+        if existing.child_job_ids != expected_child_ids:
+            raise ValueError("persisted correlation cohort is incomplete")
+        missing_children: list[ScanJob] = []
+        for expected_child, (source_id, request_body, source_kind) in zip(child_jobs, members, strict=True):
+            expected_child_id = expected_child.job_id
+            child = cast(ScanJob | None, store.get(expected_child_id, tenant_id=tenant_id))
+            expected_target = (
+                scan_request_targets(request_body)[0]
+                if request_body is not None
+                else {"kind": "external_ingest", "source_kind": source_kind}
+            )
+            if child is None:
+                missing_children.append(expected_child)
+                continue
+            if (
+                child.parent_job_id != parent_job_id
+                or child.source_id != source_id
+                or child.correlation_cohort_id != normalized_cohort_id
+                or child.correlation_cohort_manifest_hash != manifest_hash
+                or child.correlation_max_age_hours != max_age_hours
+                or child.target != expected_target
+            ):
+                raise ValueError("persisted correlation cohort is incomplete")
+        if missing_children:
+            inserted_ids = set(store.put_many_if_absent_atomic(missing_children))
+            for child in missing_children:
+                if child.job_id not in inserted_ids:
+                    continue
+                _jobs_put(child.job_id, child)
+                if dispatch and (child.target or {}).get("kind") != "external_ingest":
+                    dispatch_scan_job(child)
+        return existing
 
     parent = ScanJob(
         job_id=parent_job_id,
@@ -1517,27 +1530,10 @@ def enqueue_correlation_cohort(
         )
     )
     with admission:
-        attempted_ids: list[str] = []
-        try:
-            attempted_ids.append(parent.job_id)
-            store.put(parent)
-            _jobs_put(parent.job_id, parent)
-            for child in child_jobs:
-                attempted_ids.append(child.job_id)
-                store.put(child)
-                _jobs_put(child.job_id, child)
-        except Exception as persist_exc:
-            rollback_failed = False
-            for job_id in reversed(attempted_ids):
-                try:
-                    store.delete(job_id, tenant_id=tenant_id)
-                except Exception:  # noqa: BLE001 - finish all compensating deletes
-                    rollback_failed = True
-                finally:
-                    _jobs_pop(job_id)
-            if rollback_failed:
-                raise RuntimeError("correlation cohort persistence rollback failed") from persist_exc
-            raise
+        store.put_many_atomic([parent, *child_jobs])
+        _jobs_put(parent.job_id, parent)
+        for child in child_jobs:
+            _jobs_put(child.job_id, child)
         try:
             refresh_batch_parent(parent.job_id, tenant_id=tenant_id)
         except Exception:  # noqa: BLE001
@@ -1582,7 +1578,7 @@ def enqueue_scan_job(
         for index, target in enumerate(targets, start=1):
             child_jobs.append(
                 ScanJob(
-                    job_id=str(uuid.uuid4()),
+                    job_id=str(uuid.uuid5(uuid.UUID(parent_job_id), f"{tenant_id}\x00{index}\x00{json.dumps(target, sort_keys=True)}")),
                     tenant_id=tenant_id,
                     batch_id=batch_id,
                     parent_job_id=parent_job_id,
@@ -1641,10 +1637,9 @@ def enqueue_scan_job(
             )
         )
         with admission:
-            store.put(parent)
+            store.put_many_atomic([parent, *child_jobs])
             _jobs_put(parent.job_id, parent)
             for child in child_jobs:
-                store.put(child)
                 _jobs_put(child.job_id, child)
             try:
                 refresh_batch_parent(parent.job_id, tenant_id=tenant_id)
@@ -1726,6 +1721,62 @@ def enqueue_scan_job(
     return job
 
 
+def _repair_scan_batch(parent: ScanJob, *, dispatch: bool = True) -> ScanJob:
+    """Reconstruct missing durable children from an immutable batch parent.
+
+    Older writers persisted the parent and children sequentially. A process
+    death could therefore leave a durable parent whose idempotent replay was
+    treated as complete. The parent contains the exact child IDs and request,
+    so retries can safely repair only absent rows without minting new work.
+    """
+
+    if not parent.child_job_ids:
+        return parent
+    targets = scan_request_targets(parent.request)
+    if len(targets) != len(parent.child_job_ids):
+        raise RuntimeError("Persisted scan batch membership is invalid.")
+    store = _get_store()
+    missing: list[ScanJob] = []
+    for index, (child_id, target) in enumerate(zip(parent.child_job_ids, targets, strict=True), start=1):
+        child = cast(ScanJob | None, store.get(child_id, tenant_id=parent.tenant_id))
+        if child is None:
+            missing.append(
+                ScanJob(
+                    job_id=child_id,
+                    tenant_id=parent.tenant_id,
+                    batch_id=parent.batch_id,
+                    parent_job_id=parent.job_id,
+                    target=target,
+                    target_index=index,
+                    target_count=len(targets),
+                    source_id=parent.source_id,
+                    schedule_id=parent.schedule_id,
+                    triggered_by=parent.triggered_by,
+                    created_at=parent.created_at,
+                    request=child_request_for_target(parent.request, target),
+                )
+            )
+            continue
+        if (
+            child.tenant_id != parent.tenant_id
+            or child.parent_job_id != parent.job_id
+            or child.batch_id != parent.batch_id
+            or child.target != target
+            or child.target_index != index
+            or child.target_count != len(targets)
+        ):
+            raise RuntimeError("Persisted scan batch membership is invalid.")
+    if missing:
+        inserted_ids = set(store.put_many_if_absent_atomic(missing))
+        for child in missing:
+            if child.job_id not in inserted_ids:
+                continue
+            _jobs_put(child.job_id, child)
+            if dispatch:
+                dispatch_scan_job(child)
+    return parent
+
+
 def dispatch_scan_job(job: ScanJob) -> None:
     """Dispatch an already-persisted scan through the configured durable queue."""
 
@@ -1764,6 +1815,8 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     request_hash = idempotency_request_fingerprint(body)
     idem_store = _get_idempotency_store()
     claimed = False
+    owner_token = idempotency_owner_token()
+    heartbeat: IdempotencyReservationHeartbeat | None = None
     reserved_job_id = ""
     if idem_key:
         reserved_job_id = deterministic_batch_id(f"/v1/scan:{tenant_id}:{idem_source}:{idem_key}:{request_hash}")
@@ -1776,6 +1829,7 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
                 {"job_id": reserved_job_id, "committed": False},
                 request_hash=request_hash,
                 reservation_lease_seconds=idempotency_reservation_lease_seconds(),
+                owner_token=owner_token,
             )
         except IdempotencyConflictError as exc:
             raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
@@ -1783,6 +1837,7 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
             cached_job_id = str(cached.get("job_id") or "")
             existing = await _wait_for_idempotent_job(cached_job_id, tenant_id=tenant_id)
             if existing is not None:
+                existing = await asyncio.to_thread(_repair_scan_batch, existing)
                 idem_store.put(
                     "/v1/scan",
                     tenant_id,
@@ -1797,20 +1852,40 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
                 detail="An identical scan request is still being committed; retry shortly.",
                 headers={"Retry-After": "1"},
             )
+        heartbeat = IdempotencyReservationHeartbeat(
+            idem_store,
+            "/v1/scan",
+            tenant_id,
+            idem_source,
+            idem_key,
+            request_hash=request_hash,
+            owner_token=owner_token,
+            lease_seconds=idempotency_reservation_lease_seconds(),
+        )
+        heartbeat.__enter__()
         cached_job_id = str(cached.get("job_id") or reserved_job_id)
         existing = await asyncio.to_thread(_get_store().get, cached_job_id, tenant_id)
         if existing is not None:
-            idem_store.put(
+            existing = await asyncio.to_thread(_repair_scan_batch, existing)
+            heartbeat.ensure_owned()
+            committed = idem_store.put(
                 "/v1/scan",
                 tenant_id,
                 idem_source,
                 idem_key,
                 {"job_id": existing.job_id, "committed": True},
                 request_hash=request_hash,
+                owner_token=owner_token,
             )
+            heartbeat.__exit__()
+            heartbeat = None
+            if committed is False:
+                raise HTTPException(status_code=409, detail="Idempotency reservation ownership was lost")
             return _job_response_payload(existing)
 
     try:
+        if heartbeat is not None:
+            heartbeat.ensure_owned()
         job = enqueue_scan_job(
             tenant_id=tenant_id,
             triggered_by=_triggered_by(request),
@@ -1818,14 +1893,19 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
             job_id=reserved_job_id or None,
         )
         if claimed:
-            idem_store.put(
+            if heartbeat is not None:
+                heartbeat.ensure_owned()
+            committed = idem_store.put(
                 "/v1/scan",
                 tenant_id,
                 idem_source,
                 idem_key,
                 {"job_id": job.job_id, "committed": True},
                 request_hash=request_hash,
+                owner_token=owner_token,
             )
+            if committed is False:
+                raise IdempotencyConflictError("idempotency reservation ownership was lost")
     except Exception:
         durable_job_exists = True
         if claimed:
@@ -1843,8 +1923,12 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
                 source_id=idem_source,
                 idempotency_key=idem_key,
                 request_hash=request_hash,
+                owner_token=owner_token,
             )
         raise
+    finally:
+        if heartbeat is not None:
+            heartbeat.__exit__()
     return job
 
 
@@ -1855,6 +1939,7 @@ def _release_scan_idempotency_claim(
     source_id: str,
     idempotency_key: str,
     request_hash: str,
+    owner_token: str = "",
 ) -> None:
     try:
         store.release(
@@ -1863,6 +1948,7 @@ def _release_scan_idempotency_claim(
             source_id,
             idempotency_key,
             request_hash=request_hash,
+            owner_token=owner_token,
         )
     except Exception as exc:  # noqa: BLE001
         _logger.error("Scan idempotency rollback failed: %s", sanitize_text(sanitize_error(exc, generic=True)))

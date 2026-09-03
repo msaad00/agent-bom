@@ -393,6 +393,8 @@ class GraphCorrelationRun:
     created_at: str = ""
     started_at: str = ""
     completed_at: str = ""
+    execution_owner: str = ""
+    execution_lease_expires_at: str = ""
 
     def __post_init__(self) -> None:
         if not self.correlation_id.strip():
@@ -475,6 +477,8 @@ class GraphCorrelationRun:
             created_at=str(value.get("created_at") or ""),
             started_at=str(value.get("started_at") or ""),
             completed_at=str(value.get("completed_at") or ""),
+            execution_owner=str(value.get("execution_owner") or ""),
+            execution_lease_expires_at=str(value.get("execution_lease_expires_at") or ""),
         )
 
 

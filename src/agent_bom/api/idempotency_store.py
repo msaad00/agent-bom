@@ -66,6 +66,8 @@ class IdempotencyRecord:
     request_hash: str
     response_json: str
     created_at: str
+    reservation_owner: str = ""
+    lease_expires_at: str = ""
 
 
 class IdempotencyConflictError(RuntimeError):
@@ -80,6 +82,75 @@ class IdempotencyPayloadError(ValueError):
     interpreter recursion limit on the same input. Both are caller-controlled,
     so they must land as a 422 instead of escaping as an unhandled 500.
     """
+
+
+class IdempotencyReservationHeartbeat:
+    """Keep a reservation live and expose owner loss before durable commit."""
+
+    def __init__(
+        self,
+        store: IdempotencyStore,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str,
+        owner_token: str,
+        lease_seconds: int,
+    ) -> None:
+        self._store = store
+        self._args = (endpoint, tenant_id, source_id, idempotency_key)
+        self._request_hash = request_hash
+        self._owner_token = owner_token
+        self._lease_seconds = lease_seconds
+        self._stop = threading.Event()
+        self._lost = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    @property
+    def lost(self) -> bool:
+        return self._lost.is_set()
+
+    def ensure_owned(self) -> None:
+        owned = self._store.heartbeat(
+            *self._args,
+            request_hash=self._request_hash,
+            owner_token=self._owner_token,
+            reservation_lease_seconds=self._lease_seconds,
+        )
+        if not owned:
+            self._lost.set()
+            raise IdempotencyConflictError("idempotency reservation ownership was lost")
+
+    def __enter__(self) -> IdempotencyReservationHeartbeat:
+        def beat() -> None:
+            interval = max(0.25, self._lease_seconds / 3)
+            while not self._stop.wait(interval):
+                try:
+                    self.ensure_owned()
+                except Exception:  # noqa: BLE001 - ownership loss is observed by the request thread
+                    self._lost.set()
+                    return
+
+        self._thread = threading.Thread(target=beat, name="idempotency-reservation-heartbeat", daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type: object = None, *_args: object) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1)
+        if exc_type is not None:
+            self._store.release(
+                *self._args,
+                request_hash=self._request_hash,
+                owner_token=self._owner_token,
+            )
+
+
+def idempotency_owner_token() -> str:
+    return uuid.uuid4().hex
 
 
 class IdempotencyStore(Protocol):
@@ -101,7 +172,8 @@ class IdempotencyStore(Protocol):
         response: dict[str, Any],
         *,
         request_hash: str = "",
-    ) -> None: ...
+        owner_token: str = "",
+    ) -> bool: ...
     def claim(
         self,
         endpoint: str,
@@ -112,7 +184,19 @@ class IdempotencyStore(Protocol):
         *,
         request_hash: str = "",
         reservation_lease_seconds: int | None = None,
+        owner_token: str = "",
     ) -> tuple[dict[str, Any], bool]: ...
+    def heartbeat(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str,
+        owner_token: str,
+        reservation_lease_seconds: int,
+    ) -> bool: ...
     def release(
         self,
         endpoint: str,
@@ -121,6 +205,7 @@ class IdempotencyStore(Protocol):
         idempotency_key: str,
         *,
         request_hash: str = "",
+        owner_token: str = "",
     ) -> bool: ...
 
 
@@ -144,6 +229,37 @@ def _reservation_is_expired(response_json: str, created_at: str, lease_seconds: 
         created = created.replace(tzinfo=timezone.utc)
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(1, int(lease_seconds)))
     return created <= cutoff
+
+
+def _lease_expiry(lease_seconds: int | None) -> str:
+    if lease_seconds is None:
+        return ""
+    return (datetime.now(timezone.utc) + timedelta(seconds=max(1, int(lease_seconds)))).isoformat()
+
+
+def _reservation_lease_is_expired(
+    response_json: str,
+    created_at: str,
+    lease_expires_at: str,
+    lease_seconds: int | None,
+) -> bool:
+    if lease_seconds is None:
+        return False
+    try:
+        response = json.loads(response_json)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(response, dict) or response.get("committed") is not False:
+        return False
+    if lease_expires_at:
+        try:
+            expires = datetime.fromisoformat(lease_expires_at)
+        except ValueError:
+            return False
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return expires <= datetime.now(timezone.utc)
+    return _reservation_is_expired(response_json, created_at, lease_seconds)
 
 
 def _normalize_request_payload(value: Any) -> Any:
@@ -217,10 +333,15 @@ class InMemoryIdempotencyStore:
         response: dict[str, Any],
         *,
         request_hash: str = "",
-    ) -> None:
+        owner_token: str = "",
+    ) -> bool:
         with self._lock:
             self._prune()
-            self._records[(endpoint, tenant_id, source_id, idempotency_key)] = IdempotencyRecord(
+            key = (endpoint, tenant_id, source_id, idempotency_key)
+            existing = self._records.get(key)
+            if owner_token and (existing is None or existing.reservation_owner != owner_token):
+                return False
+            self._records[key] = IdempotencyRecord(
                 endpoint=endpoint,
                 tenant_id=tenant_id,
                 source_id=source_id,
@@ -228,7 +349,12 @@ class InMemoryIdempotencyStore:
                 request_hash=request_hash,
                 response_json=json.dumps(response, sort_keys=True),
                 created_at=_utcnow(),
+                reservation_owner=(
+                    "" if response.get("committed") is True else owner_token or (existing.reservation_owner if existing else "")
+                ),
+                lease_expires_at="",
             )
+            return True
 
     def claim(
         self,
@@ -240,6 +366,7 @@ class InMemoryIdempotencyStore:
         *,
         request_hash: str = "",
         reservation_lease_seconds: int | None = None,
+        owner_token: str = "",
     ) -> tuple[dict[str, Any], bool]:
         """Atomically reserve one logical write and return its stable receipt."""
         key = (endpoint, tenant_id, source_id, idempotency_key)
@@ -248,12 +375,15 @@ class InMemoryIdempotencyStore:
             existing = self._records.get(key)
             if existing is not None:
                 _ensure_request_hash_matches(existing.request_hash, request_hash)
-                if _reservation_is_expired(
+                if _reservation_lease_is_expired(
                     existing.response_json,
                     existing.created_at,
+                    existing.lease_expires_at,
                     reservation_lease_seconds,
                 ):
                     existing.created_at = _utcnow()
+                    existing.reservation_owner = owner_token
+                    existing.lease_expires_at = _lease_expiry(reservation_lease_seconds)
                     return json.loads(existing.response_json), True
                 return json.loads(existing.response_json), False
             self._records[key] = IdempotencyRecord(
@@ -264,8 +394,32 @@ class InMemoryIdempotencyStore:
                 request_hash=request_hash,
                 response_json=json.dumps(response, sort_keys=True),
                 created_at=_utcnow(),
+                reservation_owner=owner_token,
+                lease_expires_at=_lease_expiry(reservation_lease_seconds) if owner_token else "",
             )
             return json.loads(json.dumps(response)), True
+
+    def heartbeat(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str,
+        owner_token: str,
+        reservation_lease_seconds: int,
+    ) -> bool:
+        key = (endpoint, tenant_id, source_id, idempotency_key)
+        with self._lock:
+            existing = self._records.get(key)
+            if existing is None:
+                return False
+            _ensure_request_hash_matches(existing.request_hash, request_hash)
+            if not owner_token or existing.reservation_owner != owner_token:
+                return False
+            existing.lease_expires_at = _lease_expiry(reservation_lease_seconds)
+            return True
 
     def release(
         self,
@@ -275,6 +429,7 @@ class InMemoryIdempotencyStore:
         idempotency_key: str,
         *,
         request_hash: str = "",
+        owner_token: str = "",
     ) -> bool:
         key = (endpoint, tenant_id, source_id, idempotency_key)
         with self._lock:
@@ -282,6 +437,8 @@ class InMemoryIdempotencyStore:
             if existing is None:
                 return False
             _ensure_request_hash_matches(existing.request_hash, request_hash)
+            if owner_token and existing.reservation_owner != owner_token:
+                return False
             self._records.pop(key, None)
             return True
 
@@ -325,6 +482,8 @@ class SQLiteIdempotencyStore:
                     request_hash TEXT NOT NULL DEFAULT '',
                     response_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    reservation_owner TEXT NOT NULL DEFAULT '',
+                    lease_expires_at TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (endpoint, tenant_id, source_id, idempotency_key)
                 )
                 """
@@ -332,6 +491,10 @@ class SQLiteIdempotencyStore:
             columns = {str(row[1]) for row in self._conn.execute("PRAGMA table_info(idempotency_keys)").fetchall()}
             if "request_hash" not in columns:
                 self._conn.execute("ALTER TABLE idempotency_keys ADD COLUMN request_hash TEXT NOT NULL DEFAULT ''")
+            if "reservation_owner" not in columns:
+                self._conn.execute("ALTER TABLE idempotency_keys ADD COLUMN reservation_owner TEXT NOT NULL DEFAULT ''")
+            if "lease_expires_at" not in columns:
+                self._conn.execute("ALTER TABLE idempotency_keys ADD COLUMN lease_expires_at TEXT NOT NULL DEFAULT ''")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at)")
             self._conn.commit()
 
@@ -362,7 +525,29 @@ class SQLiteIdempotencyStore:
         response: dict[str, Any],
         *,
         request_hash: str = "",
-    ) -> None:
+        owner_token: str = "",
+    ) -> bool:
+        if owner_token:
+            cursor = self._conn.execute(
+                """UPDATE idempotency_keys
+                   SET request_hash = ?, response_json = ?, created_at = ?, lease_expires_at = '', reservation_owner = ?
+                   WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?
+                     AND reservation_owner = ?""",
+                (
+                    request_hash,
+                    json.dumps(response, sort_keys=True),
+                    _utcnow(),
+                    "" if response.get("committed") is True else owner_token,
+                    endpoint,
+                    tenant_id,
+                    source_id,
+                    idempotency_key,
+                    owner_token,
+                ),
+            )
+            self._prune()
+            self._conn.commit()
+            return cursor.rowcount == 1
         self._conn.execute(
             """INSERT OR REPLACE INTO idempotency_keys
                (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at)
@@ -380,6 +565,7 @@ class SQLiteIdempotencyStore:
         # Prune expired keys on write so the table cannot grow without bound.
         self._prune()
         self._conn.commit()
+        return True
 
     def claim(
         self,
@@ -391,18 +577,30 @@ class SQLiteIdempotencyStore:
         *,
         request_hash: str = "",
         reservation_lease_seconds: int | None = None,
+        owner_token: str = "",
     ) -> tuple[dict[str, Any], bool]:
         """Atomically insert a reservation across threads and API processes."""
         response_json = json.dumps(response, sort_keys=True)
         cursor = self._conn.execute(
             """INSERT OR IGNORE INTO idempotency_keys
-               (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, _utcnow()),
+               (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at,
+                reservation_owner, lease_expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                endpoint,
+                tenant_id,
+                source_id,
+                idempotency_key,
+                request_hash,
+                response_json,
+                _utcnow(),
+                owner_token,
+                _lease_expiry(reservation_lease_seconds) if owner_token else "",
+            ),
         )
         acquired = cursor.rowcount == 1
         row = self._conn.execute(
-            """SELECT response_json, request_hash, created_at FROM idempotency_keys
+            """SELECT response_json, request_hash, created_at, reservation_owner, lease_expires_at FROM idempotency_keys
                WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?""",
             (endpoint, tenant_id, source_id, idempotency_key),
         ).fetchone()
@@ -414,16 +612,55 @@ class SQLiteIdempotencyStore:
         except IdempotencyConflictError:
             self._conn.rollback()
             raise
-        if not acquired and _reservation_is_expired(str(row[0]), str(row[2]), reservation_lease_seconds):
-            self._conn.execute(
-                """UPDATE idempotency_keys SET created_at = ?
-                   WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?""",
-                (_utcnow(), endpoint, tenant_id, source_id, idempotency_key),
+        if not acquired and _reservation_lease_is_expired(str(row[0]), str(row[2]), str(row[4] or ""), reservation_lease_seconds):
+            cursor = self._conn.execute(
+                """UPDATE idempotency_keys SET created_at = ?, reservation_owner = ?, lease_expires_at = ?
+                   WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?
+                     AND reservation_owner = ? AND lease_expires_at = ?""",
+                (
+                    _utcnow(),
+                    owner_token,
+                    _lease_expiry(reservation_lease_seconds) if owner_token else "",
+                    endpoint,
+                    tenant_id,
+                    source_id,
+                    idempotency_key,
+                    str(row[3] or ""),
+                    str(row[4] or ""),
+                ),
             )
-            acquired = True
+            acquired = cursor.rowcount == 1
         self._prune()
         self._conn.commit()
         return json.loads(row[0]), acquired
+
+    def heartbeat(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str,
+        owner_token: str,
+        reservation_lease_seconds: int,
+    ) -> bool:
+        cursor = self._conn.execute(
+            """UPDATE idempotency_keys SET lease_expires_at = ?
+               WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?
+                 AND request_hash = ? AND reservation_owner = ?""",
+            (
+                _lease_expiry(reservation_lease_seconds),
+                endpoint,
+                tenant_id,
+                source_id,
+                idempotency_key,
+                request_hash,
+                owner_token,
+            ),
+        )
+        self._conn.commit()
+        return cursor.rowcount == 1
 
     def release(
         self,
@@ -433,12 +670,14 @@ class SQLiteIdempotencyStore:
         idempotency_key: str,
         *,
         request_hash: str = "",
+        owner_token: str = "",
     ) -> bool:
         cursor = self._conn.execute(
             """DELETE FROM idempotency_keys
                WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?
-                 AND (? = '' OR request_hash = ?)""",
-            (endpoint, tenant_id, source_id, idempotency_key, request_hash, request_hash),
+                 AND (? = '' OR request_hash = ?)
+                 AND (? = '' OR reservation_owner = ?)""",
+            (endpoint, tenant_id, source_id, idempotency_key, request_hash, request_hash, owner_token, owner_token),
         )
         self._conn.commit()
         return cursor.rowcount == 1
@@ -480,10 +719,14 @@ class PostgresIdempotencyStore:
                     request_hash TEXT NOT NULL DEFAULT '',
                     response_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    reservation_owner TEXT NOT NULL DEFAULT '',
+                    lease_expires_at TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (endpoint, tenant_id, source_id, idempotency_key)
                 )
                 """
             )
+            conn.execute("ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS reservation_owner TEXT NOT NULL DEFAULT ''")
+            conn.execute("ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS lease_expires_at TEXT NOT NULL DEFAULT ''")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at)")
             _ensure_tenant_rls(conn, "idempotency_keys", "tenant_id")
             conn.commit()
@@ -522,29 +765,50 @@ class PostgresIdempotencyStore:
         response: dict[str, Any],
         *,
         request_hash: str = "",
-    ) -> None:
+        owner_token: str = "",
+    ) -> bool:
         with _tenant_connection(self._pool) as conn:
-            conn.execute(
-                """INSERT INTO idempotency_keys
+            if owner_token:
+                cursor = conn.execute(
+                    """UPDATE idempotency_keys
+                       SET request_hash = %s, response_json = %s, created_at = %s, lease_expires_at = '', reservation_owner = %s
+                       WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s
+                         AND reservation_owner = %s""",
+                    (
+                        request_hash,
+                        json.dumps(response, sort_keys=True),
+                        _utcnow(),
+                        "" if response.get("committed") is True else owner_token,
+                        endpoint,
+                        tenant_id,
+                        source_id,
+                        idempotency_key,
+                        owner_token,
+                    ),
+                )
+            else:
+                cursor = conn.execute(
+                    """INSERT INTO idempotency_keys
                    (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at)
                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (endpoint, tenant_id, source_id, idempotency_key) DO UPDATE SET
                        request_hash = EXCLUDED.request_hash,
                        response_json = EXCLUDED.response_json,
                        created_at = EXCLUDED.created_at""",
-                (
-                    endpoint,
-                    tenant_id,
-                    source_id,
-                    idempotency_key,
-                    request_hash,
-                    json.dumps(response, sort_keys=True),
-                    _utcnow(),
-                ),
-            )
+                    (
+                        endpoint,
+                        tenant_id,
+                        source_id,
+                        idempotency_key,
+                        request_hash,
+                        json.dumps(response, sort_keys=True),
+                        _utcnow(),
+                    ),
+                )
             # Prune expired keys on write so the table cannot grow without bound.
             self._prune(conn)
             conn.commit()
+            return int(cursor.rowcount or 0) == 1
 
     def claim(
         self,
@@ -556,41 +820,95 @@ class PostgresIdempotencyStore:
         *,
         request_hash: str = "",
         reservation_lease_seconds: int | None = None,
+        owner_token: str = "",
     ) -> tuple[dict[str, Any], bool]:
         """Atomically reserve a write across every Postgres-backed replica."""
         response_json = json.dumps(response, sort_keys=True)
         with _tenant_connection(self._pool) as conn:
             inserted = conn.execute(
                 """INSERT INTO idempotency_keys
-                   (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at,
+                    reservation_owner, lease_expires_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (endpoint, tenant_id, source_id, idempotency_key) DO NOTHING
                    RETURNING response_json, request_hash""",
-                (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, _utcnow()),
+                (
+                    endpoint,
+                    tenant_id,
+                    source_id,
+                    idempotency_key,
+                    request_hash,
+                    response_json,
+                    _utcnow(),
+                    owner_token,
+                    _lease_expiry(reservation_lease_seconds) if owner_token else "",
+                ),
             ).fetchone()
             row = inserted
             if row is None:
                 row = conn.execute(
-                    """SELECT response_json, request_hash, created_at FROM idempotency_keys
+                    """SELECT response_json, request_hash, created_at, reservation_owner, lease_expires_at FROM idempotency_keys
                        WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s
                        FOR UPDATE""",
                     (endpoint, tenant_id, source_id, idempotency_key),
                 ).fetchone()
                 if row is not None:
                     _ensure_request_hash_matches(str(row[1] or ""), request_hash)
-                    if _reservation_is_expired(str(row[0]), str(row[2]), reservation_lease_seconds):
-                        conn.execute(
-                            """UPDATE idempotency_keys SET created_at = %s
-                               WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s""",
-                            (_utcnow(), endpoint, tenant_id, source_id, idempotency_key),
+                    if _reservation_lease_is_expired(str(row[0]), str(row[2]), str(row[4] or ""), reservation_lease_seconds):
+                        cursor = conn.execute(
+                            """UPDATE idempotency_keys
+                               SET created_at = %s, reservation_owner = %s, lease_expires_at = %s
+                               WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s
+                                 AND reservation_owner = %s AND lease_expires_at = %s""",
+                            (
+                                _utcnow(),
+                                owner_token,
+                                _lease_expiry(reservation_lease_seconds) if owner_token else "",
+                                endpoint,
+                                tenant_id,
+                                source_id,
+                                idempotency_key,
+                                str(row[3] or ""),
+                                str(row[4] or ""),
+                            ),
                         )
-                        inserted = row
+                        if int(cursor.rowcount or 0) == 1:
+                            inserted = row
             self._prune(conn)
             conn.commit()
         if row is None:  # pragma: no cover - protected by the unique key transaction
             raise RuntimeError("Idempotency reservation was not persisted")
         _ensure_request_hash_matches(str(row[1] or ""), request_hash)
         return json.loads(row[0]), inserted is not None
+
+    def heartbeat(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str,
+        owner_token: str,
+        reservation_lease_seconds: int,
+    ) -> bool:
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute(
+                """UPDATE idempotency_keys SET lease_expires_at = %s
+                   WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s
+                     AND request_hash = %s AND reservation_owner = %s""",
+                (
+                    _lease_expiry(reservation_lease_seconds),
+                    endpoint,
+                    tenant_id,
+                    source_id,
+                    idempotency_key,
+                    request_hash,
+                    owner_token,
+                ),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0) == 1
 
     def release(
         self,
@@ -600,13 +918,15 @@ class PostgresIdempotencyStore:
         idempotency_key: str,
         *,
         request_hash: str = "",
+        owner_token: str = "",
     ) -> bool:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
                 """DELETE FROM idempotency_keys
                    WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s
-                     AND (%s = '' OR request_hash = %s)""",
-                (endpoint, tenant_id, source_id, idempotency_key, request_hash, request_hash),
+                     AND (%s = '' OR request_hash = %s)
+                     AND (%s = '' OR reservation_owner = %s)""",
+                (endpoint, tenant_id, source_id, idempotency_key, request_hash, request_hash, owner_token, owner_token),
             )
             conn.commit()
             return int(cursor.rowcount) == 1

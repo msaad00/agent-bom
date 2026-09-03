@@ -20,6 +20,7 @@ from agent_bom.api.idempotency_store import (
     idempotency_request_fingerprint,
 )
 from agent_bom.api.models import PushPayload, ScanRequest
+from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.server import app, set_fleet_store, set_graph_store, set_job_store
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import set_idempotency_store
@@ -191,6 +192,63 @@ def test_scan_retry_reconciles_durable_job_before_receipt_without_redispatch(mon
     assert len(stores._get_store().list_all(all_tenants=True)) == 1
     assert dispatched == [first.json()["job_id"]]
     assert idem.get(*key)["committed"] is True
+
+
+def test_multi_target_scan_retry_repairs_missing_child_before_committed_receipt(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    jobs = SQLiteJobStore(str(tmp_path / "jobs.db"))
+    idempotency = SQLiteIdempotencyStore(str(tmp_path / "idempotency.db"))
+    set_job_store(jobs)
+    set_idempotency_store(idempotency)
+    dispatched: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", lambda job: dispatched.append(job.job_id))
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"Idempotency-Key": "multi-target-crash"}
+    payload = {"images": ["redis:7", "nginx:1.27"], "no_scan": True}
+
+    first = client.post("/v1/scan", headers=headers, json=payload)
+    assert first.status_code == 202
+    parent = jobs.get(first.json()["job_id"], tenant_id="default")
+    assert parent is not None
+    missing_child_id = parent.child_job_ids[0]
+    assert jobs.delete(missing_child_id, tenant_id="default") is True
+    dispatched.clear()
+
+    replay = client.post("/v1/scan", headers=headers, json=payload)
+
+    assert replay.status_code == 202
+    assert replay.json()["job_id"] == parent.job_id
+    repaired = jobs.get(missing_child_id, tenant_id="default")
+    assert repaired is not None
+    assert repaired.parent_job_id == parent.job_id
+    assert dispatched == [missing_child_id]
+
+
+def test_two_replicas_dispatch_only_the_winning_multi_target_child_repair(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    jobs = SQLiteJobStore(str(tmp_path / "jobs.db"))
+    set_job_store(jobs)
+    dispatched: list[str] = []
+    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    parent = scan_routes.enqueue_scan_job(
+        tenant_id="default",
+        triggered_by="api-test",
+        request_body=ScanRequest(images=["redis:7", "postgres:17"], no_scan=True),
+    )
+    missing_id = parent.child_job_ids[0]
+    jobs.delete(missing_id, tenant_id="default")
+    dispatched.clear()
+    barrier = threading.Barrier(2)
+    real_insert = jobs.put_many_if_absent_atomic
+
+    def synchronized_insert(children):
+        barrier.wait(timeout=5)
+        return real_insert(children)
+
+    monkeypatch.setattr(jobs, "put_many_if_absent_atomic", synchronized_insert)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _index: scan_routes._repair_scan_batch(parent), range(2)))
+
+    assert [item.job_id for item in results] == [parent.job_id, parent.job_id]
+    assert dispatched == [missing_id]
 
 
 def test_push_retry_reclaims_expired_crash_reservation_without_duplicate_evidence(

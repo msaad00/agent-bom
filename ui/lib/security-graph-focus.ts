@@ -1,6 +1,8 @@
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api-types";
 
+const CORRELATION_PATH_TARGET_ID = "selected-investigation-path";
+
 export function latestCompletedCorrelation(
   correlations: GraphCorrelationRun[],
 ): GraphCorrelationRun | null {
@@ -27,6 +29,69 @@ export function selectInitialGraphSnapshot(
     return latestCorrelation.output_scan_id;
   }
   return snapshots[0]?.scan_id ?? "";
+}
+
+export function correlationOutcomeMatchesOutput(
+  outputScanId: string | undefined,
+  graphScanId: string | undefined,
+  fixFirstScanId: string | undefined,
+): boolean {
+  return Boolean(
+    outputScanId &&
+      graphScanId === outputScanId &&
+      fixFirstScanId === outputScanId,
+  );
+}
+
+export function buildCorrelationPathHref(
+  pathname: string,
+  _current: URLSearchParams,
+  scanId: string,
+): string {
+  const params = new URLSearchParams();
+  params.set("scan", scanId);
+  params.set("path", "top");
+  return `${pathname}?${params.toString()}#${CORRELATION_PATH_TARGET_ID}`;
+}
+
+export function focusCorrelationPathTarget(documentRef: Document): boolean {
+  const target = documentRef.getElementById(CORRELATION_PATH_TARGET_ID);
+  if (!target) return false;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
+}
+
+export function buildCorrelationRemediationHref(
+  href: string,
+  scanId: string,
+  finding?: string,
+  packageName?: string,
+): string {
+  const [splitPath, query = ""] = href.split("?", 2);
+  const path = splitPath || href;
+  const params = new URLSearchParams(query);
+  params.set("scan", scanId);
+  if (finding) params.set("cve", finding);
+  if (packageName) params.set("package", packageName);
+  const encoded = params.toString();
+  return encoded ? `${path}?${encoded}` : path;
+}
+
+export function completeDirectedHopCount(path: AttackPath): number | null {
+  const expected = Math.max(0, path.hops.length - 1);
+  const receipts = path.hop_evidence ?? [];
+  if (receipts.length !== expected) return null;
+  const valid = receipts.every((receipt, index) =>
+    receipt.source_node_id === path.hops[index] &&
+    receipt.target_node_id === path.hops[index + 1] &&
+    receipt.direction === "directed" &&
+    receipt.traversable === true &&
+    receipt.complete === true &&
+    receipt.truncated === false &&
+    receipt.source_snapshot_ids.length > 0
+  );
+  return valid ? receipts.length : null;
 }
 
 export function buildFocusedGraphData(

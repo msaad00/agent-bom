@@ -308,11 +308,56 @@ export function exposureRoleForEntityType(entityType: string): ExposureEntityRol
 
 function exposureRefFromUnifiedNode(node: UnifiedNode): ExposureEntityRef {
   const role = exposureRoleForEntityType(String(node.entity_type));
-  const display = formatExposureEntityDisplay(node.label, role, node.attributes ?? {});
+  const attributes = node.attributes ?? {};
+  let display = formatExposureEntityDisplay(node.label, role, attributes);
+  let kindLabel: string | undefined;
+  if (node.entity_type === EntityType.CONTAINER) {
+    const [title, digest] = node.label.split("@", 2);
+    display = {
+      title: title || node.label,
+      subtitle: digest ? `Digest ${digest}` : "Container image",
+    };
+    kindLabel = "Container";
+  } else if (node.entity_type === EntityType.DATA_STORE || node.entity_type === EntityType.DATASET) {
+    const sensitivity = typeof attributes.data_sensitivity === "string"
+      ? attributes.data_sensitivity.replaceAll("_", " ")
+      : "Sensitive";
+    display = {
+      title: node.label,
+      subtitle: `${sensitivity.charAt(0).toUpperCase()}${sensitivity.slice(1)} data asset`,
+    };
+    kindLabel = "Data asset";
+  } else if (node.entity_type === EntityType.CLOUD_RESOURCE || node.entity_type === EntityType.RESOURCE) {
+    display = { title: node.label, subtitle: "Cloud resource" };
+    kindLabel = "Cloud resource";
+  } else if (
+    node.entity_type === EntityType.SERVICE_ACCOUNT ||
+    node.entity_type === EntityType.SERVICE_PRINCIPAL ||
+    node.entity_type === EntityType.MANAGED_IDENTITY ||
+    node.entity_type === EntityType.USER ||
+    node.entity_type === EntityType.GROUP ||
+    node.entity_type === EntityType.ROLE
+  ) {
+    display = { title: node.label, subtitle: "Workload identity" };
+    kindLabel = "Identity";
+  } else if (node.entity_type === EntityType.AGENT && node.id.startsWith("workload:")) {
+    display = { title: node.label, subtitle: "Application workload" };
+    kindLabel = "Workload";
+  } else if (
+    node.entity_type === EntityType.SERVER &&
+    (node.id.startsWith("service:") || attributes.internet_exposed === true)
+  ) {
+    display = {
+      title: node.label,
+      subtitle: attributes.internet_exposed === true ? "Internet-exposed service" : "Application service",
+    };
+    kindLabel = "Service";
+  }
   return {
     id: node.id,
     label: display.title,
     subtitle: display.subtitle,
+    kindLabel,
     role,
     severity: node.severity,
     riskScore: node.risk_score,
@@ -421,6 +466,36 @@ export function toExposurePathFromAttackPath(
       source: "graph_attack_path",
       scanId: options.scanId,
     },
+  };
+}
+
+/**
+ * Preserve server-ranked remediation metadata while presenting every hop with
+ * the canonical graph node kind. The API exposure contract intentionally uses
+ * broad roles for visual styling (for example container -> server), so the
+ * graph taxonomy remains the source of truth for the operator-facing label.
+ */
+export function withCanonicalExposurePresentation(
+  path: ExposurePath,
+  nodeById: Map<string, UnifiedNode>,
+): ExposurePath {
+  const hops = path.hops.map((hop) => {
+    const node = nodeById.get(hop.id);
+    return node ? exposureRefFromUnifiedNode(node) : hop;
+  });
+  const hopById = new Map(hops.map((hop) => [hop.id, hop]));
+  const sourceNode = nodeById.get(path.source.id);
+  const targetNode = nodeById.get(path.target.id);
+
+  return {
+    ...path,
+    hops,
+    source: sourceNode
+      ? exposureRefFromUnifiedNode(sourceNode)
+      : hopById.get(path.source.id) ?? path.source,
+    target: targetNode
+      ? exposureRefFromUnifiedNode(targetNode)
+      : hopById.get(path.target.id) ?? path.target,
   };
 }
 

@@ -30,6 +30,64 @@ const JOURNEY = [
 
 type EvidenceAge = "fresh" | "stale" | "future" | "unknown";
 
+export type GraphCorrelationOutcome = {
+  scanId: string;
+  title: string;
+  summary: string;
+  source: string;
+  target: string;
+  finding?: string | undefined;
+  packageName?: string | undefined;
+  risk: number;
+  hops: number;
+  runtimeObserved: boolean;
+  runtimeBlocked: boolean;
+  action?: { title: string; href: string } | undefined;
+};
+
+type CorrelationAnalysisState =
+  | "complete"
+  | "limited"
+  | "skipped"
+  | "failed"
+  | "in_progress"
+  | "unavailable";
+
+function correlationAnalysisState(run: GraphCorrelationRun): CorrelationAnalysisState {
+  if (run.status === "pending" || run.status === "running") return "in_progress";
+  if (run.status === "failed") return "failed";
+
+  const bounds = run.result_manifest.analysis_bounds;
+  if (!bounds || typeof bounds !== "object") return "unavailable";
+
+  const relevant = [bounds.correlation_merge, bounds.attack_path_fusion];
+  if (relevant.some((value) => !value || typeof value !== "object")) return "unavailable";
+
+  const records = Object.values(bounds).filter(
+    (value): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value),
+  );
+  const states = records.map((value) => typeof value.status === "string" ? value.status : "not_recorded");
+  if (states.includes("failed")) return "failed";
+  if (states.includes("skipped")) return "skipped";
+  if (
+    states.includes("limited") ||
+    states.includes("not_recorded") ||
+    records.some((value) => value.truncated === true)
+  ) return "limited";
+  return states.length > 0 && states.every((status) => status === "complete")
+    ? "complete"
+    : "unavailable";
+}
+
+function correlationAnalysisLabel(state: CorrelationAnalysisState): string {
+  if (state === "complete") return "Analysis complete";
+  if (state === "limited") return "Analysis limited — inspect bounds";
+  if (state === "skipped") return "Analysis skipped — inspect bounds";
+  if (state === "failed") return "Analysis failed";
+  if (state === "in_progress") return "Analysis in progress";
+  return "Analysis status unavailable";
+}
+
 function evidenceAge(createdAt: string | undefined, maxAgeHours: number, now = Date.now()): EvidenceAge {
   const observedAt = Date.parse(createdAt ?? "");
   if (!Number.isFinite(observedAt)) return "unknown";
@@ -64,10 +122,12 @@ function sourceLabel(sourceKinds: string[] | undefined, scanId: string): string 
 export function GraphCorrelationWorkflow({
   snapshots,
   initialRun = null,
+  outcome = null,
   onOpenSnapshot,
 }: {
   snapshots: GraphSnapshot[];
   initialRun?: GraphCorrelationRun | null;
+  outcome?: GraphCorrelationOutcome | null;
   onOpenSnapshot: (scanId: string) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -155,6 +215,28 @@ export function GraphCorrelationWorkflow({
     { done: false, detail: hasRuntimeReceipt ? "Observed; block opt-in" : "Opt-in runtime" },
   ];
   const activeFreshnessBound = run?.max_age_hours ?? maxAgeHours;
+  const staleReceiptCount = run?.input_manifest.filter((receipt) =>
+    receipt.freshness === "stale_allowed" ||
+    evidenceAge(receipt.created_at, run.max_age_hours) === "stale"
+  ).length ?? 0;
+  const analysisState = run ? correlationAnalysisState(run) : "unavailable";
+  const analysisLabel = correlationAnalysisLabel(analysisState);
+  const boundOutcome = run?.output_scan_id && outcome?.scanId === run.output_scan_id
+    ? outcome
+    : null;
+  const resultIsVerified = isComplete && analysisState === "complete" && staleReceiptCount === 0;
+  const evidenceState = staleReceiptCount > 0
+    ? `${staleReceiptCount} stale source${staleReceiptCount === 1 ? "" : "s"} allowed`
+    : "Fresh evidence";
+  const zeroPathQualification = staleReceiptCount > 0
+    ? "stale evidence was allowed"
+    : analysisState === "limited"
+      ? "analysis is limited"
+      : analysisState === "skipped"
+        ? "analysis was skipped"
+        : analysisState === "failed"
+          ? "analysis failed"
+          : "analysis status is unavailable";
 
   return (
     <section
@@ -165,10 +247,10 @@ export function GraphCorrelationWorkflow({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
-            <Network className="h-4 w-4 text-emerald-500" /> Evidence journey
+            <Network className="h-4 w-4 text-emerald-500" /> Correlation result
           </p>
           <p className="mt-1 max-w-3xl text-xs text-[color:var(--text-secondary)]">
-            Connected and local sources produce immutable scan evidence; the latest completed correlation is selected automatically. Exact identifiers form joins—similar labels and mutable tags never do.
+            The latest completed run is selected automatically. Review its outcome first; inspect source receipts and workflow mechanics when needed.
           </p>
         </div>
         <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300">
@@ -176,7 +258,12 @@ export function GraphCorrelationWorkflow({
         </span>
       </div>
 
-      <ol aria-label="Evidence journey" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      <details className="group mt-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+          <span>How evidence becomes an action</span>
+          <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
+        </summary>
+      <ol aria-label="Evidence journey" className="grid grid-cols-2 gap-2 border-t border-[color:var(--border-subtle)] p-3 sm:grid-cols-3 xl:grid-cols-6">
         {JOURNEY.map((step, index) => {
           const state = journeyState[index]!;
           const done = state.done;
@@ -197,66 +284,87 @@ export function GraphCorrelationWorkflow({
           );
         })}
       </ol>
+      </details>
 
       {run ? (
-        <div className={`mt-4 rounded-xl border bg-[color:var(--surface)] p-3 text-xs ${isFailed ? "border-red-500/30" : isComplete ? "border-emerald-500/30" : "border-sky-500/30"}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="flex items-center gap-2 font-semibold text-[color:var(--foreground)]">
-                {isComplete ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : isFailed ? <AlertTriangle className="h-4 w-4 text-red-500" /> : <Loader2 className="h-4 w-4 animate-spin text-sky-500" />}
-                {isComplete ? "Evidence correlation complete" : isFailed ? "Evidence correlation failed" : `Evidence correlation ${run.status}`}
+        <div
+          data-testid="graph-correlation-decision"
+          className={`mt-3 rounded-2xl border bg-[color:var(--surface)] p-3 text-[15px] sm:p-4 ${isFailed ? "border-red-500/35" : isComplete ? "border-emerald-500/35" : "border-sky-500/35"}`}
+        >
+          <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-[15px] font-semibold uppercase tracking-[0.12em] text-emerald-700 dark:text-emerald-300">
+                {isComplete ? <CheckCircle2 className="h-4 w-4" /> : isFailed ? <AlertTriangle className="h-4 w-4 text-red-500" /> : <Loader2 className="h-4 w-4 animate-spin text-sky-500" />}
+                {isComplete
+                  ? `${attackPaths} ${resultIsVerified ? "confirmed" : "retained"} path${attackPaths === 1 ? "" : "s"} across ${receiptCount} sources`
+                  : isFailed ? "Correlation failed" : `Correlation ${run.status}`}
               </p>
-              <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
-                {run.input_manifest.length} immutable source receipts · {run.max_age_hours}h bound · {run.allow_stale ? "stale inputs labeled" : "fresh inputs required"}
-              </p>
-              {isFailed && run.failure_code ? <p className="mt-1 font-mono text-[10px] text-red-600 dark:text-red-300">Failure code: {run.failure_code}</p> : null}
+              {isComplete && attackPaths > 0 && boundOutcome ? (
+                <>
+                  <h3 className="mt-2 text-lg font-semibold text-[color:var(--foreground)]">{boundOutcome.title}</h3>
+                  <p className="mt-1 max-w-3xl text-[15px] text-[color:var(--text-secondary)]">{boundOutcome.summary}</p>
+                  <p className="mt-2 text-[15px] font-medium text-[color:var(--foreground)]">{boundOutcome.source} → {boundOutcome.target}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-700 dark:text-red-200">Risk {boundOutcome.risk.toFixed(1)}</span>
+                    <span className="rounded-full border border-[color:var(--border-subtle)] px-2.5 py-1">{boundOutcome.hops} directed hops</span>
+                    {boundOutcome.packageName ? <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200">{boundOutcome.packageName}</span> : null}
+                    {boundOutcome.finding ? <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-orange-700 dark:text-orange-200">{boundOutcome.finding}</span> : null}
+                    {boundOutcome.runtimeObserved ? <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-200">Runtime observed</span> : null}
+                    {boundOutcome.runtimeBlocked ? <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-red-700 dark:text-red-200">Runtime block verified</span> : null}
+                  </div>
+                </>
+              ) : isComplete && attackPaths === 0 ? (
+                <>
+                  <h3 className="mt-2 text-lg font-semibold text-[color:var(--foreground)]">
+                    {resultIsVerified
+                      ? "No confirmed attack path in this correlation"
+                      : `0 retained paths; ${zeroPathQualification}`}
+                  </h3>
+                  <p className="mt-1 text-[15px] text-[color:var(--text-secondary)]">Review exposure candidates and analysis limits before treating the result as absence of risk.</p>
+                </>
+              ) : isComplete ? (
+                <p className="mt-2 text-[15px] text-[color:var(--text-secondary)]">Load this correlation&apos;s output to review its prioritized paths and evidence.</p>
+              ) : isFailed ? (
+                <>
+                  <p className="mt-2 text-[15px] text-[color:var(--text-secondary)]">The run produced no selectable partial snapshot. Review the failure code, adjust the inputs, and retry.</p>
+                  {run.failure_code ? <p className="mt-2 font-mono text-[11px] text-red-600 dark:text-red-300">Failure code: {run.failure_code}</p> : null}
+                </>
+              ) : <p className="mt-2 text-[15px] text-[color:var(--text-secondary)]">The evidence run is still processing.</p>}
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[15px] text-[color:var(--text-tertiary)]">
+                <span>{evidenceState}</span>
+                <span>{conflicts} conflict{conflicts === 1 ? "" : "s"}</span>
+                <span>{analysisLabel}</span>
+              </div>
             </div>
-            {run.output_scan_id ? (
-              <button type="button" onClick={() => onOpenSnapshot(run.output_scan_id)} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 font-medium text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
-                Open correlated snapshot
-              </button>
-            ) : null}
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {boundOutcome?.action && isComplete && attackPaths > 0 ? (
+                <a data-testid="correlation-primary-action" href={boundOutcome.action.href} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-500">{boundOutcome.action.title}</a>
+              ) : null}
+              {isComplete && attackPaths === 0 && run.output_scan_id ? (
+                <a href={`/security-graph?lens=attack-path&scan=${encodeURIComponent(run.output_scan_id)}`} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-500">
+                  Review exposure candidates
+                </a>
+              ) : null}
+              {isComplete && run.output_scan_id ? (
+                <button data-testid="correlation-open-path" type="button" onClick={() => onOpenSnapshot(run.output_scan_id)} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 font-semibold text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
+                  Open top path
+                </button>
+              ) : null}
+            </div>
           </div>
-          {isComplete ? <div
-            aria-label="Correlation source receipt graph"
-            data-testid="graph-correlation-receipt-dag"
-            className="mt-3 grid items-center gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(13rem,0.32fr)]"
-          >
-            <div className="flex flex-wrap gap-2">
-              {run.input_manifest.map((receipt) => (
-                <div key={receipt.scan_id} className="min-w-[8.5rem] flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">
-                  <p className="font-medium text-[color:var(--foreground)]">{sourceLabel(receipt.source_kinds, receipt.scan_id)}</p>
-                  <p className={receipt.freshness === "stale_allowed" || evidenceAge(receipt.created_at, run.max_age_hours) === "stale" ? "mt-1 text-[10px] text-amber-700 dark:text-amber-300" : "mt-1 text-[10px] text-emerald-700 dark:text-emerald-300"}>
-                    {receipt.freshness === "stale_allowed"
-                      ? "Stale allowed at run"
-                      : evidenceAge(receipt.created_at, run.max_age_hours) === "stale"
-                        ? "Expired since run"
-                        : "Fresh receipt"}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <ArrowRight className="hidden h-5 w-5 text-emerald-500 lg:block" aria-hidden="true" />
-            <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3">
-              <p className="flex items-center gap-2 font-semibold text-[color:var(--foreground)]">
-                <Database className="h-4 w-4 text-emerald-500" /> Correlated snapshot
-              </p>
-              <p className="mt-2 text-[10px] text-[color:var(--text-secondary)]">
-                {attackPaths} confirmed attack path{attackPaths === 1 ? "" : "s"}
-              </p>
-              <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">{conflicts} conflict{conflicts === 1 ? "" : "s"} retained · bounded analysis</p>
-            </div>
-          </div> : null}
-          <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)]">
-            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[10px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
-              <span>Inspect signed source receipts</span>
+          <details className="group mt-3 rounded-lg border border-[color:var(--border-subtle)]">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[15px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+              <span>Inspect source receipts · {receiptCount} sources · {conflicts} conflict{conflicts === 1 ? "" : "s"}</span>
               <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
             </summary>
             <div className="grid gap-2 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2">
               {run.input_manifest.map((receipt) => (
                 <div key={receipt.scan_id} className="min-w-0 rounded-md bg-[color:var(--surface-elevated)] px-2.5 py-2 text-[10px]">
+                  <p className="font-semibold text-[color:var(--foreground)]">{sourceLabel(receipt.source_kinds, receipt.scan_id)}</p>
                   <p className="truncate font-mono text-[color:var(--foreground)]">{receipt.scan_id}</p>
                   <p className="mt-1 truncate font-mono text-[color:var(--text-tertiary)]">{receipt.digest ?? "digest pending"}</p>
+                  <p className="mt-1 text-[color:var(--text-secondary)]">{receipt.source_kinds?.join(", ") || "source kind unavailable"} · {receipt.node_count ?? 0} nodes · {receipt.edge_count ?? 0} edges</p>
+                  <p className="mt-1 text-[color:var(--text-tertiary)]">Observed {formatDate(receipt.created_at ?? "")} · {evidenceAgeLabel(evidenceAge(receipt.created_at, run.max_age_hours))}</p>
                 </div>
               ))}
             </div>
@@ -277,7 +385,7 @@ export function GraphCorrelationWorkflow({
           <p className="mb-3 text-[10px] text-[color:var(--text-tertiary)]">Eligible fresh scan snapshots are preselected. Review the explicit policy before creating an immutable run.</p>
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]">
         <label className="text-xs font-medium text-[color:var(--text-secondary)]">
-          Correlation name
+          Run name
           <input
             aria-label="Correlation name"
             value={name}

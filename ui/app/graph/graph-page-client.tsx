@@ -781,6 +781,11 @@ function GraphPageInner() {
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<
     string | null
   >(null);
+  const requestedAttackPathKeyRef = useRef<string | null>(
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("path")
+      : null,
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
   const [searching, setSearching] = useState(false);
@@ -1004,7 +1009,8 @@ function GraphPageInner() {
   // Last URL the filter→URL sync effect wrote, used to break an infinite
   // router.replace loop (see the sync effect below for the full rationale).
   const lastSyncedUrlRef = useRef<string | null>(null);
-  const captureMode = useCaptureMode();
+  const captureModeFromLocation = useCaptureMode();
+  const captureMode = captureModeFromLocation || searchParams.get("capture") === "1";
 
   useEffect(() => {
     setLoadingSnapshots(true);
@@ -1347,6 +1353,19 @@ function GraphPageInner() {
   );
 
   useEffect(() => {
+    const requested = requestedAttackPathKeyRef.current;
+    if (!requested || selectedAttackPathKey || attackPaths.length === 0) return;
+    const match = requested === "top"
+      ? attackPaths[0]
+      : attackPaths.find((path) => attackPathKey(path) === requested);
+    if (match) {
+      const key = attackPathKey(match);
+      requestedAttackPathKeyRef.current = key;
+      setSelectedAttackPathKey(key);
+    }
+  }, [attackPaths, selectedAttackPathKey]);
+
+  useEffect(() => {
     if (!selectedAttackPathKey) return;
     if (
       !attackPaths.some((path) => attackPathKey(path) === selectedAttackPathKey)
@@ -1494,10 +1513,34 @@ function GraphPageInner() {
           null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
       };
     }
-    return buildUnifiedFlowGraph(projectedGraphData, filters);
+    const presentationFilters = selectedAttackPath
+      ? (() => {
+          const pathIds = new Set(selectedAttackPath.hops);
+          const layers = { ...filters.layers };
+          for (const node of projectedGraphData.nodes) {
+            if (!pathIds.has(node.id)) continue;
+            const layer = lineageNodeTypeForEntity(node.entity_type);
+            if (layer) layers[layer] = true;
+          }
+          // A selected path is an explicit witness. Its endpoints and every
+          // recorded hop must remain visible even when the previous topology
+          // view used narrower severity, agent, runtime, or layer filters.
+          return {
+            ...filters,
+            agentName: null,
+            severity: null,
+            vulnOnly: false,
+            runtimeMode: "all" as const,
+            relationshipScope: "all" as const,
+            layers,
+          };
+        })()
+      : filters;
+    return buildUnifiedFlowGraph(projectedGraphData, presentationFilters);
   }, [
     projectedGraphData,
     filters,
+    selectedAttackPath,
     rollupNavigationActive,
     rollupCanvasPending,
     rollupView,
@@ -1573,6 +1616,8 @@ function GraphPageInner() {
         nextParams.set("q", shareableInvestigation.rootLabel);
       }
     }
+    const shareablePath = selectedAttackPathKey ?? requestedAttackPathKeyRef.current;
+    if (shareablePath) nextParams.set("path", shareablePath);
     if (activeScopePreset === "assetDrift") {
       nextParams.set("scope", ASSET_DRIFT_GRAPH_SCOPE_PARAM);
     }
@@ -1626,6 +1671,7 @@ function GraphPageInner() {
     rollupStack,
     router,
     searchParams,
+    selectedAttackPathKey,
     selectedScanId,
     selectedScenarioId,
     scenarioState,
@@ -1746,7 +1792,11 @@ function GraphPageInner() {
       // 4-node chain. A focused single-agent view tightens the ranks a little
       // while keeping the same non-overlap guarantee.
       dagreLr: readableLineageDagreLr(
-        filters.agentName ? { rankSep: 152, nodeSep: 52 } : {},
+        selectedAttackPath
+          ? { rankSep: 72, nodeSep: 40, nodeWidth: 224, nodeHeight: 128, fitAspect: 2.65 }
+          : filters.agentName
+            ? { rankSep: 152, nodeSep: 52 }
+            : {},
       ),
     },
   );
@@ -1759,6 +1809,39 @@ function GraphPageInner() {
         layoutNodes.map((node) => node.id),
       )
     : 0;
+  const selectedPathDecision = useMemo(() => {
+    if (!selectedAttackPath) return null;
+    const nodes = selectedAttackPath.hops
+      .map((id) => graphNodeById.get(id))
+      .filter((node): node is UnifiedNode => Boolean(node));
+    const finding = nodes.find((node) =>
+      ["vulnerability", "misconfiguration"].includes(String(node.entity_type)),
+    );
+    const packageNode = nodes.find((node) => String(node.entity_type) === "package");
+    const fixedVersion = typeof finding?.attributes?.fixed_version === "string"
+      ? finding.attributes.fixed_version
+      : null;
+    const packageName = packageNode?.label.split("@")[0] || "affected package";
+    const directedTraversable = selectedAttackPath.hop_evidence?.filter((receipt) =>
+      receipt.direction !== "undirected" &&
+      receipt.traversable === true &&
+      receipt.complete === true &&
+      receipt.truncated === false &&
+      receipt.source_snapshot_ids.length > 0,
+    ).length ?? 0;
+    const findingLabel = finding?.label ?? selectedAttackPath.vuln_ids[0] ?? "finding";
+    return {
+      findingLabel,
+      nextAction: fixedVersion
+        ? `Upgrade ${packageName} to ${fixedVersion}`
+        : `Review and remediate ${findingLabel}`,
+      remediationHref: `/remediation?scan=${encodeURIComponent(selectedScanId)}&cve=${encodeURIComponent(findingLabel)}`,
+      directedTraversable,
+      hasHopReceipts: Boolean(selectedAttackPath.hop_evidence?.length),
+      sourceLabel: nodes[0]?.label ?? selectedAttackPath.source,
+      targetLabel: nodes.at(-1)?.label ?? selectedAttackPath.target,
+    };
+  }, [graphNodeById, selectedAttackPath, selectedScanId]);
 
   // Focus mode (#2257). The "active" focus is whichever the operator
   // pinned (click) — falling back to whatever is hovered. Pinning
@@ -1845,16 +1928,19 @@ function GraphPageInner() {
         .map((node) => {
           const inPath = attackPathNodeIds.has(node.id);
           const order = attackPathNodeOrder?.get(node.id) ?? 0;
+          const row = Math.floor(order / 4);
+          const column = order % 4;
+          const serpentineColumn = row % 2 === 0 ? column : 3 - column;
           return {
             ...node,
             position: {
-              x: order * 255,
-              y: order % 2 === 0 ? 0 : 96,
+              x: serpentineColumn * 400,
+              y: row * 220,
             },
             className: composeFocusClass(node.className, inPath, !inPath),
             data: {
               ...node.data,
-              renderBand: effectiveLodBand,
+              renderBand: "detail",
               dimmed: !inPath,
               highlighted: inPath,
             },
@@ -2033,12 +2119,13 @@ function GraphPageInner() {
           const inPath = attackPathEdgeKeys.has(
             `${edge.source}=>${edge.target}`,
           );
-          const relationshipLabel =
-            typeof edge.data?.relationshipLabel === "string"
+          const relationshipLabel = typeof edge.data?.relationship === "string"
+            ? edge.data.relationship === "vulnerable_to"
+              ? "Vulnerable"
+              : edge.data.relationship.replace(/_/g, " ")
+            : typeof edge.data?.relationshipLabel === "string"
               ? edge.data.relationshipLabel
-              : typeof edge.data?.relationship === "string"
-                ? edge.data.relationship.replace(/_/g, " ")
-                : undefined;
+              : undefined;
           return {
             ...edge,
             label: relationshipLabel,
@@ -2051,7 +2138,9 @@ function GraphPageInner() {
             },
             labelStyle: {
               fill: "#f4f4f5",
-              fontSize: Math.max(10, Math.min(24, 12 / Math.max(graphViewport.zoom, 0.2))),
+              fontSize: captureMode && selectedAttackPath
+                ? 24
+                : Math.max(10, Math.min(24, 12 / Math.max(graphViewport.zoom, 0.2))),
               fontWeight: 650,
             },
             animated: captureMode ? false : Boolean(inPath || edge.animated),
@@ -2146,6 +2235,7 @@ function GraphPageInner() {
     captureMode,
     graphViewport.zoom,
     displayNodes,
+    selectedAttackPath,
   ]);
 
   const accessibleBaseDisplayEdges = useMemo(
@@ -3558,30 +3648,63 @@ function GraphPageInner() {
       {/* A full viewport, not a letterbox. Secondary evidence and controls stay
           in the disclosure above so this canvas begins in the first viewport
           and still gets a screen of its own. */}
-      <div className="flex-1 flex relative min-h-[calc(100vh-3.5rem)]">
+      <div
+        data-testid={selectedAttackPath ? "focused-path-surface" : undefined}
+        className={selectedAttackPath
+          ? "flex relative min-h-[540px]"
+          : "flex-1 flex relative min-h-[calc(100vh-3.5rem)]"}
+      >
         <div className="flex-1 relative min-h-0 flex flex-col">
-          {selectedAttackPath && (
-            <div className="graph-callout-orange-compact">
-              <span>
-                Focused attack path · risk{" "}
-                {selectedAttackPath.composite_risk.toFixed(1)} ·{" "}
-                {selectedEvidenceHopCount} evidence hops
-                {selectedVisibleHopCount === selectedEvidenceHopCount
-                  ? ""
-                  : ` · ${selectedVisibleHopCount} visible in scope`}
-              </span>
-              <div className="flex items-center gap-2">
+          {selectedAttackPath && selectedPathDecision && (
+            <section
+              aria-label="Focused attack path decision"
+              data-testid="focused-path-decision"
+              className="mb-3 rounded-2xl border border-orange-500/35 bg-gradient-to-r from-orange-500/10 via-[var(--surface-elevated)] to-red-500/10 p-4"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-300">
+                    Focused attack path
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+                    {selectedPathDecision.sourceLabel} → {selectedPathDecision.targetLabel}
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm text-[var(--text-secondary)]">
+                    {selectedAttackPath.summary || `${selectedPathDecision.findingLabel} is reachable across the selected directed path.`}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <span className="rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-700 dark:text-red-200">
+                    Risk {selectedAttackPath.composite_risk.toFixed(1)}
+                  </span>
+                  <a
+                    href={selectedPathDecision.remediationHref}
+                    className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+                  >
+                    Open remediation plan
+                  </a>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--text-secondary)]">
+                <span>{selectedEvidenceHopCount} evidence hops</span>
+                <span>{selectedPathDecision.hasHopReceipts
+                  ? `${selectedPathDecision.directedTraversable}/${selectedEvidenceHopCount} directed traversable relationships evidenced`
+                  : "Directed hop verification not recorded"}</span>
+                <span>Snapshot freshness: {activeSnapshot ? new Date(activeSnapshot.created_at).toLocaleString() : "unavailable"}</span>
+                <span className="font-medium text-[var(--foreground)]">Next: {selectedPathDecision.nextAction}</span>
+                {captureMode ? <span>Demo data — sample environment</span> : null}
                 <button
                   type="button"
                   onClick={() => {
+                    requestedAttackPathKeyRef.current = null;
                     setSelectedAttackPathKey(null);
                   }}
                   className="graph-chip-orange-muted"
                 >
-                  Clear focus
+                  Return to topology
                 </button>
               </div>
-            </div>
+            </section>
           )}
           <div className="relative min-h-0 flex-1 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
           {loadingGraph && !graphData ? (

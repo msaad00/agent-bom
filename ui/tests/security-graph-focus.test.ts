@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildCorrelationPathHref,
+  buildCorrelationRemediationHref,
   buildFocusedGraphData,
+  completeDirectedHopCount,
+  correlationOutcomeMatchesOutput,
+  focusCorrelationPathTarget,
   latestCompletedCorrelation,
   selectInitialGraphSnapshot,
 } from "@/lib/security-graph-focus";
@@ -218,5 +223,79 @@ describe("initial Investigation snapshot", () => {
       { ...correlation, status: "pending" },
       { ...correlation, status: "failed" },
     ])).toBeNull();
+  });
+});
+
+describe("correlation outcome focus", () => {
+  it("binds an outcome only after graph and fix-first data match the exact run output", () => {
+    expect(correlationOutcomeMatchesOutput("corr-output", "corr-output", "corr-output")).toBe(true);
+    expect(correlationOutcomeMatchesOutput("corr-output", "other", "corr-output")).toBe(false);
+    expect(correlationOutcomeMatchesOutput("corr-output", "corr-output", "other")).toBe(false);
+    expect(correlationOutcomeMatchesOutput("corr-output", undefined, "corr-output")).toBe(false);
+  });
+
+  it("builds a top-path Investigation route and clears stale focus parameters", () => {
+    const href = buildCorrelationPathHref(
+      "/security-graph",
+      new URLSearchParams("scan=old&cve=CVE-old&package=old%401&agent=old&step=impact"),
+      "corr-output",
+    );
+
+    expect(href).toBe("/security-graph?scan=corr-output&path=top#selected-investigation-path");
+  });
+
+  it("focuses and scrolls the selected Investigation path into view", () => {
+    const target = document.createElement("div");
+    target.id = "selected-investigation-path";
+    target.tabIndex = -1;
+    target.scrollIntoView = vi.fn();
+    target.focus = vi.fn();
+    document.body.append(target);
+
+    expect(focusCorrelationPathTarget(document)).toBe(true);
+    expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(target.focus).toHaveBeenCalledWith({ preventScroll: true });
+    target.remove();
+  });
+
+  it("preserves exact correlation context in remediation navigation", () => {
+    expect(
+      buildCorrelationRemediationHref(
+        "/remediation",
+        "corr-output",
+        "CVE-2023-4863",
+        "pillow@9.0.0",
+      ),
+    ).toBe("/remediation?scan=corr-output&cve=CVE-2023-4863&package=pillow%409.0.0");
+  });
+
+  it("accepts only a complete provenance-backed directed hop chain", () => {
+    const receipt = {
+      source_node_id: "agent:desktop",
+      target_node_id: "server:github",
+      relationship: "uses",
+      source_snapshot_ids: ["scan-1"],
+      evidence_tier: "static_evidence",
+      confidence: 1,
+      freshness: "fresh",
+      runtime_observed_state: "not_observed",
+      direction: "directed",
+      traversable: true,
+      complete: true,
+      truncated: false,
+    };
+
+    const receipts = [
+      receipt,
+      { ...receipt, source_node_id: "server:github", target_node_id: "pkg:form-data", relationship: "depends_on" },
+      { ...receipt, source_node_id: "pkg:form-data", target_node_id: "cve:form-data", relationship: "vulnerable_to" },
+    ];
+
+    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: receipts })).toBe(3);
+    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipts[1]!, receipts[0]!, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipt, { ...receipts[1]!, target_node_id: "wrong" }, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipt, { ...receipts[1]!, direction: "forward" }, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipt, { ...receipts[1]!, truncated: true }, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipt, { ...receipts[1]!, source_snapshot_ids: [] }, receipts[2]!] })).toBeNull();
   });
 });

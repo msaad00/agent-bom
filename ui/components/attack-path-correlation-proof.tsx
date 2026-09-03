@@ -72,30 +72,30 @@ export function AttackPathCorrelationProof({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-[color:var(--foreground)]">{proofLabel}</p>
-          <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
+          <p className="text-base font-semibold text-[color:var(--foreground)]">{proofLabel}</p>
+          <p className="mt-0.5 text-[15px] text-[color:var(--text-tertiary)]">
             {completeHopCount}/{expectedHopCount} directed traversable hops evidenced
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {[...kinds].map(([kind, label]) => (
-            <span key={kind} className={`rounded-full border px-2 py-1 text-[10px] font-medium ${badgeTone(kind)}`}>
+            <span key={kind} className={`rounded-full border px-2 py-1 text-[15px] font-medium ${badgeTone(kind)}`}>
               {label}
             </span>
           ))}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5">
-        <span className="text-[10px] font-medium text-[color:var(--text-tertiary)]">Exact anchors</span>
+        <span className="text-[15px] font-medium text-[color:var(--text-tertiary)]">Exact anchors</span>
         {anchors.map((node) => (
-          <span key={node.id} className="max-w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-1 font-mono text-[9px] text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+          <span key={node.id} className="max-w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-1 font-mono text-[15px] text-[color:var(--foreground)] [overflow-wrap:anywhere]">
             {node.label || node.id}
           </span>
         ))}
-        <span className="ml-auto text-[10px] text-[color:var(--text-tertiary)]">{sourceCount} source snapshots</span>
+        <span className="ml-auto text-[15px] text-[color:var(--text-tertiary)]">{sourceCount} source snapshots</span>
       </div>
       <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-        <summary className="cursor-pointer list-none px-3 py-2 text-[10px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+        <summary className="cursor-pointer list-none px-3 py-2 text-[15px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
           Inspect {receipts.length} hop receipts
         </summary>
         <div className="grid gap-1.5 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2">

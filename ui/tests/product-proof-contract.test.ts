@@ -104,16 +104,23 @@ describe("product proof capture contract", () => {
     expect(source).toContain('path: "correlation-path-mobile-live.png"');
     expect(source).toContain('presentation: "light desktop"');
     expect(source).toContain('presentation: "dark mobile"');
-    expect(source).toContain('getByTestId("graph-correlation-receipt-dag")');
+    expect(source).toContain('getByTestId("graph-correlation-decision")');
     expect(source).toContain('getByTestId("attack-path-correlation-proof")');
     expect(source).toContain("referenceLabActualDigest");
     expect(source).toContain("correlation_manifest_sha256");
     expect(source).toContain("Runtime block verified");
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
-    expect(source).toContain('window.scrollTo({ top: workflowTop - 88, behavior: "instant" })');
+    expect(source).toContain('window.scrollTo({ top: top - offset, behavior: "instant" })');
     expect(source).toContain("assertNoHorizontalOverflow: true");
     expect(source).toContain('getByTestId("selected-exposure-path")');
-    expect(source).toContain("< 640 ? -72 : -300");
+    expect(source).toContain('readySelector: \'[data-testid="exposure-path-desktop-sequence"]\'');
+    expect(source).toContain('/hops hidden/i');
+    expect(source).toContain('"3. Server"');
+    expect(source).toContain('selector: \'[data-testid="selected-exposure-path"]\'');
+    expect(source).toContain('\'[data-testid="exposure-path-primary-action"]\'');
+    expect(source).toContain("targetWidthPx: 920");
+    expect(source).toContain("minFontPx: 12");
+    expect(source).toContain("< 640 ? 96 : 88");
   });
 
   it("keeps the base graph fixture from swallowing graph subroutes", () => {
@@ -121,9 +128,31 @@ describe("product proof capture contract", () => {
     expect(source).not.toContain('page.route("**/v1/graph?**"');
   });
 
-  it("pins lineage proof through shareable URL filters rather than secondary controls", () => {
-    expect(source).toContain('/graph?capture=1&scan=${SCAN_ID}&agent=developer-copilot&vulnOnly=1');
+  it("pins lineage proof to one exact ranked path with legibility and outcome guards", () => {
+    expect(source).toContain(
+      '/graph?capture=1&scan=${SCAN_ID}&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability',
+    );
     expect(source).toContain('getByRole("heading", { name: "Lineage Graph" })');
+    expect(graphPage).toContain("requestedAttackPathKeyRef.current = key");
+    expect(graphPage).toContain('captureModeFromLocation || searchParams.get("capture") === "1"');
+    expect(graphPage).toContain("A selected path is an explicit witness");
+    expect(graphPage).toContain("if (layer) layers[layer] = true");
+    expect(source).toContain('maxGraphNodes: 8');
+    expect(source).toContain('maxGraphEdges: 7');
+    expect(source).toContain('minGraphNodeFontPx: 12');
+    expect(source).toContain('minGraphEdgeLabelFontPx: 12');
+    expect(source).toContain("node.offsetWidth");
+    expect(graphPage).toContain('renderBand: "detail"');
+    expect(graphPage).toContain("serpentineColumn * 400");
+    expect(graphPage).toContain("? 24");
+    expect(source).toContain('minGraphWidthFillRatio: 0.65');
+    expect(source).toContain('assertEdgeLabelsClearOfNodes: true');
+    expect(source).toContain('/Focused attack path/i');
+    expect(source).toContain('"6 evidence hops"');
+    expect(source).toContain('"Upgrade next to 16.2.7"');
+    expect(source).toContain('"Open remediation plan"');
+    expect(source).toContain('"Snapshot freshness"');
+    expect(source).not.toContain('react-flow__controls-zoomout');
     expect(source).not.toContain('hasText: "Advanced controls"');
     expect(source).not.toContain('getByRole("option", { name: "developer-copilot"');
   });

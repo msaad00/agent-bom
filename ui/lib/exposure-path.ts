@@ -17,6 +17,8 @@ export interface ExposureEntityRef {
   id: string;
   label: string;
   subtitle?: string | undefined;
+  /** More specific presentation kind when canonical graph taxonomy is broader. */
+  kindLabel?: string | undefined;
   role: ExposureEntityRole;
   severity?: ExposureSeverity | undefined;
   riskScore?: number | undefined;

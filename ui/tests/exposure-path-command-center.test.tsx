@@ -115,6 +115,21 @@ describe("ExposurePathCommandCenter", () => {
     expect(screen.getByText("Validate the lead finding")).toBeInTheDocument();
   });
 
+  it("keeps the decision proof and action visible while technical analysis is disclosed", () => {
+    render(
+      <ExposurePathCommandCenter
+        path={basePath}
+        actions={[{ title: "Open remediation", detail: "Review the patch.", href: "/remediation" }]}
+        techniquesSlot={<div>Path verified from seven receipts</div>}
+        detailsSlot={<div>Mapped ATT&amp;CK analysis</div>}
+      />,
+    );
+
+    expect(screen.getByText("Path verified from seven receipts")).toBeVisible();
+    expect(screen.getByText("Open remediation")).toBeVisible();
+    expect(screen.getByText("Mapped ATT&CK analysis")).not.toBeVisible();
+  });
+
   it("gives the title a full mobile row and keeps the summary readable", () => {
     render(<ExposurePathCommandCenter path={basePath} />);
 
@@ -187,23 +202,19 @@ describe("ExposurePathCommandCenter", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("fits a long chain in the first frame and names the hops it summarises", () => {
+  it("shows every long-path hop in a readable ordered first frame", () => {
     render(<ExposurePathCommandCenter path={longPath} />);
 
-    const board = screen.getByRole("img", { name: /Selected exposure path graph for/ });
-    // Shrink-to-fit board: capped at its natural width, never a fixed overflow.
-    expect(board).toHaveAttribute("width", "100%");
-    expect(Number.parseInt(board.style.maxWidth, 10)).toBeLessThanOrEqual(1408);
-    // Collapsed board fits, so its wrapper must not offer horizontal scroll.
-    expect(screen.getByTestId("exposure-path-graph-scroll")).not.toHaveClass("overflow-x-auto");
-
-    // Entry hop and crown-jewel hop stay pinned; the middle is summarised by
-    // kind so the tool and credential hops are still named in the first frame.
-    expect(within(board).getByText("Cursor IDE Agent")).toBeInTheDocument();
-    expect(within(board).getByText("prod-warehouse")).toBeInTheDocument();
-    expect(within(board).getByText("+9 hops hidden")).toBeInTheDocument();
-    expect(within(board).getByText("3 credentials · 3 tools")).toBeInTheDocument();
-    expect(within(board).queryByText("run_shell")).not.toBeInTheDocument();
+    const orderedPath = screen.getByTestId("exposure-path-desktop-sequence");
+    expect(within(orderedPath).getByText("Cursor IDE Agent")).toBeInTheDocument();
+    expect(within(orderedPath).getByText("run_shell")).toBeInTheDocument();
+    expect(within(orderedPath).getByText("exec_command")).toBeInTheDocument();
+    expect(within(orderedPath).getByText("DATABASE_URL")).toBeInTheDocument();
+    expect(within(orderedPath).getByText("prod-warehouse")).toBeInTheDocument();
+    expect(within(orderedPath).getByText("11. Environment")).toBeInTheDocument();
+    expect(within(orderedPath).queryByText(/hops hidden/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Selected exposure path graph for/ })).not.toBeInTheDocument();
+    expect(screen.getByText("All 11 hops shown in order.")).toBeInTheDocument();
   });
 
   it("shows every hop in the eight-hop reference proof without a hidden summary", () => {
@@ -225,10 +236,24 @@ describe("ExposurePathCommandCenter", () => {
     expect(within(mobileSequence).getByText("SNOWFLAKE_PASSWORD")).toBeInTheDocument();
   });
 
+  it("renders the canonical node kind instead of a broad styling role", () => {
+    const path = {
+      ...longPath,
+      hops: longPath.hops.map((hop, index) =>
+        index === 2 ? { ...hop, kindLabel: "Container" } : hop,
+      ),
+    };
+    render(<ExposurePathCommandCenter path={path} />);
+
+    const orderedPath = screen.getByTestId("exposure-path-desktop-sequence");
+    expect(within(orderedPath).getByText("3. Container")).toBeInTheDocument();
+    expect(within(orderedPath).queryByText("3. Server")).not.toBeInTheDocument();
+  });
+
   it("round-trips the long-chain board between collapsed and fully expanded", () => {
     render(<ExposurePathCommandCenter path={longPath} />);
 
-    const toggle = screen.getByRole("button", { name: "Show all 11 hops" });
+    const toggle = screen.getByRole("button", { name: "Open full-width diagram" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(toggle);
@@ -241,30 +266,29 @@ describe("ExposurePathCommandCenter", () => {
     expect(Number(expandedBoard.getAttribute("width"))).toBeGreaterThan(1408);
     expect(screen.getByTestId("exposure-path-graph-scroll")).toHaveClass("overflow-x-auto");
 
-    const collapse = screen.getByRole("button", { name: "Collapse to fit" });
+    const collapse = screen.getByRole("button", { name: "Return to ordered path" });
     expect(collapse).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(collapse);
-    const collapsedBoard = screen.getByRole("img", { name: /Selected exposure path graph for/ });
-    expect(within(collapsedBoard).getByText("+9 hops hidden")).toBeInTheDocument();
-    expect(within(collapsedBoard).queryByText("run_shell")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Selected exposure path graph for/ })).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("exposure-path-desktop-sequence")).getByText("run_shell")).toBeInTheDocument();
   });
 
   it("re-enters the fit-first frame when a different path is selected", () => {
     const { rerender } = render(<ExposurePathCommandCenter path={longPath} />);
-    fireEvent.click(screen.getByRole("button", { name: "Show all 11 hops" }));
-    expect(screen.getByRole("button", { name: "Collapse to fit" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open full-width diagram" }));
+    expect(screen.getByRole("button", { name: "Return to ordered path" })).toBeInTheDocument();
 
     // Selecting another long path must not inherit the expanded board — the
     // first frame of a new investigation has to fit again.
     rerender(<ExposurePathCommandCenter path={{ ...longPath, id: "path-long-2" }} />);
-    expect(screen.getByRole("button", { name: "Show all 11 hops" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Collapse to fit" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open full-width diagram" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Return to ordered path" })).not.toBeInTheDocument();
   });
 
   it("does not offer a collapse toggle for a path that already fits", () => {
     render(<ExposurePathCommandCenter path={{ ...basePath, hops: basePath.hops.slice(0, 4) }} />);
 
-    expect(screen.queryByRole("button", { name: /Show all \d+ hops/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open full-width diagram/ })).not.toBeInTheDocument();
     expect(screen.getByTestId("exposure-path-graph-scroll")).not.toHaveClass("overflow-x-auto");
   });
 

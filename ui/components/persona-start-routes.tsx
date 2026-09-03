@@ -41,7 +41,7 @@ const STARTS: PersonaStart[] = [
     label: "Compliance evidence",
     persona: "GRC / audit",
     command: "agent-bom scan . --compliance",
-    artifact: "Control mappings and signed evidence paths",
+    artifact: "Control-tagged findings and evidence-ready scan output",
     href: "/compliance",
   },
   {

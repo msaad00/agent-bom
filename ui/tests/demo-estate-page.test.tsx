@@ -214,6 +214,8 @@ describe("DemoEstatePage", () => {
     ]) {
       expect(within(starts).getByText(label)).toBeInTheDocument();
     }
+    expect(within(starts).getByText("Control-tagged findings and evidence-ready scan output")).toBeInTheDocument();
+    expect(within(starts).queryByText("Control mappings and signed evidence paths")).not.toBeInTheDocument();
   });
 
   it("names an operator-owned graph instead of linking to a missing showcase", async () => {

@@ -2543,7 +2543,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-path-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
-      scope: "Reference evidence lab confirmed path with exact OCI digest, advisory, hop provenance, freshness, runtime observation, strict block proof, and remediation handoff",
+      scope: "Reference evidence lab confirmed path with exact OCI digest, advisory, hop provenance, freshness, runtime observation, strict block proof, and package remediation recommendation",
       presentation: `${CAPTURE_THEME} desktop`,
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,

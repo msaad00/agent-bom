@@ -61,11 +61,12 @@ compliance exports, and runtime enforcement in your own environment.
 ### Product proof: independent evidence, one verifiable path
 
 The views below come from the committed **Reference evidence lab — modeled
-local infrastructure**. The credential-free run uses the real repository,
-CycloneDX, Kubernetes IaC, and MCP parsers plus the bundled advisory scanner for
-`pillow@9.0.0` / `CVE-2023-4863`, then correlates exact OCI digest, Kubernetes
-UID, MCP tool, workload identity, and live local gateway receipts. It is not
-customer evidence or a live-cloud claim.
+local infrastructure**. The credential-free run validates committed repository,
+CycloneDX, Kubernetes IaC, and MCP inputs with product parsers and scans the
+bundled `pillow@9.0.0` / `CVE-2023-4863` advisory data. The lab generator then
+assembles modeled local source snapshots from those validated artifacts and
+correlates exact OCI digest, Kubernetes UID, MCP tool, workload identity, and
+live local gateway receipts. It is not customer evidence or a live-cloud claim.
 
 Investigation loads the latest completed correlation automatically and shows
 the source-to-path journey first. Custom snapshot selection remains available
@@ -79,10 +80,11 @@ The resulting path is confirmed only because every directed hop is traversable
 and provenance-backed: exposed service → workload → digest-pinned container →
 `pillow@9.0.0` / `CVE-2023-4863` → MCP capability → workload identity →
 modeled sensitive object store. The same lab records an observed gateway call
-and a separate strict opt-in block before the remediation handoff.
+and a separate strict opt-in block, then presents the exact package remediation
+recommendation to verify next.
 
 <p align="center">
-  <a href="docs/images/correlation-path-live.png"><img src="docs/images/correlation-path-live.png" alt="Reference evidence lab Investigation path for CVE-2023-4863 with exact container digest, per-hop source provenance, freshness, runtime observation and strict block proof, and remediation handoff" width="920" /></a>
+  <a href="docs/images/correlation-path-live.png"><img src="docs/images/correlation-path-live.png" alt="Reference evidence lab Investigation path for CVE-2023-4863 with exact container digest, per-hop source provenance, freshness, runtime observation and strict block proof, and a package remediation recommendation" width="920" /></a>
 </p>
 
 [Regenerate the reference lab](examples/reference-evidence-lab/README.md) · [Open the full product gallery](docs/GALLERY.md) · [See the capture protocol](docs/CAPTURE.md)

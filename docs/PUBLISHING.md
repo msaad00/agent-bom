@@ -55,11 +55,14 @@ must never point at Smithery's hosted proxy URL. Freshness monitoring no longer
 depends on that variable; it uses the Smithery catalog API directly.
 
 Do not add the upstream bearer token to Smithery `configSchema`. Smithery
-reserves the `Authorization` header for OAuth. A new authenticated capability
-scan can pause as `AUTH_REQUIRED`; authorize that pending release in Smithery's
-**Releases** UI. The workflow waits up to 15 minutes and otherwise fails
-honestly. After authorization, re-running the workflow verifies catalog parity
-without creating another deployment.
+reserves the `Authorization` header for OAuth. If a capability scan pauses as
+`AUTH_REQUIRED`, the workflow reads the release through Smithery's authenticated
+API, accepts only an authorization URL on the configured Agent-Bom origin,
+follows the bounded machine-to-machine PKCE callback without logging its OAuth
+state, and resumes the same release. It never creates a duplicate while a
+matching release remains active. The workflow retries every six hours and
+fails honestly if the provider still requires authorization or the exact
+catalog does not converge.
 
 ### Verification
 
@@ -135,13 +138,20 @@ clawhub install agent-bom-scan
 ## 4. Glama
 
 Glama indexes the repository README and builds the MCP schema from
-`integrations/glama/Dockerfile`. Automatic forward releases require the
-`GLAMA_WEBHOOK_URL` Actions secret; a missing webhook or a stale public listing
-fails the registry workflow rather than reporting a green publication.
+`integrations/glama/Dockerfile`. Glama synchronizes linked GitHub repositories
+automatically at least daily. `publish-registries.yml` verifies the exact
+released version and MCP tool set immediately after a release and every six
+hours; it does not call an undocumented provider endpoint or report stale data
+as published.
 
-For a manual repair, open the server's **Admin → Repository** page and run
-**Sync**, then dispatch **Publish to Registries** again. Verification requires
-both the released version marker and the exact released MCP tool count.
+For an immediate provider-side refresh, open the server's admin page and use
+**Sync Server**, then dispatch **Publish to Registries** again. Verification
+requires both the released version marker and the exact released MCP tool
+count.
+
+A Glama hosted release is separate from directory synchronization. Creating
+one remains a maintainer action in Glama: configure the Dockerfile build,
+deploy and pass the build test, then create and publish the Glama release.
 
 ```bash
 python scripts/check_glama_listing.py \
@@ -233,6 +243,7 @@ For dependency-heavy or security-driven releases, also verify:
 | **GHCR (stdio)** | `Dockerfile.mcp` | publish-mcp.yml | workflow_run |
 | **GHCR (SSE)** | `deploy/docker/Dockerfile.sse` | publish-mcp.yml | workflow_run |
 | **Smithery** | workflow API | publish-registries.yml | workflow_run |
+| **Glama directory** | `glama.json` + `integrations/glama/Dockerfile` | provider sync + strict verification | provider daily sync / publish-registries.yml every 6 hours |
 | **ClawHub** | curated `integrations/openclaw/*/SKILL.md` set | publish-registries.yml | workflow_run |
 | **MCP Registry** | `integrations/mcp-registry/server.json` | publish-mcp-registry.yml | workflow_run |
 | **Railway** | `deploy/docker/Dockerfile.sse` | deploy-mcp-sse.yml | release workflow_call / workflow_dispatch |

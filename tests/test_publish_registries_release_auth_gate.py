@@ -23,7 +23,7 @@ def test_automatic_forward_release_cannot_report_success_when_smithery_is_skippe
     assert "Smithery publication is required for an automatic forward release" in workflow
 
 
-def test_smithery_publication_is_idempotent_and_waits_for_publisher_authorization() -> None:
+def test_smithery_publication_is_idempotent_and_bounds_authorization_recovery() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "Check Smithery catalog parity" in workflow
@@ -32,7 +32,7 @@ def test_smithery_publication_is_idempotent_and_waits_for_publisher_authorizatio
     assert "skipping a duplicate deployment" in workflow
     assert "for ATTEMPT in $(seq 1 90)" in workflow
     assert "AUTH_REQUIRED)" in workflow
-    assert "authorize the pending release in the Smithery UI" in workflow
+    assert "bounded recovery attempt" in workflow
     assert "within 15 minutes" in workflow
 
 
@@ -45,6 +45,15 @@ def test_smithery_publication_reuses_matching_pending_release() -> None:
     assert 'select(.status == "AUTH_REQUIRED" or .status == "QUEUED" or .status == "WORKING")' in workflow
     assert 'POST "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases/${RELEASE_ID}/resume"' in workflow
     assert "Reusing matching Smithery release" in workflow
+
+
+def test_new_smithery_release_completes_machine_authorization_before_resume() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "authorize_smithery_release.py" in workflow
+    assert "Complete Smithery scan authorization" in workflow
+    assert "AUTHORIZATION_ATTEMPTED" in workflow
+    assert "Smithery authorization remained required after the bounded recovery attempt" in workflow
 
 
 def test_surface_freshness_rechecks_immediately_after_registry_publication() -> None:

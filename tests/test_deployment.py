@@ -722,9 +722,7 @@ def test_publish_registries_workflow_validates_registry_gates_and_curated_clawhu
     assert 'git merge-base --is-ancestor "$RELEASE_SHA" "origin/$DEFAULT_BRANCH"' in workflow
     assert "Release workflow must be a same-repository tag push" in workflow
     assert "workflow_run.head_sha || github.ref" not in workflow
-    assert "actions: read" in workflow
-    assert "jq -n" in workflow
-    assert "dockerfile: $dockerfile" in workflow
+    assert "actions: write" not in workflow
 
 
 def test_publish_registries_manual_repair_resolves_latest_release_only():
@@ -756,25 +754,21 @@ def test_publish_registries_uses_release_metrics_for_glama_and_clawhub_assets():
     assert 'git archive --format=tar "$RELEASE_SHA" -- integrations/openclaw' in workflow
 
 
-def test_glama_rebuild_webhook_is_secret_and_missing_secret_is_honest():
-    """A missing webhook must not leak a URL or claim a rebuild happened."""
+def test_glama_publication_uses_supported_provider_sync_and_strict_verification():
+    """Glama directory publication is provider-managed and release-verified."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()
 
-    assert "GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}" in workflow
-    assert "GLAMA_WEBHOOK_URL: ${{ vars.GLAMA_WEBHOOK_URL }}" not in workflow
-    assert "id: glama_trigger" in workflow
-    assert 'echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"' in workflow
-    assert "No Glama rebuild was triggered" in workflow
-    assert "set GLAMA_WEBHOOK_URL as a repository Actions secret" in workflow
-    assert 'HTTP_STATUS" -lt 300' in workflow
-    assert 'HTTP_STATUS" -lt 400' not in workflow
-    assert "REGISTRY_PUBLISH_REQUIRED: ${{ github.event_name == 'workflow_run' }}" in workflow
-    assert "GLAMA_REPAIR: ${{ inputs.glama_repair }}" in workflow
-    assert 'if [ "$REGISTRY_PUBLISH_REQUIRED" = "true" ] || [ "$GLAMA_REPAIR" = "true" ]; then' in workflow
-    assert "::error::Required Glama publication" in workflow
     glama_job = workflow.split("  glama:\n", 1)[1].split("  clawhub:\n", 1)[0]
+    assert "GLAMA_WEBHOOK_URL" not in glama_job
+    assert "glama_repair" not in workflow
+    assert "Trigger Glama rebuild" not in glama_job
+    assert "-X POST" not in glama_job
     assert "continue-on-error: true" not in glama_job
-    assert "python scripts/check_glama_listing.py" in glama_job
+    assert 'check_glama_listing.py --verify-manifest --git-ref "${{ needs.release.outputs.release_sha }}"' in glama_job
+    assert '--expected "$EXPECTED_VERSION"' in glama_job
+    assert '--expected-tool-count "$EXPECTED_TOOL_COUNT"' in glama_job
+    assert "Glama syncs linked GitHub repositories automatically at least daily" in glama_job
+    assert "Sync Server" in glama_job
     assert "exit 1" in workflow
 
 

@@ -1,6 +1,8 @@
 name: Publish to Registries
 
-# Auto-publishes to Smithery and ClawHub after a successful Release workflow.
+# Publishes to Smithery and ClawHub after a successful Release workflow, and
+# reconciles the provider-managed Smithery and Glama directories every six
+# hours until their public catalogs match the latest release contract.
 # Secrets needed (add via Settings → Secrets):
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
@@ -11,24 +13,13 @@ name: Publish to Registries
 # release is only fresh when the catalog converges to the released tool count.
 # Optional vars:
 #   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
-# Optional secret:
-#   GLAMA_WEBHOOK_URL   — Glama rebuild webhook (POST JSON: ref, commit, version, dockerfile)
-
 on:
+  schedule:
+    - cron: "17 */6 * * *"
   workflow_run:
     workflows: ["Release"]
     types: [completed]
   workflow_dispatch:
-    inputs:
-      glama_repair:
-        description: >-
-          Fail the run if the Glama rebuild cannot be triggered. Opt in only when
-          repairing the Glama listing is the point of this run; an ordinary
-          re-publish should leave this off so an unconfigured third-party
-          webhook cannot block the other registries.
-        type: boolean
-        required: false
-        default: false
 
 permissions:
   contents: read
@@ -40,7 +31,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
       version: ${{ steps.release.outputs.version }}
       release_ref: ${{ steps.release.outputs.release_ref }}
@@ -67,10 +58,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            # Manual repair always targets the latest published release. This
-            # workflow fans out to multiple registries, so accepting an older
-            # tag here could downgrade Smithery or ClawHub as a side effect.
+          if [ "$EVENT_NAME" != "workflow_run" ]; then
+            # Manual and scheduled reconciliation always target the latest
+            # published release. Accepting an older tag here could downgrade a
+            # registry as a side effect.
             RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest")
             RELEASE_TAG=$(echo "$RELEASE_JSON" | jq -er '.tag_name')
             if [ "$(echo "$RELEASE_JSON" | jq -r '.draft != false')" = "true" ]; then
@@ -96,7 +87,7 @@ jobs:
           git fetch --force --no-tags origin \
             "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           RELEASE_SHA=$(git rev-list -n 1 "refs/tags/${RELEASE_TAG}")
-          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$RELEASE_SHA" != "$HEAD_SHA" ]; then
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$RELEASE_SHA" != "$HEAD_SHA" ]; then
             echo "::error::Release tag and successful workflow commit do not match"
             exit 1
           fi
@@ -144,7 +135,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -262,6 +253,14 @@ jobs:
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
           echo "Reusing matching Smithery release ${RELEASE_ID} (${RELEASE_STATUS})"
           if [ "$RELEASE_STATUS" = "AUTH_REQUIRED" ]; then
+            curl -fsS --connect-timeout 10 --max-time 30 \
+              "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases/${RELEASE_ID}" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -o /tmp/smithery-release.json
+            echo "Complete Smithery scan authorization for the pending release"
+            python scripts/authorize_smithery_release.py \
+              --release-json /tmp/smithery-release.json \
+              --upstream-url "$SMITHERY_MCP_URL"
             HTTP_STATUS=$(curl -sS --connect-timeout 10 --max-time 30 \
               -o /tmp/smithery-resume-response.json -w "%{http_code}" \
               -X POST "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases/${RELEASE_ID}/resume" \
@@ -325,13 +324,17 @@ jobs:
         if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
           RELEASE_ID: ${{ steps.smithery_pending.outputs.release_id || steps.smithery_publish.outputs.release_id }}
         run: |
           set -euo pipefail
+          AUTHORIZATION_ATTEMPTED=false
           for ATTEMPT in $(seq 1 90); do
-            STATUS=$(curl -fsS --connect-timeout 10 --max-time 30 \
+            curl -fsS --connect-timeout 10 --max-time 30 \
               "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases/${RELEASE_ID}" \
-              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" | jq -er '.status')
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -o /tmp/smithery-release.json
+            STATUS=$(jq -er '.status' /tmp/smithery-release.json)
             echo "Smithery release attempt ${ATTEMPT}/90 — ${STATUS}"
             case "$STATUS" in
               SUCCESS)
@@ -339,7 +342,23 @@ jobs:
                 exit 0
                 ;;
               AUTH_REQUIRED)
-                echo "::notice::Smithery is waiting for publisher authorization; authorize the pending release in the Smithery UI"
+                if [ "$AUTHORIZATION_ATTEMPTED" = "true" ]; then
+                  echo "::error::Smithery authorization remained required after the bounded recovery attempt"
+                  exit 1
+                fi
+                echo "Complete Smithery scan authorization for the new release"
+                python scripts/authorize_smithery_release.py \
+                  --release-json /tmp/smithery-release.json \
+                  --upstream-url "$SMITHERY_MCP_URL"
+                HTTP_STATUS=$(curl -sS --connect-timeout 10 --max-time 30 \
+                  -o /tmp/smithery-resume-response.json -w "%{http_code}" \
+                  -X POST "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases/${RELEASE_ID}/resume" \
+                  -H "Authorization: Bearer ${SMITHERY_API_TOKEN}")
+                if [ "$HTTP_STATUS" != "202" ]; then
+                  echo "::error::Smithery release could not be resumed after scan authorization (HTTP ${HTTP_STATUS})"
+                  exit 1
+                fi
+                AUTHORIZATION_ATTEMPTED=true
                 ;;
               FAILURE|FAILURE_SCAN|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR)
                 echo "::error::Smithery release did not complete successfully (${STATUS})"
@@ -348,7 +367,7 @@ jobs:
             esac
             sleep 10
           done
-          echo "::error::Smithery release did not finish within 15 minutes; authorize the pending release in the Smithery UI and re-run this workflow"
+          echo "::error::Smithery release did not finish within 15 minutes after bounded automatic recovery"
           exit 1
 
       - name: Verify Smithery catalog inventory
@@ -379,14 +398,13 @@ jobs:
           exit 1
 
   glama:
-    name: Trigger Glama Rebuild
+    name: Verify Glama Directory
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      actions: read
       contents: read
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -401,69 +419,21 @@ jobs:
       - name: Verify Glama build manifest
         run: python scripts/check_glama_listing.py --verify-manifest --git-ref "${{ needs.release.outputs.release_sha }}"
 
-      - name: Trigger Glama rebuild
-        id: glama_trigger
-        env:
-          GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}
-          GLAMA_REPAIR: ${{ inputs.glama_repair }}
-          REGISTRY_PUBLISH_REQUIRED: ${{ github.event_name == 'workflow_run' }}
-          RELEASE_REF: ${{ needs.release.outputs.release_ref }}
-          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
-          VERSION: ${{ needs.release.outputs.version }}
-          GLAMA_DOCKERFILE: integrations/glama/Dockerfile
-        run: |
-          set -u
-
-          fail_or_warn() {
-            local message="$1"
-            echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"
-            if [ "$REGISTRY_PUBLISH_REQUIRED" = "true" ] || [ "$GLAMA_REPAIR" = "true" ]; then
-              echo "::error::Required Glama publication ${message}"
-              return 1
-            fi
-            echo "::warning::Automatic Glama rebuild ${message}; the freshness issue will remain open"
-            return 0
-          }
-
-          if [ -z "$GLAMA_WEBHOOK_URL" ]; then
-            echo "Release pin for Glama: ${RELEASE_REF} (${RELEASE_SHA:0:7}) dockerfile=${GLAMA_DOCKERFILE}"
-            echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL as a repository Actions secret"
-            fail_or_warn "failed because GLAMA_WEBHOOK_URL is not configured. No Glama rebuild was triggered"
-            exit $?
-          fi
-          PAYLOAD=$(jq -n \
-            --arg ref "$RELEASE_REF" \
-            --arg commit "$RELEASE_SHA" \
-            --arg version "$VERSION" \
-            --arg dockerfile "$GLAMA_DOCKERFILE" \
-            '{ref: $ref, commit: $commit, version: $version, dockerfile: $dockerfile}')
-          echo "Triggering Glama rebuild for ${RELEASE_REF} (${RELEASE_SHA:0:7}) using ${GLAMA_DOCKERFILE}"
-          if ! HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
-              -o /dev/null -w "%{http_code}" \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD" \
-              -X POST "$GLAMA_WEBHOOK_URL"); then
-            fail_or_warn "request failed before an HTTP response was received"
-            exit $?
-          fi
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "rebuild_triggered=true" >> "$GITHUB_OUTPUT"
-            echo "Glama rebuild triggered successfully"
-          else
-            fail_or_warn "returned HTTP ${HTTP_STATUS}"
-            exit $?
-          fi
-
       - name: Verify Glama listing freshness
         env:
           EXPECTED_VERSION: ${{ needs.release.outputs.version }}
           EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
         run: |
-          python scripts/check_glama_listing.py \
-            --expected "$EXPECTED_VERSION" \
-            --expected-tool-count "$EXPECTED_TOOL_COUNT" \
-            --retries 6 \
-            --delay-seconds 30
+          set -euo pipefail
+          if python scripts/check_glama_listing.py \
+              --expected "$EXPECTED_VERSION" \
+              --expected-tool-count "$EXPECTED_TOOL_COUNT" \
+              --retries 6 \
+              --delay-seconds 30; then
+            exit 0
+          fi
+          echo "::error::Glama has not synchronized the exact released catalog yet. Glama syncs linked GitHub repositories automatically at least daily; this workflow retries every six hours. For an immediate provider-side refresh, use Sync Server in the Glama admin interface, then rerun this verification."
+          exit 1
 
   clawhub:
     name: Publish to ClawHub

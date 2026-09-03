@@ -24,12 +24,7 @@ def test_extracts_only_the_expected_upstream_authorization_endpoint() -> None:
     payload = {
         "logs": [
             {"message": "ignore https://evil.example/oauth/authorize?state=bad"},
-            {
-                "message": (
-                    "Authorization required: "
-                    "https://mcp.example.test/oauth/authorize?client_id=abc&state=opaque&response_type=code"
-                )
-            },
+            {"message": ("Authorization required: https://mcp.example.test/oauth/authorize?client_id=abc&state=opaque&response_type=code")},
         ]
     }
 

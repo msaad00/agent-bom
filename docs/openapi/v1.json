@@ -5010,8 +5010,7 @@
           },
           "items": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/GraphCorrelationResponse"
             },
             "title": "Items",
             "type": "array"
@@ -5022,6 +5021,231 @@
           "count"
         ],
         "title": "GraphCorrelationList",
+        "type": "object"
+      },
+      "GraphCorrelationReceipt": {
+        "additionalProperties": true,
+        "properties": {
+          "age_hours": {
+            "default": 0.0,
+            "title": "Age Hours",
+            "type": "number"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "digest": {
+            "default": "",
+            "title": "Digest",
+            "type": "string"
+          },
+          "edge_count": {
+            "default": 0,
+            "title": "Edge Count",
+            "type": "integer"
+          },
+          "freshness": {
+            "default": "",
+            "title": "Freshness",
+            "type": "string"
+          },
+          "node_count": {
+            "default": 0,
+            "title": "Node Count",
+            "type": "integer"
+          },
+          "scan_id": {
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphCorrelationReceiptSignature"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Kinds",
+            "type": "array"
+          },
+          "verification": {
+            "default": "legacy_hash_bound",
+            "title": "Verification",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id"
+        ],
+        "title": "GraphCorrelationReceipt",
+        "type": "object"
+      },
+      "GraphCorrelationReceiptSignature": {
+        "additionalProperties": false,
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "key_id": {
+            "default": "",
+            "title": "Key Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "algorithm",
+          "value"
+        ],
+        "title": "GraphCorrelationReceiptSignature",
+        "type": "object"
+      },
+      "GraphCorrelationReceiptVerification": {
+        "additionalProperties": false,
+        "properties": {
+          "invalid": {
+            "default": 0,
+            "title": "Invalid",
+            "type": "integer"
+          },
+          "legacy_hash_bound": {
+            "default": 0,
+            "title": "Legacy Hash Bound",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "verification_key_unavailable": {
+            "default": 0,
+            "title": "Verification Key Unavailable",
+            "type": "integer"
+          },
+          "verified": {
+            "default": 0,
+            "title": "Verified",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "GraphCorrelationReceiptVerification",
+        "type": "object"
+      },
+      "GraphCorrelationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_stale": {
+            "title": "Allow Stale",
+            "type": "boolean"
+          },
+          "completed_at": {
+            "default": "",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "title": "Correlation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "failure_code": {
+            "default": "",
+            "title": "Failure Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "input_manifest": {
+            "items": {
+              "$ref": "#/components/schemas/GraphCorrelationReceipt"
+            },
+            "title": "Input Manifest",
+            "type": "array"
+          },
+          "manifest_sha256": {
+            "default": "",
+            "title": "Manifest Sha256",
+            "type": "string"
+          },
+          "max_age_hours": {
+            "title": "Max Age Hours",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "output_scan_id": {
+            "default": "",
+            "title": "Output Scan Id",
+            "type": "string"
+          },
+          "receipt_verification": {
+            "$ref": "#/components/schemas/GraphCorrelationReceiptVerification"
+          },
+          "result_manifest": {
+            "additionalProperties": true,
+            "title": "Result Manifest",
+            "type": "object"
+          },
+          "started_at": {
+            "default": "",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "correlation_id",
+          "tenant_id",
+          "idempotency_key",
+          "name",
+          "status",
+          "max_age_hours",
+          "allow_stale",
+          "input_manifest",
+          "receipt_verification"
+        ],
+        "title": "GraphCorrelationResponse",
         "type": "object"
       },
       "GraphDeployDecisionRequest": {
@@ -24179,9 +24403,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Create Graph Correlation V1 Graph Correlations Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/GraphCorrelationResponse"
                 }
               }
             },
@@ -24223,9 +24445,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Graph Correlation V1 Graph Correlations  Correlation Id  Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/GraphCorrelationResponse"
                 }
               }
             },

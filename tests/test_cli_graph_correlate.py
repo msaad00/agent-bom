@@ -39,9 +39,10 @@ def _run(status: str) -> dict[str, Any]:
         "max_age_hours": 168,
         "allow_stale": False,
         "input_manifest": [
-            {"scan_id": "image", "freshness": "fresh", "node_count": 12, "edge_count": 8},
-            {"scan_id": "runtime", "freshness": "fresh", "node_count": 3, "edge_count": 2},
+            {"scan_id": "image", "freshness": "fresh", "verification": "verified", "node_count": 12, "edge_count": 8},
+            {"scan_id": "runtime", "freshness": "fresh", "verification": "verified", "node_count": 3, "edge_count": 2},
         ],
+        "receipt_verification": {"status": "verified", "verified": 2, "total": 2},
         "result_manifest": {
             "output": {"scan_id": "corr-1", "node_count": 14, "edge_count": 12},
             "analysis": {"attack_path_count": 2, "exposure_path_count": 1, "limitations": ["bounded_to_500000_edges"]},
@@ -81,7 +82,7 @@ def test_graph_correlate_create_wait_table(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert "corr-1\tcomplete\t2\tfresh\t1\tcorr-1\t2\t1\tbounded_to_500000_edges" in result.output
+    assert "corr-1\tcomplete\t2\tfresh\tverified\t1\tcorr-1\t2\t1\tbounded_to_500000_edges" in result.output
     assert fake.calls[:2] == [
         (
             "create",

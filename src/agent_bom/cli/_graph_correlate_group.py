@@ -33,11 +33,13 @@ def _summary(run: Mapping[str, object]) -> list[str]:
         limitations = [name for name, value in bounds.items() if isinstance(value, Mapping) and value.get("truncated")]
     attack_paths = output.get("attack_path_count", analysis.get("attack_path_count", 0))
     exposure_paths = output.get("exposure_path_count", analysis.get("exposure_path_count", 0))
+    receipt_verification = _mapping(run.get("receipt_verification"))
     return [
         _string(run.get("correlation_id")),
         _string(run.get("status")),
         str(len(inputs)),
         freshness,
+        _string(receipt_verification.get("status") or "unknown"),
         _string(merge.get("conflict_count") or 0),
         _string(run.get("output_scan_id") or "-"),
         _string(attack_paths or 0),
@@ -47,7 +49,9 @@ def _summary(run: Mapping[str, object]) -> list[str]:
 
 
 def _print_runs(runs: list[Mapping[str, object]]) -> None:
-    click.echo("correlation_id\tstatus\tsources\tfreshness\tconflicts\toutput_snapshot\tattack_paths\texposure_paths\tlimitations")
+    click.echo(
+        "correlation_id\tstatus\tsources\tfreshness\treceipt_integrity\tconflicts\toutput_snapshot\tattack_paths\texposure_paths\tlimitations"
+    )
     for run in runs:
         click.echo("\t".join(_summary(run)))
 

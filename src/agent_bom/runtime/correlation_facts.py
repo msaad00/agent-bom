@@ -214,7 +214,7 @@ def _immutable_input_receipts(value: object) -> list[dict[str, Any]] | None:
     if not isinstance(value, list) or any(not isinstance(item, Mapping) for item in value):
         return None
     return [
-        {str(key): item[key] for key in sorted(item) if key not in {"age_hours", "freshness"}}
+        {str(key): item[key] for key in sorted(item) if key not in {"age_hours", "freshness", "signature", "verification"}}
         for item in value
         if isinstance(item, Mapping)
     ]
@@ -415,6 +415,22 @@ def create_runtime_facts_bundle_from_correlation(
         or _immutable_input_receipts(input_snapshots) != _immutable_input_receipts(run.input_manifest)
     ):
         raise RuntimeFactsBundleError("correlation_manifest_mismatch")
+    from agent_bom.graph.correlation_receipts import verify_correlation_receipt
+
+    for receipts in (run.input_manifest, input_snapshots):
+        for receipt in receipts:
+            if not isinstance(receipt, Mapping) or not isinstance(receipt.get("signature"), Mapping):
+                continue
+            if not verify_correlation_receipt(
+                receipt,
+                signing_key=signing_key,
+                tenant_id=run.tenant_id,
+                correlation_id=run.correlation_id,
+                correlation_created_at=run.created_at,
+                max_age_hours=run.max_age_hours,
+                allow_stale=run.allow_stale,
+            ):
+                raise RuntimeFactsBundleError("correlation_receipt_signature_invalid")
     input_freshness = {
         "max_age_hours": freshness_policy.get("max_age_hours"),
         "allow_stale": freshness_policy.get("allow_stale"),

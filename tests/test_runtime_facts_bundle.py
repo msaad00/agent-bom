@@ -16,6 +16,7 @@ from agent_bom.graph.correlation import (
     correlation_graph_digest,
     correlation_manifest_digest,
 )
+from agent_bom.graph.correlation_receipts import sign_correlation_receipt
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
@@ -288,6 +289,64 @@ def test_completed_correlation_produces_bundle_from_proven_graph_edges() -> None
 
     assert verified.reachability.reaches_privileged("agent-a", "read_secret") is not None
     assert verified.analysis_complete is True
+
+
+def test_runtime_facts_accepts_resigned_freshness_and_rejects_tampered_receipts() -> None:
+    graph = _runtime_graph(scan_id="corr-signed-inputs")
+    run, metadata = _completed_run(graph)
+
+    def signed(receipt: dict[str, object], *, age_hours: float) -> dict[str, object]:
+        return sign_correlation_receipt(
+            {**receipt, "freshness": "fresh", "age_hours": age_hours},
+            signing_key=KEY,
+            key_id="runtime-facts-v1",
+            tenant_id=run.tenant_id,
+            correlation_id=run.correlation_id,
+            correlation_created_at=run.created_at,
+            max_age_hours=run.max_age_hours,
+            allow_stale=run.allow_stale,
+        )
+
+    submitted = [signed(dict(item), age_hours=1.0) for item in run.input_manifest]
+    executed = [signed(dict(item), age_hours=1.25) for item in run.input_manifest]
+    result_manifest = {**run.result_manifest, "input_snapshots": executed}
+    manifest_sha256 = correlation_manifest_digest(result_manifest)
+    signed_run = replace(
+        run,
+        input_manifest=submitted,
+        result_manifest=result_manifest,
+        manifest_sha256=manifest_sha256,
+    )
+    signed_metadata = {**metadata, "evidence_manifest_sha256": manifest_sha256}
+
+    create_runtime_facts_bundle_from_correlation(
+        signed_run,
+        graph,
+        snapshot_metadata=signed_metadata,
+        signing_key=KEY,
+        ttl_seconds=300,
+        now=NOW,
+    )
+
+    tampered = [dict(item) for item in executed]
+    tampered[0] = {**tampered[0], "signature": {**tampered[0]["signature"], "value": "0" * 64}}
+    tampered_manifest = {**result_manifest, "input_snapshots": tampered}
+    tampered_digest = correlation_manifest_digest(tampered_manifest)
+    tampered_run = replace(
+        signed_run,
+        result_manifest=tampered_manifest,
+        manifest_sha256=tampered_digest,
+    )
+
+    with pytest.raises(RuntimeFactsBundleError, match="correlation_receipt_signature_invalid"):
+        create_runtime_facts_bundle_from_correlation(
+            tampered_run,
+            graph,
+            snapshot_metadata={**signed_metadata, "evidence_manifest_sha256": tampered_digest},
+            signing_key=KEY,
+            ttl_seconds=300,
+            now=NOW,
+        )
 
 
 def test_correlation_bundle_recomputes_immutable_input_age_at_each_issuance() -> None:

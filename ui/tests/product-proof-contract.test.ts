@@ -111,6 +111,7 @@ describe("product proof capture contract", () => {
     expect(source).toContain("Runtime block verified");
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
     expect(source).toContain("assertFullyInViewport");
+    expect(source).not.toContain('getByRole("button", { name: /^Evidence scope Current scan/i })');
     expect(source).toContain("6 independent evidence sources produced 1 confirmed attack path");
     expect(source).toContain("Exact-ID correlation");
     expect(source).toContain("CVE-2023-4863 can reach");

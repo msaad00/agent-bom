@@ -110,7 +110,7 @@ const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
 function AttackPathInvestigationContent() {
   const captureMode = useCaptureMode();
   const searchParams = useSearchParams();
-  const correlationCaptureMode = captureMode && searchParams.get("correlation") === "1";
+  const correlationFocusMode = searchParams.get("correlation") === "1";
   const router = useRouter();
   const pathname = usePathname();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
@@ -736,6 +736,20 @@ function AttackPathInvestigationContent() {
 
       <GraphLensSwitcher variant="compact" />
 
+      {correlationFocusMode && snapshots.length > 0 ? (
+        <GraphCorrelationWorkflow
+          snapshots={snapshots}
+          initialRun={latestCorrelationRun}
+          historyError={correlationHistoryError}
+          priorityPath={selectedAttackPath}
+          priorityNodes={selectedFixFirstCard?.nodes}
+          priorityAction={(selectedFixFirstCard?.next_actions ?? selectedPathActions)[0]}
+          onOpenSnapshot={selectSnapshot}
+        />
+      ) : null}
+
+      <div className={correlationFocusMode ? "hidden" : captureMode ? "space-y-2" : "space-y-4"}>
+
       {selectedScenarioId ? (
         <div className="graph-callout-sky">
           Attack Paths remains observed-only. Open Estate, Cloud, Repository,
@@ -1028,7 +1042,7 @@ function AttackPathInvestigationContent() {
         defaultOpen={false}
       >
         <div className="space-y-4">
-          {(!captureMode || correlationCaptureMode) && snapshots.length > 0 ? (
+          {!captureMode && snapshots.length > 0 ? (
             <GraphCorrelationWorkflow
               snapshots={snapshots}
               initialRun={latestCorrelationRun}
@@ -1150,6 +1164,7 @@ function AttackPathInvestigationContent() {
       >
         <ExposurePathLens scanId={selectedScanId || undefined} />
       </Collapsible>
+      </div>
     </div>
   );
 }

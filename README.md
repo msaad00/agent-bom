@@ -116,11 +116,12 @@ the inventory, finding, reachable path, and remediation output shape.
 
 ```bash
 pip install agent-bom
-agent-bom scan --demo --offline
+agent-bom scan --demo --offline --exit-zero
 ```
 
-The sample intentionally contains a known-malicious package, so exit status `1` is expected
-and the printed report is complete. Scan a repository next:
+The sample intentionally contains a known-malicious package. `--exit-zero` keeps
+the first walkthrough moving while the printed report still shows the critical
+verdict. Omit it when findings should fail a CI job. Scan a repository next:
 
 ```bash
 agent-bom scan .
@@ -291,8 +292,9 @@ exposing it.
 | Agent interface | `agent-bom mcp server` | 86 MCP tools, 6 resources, and 8 workflow prompts |
 | Agent distribution | [Smithery manifest](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |
 
-MCP server mode exposes 86 MCP tools, 6 resources, and 8 workflow prompts, all
-read-first: discovery and analysis never mutate a scanned target.
+MCP server mode exposes 86 MCP tools, 6 resources, and 8 workflow prompts.
+Discovery and analysis tools are read-only; authenticated mutation and process
+tools are explicitly annotated, scope-checked, and policy-gated.
 
 Set `YDC_API_KEY` to enable the optional `youcom_search` MCP tool for live web
 and news context alongside the local threat-intel database. It is the only tool

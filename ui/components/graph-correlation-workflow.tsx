@@ -313,7 +313,7 @@ export function GraphCorrelationWorkflow({
           ) : null}
           <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)]">
             <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[10px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
-              <span>View signed receipt manifest</span>
+              <span>View hash-bound source receipts</span>
               <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
             </summary>
             <div className="grid gap-2 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2">

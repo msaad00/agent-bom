@@ -2736,7 +2736,6 @@ async function main() {
       return capturePage;
     };
     const prepareCorrelationReceipts = async (proofPage) => {
-      await proofPage.getByRole("button", { name: /^Evidence scope Current scan/i }).click();
       const workflow = proofPage.getByTestId("graph-correlation-workflow");
       await workflow.waitFor({ state: "visible", timeout: 30_000 });
       await proofPage.getByTestId("graph-correlation-receipt-dag").waitFor({ state: "visible", timeout: 30_000 });
@@ -2783,6 +2782,7 @@ async function main() {
       ],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
       readySelector: '[data-testid="graph-correlation-receipt-dag"]',
+      rejectedText: ["Current scan evidence", "Manage snapshots"],
     };
     const correlationPathAssertions = {
       expectedText: [

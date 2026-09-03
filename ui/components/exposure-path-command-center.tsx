@@ -205,7 +205,7 @@ export function ExposurePathCommandCenter({
           <div className="grid w-full grid-cols-3 gap-2 text-xs sm:w-auto sm:grid-cols-4">
             <MetricPill label="Path risk" value={path.riskScore.toFixed(1)} tone="red" />
             <MetricPill label="Path span" value={pathSpanLabel(path.hops.length)} />
-            <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
+            {!pathProofSlot ? <MetricPill label="Agents" value={String(path.affectedAgents.length)} /> : null}
             {fixLabel ? <MetricPill label="Fix" value={fixLabel} tone="green" /> : null}
           </div>
         </div>

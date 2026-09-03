@@ -67,6 +67,21 @@ def test_client_builds_query_params() -> None:
     assert urls == ["https://agent-bom.example.com/v1/graph/exposure-paths?tenant_id=tenant-a&limit=5&min_risk=70"]
 
 
+def test_client_lists_graph_snapshots_for_correlation_input_discovery() -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json=[{"scan_id": "scan-a", "node_count": 1, "edge_count": 0}])
+
+    client = _client(handler)
+
+    snapshots = client.graph_snapshots(limit=25)
+
+    assert snapshots == [{"scan_id": "scan-a", "node_count": 1, "edge_count": 0}]
+    assert seen == ["https://agent-bom.example.com/v1/graph/snapshots?limit=25"]
+
+
 def test_client_exposes_v0871_headline_routes() -> None:
     seen: list[tuple[str, str]] = []
 

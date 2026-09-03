@@ -151,6 +151,15 @@ class AgentBomClient:
 
         return self._request("GET", "/v1/graph/correlations", params={"limit": limit})
 
+    def graph_snapshots(self, *, limit: int = 50, window_days: int | None = None) -> list[JsonObject]:
+        """List retained graph snapshots that can be selected for correlation."""
+
+        return self._request_list(
+            "GET",
+            "/v1/graph/snapshots",
+            params=_strip_query_none({"limit": limit, "window_days": window_days}),
+        )
+
     def list_campaigns(self) -> JsonObject:
         """List risk/remediation campaigns for the request tenant."""
 

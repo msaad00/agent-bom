@@ -30,6 +30,32 @@ class FakeCorrelationClient:
         self.__class__.calls.append(("list", kwargs))
         return {"items": [_run("complete")], "count": 1}
 
+    def graph_snapshots(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.__class__.calls.append(("snapshots", kwargs))
+        return [
+            {
+                "scan_id": "repo-scan",
+                "snapshot_kind": "scan",
+                "created_at": "2026-09-03T12:00:00+00:00",
+                "node_count": 12,
+                "edge_count": 8,
+            },
+            {
+                "scan_id": "empty-scan",
+                "snapshot_kind": "scan",
+                "created_at": "2026-09-03T12:00:00+00:00",
+                "node_count": 0,
+                "edge_count": 0,
+            },
+            {
+                "scan_id": "prior-correlation",
+                "snapshot_kind": "correlation",
+                "created_at": "2026-09-03T12:00:00+00:00",
+                "node_count": 20,
+                "edge_count": 14,
+            },
+        ]
+
 
 def _run(status: str) -> dict[str, Any]:
     return {
@@ -112,6 +138,19 @@ def test_graph_correlate_list_table(monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert "corr-1\tcomplete" in result.output
+
+
+def test_graph_correlate_inputs_lists_only_eligible_source_snapshots(monkeypatch) -> None:
+    fake = _install(monkeypatch)
+
+    result = CliRunner().invoke(main, ["graph-correlate", "inputs", "--limit", "25"])
+
+    assert result.exit_code == 0, result.output
+    assert "scan_id\tcreated_at\tnodes\tedges" in result.output
+    assert "repo-scan\t2026-09-03T12:00:00+00:00\t12\t8" in result.output
+    assert "empty-scan" not in result.output
+    assert "prior-correlation" not in result.output
+    assert fake.calls[0] == ("snapshots", {"limit": 25, "window_days": None})
 
 
 def test_graph_correlate_requires_two_distinct_snapshots(monkeypatch) -> None:

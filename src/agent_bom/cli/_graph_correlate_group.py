@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from collections.abc import Mapping
@@ -56,9 +57,63 @@ def _print_runs(runs: list[Mapping[str, object]]) -> None:
         click.echo("\t".join(_summary(run)))
 
 
+def _eligible_input_snapshots(rows: list[JsonObject]) -> list[JsonObject]:
+    eligible: list[JsonObject] = []
+    for row in rows:
+        node_count = row.get("node_count")
+        if row.get("snapshot_kind") in (None, "scan") and isinstance(node_count, int) and node_count > 0:
+            eligible.append(row)
+    return eligible
+
+
+def _print_input_snapshots(rows: list[JsonObject]) -> None:
+    click.echo("scan_id\tcreated_at\tnodes\tedges")
+    for row in rows:
+        click.echo(
+            "\t".join(
+                (
+                    _string(row.get("scan_id")),
+                    _string(row.get("created_at")),
+                    _string(row.get("node_count") or 0),
+                    _string(row.get("edge_count") or 0),
+                )
+            )
+        )
+
+
 @click.group(name="graph-correlate")
 def graph_correlate_cmd() -> None:
     """Correlate immutable scan snapshots into one evidence graph."""
+
+
+@graph_correlate_cmd.command("inputs")
+@click.option("--limit", type=click.IntRange(2, 500), default=50, show_default=True)
+@click.option(
+    "--window-days",
+    type=click.IntRange(0, 3650),
+    default=None,
+    help="Retained-history window; 0 includes all retained snapshots.",
+)
+@click.option("--format", "output_format", type=click.Choice(["table", "json"]), default="table", show_default=True)
+@_common_api_options
+def correlation_inputs_cmd(
+    api_url: str | None,
+    api_key: str | None,
+    bearer_token: str | None,
+    tenant_id: str | None,
+    limit: int,
+    window_days: int | None,
+    output_format: str,
+) -> None:
+    """List non-empty source snapshots eligible for a new correlation."""
+
+    client = _make_client(api_url, api_key, bearer_token, tenant_id)
+    rows = _run_request(client, lambda api: api.graph_snapshots(limit=limit, window_days=window_days))
+    eligible = _eligible_input_snapshots(rows)
+    if output_format == "json":
+        click.echo(json.dumps({"items": eligible, "count": len(eligible)}, indent=2, sort_keys=True))
+    else:
+        _print_input_snapshots(eligible)
 
 
 @graph_correlate_cmd.command("create")

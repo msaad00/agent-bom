@@ -1355,6 +1355,84 @@ def test_helm_connections_scheduler_env_gated_by_values():
     assert 'value: "30"' in on
 
 
+def test_helm_auto_correlation_defaults_on_with_strict_freshness_and_can_be_disabled():
+    """Durable control-plane installs auto-correlate exact scan batches by default."""
+
+    if shutil.which("helm") is None:
+        pytest.skip("helm not installed")
+
+    def _render(*sets: str) -> str:
+        args = [
+            "helm",
+            "template",
+            "abom",
+            str(HELM_DIR),
+            "--set",
+            "controlPlane.enabled=true",
+            "--set",
+            "controlPlane.migrations.enabled=false",
+        ]
+        for item in sets:
+            args += ["--set", item]
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)
+        assert proc.returncode == 0, proc.stderr
+        return proc.stdout
+
+    default_render = _render()
+    assert "name: AGENT_BOM_GRAPH_AUTO_CORRELATE" in default_render
+    assert 'value: "true"' in default_render
+    assert "name: AGENT_BOM_GRAPH_AUTO_CORRELATE_MAX_AGE_HOURS" in default_render
+    assert 'value: "168"' in default_render
+
+    disabled = _render("controlPlane.autoCorrelation.enabled=false")
+    assert "name: AGENT_BOM_GRAPH_AUTO_CORRELATE" in disabled
+    assert 'value: "false"' in disabled
+
+    duplicate = subprocess.run(
+        [
+            "helm",
+            "template",
+            "abom",
+            str(HELM_DIR),
+            "--set",
+            "controlPlane.enabled=true",
+            "--set",
+            "controlPlane.migrations.enabled=false",
+            "--set",
+            "controlPlane.api.env[0].name=AGENT_BOM_GRAPH_AUTO_CORRELATE",
+            "--set",
+            "controlPlane.api.env[0].value=false",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert duplicate.returncode != 0
+    assert "use controlPlane.autoCorrelation" in duplicate.stderr
+
+    invalid_freshness = subprocess.run(
+        [
+            "helm",
+            "template",
+            "abom",
+            str(HELM_DIR),
+            "--set",
+            "controlPlane.enabled=true",
+            "--set",
+            "controlPlane.migrations.enabled=false",
+            "--set",
+            "controlPlane.autoCorrelation.maxAgeHours=0",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert invalid_freshness.returncode != 0
+    assert "must be between 1 and 8760" in invalid_freshness.stderr
+
+
 def test_pilot_compose_optional_connections_scheduler_env():
     """Pilot profile exposes AGENT_BOM_CONNECTIONS_SCHEDULER, defaulted OFF.
 

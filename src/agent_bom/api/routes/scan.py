@@ -1366,15 +1366,21 @@ def enqueue_scan_job(
             progress=[f"Batch scan created with {len(child_jobs)} target job(s)"],
             target_count=len(targets),
         )
-        from agent_bom.api.auto_correlation import auto_correlation_policy_from_env, initial_auto_correlation_decision
+        from agent_bom.api.auto_correlation import (
+            auto_correlation_backend_skip_reason,
+            auto_correlation_policy_from_env,
+            initial_auto_correlation_decision,
+        )
 
         auto_correlation_policy = auto_correlation_policy_from_env()
         if auto_correlation_policy.enabled:
+            backend_skip_reason = auto_correlation_backend_skip_reason(store, _get_graph_store())
             parent.result = {
                 "auto_correlation": initial_auto_correlation_decision(
                     parent,
                     policy=auto_correlation_policy,
                     now=datetime.now(timezone.utc),
+                    backend_skip_reason=backend_skip_reason,
                 )
             }
 

@@ -1,5 +1,14 @@
 {{- if and .Values.controlPlane.enabled .Values.controlPlane.api.enabled }}
 {{- $postgresSecrets := .Values.controlPlane.postgresSecrets }}
+{{- $autoCorrelationMaxAge := int .Values.controlPlane.autoCorrelation.maxAgeHours }}
+{{- if or (lt $autoCorrelationMaxAge 1) (gt $autoCorrelationMaxAge 8760) }}
+{{- fail "controlPlane.autoCorrelation.maxAgeHours must be between 1 and 8760" }}
+{{- end }}
+{{- range $entry := .Values.controlPlane.api.env }}
+{{- if has (get $entry "name") (list "AGENT_BOM_GRAPH_AUTO_CORRELATE" "AGENT_BOM_GRAPH_AUTO_CORRELATE_MAX_AGE_HOURS") }}
+{{- fail "controlPlane.api.env cannot override automatic correlation variables; use controlPlane.autoCorrelation" }}
+{{- end }}
+{{- end }}
 {{- if $postgresSecrets.enabled }}
 {{- $appSecret := required "controlPlane.postgresSecrets.appSecretRef.name is required" $postgresSecrets.appSecretRef.name }}
 {{- $maintenanceSecret := required "controlPlane.postgresSecrets.maintenanceSecretRef.name is required" $postgresSecrets.maintenanceSecretRef.name }}
@@ -87,6 +96,10 @@ spec:
               value: {{ . | quote }}
             {{- end }}
             {{- end }}
+            - name: AGENT_BOM_GRAPH_AUTO_CORRELATE
+              value: {{ .Values.controlPlane.autoCorrelation.enabled | quote }}
+            - name: AGENT_BOM_GRAPH_AUTO_CORRELATE_MAX_AGE_HOURS
+              value: {{ .Values.controlPlane.autoCorrelation.maxAgeHours | quote }}
           {{- with .Values.controlPlane.api.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}

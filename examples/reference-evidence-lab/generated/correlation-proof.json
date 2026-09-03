@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:6dcb8631ffbe800824955a578fe191c1188d569d5572b6503419bb8fb826a415",
+  "artifact_sha256": "sha256:f1d6617bae897c2c122f7de91c5edcbb5d22ed0d5db4ac60603280c8462a3712",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -1348,7 +1348,7 @@
         ]
       }
     ],
-    "manifest_sha256": "sha256:658a04a6cb730d75a48a8d33752890cfabf937ecee5a4b6cb60c9d4b7989f71b",
+    "manifest_sha256": "sha256:b171a7a8eb66fcbf85bbee46e9f554b3bbf5d461821ac76641af97024817e868",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -1375,6 +1375,10 @@
         "correlation_merge": {
           "edge_count": 8,
           "edge_limit": 500000,
+          "execution_strategy": "disk_backed_incremental",
+          "input_edge_observation_count": 8,
+          "input_node_observation_count": 14,
+          "max_resident_source_graphs": 1,
           "node_count": 9,
           "node_limit": 100000,
           "status": "complete",
@@ -1786,7 +1790,7 @@
     "correlation_id": "reference-evidence-correlation-v1",
     "failure_mode": "deny",
     "global_default": "off",
-    "manifest_sha256": "sha256:658a04a6cb730d75a48a8d33752890cfabf937ecee5a4b6cb60c9d4b7989f71b",
+    "manifest_sha256": "sha256:b171a7a8eb66fcbf85bbee46e9f554b3bbf5d461821ac76641af97024817e868",
     "observed_event": "live-jsonrpc-allow",
     "policy_id": "strict-correlated-evidence",
     "policy_source": "graph_reachability",

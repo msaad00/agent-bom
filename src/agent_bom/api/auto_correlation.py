@@ -84,11 +84,22 @@ def auto_correlation_enabled() -> bool:
     return auto_correlation_policy_from_env().enabled
 
 
-def auto_correlation_backend_skip_reason(job_store: JobStore, graph_store: GraphStoreProtocol) -> str:
-    """Return a bounded reason when automatic correlation cannot run."""
+def auto_correlation_job_store_skip_reason(job_store: JobStore) -> str:
+    """Reject stores that cannot provide the required durable cohort semantics."""
 
     if isinstance(job_store, InMemoryJobStore):
         return "durable_job_store_required"
+    if job_store.__class__.__name__ not in {"SQLiteJobStore", "PostgresJobStore"}:
+        return "job_backend_unsupported"
+    return ""
+
+
+def auto_correlation_backend_skip_reason(job_store: JobStore, graph_store: GraphStoreProtocol) -> str:
+    """Return a bounded reason when automatic correlation cannot run."""
+
+    job_store_reason = auto_correlation_job_store_skip_reason(job_store)
+    if job_store_reason:
+        return job_store_reason
     if graph_store.__class__.__name__ == "NeptuneGraphStore":
         return "graph_backend_unsupported"
     return ""
@@ -515,6 +526,7 @@ __all__ = [
     "AutoCorrelationPolicy",
     "auto_correlation_backend_skip_reason",
     "auto_correlation_enabled",
+    "auto_correlation_job_store_skip_reason",
     "auto_correlation_loop",
     "auto_correlation_policy_from_env",
     "initial_auto_correlation_decision",

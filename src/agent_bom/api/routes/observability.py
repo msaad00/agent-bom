@@ -1068,7 +1068,8 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
             _logger.error("Correlation cohort result commit failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
             raise HTTPException(status_code=503, detail="Correlation cohort result could not be committed") from exc
 
-    header_idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
+    request_headers = getattr(request, "headers", {})
+    header_idempotency_key = str(request_headers.get("Idempotency-Key") or "").strip()
     body_idempotency_key = str(body.idempotency_key or "").strip()
     if header_idempotency_key and body_idempotency_key and header_idempotency_key != body_idempotency_key:
         raise HTTPException(status_code=409, detail="Idempotency key header and payload do not match")

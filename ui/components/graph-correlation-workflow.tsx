@@ -20,7 +20,7 @@ import { userFacingApiErrorMessage } from "@/lib/api-errors";
 const DEFAULT_MAX_AGE_HOURS = 24 * 7;
 
 const JOURNEY = [
-  { label: "Connect", detail: "Sources", icon: Database },
+  { label: "Source intake", detail: "Local + connected", icon: Database },
   { label: "Discover", detail: "Inventory", icon: Search },
   { label: "Scan", detail: "Evidence", icon: ShieldCheck },
   { label: "Correlate", detail: "Exact IDs", icon: Network },

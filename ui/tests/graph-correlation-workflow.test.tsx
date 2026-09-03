@@ -61,7 +61,7 @@ describe("GraphCorrelationWorkflow", () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} onOpenSnapshot={vi.fn()} />);
 
     expect(await screen.findByText("Evidence correlation complete")).toBeInTheDocument();
-    expect(screen.getByText("Connect")).toBeInTheDocument();
+    expect(screen.getByText("Source intake")).toBeInTheDocument();
     expect(screen.getByText("Discover")).toBeInTheDocument();
     expect(screen.getByText("Scan")).toBeInTheDocument();
     expect(screen.getByText("Correlate")).toBeInTheDocument();

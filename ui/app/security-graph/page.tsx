@@ -971,7 +971,7 @@ function AttackPathInvestigationContent() {
                 view={pathView}
                 onViewChange={setPathView}
                 pathProofSlot={
-                  selectedAttackPath ? (
+                  selectedAttackPath?.hop_evidence?.length ? (
                     <AttackPathCorrelationProof
                       path={selectedAttackPath}
                       riskReasons={selectedFixFirstCard?.risk_reasons}

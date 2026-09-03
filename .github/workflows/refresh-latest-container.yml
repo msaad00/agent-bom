@@ -140,6 +140,19 @@ jobs:
             org.opencontainers.image.created=${{ github.run_id }}
             org.opencontainers.image.revision=${{ steps.release.outputs.tag }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign refreshed API latest
+        run: cosign sign --yes "agentbom/agent-bom@${{ steps.build-push.outputs.digest }}"
+
+      - name: Verify refreshed API latest signature
+        run: |
+          cosign verify \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "agentbom/agent-bom@${{ steps.build-push.outputs.digest }}"
+
       - name: Sync Docker Hub README
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -316,6 +329,19 @@ jobs:
             org.opencontainers.image.created=${{ github.run_id }}
             org.opencontainers.image.revision=${{ steps.release.outputs.tag }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign refreshed UI latest
+        run: cosign sign --yes "agentbom/agent-bom-ui@${{ steps.build-push-ui.outputs.digest }}"
+
+      - name: Verify refreshed UI latest signature
+        run: |
+          cosign verify \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "agentbom/agent-bom-ui@${{ steps.build-push-ui.outputs.digest }}"
+
       - name: Sync UI Docker Hub README
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -452,3 +478,16 @@ jobs:
             org.opencontainers.image.description=Read-only cloud collector — ships boto3/azure/google/snowflake SDKs independently of the control-plane release. No external MCP in the scan path.
             org.opencontainers.image.created=${{ github.run_id }}
             org.opencontainers.image.revision=${{ steps.release.outputs.tag }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign refreshed collector latest
+        run: cosign sign --yes "agentbom/agent-bom-collector@${{ steps.build-push.outputs.digest }}"
+
+      - name: Verify refreshed collector latest signature
+        run: |
+          cosign verify \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "agentbom/agent-bom-collector@${{ steps.build-push.outputs.digest }}"

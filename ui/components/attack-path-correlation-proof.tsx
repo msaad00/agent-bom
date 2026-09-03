@@ -9,6 +9,10 @@ function badgeTone(kind: string): string {
   return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
 }
 
+function humanizeRelationship(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
 export function AttackPathCorrelationProof({
   path,
   riskReasons = [],
@@ -86,28 +90,43 @@ export function AttackPathCorrelationProof({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5">
-        <span className="text-[10px] font-medium text-[color:var(--text-tertiary)]">Exact anchors</span>
+        <span className="text-[11px] font-medium text-[color:var(--text-tertiary)]">Exact anchors</span>
         {anchors.map((node) => (
-          <span key={node.id} className="max-w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-1 font-mono text-[9px] text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+          <span key={node.id} className="max-w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-1 font-mono text-[11px] text-[color:var(--foreground)] [overflow-wrap:anywhere]">
             {node.label || node.id}
           </span>
         ))}
-        <span className="ml-auto text-[10px] text-[color:var(--text-tertiary)]">{sourceCount} source snapshots</span>
+        <span className="ml-auto text-[11px] text-[color:var(--text-tertiary)]">{sourceCount} source snapshots</span>
       </div>
-      <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-        <summary className="cursor-pointer list-none px-3 py-2 text-[10px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
-          Inspect {receipts.length} hop receipts
-        </summary>
-        <div className="grid gap-1.5 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2">
-          {receipts.map((receipt, index) => (
-            <div key={`${receipt.source_node_id}-${receipt.target_node_id}-${index}`} className="min-w-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-2 text-[10px]">
-              <p className="truncate font-mono text-[color:var(--foreground)]">{index + 1}. {receipt.relationship}</p>
-              <p className="mt-1 truncate text-[color:var(--text-secondary)]">{receipt.source_snapshot_ids.join(" + ")}</p>
-              <p className="mt-1 text-[color:var(--text-tertiary)]">{receipt.evidence_tier.replaceAll("_", " ")} · {receipt.freshness.replaceAll("_", " ")} · {receipt.runtime_observed_state.replaceAll("_", " ")}</p>
-            </div>
-          ))}
-        </div>
-      </details>
+      <ol aria-label="Verified path traversal" className="mt-2 grid gap-1.5">
+        {receipts.map((receipt, index) => {
+          const source = nodeById.get(receipt.source_node_id);
+          const target = nodeById.get(receipt.target_node_id);
+          return (
+            <li
+              key={`${receipt.source_node_id}-${receipt.target_node_id}-${index}`}
+              className="grid min-w-0 items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[11px] sm:grid-cols-[1.15rem_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(8rem,0.7fr)]"
+            >
+              <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">{index + 1}</span>
+              <span className="min-w-0 font-medium text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+                {source?.label || receipt.source_node_id}
+              </span>
+              <span className="rounded-full border border-[color:var(--border-subtle)] px-2 py-0.5 text-center font-mono text-[10px] text-[color:var(--text-secondary)]">
+                {humanizeRelationship(receipt.relationship)}
+              </span>
+              <span className="min-w-0 font-medium text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+                {target?.label || receipt.target_node_id}
+              </span>
+              <span className="min-w-0 text-[10px] leading-4 text-[color:var(--text-tertiary)] [overflow-wrap:anywhere]">
+                {receipt.source_snapshot_ids.join(" + ")}
+                <span className="block">
+                  {humanizeRelationship(receipt.evidence_tier)} · {humanizeRelationship(receipt.freshness)} · {humanizeRelationship(receipt.runtime_observed_state)}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </section>
   );
 }

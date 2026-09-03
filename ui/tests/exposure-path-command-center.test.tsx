@@ -156,6 +156,24 @@ describe("ExposurePathCommandCenter", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("makes correlated proof the primary path view and leads with the risk decision", () => {
+    render(
+      <ExposurePathCommandCenter
+        path={basePath}
+        pathProofSlot={<div data-testid="correlated-proof">all traversable hops</div>}
+        actions={[{ title: "Upgrade werkzeug and verify", detail: "Patch the package.", href: "/remediation" }]}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
+      "CVE-2026-0002 can reach CVE-2026-0002",
+    );
+    expect(screen.getByTestId("correlated-proof")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Selected exposure path graph for/ })).not.toBeInTheDocument();
+    const action = screen.getByRole("link", { name: "Upgrade werkzeug and verify" });
+    expect(action.compareDocumentPosition(screen.getByTestId("correlated-proof")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("switches to the neighbor list and the interactive-graph hint via the toggle", () => {
     const onViewChange = vi.fn();
     render(

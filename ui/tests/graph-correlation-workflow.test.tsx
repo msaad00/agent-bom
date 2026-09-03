@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GraphCorrelationWorkflow } from "@/components/graph-correlation-workflow";
 import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api";
+import type { GraphAttackPath } from "@/lib/api-types";
+import type { UnifiedNode } from "@/lib/graph-schema";
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -58,7 +60,26 @@ describe("GraphCorrelationWorkflow", () => {
   });
 
   it("loads the latest completed correlation as the primary automated evidence view", async () => {
-    render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} onOpenSnapshot={vi.fn()} />);
+    render(
+      <GraphCorrelationWorkflow
+        snapshots={snapshots}
+        initialRun={run("complete")}
+        priorityPath={{
+          source: "service:api",
+          target: "data:records",
+          hops: ["service:api", "package:pillow", "vulnerability:webp", "data:records"],
+          edges: ["contains", "vulnerable_to", "reaches"],
+          composite_risk: 58,
+          vuln_ids: ["CVE-2023-4863"],
+        } as GraphAttackPath}
+        priorityNodes={[
+          { id: "service:api", label: "Public API", entity_type: "server" },
+          { id: "data:records", label: "Modeled customer records", entity_type: "data_store" },
+        ] as UnifiedNode[]}
+        priorityAction={{ title: "Patch Pillow and re-run correlation", href: "/remediation" }}
+        onOpenSnapshot={vi.fn()}
+      />,
+    );
 
     expect(await screen.findByText("Evidence correlation complete")).toBeInTheDocument();
     expect(screen.getByText("Source intake")).toBeInTheDocument();
@@ -70,6 +91,9 @@ describe("GraphCorrelationWorkflow", () => {
     expect(screen.getByText("Image + SBOM")).toBeInTheDocument();
     expect(screen.getByText("Repository")).toBeInTheDocument();
     expect(screen.getByText("2 confirmed attack paths")).toBeInTheDocument();
+    expect(screen.getByText("CVE-2023-4863 can reach Modeled customer records")).toBeInTheDocument();
+    expect(screen.getByText("Risk 58.0")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Patch Pillow and re-run correlation" })).toHaveAttribute("href", "/remediation");
     expect(screen.queryByLabelText("Correlation name")).not.toBeVisible();
     expect(apiMock.createGraphCorrelation).not.toHaveBeenCalled();
     expect(screen.getByText("Opt-in runtime")).toBeInTheDocument();

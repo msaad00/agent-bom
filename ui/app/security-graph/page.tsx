@@ -899,6 +899,8 @@ function AttackPathInvestigationContent() {
       ) : (
         <InvestigationPathWorkspace
           rows={rankedRows}
+          focused={hasFocusContext && rankedRows.length === 1}
+          allPathsHref={resetFocusHref}
           selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
           onSelect={(key) => {
             setSelectedAttackPathKey(key);
@@ -968,17 +970,17 @@ function AttackPathInvestigationContent() {
                 scanId={selectedScanId || undefined}
                 view={pathView}
                 onViewChange={setPathView}
-                techniquesSlot={
+                pathProofSlot={
                   selectedAttackPath ? (
-                    <>
-                      <AttackPathCorrelationProof
-                        path={selectedAttackPath}
-                        riskReasons={selectedFixFirstCard?.risk_reasons}
-                        nodes={selectedFixFirstCard?.nodes}
-                      />
-                      <AttackPathTechniqueChain path={selectedAttackPath} />
-                    </>
+                    <AttackPathCorrelationProof
+                      path={selectedAttackPath}
+                      riskReasons={selectedFixFirstCard?.risk_reasons}
+                      nodes={selectedFixFirstCard?.nodes}
+                    />
                   ) : null
+                }
+                techniquesSlot={
+                  selectedAttackPath ? <AttackPathTechniqueChain path={selectedAttackPath} /> : null
                 }
                 graphSlot={
                   graphData && selectedAttackPath ? (
@@ -1031,6 +1033,9 @@ function AttackPathInvestigationContent() {
               snapshots={snapshots}
               initialRun={latestCorrelationRun}
               historyError={correlationHistoryError}
+              priorityPath={selectedAttackPath}
+              priorityNodes={selectedFixFirstCard?.nodes}
+              priorityAction={(selectedFixFirstCard?.next_actions ?? selectedPathActions)[0]}
               onOpenSnapshot={selectSnapshot}
             />
           ) : null}

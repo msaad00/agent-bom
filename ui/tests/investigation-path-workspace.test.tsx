@@ -65,6 +65,27 @@ afterEach(() => {
 });
 
 describe("InvestigationPathWorkspace", () => {
+  it("gives a uniquely deep-linked path the full decision workspace", () => {
+    setNarrowViewport(false);
+    render(
+      <InvestigationPathWorkspace
+        rows={[rows[0]!]}
+        selectedKey="path-a"
+        onSelect={vi.fn()}
+        title="1 ranked path"
+        subtitle="Focused from a finding."
+        filters={<div>Filters</div>}
+        detail={<div>Complete path proof</div>}
+        focused
+        allPathsHref="/security-graph?lens=attack-path"
+      />,
+    );
+
+    expect(screen.queryByLabelText("Attack path queue")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Selected path detail" })).toHaveTextContent("Complete path proof");
+    expect(screen.getByRole("link", { name: /All paths/ })).toHaveAttribute("href", "/security-graph?lens=attack-path");
+  });
+
   it("keeps the bounded path queue and selected graph detail in one desktop workspace", () => {
     setNarrowViewport(false);
     render(<Harness />);

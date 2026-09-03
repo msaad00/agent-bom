@@ -114,6 +114,7 @@ export function ExposurePathCommandCenter({
   view: controlledView,
   onViewChange,
   graphSlot,
+  pathProofSlot,
   techniquesSlot,
 }: {
   path: ExposurePath;
@@ -135,6 +136,12 @@ export function ExposurePathCommandCenter({
    */
   graphSlot?: React.ReactNode | undefined;
   /**
+   * Provenance-backed traversal for correlated paths. When present, it is the
+   * primary path representation so operators see every evidenced hop instead
+   * of a width-dependent collapsed summary.
+   */
+  pathProofSlot?: React.ReactNode | undefined;
+  /**
    * Mapped ATT&CK/ATLAS kill-chain for the selected path, rendered under the
    * path view. Fed from the raw AttackPath (the transformed ExposurePath does
    * not carry technique mappings); renders nothing when the path has none.
@@ -153,6 +160,8 @@ export function ExposurePathCommandCenter({
     path.summary ||
     "A reachable package or service on this path inherits downstream credential and tool exposure from the agent runtime.";
   const primaryAction = actions[0];
+  const outcomeFinding = path.findings[0] || path.target.label;
+  const outcomeTitle = `${outcomeFinding} can reach ${path.target.label}`;
   const severityTone =
     path.severity === "critical"
       ? "from-red-500/80 via-red-500/20 to-transparent"
@@ -176,8 +185,16 @@ export function ExposurePathCommandCenter({
                 </span>
               ) : null}
             </div>
-            <h2 className="sr-only">{pathDisplayTitle(path)}</h2>
-            <ExposurePathHopTitle hops={path.hops.length > 0 ? path.hops : [path.source, path.target]} />
+            {pathProofSlot ? (
+              <h2 className="text-xl font-semibold tracking-tight text-[color:var(--foreground)] sm:text-2xl">
+                {outcomeTitle}
+              </h2>
+            ) : (
+              <>
+                <h2 className="sr-only">{pathDisplayTitle(path)}</h2>
+                <ExposurePathHopTitle hops={path.hops.length > 0 ? path.hops : [path.source, path.target]} />
+              </>
+            )}
             <p
               title={pathSummary}
               className="line-clamp-3 max-w-3xl text-sm leading-6 text-[color:var(--text-secondary)] sm:line-clamp-2"
@@ -193,6 +210,18 @@ export function ExposurePathCommandCenter({
           </div>
         </div>
 
+        {primaryAction ? (
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={primaryAction.href}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500"
+            >
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{primaryAction.title}</span>
+            </Link>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
             {view === "path"
@@ -204,7 +233,9 @@ export function ExposurePathCommandCenter({
           <PathViewToggle view={view} onChange={setView} />
         </div>
 
-        {view === "path" ? (
+        {view === "path" && pathProofSlot ? (
+          pathProofSlot
+        ) : view === "path" ? (
           <section aria-label="Selected exposure path graph" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] p-1">
             {/* Keyed by path so selecting a new path re-enters the fit-first
                 frame instead of inheriting the previous path's expanded board. */}
@@ -223,7 +254,15 @@ export function ExposurePathCommandCenter({
           </section>
         )}
 
-        {techniquesSlot}
+        {techniquesSlot ? (
+          <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
+              <span>Threat technique mapping</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-[color:var(--border-subtle)] p-3">{techniquesSlot}</div>
+          </details>
+        ) : null}
 
         <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
@@ -273,17 +312,6 @@ export function ExposurePathCommandCenter({
         </div>
       </details>
 
-      {primaryAction && (
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={primaryAction.href}
-            className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/50 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/15"
-          >
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>{primaryAction.title}</span>
-          </Link>
-        </div>
-      )}
       </div>
     </div>
   );

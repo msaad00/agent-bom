@@ -70,16 +70,13 @@ describe("AttackPathCorrelationProof", () => {
 
     expect(screen.getByText("Path verified")).toBeInTheDocument();
     expect(screen.getByText("3/3 directed traversable hops evidenced")).toBeInTheDocument();
-    expect(screen.getByText(`reference-api@${digest}`)).toBeInTheDocument();
-    expect(screen.getByText("pillow@9.0.0")).toBeInTheDocument();
-    expect(screen.getByText("CVE-2023-4863")).toBeInTheDocument();
-    expect(screen.queryByText("reference-kubernetes-iac-scan")).not.toBeVisible();
-    expect(screen.getByText("Inspect 3 hop receipts")).toBeInTheDocument();
-
-    screen.getByText("Inspect 3 hop receipts").click();
+    expect(screen.getAllByText(`reference-api@${digest}`).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("pillow@9.0.0").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("CVE-2023-4863").length).toBeGreaterThan(0);
+    expect(screen.getByRole("list", { name: "Verified path traversal" })).toBeInTheDocument();
     expect(screen.getByText("reference-kubernetes-iac-scan")).toBeInTheDocument();
     expect(screen.getAllByText("reference-image-sbom-scan")).toHaveLength(2);
-    expect(screen.getByText("3. vulnerable_to")).toBeInTheDocument();
+    expect(screen.getByText("vulnerable to")).toBeInTheDocument();
   });
 
   it("does not call an incomplete or non-traversable chain verified", () => {

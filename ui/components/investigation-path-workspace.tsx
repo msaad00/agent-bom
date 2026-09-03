@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { SlidersHorizontal } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -43,6 +44,8 @@ export function InvestigationPathWorkspace({
   detail,
   queueFooter,
   sideRail,
+  focused = false,
+  allPathsHref,
 }: {
   rows: RankedPathRow[];
   selectedKey: string | null;
@@ -53,6 +56,9 @@ export function InvestigationPathWorkspace({
   detail: React.ReactNode;
   queueFooter?: React.ReactNode | undefined;
   sideRail?: React.ReactNode | undefined;
+  /** A deep-linked single result is a decision workspace, not a one-row queue. */
+  focused?: boolean | undefined;
+  allPathsHref?: string | undefined;
 }) {
   const detailRef = useRef<HTMLDivElement>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -84,10 +90,10 @@ export function InvestigationPathWorkspace({
   return (
     <section
       aria-label="Investigation workspace"
-      data-layout="responsive-split"
-      className="grid gap-4 lg:grid-cols-[minmax(16rem,18rem)_minmax(0,1fr)] lg:items-start"
+      data-layout={focused ? "focused-detail" : "responsive-split"}
+      className={focused ? "grid gap-3" : "grid gap-4 lg:grid-cols-[minmax(16rem,18rem)_minmax(0,1fr)] lg:items-start"}
     >
-      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+      {!focused ? <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
         <div>
           <h2 className="text-base font-semibold text-[color:var(--foreground)]">{title}</h2>
           <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{subtitle}</p>
@@ -106,7 +112,11 @@ export function InvestigationPathWorkspace({
         />
         {queueFooter}
         {sideRail ? <div className="mt-4">{sideRail}</div> : null}
-      </div>
+      </div> : allPathsHref ? (
+        <Link href={allPathsHref} className="w-fit text-xs font-medium text-[color:var(--text-secondary)] transition hover:text-[color:var(--foreground)]">
+          ← All paths
+        </Link>
+      ) : null}
 
       <div
         ref={detailRef}
@@ -114,7 +124,7 @@ export function InvestigationPathWorkspace({
         role="region"
         aria-label="Selected path detail"
         tabIndex={-1}
-        className="min-w-0 scroll-mt-24 lg:sticky lg:top-20"
+        className={`min-w-0 scroll-mt-24 ${focused ? "" : "lg:sticky lg:top-20"}`}
       >
         {detail}
       </div>

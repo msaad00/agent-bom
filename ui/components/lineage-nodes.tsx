@@ -151,7 +151,7 @@ function NodeCard({
     <div
       title={data.label}
       data-rollup-container={isRollupContainer ? "true" : undefined}
-      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[300px] shadow-xl backdrop-blur transition-opacity ${
+      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[260px] shadow-xl backdrop-blur transition-opacity ${
         isRollupContainer
           ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)]"
           : `${borderClass} ${bgClass}`
@@ -171,7 +171,7 @@ function NodeCard({
       />
       <div className="mb-1 flex min-w-0 items-start gap-2">
         <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
-        <span className="min-w-0 flex-1 break-words line-clamp-2 text-[15px] font-semibold leading-5 text-[var(--foreground)]">
+        <span className="min-w-0 flex-1 break-words line-clamp-2 text-[24px] font-semibold leading-7 text-[var(--foreground)]">
           {data.label}
         </span>
         <span className="ml-auto shrink-0 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">

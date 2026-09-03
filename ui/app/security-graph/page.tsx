@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
@@ -37,7 +37,10 @@ import { Collapsible } from "@/components/collapsible";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import { GraphAnalysisStatusBanner, graphAnalysisStatusCopy } from "@/components/graph-analysis-status";
 import { GraphCampaignPanel } from "@/components/graph-campaign-panel";
-import { GraphCorrelationWorkflow } from "@/components/graph-correlation-workflow";
+import {
+  GraphCorrelationWorkflow,
+  type GraphCorrelationOutcome,
+} from "@/components/graph-correlation-workflow";
 import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import {
   GraphPresetControls,
@@ -77,6 +80,7 @@ import {
   recommendedAttackPathActions,
   toAttackCardNodes,
   toExposurePathFromAttackPath,
+  withCanonicalExposurePresentation,
 } from "@/lib/attack-paths";
 import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
 import { GraphSurface } from "@/app/graph/graph-surface";
@@ -85,6 +89,11 @@ import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
+  buildCorrelationPathHref,
+  buildCorrelationRemediationHref,
+  completeDirectedHopCount,
+  correlationOutcomeMatchesOutput,
+  focusCorrelationPathTarget,
   latestCompletedCorrelation,
   selectInitialGraphSnapshot,
 } from "@/lib/security-graph-focus";
@@ -110,6 +119,9 @@ function AttackPathInvestigationContent() {
   const captureMode = useCaptureMode();
   const searchParams = useSearchParams();
   const correlationCaptureMode = captureMode && searchParams.get("correlation") === "1";
+  const requestedPathMode = searchParams.get("path");
+  const requestedPathScanId = searchParams.get("scan");
+  const focusedTopPathRef = useRef<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
@@ -189,6 +201,24 @@ function AttackPathInvestigationContent() {
       const params = new URLSearchParams(searchParams.toString());
       params.set("scan", scanId);
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const openCorrelationPath = useCallback(
+    (scanId: string) => {
+      setSelectedScanId(scanId);
+      setSelectedAttackPathKey(null);
+      setFocusApplied(true);
+      setInvestigationFocusMode(true);
+      setPathView("path");
+      setInvestigationFilters(EMPTY_INVESTIGATION_FILTERS);
+      setSelectedCampaignId(null);
+      setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
+      router.replace(buildCorrelationPathHref(pathname, searchParams, scanId), { scroll: false });
+      window.requestAnimationFrame(() => {
+        focusCorrelationPathTarget(document);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -509,6 +539,24 @@ function AttackPathInvestigationContent() {
         : attackPaths[0] ?? null,
     [attackPaths, selectedAttackPathKey],
   );
+  useEffect(() => {
+    if (requestedPathMode !== "top" || requestedPathScanId !== selectedScanId) {
+      focusedTopPathRef.current = null;
+      return;
+    }
+    if (selectedAttackPathKey !== null) {
+      setSelectedAttackPathKey(null);
+      return;
+    }
+    if (!selectedAttackPath) return;
+    const focusKey = `${selectedScanId}:${attackPathKey(selectedAttackPath)}`;
+    if (focusedTopPathRef.current === focusKey) return;
+    focusedTopPathRef.current = focusKey;
+    const frame = window.requestAnimationFrame(() => {
+      focusCorrelationPathTarget(document);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [requestedPathMode, requestedPathScanId, selectedAttackPath, selectedAttackPathKey, selectedScanId]);
   const investigationRoot = useMemo(
     () =>
       selectedAttackPath
@@ -543,14 +591,15 @@ function AttackPathInvestigationContent() {
     [cardByPathKey, selectedAttackPath],
   );
   const selectedExposurePath = useMemo(
-    () =>
-      selectedAttackPath
-        ? selectedFixFirstCard?.exposure_path ??
-          toExposurePathFromAttackPath(selectedAttackPath, graphNodeById, {
-            scanId: selectedScanId || undefined,
-            rank: selectedFixFirstCard?.rank,
-          })
-        : null,
+    () => {
+      if (!selectedAttackPath) return null;
+      const exposurePath = selectedFixFirstCard?.exposure_path ??
+        toExposurePathFromAttackPath(selectedAttackPath, graphNodeById, {
+          scanId: selectedScanId || undefined,
+          rank: selectedFixFirstCard?.rank,
+        });
+      return withCanonicalExposurePresentation(exposurePath, graphNodeById);
+    },
     [graphNodeById, selectedAttackPath, selectedFixFirstCard, selectedScanId],
   );
 
@@ -561,6 +610,46 @@ function AttackPathInvestigationContent() {
         : [],
     [graphNodeById, selectedAttackPath, selectedScanId],
   );
+  const correlationOutcome = useMemo<GraphCorrelationOutcome | null>(() => {
+    if (
+      !selectedAttackPath ||
+      !correlationOutcomeMatchesOutput(selectedScanId, graphData?.scan_id, fixFirstView?.scan_id)
+    ) return null;
+    const labels = selectedFixFirstCard?.sequence_labels ?? selectedAttackPath.hops.map((hop) => graphNodeById.get(hop)?.label ?? hop);
+    const packageNode = selectedAttackPath.hops
+      .map((hop) => graphNodeById.get(hop))
+      .find((node) => node?.entity_type === "package");
+    const finding = selectedFixFirstCard?.affected.finding_labels?.[0] ?? selectedAttackPath.vuln_ids[0];
+    const reasons = selectedFixFirstCard?.risk_reasons ?? [];
+    const hopReceipts = selectedAttackPath.hop_evidence ?? [];
+    const directedHopCount = completeDirectedHopCount(selectedAttackPath);
+    if (directedHopCount === null) return null;
+    const action = selectedFixFirstCard?.next_actions?.[0] ?? selectedPathActions[0];
+    const actionIsRemediation = action?.href.split("?", 1)[0] === "/remediation";
+    return {
+      scanId: selectedScanId,
+      title: selectedFixFirstCard?.title ?? selectedAttackPath.summary ?? "Confirmed correlated attack path",
+      summary: finding && packageNode?.label
+        ? `${finding} in ${packageNode.label} connects the selected source to the affected asset across correlated evidence.`
+        : selectedFixFirstCard?.summary ?? selectedAttackPath.summary ?? "The selected correlated evidence forms a directed, traversable path.",
+      source: labels[0] ?? selectedAttackPath.source,
+      target: labels.at(-1) ?? selectedAttackPath.target,
+      finding,
+      packageName: packageNode?.label,
+      risk: selectedAttackPath.composite_risk,
+      hops: directedHopCount,
+      runtimeObserved: reasons.some((reason) => reason.kind === "runtime_observed") || hopReceipts.some((receipt) => receipt.runtime_observed_state === "observed"),
+      runtimeBlocked: reasons.some((reason) => reason.kind === "runtime_blocked") || hopReceipts.some((receipt) => receipt.runtime_observed_state === "blocked"),
+      action: action ? {
+        title: actionIsRemediation
+          ? `Open ${packageNode?.label ?? finding ?? "finding"} remediation`
+          : action.title,
+        href: actionIsRemediation
+          ? buildCorrelationRemediationHref(action.href, selectedScanId, finding, packageNode?.label)
+          : action.href,
+      } : undefined,
+    };
+  }, [fixFirstView?.scan_id, graphData?.scan_id, graphNodeById, selectedAttackPath, selectedFixFirstCard, selectedPathActions, selectedScanId]);
 
   const emptyGraphState = useMemo(() => {
     const analysis = graphData?.stats.analysis_status?.attack_path_fusion;
@@ -947,16 +1036,14 @@ function AttackPathInvestigationContent() {
                 onViewChange={setPathView}
                 techniquesSlot={
                   selectedAttackPath ? (
-                    <>
-                      <AttackPathCorrelationProof
-                        path={selectedAttackPath}
-                        riskReasons={selectedFixFirstCard?.risk_reasons}
-                        nodes={selectedFixFirstCard?.nodes}
-                      />
-                      <AttackPathTechniqueChain path={selectedAttackPath} />
-                    </>
+                    <AttackPathCorrelationProof
+                      path={selectedAttackPath}
+                      riskReasons={selectedFixFirstCard?.risk_reasons}
+                      nodes={selectedFixFirstCard?.nodes}
+                    />
                   ) : null
                 }
+                detailsSlot={selectedAttackPath ? <AttackPathTechniqueChain path={selectedAttackPath} /> : null}
                 graphSlot={
                   graphData && selectedAttackPath ? (
                     <SecurityGraphInvestigation
@@ -1006,7 +1093,8 @@ function AttackPathInvestigationContent() {
             <GraphCorrelationWorkflow
               snapshots={snapshots}
               initialRun={latestCorrelationRun}
-              onOpenSnapshot={selectSnapshot}
+              outcome={correlationOutcome}
+              onOpenSnapshot={openCorrelationPath}
             />
           ) : null}
           <div className="flex flex-wrap items-start justify-between gap-3">

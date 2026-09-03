@@ -211,7 +211,7 @@ function buildGraph() {
     node("pkg:urllib3", "package", "urllib3@2.4.0", "high", 8.5, { ecosystem: "pypi", version: "2.4.0" }),
     node("pkg:protobuf", "package", "protobuf@6.33.2", "high", 8.0, { ecosystem: "pypi", version: "6.33.2" }),
     node("pkg:langchain", "package", "langchain@0.3.21", "medium", 5.8, { ecosystem: "pypi", version: "0.3.21" }),
-    node("cve:next", "vulnerability", "DEMO-VULN-21441", "critical", 9.8, { cvss_score: 9.8 }),
+    node("cve:next", "vulnerability", "DEMO-VULN-21441", "critical", 9.8, { cvss_score: 9.8, fixed_version: "16.2.7" }),
     node("cve:urllib3", "vulnerability", "DEMO-VULN-32597", "high", 8.8, { cvss_score: 8.8 }),
     node("cve:protobuf", "vulnerability", "DEMO-VULN-0994", "high", 8.1, { cvss_score: 8.1 }),
     node("dataset:finance-docs", "dataset", "finance-board-rag-index", "high", 8.0, { data_classification: "confidential" }),
@@ -257,6 +257,25 @@ function buildGraph() {
       const target = hops[index + 1];
       return edges.find((item) => item.source === source && item.target === target)?.id ?? `${source}->${target}:related`;
     });
+  const hopEvidenceFor = (hops) =>
+    hops.slice(0, -1).map((source, index) => {
+      const target = hops[index + 1];
+      const graphEdge = edges.find((item) => item.source === source && item.target === target);
+      return {
+        source_node_id: source,
+        target_node_id: target,
+        relationship: graphEdge?.relationship ?? "related",
+        source_snapshot_ids: [SCAN_ID],
+        evidence_tier: "static_evidence",
+        confidence: 1,
+        freshness: "fresh",
+        runtime_observed_state: "not_observed",
+        direction: graphEdge?.direction ?? "unknown",
+        traversable: graphEdge?.traversable === true,
+        complete: true,
+        truncated: false,
+      };
+    });
 
   const attackPaths = [
     {
@@ -264,7 +283,9 @@ function buildGraph() {
       target: "cve:next",
       hops: ["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"],
       edges: edgeIdsFor(["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"]),
+      hop_evidence: hopEvidenceFor(["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"]),
       composite_risk: 9.8,
+      reachability: "confirmed",
       summary: "JIT reviewer identity can reach a critical Next.js exposure through developer-copilot and GitHub MCP.",
       credential_exposure: ["DEMO_CRED_REF"],
       tool_exposure: ["create_pull_request"],
@@ -1047,7 +1068,7 @@ function referenceFixFirstView() {
         { kind: "runtime_blocked", label: "Runtime blocked", detail: `Strict deny event ${REFERENCE_LAB.runtime_control.blocked_event} verifies the opt-in enforcement path.` },
       ],
       next_actions: [
-        { title: "Patch Pillow and re-run correlation", detail: "Upgrade the vulnerable package, rebuild the digest, then verify the correlated path is absent.", href: "/remediation" },
+        { title: "Open pillow@9.0.0 remediation", detail: "Upgrade the vulnerable package, rebuild the digest, then verify the correlated path is absent.", href: "/remediation" },
       ],
       affected: {
         agents: pathItem.hops.filter((hop) => hop.startsWith("workload:")),
@@ -2428,7 +2449,13 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     }
     for (const expected of options.expectedText ?? []) {
       const matched = expected instanceof RegExp ? expected.test(visibleText) : visibleText.includes(expected);
-      if (!matched) throw new Error(`Expected content ${String(expected)} is missing on ${urlPath}`);
+      if (!matched) {
+        const pathSequence = await page
+          .locator('[data-testid="exposure-path-desktop-sequence"], [data-testid="exposure-path-mobile-sequence"]')
+          .allInnerTexts();
+        const pathDetail = pathSequence.length > 0 ? `; rendered path: ${pathSequence.join(" | ")}` : "";
+        throw new Error(`Expected content ${String(expected)} is missing on ${urlPath}${pathDetail}`);
+      }
     }
     for (const rejected of options.rejectedText ?? []) {
       const matched = rejected instanceof RegExp ? rejected.test(visibleText) : visibleText.includes(rejected);
@@ -2440,6 +2467,86 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
       );
       if (overflow) throw new Error(`Horizontal overflow is visible on ${urlPath}`);
     }
+    if (options.assertCollapsedDetailsWithin) {
+      const openDetails = await page.locator(`${options.assertCollapsedDetailsWithin} details[open]`).count();
+      if (openDetails > 0) {
+        throw new Error(`Progressive-disclosure panels are open on ${urlPath}: ${openDetails}`);
+      }
+    }
+    if (options.viewportSelectors?.length) {
+      const outsideViewport = await page.evaluate((selectors) => selectors.flatMap((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return [`${selector} is missing`];
+        const rect = element.getBoundingClientRect();
+        return rect.left >= 0 && rect.top >= 0 && rect.right <= window.innerWidth && rect.bottom <= window.innerHeight
+          ? []
+          : [`${selector} is outside viewport (${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.right)},${Math.round(rect.bottom)})`];
+      }), options.viewportSelectors);
+      if (outsideViewport.length > 0) {
+        throw new Error(`Required proof content is not contained on ${urlPath}: ${outsideViewport.join(" | ")}`);
+      }
+    }
+    if (options.nonOverlappingSelectors?.length) {
+      const overlaps = await page.evaluate((selectors) => {
+        const boxes = selectors.flatMap((selector) => {
+          const element = document.querySelector(selector);
+          return element ? [{ selector, rect: element.getBoundingClientRect() }] : [];
+        });
+        return boxes.flatMap((left, index) => boxes.slice(index + 1).flatMap((right) => (
+          left.rect.left < right.rect.right
+          && left.rect.right > right.rect.left
+          && left.rect.top < right.rect.bottom
+          && left.rect.bottom > right.rect.top
+        ) ? [`${left.selector} intersects ${right.selector}`] : []));
+      }, options.nonOverlappingSelectors);
+      if (overlaps.length > 0) {
+        throw new Error(`Proof controls overlap on ${urlPath}: ${overlaps.join(" | ")}`);
+      }
+    }
+    if (options.nonOverlappingPairs?.length) {
+      const overlaps = await page.evaluate((pairs) => pairs.flatMap(([leftSelector, rightSelector]) => {
+        const left = document.querySelector(leftSelector)?.getBoundingClientRect();
+        const right = document.querySelector(rightSelector)?.getBoundingClientRect();
+        if (!left || !right) return [`${leftSelector} or ${rightSelector} is missing`];
+        return left.left < right.right
+          && left.right > right.left
+          && left.top < right.bottom
+          && left.bottom > right.top
+          ? [`${leftSelector} intersects ${rightSelector}`]
+          : [];
+      }), options.nonOverlappingPairs);
+      if (overlaps.length > 0) {
+        throw new Error(`Proof regions overlap on ${urlPath}: ${overlaps.join(" | ")}`);
+      }
+    }
+    if (options.readmeTextContract) {
+      const textMetrics = await page.locator(options.readmeTextContract.selector).evaluate((root, contract) => {
+        const readmeScale = Math.min(1, contract.targetWidthPx / window.innerWidth);
+        const values = [...root.querySelectorAll("h2, h3, p, span, a, button, summary")]
+          .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            const closedDisclosure = element.closest("details:not([open])");
+            const visibleDisclosureSummary = Boolean(element.closest("summary"));
+            return (
+              (!closedDisclosure || visibleDisclosureSummary)
+              && (element.textContent ?? "").trim().length > 0
+              && rect.width > 0
+              && rect.height > 0
+            );
+          })
+          .map((element) => ({
+            text: (element.textContent ?? "").trim().slice(0, 80),
+            effective: Number.parseFloat(getComputedStyle(element).fontSize) * readmeScale,
+          }))
+          .filter(({ effective }) => Number.isFinite(effective));
+        return values.sort((left, right) => left.effective - right.effective)[0] ?? null;
+      }, options.readmeTextContract);
+      if (!textMetrics || textMetrics.effective < options.readmeTextContract.minFontPx) {
+        throw new Error(
+          `README-scale proof text is unreadable on ${urlPath}: ${textMetrics?.effective ?? 0}px (${textMetrics?.text ?? "missing"})`,
+        );
+      }
+    }
     for (const expectedPath of options.expectedApiPaths ?? []) {
       if (!successfulApiPaths.has(expectedPath)) {
         throw new Error(`Expected API response ${expectedPath} was not observed on ${urlPath}`);
@@ -2450,6 +2557,111 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
       const graphEdgeCount = await page.locator(".react-flow__edge").count();
       if (graphNodeCount < options.minGraphNodes || graphEdgeCount < (options.minGraphEdges ?? 1)) {
         throw new Error(`Incomplete graph on ${urlPath}: ${graphNodeCount} nodes / ${graphEdgeCount} edges`);
+      }
+      if (options.maxGraphNodes && graphNodeCount > options.maxGraphNodes) {
+        throw new Error(`Unfocused graph on ${urlPath}: ${graphNodeCount} nodes exceeds ${options.maxGraphNodes}`);
+      }
+      if (options.maxGraphEdges && graphEdgeCount > options.maxGraphEdges) {
+        throw new Error(`Unfocused graph on ${urlPath}: ${graphEdgeCount} edges exceeds ${options.maxGraphEdges}`);
+      }
+      if (options.minGraphNodeFontPx) {
+        const smallestPrimaryFont = await page.locator(".react-flow__node:visible").evaluateAll((nodes) =>
+          Math.min(...nodes.map((node) => {
+            const rect = node.getBoundingClientRect();
+            const layoutWidth = node instanceof HTMLElement ? node.offsetWidth : rect.width;
+            const scale = layoutWidth > 0 ? rect.width / layoutWidth : 0;
+            const text = [...node.querySelectorAll("span, p")]
+              .filter((element) => (element.textContent ?? "").trim().length > 0)
+              .map((element) => Number.parseFloat(getComputedStyle(element).fontSize) * scale)
+              .filter(Number.isFinite);
+            return Math.max(0, ...text);
+          })),
+        );
+        if (smallestPrimaryFont < options.minGraphNodeFontPx) {
+          throw new Error(`Unreadable graph node text on ${urlPath}: ${smallestPrimaryFont}px`);
+        }
+      }
+      if (options.minGraphEdgeLabelFontPx) {
+        const edgeLabelFonts = await page.locator(".react-flow__edge-text").evaluateAll((labels) =>
+          labels
+            .filter((label) => {
+              const rect = label.getBoundingClientRect();
+              const canvas = label.closest(".react-flow")?.getBoundingClientRect();
+              return Boolean(
+                canvas
+                && (label.textContent ?? "").trim()
+                && rect.width > 0
+                && rect.height > 0
+                && rect.right > canvas.left
+                && rect.left < canvas.right
+                && rect.bottom > canvas.top
+                && rect.top < canvas.bottom,
+              );
+            })
+            .map((label) => {
+              const viewport = label.closest(".react-flow__viewport");
+              const transform = viewport ? getComputedStyle(viewport).transform : "none";
+              const scale = transform === "none" ? 1 : new DOMMatrixReadOnly(transform).a;
+              return Number.parseFloat(getComputedStyle(label).fontSize) * scale;
+            })
+            .filter(Number.isFinite),
+        );
+        if (edgeLabelFonts.length < graphEdgeCount || Math.min(...edgeLabelFonts) < options.minGraphEdgeLabelFontPx) {
+          throw new Error(
+            `Unreadable or missing graph relationship labels on ${urlPath}: ${edgeLabelFonts.length}/${graphEdgeCount} labels, minimum ${Math.min(...edgeLabelFonts)}px`,
+          );
+        }
+      }
+      if (options.minGraphWidthFillRatio) {
+        const fillRatio = await page.evaluate(() => {
+          const canvas = document.querySelector(".react-flow")?.getBoundingClientRect();
+          const nodes = [...document.querySelectorAll(".react-flow__node")]
+            .map((node) => node.getBoundingClientRect())
+            .filter((rect) => rect.width > 0 && rect.height > 0);
+          if (!canvas || nodes.length === 0) return 0;
+          const left = Math.min(...nodes.map((rect) => rect.left));
+          const right = Math.max(...nodes.map((rect) => rect.right));
+          return (right - left) / canvas.width;
+        });
+        if (fillRatio < options.minGraphWidthFillRatio || fillRatio > 0.96) {
+          throw new Error(`Graph framing on ${urlPath} uses ${(fillRatio * 100).toFixed(1)}% of the canvas width`);
+        }
+      }
+      if (options.minGraphHeightFillRatio) {
+        const fillRatio = await page.evaluate(() => {
+          const canvas = document.querySelector(".react-flow")?.getBoundingClientRect();
+          const nodes = [...document.querySelectorAll(".react-flow__node")]
+            .map((node) => node.getBoundingClientRect())
+            .filter((rect) => rect.width > 0 && rect.height > 0);
+          if (!canvas || nodes.length === 0) return 0;
+          const top = Math.min(...nodes.map((rect) => rect.top));
+          const bottom = Math.max(...nodes.map((rect) => rect.bottom));
+          return (bottom - top) / canvas.height;
+        });
+        if (fillRatio < options.minGraphHeightFillRatio || fillRatio > 0.94) {
+          throw new Error(`Graph framing on ${urlPath} uses ${(fillRatio * 100).toFixed(1)}% of the canvas height`);
+        }
+      }
+      if (options.assertEdgeLabelsClearOfNodes) {
+        const collisions = await page.evaluate(() => {
+          const nodes = [...document.querySelectorAll(".react-flow__node")]
+            .map((node) => ({ label: (node.textContent ?? "").trim(), rect: node.getBoundingClientRect() }))
+            .filter(({ rect }) => rect.width > 0 && rect.height > 0);
+          return [...document.querySelectorAll(".react-flow__edge-text")]
+            .map((label) => ({ label: (label.textContent ?? "").trim(), rect: label.getBoundingClientRect() }))
+            .filter(({ label, rect }) => label && rect.width > 0 && rect.height > 0)
+            .flatMap((edgeLabel) => nodes
+              .filter(({ rect }) =>
+                edgeLabel.rect.left < rect.right
+                && edgeLabel.rect.right > rect.left
+                && edgeLabel.rect.top < rect.bottom
+                && edgeLabel.rect.bottom > rect.top,
+              )
+              .map((node) => `${edgeLabel.label} intersects ${node.label}`));
+        });
+        if (collisions.length > 0) {
+          throw new Error(`Graph relationship labels overlap nodes on ${urlPath}: ${collisions.join(" | ")}`);
+        }
       }
     }
     if (!visibleText.includes(RELEASE_VERSION)) {
@@ -2534,7 +2746,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-receipts-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
-      scope: "Reference evidence lab source receipts flowing into one immutable, manifest-bound correlated snapshot",
+      scope: "Reference evidence lab correlation outcome with affected assets, real advisory, runtime state, and remediation action; source receipts remain inspectable",
       presentation: `${CAPTURE_THEME} desktop`,
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2552,7 +2764,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-receipts-light-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
-      scope: "Reference evidence lab automatic journey and manifest-bound source receipts in the light theme",
+      scope: "Reference evidence lab outcome-first correlation decision in the light theme",
       presentation: "light desktop",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2570,7 +2782,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-receipts-mobile-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
-      scope: "Reference evidence lab automatic journey and manifest-bound source receipts at a 390 by 844 viewport",
+      scope: "Reference evidence lab outcome-first correlation decision at a 390 by 844 viewport",
       presentation: "dark mobile",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2611,8 +2823,8 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "lineage-graph-live.png",
-      page: `/graph?capture=1&scan=${SCAN_ID}&agent=developer-copilot&vulnOnly=1`,
-      scope: "URL-pinned developer-copilot vulnerable-path lineage across agent, MCP, package, and finding nodes",
+      page: `/graph?capture=1&scan=${SCAN_ID}&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability`,
+      scope: "Focused highest-risk directed path from identity source through agent, MCP, package, and finding",
     },
     {
       path: "context-map-live.png",
@@ -2722,7 +2934,7 @@ async function main() {
       await proofPage.getByRole("button", { name: /^Evidence scope Current scan/i }).click();
       const workflow = proofPage.getByTestId("graph-correlation-workflow");
       await workflow.waitFor({ state: "visible", timeout: 30_000 });
-      await proofPage.getByTestId("graph-correlation-receipt-dag").waitFor({ state: "visible", timeout: 30_000 });
+      await proofPage.getByTestId("graph-correlation-decision").waitFor({ state: "visible", timeout: 30_000 });
       // Give the viewport enough trailing room to place Evidence scope just
       // below the fixed product header. Without this capture-only spacer the
       // browser hits the document's maximum scroll position and leaves the
@@ -2730,45 +2942,114 @@ async function main() {
       await proofPage.evaluate(() => {
         document.body.style.paddingBottom = "900px";
       });
-      const workflowTop = await workflow.evaluate(
+      const mobile = (proofPage.viewportSize()?.width ?? 1440) < 640;
+      const framingTarget = mobile
+        ? proofPage.getByTestId("graph-correlation-decision")
+        : workflow;
+      const workflowTop = await framingTarget.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
-      await proofPage.evaluate((workflowTop) => {
-        window.scrollTo({ top: workflowTop - 88, behavior: "instant" });
-      }, workflowTop);
+      await proofPage.evaluate(({ top, offset }) => {
+        window.scrollTo({ top: top - offset, behavior: "instant" });
+      }, { top: workflowTop, offset: mobile ? 97 : 88 });
       await proofPage.waitForTimeout(500);
     };
     const prepareCorrelationPath = async (proofPage) => {
       const proof = proofPage.getByTestId("attack-path-correlation-proof");
       await proof.waitFor({ state: "visible", timeout: 30_000 });
       const selectedPath = proofPage.getByTestId("selected-exposure-path");
-      await selectedPath.scrollIntoViewIfNeeded();
-      const topOffset = (proofPage.viewportSize()?.width ?? 1440) < 640 ? -72 : -300;
-      await proofPage.evaluate((offset) => window.scrollBy({ top: offset, behavior: "instant" }), topOffset);
+      await proofPage.evaluate(() => {
+        document.body.style.paddingBottom = "900px";
+      });
+      const pathTop = await selectedPath.evaluate(
+        (element) => element.getBoundingClientRect().top + window.scrollY,
+      );
+      const offset = (proofPage.viewportSize()?.width ?? 1440) < 640 ? 96 : 88;
+      await proofPage.evaluate(({ top, offset: topOffset }) => {
+        window.scrollTo({ top: top - topOffset, behavior: "instant" });
+      }, { top: pathTop, offset });
       await proofPage.waitForTimeout(500);
     };
     const correlationReceiptAssertions = {
       expectedText: [
-        "Evidence journey",
-        "Evidence correlation complete",
-        "Image + SBOM",
-        "Runtime",
-        "1 confirmed attack path",
+        "Correlation result",
+        /1 confirmed path across 6 sources/i,
+        "Public service reaches modeled customer records through CVE-2023-4863",
+        "CVE-2023-4863",
+        "pillow@9.0.0",
+        "Risk 58.0",
+        "Runtime observed",
+        "Runtime block verified",
+        "Open pillow@9.0.0 remediation",
+        "Inspect source receipts",
       ],
+      rejectedText: ["Correlation name", "Connect", "Discover"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
-      readySelector: '[data-testid="graph-correlation-receipt-dag"]',
+      readySelector: '[data-testid="graph-correlation-decision"]',
+      assertNoHorizontalOverflow: true,
+      assertCollapsedDetailsWithin: '[data-testid="graph-correlation-workflow"]',
+      viewportSelectors: [
+        "#demo-estate-watermark",
+        '[data-testid="graph-correlation-decision"]',
+        '[data-testid="correlation-primary-action"]',
+        '[data-testid="correlation-open-path"]',
+      ],
+      nonOverlappingSelectors: [
+        '[data-testid="correlation-primary-action"]',
+        '[data-testid="correlation-open-path"]',
+      ],
+      nonOverlappingPairs: [[
+        "#demo-estate-watermark",
+        '[data-testid="graph-correlation-decision"]',
+      ]],
+      readmeTextContract: {
+        selector: '[data-testid="graph-correlation-decision"]',
+        targetWidthPx: 920,
+        minFontPx: 12,
+      },
     };
     const correlationPathAssertions = {
       expectedText: [
+        "Public reference-evidence-api service",
+        "reference-evidence-api workload",
+        /1\.\s*Service/i,
+        /2\.\s*Workload/i,
+        /3\.\s*Container/i,
+        /7\.\s*Identity/i,
+        /8\.\s*Data asset/i,
         "CVE-2023-4863",
+        "pillow@9.0.0",
+        "render_untrusted_image",
+        "reference-evidence-workload",
+        "Modeled customer records",
+        "Uses",
+        "Contains",
+        "Vulnerable To",
+        "Exploitable Via",
+        "Authenticates As",
+        "Has Permission",
         REFERENCE_LAB.container_digest,
         "Path verified",
         "Runtime observed",
         "Runtime block verified",
-        "Patch Pillow and re-run correlation",
+        "Open pillow@9.0.0 remediation",
       ],
+      rejectedText: [/hops hidden/i, "3. Server", "3. MCP server"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
-      readySelector: '[data-testid="attack-path-correlation-proof"]',
+      readySelector: '[data-testid="exposure-path-desktop-sequence"]',
+      viewportSelectors: [
+        "#demo-estate-watermark",
+        '[data-testid="selected-exposure-path"]',
+        '[data-testid="exposure-path-desktop-sequence"]',
+        '[data-testid="attack-path-correlation-proof"]',
+        '[data-testid="exposure-path-primary-action"]',
+      ],
+      assertCollapsedDetailsWithin: '[data-testid="selected-exposure-path"]',
+      readmeTextContract: {
+        selector: '[data-testid="selected-exposure-path"]',
+        targetWidthPx: 920,
+        minFontPx: 12,
+      },
     };
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
@@ -2858,14 +3139,14 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-live.png", async (securityGraphPage) => {
       await securityGraphPage
-        .getByRole("img", { name: /Selected exposure path graph for/i })
+        .getByTestId("selected-exposure-path")
         .waitFor({ state: "visible", timeout: 30_000 });
     }, {
       expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
-      readySelector: 'section[aria-label="Selected exposure path graph"]',
+      readySelector: '[data-testid="selected-exposure-path"]',
     });
-    const correlationPage = await newCapturePage("dark", { width: 1440, height: 820 });
+    const correlationPage = await newCapturePage("dark", { width: 1120, height: 820 });
     await capture(
       correlationPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
@@ -2875,7 +3156,7 @@ async function main() {
     );
     await correlationPage.close();
 
-    await page.setViewportSize({ width: 1440, height: 1120 });
+    await page.setViewportSize({ width: 1120, height: 1400 });
     await capture(
       page,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
@@ -2971,28 +3252,59 @@ async function main() {
       },
     );
     await proposedCanvasPage.close();
-    await capture(page, `/graph?capture=1&scan=${SCAN_ID}&agent=developer-copilot&vulnOnly=1`, "lineage-graph-live.png", async (lineagePage) => {
-      await lineagePage.getByRole("heading", { name: "Lineage Graph" }).waitFor({
-        state: "visible",
-        timeout: 10_000,
-      });
-      await lineagePage.locator(".react-flow__node:visible").first().waitFor({ state: "visible", timeout: 10_000 });
-      await fitReactFlow(lineagePage);
-      await lineagePage.locator(".react-flow__controls-zoomout").first().click({ force: true });
-      await scrollTo(lineagePage, 140);
-      await lineagePage.waitForTimeout(350);
-    }, {
-      expectedText: [
-        "Relevant paths",
-        "Developer Copilot",
-        "github-enterprise MCP",
-        "next@",
-        "DEMO-VULN-21441",
-      ],
-      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph"],
-      minGraphNodes: 4,
-      minGraphEdges: 3,
-    });
+    await capture(
+      page,
+      `/graph?capture=1&scan=${SCAN_ID}&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability`,
+      "lineage-graph-live.png",
+      async (lineagePage) => {
+        await lineagePage.getByRole("heading", { name: "Lineage Graph" }).waitFor({
+          state: "visible",
+          timeout: 10_000,
+        });
+        await lineagePage.getByTestId("focused-path-decision").waitFor({ state: "visible", timeout: 10_000 });
+        await fitReactFlow(lineagePage);
+        try {
+          await lineagePage.locator(".react-flow__node:visible").first().waitFor({
+            state: "visible",
+            timeout: 10_000,
+          });
+        } catch {
+          const visible = (await lineagePage.locator("body").innerText()).replaceAll(/\s+/g, " ");
+          const state = `${visible.slice(0, 500)} … ${visible.slice(-1_200)}`;
+          throw new Error(`Focused path graph did not render: ${state}`);
+        }
+        await lineagePage.getByTestId("focused-path-surface").scrollIntoViewIfNeeded();
+        await lineagePage.evaluate(() => window.scrollBy({ top: -76, behavior: "instant" }));
+        await lineagePage.waitForTimeout(350);
+      },
+      {
+        expectedText: [
+          /Focused attack path/i,
+          "Risk 9.8",
+          "6 evidence hops",
+          "Developer Copilot",
+          "github-enterprise MCP",
+          "next@",
+          "DEMO-VULN-21441",
+          "Upgrade next to 16.2.7",
+          "Open remediation plan",
+          "Snapshot freshness",
+          "6/6 directed traversable relationships evidenced",
+          /Demo data — sample environment/i,
+        ],
+        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph"],
+        minGraphNodes: 7,
+        maxGraphNodes: 8,
+        minGraphEdges: 6,
+        maxGraphEdges: 7,
+        minGraphNodeFontPx: 12,
+        minGraphEdgeLabelFontPx: 12,
+        minGraphWidthFillRatio: 0.65,
+        minGraphHeightFillRatio: 0.42,
+        assertEdgeLabelsClearOfNodes: true,
+        assertNoHorizontalOverflow: true,
+      },
+    );
     await capture(
       page,
       "/graph?lens=context&capture=1",
@@ -3111,6 +3423,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
+    await lightPage.setViewportSize({ width: 1120, height: 820 });
     await capture(
       lightPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
@@ -3118,6 +3431,7 @@ async function main() {
       prepareCorrelationReceipts,
       correlationReceiptAssertions,
     );
+    await lightPage.setViewportSize({ width: 1120, height: 1400 });
     await capture(
       lightPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
@@ -3125,15 +3439,16 @@ async function main() {
       prepareCorrelationPath,
       correlationPathAssertions,
     );
+    await lightPage.setViewportSize({ width: 1440, height: 980 });
     await capture(lightPage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-light-live.png", async (securityGraphPage) => {
       await securityGraphPage
-        .getByRole("img", { name: /Selected exposure path graph for/i })
+        .getByTestId("selected-exposure-path")
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
       expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
-      readySelector: 'section[aria-label="Selected exposure path graph"]',
+      readySelector: '[data-testid="selected-exposure-path"]',
     });
     await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "16.2.7", "DEMO-VULN-21441", "Campaign workflow and verification"],
@@ -3158,7 +3473,13 @@ async function main() {
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
       "correlation-path-mobile-live.png",
       prepareCorrelationPath,
-      { ...correlationPathAssertions, assertNoHorizontalOverflow: true },
+      {
+        ...correlationPathAssertions,
+        readySelector: '[data-testid="exposure-path-mobile-sequence"]',
+        viewportSelectors: ["#demo-estate-watermark"],
+        readmeTextContract: undefined,
+        assertNoHorizontalOverflow: true,
+      },
     );
     await capture(mobilePage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-mobile-live.png", async (securityGraphPage) => {
       await securityGraphPage

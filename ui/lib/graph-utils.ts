@@ -671,9 +671,19 @@ export function readableGraphEdges(
             ? relationshipEdgeLabelText(relationship, edge.data as Record<string, unknown>)
             : undefined))
         : undefined;
-    const labelPresentation = label
+    const defaultLabelPresentation = label
       ? relationshipEdgeLabelPresentation({ captureMode, zoom })
       : {};
+    const labelPresentation = label && preserveVisualStyle
+      ? {
+          ...defaultLabelPresentation,
+          ...(edge.labelShowBg !== undefined ? { labelShowBg: edge.labelShowBg } : {}),
+          ...(edge.labelBgPadding !== undefined ? { labelBgPadding: edge.labelBgPadding } : {}),
+          ...(edge.labelBgBorderRadius !== undefined ? { labelBgBorderRadius: edge.labelBgBorderRadius } : {}),
+          ...(edge.labelBgStyle !== undefined ? { labelBgStyle: edge.labelBgStyle } : {}),
+          ...(edge.labelStyle !== undefined ? { labelStyle: edge.labelStyle } : {}),
+        }
+      : defaultLabelPresentation;
 
     return {
       ...edge,

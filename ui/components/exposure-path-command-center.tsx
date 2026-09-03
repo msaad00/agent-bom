@@ -80,7 +80,7 @@ function PathViewToggle({
             type="button"
             onClick={() => onChange(key)}
             aria-pressed={active}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium transition ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[15px] font-medium transition ${
               active
                 ? "bg-emerald-600 text-white"
                 : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
@@ -115,6 +115,7 @@ export function ExposurePathCommandCenter({
   onViewChange,
   graphSlot,
   techniquesSlot,
+  detailsSlot,
 }: {
   path: ExposurePath;
   actions?: ExposurePathCommandAction[] | undefined;
@@ -135,11 +136,11 @@ export function ExposurePathCommandCenter({
    */
   graphSlot?: React.ReactNode | undefined;
   /**
-   * Mapped ATT&CK/ATLAS kill-chain for the selected path, rendered under the
-   * path view. Fed from the raw AttackPath (the transformed ExposurePath does
-   * not carry technique mappings); renders nothing when the path has none.
+   * Compact, decision-relevant proof rendered directly under the path.
    */
   techniquesSlot?: React.ReactNode | undefined;
+  /** Technical analysis retained behind the Evidence & relationships disclosure. */
+  detailsSlot?: React.ReactNode | undefined;
 }) {
   const [internalView, setInternalView] = useState<ExposurePathView>("path");
   const view = controlledView ?? internalView;
@@ -167,11 +168,11 @@ export function ExposurePathCommandCenter({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="w-full min-w-0 space-y-2 sm:flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-red-500/35 bg-red-500/12 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-red-700 dark:text-red-200">
+              <span className="rounded-full border border-red-500/35 bg-red-500/12 px-2.5 py-0.5 text-[15px] font-semibold uppercase tracking-[0.12em] text-red-700 dark:text-red-200">
                 {String(path.severity)} risk
               </span>
               {evidence?.isKev ? (
-                <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-200">
+                <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-0.5 text-[15px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-200">
                   CISA KEV
                 </span>
               ) : null}
@@ -180,12 +181,12 @@ export function ExposurePathCommandCenter({
             <ExposurePathHopTitle hops={path.hops.length > 0 ? path.hops : [path.source, path.target]} />
             <p
               title={pathSummary}
-              className="line-clamp-3 max-w-3xl text-sm leading-6 text-[color:var(--text-secondary)] sm:line-clamp-2"
+              className="line-clamp-3 max-w-3xl text-[15px] leading-6 text-[color:var(--text-secondary)] sm:line-clamp-2"
             >
               {pathSummary}
             </p>
           </div>
-          <div className="grid w-full grid-cols-3 gap-2 text-xs sm:w-auto sm:grid-cols-4">
+          <div className="grid w-full grid-cols-3 gap-2 text-[15px] sm:w-auto sm:grid-cols-4">
             <MetricPill label="Path risk" value={path.riskScore.toFixed(1)} tone="red" />
             <MetricPill label="Path span" value={pathSpanLabel(path.hops.length)} />
             <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
@@ -194,7 +195,7 @@ export function ExposurePathCommandCenter({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+          <div className="text-[15px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
             {view === "path"
               ? "Attack path"
               : view === "graph"
@@ -225,8 +226,21 @@ export function ExposurePathCommandCenter({
 
         {techniquesSlot}
 
+        {primaryAction && (
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={primaryAction.href}
+              data-testid="exposure-path-primary-action"
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/50 bg-emerald-500/10 px-4 py-2 text-[15px] font-medium text-emerald-700 transition hover:border-emerald-500 hover:bg-emerald-500/15 dark:text-emerald-200"
+            >
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{primaryAction.title}</span>
+            </Link>
+          </div>
+        )}
+
         <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[15px] font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
             <span>Evidence & relationships</span>
             <ChevronDown className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open:rotate-180" />
           </summary>
@@ -270,20 +284,9 @@ export function ExposurePathCommandCenter({
               </div>
             </div>
           </aside>
+          {detailsSlot ? <div>{detailsSlot}</div> : null}
         </div>
       </details>
-
-      {primaryAction && (
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={primaryAction.href}
-            className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/50 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/15"
-          >
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>{primaryAction.title}</span>
-          </Link>
-        </div>
-      )}
       </div>
     </div>
   );
@@ -307,7 +310,7 @@ function MetricPill({
 
   return (
     <div className={`rounded-lg border px-2.5 py-1.5 ${toneClass}`}>
-      <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</span>{" "}
+      <span className="text-[15px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)]">{label}</span>{" "}
       <span className="font-mono font-semibold">{value}</span>
     </div>
   );
@@ -340,7 +343,11 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
   return (
     <div className="space-y-2">
       <MobileExposurePathSequence path={path} />
-      <div ref={boardRef} className={`${scrollable ? "overflow-x-auto p-2" : "p-2"} hidden sm:block`} data-testid="exposure-path-graph-scroll">
+      <div ref={boardRef} className="hidden sm:block">
+        {collapsible && !expanded ? (
+          <DesktopExposurePathSequence path={path} />
+        ) : (
+        <div className={`${scrollable ? "overflow-x-auto p-2" : "p-2"}`} data-testid="exposure-path-graph-scroll">
         <svg
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           {...(scrollable
@@ -401,7 +408,9 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
           {layout.nodes.map((node, index) => {
             const style = GRAPH_ROLE_STYLE[node.role] ?? GRAPH_ROLE_STYLE.unknown;
             const summaryNode = node.id === COLLAPSED_HOPS_NODE_ID;
-            const roleLabel = summaryNode ? "Hidden hops" : (ROLE_META[node.role] ?? ROLE_META.unknown).label;
+            const roleLabel = summaryNode
+              ? "Hidden hops"
+              : node.kindLabel ?? (ROLE_META[node.role] ?? ROLE_META.unknown).label;
             const titleLines = wrapGraphText(node.label, layout.labelChars, 2);
             return (
               <g key={`${node.id}-${index}`} transform={`translate(${node.x} ${node.y})`}>
@@ -461,26 +470,92 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
             );
           })}
         </svg>
+        </div>
+        )}
       </div>
 
       {collapsible ? (
-        <div className="hidden items-center justify-center gap-2 pb-1 text-[11px] sm:flex">
+        <div className="hidden items-center justify-center gap-2 pb-1 text-[15px] sm:flex">
           <button
             type="button"
             aria-expanded={expanded}
             onClick={() => setExpanded((current) => !current)}
             className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 font-medium text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
           >
-            {expanded ? "Collapse to fit" : `Show all ${layout.totalHopCount} hops`}
+            {expanded ? "Return to ordered path" : "Open full-width diagram"}
           </button>
           <span className="text-[color:var(--text-tertiary)]">
             {expanded
-              ? "Full chain at full size — scroll horizontally."
-              : `${layout.hiddenHopSummary} summarised to keep the chain on screen.`}
+              ? "Full-width diagram — scroll horizontally."
+              : `All ${layout.totalHopCount} hops shown in order.`}
           </span>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function pathRelationship(path: ExposurePath, index: number): string | undefined {
+  if (index === 0) return undefined;
+  const previous = path.hops[index - 1];
+  const current = path.hops[index];
+  if (!previous || !current) return undefined;
+  return path.relationships.find(
+    (candidate) => candidate.source === previous.id && candidate.target === current.id,
+  )?.relationship;
+}
+
+function DesktopExposurePathSequence({ path }: { path: ExposurePath }) {
+  return (
+    <ol
+      aria-label={`Selected exposure path ordered steps for ${pathDisplayTitle(path)}`}
+      className="grid grid-cols-2 gap-2 p-2 lg:grid-cols-4"
+      data-testid="exposure-path-desktop-sequence"
+    >
+      {path.hops.map((hop, index) => {
+        const meta = ROLE_META[hop.role] ?? ROLE_META.unknown;
+        const Icon = meta.icon;
+        const roleLabel = hop.kindLabel ?? meta.label;
+        const relationship = pathRelationship(path, index);
+        return (
+          <li
+            key={`${hop.id}-${index}`}
+            className={`relative min-h-32 min-w-0 rounded-xl border px-3 pb-3 pt-9 ${meta.tint}`}
+          >
+            {index > 0 ? (
+              <div className="absolute inset-x-2 top-2 flex items-center gap-1 text-[15px] font-medium text-[color:var(--text-secondary)]">
+                <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate" title={relationship ? humanizeRelationship(relationship) : "Relationship not recorded"}>
+                  {relationship ? humanizeRelationship(relationship) : "Relationship not recorded"}
+                </span>
+              </div>
+            ) : (
+              <div className="absolute inset-x-3 top-2 text-[15px] font-medium text-[color:var(--text-secondary)]">
+                Entry point
+              </div>
+            )}
+            <div className="flex items-start gap-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-current/20 bg-[color:var(--surface-elevated)]">
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[15px] font-semibold uppercase tracking-[0.08em] opacity-75">
+                  {index + 1}. {roleLabel}
+                </p>
+                <p className="mt-1 line-clamp-2 break-words text-base font-semibold leading-5 text-[color:var(--foreground)]" title={hop.label}>
+                  {hop.label}
+                </p>
+                {hop.subtitle ? (
+                  <p className="mt-1 line-clamp-2 break-all text-[15px] leading-5 text-[color:var(--text-secondary)]" title={hop.subtitle}>
+                    {hop.subtitle}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -494,19 +569,15 @@ function MobileExposurePathSequence({ path }: { path: ExposurePath }) {
       {path.hops.map((hop, index) => {
         const meta = ROLE_META[hop.role] ?? ROLE_META.unknown;
         const Icon = meta.icon;
-        const previous = index > 0 ? path.hops[index - 1] : undefined;
-        const relationship = previous
-          ? path.relationships.find(
-              (candidate) => candidate.source === previous.id && candidate.target === hop.id,
-            )?.relationship ?? path.relationships[index - 1]?.relationship ?? "reaches"
-          : undefined;
+        const roleLabel = hop.kindLabel ?? meta.label;
+        const relationship = pathRelationship(path, index);
 
         return (
           <li key={`${hop.id}-${index}`}>
-            {relationship ? (
+            {index > 0 ? (
               <div className="ml-4 flex min-h-8 items-center gap-2 border-l border-[color:var(--border-strong)] pl-4 text-[10px] font-medium text-[color:var(--text-tertiary)]">
                 <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5">
-                  {humanizeRelationship(relationship)}
+                  {relationship ? humanizeRelationship(relationship) : "Relationship not recorded"}
                 </span>
               </div>
             ) : null}
@@ -516,7 +587,7 @@ function MobileExposurePathSequence({ path }: { path: ExposurePath }) {
               </span>
               <div className="min-w-0">
                 <p className="text-[9px] font-semibold uppercase tracking-[0.16em] opacity-75">
-                  {index + 1}. {meta.label}
+                  {index + 1}. {roleLabel}
                 </p>
                 <p className="mt-0.5 break-words text-xs font-semibold text-[color:var(--foreground)]">
                   {hop.label}
@@ -552,7 +623,7 @@ function ExposurePathHopTitle({ hops }: { hops: ExposureEntityRef[] }) {
             ) : null}
             <span
               title={hop.label}
-              className={`max-w-[14rem] truncate rounded-lg border px-2.5 py-1 text-sm font-semibold text-[color:var(--foreground)] ${meta.tint}`}
+              className={`max-w-[14rem] truncate rounded-lg border px-2.5 py-1 text-[15px] font-semibold text-[color:var(--foreground)] ${meta.tint}`}
             >
               {formatExposureEntityTitle(hop.label, hop.role)}
             </span>

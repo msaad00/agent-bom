@@ -32,4 +32,12 @@ describe("investigation demo hierarchy", () => {
     expect(page).toContain("async function loadFixFirstEnrichment");
     expect(page).toContain("Ranked paths are ready; fix guidance is still loading");
   });
+
+  it("parses a top-path route and focuses the stable Investigation target", () => {
+    expect(page).toContain('const requestedPathMode = searchParams.get("path")');
+    expect(page).toContain('const requestedPathScanId = searchParams.get("scan")');
+    expect(page).toContain('requestedPathMode !== "top" || requestedPathScanId !== selectedScanId');
+    expect(page).toContain("setSelectedAttackPathKey(null)");
+    expect(page).toContain("focusCorrelationPathTarget(document)");
+  });
 });

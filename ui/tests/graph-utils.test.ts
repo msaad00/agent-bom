@@ -228,4 +228,28 @@ describe("readableGraphEdges label density", () => {
     expect(accessible.every((edge) => edge.label === undefined)).toBe(true);
     expect(accessible.every((edge) => Boolean(edge.ariaLabel))).toBe(true);
   });
+
+  it("preserves caller-owned label presentation during the accessibility pass", () => {
+    const [accessible] = readableGraphEdges([{
+      id: "a-b",
+      source: "a",
+      target: "b",
+      label: "Uses",
+      labelShowBg: true,
+      labelBgPadding: [9, 5],
+      labelBgBorderRadius: 8,
+      labelBgStyle: { fill: "#111827" },
+      labelStyle: { fill: "#f9fafb", fontSize: 22, fontWeight: 700 },
+      data: { relationship: "uses" },
+    }], undefined, {
+      captureMode: true,
+      preserveVisualStyle: true,
+      preserveLabelState: true,
+    });
+
+    expect(accessible?.labelStyle).toEqual({ fill: "#f9fafb", fontSize: 22, fontWeight: 700 });
+    expect(accessible?.labelBgPadding).toEqual([9, 5]);
+    expect(accessible?.labelBgBorderRadius).toBe(8);
+    expect(accessible?.labelBgStyle).toEqual({ fill: "#111827" });
+  });
 });

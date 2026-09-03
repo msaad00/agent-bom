@@ -23,6 +23,7 @@ import {
   summarizeInteractionRisks,
   toAttackCardNodes,
   toExposurePathFromAttackPath,
+  withCanonicalExposurePresentation,
 } from "@/lib/attack-paths";
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
 
@@ -473,6 +474,93 @@ describe("attack path helpers", () => {
       }),
       expect.objectContaining({ source: "server-1", target: "agent-1", relationship: "related" }),
     ]);
+  });
+
+  it("preserves service, workload, container, identity, and data roles in a correlated path", () => {
+    const path: AttackPath = {
+      source: "service:api",
+      target: "data-store:records",
+      hops: [
+        "service:api",
+        "workload:api",
+        "container:api",
+        "identity:workload",
+        "data-store:records",
+      ],
+      edges: [],
+      composite_risk: 9.2,
+      summary: "Correlated workload path",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: [],
+    };
+    const nodes = new Map<string, UnifiedNode>([
+      ["service:api", graphNode("service:api", EntityType.SERVER, "public api service")],
+      ["workload:api", graphNode("workload:api", EntityType.AGENT, "api workload")],
+      ["container:api", graphNode("container:api", EntityType.CONTAINER, "api@sha256:abc")],
+      ["identity:workload", graphNode("identity:workload", EntityType.SERVICE_ACCOUNT, "api identity")],
+      ["data-store:records", graphNode("data-store:records", EntityType.DATA_STORE, "customer records")],
+    ]);
+
+    const hops = toExposurePathFromAttackPath(path, nodes).hops;
+    expect(hops.map((hop) => hop.kindLabel)).toEqual([
+      "Service",
+      "Workload",
+      "Container",
+      "Identity",
+      "Data asset",
+    ]);
+    expect(hops.map((hop) => hop.subtitle)).toEqual([
+      "Application service",
+      "Application workload",
+      "Digest sha256:abc",
+      "Workload identity",
+      "Sensitive data asset",
+    ]);
+  });
+
+  it("corrects broad fix-first roles from canonical graph taxonomy without losing remediation", () => {
+    const broadPath = {
+      id: "ranked-path",
+      label: "Ranked path",
+      riskScore: 9.2,
+      severity: "critical",
+      source: { id: "service:api", label: "Public API", role: "server" as const },
+      target: { id: "data-store:records", label: "Records", role: "unknown" as const },
+      hops: [
+        { id: "service:api", label: "Public API", role: "server" as const },
+        { id: "container:api", label: "api image", role: "server" as const },
+        { id: "identity:workload", label: "api identity", role: "agent" as const },
+        { id: "data-store:records", label: "Records", role: "unknown" as const },
+      ],
+      relationships: [],
+      nodeIds: ["service:api", "container:api", "identity:workload", "data-store:records"],
+      edgeIds: [],
+      findings: [],
+      affectedAgents: [],
+      affectedServers: ["Public API"],
+      reachableTools: [],
+      exposedCredentials: [],
+      fix: { label: "Upgrade Pillow", href: "/remediation?cve=CVE-2023-4863" },
+    };
+    const nodes = new Map<string, UnifiedNode>([
+      ["service:api", graphNode("service:api", EntityType.SERVER, "public api service")],
+      ["container:api", graphNode("container:api", EntityType.CONTAINER, "api@sha256:abc")],
+      ["identity:workload", graphNode("identity:workload", EntityType.SERVICE_ACCOUNT, "api identity")],
+      ["data-store:records", graphNode("data-store:records", EntityType.DATA_STORE, "customer records")],
+    ]);
+
+    const exposure = withCanonicalExposurePresentation(broadPath, nodes);
+
+    expect(exposure.hops.map((hop) => hop.kindLabel)).toEqual([
+      "Service",
+      "Container",
+      "Identity",
+      "Data asset",
+    ]);
+    expect(exposure.source.kindLabel).toBe("Service");
+    expect(exposure.target.kindLabel).toBe("Data asset");
+    expect(exposure.fix).toEqual(broadPath.fix);
   });
 
   it("matches a focused attack path by cve, package, and agent labels", () => {

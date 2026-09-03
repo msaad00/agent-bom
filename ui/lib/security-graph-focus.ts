@@ -1,5 +1,21 @@
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api-types";
+import { remediationHref } from "@/lib/page-links";
+
+export function buildPathRemediationHref(input: {
+  scanId?: string | undefined;
+  findingId?: string | undefined;
+  cve?: string | undefined;
+  packageName?: string | undefined;
+}): string {
+  return remediationHref({
+    scan: input.scanId,
+    finding: input.findingId,
+    cve: input.cve,
+    packageName: input.packageName,
+    q: input.cve || input.packageName,
+  });
+}
 
 export function latestCompletedCorrelation(
   correlations: GraphCorrelationRun[],
@@ -14,6 +30,7 @@ export function selectInitialGraphSnapshot(
   snapshots: GraphSnapshot[],
   requestedScanId: string,
   latestCorrelation: GraphCorrelationRun | null,
+  correlationHistoryAvailable = true,
 ): string {
   if (requestedScanId) {
     return snapshots.some((snapshot) => snapshot.scan_id === requestedScanId)
@@ -25,6 +42,9 @@ export function selectInitialGraphSnapshot(
     snapshots.some((snapshot) => snapshot.scan_id === latestCorrelation.output_scan_id)
   ) {
     return latestCorrelation.output_scan_id;
+  }
+  if (!correlationHistoryAvailable) {
+    return snapshots.find((snapshot) => snapshot.snapshot_kind === "correlation")?.scan_id ?? "";
   }
   return snapshots[0]?.scan_id ?? "";
 }

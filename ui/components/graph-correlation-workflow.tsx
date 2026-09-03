@@ -64,10 +64,12 @@ function sourceLabel(sourceKinds: string[] | undefined, scanId: string): string 
 export function GraphCorrelationWorkflow({
   snapshots,
   initialRun = null,
+  historyError = null,
   onOpenSnapshot,
 }: {
   snapshots: GraphSnapshot[];
   initialRun?: GraphCorrelationRun | null;
+  historyError?: string | null;
   onOpenSnapshot: (scanId: string) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -198,7 +200,11 @@ export function GraphCorrelationWorkflow({
         })}
       </ol>
 
-      {run ? (
+      {historyError ? (
+        <div role="alert" className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-200">
+          {historyError}
+        </div>
+      ) : run ? (
         <div className={`mt-4 rounded-xl border bg-[color:var(--surface)] p-3 text-xs ${isFailed ? "border-red-500/30" : isComplete ? "border-emerald-500/30" : "border-sky-500/30"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>

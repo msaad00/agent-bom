@@ -20,7 +20,12 @@ describe("useScanStream", () => {
 
     const { result, unmount } = renderHook(() => useScanStream("job-123"));
 
-    expect(streamSpy).toHaveBeenCalledWith("job-123", expect.any(Function), expect.any(Function));
+    expect(streamSpy).toHaveBeenCalledWith(
+      "job-123",
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
     expect(result.current.streaming).toBe(true);
 
     act(() => {
@@ -59,5 +64,22 @@ describe("useScanStream", () => {
 
     expect(streamSpy).not.toHaveBeenCalled();
     expect(result.current.streaming).toBe(false);
+  });
+
+  it("surfaces a transport failure separately from successful completion", () => {
+    let fail: (() => void) | undefined;
+    vi.spyOn(api, "streamScan").mockImplementation((_jobId, _onMessage, _onDone, onError) => {
+      fail = onError;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() => useScanStream("job-123"));
+
+    act(() => {
+      fail?.();
+    });
+
+    expect(result.current.streaming).toBe(false);
+    expect(result.current.error).toBe("Live scan updates unavailable");
   });
 });

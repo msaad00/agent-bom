@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildPathRemediationHref,
   buildFocusedGraphData,
   latestCompletedCorrelation,
   selectInitialGraphSnapshot,
@@ -213,10 +214,28 @@ describe("initial Investigation snapshot", () => {
     expect(selectInitialGraphSnapshot(snapshots, "", { ...correlation, output_scan_id: "removed" })).toBe("newer-scan");
   });
 
+  it("does not silently select raw evidence when correlation history is unavailable", () => {
+    expect(selectInitialGraphSnapshot(snapshots, "", null, false)).toBe("corr-output");
+    expect(selectInitialGraphSnapshot([snapshots[0]!], "", null, false)).toBe("");
+  });
+
   it("ignores pending and failed correlation runs", () => {
     expect(latestCompletedCorrelation([
       { ...correlation, status: "pending" },
       { ...correlation, status: "failed" },
     ])).toBeNull();
+  });
+});
+
+describe("Investigation remediation handoff", () => {
+  it("preserves the selected scan, finding, CVE, and package context", () => {
+    expect(buildPathRemediationHref({
+      scanId: "corr-output",
+      findingId: "finding-1",
+      cve: "CVE-2023-4863",
+      packageName: "pillow@9.0.0",
+    })).toBe(
+      "/remediation?q=CVE-2023-4863&scan=corr-output&finding=finding-1&cve=CVE-2023-4863&package=pillow%409.0.0",
+    );
   });
 });

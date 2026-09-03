@@ -17,7 +17,9 @@ describe("typed page links", () => {
       "/security-graph?lens=attack-path&cve=CVE-2026-1&finding=finding%2F1",
     );
     expect(complianceHref({ scan: "scan/1" })).toBe("/compliance?scan=scan%2F1");
-    expect(remediationHref({ q: "AC-2" })).toBe("/remediation?q=AC-2");
+    expect(remediationHref({ q: "AC-2", scan: "corr-output" })).toBe(
+      "/remediation?q=AC-2&scan=corr-output",
+    );
   });
 
   it("maps observed lineage entity kinds to supported graph layers", () => {

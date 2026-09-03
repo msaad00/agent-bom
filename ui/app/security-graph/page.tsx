@@ -85,6 +85,7 @@ import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
+  buildPathRemediationHref,
   latestCompletedCorrelation,
   selectInitialGraphSnapshot,
 } from "@/lib/security-graph-focus";
@@ -114,6 +115,7 @@ function AttackPathInvestigationContent() {
   const pathname = usePathname();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [latestCorrelationRun, setLatestCorrelationRun] = useState<GraphCorrelationRun | null>(null);
+  const [correlationHistoryError, setCorrelationHistoryError] = useState<string | null>(null);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
   const [fixFirstView, setFixFirstView] = useState<FixFirstGraphViewResponse | null>(null);
@@ -218,22 +220,30 @@ function AttackPathInvestigationContent() {
     async function load() {
       setLoadingSnapshots(true);
       try {
-        const [snapshotList, postureData, correlationList] = await Promise.all([
+        const [snapshotList, postureData, correlationResult] = await Promise.all([
           // windowDays: 0 keeps all retained snapshots visible (#4009).
           api.getGraphSnapshots(25, 0),
           api.getPosture().catch(() => null),
-          api.listGraphCorrelations(20).catch(() => null),
+          api.listGraphCorrelations(20)
+            .then((value) => ({ value, error: null as unknown }))
+            .catch((error: unknown) => ({ value: null, error })),
         ]);
         if (cancelled) return;
         setSnapshots(snapshotList);
         setPosture(postureData);
-        const latestCorrelation = latestCompletedCorrelation(correlationList?.items ?? []);
+        const latestCorrelation = latestCompletedCorrelation(correlationResult.value?.items ?? []);
         setLatestCorrelationRun(latestCorrelation);
+        setCorrelationHistoryError(
+          correlationResult.error
+            ? "Correlation history is unavailable. Retained correlated evidence is shown without claiming it is latest."
+            : null,
+        );
         const requestedScanId = focus.scanId;
         const initialScanId = selectInitialGraphSnapshot(
           snapshotList,
           requestedScanId,
           latestCorrelation,
+          !correlationResult.error,
         );
         setSelectedScanId(initialScanId);
         setApiError(null);
@@ -244,6 +254,7 @@ function AttackPathInvestigationContent() {
         setApiErrorKind(_classifyGraphErrorKind(error));
         setSnapshots([]);
         setLatestCorrelationRun(null);
+        setCorrelationHistoryError(null);
         setGraphData(null);
         setFixFirstView(null);
         setGraphLoadError(null);
@@ -561,6 +572,18 @@ function AttackPathInvestigationContent() {
         : [],
     [graphNodeById, selectedAttackPath, selectedScanId],
   );
+  const selectedRemediationHref = useMemo(() => {
+    const pathCve = focus.cve || selectedAttackPath?.vuln_ids?.[0] || "";
+    const pathPackage =
+      focus.packageName ||
+      (selectedAttackPath ? labelsForAttackPathType(selectedAttackPath, graphNodeById, "package")[0] ?? "" : "");
+    return buildPathRemediationHref({
+      scanId: selectedScanId || undefined,
+      findingId: focus.findingId || selectedAttackPath?.finding_ids?.[0] || undefined,
+      cve: pathCve || undefined,
+      packageName: pathPackage || undefined,
+    });
+  }, [focus.cve, focus.findingId, focus.packageName, graphNodeById, selectedAttackPath, selectedScanId]);
 
   const emptyGraphState = useMemo(() => {
     const analysis = graphData?.stats.analysis_status?.attack_path_fusion;
@@ -700,7 +723,7 @@ function AttackPathInvestigationContent() {
               <GitBranch className="h-4 w-4" />
             </Link>
             <Link
-              href="/remediation"
+              href={selectedRemediationHref}
               className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
             >
               Remediation
@@ -731,9 +754,9 @@ function AttackPathInvestigationContent() {
             onStepChange={setInvestigationStep}
             completed={completedSteps}
             stepHrefs={{
-              owner: "/remediation#campaigns",
-              fix: "/remediation#campaigns",
-              verify: "/remediation#verification",
+              owner: `${selectedRemediationHref}#campaigns`,
+              fix: `${selectedRemediationHref}#campaigns`,
+              verify: `${selectedRemediationHref}#verification`,
             }}
           />
           {pinnedNodeId ? (
@@ -967,6 +990,7 @@ function AttackPathInvestigationContent() {
                       fullGraphHref={fullGraphHref}
                       loading={loadingGraph}
                       scanId={selectedScanId || undefined}
+                      remediationHref={selectedRemediationHref}
                       onPinnedNodeChange={setPinnedNodeId}
                       onStepHint={handleStepHint}
                     />
@@ -1006,6 +1030,7 @@ function AttackPathInvestigationContent() {
             <GraphCorrelationWorkflow
               snapshots={snapshots}
               initialRun={latestCorrelationRun}
+              historyError={correlationHistoryError}
               onOpenSnapshot={selectSnapshot}
             />
           ) : null}

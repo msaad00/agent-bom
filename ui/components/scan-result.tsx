@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
 import { useScanStream } from "@/lib/use-scan-stream";
+import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { mergePipelineSteps, parsePipelineStepsFromProgress } from "@/lib/scan-pipeline-progress";
 import { domainFindingsForScan } from "@/lib/scan-domain-findings";
 import { ScanPipeline } from "@/components/scan-pipeline";
@@ -46,6 +47,7 @@ export function ScanResultView({ id }: { id: string }) {
   const [job, setJob] = useState<ScanJob | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const fetchedResultRef = useRef(false);
   const fetchingResultRef = useRef(false);
@@ -59,18 +61,32 @@ export function ScanResultView({ id }: { id: string }) {
       if (activeJobIdRef.current === id) {
         setJob(fullJob);
         fetchedResultRef.current = true;
+        setLoadError("");
       }
+    } catch (error) {
+      if (activeJobIdRef.current === id) {
+        setLoadError(userFacingApiErrorMessage(error, "Scan evidence unavailable"));
+      }
+      throw error;
     } finally {
       fetchingResultRef.current = false;
     }
   }, [id]);
 
   const refreshStatus = useCallback(async () => {
-    const status = await api.getScanStatus(id);
-    if (activeJobIdRef.current !== id) return;
-    setJob((prev) => mergeScanStatus(prev, status));
-    if (status.status === "done" || status.status === "failed" || status.status === "cancelled") {
-      await fetchFullResultOnce();
+    try {
+      const status = await api.getScanStatus(id);
+      if (activeJobIdRef.current !== id) return;
+      setJob((prev) => mergeScanStatus(prev, status));
+      setLoadError("");
+      if (status.status === "done" || status.status === "failed" || status.status === "cancelled") {
+        await fetchFullResultOnce();
+      }
+    } catch (error) {
+      if (activeJobIdRef.current === id) {
+        setLoadError(userFacingApiErrorMessage(error, "Scan evidence unavailable"));
+      }
+      throw error;
     }
   }, [fetchFullResultOnce, id]);
 
@@ -85,10 +101,21 @@ export function ScanResultView({ id }: { id: string }) {
     refreshStatus().catch(() => {});
   }, [refreshStatus]);
 
-  const { messages, pipelineSteps, streaming } = useScanStream(id, {
+  const { messages, pipelineSteps, streaming, error: streamError } = useScanStream(id, {
     onDone: handleStreamUpdate,
     onEvent: handleStreamUpdate,
+    onError: handleStreamUpdate,
   });
+
+  useEffect(() => {
+    if (!streamError || job?.status === "done" || job?.status === "failed" || job?.status === "cancelled") {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void refreshStatus().catch(() => {});
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [job?.status, refreshStatus, streamError]);
 
   const replayedSteps = useMemo(
     () => mergePipelineSteps(parsePipelineStepsFromProgress(job?.progress ?? []), pipelineSteps),
@@ -192,7 +219,7 @@ export function ScanResultView({ id }: { id: string }) {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-semibold">Scan Results</h1>
-              <JobStatusBadge status={job?.status ?? "pending"} streaming={streaming} />
+              {job ? <JobStatusBadge status={job.status} streaming={streaming} /> : null}
             </div>
             <p className="text-xs text-[color:var(--text-tertiary)] font-mono mt-0.5">{id}</p>
           </div>
@@ -209,6 +236,26 @@ export function ScanResultView({ id }: { id: string }) {
           </button>
         ) : null}
       </div>
+
+      {loadError ? (
+        <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          <p className="font-semibold">Scan evidence unavailable</p>
+          <p className="mt-1 text-xs">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void refreshStatus().catch(() => {})}
+            className="mt-3 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium hover:bg-red-500/10"
+          >
+            Retry loading scan
+          </button>
+        </div>
+      ) : null}
+
+      {!loadError && streamError ? (
+        <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-200">
+          {streamError}. Status polling remains available.
+        </div>
+      ) : null}
 
       {exportError ? (
         <div className="rounded-xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">

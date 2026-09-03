@@ -75,6 +75,19 @@ describe("GraphCorrelationWorkflow", () => {
     expect(screen.getByText("Opt-in runtime")).toBeInTheDocument();
   });
 
+  it("distinguishes unavailable correlation history from no completed correlation", () => {
+    render(
+      <GraphCorrelationWorkflow
+        snapshots={snapshots}
+        historyError="Correlation history is unavailable. Retained correlated evidence is shown without claiming it is latest."
+        onOpenSnapshot={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Correlation history is unavailable");
+    expect(screen.queryByText(/No completed correlation yet/i)).not.toBeInTheDocument();
+  });
+
   it("does not preselect evidence outside the confirmed freshness bound", () => {
     const stale = { ...snapshots[0]!, scan_id: "stale-repo", created_at: "2026-08-01T00:00:00Z" };
     render(<GraphCorrelationWorkflow snapshots={[stale, snapshots[1]!]} onOpenSnapshot={vi.fn()} />);

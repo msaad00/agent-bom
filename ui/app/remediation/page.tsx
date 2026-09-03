@@ -358,6 +358,8 @@ export default function RemediationPageWrapper() {
 function RemediationPage() {
   const searchParams = useSearchParams();
   const queryParam = (searchParams.get("q") ?? "").trim().toLowerCase();
+  const cveParam = (searchParams.get("cve") ?? "").trim().toLowerCase();
+  const packageParam = (searchParams.get("package") ?? "").trim().toLowerCase();
   const scanParam = (searchParams.get("scan") ?? "").trim();
   const [items, setItems] = useState<RemediationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -435,7 +437,8 @@ function RemediationPage() {
   const displayed = useMemo(() => {
     let list = items;
 
-    if (queryParam) {
+    const evidenceQuery = queryParam || cveParam || packageParam;
+    if (evidenceQuery) {
       list = list.filter((item) =>
         [
           item.package,
@@ -451,7 +454,7 @@ function RemediationPage() {
           ...(item.soc2_tags ?? []),
           ...(item.cis_tags ?? []),
           ...(item.affected_agents ?? []),
-        ].some((value) => value.toLowerCase().includes(queryParam)),
+        ].some((value) => value.toLowerCase().includes(evidenceQuery)),
       );
     }
 
@@ -488,12 +491,12 @@ function RemediationPage() {
     });
 
     return list;
-  }, [items, queryParam, severityFilter, frameworkFilter, fixableOnly, sortKey, sortDir]);
+  }, [items, queryParam, cveParam, packageParam, severityFilter, frameworkFilter, fixableOnly, sortKey, sortDir]);
 
   // Reset page on filter/sort change
   useEffect(() => {
     setPage(1);
-  }, [queryParam, severityFilter, frameworkFilter, fixableOnly, sortKey, sortDir]);
+  }, [queryParam, cveParam, packageParam, severityFilter, frameworkFilter, fixableOnly, sortKey, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
   const paged = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);

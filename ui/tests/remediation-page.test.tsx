@@ -106,13 +106,18 @@ describe("RemediationPage", () => {
   });
 
   it("loads remediation for an explicit scan handoff instead of the latest job", async () => {
-    navigationState.query = "scan=scan-from-results";
-    apiMock.getRemediation.mockResolvedValue([remediationItem("openssl", "critical")]);
+    navigationState.query = "scan=scan-from-results&q=CVE-2026-openssl";
+    apiMock.getRemediation.mockResolvedValue([
+      remediationItem("openssl", "critical"),
+      remediationItem("requests", "high"),
+    ]);
 
     render(<RemediationPage />);
 
     await waitFor(() => expect(apiMock.getRemediation).toHaveBeenCalledWith("scan-from-results"));
     expect(apiMock.listJobs).not.toHaveBeenCalled();
+    expect(screen.getByText("openssl", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText("requests", { exact: true })).not.toBeInTheDocument();
   });
 
   it("singularizes the caption for a single matching package", async () => {

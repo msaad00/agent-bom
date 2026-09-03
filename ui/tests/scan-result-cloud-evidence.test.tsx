@@ -109,6 +109,16 @@ describe("ScanResultView cloud evidence", () => {
     expect(screen.getByRole("link", { name: /Remediation/i })).toHaveAttribute("href", "/remediation?scan=scan-cloud-1");
   });
 
+  it("shows an explicit retry state when the scan cannot be loaded", async () => {
+    apiMock.getScanStatus.mockRejectedValue(new Error("scan unavailable"));
+
+    render(<ScanResultView id="missing-scan" />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Scan evidence unavailable");
+    expect(screen.getByRole("button", { name: "Retry loading scan" })).toBeInTheDocument();
+    expect(screen.queryByText("Pending", { exact: true })).not.toBeInTheDocument();
+  });
+
   it("filters and paginates dense blast-radius evidence instead of rendering every path", async () => {
     apiMock.getScan.mockResolvedValue({
       job_id: "scan-cloud-1",

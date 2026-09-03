@@ -1340,7 +1340,12 @@ export const api = {
   },
 
   /** Connect to SSE stream for real-time progress */
-  streamScan: (jobId: string, onMessage: (data: SSEEvent) => void, onDone: () => void) => {
+  streamScan: (
+    jobId: string,
+    onMessage: (data: SSEEvent) => void,
+    onDone: () => void,
+    onError?: () => void,
+  ) => {
     const es = new EventSource(`${getConfiguredApiUrl()}/v1/scan/${jobId}/stream`, { withCredentials: true });
     es.onmessage = (e) => {
       try {
@@ -1356,7 +1361,7 @@ export const api = {
     };
     es.onerror = () => {
       es.close();
-      onDone();
+      onError?.();
     };
     return () => es.close(); // cleanup fn
   },

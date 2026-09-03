@@ -679,7 +679,12 @@ async def _build_payload() -> dict[str, Any]:
         graphs = _snapshots(scanner_evidence, sources, runtime_observation)
         for graph in graphs:
             store.save_graph(graph)
-        service = GraphCorrelationService(store, now=lambda: CREATED + timedelta(minutes=6))
+        service = GraphCorrelationService(
+            store,
+            now=lambda: CREATED + timedelta(minutes=6),
+            receipt_signing_key=_RUNTIME_FACTS_KEY,
+            receipt_signing_key_id="reference-lab-v1",
+        )
         await service.start(tenants=[TENANT])
         try:
             await service.submit(

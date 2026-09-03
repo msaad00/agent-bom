@@ -20,6 +20,12 @@ from agent_bom.graph.correlation import (
     correlation_manifest_digest,
     merge_graph_snapshots,
 )
+from agent_bom.graph.correlation_receipts import (
+    CorrelationReceiptError,
+    configured_receipt_signing_key,
+    sign_correlation_receipt,
+    verify_correlation_receipt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +102,8 @@ class GraphCorrelationService:
         worker_count: int = 1,
         max_output_nodes: int = 100_000,
         max_output_edges: int = 500_000,
+        receipt_signing_key: bytes | None = None,
+        receipt_signing_key_id: str = "",
     ) -> None:
         if queue_capacity < 1:
             raise ValueError("queue_capacity must be positive")
@@ -109,6 +117,8 @@ class GraphCorrelationService:
         self._worker_count = worker_count
         self._max_output_nodes = max_output_nodes
         self._max_output_edges = max_output_edges
+        self._receipt_signing_key = receipt_signing_key
+        self._receipt_signing_key_id = receipt_signing_key_id.strip()
         self._workers: list[asyncio.Task[None]] = []
         self._queued: set[tuple[str, str]] = set()
         self._reconciled_tenants: set[str] = set()
@@ -156,8 +166,22 @@ class GraphCorrelationService:
             ):
                 raise ValueError("idempotency key was already used for a different correlation request")
             return replay
-        manifest = await self._validate_inputs(request)
         now = self._now().astimezone(timezone.utc).isoformat()
+        manifest = await self._validate_inputs(request)
+        if self._receipt_signing_key is not None:
+            manifest = [
+                sign_correlation_receipt(
+                    receipt,
+                    signing_key=self._receipt_signing_key,
+                    key_id=self._receipt_signing_key_id,
+                    tenant_id=request.tenant_id,
+                    correlation_id=request.correlation_id,
+                    correlation_created_at=now,
+                    max_age_hours=request.max_age_hours,
+                    allow_stale=request.allow_stale,
+                )
+                for receipt in manifest
+            ]
         run = GraphCorrelationRun(
             correlation_id=request.correlation_id,
             tenant_id=request.tenant_id,
@@ -299,6 +323,20 @@ class GraphCorrelationService:
                 )
             snapshots: list[CorrelationSnapshot] = []
             for item in run.input_manifest:
+                signature = item.get("signature")
+                if signature is not None:
+                    if self._receipt_signing_key is None:
+                        raise CorrelationServiceError("receipt_signing_key_unavailable")
+                    if not verify_correlation_receipt(
+                        item,
+                        signing_key=self._receipt_signing_key,
+                        tenant_id=tenant_id,
+                        correlation_id=correlation_id,
+                        correlation_created_at=run.created_at,
+                        max_age_hours=run.max_age_hours,
+                        allow_stale=run.allow_stale,
+                    ):
+                        raise CorrelationServiceError("input_receipt_signature_invalid")
                 graph = await asyncio.to_thread(
                     self._store.load_graph,
                     tenant_id=tenant_id,
@@ -316,6 +354,20 @@ class GraphCorrelationService:
                 max_age_hours=run.max_age_hours,
                 allow_stale=run.allow_stale,
             )
+            if self._receipt_signing_key is not None:
+                execution_manifest = [
+                    sign_correlation_receipt(
+                        receipt,
+                        signing_key=self._receipt_signing_key,
+                        key_id=self._receipt_signing_key_id,
+                        tenant_id=tenant_id,
+                        correlation_id=correlation_id,
+                        correlation_created_at=run.created_at,
+                        max_age_hours=run.max_age_hours,
+                        allow_stale=run.allow_stale,
+                    )
+                    for receipt in execution_manifest
+                ]
             merged = await asyncio.to_thread(
                 merge_graph_snapshots,
                 correlation_id=correlation_id,
@@ -408,7 +460,17 @@ async def get_graph_correlation_service(store: GraphStoreProtocol, tenant_id: st
     global _shared_service, _shared_service_loop, _shared_service_store
     loop = asyncio.get_running_loop()
     if _shared_service is None or _shared_service_store is not store or _shared_service_loop is not loop:
-        _shared_service = GraphCorrelationService(store)
+        try:
+            receipt_signing_key = configured_receipt_signing_key()
+        except CorrelationReceiptError as exc:
+            raise CorrelationServiceError(str(exc)) from exc
+        from agent_bom import config as agent_config
+
+        _shared_service = GraphCorrelationService(
+            store,
+            receipt_signing_key=receipt_signing_key,
+            receipt_signing_key_id=agent_config.RUNTIME_FACTS_KEY_ID,
+        )
         _shared_service_store = store
         _shared_service_loop = loop
     await _shared_service.start(tenants=[tenant_id])

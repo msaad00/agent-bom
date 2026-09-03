@@ -822,6 +822,41 @@ def test_refresh_latest_container_has_publish_budget_and_buildkit_cache():
     assert "cache-to: type=gha,mode=max,scope=refresh-ui-latest" in workflow
 
 
+def test_refresh_latest_keyless_signs_and_verifies_every_published_digest():
+    """A scheduled rebuild must not replace signed ``latest`` tags with unsigned digests."""
+    workflow = (ROOT / ".github" / "workflows" / "refresh-latest-container.yml").read_text()
+    jobs = (
+        (
+            workflow.split("  refresh-latest:\n", 1)[1].split("  refresh-ui-latest:\n", 1)[0],
+            "build-push",
+            "agentbom/agent-bom",
+        ),
+        (
+            workflow.split("  refresh-ui-latest:\n", 1)[1].split("  refresh-collector-latest:\n", 1)[0],
+            "build-push-ui",
+            "agentbom/agent-bom-ui",
+        ),
+        (
+            workflow.split("  refresh-collector-latest:\n", 1)[1],
+            "build-push",
+            "agentbom/agent-bom-collector",
+        ),
+    )
+
+    for job, build_step, image in jobs:
+        digest_ref = f'"{image}@${{{{ steps.{build_step}.outputs.digest }}}}"'
+        assert "sigstore/cosign-installer@" in job
+        assert f"cosign sign --yes {digest_ref}" in job
+        assert "cosign verify \\" in job
+        assert "--certificate-oidc-issuer https://token.actions.githubusercontent.com" in job
+        assert (
+            '--certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/'
+            'refresh-latest-container.yml@${{ github.ref }}"'
+        ) in job
+        assert job.count(digest_ref) >= 2
+        assert job.index("cosign sign --yes") < job.index("cosign verify")
+
+
 def test_deploy_mcp_sse_workflow_uses_bearer_token_for_health_check():
     """Post-deploy health verification should use the same auth contract as Railway."""
     workflow = (ROOT / ".github" / "workflows" / "deploy-mcp-sse.yml").read_text()

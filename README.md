@@ -316,7 +316,7 @@ and runtime integrations for the other deployment profiles.
 | Surface | Get it |
 |---|---|
 | Python package | `pip install agent-bom` — [PyPI](https://pypi.org/project/agent-bom/) |
-| Container | `docker pull agentbom/agent-bom` — [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom) |
+| Container | `docker pull agentbom/agent-bom:0.103.2` — signed release image on [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom) |
 | Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom` |
 | GitHub Action | [`msaad00/agent-bom`](action.yml) |
 | MCP server | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` |

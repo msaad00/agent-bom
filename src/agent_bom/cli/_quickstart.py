@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 import click
 
@@ -16,6 +18,12 @@ from agent_bom.samples import write_first_run_sample
 
 QUICKSTART_SCAN_TIMEOUT_SECONDS = 300
 DURABLE_LOCAL_CONTROL_PLANE_DB = Path.home() / ".agent-bom" / "control-plane.db"
+
+
+class _GraphReceipt(TypedDict):
+    scan_id: str
+    nodes: int
+    edges: int
 
 
 @click.command("quickstart")
@@ -150,9 +158,13 @@ def _run_quickstart(
             "Could not locate the 'agent-bom' executable to run the scan. "
             f"Run it manually: {_sample_scan_command(sample_dir, offline=offline)}"
         )
-    # --context-graph triggers persistence of the unified graph to the same
-    # local control-plane store that the printed durable `serve` command reads,
-    # so the security-graph cockpit is populated on first run.
+    # --context-graph triggers persistence of the unified graph. Resolve both
+    # database paths before launching the child process so the readback and the
+    # printed control-plane command use the exact same configuration.
+    scan_env = os.environ.copy()
+    control_plane_db, graph_db = _resolve_quickstart_databases(scan_env)
+    scan_env["AGENT_BOM_DB"] = str(control_plane_db)
+    scan_env["AGENT_BOM_GRAPH_DB"] = str(graph_db)
     report_path = sample_dir / "agent-bom-report.json"
     scan_args = [
         executable,
@@ -179,10 +191,7 @@ def _run_quickstart(
     else:
         scan_args.append("--enrich")
     click.echo(f"[2/3] Scanning sample stack: {' '.join(scan_args[1:])}")
-    scan_env = os.environ.copy()
-    # Preserve an operator's explicit database override; otherwise align the
-    # generated scan and serve handoff on the documented restart-safe path.
-    scan_env.setdefault("AGENT_BOM_DB", str(DURABLE_LOCAL_CONTROL_PLANE_DB))
+    scan_started_at = datetime.now(timezone.utc)
     result = subprocess.run(  # noqa: S603 - args built from validated inputs
         scan_args,
         check=False,
@@ -191,6 +200,15 @@ def _run_quickstart(
     )
     if result.returncode != 0:
         raise click.ClickException(f"Scan exited with status {result.returncode}. The cockpit graph may be incomplete.")
+    graph_receipt = _verify_persisted_graph(
+        report_path=report_path,
+        graph_db=graph_db,
+        scan_started_at=scan_started_at,
+    )
+    click.echo(
+        f"      Verified persisted graph: {graph_receipt['nodes']} nodes, "
+        f"{graph_receipt['edges']} edges (scan {graph_receipt['scan_id'][:8]}…)"
+    )
 
     # 3. Secure-by-default gateway policy ----------------------------------
     policy_path: Path | None = None
@@ -203,21 +221,91 @@ def _run_quickstart(
 
     # Handoff ---------------------------------------------------------------
     click.echo("")
-    click.echo("Onboarding complete. The security graph is now populated locally.")
+    click.echo("Onboarding complete. The security graph was read back from the configured local database.")
     click.echo("")
     click.echo("Open the cockpit:")
-    click.echo(
-        f"  AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db"
-        f" --host 127.0.0.1 --port {port} --allow-insecure-no-auth"
-    )
+    click.echo(f"  {_control_plane_command(control_plane_db=control_plane_db, graph_db=graph_db, port=port)}")
     click.echo("  # the explicit local analyst role permits scans in this loopback-only workflow;")
     click.echo("  # on a shared host use --api-key <key> or configure OIDC authentication instead.")
     click.echo(f"  Security graph: http://127.0.0.1:{port}/security-graph")
     click.echo(f"  Dashboard:      http://127.0.0.1:{port}/")
     if policy_path is not None:
         click.echo("")
-        click.echo("Enforce the gateway baseline:")
-        click.echo(f"  agent-bom gateway serve --policy {policy_path} --upstreams upstreams.yaml")
+        click.echo(f"Run the gateway baseline ({gateway_mode.lower()}):")
+        click.echo(
+            f"  agent-bom gateway serve --policy {shlex.quote(str(policy_path))} "
+            f"--from-control-plane http://127.0.0.1:{port} --bind 127.0.0.1:8090"
+        )
+
+
+def _resolve_quickstart_databases(environment: dict[str, str]) -> tuple[Path, Path]:
+    """Resolve the child scan and printed control-plane database paths."""
+
+    control_plane_db = _durable_sqlite_path(environment.get("AGENT_BOM_DB") or str(DURABLE_LOCAL_CONTROL_PLANE_DB))
+    graph_db = _durable_sqlite_path(environment.get("AGENT_BOM_GRAPH_DB") or str(control_plane_db))
+    return control_plane_db, graph_db
+
+
+def _durable_sqlite_path(value: str) -> Path:
+    """Normalize one restart-safe local SQLite path for the quickstart."""
+
+    raw = value.strip()
+    if raw == ":memory:" or "://" in raw:
+        raise click.ClickException(
+            "agent-bom quickstart --run requires a durable local SQLite path in AGENT_BOM_DB and AGENT_BOM_GRAPH_DB."
+        )
+    return Path(raw).expanduser().resolve()
+
+
+def _verify_persisted_graph(
+    *,
+    report_path: Path,
+    graph_db: Path,
+    scan_started_at: datetime,
+) -> _GraphReceipt:
+    """Read back the exact scan snapshot before claiming onboarding success."""
+
+    try:
+        payload = json.loads(report_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise click.ClickException("Persisted graph could not be verified because the scan report is unavailable.") from exc
+
+    scan_run = payload.get("scan_run")
+    scan_id = str(payload.get("scan_id") or (scan_run.get("scan_id") if isinstance(scan_run, dict) else "") or "")
+    outcome = str(scan_run.get("outcome") or "") if isinstance(scan_run, dict) else ""
+    if not scan_id or outcome != "complete" or not graph_db.is_file():
+        raise click.ClickException("Persisted graph could not be verified in the configured graph database.")
+
+    try:
+        from agent_bom.cli._tenant import resolve_cli_tenant_id
+        from agent_bom.db.graph_store import load_graph, open_graph_db
+
+        with open_graph_db(graph_db) as connection:
+            graph = load_graph(connection, tenant_id=resolve_cli_tenant_id(), scan_id=scan_id)
+        created_at = datetime.fromisoformat(graph.created_at.replace("Z", "+00:00"))
+    except Exception as exc:  # noqa: BLE001 - every storage/read/schema failure means verification failed
+        raise click.ClickException("Persisted graph could not be verified in the configured graph database.") from exc
+
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if graph.scan_id != scan_id or not graph.nodes or not graph.edges or created_at < scan_started_at:
+        raise click.ClickException("Persisted graph could not be verified in the configured graph database.")
+    return {"scan_id": scan_id, "nodes": len(graph.nodes), "edges": len(graph.edges)}
+
+
+def _control_plane_command(*, control_plane_db: Path, graph_db: Path, port: int) -> str:
+    """Render a shell-safe command that opens the database just verified."""
+
+    environment = []
+    if graph_db != control_plane_db:
+        environment.append(f"AGENT_BOM_GRAPH_DB={shlex.quote(str(graph_db))}")
+    environment.append("AGENT_BOM_NO_AUTH_ROLE=analyst")
+    persisted = (
+        "~/.agent-bom/control-plane.db"
+        if control_plane_db == DURABLE_LOCAL_CONTROL_PLANE_DB.expanduser().resolve()
+        else shlex.quote(str(control_plane_db))
+    )
+    return f"{' '.join(environment)} agent-bom serve --persist {persisted} --host 127.0.0.1 --port {port} --allow-insecure-no-auth"
 
 
 def _write_gateway_baseline(output_path: Path, *, mode: str) -> None:

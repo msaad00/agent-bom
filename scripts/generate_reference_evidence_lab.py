@@ -27,8 +27,8 @@ from agent_bom.gateway_server import GatewaySettings, create_gateway_app  # noqa
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry  # noqa: E402
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode  # noqa: E402
 from agent_bom.graph.correlation import build_correlation_remediation_decisions  # noqa: E402
-from agent_bom.graph.correlation_service import CorrelationRequest, GraphCorrelationService  # noqa: E402
 from agent_bom.graph.correlation_receipts import correlation_run_receipt_payload  # noqa: E402
+from agent_bom.graph.correlation_service import CorrelationRequest, GraphCorrelationService  # noqa: E402
 from agent_bom.iac import scan_iac_with_context  # noqa: E402
 from agent_bom.parsers import scan_project_directory  # noqa: E402
 from agent_bom.runtime.correlation_facts import create_runtime_facts_bundle_from_correlation  # noqa: E402

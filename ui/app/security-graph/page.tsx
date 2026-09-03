@@ -1037,7 +1037,6 @@ function AttackPathInvestigationContent() {
                       remediationHref={selectedRemediationHref}
                       onPinnedNodeChange={setPinnedNodeId}
                       onStepHint={handleStepHint}
-                      remediationHref={selectedRemediationHref}
                     />
                   ) : null
                 }

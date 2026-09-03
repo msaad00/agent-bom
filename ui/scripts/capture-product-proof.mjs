@@ -2451,7 +2451,7 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
       const matched = expected instanceof RegExp ? expected.test(visibleText) : visibleText.includes(expected);
       if (!matched) {
         const pathSequence = await page
-          .locator('[data-testid="exposure-path-desktop-sequence"], [data-testid="exposure-path-mobile-sequence"]')
+          .locator('[data-testid="exposure-path-sequence"]')
           .allInnerTexts();
         const pathDetail = pathSequence.length > 0 ? `; rendered path: ${pathSequence.join(" | ")}` : "";
         throw new Error(`Expected content ${String(expected)} is missing on ${urlPath}${pathDetail}`);
@@ -2974,16 +2974,20 @@ async function main() {
       expectedText: [
         "Correlation result",
         /1 confirmed path across 6 sources/i,
-        "Public service reaches modeled customer records through CVE-2023-4863",
-        "CVE-2023-4863",
-        "pillow@9.0.0",
-        "Risk 58.0",
-        "Runtime observed",
-        "Runtime block verified",
-        "Open pillow@9.0.0 remediation",
+        "Fresh evidence",
+        "0 conflicts",
+        "Analysis complete",
+        "Review prioritized path preview",
+        "Open top path",
         "Inspect source receipts",
       ],
-      rejectedText: ["Correlation name", "Connect", "Discover"],
+      rejectedText: [
+        "Correlation name",
+        "Connect",
+        "Discover",
+        "Public service reaches modeled customer records through CVE-2023-4863",
+        "Open pillow@9.0.0 remediation",
+      ],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
       readySelector: '[data-testid="graph-correlation-decision"]',
       assertNoHorizontalOverflow: true,
@@ -2991,11 +2995,6 @@ async function main() {
       viewportSelectors: [
         "#demo-estate-watermark",
         '[data-testid="graph-correlation-decision"]',
-        '[data-testid="correlation-primary-action"]',
-        '[data-testid="correlation-open-path"]',
-      ],
-      nonOverlappingSelectors: [
-        '[data-testid="correlation-primary-action"]',
         '[data-testid="correlation-open-path"]',
       ],
       nonOverlappingPairs: [[
@@ -3036,11 +3035,11 @@ async function main() {
       ],
       rejectedText: [/hops hidden/i, "3. Server", "3. MCP server"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
-      readySelector: '[data-testid="exposure-path-desktop-sequence"]',
+      readySelector: '[data-testid="exposure-path-sequence"]',
       viewportSelectors: [
         "#demo-estate-watermark",
         '[data-testid="selected-exposure-path"]',
-        '[data-testid="exposure-path-desktop-sequence"]',
+        '[data-testid="exposure-path-sequence"]',
         '[data-testid="attack-path-correlation-proof"]',
         '[data-testid="exposure-path-primary-action"]',
       ],
@@ -3475,7 +3474,7 @@ async function main() {
       prepareCorrelationPath,
       {
         ...correlationPathAssertions,
-        readySelector: '[data-testid="exposure-path-mobile-sequence"]',
+        readySelector: '[data-testid="exposure-path-sequence"]',
         viewportSelectors: ["#demo-estate-watermark"],
         readmeTextContract: undefined,
         assertNoHorizontalOverflow: true,
@@ -3483,13 +3482,13 @@ async function main() {
     );
     await capture(mobilePage, `/security-graph?lens=attack-path&scan=${SCAN_ID}&capture=1`, "security-graph-mobile-live.png", async (securityGraphPage) => {
       await securityGraphPage
-        .getByTestId("exposure-path-mobile-sequence")
+        .getByTestId("exposure-path-sequence")
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
       expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
-      readySelector: '[data-testid="exposure-path-mobile-sequence"]',
+      readySelector: '[data-testid="exposure-path-sequence"]',
       rejectedText: [/Loading/i],
       assertNoHorizontalOverflow: true,
     });

@@ -134,8 +134,8 @@ describe("ExposurePathCommandCenter", () => {
     render(<ExposurePathCommandCenter path={basePath} />);
 
     const title = screen.getByRole("heading", { level: 2 });
-    expect(title.parentElement).toHaveClass("w-full");
-    expect(screen.getByText(basePath.summary!)).toHaveClass("line-clamp-3");
+    expect(title.parentElement).toHaveClass("ep-header-copy");
+    expect(screen.getByText(basePath.summary!)).toHaveClass("ep-summary");
   });
 
   it("presents a single-node risk signal as one node instead of zero hops", () => {
@@ -205,7 +205,7 @@ describe("ExposurePathCommandCenter", () => {
   it("shows every long-path hop in a readable ordered first frame", () => {
     render(<ExposurePathCommandCenter path={longPath} />);
 
-    const orderedPath = screen.getByTestId("exposure-path-desktop-sequence");
+    const orderedPath = screen.getByTestId("exposure-path-sequence");
     expect(within(orderedPath).getByText("Cursor IDE Agent")).toBeInTheDocument();
     expect(within(orderedPath).getByText("run_shell")).toBeInTheDocument();
     expect(within(orderedPath).getByText("exec_command")).toBeInTheDocument();
@@ -227,7 +227,7 @@ describe("ExposurePathCommandCenter", () => {
     expect(screen.queryByRole("button", { name: /Show all 8 hops/ })).not.toBeInTheDocument();
 
     const mobileSequence = screen.getByRole("list", {
-      name: /Selected exposure path steps for/,
+      name: /Selected exposure path ordered steps for/,
     });
     expect(mobileSequence).toHaveClass("sm:hidden");
     expect(within(mobileSequence).getByText("1. Agent")).toBeInTheDocument();
@@ -245,7 +245,7 @@ describe("ExposurePathCommandCenter", () => {
     };
     render(<ExposurePathCommandCenter path={path} />);
 
-    const orderedPath = screen.getByTestId("exposure-path-desktop-sequence");
+    const orderedPath = screen.getByTestId("exposure-path-sequence");
     expect(within(orderedPath).getByText("3. Container")).toBeInTheDocument();
     expect(within(orderedPath).queryByText("3. Server")).not.toBeInTheDocument();
   });
@@ -270,7 +270,7 @@ describe("ExposurePathCommandCenter", () => {
     expect(collapse).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(collapse);
     expect(screen.queryByRole("img", { name: /Selected exposure path graph for/ })).not.toBeInTheDocument();
-    expect(within(screen.getByTestId("exposure-path-desktop-sequence")).getByText("run_shell")).toBeInTheDocument();
+    expect(within(screen.getByTestId("exposure-path-sequence")).getByText("run_shell")).toBeInTheDocument();
   });
 
   it("re-enters the fit-first frame when a different path is selected", () => {

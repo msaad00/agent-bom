@@ -350,6 +350,138 @@ body {
   @apply gap-2 bg-[#29B5E8] text-white hover:bg-[#1a9fd0];
 }
 
+/* Exposure-path presentation lives in CSS so the responsive path proof uses
+   one DOM contract without repeating long utility strings in route JavaScript. */
+.ep-root { @apply relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(160deg,var(--surface),var(--surface-elevated))] shadow-xl shadow-black/20; }
+.ep-body { @apply space-y-5 p-4 pl-5 sm:p-5 sm:pl-6; }
+.ep-header { @apply flex flex-wrap items-start justify-between gap-4; }
+.ep-header-copy { @apply w-full min-w-0 space-y-2 sm:flex-1; }
+.ep-badges { @apply flex flex-wrap items-center gap-2; }
+.ep-severity { @apply rounded-full border border-red-500/35 bg-red-500/12 px-2.5 py-0.5 text-[15px] font-semibold uppercase tracking-[0.12em] text-red-700 dark:text-red-200; }
+.ep-kev { @apply rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-0.5 text-[15px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-200; }
+.ep-summary { @apply line-clamp-3 max-w-3xl text-[15px] leading-6 text-[color:var(--text-secondary)] sm:line-clamp-2; }
+.ep-metrics { @apply grid w-full grid-cols-3 gap-2 text-[15px] sm:w-auto sm:grid-cols-4; }
+.ep-view-row { @apply flex flex-wrap items-center justify-between gap-2; }
+.ep-view-toggle { @apply inline-flex items-center overflow-hidden rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]; }
+.ep-path-frame { @apply rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] p-1; }
+.ep-graph-hint { @apply rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/60 px-4 py-6 text-center text-xs text-[color:var(--text-secondary)]; }
+.ep-primary-action { @apply inline-flex items-center gap-2 rounded-xl border border-emerald-700/50 bg-emerald-500/10 px-4 py-2 text-[15px] font-medium text-emerald-700 transition hover:border-emerald-500 hover:bg-emerald-500/15 dark:text-emerald-200; }
+.ep-details { @apply rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70; }
+.ep-details-summary { @apply flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[15px] font-medium text-[color:var(--foreground)]; }
+.ep-details-summary::-webkit-details-marker { display: none; }
+.ep-details-body { @apply space-y-4 border-t border-[color:var(--border-subtle)] px-4 py-4; }
+.ep-proof-list { @apply max-h-48 divide-y divide-[color:var(--border-subtle)] overflow-y-auto rounded-xl border border-[color:var(--border-subtle)]; }
+.ep-proof-row { @apply grid gap-2 px-3 py-2 text-xs md:grid-cols-[1fr_auto]; }
+.ep-evidence-score { @apply rounded-xl border border-[color:var(--border-subtle)] px-3 py-2 text-xs sm:col-span-2; }
+.ep-metric { @apply rounded-lg border px-2.5 py-1.5; }
+.ep-metric-label { @apply text-[15px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)]; }
+.ep-board-toggle { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 font-medium text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]; }
+.ep-sequence-relationship { @apply ml-4 flex min-h-8 items-center gap-2 border-l border-[color:var(--border-strong)] pl-4 text-[10px] font-medium text-[color:var(--text-tertiary)] sm:absolute sm:inset-x-2 sm:top-2 sm:ml-0 sm:min-h-0 sm:border-l-0 sm:pl-0 sm:text-[15px] sm:text-[color:var(--text-secondary)]; }
+.ep-sequence-relationship-label { @apply rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 sm:truncate sm:border-0 sm:bg-transparent sm:p-0; }
+.ep-sequence-entry { @apply absolute inset-x-3 top-2 hidden text-[15px] font-medium text-[color:var(--text-secondary)] sm:block; }
+.ep-sequence-card { @apply flex items-start gap-3 rounded-xl border px-3 py-2.5 sm:min-h-32 sm:gap-2.5 sm:pb-3 sm:pt-9; }
+.ep-sequence-icon { @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-current/20 bg-[color:var(--surface-elevated)]; }
+.ep-sequence-role { @apply text-[9px] font-semibold uppercase tracking-[0.16em] opacity-75 sm:text-[15px] sm:tracking-[0.08em]; }
+.ep-sequence-title { @apply mt-0.5 break-words text-xs font-semibold text-[color:var(--foreground)] sm:mt-1 sm:line-clamp-2 sm:text-base sm:leading-5; }
+.ep-sequence-subtitle { @apply mt-0.5 break-words text-[10px] text-[color:var(--text-secondary)] sm:mt-1 sm:line-clamp-2 sm:break-all sm:text-[15px] sm:leading-5; }
+.ep-hop-title { @apply flex flex-nowrap items-center gap-x-1.5 overflow-x-auto pb-1; }
+.ep-hop-chip { @apply max-w-[14rem] truncate rounded-lg border px-2.5 py-1 text-[15px] font-semibold text-[color:var(--foreground)]; }
+.ep-evidence-row { @apply min-w-0 rounded-xl border border-[color:var(--border-subtle)] px-3 py-2 text-xs; }
+.ep-evidence-label { @apply mb-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]; }
+.ep-evidence-chip { @apply max-w-full rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[color:var(--text-secondary)] [overflow-wrap:anywhere]; }
+.ep-evidence-more { @apply rounded border border-[color:var(--border-subtle)] px-2 py-0.5 text-[color:var(--text-tertiary)]; }
+.ep-chevron { @apply h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open:rotate-180; }
+.ep-kicker { @apply text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]; }
+.ep-kicker-wide { @apply sm:col-span-2; }
+.ep-view-label { @apply text-[15px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]; }
+.ep-proof-source { @apply font-mono text-[color:var(--foreground)] [overflow-wrap:anywhere]; }
+.ep-proof-target { @apply ml-2 break-all text-[color:var(--text-tertiary)] [overflow-wrap:anywhere]; }
+.ep-evidence-meta { @apply flex flex-wrap items-center gap-2 text-[color:var(--text-secondary)]; }
+.ep-board-controls { @apply hidden items-center justify-center gap-2 pb-1 text-[15px] sm:flex; }
+.ep-empty-proof { @apply px-3 py-3 text-xs text-[color:var(--text-secondary)]; }
+.ep-view-option { @apply flex items-center gap-1.5 px-2.5 py-1.5 text-[15px] font-medium transition; }
+.ep-severity-rail { @apply absolute inset-y-0 left-0 w-1 bg-gradient-to-b; }
+.ep-actions { @apply flex flex-wrap gap-2; }
+.ep-role-row { @apply grid gap-2 sm:grid-cols-2; }
+.ep-hop { @apply flex shrink-0 items-center gap-1.5; }
+.ep-hop-arrow { @apply h-4 w-4 shrink-0 text-[color:var(--text-tertiary)]; }
+.ep-evidence-values { @apply flex flex-wrap gap-1.5; }
+
+/* Correlation status and advanced controls share compact semantic classes so
+   the proof surface stays below the checked client-JS ceiling. */
+.gc-root { @apply rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4; }
+.gc-header { @apply flex flex-wrap items-start justify-between gap-3; }
+.gc-title { @apply flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]; }
+.gc-intro { @apply mt-1 max-w-3xl text-xs text-[color:var(--text-secondary)]; }
+.gc-bound { @apply rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300; }
+.gc-panel { @apply mt-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]; }
+.gc-summary { @apply flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium text-[color:var(--text-secondary)]; }
+.gc-summary-strong { @apply flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-medium text-[color:var(--foreground)]; }
+.gc-summary::-webkit-details-marker,
+.gc-summary-strong::-webkit-details-marker,
+.gc-preview-summary::-webkit-details-marker,
+.gc-receipts-summary::-webkit-details-marker { display: none; }
+.gc-journey { @apply grid grid-cols-2 gap-2 border-t border-[color:var(--border-subtle)] p-3 sm:grid-cols-3 xl:grid-cols-6; }
+.gc-journey-step { @apply relative rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2.5; }
+.gc-journey-icon { @apply flex h-7 w-7 items-center justify-center rounded-lg; }
+.gc-journey-arrow { @apply absolute -right-2.5 top-4 z-10 hidden h-4 w-4 text-[color:var(--text-tertiary)] xl:block; }
+.gc-decision { @apply mt-3 rounded-2xl border bg-[color:var(--surface)] p-3 text-[15px] sm:p-4; }
+.gc-decision-layout { @apply flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between; }
+.gc-decision-state { @apply flex items-center gap-2 text-[15px] font-semibold uppercase tracking-[0.12em] text-emerald-700 dark:text-emerald-300; }
+.gc-preview { @apply mt-2 rounded-lg border border-[color:var(--border-subtle)]; }
+.gc-preview-summary { @apply flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-medium text-[color:var(--foreground)]; }
+.gc-preview-body { @apply border-t border-[color:var(--border-subtle)] px-3 pb-3; }
+.gc-preview-summary-copy { @apply mt-1 max-w-3xl text-[15px] text-[color:var(--text-secondary)]; }
+.gc-preview-route { @apply mt-2 text-[15px] font-medium text-[color:var(--foreground)]; }
+.gc-preview-badges { @apply mt-3 flex flex-wrap gap-2; }
+.gc-risk { @apply rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-700 dark:text-red-200; }
+.gc-pill { @apply rounded-full border border-[color:var(--border-subtle)] px-2.5 py-1; }
+.gc-package { @apply rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200; }
+.gc-finding { @apply rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-orange-700 dark:text-orange-200; }
+.gc-runtime { @apply rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-200; }
+.gc-blocked { @apply rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-red-700 dark:text-red-200; }
+.gc-primary { @apply rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-500; }
+.gc-primary-inline { @apply mt-3 inline-flex; }
+.gc-open-path { @apply rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 font-semibold text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300; }
+.gc-metadata { @apply mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[15px] text-[color:var(--text-tertiary)]; }
+.gc-receipts { @apply mt-3 rounded-lg border border-[color:var(--border-subtle)]; }
+.gc-receipts-summary { @apply flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[15px] font-medium text-[color:var(--text-secondary)]; }
+.gc-receipts-grid { @apply grid gap-2 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2; }
+.gc-receipt { @apply min-w-0 rounded-md bg-[color:var(--surface-elevated)] px-2.5 py-2 text-[10px]; }
+.gc-empty { @apply mt-4 rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-4 py-3 text-xs text-[color:var(--text-secondary)]; }
+.gc-form { @apply border-t border-[color:var(--border-subtle)] p-3; }
+.gc-input { @apply mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--foreground)]; }
+.gc-snapshots { @apply mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3; }
+.gc-snapshot { @apply flex min-w-0 items-start gap-2 rounded-xl border p-3 text-xs; }
+.gc-form-actions { @apply mt-3 flex flex-wrap items-center gap-4 text-xs text-[color:var(--text-secondary)]; }
+.gc-submit { @apply rounded-lg bg-emerald-600 px-3 py-2 font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50; }
+.gc-chevron { @apply h-4 w-4 text-[color:var(--text-tertiary)] transition group-open:rotate-180; }
+.gc-chevron-small { @apply h-3.5 w-3.5 shrink-0 transition group-open:rotate-180; }
+.gc-step-title { @apply text-xs font-semibold leading-4 text-[color:var(--foreground)]; }
+.gc-step-detail { @apply truncate text-[10px] text-[color:var(--text-tertiary)]; }
+.gc-heading { @apply mt-2 text-lg font-semibold text-[color:var(--foreground)]; }
+.gc-copy { @apply mt-2 text-[15px] text-[color:var(--text-secondary)]; }
+.gc-failure { @apply mt-2 font-mono text-[11px] text-red-600 dark:text-red-300; }
+.gc-receipt-title { @apply font-semibold text-[color:var(--foreground)]; }
+.gc-receipt-id { @apply truncate font-mono text-[color:var(--foreground)]; }
+.gc-receipt-digest { @apply mt-1 truncate font-mono text-[color:var(--text-tertiary)]; }
+.gc-label { @apply text-xs font-medium text-[color:var(--text-secondary)]; }
+.gc-form-note { @apply mb-3 text-[10px] text-[color:var(--text-tertiary)]; }
+.gc-form-grid { @apply grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]; }
+.gc-snapshot-id { @apply block truncate font-mono text-[color:var(--foreground)]; }
+.gc-snapshot-meta { @apply mt-1 block text-[color:var(--text-tertiary)]; }
+.gc-snapshot-warning { @apply mt-1 block text-amber-600 dark:text-amber-300; }
+.gc-error { @apply mt-3 flex items-center gap-2 text-xs text-red-600 dark:text-red-300; }
+.gc-actions { @apply flex shrink-0 flex-wrap gap-2; }
+.gc-zero-copy { @apply mt-1 text-[15px] text-[color:var(--text-secondary)]; }
+.gc-receipt-kind { @apply mt-1 text-[color:var(--text-secondary)]; }
+.gc-receipt-time { @apply mt-1 text-[color:var(--text-tertiary)]; }
+.gc-check { @apply flex items-center gap-2; }
+.gc-run-summary { @apply mt-3 text-xs text-[color:var(--text-secondary)]; }
+.sg-filter-chip { @apply inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]; }
+.sg-action { @apply inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]; }
+.sg-danger-chip { @apply inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-700 transition hover:border-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200; }
+
 /* Dense remediation rows share these styles outside route JavaScript so the
    command center stays compact without duplicating long utility strings. */
 .risk-campaign-card { @apply rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] shadow-sm; }

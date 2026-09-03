@@ -125,6 +125,20 @@ def sqlite_store(tmp_path: Path) -> SQLiteGraphStore:
     return store
 
 
+def test_sqlite_delete_snapshot_is_bound_to_exact_tenant_and_scan(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "delete-snapshot.db")
+    acme = _estate("shared-scan")
+    acme.tenant_id = "acme"
+    other = _estate("shared-scan")
+    other.tenant_id = "other"
+    store.save_graph(acme)
+    store.save_graph(other)
+
+    assert store.delete_snapshot(tenant_id="acme", scan_id="shared-scan") > 0
+    assert store.load_graph(tenant_id="acme", scan_id="shared-scan").nodes == {}
+    assert store.load_graph(tenant_id="other", scan_id="shared-scan").nodes
+
+
 @pytest.fixture
 def postgres_store() -> Iterator[Any]:
     """Live Postgres when one is configured; skipped otherwise.

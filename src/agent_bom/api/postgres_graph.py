@@ -666,6 +666,27 @@ class PostgresGraphStore:
             conn.commit()
         return total
 
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+        """Atomically remove one tenant-scoped snapshot and all projections."""
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        total = 0
+        with _tenant_connection(self._pool) as conn:
+            for table in (
+                "graph_node_search",
+                "attack_paths",
+                "interaction_risks",
+                "graph_edges",
+                "graph_nodes",
+                "graph_snapshots",
+            ):
+                cursor = conn.execute(
+                    f"DELETE FROM {table} WHERE tenant_id = %s AND scan_id = %s",  # nosec B608 - table list is static
+                    (tenant_id, scan_id),
+                )
+                total += max(int(cursor.rowcount or 0), 0)
+            conn.commit()
+        return total
+
     def save_graph(self, graph: UnifiedGraph) -> None:
         """Persist a fully built ``UnifiedGraph`` via the streamed write path."""
         self.save_graph_streaming(

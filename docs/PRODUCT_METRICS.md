@@ -16,7 +16,7 @@ Keep counts out of public positioning copy and update this file from the repo in
 | GitHub workflow files | 39 | `.github/workflows` | Counts .yml and .yaml workflow definitions. |
 | API route modules | 50 | `src/agent_bom/api/routes` | Counts Python files in the routes package, including __init__.py. |
 | UI app pages | 43 | `ui/app` | Counts page.tsx and page.jsx files recursively. |
-| Python modules | 883 | `src/agent_bom` | Counts all Python files recursively. |
+| Python modules | 885 | `src/agent_bom` | Counts all Python files recursively. |
 | Supported package ecosystems | 15 | `src/agent_bom/ecosystems.py` | Counted from SUPPORTED_PACKAGE_ECOSYSTEMS. |
 | Compliance surfaces | 16 | `src/agent_bom/compliance_coverage.py` | 15 tag-mapped frameworks plus the OWASP AISVS benchmark surface. |
 | Proxy inline detectors | 7 | `src/agent_bom/proxy.py` | Inline detector chain used by the MCP proxy path. |

@@ -50,6 +50,15 @@ class _FakeConn:
 
     def execute(self, sql, params=None):
         low = " ".join(sql.strip().lower().split())
+        if low.startswith("delete from"):
+            table = low.split()[2]
+            values = tuple(params or ())
+            self.deletes.append((table, values))
+            if table == "graph_snapshots" and len(values) == 2:
+                self.snapshots.pop((values[0], values[1]), None)
+            cursor = _FakeCursor()
+            cursor.rowcount = 1
+            return cursor
         if low.startswith("select scan_id, created_at from graph_snapshots where tenant_id"):
             tenant = params[0]
             rows = [(scan, ts) for (t, scan), ts in self.snapshots.items() if t == tenant]
@@ -160,10 +169,39 @@ def test_purge_retains_unparseable_timestamps(monkeypatch) -> None:
     assert conn.deletes == []
 
 
+def test_delete_snapshot_removes_only_the_exact_tenant_snapshot(monkeypatch) -> None:
+    conn = _FakeConn(
+        {
+            ("acme", "shared-scan"): RECENT,
+            ("other", "shared-scan"): RECENT,
+        }
+    )
+    store = _make_store(conn, monkeypatch)
+
+    removed = store.delete_snapshot(tenant_id="acme", scan_id="shared-scan")
+
+    assert removed == len(postgres_delete_snapshot_tables())
+    assert ("acme", "shared-scan") not in conn.snapshots
+    assert ("other", "shared-scan") in conn.snapshots
+    for table in postgres_delete_snapshot_tables():
+        assert (table, ("acme", "shared-scan")) in conn.deletes
+
+
 def postgres_purge_tables():
     from agent_bom.api.postgres_graph import _GRAPH_RETENTION_PURGE_TABLES
 
     return _GRAPH_RETENTION_PURGE_TABLES
+
+
+def postgres_delete_snapshot_tables() -> tuple[str, ...]:
+    return (
+        "graph_node_search",
+        "attack_paths",
+        "interaction_risks",
+        "graph_edges",
+        "graph_nodes",
+        "graph_snapshots",
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

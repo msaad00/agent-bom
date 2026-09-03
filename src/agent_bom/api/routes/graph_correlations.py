@@ -109,12 +109,14 @@ def _actor(request: Request) -> str:
     return str(getattr(request.state, "api_key_name", "") or "system")
 
 
-def _run_payload(run: GraphCorrelationRun) -> dict[str, Any]:
+def _run_payload(run: GraphCorrelationRun) -> GraphCorrelationResponse:
     try:
         signing_key = configured_receipt_signing_key()
     except CorrelationReceiptError:
         signing_key = None
-    return correlation_run_receipt_payload(run.to_dict(), signing_key=signing_key)
+    return GraphCorrelationResponse.model_validate(
+        correlation_run_receipt_payload(run.to_dict(), signing_key=signing_key)
+    )
 
 
 async def _correlation_service(tenant_id: str) -> GraphCorrelationService:
@@ -172,7 +174,7 @@ async def create_graph_correlation(
     request: Request,
     body: GraphCorrelationCreate,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=_MAX_IDEMPOTENCY_KEY_LENGTH)],
-) -> dict[str, Any]:
+) -> GraphCorrelationResponse:
     tenant_id = require_request_tenant_id(request)
     correlation_id = str(uuid.uuid4())
     service = await _correlation_service(tenant_id)
@@ -237,7 +239,7 @@ def _get_run(tenant_id: str, correlation_id: str) -> GraphCorrelationRun:
     response_model=GraphCorrelationResponse,
     tags=["graph-correlations"],
 )
-async def get_graph_correlation(request: Request, correlation_id: str) -> dict[str, Any]:
+async def get_graph_correlation(request: Request, correlation_id: str) -> GraphCorrelationResponse:
     tenant_id = require_request_tenant_id(request)
     await _correlation_service(tenant_id)
     run = await asyncio.to_thread(_get_run, tenant_id, correlation_id)

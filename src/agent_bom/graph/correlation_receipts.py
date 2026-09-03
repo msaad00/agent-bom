@@ -176,21 +176,26 @@ def correlation_run_receipt_payload(run: Mapping[str, Any], *, signing_key: byte
     """Decorate a stored run with server-computed receipt verification state."""
 
     payload = deepcopy(dict(run))
-    context = {
-        "signing_key": signing_key,
-        "tenant_id": str(payload.get("tenant_id") or ""),
-        "correlation_id": str(payload.get("correlation_id") or ""),
-        "correlation_created_at": str(payload.get("created_at") or ""),
-        "max_age_hours": int(payload.get("max_age_hours") or 0),
-        "allow_stale": bool(payload.get("allow_stale", False)),
-    }
+    tenant_id = str(payload.get("tenant_id") or "")
+    correlation_id = str(payload.get("correlation_id") or "")
+    correlation_created_at = str(payload.get("created_at") or "")
+    max_age_hours = int(payload.get("max_age_hours") or 0)
+    allow_stale = bool(payload.get("allow_stale", False))
 
     receipts: list[dict[str, Any]] = []
     for item in payload.get("input_manifest") or []:
         if not isinstance(item, Mapping):
             continue
         receipt = deepcopy(dict(item))
-        receipt["verification"] = _receipt_verification(receipt, **context)
+        receipt["verification"] = _receipt_verification(
+            receipt,
+            signing_key=signing_key,
+            tenant_id=tenant_id,
+            correlation_id=correlation_id,
+            correlation_created_at=correlation_created_at,
+            max_age_hours=max_age_hours,
+            allow_stale=allow_stale,
+        )
         receipts.append(receipt)
     payload["input_manifest"] = receipts
 
@@ -202,7 +207,15 @@ def correlation_run_receipt_payload(run: Mapping[str, Any], *, signing_key: byte
             if not isinstance(item, Mapping):
                 continue
             receipt = deepcopy(dict(item))
-            receipt["verification"] = _receipt_verification(receipt, **context)
+            receipt["verification"] = _receipt_verification(
+                receipt,
+                signing_key=signing_key,
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                correlation_created_at=correlation_created_at,
+                max_age_hours=max_age_hours,
+                allow_stale=allow_stale,
+            )
             execution_receipts.append(receipt)
         if "input_snapshots" in result_copy:
             result_copy["input_snapshots"] = execution_receipts

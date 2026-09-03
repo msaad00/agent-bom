@@ -145,8 +145,7 @@ both the released version marker and the exact released MCP tool count.
 
 ```bash
 python scripts/check_glama_listing.py \
-  --expected 0.103.2 \
-  --expected-tool-count 84
+  --expected 0.103.2
 ```
 
 ---

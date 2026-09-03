@@ -234,9 +234,48 @@ jobs:
             echo "Smithery catalog differs from the released contract (${ACTUAL}/${EXPECTED} tools); publishing a new deployment"
           fi
 
+      - name: List resumable Smithery releases
+        id: smithery_pending
+        if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
+        env:
+          SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+        run: |
+          set -euo pipefail
+          QUALIFIED_NAME="agent-bom%2Fagent-bom"
+          echo "release_id=" >> "$GITHUB_OUTPUT"
+          if ! curl -fsS --connect-timeout 10 --max-time 30 \
+              -X GET "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -o /tmp/smithery-releases.json; then
+            echo "::notice::Smithery release history is unavailable; creating a new release"
+            exit 0
+          fi
+          RELEASE=$(jq -cer --arg upstream "$SMITHERY_MCP_URL" \
+            '[.[] | select(.type == "external_shttp" and .upstreamUrl == $upstream) | select(.status == "AUTH_REQUIRED" or .status == "QUEUED" or .status == "WORKING")] | first // empty' \
+            /tmp/smithery-releases.json) || true
+          if [ -z "$RELEASE" ]; then
+            exit 0
+          fi
+          RELEASE_ID=$(echo "$RELEASE" | jq -er '.id')
+          RELEASE_STATUS=$(echo "$RELEASE" | jq -er '.status')
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "Reusing matching Smithery release ${RELEASE_ID} (${RELEASE_STATUS})"
+          if [ "$RELEASE_STATUS" = "AUTH_REQUIRED" ]; then
+            HTTP_STATUS=$(curl -sS --connect-timeout 10 --max-time 30 \
+              -o /tmp/smithery-resume-response.json -w "%{http_code}" \
+              -X POST "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases/${RELEASE_ID}/resume" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}")
+            if [ "$HTTP_STATUS" != "202" ]; then
+              echo "::error::Matching Smithery release could not be resumed (HTTP ${HTTP_STATUS}); authorize it with the publisher identity, then retry"
+              exit 1
+            fi
+            echo "Smithery accepted resume for release ${RELEASE_ID}"
+          fi
+
       - name: Publish to Smithery
         id: smithery_publish
-        if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
+        if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true' && steps.smithery_pending.outputs.release_id == ''
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
@@ -286,7 +325,7 @@ jobs:
         if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
-          RELEASE_ID: ${{ steps.smithery_publish.outputs.release_id }}
+          RELEASE_ID: ${{ steps.smithery_pending.outputs.release_id || steps.smithery_publish.outputs.release_id }}
         run: |
           set -euo pipefail
           for ATTEMPT in $(seq 1 90); do

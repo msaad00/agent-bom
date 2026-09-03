@@ -109,9 +109,10 @@ jobs:
         continue-on-error: true
         env:
           SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
+          EXPECTED_TOOL_COUNT: ${{ steps.expected.outputs.tool_count }}
         run: |
           QUALIFIED_NAME="${SMITHERY_SERVER_QUALIFIED_NAME:-agent-bom/agent-bom}"
-          RESPONSE=$(python3 - <<'PY'
+          RESPONSE=$(EXPECTED_TOOL_COUNT="$EXPECTED_TOOL_COUNT" python3 - <<'PY'
           import json
           import os
           import sys
@@ -153,11 +154,13 @@ jobs:
             echo "::warning::Could not verify Smithery catalog listing"
             exit 0
           }
-          STATE=$(echo "$RESPONSE" | EXPECTED_QUALIFIED_NAME="$QUALIFIED_NAME" python3 -c "
+          STATE=$(echo "$RESPONSE" | EXPECTED_QUALIFIED_NAME="$QUALIFIED_NAME" EXPECTED_TOOL_COUNT="$EXPECTED_TOOL_COUNT" python3 -c "
           import json, os, sys
           data = json.load(sys.stdin)
           if data.get('qualified_name') != os.environ['EXPECTED_QUALIFIED_NAME'] or not data.get('remote') or not data.get('deployment_url') or int(data.get('tool_count') or 0) < 1:
               print('invalid')
+          elif int(data.get('tool_count') or 0) != int(os.environ['EXPECTED_TOOL_COUNT']):
+              print('tool_count_drift')
           else:
               print('catalog_live')
           ")
@@ -171,7 +174,10 @@ jobs:
           echo "Smithery catalog state: $STATE"
           echo "Smithery deployment URL: $DEPLOY_URL"
           echo "Smithery tool count: $TOOL_COUNT"
-          if [ "$STATE" != "catalog_live" ]; then
+          if [ "$STATE" = "tool_count_drift" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Smithery catalog tool inventory differs from the published release contract (${TOOL_COUNT}/${EXPECTED_TOOL_COUNT})"
+          elif [ "$STATE" != "catalog_live" ]; then
             echo "probe_failed=true" >> "$GITHUB_OUTPUT"
             echo "::warning::Smithery catalog listing is missing remote deployment metadata or tools"
           fi

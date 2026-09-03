@@ -558,6 +558,23 @@ def test_deployment_freshness_targets_exact_published_server_card_contract():
     assert "steps.railway.outputs.probe_failed == 'true'" in workflow
 
 
+def test_deployment_freshness_marks_smithery_tool_count_drift() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
+
+    assert "EXPECTED_TOOL_COUNT: ${{ steps.expected.outputs.tool_count }}" in workflow
+    assert 'EXPECTED_TOOL_COUNT="$EXPECTED_TOOL_COUNT"' in workflow
+    assert "int(data.get('tool_count') or 0) != int(os.environ['EXPECTED_TOOL_COUNT'])" in workflow
+    assert 'echo "stale=true" >> "$GITHUB_OUTPUT"' in workflow
+    assert "Smithery catalog tool inventory differs from the published release contract" in workflow
+
+
+def test_publishing_guide_does_not_pin_a_stale_mcp_tool_count() -> None:
+    guide = (ROOT / "docs" / "PUBLISHING.md").read_text()
+
+    assert "--expected-tool-count 84" not in guide
+    assert "--expected-tool-count 86" not in guide
+
+
 def test_deployment_freshness_uses_a_version_stable_issue_identity():
     """A clean release must close deployment alerts opened by an older version."""
     workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()

@@ -36,6 +36,17 @@ def test_smithery_publication_is_idempotent_and_waits_for_publisher_authorizatio
     assert "within 15 minutes" in workflow
 
 
+def test_smithery_publication_reuses_matching_pending_release() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "List resumable Smithery releases" in workflow
+    assert 'GET "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases"' in workflow
+    assert 'select(.type == "external_shttp" and .upstreamUrl == $upstream)' in workflow
+    assert 'select(.status == "AUTH_REQUIRED" or .status == "QUEUED" or .status == "WORKING")' in workflow
+    assert 'POST "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases/${RELEASE_ID}/resume"' in workflow
+    assert "Reusing matching Smithery release" in workflow
+
+
 def test_surface_freshness_rechecks_immediately_after_registry_publication() -> None:
     workflow = (ROOT / ".github/workflows/surface-freshness.yml").read_text(encoding="utf-8")
     assert 'workflows: ["Publish to Registries"]' in workflow

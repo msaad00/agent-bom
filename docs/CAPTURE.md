@@ -24,7 +24,7 @@ before replacing any published product image.
    the deterministic capture harness:
 
    ```bash
-   uv run python scripts/generate_reference_evidence_lab.py --check
+   uv run --extra api python scripts/generate_reference_evidence_lab.py --check
    cd ui
    npm ci
    npm run build

@@ -17,6 +17,7 @@ describe("AttackPathCorrelationProof", () => {
     const path = {
       source: "service:api",
       target: "vulnerability:webp",
+      reachability: "confirmed",
       hops: nodes.map((node) => node.id),
       edges: ["contains", "contains", "vulnerable_to"],
       hop_evidence: [
@@ -110,6 +111,52 @@ describe("AttackPathCorrelationProof", () => {
     expect(screen.getByText("Path evidence incomplete")).toBeInTheDocument();
     expect(screen.getByText("0/2 directed traversable hops evidenced")).toBeInTheDocument();
     expect(screen.getByText("Stale allowed")).toHaveClass("text-amber-700");
+    expect(screen.queryByText("Path verified")).not.toBeInTheDocument();
+  });
+
+  it("does not call a fully traversable stale-allowed chain verified", () => {
+    const path = {
+      source: "service:api",
+      target: "package:pillow",
+      reachability: "likely",
+      hops: ["service:api", "container:api", "package:pillow"],
+      edges: ["contains", "contains"],
+      hop_evidence: [
+        {
+          source_node_id: "service:api",
+          target_node_id: "container:api",
+          relationship: "contains",
+          source_snapshot_ids: ["iac-scan"],
+          evidence_tier: "modeled_infrastructure",
+          confidence: 1,
+          freshness: "stale_allowed",
+          runtime_observed_state: "not_observed",
+          direction: "directed",
+          traversable: true,
+          complete: true,
+          truncated: false,
+        },
+        {
+          source_node_id: "container:api",
+          target_node_id: "package:pillow",
+          relationship: "contains",
+          source_snapshot_ids: ["sbom-scan"],
+          evidence_tier: "static_evidence",
+          confidence: 1,
+          freshness: "fresh",
+          runtime_observed_state: "not_observed",
+          direction: "directed",
+          traversable: true,
+          complete: true,
+          truncated: false,
+        },
+      ],
+    } as GraphAttackPath;
+
+    render(<AttackPathCorrelationProof path={path} />);
+
+    expect(screen.getByText("Path not verified")).toBeInTheDocument();
+    expect(screen.getByText("Stale allowed")).toBeInTheDocument();
     expect(screen.queryByText("Path verified")).not.toBeInTheDocument();
   });
 });

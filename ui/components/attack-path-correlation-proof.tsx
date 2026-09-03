@@ -36,7 +36,17 @@ export function AttackPathCorrelationProof({
       receipt.traversable &&
       !receipt.truncated,
   ).length;
-  const pathVerified = expectedHopCount > 0 && completeHopCount === expectedHopCount && receipts.length === expectedHopCount;
+  const hopChainComplete =
+    expectedHopCount > 0 && completeHopCount === expectedHopCount && receipts.length === expectedHopCount;
+  const allEvidenceFresh = receipts.every((receipt) => receipt.freshness === "fresh");
+  const analysisComplete = !path.analysis?.status || path.analysis.status === "complete";
+  const pathVerified =
+    path.reachability === "confirmed" && hopChainComplete && allEvidenceFresh && analysisComplete;
+  const proofLabel = pathVerified
+    ? "Path verified"
+    : hopChainComplete
+      ? "Path not verified"
+      : "Path evidence incomplete";
   const sourceCount = new Set(receipts.flatMap((receipt) => receipt.source_snapshot_ids)).size;
 
   const kinds = new Map<string, string>();
@@ -62,7 +72,7 @@ export function AttackPathCorrelationProof({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-[color:var(--foreground)]">{pathVerified ? "Path verified" : "Path evidence incomplete"}</p>
+          <p className="text-xs font-semibold text-[color:var(--foreground)]">{proofLabel}</p>
           <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
             {completeHopCount}/{expectedHopCount} directed traversable hops evidenced
           </p>

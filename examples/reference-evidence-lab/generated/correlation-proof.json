@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:145d4c2ae7acb5fd8098ef07cae43836b996b7da8c0420fff3583bac3eaec304",
+  "artifact_sha256": "sha256:6ed11d0a26901636724b3d5ef8d8e59bd64ececd93e8b249139149b921b59365",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -437,7 +437,7 @@
         },
         {
           "activity_id": 3,
-          "canonical_id": "26bfdfe4-d07a-524d-9846-03d2181fb068",
+          "canonical_id": "b963c909-0b90-548e-8c23-336009e847be",
           "confidence": 1.0,
           "direction": "directed",
           "evidence": {
@@ -445,7 +445,7 @@
             "source_kind": "repository_parser"
           },
           "first_seen": "2026-08-30T04:00:00+00:00",
-          "id": "imports:source:pinned-package:package:sbom:pillow",
+          "id": "depends_on:source:pinned-package:package:sbom:pillow",
           "last_seen": "2026-08-30T04:00:00+00:00",
           "provenance": {
             "artifact": "examples/reference-evidence-lab",
@@ -460,7 +460,7 @@
                   "evidence_digest": "sha256:a61c56697d4f07ff0aeb2161c87c897d6cbeebb98492eae577c36ba65d58d32f",
                   "scan_id": "reference-repository-scan",
                   "snapshot_created_at": "2026-08-30T04:00:00+00:00",
-                  "source_edge_id": "imports:source:pinned-package:package:repo:pillow",
+                  "source_edge_id": "depends_on:source:pinned-package:package:repo:pillow",
                   "traversable": true
                 }
               ],
@@ -470,7 +470,7 @@
             },
             "source": "repository_parser"
           },
-          "relationship": "imports",
+          "relationship": "depends_on",
           "source": "source:pinned-package",
           "source_id": "source:pinned-package",
           "source_run_id": "reference-evidence-correlation-v1",
@@ -1154,9 +1154,9 @@
         "relationship_types": {
           "authenticates_as": 1,
           "contains": 2,
+          "depends_on": 1,
           "exploitable_via": 1,
           "has_permission": 1,
-          "imports": 1,
           "uses": 1,
           "vulnerable_to": 1
         },
@@ -1290,7 +1290,7 @@
       {
         "age_hours": 0.1,
         "created_at": "2026-08-30T04:00:00+00:00",
-        "digest": "sha256:845804f1cb3b0b85631ef2760b1a8b62aee70d3bfc3ca89b058fa5b8b32f3e79",
+        "digest": "sha256:88a545ff01ca49388dc1af6ccd0119c62acbae032905795842911c1521dbaf95",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1312,7 +1312,7 @@
         ]
       }
     ],
-    "manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+    "manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -1409,7 +1409,7 @@
         {
           "age_hours": 0.1,
           "created_at": "2026-08-30T04:00:00+00:00",
-          "digest": "sha256:845804f1cb3b0b85631ef2760b1a8b62aee70d3bfc3ca89b058fa5b8b32f3e79",
+          "digest": "sha256:88a545ff01ca49388dc1af6ccd0119c62acbae032905795842911c1521dbaf95",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1434,7 +1434,7 @@
       "output": {
         "attack_path_count": 1,
         "edge_count": 8,
-        "graph_digest_sha256": "sha256:c57cdac42dd6efcc03eda31d2d84e19031661b832a744f5f69b8de6e59b8002c",
+        "graph_digest_sha256": "sha256:368ee568781839b25c02c4f6db2d8d16a55be37c7d4d0c399a5dbc04d60d9dc3",
         "node_count": 9,
         "scan_id": "reference-evidence-correlation-v1"
       },
@@ -1714,7 +1714,7 @@
     "correlation_id": "reference-evidence-correlation-v1",
     "failure_mode": "deny",
     "global_default": "off",
-    "manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+    "manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
     "observed_event": "live-jsonrpc-allow",
     "policy_id": "strict-correlated-evidence",
     "policy_source": "graph_reachability",

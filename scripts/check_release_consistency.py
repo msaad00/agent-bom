@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import re
@@ -20,6 +21,11 @@ DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
 PRODUCT_SCREENSHOTS = ROOT / "docs" / "images" / "product-screenshots.json"
 REFERENCE_LAB_DIGEST = ROOT / "examples" / "reference-evidence-lab" / "generated" / "correlation-proof.sha256"
+PRODUCT_SCREENSHOT_INPUTS = (
+    "ui",
+    "examples/reference-evidence-lab",
+    "scripts/generate_reference_evidence_lab.py",
+)
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
 SITE_INDEX = ROOT / "site-docs" / "index.md"
@@ -295,6 +301,28 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
 
     if manifest.get("release_version") != expected_version:
         _fail(f"docs/images/product-screenshots.json has stale release_version: {manifest.get('release_version')!r} != {expected_version}")
+
+    source_commit = manifest.get("source_commit")
+    if not isinstance(source_commit, str) or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
+        _fail("docs/images/product-screenshots.json source_commit must be a full lowercase Git SHA")
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", *PRODUCT_SCREENSHOT_INPUTS],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+    )
+    if tracked.returncode != 0:
+        _fail("unable to enumerate release product screenshot inputs")
+    digest = hashlib.sha256()
+    for encoded_path in sorted(filter(None, tracked.stdout.split(b"\0"))):
+        relative_path = encoded_path.decode("utf-8")
+        digest.update(encoded_path)
+        digest.update(b"\0")
+        digest.update((ROOT / relative_path).read_bytes())
+        digest.update(b"\0")
+    expected_input_digest = f"sha256:{digest.hexdigest()}"
+    if manifest.get("capture_inputs_sha256") != expected_input_digest:
+        _fail("docs/images/product-screenshots.json capture inputs changed after the recorded product proof")
 
     required = {
         "dashboard-live.png",

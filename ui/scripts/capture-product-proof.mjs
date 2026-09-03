@@ -14,6 +14,11 @@ const REPO_ROOT = path.resolve(UI_ROOT, "..");
 const execFileAsync = promisify(execFile);
 const IMAGE_DIR = path.join(REPO_ROOT, "docs", "images");
 const SCREENSHOT_MANIFEST = path.join(IMAGE_DIR, "product-screenshots.json");
+const PRODUCT_SCREENSHOT_INPUTS = [
+  "ui",
+  "examples/reference-evidence-lab",
+  "scripts/generate_reference_evidence_lab.py",
+];
 const REFERENCE_LAB_PROOF_PATH = path.join(
   REPO_ROOT,
   "examples",
@@ -105,7 +110,28 @@ async function captureSourceProvenance() {
   if (status.trim()) {
     throw new Error("Release product proof requires a clean committed source tree, including no untracked inputs");
   }
-  return { source_commit: commit.trim(), source_tree: "clean" };
+  const { stdout: trackedOutput } = await execFileAsync(
+    "git",
+    ["ls-files", "-z", "--", ...PRODUCT_SCREENSHOT_INPUTS],
+    { cwd: REPO_ROOT, encoding: "buffer" },
+  );
+  const digest = createHash("sha256");
+  const trackedPaths = trackedOutput
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean)
+    .sort();
+  for (const relativePath of trackedPaths) {
+    digest.update(relativePath);
+    digest.update("\0");
+    digest.update(await fs.readFile(path.join(REPO_ROOT, relativePath)));
+    digest.update("\0");
+  }
+  return {
+    source_commit: commit.trim(),
+    source_tree: "clean",
+    capture_inputs_sha256: `sha256:${digest.digest("hex")}`,
+  };
 }
 
 async function screenshotSha256(filePath) {

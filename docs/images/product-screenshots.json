@@ -1,8 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-02T04:40:00.241Z",
-  "source_commit": "232208d5f00b901c3e29c3e5d0e3843ade5d231e",
+  "captured_at": "2026-09-03T03:18:18.632Z",
+  "source_commit": "69c2c88979ec24030dc20ef38bc4da6a73075805",
   "source_tree": "clean",
+  "capture_inputs_sha256": "sha256:aa239fbdea8169d40130387cb3446ac8b64765f61858244c8bb87a097d559fb6",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -35,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.103.2",
-      "sha256": "sha256:31ae9f38e0c93319534e0acf7fbfba964f9a052ea3f780b1d27a38cc9e21f3e8"
+      "sha256": "sha256:2ab099e80d6798271d308b5e2647ddbd4ab639b739a4b6bde03590e08fdeca7e"
     },
     {
       "presentation": "dark desktop",
@@ -43,7 +44,7 @@
       "page": "/connections?capture=1",
       "scope": "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
       "visible_version": "0.103.2",
-      "sha256": "sha256:7ac80913d7e7bc9645e5183d9bd6676d05412bc9f7dbe8178af528a505cdfeb4"
+      "sha256": "sha256:bb08291a4958893fe82d827c9d879165640b8a9021195ebf43bd2718f24c455b"
     },
     {
       "presentation": "dark desktop",
@@ -59,7 +60,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.103.2",
-      "sha256": "sha256:fc3a90df8d9b046ba2358c12da36e6ad758269de3f0f7326f445aa9e9c6c1346"
+      "sha256": "sha256:11947976c59401309f046c4a3dee855f9879d18d94264236526e6c803b4035d9"
     },
     {
       "presentation": "dark desktop",
@@ -91,7 +92,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.103.2",
-      "sha256": "sha256:c6bc77754bd0750e6a7bec045421b9ce824cf8a5adfa8b65dbd471ac318d6824"
+      "sha256": "sha256:fea6ca40bb90be30b4d6572f31f13d8af781d8c5df2bdff6bdb3a875f3366472"
     },
     {
       "presentation": "dark desktop",
@@ -99,10 +100,10 @@
       "page": "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&correlation=1&capture=1",
       "scope": "Reference evidence lab source receipts flowing into one immutable, manifest-bound correlated snapshot",
       "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
-      "evidence_sha256": "sha256:788ff349cb96387f64e9138a6ea814596967a87d37b61dcbdaddf2c78c3a97de",
-      "correlation_manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+      "evidence_sha256": "sha256:4dc426d5f70f71f904d8469a295e02a1d447002b62d69e379744d3e3d7465ccd",
+      "correlation_manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
       "visible_version": "0.103.2",
-      "sha256": "sha256:c1a4fba6a6fa69a3cf5521fae77b9da9e60dbe18b905cb56f58c59361d58373b"
+      "sha256": "sha256:91f7503bd92c77f32af7f016746bbac3cfcd5b13ff0619ad1482a7f956bbdc6e"
     },
     {
       "presentation": "dark desktop",
@@ -110,8 +111,8 @@
       "page": "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&cve=CVE-2023-4863&capture=1",
       "scope": "Reference evidence lab confirmed path with exact OCI digest, advisory, hop provenance, freshness, runtime observation, strict block proof, and remediation handoff",
       "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
-      "evidence_sha256": "sha256:788ff349cb96387f64e9138a6ea814596967a87d37b61dcbdaddf2c78c3a97de",
-      "correlation_manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+      "evidence_sha256": "sha256:4dc426d5f70f71f904d8469a295e02a1d447002b62d69e379744d3e3d7465ccd",
+      "correlation_manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
       "visible_version": "0.103.2",
       "sha256": "sha256:8c01ef5da7f20222cc6e8bd7c5c0203fde59ee3d4877fb43f2140a513b95a126"
     },
@@ -121,10 +122,10 @@
       "page": "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&correlation=1&capture=1",
       "scope": "Reference evidence lab automatic journey and manifest-bound source receipts in the light theme",
       "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
-      "evidence_sha256": "sha256:788ff349cb96387f64e9138a6ea814596967a87d37b61dcbdaddf2c78c3a97de",
-      "correlation_manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+      "evidence_sha256": "sha256:4dc426d5f70f71f904d8469a295e02a1d447002b62d69e379744d3e3d7465ccd",
+      "correlation_manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
       "visible_version": "0.103.2",
-      "sha256": "sha256:5cec712c772cb7197065b53a2650bfe217926d40b1a773fa736a704cfc2e9b56"
+      "sha256": "sha256:b17a8cc8d6e566d73d3ababa2d2f635e7af055738582c787578bf6a2d452a063"
     },
     {
       "presentation": "light desktop",
@@ -132,8 +133,8 @@
       "page": "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&cve=CVE-2023-4863&capture=1",
       "scope": "Reference evidence lab confirmed path and hop receipts in the light theme",
       "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
-      "evidence_sha256": "sha256:788ff349cb96387f64e9138a6ea814596967a87d37b61dcbdaddf2c78c3a97de",
-      "correlation_manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+      "evidence_sha256": "sha256:4dc426d5f70f71f904d8469a295e02a1d447002b62d69e379744d3e3d7465ccd",
+      "correlation_manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
       "visible_version": "0.103.2",
       "sha256": "sha256:eedc7ff8371c97825371ecd1f6348637955cf409b6718e5cf94512b77883787b"
     },
@@ -143,10 +144,10 @@
       "page": "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&correlation=1&capture=1",
       "scope": "Reference evidence lab automatic journey and manifest-bound source receipts at a 390 by 844 viewport",
       "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
-      "evidence_sha256": "sha256:788ff349cb96387f64e9138a6ea814596967a87d37b61dcbdaddf2c78c3a97de",
-      "correlation_manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+      "evidence_sha256": "sha256:4dc426d5f70f71f904d8469a295e02a1d447002b62d69e379744d3e3d7465ccd",
+      "correlation_manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
       "visible_version": "0.103.2",
-      "sha256": "sha256:a603b41f2a5c22a98c4916a1ddcc5825d2f3cdaa9bb2698aefdd84dcfd34e00d"
+      "sha256": "sha256:d220b5827764240a8e7e7b3f454ef194286f88622a0201e646525aacb2a67642"
     },
     {
       "presentation": "dark mobile",
@@ -154,8 +155,8 @@
       "page": "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&cve=CVE-2023-4863&capture=1",
       "scope": "Reference evidence lab confirmed path and hop receipts at a 390 by 844 viewport",
       "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
-      "evidence_sha256": "sha256:788ff349cb96387f64e9138a6ea814596967a87d37b61dcbdaddf2c78c3a97de",
-      "correlation_manifest_sha256": "sha256:2a702cc2464e0aaa1a4a5279ec256eced66a6aa89570973f0f8022cd29a8a3cb",
+      "evidence_sha256": "sha256:4dc426d5f70f71f904d8469a295e02a1d447002b62d69e379744d3e3d7465ccd",
+      "correlation_manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
       "visible_version": "0.103.2",
       "sha256": "sha256:27654cbde5ca17c73394a96091067d4cee2a94c83fd04e82b6c065ee93090791"
     },
@@ -165,7 +166,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.103.2",
-      "sha256": "sha256:07562eaedec2e90a09f8523630bd569d25710b045d6a84a562e87d7138fa6325"
+      "sha256": "sha256:01f7812e292133b207387548913d38c287c499ebbf1d6bce06d1d37a91a1043e"
     },
     {
       "presentation": "dark mobile",
@@ -181,7 +182,7 @@
       "page": "/security-graph?lens=estate&rollup=1&capture=1",
       "scope": "Observed current-state Investigation Canvas at the audited 1512 by 811 viewport",
       "visible_version": "0.103.2",
-      "sha256": "sha256:34762bb6c88579b25f333657432aedd3bb832e5ceb8a14e4b86a35c915fcc627"
+      "sha256": "sha256:310151a34fbeda044f999b828fc3d5c405605d04e7745a17ddb2c1e0f964fbc7"
     },
     {
       "presentation": "light desktop 1568x780",
@@ -189,7 +190,7 @@
       "page": "/security-graph?lens=estate&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Clearly modeled proposed-state comparison at the audited 1568 by 780 viewport",
       "visible_version": "0.103.2",
-      "sha256": "sha256:282ab6dd2839cc290a6d64e49fe3271b7e7d3afa566b4924969a29cbe218b4d0"
+      "sha256": "sha256:5f5f5e8384a59d212d46d69ff88ffb2d30365b623d83940552df5a9ddd380bcb"
     },
     {
       "presentation": "dark desktop",
@@ -229,7 +230,7 @@
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
       "visible_version": "0.103.2",
-      "sha256": "sha256:2bfda5c9eb02183206da40d67125a819eb730a8f50d257074cc98d42800763a7"
+      "sha256": "sha256:a416645555a46ae83288ce88a433ad7721b8451692a4bb172a47738814b6aaad"
     },
     {
       "presentation": "dark desktop",

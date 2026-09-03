@@ -1326,6 +1326,17 @@ def correlation_cohort_id(*, tenant_id: str, idempotency_key: str) -> str:
     return str(uuid.uuid5(_CORRELATION_COHORT_NAMESPACE, f"{tenant}\x00{key}"))
 
 
+def correlation_cohort_parent_job_id(*, tenant_id: str, correlation_cohort_id: str) -> str:
+    """Return the stable parent job id reserved for one tenant-bound cohort."""
+
+    return str(
+        uuid.uuid5(
+            _CORRELATION_COHORT_NAMESPACE,
+            f"{tenant_id}\x00{correlation_cohort_id}\x00parent",
+        )
+    )
+
+
 def _cohort_manifest(
     source_requests: list[tuple[str, ScanRequest]],
     external_sources: list[tuple[str, str]] | None = None,
@@ -1384,7 +1395,10 @@ def enqueue_correlation_cohort(
 
     members, manifest_hash = _cohort_manifest(source_requests, external_sources)
     store = _get_store()
-    parent_job_id = str(uuid.uuid5(_CORRELATION_COHORT_NAMESPACE, f"{tenant_id}\x00{normalized_cohort_id}\x00parent"))
+    parent_job_id = correlation_cohort_parent_job_id(
+        tenant_id=tenant_id,
+        correlation_cohort_id=normalized_cohort_id,
+    )
     expected_child_ids = [
         str(
             uuid.uuid5(

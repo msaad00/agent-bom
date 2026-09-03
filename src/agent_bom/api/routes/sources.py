@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
@@ -16,9 +17,14 @@ from agent_bom.api.correlation_cohort_receipts import (
     CorrelationCohortReceiptError,
     issue_correlation_cohort_child_receipt,
 )
-from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
+from agent_bom.api.idempotency_store import (
+    IdempotencyConflictError,
+    idempotency_request_fingerprint,
+    idempotency_reservation_lease_seconds,
+)
 from agent_bom.api.models import (
     CredentialRefStatus,
+    ScanJob,
     ScanRequest,
     SourceCohortRunRequest,
     SourceCohortRunResponse,
@@ -32,6 +38,7 @@ from agent_bom.api.models import (
 from agent_bom.api.routes.scan import (
     _sanitize_scan_request_paths,
     correlation_cohort_id,
+    correlation_cohort_parent_job_id,
     enqueue_correlation_cohort,
     enqueue_scan_job,
 )
@@ -468,6 +475,65 @@ async def run_source(request: Request, source_id: str) -> dict:
     return {"source_id": source.source_id, "job_id": job.job_id, "status": job.status.value}
 
 
+def _source_cohort_response(
+    *,
+    parent: ScanJob,
+    sources: list[SourceRecord],
+    body: SourceCohortRunRequest,
+) -> SourceCohortRunResponse:
+    """Rebuild the stable API receipt from durable parent and child jobs."""
+
+    decision = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
+    child_receipts = []
+    source_by_id = {source.source_id: source for source in sources}
+    for child_job_id in parent.child_job_ids:
+        child = _get_store().get(child_job_id, tenant_id=parent.tenant_id)
+        if child is None or not child.source_id:
+            raise CorrelationCohortReceiptError("invalid_cohort_state")
+        try:
+            source = source_by_id[child.source_id]
+        except KeyError as exc:
+            raise CorrelationCohortReceiptError("invalid_cohort_state") from exc
+        if source.kind in _COHORT_EXTERNAL_SOURCE_KINDS:
+            child_receipts.append(
+                issue_correlation_cohort_child_receipt(
+                    parent=parent,
+                    child=child,
+                    source_kind=source.kind.value,
+                )
+            )
+    return SourceCohortRunResponse(
+        correlation_cohort_id=parent.correlation_cohort_id or "",
+        cohort_manifest_hash=parent.correlation_cohort_manifest_hash or "",
+        parent_job_id=parent.job_id,
+        child_job_ids=list(parent.child_job_ids),
+        source_ids=list(body.source_ids),
+        max_age_hours=body.max_age_hours,
+        status=parent.status,
+        auto_correlation=decision if isinstance(decision, dict) else None,
+        child_receipts=child_receipts,
+    )
+
+
+def _update_cohort_sources(*, parent: ScanJob, sources: list[SourceRecord]) -> None:
+    """Project durable cohort membership onto source status without order joins."""
+
+    child_by_source = {
+        child.source_id: child
+        for child_job_id in parent.child_job_ids
+        if (child := _get_store().get(child_job_id, tenant_id=parent.tenant_id)) is not None
+    }
+    for source in sources:
+        child = child_by_source.get(source.source_id)
+        if child is None:
+            continue
+        source.last_run_at = parent.created_at
+        source.last_run_status = child.status.value
+        source.last_job_id = child.job_id
+        source.updated_at = parent.created_at
+        _get_source_store().put(source)
+
+
 @router.post(
     "/sources/run-cohort",
     tags=["sources"],
@@ -487,20 +553,6 @@ async def run_source_cohort(
         raise HTTPException(status_code=422, detail="Idempotency-Key header is required")
     if len(idempotency_key) > 200:
         raise HTTPException(status_code=422, detail="Idempotency-Key must be at most 200 characters")
-
-    request_hash = idempotency_request_fingerprint(body)
-    try:
-        cached = _get_idempotency_store().get(
-            "/v1/sources/run-cohort",
-            tenant_id,
-            "source-cohort",
-            idempotency_key,
-            request_hash=request_hash,
-        )
-    except IdempotencyConflictError as exc:
-        raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
-    if cached is not None:
-        return SourceCohortRunResponse.model_validate(cached)
 
     sources: list[SourceRecord] = []
     source_requests: list[tuple[str, ScanRequest]] = []
@@ -522,7 +574,57 @@ async def run_source_cohort(
             source_requests.append((source_id, source_request))
         sources.append(source)
 
+    request_hash = idempotency_request_fingerprint(body)
     cohort_id = correlation_cohort_id(tenant_id=tenant_id, idempotency_key=idempotency_key)
+    parent_job_id = correlation_cohort_parent_job_id(
+        tenant_id=tenant_id,
+        correlation_cohort_id=cohort_id,
+    )
+    idempotency_store = _get_idempotency_store()
+    try:
+        receipt, claimed = idempotency_store.claim(
+            "/v1/sources/run-cohort",
+            tenant_id,
+            "source-cohort",
+            idempotency_key,
+            {"parent_job_id": parent_job_id, "committed": False},
+            request_hash=request_hash,
+            reservation_lease_seconds=idempotency_reservation_lease_seconds(),
+        )
+    except IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
+
+    if not claimed:
+        stored_response = receipt.get("response") if receipt.get("committed") is True else receipt
+        if isinstance(stored_response, dict) and "correlation_cohort_id" in stored_response:
+            return SourceCohortRunResponse.model_validate(stored_response)
+        for _attempt in range(100):
+            persisted = await asyncio.to_thread(_get_store().get, parent_job_id, tenant_id)
+            if persisted is not None:
+                try:
+                    response = _source_cohort_response(parent=persisted, sources=sources, body=body)
+                except CorrelationCohortReceiptError:
+                    response = None
+                if response is not None:
+                    _update_cohort_sources(parent=persisted, sources=sources)
+                    response_payload = response.model_dump(mode="json")
+                    await asyncio.to_thread(
+                        idempotency_store.put,
+                        "/v1/sources/run-cohort",
+                        tenant_id,
+                        "source-cohort",
+                        idempotency_key,
+                        {"parent_job_id": parent_job_id, "committed": True, "response": response_payload},
+                        request_hash=request_hash,
+                    )
+                    return response
+            await asyncio.sleep(0.01)
+        raise HTTPException(
+            status_code=409,
+            detail="An identical correlation cohort is still being prepared; retry shortly.",
+            headers={"Retry-After": "1"},
+        )
+
     try:
         parent = enqueue_correlation_cohort(
             tenant_id=tenant_id,
@@ -533,59 +635,47 @@ async def run_source_cohort(
             max_age_hours=body.max_age_hours,
         )
     except ValueError as exc:
+        idempotency_store.release(
+            "/v1/sources/run-cohort",
+            tenant_id,
+            "source-cohort",
+            idempotency_key,
+            request_hash=request_hash,
+        )
         raise HTTPException(
             status_code=409,
             detail="Correlation cohort conflicts with persisted immutable state",
         ) from exc
+    except Exception as exc:  # noqa: BLE001
+        persisted = _get_store().get(parent_job_id, tenant_id=tenant_id)
+        if persisted is None:
+            idempotency_store.release(
+                "/v1/sources/run-cohort",
+                tenant_id,
+                "source-cohort",
+                idempotency_key,
+                request_hash=request_hash,
+            )
+        raise HTTPException(status_code=503, detail="Correlation cohort could not be prepared") from exc
 
-    now = _now()
-    for source, child_job_id in zip(sources, parent.child_job_ids, strict=True):
-        source.last_run_at = now
-        source.last_run_status = "pending"
-        source.last_job_id = child_job_id
-        source.updated_at = now
-        _get_source_store().put(source)
+    _update_cohort_sources(parent=parent, sources=sources)
 
-    decision = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
-    child_receipts = []
-    source_by_id = {source.source_id: source for source in sources}
     try:
-        for child_job_id in parent.child_job_ids:
-            child = _get_store().get(child_job_id, tenant_id=tenant_id)
-            if child is None or not child.source_id:
-                raise CorrelationCohortReceiptError("invalid_cohort_state")
-            source = source_by_id[child.source_id]
-            if source.kind in _COHORT_EXTERNAL_SOURCE_KINDS:
-                child_receipts.append(
-                    issue_correlation_cohort_child_receipt(
-                        parent=parent,
-                        child=child,
-                        source_kind=source.kind.value,
-                    )
-                )
-    except (CorrelationCohortReceiptError, KeyError) as exc:
+        response = _source_cohort_response(parent=parent, sources=sources, body=body)
+    except CorrelationCohortReceiptError as exc:
         raise HTTPException(status_code=409, detail="Correlation cohort receipt could not be issued") from exc
-
-    response = SourceCohortRunResponse(
-        correlation_cohort_id=cohort_id,
-        cohort_manifest_hash=parent.correlation_cohort_manifest_hash or "",
-        parent_job_id=parent.job_id,
-        child_job_ids=list(parent.child_job_ids),
-        source_ids=list(body.source_ids),
-        max_age_hours=body.max_age_hours,
-        status=parent.status,
-        auto_correlation=decision if isinstance(decision, dict) else None,
-        child_receipts=child_receipts,
-    )
     response_payload = response.model_dump(mode="json")
-    _get_idempotency_store().put(
-        "/v1/sources/run-cohort",
-        tenant_id,
-        "source-cohort",
-        idempotency_key,
-        response_payload,
-        request_hash=request_hash,
-    )
+    try:
+        idempotency_store.put(
+            "/v1/sources/run-cohort",
+            tenant_id,
+            "source-cohort",
+            idempotency_key,
+            {"parent_job_id": parent_job_id, "committed": True, "response": response_payload},
+            request_hash=request_hash,
+        )
+    except Exception as exc:  # noqa: BLE001 - durable cohort is reconciled by the next retry
+        raise HTTPException(status_code=503, detail="Correlation cohort receipt could not be committed") from exc
     log_action(
         "source.cohort.run",
         actor=_actor(request),

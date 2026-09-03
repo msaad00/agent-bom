@@ -947,6 +947,8 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         if not body.source_id:
             raise HTTPException(status_code=422, detail="Correlation cohort result requires source_id")
         request_hash = idempotency_request_fingerprint(body)
+        cohort_claimed = False
+        cohort_child_id = cohort_receipt.child_job_id
         try:
             context = validate_correlation_cohort_child(
                 tenant_id=tenant_id,
@@ -955,11 +957,49 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 receipt=cohort_receipt,
                 allowed_source_kinds={"ingest.result_push"},
             )
+            try:
+                _receipt, cohort_claimed = _get_idempotency_store().claim(
+                    "/v1/results/push/cohort",
+                    tenant_id,
+                    body.source_id,
+                    cohort_child_id,
+                    {"job_id": cohort_child_id, "committed": False},
+                    request_hash=request_hash,
+                    reservation_lease_seconds=idempotency_reservation_lease_seconds(),
+                )
+            except IdempotencyConflictError as exc:
+                raise CorrelationCohortIngestError("duplicate_result") from exc
+            if not cohort_claimed:
+                completed = await _wait_for_cohort_child(
+                    cohort_child_id,
+                    tenant_id=tenant_id,
+                    source_id=body.source_id,
+                    request_hash=request_hash,
+                )
+                if completed is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="An identical correlation cohort result is still being committed; retry shortly.",
+                        headers={"Retry-After": "1"},
+                    )
+                return _cohort_push_response(*completed)
+            current_child = await asyncio.to_thread(_get_store().get, cohort_child_id, tenant_id)
+            if current_child is None:
+                raise CorrelationCohortIngestError("invalid_receipt")
+            context = type(context)(parent=context.parent, child=current_child)
             replay = prior_or_conflict(context.child, request_hash=request_hash)
             if replay is not None:
                 parent = _get_store().get(replay.parent_job_id or "", tenant_id=tenant_id)
                 if parent is None:
                     raise CorrelationCohortIngestError("invalid_receipt")
+                _get_idempotency_store().put(
+                    "/v1/results/push/cohort",
+                    tenant_id,
+                    body.source_id,
+                    cohort_child_id,
+                    {"job_id": cohort_child_id, "committed": True},
+                    request_hash=request_hash,
+                )
                 return _cohort_push_response(replay, parent)
             report = _normalize_pushed_report(body, fallback_scan_id=context.child.job_id)
             supplied_scan_id = str(report.get("scan_id") or "")
@@ -986,8 +1026,25 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 request_hash=request_hash,
                 persist_graph=_persist_graph_snapshot,
             )
+            await asyncio.to_thread(
+                _get_idempotency_store().put,
+                "/v1/results/push/cohort",
+                tenant_id,
+                body.source_id,
+                cohort_child_id,
+                {"job_id": cohort_child_id, "committed": True},
+                request_hash=request_hash,
+            )
             return _cohort_push_response(child, parent)
         except CorrelationCohortIngestError as exc:
+            current = await asyncio.to_thread(_get_store().get, cohort_child_id, tenant_id)
+            if cohort_claimed and (current is None or current.status is not JobStatus.DONE):
+                _release_cohort_push_claim(
+                    tenant_id=tenant_id,
+                    source_id=body.source_id,
+                    child_id=cohort_child_id,
+                    request_hash=request_hash,
+                )
             if exc.code == "durable_store_required":
                 detail = "Correlation cohort ingest requires durable stores"
             elif exc.code == "stale_evidence":
@@ -1000,6 +1057,14 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 detail = "Correlation cohort receipt is invalid"
             raise HTTPException(status_code=409, detail=detail) from exc
         except Exception as exc:  # noqa: BLE001
+            current = await asyncio.to_thread(_get_store().get, cohort_child_id, tenant_id)
+            if cohort_claimed and (current is None or current.status is not JobStatus.DONE):
+                _release_cohort_push_claim(
+                    tenant_id=tenant_id,
+                    source_id=body.source_id,
+                    child_id=cohort_child_id,
+                    request_hash=request_hash,
+                )
             _logger.error("Correlation cohort result commit failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
             raise HTTPException(status_code=503, detail="Correlation cohort result could not be committed") from exc
 
@@ -1246,6 +1311,58 @@ async def _wait_for_pushed_job(
                 return cast(ScanJob, job)
         await asyncio.sleep(0.01)
     return None
+
+
+async def _wait_for_cohort_child(
+    child_id: str,
+    *,
+    tenant_id: str,
+    source_id: str,
+    request_hash: str,
+) -> tuple[ScanJob, ScanJob] | None:
+    """Wait briefly for the distributed cohort-child reservation owner."""
+
+    for _attempt in range(100):
+        receipt = await asyncio.to_thread(
+            _get_idempotency_store().get,
+            "/v1/results/push/cohort",
+            tenant_id,
+            source_id,
+            child_id,
+            request_hash=request_hash,
+        )
+        child = await asyncio.to_thread(_get_store().get, child_id, tenant_id)
+        if child is not None and child.status is JobStatus.DONE:
+            replay = prior_or_conflict(child, request_hash=request_hash)
+            parent = await asyncio.to_thread(_get_store().get, replay.parent_job_id or "", tenant_id)
+            if parent is None:
+                raise CorrelationCohortIngestError("invalid_receipt")
+            if receipt is None or receipt.get("committed") is not True:
+                await asyncio.to_thread(
+                    _get_idempotency_store().put,
+                    "/v1/results/push/cohort",
+                    tenant_id,
+                    source_id,
+                    child_id,
+                    {"job_id": child_id, "committed": True},
+                    request_hash=request_hash,
+                )
+            return replay, parent
+        await asyncio.sleep(0.01)
+    return None
+
+
+def _release_cohort_push_claim(*, tenant_id: str, source_id: str, child_id: str, request_hash: str) -> None:
+    try:
+        _get_idempotency_store().release(
+            "/v1/results/push/cohort",
+            tenant_id,
+            source_id,
+            child_id,
+            request_hash=request_hash,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _logger.error("Cohort push idempotency rollback failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
 
 
 def _cohort_push_response(child: ScanJob, parent: ScanJob) -> dict[str, Any]:

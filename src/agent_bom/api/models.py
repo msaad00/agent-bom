@@ -769,6 +769,25 @@ class ScanRunPayload(BaseModel):
     incomplete_scope_count: int = Field(default=0, ge=0, le=100)
 
 
+class CorrelationCohortChildReceipt(BaseModel):
+    """Signed assignment for one external producer in an immutable cohort."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["agent-bom.correlation-cohort-child/v1"] = "agent-bom.correlation-cohort-child/v1"
+    tenant_id: str = Field(min_length=1, max_length=256)
+    correlation_cohort_id: str = Field(min_length=36, max_length=36)
+    cohort_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parent_job_id: str = Field(min_length=36, max_length=36)
+    child_job_id: str = Field(min_length=36, max_length=36)
+    source_id: str = Field(min_length=1, max_length=200)
+    source_kind: Literal["ingest.result_push", "runtime.proxy", "runtime.gateway"]
+    max_age_hours: int = Field(ge=1, le=8760)
+    issued_at: str = Field(min_length=1, max_length=64)
+    expires_at: str = Field(min_length=1, max_length=64)
+    signature: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
 class PushPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -779,6 +798,8 @@ class PushPayload(BaseModel):
     warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
     scan_run: ScanRunPayload | None = None
     endpoint_inventory: dict[str, Any] | None = None
+    correlation_cohort_id: str | None = Field(default=None, min_length=36, max_length=36)
+    correlation_child_receipt: CorrelationCohortChildReceipt | None = None
 
 
 class ScheduleCreate(BaseModel):
@@ -988,6 +1009,7 @@ class SourceCohortRunResponse(BaseModel):
     max_age_hours: int
     status: JobStatus
     auto_correlation: dict[str, Any] | None = None
+    child_receipts: list[CorrelationCohortChildReceipt] = Field(default_factory=list)
 
 
 class RuntimeEvidenceSignalIn(BaseModel):
@@ -1021,6 +1043,8 @@ class RuntimeEvidenceIngestRequest(BaseModel):
     source_id: str
     secret: str
     signals: list[RuntimeEvidenceSignalIn] = Field(default_factory=list, max_length=1000)
+    correlation_cohort_id: str | None = Field(default=None, min_length=36, max_length=36)
+    correlation_child_receipt: CorrelationCohortChildReceipt | None = None
 
 
 class SideScanTriggerRequest(BaseModel):

@@ -1326,18 +1326,33 @@ def correlation_cohort_id(*, tenant_id: str, idempotency_key: str) -> str:
     return str(uuid.uuid5(_CORRELATION_COHORT_NAMESPACE, f"{tenant}\x00{key}"))
 
 
-def _cohort_manifest(source_requests: list[tuple[str, ScanRequest]]) -> tuple[list[tuple[str, ScanRequest]], str]:
-    normalized = sorted(((source_id.strip(), request) for source_id, request in source_requests), key=lambda row: row[0])
-    source_ids = [source_id for source_id, _ in normalized]
+def _cohort_manifest(
+    source_requests: list[tuple[str, ScanRequest]],
+    external_sources: list[tuple[str, str]] | None = None,
+) -> tuple[list[tuple[str, ScanRequest | None, str]], str]:
+    members: list[tuple[str, ScanRequest | None, str]] = [(source_id.strip(), request, "scan") for source_id, request in source_requests]
+    members.extend((source_id.strip(), None, source_kind.strip()) for source_id, source_kind in (external_sources or []))
+    normalized = sorted(members, key=lambda row: row[0])
+    source_ids = [source_id for source_id, _request, _source_kind in normalized]
     if not 2 <= len(source_ids) <= 32:
         raise ValueError("a correlation cohort requires between 2 and 32 sources")
     if any(not source_id for source_id in source_ids) or len(set(source_ids)) != len(source_ids):
         raise ValueError("a correlation cohort requires distinct source ids")
-    for source_id, request in normalized:
-        if len(scan_request_targets(request)) != 1:
+    for source_id, request, source_kind in normalized:
+        if request is not None and len(scan_request_targets(request)) != 1:
             raise ValueError(f"cohort source {source_id} must resolve to exactly one scan target")
+        if request is None and source_kind not in {"ingest.result_push", "runtime.proxy", "runtime.gateway"}:
+            raise ValueError(f"cohort source {source_id} has an unsupported external ingest kind")
     encoded = json.dumps(
-        [{"source_id": source_id, "request": request.model_dump(mode="json", exclude_none=True)} for source_id, request in normalized],
+        [
+            {
+                "source_id": source_id,
+                "mode": "scan" if request is not None else "external_ingest",
+                "source_kind": source_kind,
+                "request": request.model_dump(mode="json", exclude_none=True) if request is not None else None,
+            }
+            for source_id, request, source_kind in normalized
+        ],
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
@@ -1350,6 +1365,7 @@ def enqueue_correlation_cohort(
     triggered_by: str,
     correlation_cohort_id: str,
     source_requests: list[tuple[str, ScanRequest]],
+    external_sources: list[tuple[str, str]] | None = None,
     max_age_hours: int,
     schedule_id: str | None = None,
     quota_guarded: bool = False,
@@ -1366,7 +1382,7 @@ def enqueue_correlation_cohort(
     if not 1 <= max_age_hours <= 8760:
         raise ValueError("correlation cohort max_age_hours must be between 1 and 8760")
 
-    members, manifest_hash = _cohort_manifest(source_requests)
+    members, manifest_hash = _cohort_manifest(source_requests, external_sources)
     store = _get_store()
     parent_job_id = str(uuid.uuid5(_CORRELATION_COHORT_NAMESPACE, f"{tenant_id}\x00{normalized_cohort_id}\x00parent"))
     expected_child_ids = [
@@ -1376,7 +1392,7 @@ def enqueue_correlation_cohort(
                 f"{tenant_id}\x00{normalized_cohort_id}\x00{source_id}",
             )
         )
-        for source_id, _request in members
+        for source_id, _request, _source_kind in members
     ]
     existing = cast(ScanJob | None, store.get(parent_job_id, tenant_id=tenant_id))
     if existing is not None:
@@ -1388,8 +1404,13 @@ def enqueue_correlation_cohort(
             raise ValueError("correlation cohort id was reused with different immutable inputs")
         if existing.child_job_ids != expected_child_ids:
             raise ValueError("persisted correlation cohort is incomplete")
-        for expected_child_id, (source_id, _request) in zip(expected_child_ids, members, strict=True):
+        for expected_child_id, (source_id, request_body, source_kind) in zip(expected_child_ids, members, strict=True):
             child = cast(ScanJob | None, store.get(expected_child_id, tenant_id=tenant_id))
+            expected_target = (
+                scan_request_targets(request_body)[0]
+                if request_body is not None
+                else {"kind": "external_ingest", "source_kind": source_kind}
+            )
             if (
                 child is None
                 or child.parent_job_id != parent_job_id
@@ -1397,14 +1418,17 @@ def enqueue_correlation_cohort(
                 or child.correlation_cohort_id != normalized_cohort_id
                 or child.correlation_cohort_manifest_hash != manifest_hash
                 or child.correlation_max_age_hours != max_age_hours
+                or child.target != expected_target
             ):
                 raise ValueError("persisted correlation cohort is incomplete")
         return existing
 
     now = _now()
     child_jobs: list[ScanJob] = []
-    for index, ((source_id, request_body), child_job_id) in enumerate(zip(members, expected_child_ids, strict=True), start=1):
-        target = scan_request_targets(request_body)[0]
+    for index, ((source_id, request_body, source_kind), child_job_id) in enumerate(zip(members, expected_child_ids, strict=True), start=1):
+        target = (
+            scan_request_targets(request_body)[0] if request_body is not None else {"kind": "external_ingest", "source_kind": source_kind}
+        )
         child_jobs.append(
             ScanJob(
                 job_id=child_job_id,
@@ -1421,7 +1445,7 @@ def enqueue_correlation_cohort(
                 schedule_id=schedule_id,
                 triggered_by=triggered_by,
                 created_at=now,
-                request=request_body,
+                request=request_body or ScanRequest(),
             )
         )
 
@@ -1479,11 +1503,27 @@ def enqueue_correlation_cohort(
         )
     )
     with admission:
-        store.put(parent)
-        _jobs_put(parent.job_id, parent)
-        for child in child_jobs:
-            store.put(child)
-            _jobs_put(child.job_id, child)
+        attempted_ids: list[str] = []
+        try:
+            attempted_ids.append(parent.job_id)
+            store.put(parent)
+            _jobs_put(parent.job_id, parent)
+            for child in child_jobs:
+                attempted_ids.append(child.job_id)
+                store.put(child)
+                _jobs_put(child.job_id, child)
+        except Exception as persist_exc:
+            rollback_failed = False
+            for job_id in reversed(attempted_ids):
+                try:
+                    store.delete(job_id, tenant_id=tenant_id)
+                except Exception:  # noqa: BLE001 - finish all compensating deletes
+                    rollback_failed = True
+                finally:
+                    _jobs_pop(job_id)
+            if rollback_failed:
+                raise RuntimeError("correlation cohort persistence rollback failed") from persist_exc
+            raise
         try:
             refresh_batch_parent(parent.job_id, tenant_id=tenant_id)
         except Exception:  # noqa: BLE001
@@ -1495,7 +1535,8 @@ def enqueue_correlation_cohort(
 
     if dispatch:
         for child in child_jobs:
-            dispatch_scan_job(child)
+            if (child.target or {}).get("kind") != "external_ingest":
+                dispatch_scan_job(child)
     return parent
 
 

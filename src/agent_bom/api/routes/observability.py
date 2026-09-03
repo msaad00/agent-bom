@@ -23,6 +23,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import Response
 
+from agent_bom.api.correlation_cohort_ingest import (
+    CorrelationCohortIngestError,
+    cohort_evidence_created_at,
+    commit_correlation_cohort_child,
+    prior_or_conflict,
+    validate_correlation_cohort_child,
+)
 from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
@@ -932,6 +939,70 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     if body.endpoint_inventory is not None and not body.source_id:
         raise HTTPException(status_code=422, detail="endpoint_inventory requires a stable source_id")
     tenant_id = _tenant_id(request)
+    cohort_id = (body.correlation_cohort_id or "").strip()
+    cohort_receipt = body.correlation_child_receipt
+    if bool(cohort_id) != bool(cohort_receipt):
+        raise HTTPException(status_code=422, detail="Correlation cohort id and child receipt must be provided together")
+    if cohort_id and cohort_receipt is not None:
+        if not body.source_id:
+            raise HTTPException(status_code=422, detail="Correlation cohort result requires source_id")
+        request_hash = idempotency_request_fingerprint(body)
+        try:
+            context = validate_correlation_cohort_child(
+                tenant_id=tenant_id,
+                source_id=body.source_id,
+                correlation_cohort_id=cohort_id,
+                receipt=cohort_receipt,
+                allowed_source_kinds={"ingest.result_push"},
+            )
+            replay = prior_or_conflict(context.child, request_hash=request_hash)
+            if replay is not None:
+                parent = _get_store().get(replay.parent_job_id or "", tenant_id=tenant_id)
+                if parent is None:
+                    raise CorrelationCohortIngestError("invalid_receipt")
+                return _cohort_push_response(replay, parent)
+            report = _normalize_pushed_report(body, fallback_scan_id=context.child.job_id)
+            supplied_scan_id = str(report.get("scan_id") or "")
+            if supplied_scan_id != context.child.job_id and "scan_id" in (body.model_extra or {}):
+                raise CorrelationCohortIngestError("invalid_receipt")
+            observed_at = next(
+                (
+                    str(report.get(key) or "").strip()
+                    for key in ("observed_at", "scan_timestamp", "generated_at")
+                    if str(report.get(key) or "").strip()
+                ),
+                "",
+            )
+            report["observed_at"] = cohort_evidence_created_at(
+                [observed_at] if observed_at else [],
+                max_age_hours=cohort_receipt.max_age_hours,
+            )
+            report["scan_id"] = context.child.job_id
+            report["pushed"] = True
+            child, parent = await asyncio.to_thread(
+                commit_correlation_cohort_child,
+                context,
+                result=report,
+                request_hash=request_hash,
+                persist_graph=_persist_graph_snapshot,
+            )
+            return _cohort_push_response(child, parent)
+        except CorrelationCohortIngestError as exc:
+            if exc.code == "durable_store_required":
+                detail = "Correlation cohort ingest requires durable stores"
+            elif exc.code == "stale_evidence":
+                detail = "Correlation cohort evidence is stale"
+            elif exc.code in {"observation_time_required", "invalid_observation_time"}:
+                raise HTTPException(status_code=422, detail="Correlation cohort evidence requires a valid observation time") from exc
+            elif exc.code == "duplicate_result":
+                detail = "Correlation cohort child already has a different result"
+            else:
+                detail = "Correlation cohort receipt is invalid"
+            raise HTTPException(status_code=409, detail=detail) from exc
+        except Exception as exc:  # noqa: BLE001
+            _logger.error("Correlation cohort result commit failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
+            raise HTTPException(status_code=503, detail="Correlation cohort result could not be committed") from exc
+
     header_idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
     body_idempotency_key = str(body.idempotency_key or "").strip()
     if header_idempotency_key and body_idempotency_key and header_idempotency_key != body_idempotency_key:
@@ -1175,6 +1246,23 @@ async def _wait_for_pushed_job(
                 return cast(ScanJob, job)
         await asyncio.sleep(0.01)
     return None
+
+
+def _cohort_push_response(child: ScanJob, parent: ScanJob) -> dict[str, Any]:
+    result = child.result if isinstance(child.result, dict) else {}
+    raw_scan_run = result.get("scan_run")
+    scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
+    auto_correlation = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
+    return {
+        "job_id": child.job_id,
+        "source_id": child.source_id or "",
+        "status": "stored",
+        "scan_outcome": str(scan_run.get("outcome") or "complete"),
+        "correlation_cohort_id": child.correlation_cohort_id or "",
+        "cohort_manifest_hash": child.correlation_cohort_manifest_hash or "",
+        "parent_job_id": parent.job_id,
+        "auto_correlation": auto_correlation if isinstance(auto_correlation, dict) else None,
+    }
 
 
 @router.post("/ocsf/ingest", tags=["observability"], status_code=202)

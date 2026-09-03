@@ -81,6 +81,66 @@ def test_durable_cohort_replay_preserves_exact_membership_and_policy(tmp_path: P
     assert dispatched == []
 
 
+def test_cohort_creation_rolls_back_every_durable_and_hot_cache_row_on_partial_put(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class FailSecondPutStore(SQLiteJobStore):
+        def __init__(self, path: Path) -> None:
+            super().__init__(path)
+            self.put_count = 0
+
+        def put(self, job) -> None:
+            self.put_count += 1
+            if self.put_count == 2:
+                raise RuntimeError("database password=do-not-return")
+            super().put(job)
+
+    jobs = FailSecondPutStore(tmp_path / "jobs.db")
+    set_job_store(jobs)
+    set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
+    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: None)
+    cohort_id = scan_routes.correlation_cohort_id(tenant_id="tenant-a", idempotency_key="atomic-run")
+
+    with pytest.raises(RuntimeError, match="database password"):
+        scan_routes.enqueue_correlation_cohort(
+            tenant_id="tenant-a",
+            triggered_by="api-test",
+            correlation_cohort_id=cohort_id,
+            source_requests=_requests(),
+            max_age_hours=24,
+        )
+
+    assert jobs.list_all(tenant_id="tenant-a") == []
+    from agent_bom.api import stores
+
+    assert not any(job.tenant_id == "tenant-a" for job in stores._jobs.values())
+
+
+def test_correlation_decision_audit_records_the_exact_cohort_basis(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api import auto_correlation
+    from agent_bom.api.models import ScanJob, ScanRequest
+
+    records: list[dict] = []
+    monkeypatch.setattr(auto_correlation, "log_action", lambda action, **details: records.append({"action": action, **details}))
+    parent = ScanJob(
+        job_id="parent",
+        tenant_id="tenant-a",
+        batch_id="cohort",
+        correlation_cohort_id="00000000-0000-0000-0000-000000000001",
+        created_at=NOW.isoformat(),
+        request=ScanRequest(),
+    )
+    decision = auto_correlation._decision(
+        parent=parent,
+        policy=AutoCorrelationPolicy(),
+        now=NOW,
+        status="pending",
+        reason="batch_incomplete",
+    )
+
+    auto_correlation._record_decision(parent, decision)
+
+    assert records[0]["cohort_basis"] == "correlation_cohort_id"
+
+
 def test_durable_cohort_replay_rejects_an_incomplete_persisted_cohort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     jobs = SQLiteJobStore(tmp_path / "jobs.db")
     set_job_store(jobs)

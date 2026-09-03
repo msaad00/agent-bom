@@ -191,3 +191,14 @@ def test_neptune_correlation_persistence_is_explicitly_unsupported() -> None:
             snapshot_kind="correlation",
             correlation_id="corr-1",
         )
+
+
+def test_neptune_delete_snapshot_is_bound_to_exact_tenant_and_scan() -> None:
+    client = FakeGremlinClient()
+    store = NeptuneGraphStore(NeptuneGraphConfig(endpoint="wss://neptune.example:8182/gremlin"), client=client)
+
+    assert store.delete_snapshot(tenant_id="tenant-a", scan_id="scan-1") == 3
+
+    query, bindings = client.calls[-1]
+    assert "has('tenant_id', tenant_id).has('scan_id', scan_id)" in query
+    assert bindings == {"tenant_id": "tenant-a", "scan_id": "scan-1"}

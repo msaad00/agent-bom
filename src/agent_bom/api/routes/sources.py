@@ -12,6 +12,10 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import ValidationError
 
 from agent_bom.api.audit_log import log_action
+from agent_bom.api.correlation_cohort_receipts import (
+    CorrelationCohortReceiptError,
+    issue_correlation_cohort_child_receipt,
+)
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.models import (
     CredentialRefStatus,
@@ -56,6 +60,13 @@ _RUNNABLE_SOURCE_KINDS = frozenset(
         SourceKind.CONNECTOR_CLOUD_READ_ONLY,
         SourceKind.CONNECTOR_REGISTRY,
         SourceKind.CONNECTOR_WAREHOUSE,
+    }
+)
+_COHORT_EXTERNAL_SOURCE_KINDS = frozenset(
+    {
+        SourceKind.INGEST_RESULT_PUSH,
+        SourceKind.RUNTIME_PROXY,
+        SourceKind.RUNTIME_GATEWAY,
     }
 )
 
@@ -493,19 +504,23 @@ async def run_source_cohort(
 
     sources: list[SourceRecord] = []
     source_requests: list[tuple[str, ScanRequest]] = []
+    external_sources: list[tuple[str, str]] = []
     for source_id in body.source_ids:
         source = _source_for_request(request, source_id).model_copy(deep=True)
         if not source.enabled:
             raise HTTPException(status_code=409, detail=f"Source {source_id} is disabled")
         _validate_credential_ref(request, source)
-        source_request = _request_for_source(source)
-        if len(scan_request_targets(source_request)) != 1:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Source {source_id} must resolve to exactly one scan target for a correlation cohort",
-            )
+        if source.kind in _COHORT_EXTERNAL_SOURCE_KINDS:
+            external_sources.append((source_id, source.kind.value))
+        else:
+            source_request = _request_for_source(source)
+            if len(scan_request_targets(source_request)) != 1:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Source {source_id} must resolve to exactly one scan target for a correlation cohort",
+                )
+            source_requests.append((source_id, source_request))
         sources.append(source)
-        source_requests.append((source_id, source_request))
 
     cohort_id = correlation_cohort_id(tenant_id=tenant_id, idempotency_key=idempotency_key)
     try:
@@ -514,6 +529,7 @@ async def run_source_cohort(
             triggered_by=f"{_actor(request)}:source-cohort",
             correlation_cohort_id=cohort_id,
             source_requests=source_requests,
+            external_sources=external_sources,
             max_age_hours=body.max_age_hours,
         )
     except ValueError as exc:
@@ -531,6 +547,25 @@ async def run_source_cohort(
         _get_source_store().put(source)
 
     decision = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
+    child_receipts = []
+    source_by_id = {source.source_id: source for source in sources}
+    try:
+        for child_job_id in parent.child_job_ids:
+            child = _get_store().get(child_job_id, tenant_id=tenant_id)
+            if child is None or not child.source_id:
+                raise CorrelationCohortReceiptError("invalid_cohort_state")
+            source = source_by_id[child.source_id]
+            if source.kind in _COHORT_EXTERNAL_SOURCE_KINDS:
+                child_receipts.append(
+                    issue_correlation_cohort_child_receipt(
+                        parent=parent,
+                        child=child,
+                        source_kind=source.kind.value,
+                    )
+                )
+    except (CorrelationCohortReceiptError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail="Correlation cohort receipt could not be issued") from exc
+
     response = SourceCohortRunResponse(
         correlation_cohort_id=cohort_id,
         cohort_manifest_hash=parent.correlation_cohort_manifest_hash or "",
@@ -540,6 +575,7 @@ async def run_source_cohort(
         max_age_hours=body.max_age_hours,
         status=parent.status,
         auto_correlation=decision if isinstance(decision, dict) else None,
+        child_receipts=child_receipts,
     )
     response_payload = response.model_dump(mode="json")
     _get_idempotency_store().put(

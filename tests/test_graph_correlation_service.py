@@ -404,7 +404,7 @@ async def test_merge_budget_exceeded_leaves_no_selectable_partial_snapshot(tmp_p
 
 
 @pytest.mark.asyncio
-async def test_execution_releases_each_source_graph_before_loading_the_next(tmp_path: Path) -> None:
+async def test_signed_execution_releases_each_source_graph_before_loading_the_next(tmp_path: Path) -> None:
     class TrackingStore(SQLiteGraphStore):
         def __init__(self, path: Path) -> None:
             super().__init__(path)
@@ -428,7 +428,12 @@ async def test_execution_releases_each_source_graph_before_loading_the_next(tmp_
     created_at = "2026-08-30T11:00:00+00:00"
     for scan_id in ("repo", "image", "runtime"):
         store.save_graph(_graph(scan_id, created_at))
-    service = GraphCorrelationService(store, now=lambda: NOW)
+    service = GraphCorrelationService(
+        store,
+        now=lambda: NOW,
+        receipt_signing_key=RECEIPT_KEY,
+        receipt_signing_key_id="test-v1",
+    )
     await service.start(tenants=["tenant-a"])
     try:
         await service.submit(CorrelationRequest("corr-streamed", "tenant-a", "idem-streamed", "streamed", ("repo", "image", "runtime"), 24))
@@ -438,6 +443,18 @@ async def test_execution_releases_each_source_graph_before_loading_the_next(tmp_
 
     assert completed.status is CorrelationRunStatus.COMPLETE
     assert store.load_calls == 6
+    assert all(
+        verify_correlation_receipt(
+            receipt,
+            signing_key=RECEIPT_KEY,
+            tenant_id="tenant-a",
+            correlation_id="corr-streamed",
+            correlation_created_at=completed.created_at,
+            max_age_hours=24,
+            allow_stale=False,
+        )
+        for receipt in completed.result_manifest["input_snapshots"]
+    )
 
 
 @pytest.mark.asyncio

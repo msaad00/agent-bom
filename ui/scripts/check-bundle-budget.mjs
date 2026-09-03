@@ -117,7 +117,11 @@ const BUDGETS = {
   // measure 3908.4 KiB locally (+4.4 KiB over the prior ceiling) with no new
   // dependency. Keep 11.6 KiB of bounded headroom at 3920 KiB; the largest-
   // chunk and shared-runtime caps remain unchanged.
-  totalClientJsBytes: 4_014_080,
+  // The same exact tree measures 3928.9 KiB in Linux CI after the focused
+  // lineage proof was rebased onto the correlation core. Keep 15.1 KiB of
+  // measured cross-platform headroom at 3944 KiB; this adds no dependency and
+  // leaves both the largest-chunk and shared-runtime caps unchanged.
+  totalClientJsBytes: 4_038_656,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

@@ -1334,6 +1334,8 @@ async def _wait_for_cohort_child(
         child = await asyncio.to_thread(_get_store().get, child_id, tenant_id)
         if child is not None and child.status is JobStatus.DONE:
             replay = prior_or_conflict(child, request_hash=request_hash)
+            if replay is None:
+                raise CorrelationCohortIngestError("invalid_receipt")
             parent = await asyncio.to_thread(_get_store().get, replay.parent_job_id or "", tenant_id)
             if parent is None:
                 raise CorrelationCohortIngestError("invalid_receipt")

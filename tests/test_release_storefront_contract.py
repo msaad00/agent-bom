@@ -77,6 +77,7 @@ def test_release_manifest_carries_reproducible_sanitized_provenance() -> None:
     manifest = json.loads((ROOT / "docs/images/product-screenshots.json").read_text(encoding="utf-8"))
 
     assert re.fullmatch(r"[0-9a-f]{40}", manifest["source_commit"])
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", manifest["capture_inputs_sha256"])
     assert manifest["source_tree"] == "clean"
     assert "private infrastructure" in manifest["capture_note"].lower()
 
@@ -110,6 +111,20 @@ def test_release_manifest_rejects_a_future_visible_version(
     with pytest.raises(SystemExit):
         check_release_consistency._assert_product_screenshots_current(check_release_consistency._load_version())
     assert "newer than the release" in capsys.readouterr().err
+
+
+def test_release_manifest_rejects_capture_input_hash_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    manifest = json.loads((ROOT / "docs/images/product-screenshots.json").read_text(encoding="utf-8"))
+    manifest["capture_inputs_sha256"] = f"sha256:{'0' * 64}"
+    candidate = tmp_path / "product-screenshots.json"
+    candidate.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(check_release_consistency, "PRODUCT_SCREENSHOTS", candidate)
+
+    with pytest.raises(SystemExit):
+        check_release_consistency._assert_product_screenshots_current(check_release_consistency._load_version())
+    assert "capture inputs changed" in capsys.readouterr().err
 
 
 def test_capture_runbook_matches_the_local_authenticated_release_workflow() -> None:

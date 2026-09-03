@@ -18,7 +18,7 @@ from agent_bom.api.credential_store import InMemoryCredentialRefStore
 from agent_bom.api.models import CredentialRefRecord, CredentialRefStatus, ScanJob, SourceKind, SourceRecord
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.server import app, configure_api
-from agent_bom.api.source_store import InMemorySourceStore
+from agent_bom.api.source_store import InMemorySourceStore, SQLiteSourceStore
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.connectors.base import ConnectorHealthState, ConnectorStatus
 from tests.auth_helpers import PROXY_SECRET
@@ -141,6 +141,96 @@ def test_source_create_rejects_mismatched_tenant(source_client: TestClient) -> N
     )
     assert resp.status_code == 403
     assert "tenant_id in the request body must match the authenticated tenant" in resp.json()["detail"]
+
+
+def test_source_create_rejects_nested_secret_config_without_echo(source_client: TestClient) -> None:
+    secret = "source-secret-value-123"
+    response = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Push source",
+            "kind": "ingest.trace_push",
+            "config": {"transport": {"api_key": secret}},
+        },
+    )
+
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert source_client.get("/v1/sources", headers=VIEWER_HEADERS).json()["count"] == 0
+
+
+def test_source_update_rejects_nested_secret_config_without_replacing_safe_config(source_client: TestClient) -> None:
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Push source",
+            "kind": "ingest.trace_push",
+            "config": {"region": "us-east-1"},
+        },
+    )
+    source_id = created.json()["source_id"]
+    secret = "source-password-value-123"
+
+    response = source_client.put(
+        f"/v1/sources/{source_id}",
+        headers=ANALYST_HEADERS,
+        json={"config": {"nested": [{"password": secret}]}},
+    )
+
+    assert response.status_code == 422
+    assert secret not in response.text
+    stored = source_client.get(f"/v1/sources/{source_id}", headers=VIEWER_HEADERS).json()
+    assert stored["config"] == {"region": "us-east-1"}
+
+
+def test_source_store_redacts_secret_config_before_memory_and_sqlite_persistence(tmp_path) -> None:
+    secret = "source-token-value-123"
+    source = SourceRecord(
+        source_id="source-secret",
+        tenant_id="tenant-alpha",
+        display_name="Legacy unsafe source",
+        kind=SourceKind.INGEST_TRACE_PUSH,
+        config={"nested": {"token": secret}, "region": "us-east-1"},
+    )
+
+    memory = InMemorySourceStore()
+    memory.put(source)
+    assert secret not in memory._sources["source-secret"].model_dump_json()
+    assert memory.get("source-secret").config == {
+        "nested": {"token": "***REDACTED***"},
+        "region": "us-east-1",
+    }
+
+    sqlite = SQLiteSourceStore(str(tmp_path / "sources.db"))
+    sqlite.put(source)
+    raw = sqlite._conn.execute("SELECT data FROM sources WHERE source_id = ?", (source.source_id,)).fetchone()[0]
+    assert secret not in raw
+    assert sqlite.get("source-secret").config == {
+        "nested": {"token": "***REDACTED***"},
+        "region": "us-east-1",
+    }
+
+
+def test_source_get_and_list_redact_legacy_unsafe_store_rows(source_client: TestClient) -> None:
+    secret = "legacy-api-key-value-123"
+    legacy = SourceRecord(
+        source_id="legacy-secret",
+        tenant_id="tenant-alpha",
+        display_name="Legacy source",
+        kind=SourceKind.INGEST_RESULT_PUSH,
+        config={"nested": {"api_key": secret}},
+    )
+    # Simulate a row written before the at-rest guard existed.
+    _stores._source_store._sources[legacy.source_id] = legacy
+
+    fetched = source_client.get(f"/v1/sources/{legacy.source_id}", headers=VIEWER_HEADERS)
+    listed = source_client.get("/v1/sources", headers=VIEWER_HEADERS)
+
+    assert secret not in fetched.text
+    assert secret not in listed.text
+    assert fetched.json()["config"] == {"nested": {"api_key": "***REDACTED***"}}
 
 
 @pytest.mark.parametrize(

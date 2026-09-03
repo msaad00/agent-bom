@@ -383,6 +383,14 @@ def test_auth_scope_catalog_surface_shape() -> None:
         "required_role": "admin",
     }
     assert entries[("scan:write", "POST", "/v1/scan")]["required_role"] == "analyst"
+    assert entries[("scan:read", "GET", "/v1/scan")]["required_role"] == "viewer"
+    assert entries[("scan:read", "GET", "/v1/jobs")]["required_role"] == "viewer"
+    assert entries[("scan:read", "GET", "/v1/inventory")]["required_role"] == "viewer"
+    assert entries[("source:read", "GET", "/v1/sources")]["required_role"] == "viewer"
+    assert entries[("source:write", "POST", "/v1/sources")]["required_role"] == "analyst"
+    assert entries[("scan:write", "POST", "/v1/results/push")]["required_role"] == "analyst"
+    assert entries[("scan:write", "POST", "/v1/ocsf/ingest")]["required_role"] == "analyst"
+    assert entries[("scan:write", "POST", "/v1/traces")]["required_role"] == "analyst"
 
 
 def test_proxy_control_plane_mtls_posture_requires_delegated_evidence(monkeypatch: pytest.MonkeyPatch) -> None:

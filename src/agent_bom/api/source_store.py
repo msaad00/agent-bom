@@ -4,10 +4,65 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from agent_bom.api.models import SourceRecord
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.security import env_key_is_credential
+
+_SOURCE_CONFIG_REDACTED = "***REDACTED***"
+_SOURCE_CONFIG_MAX_DEPTH = 24
+
+
+def _source_config_key_is_secret(key: object) -> bool:
+    normalized = str(key).strip().lower().replace("-", "_")
+    return env_key_is_credential(normalized) or normalized == "external_id"
+
+
+def source_config_contains_secret(value: object, *, _depth: int = 0) -> bool:
+    """Return whether a nested config carries a credential-shaped field."""
+    if _depth >= _SOURCE_CONFIG_MAX_DEPTH:
+        return True
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if _source_config_key_is_secret(key) and item not in (None, "", _SOURCE_CONFIG_REDACTED):
+                return True
+            if source_config_contains_secret(item, _depth=_depth + 1):
+                return True
+    elif isinstance(value, list | tuple):
+        return any(source_config_contains_secret(item, _depth=_depth + 1) for item in value)
+    return False
+
+
+def redact_source_config(value: object, *, _depth: int = 0) -> object:
+    """Recursively redact credential-shaped fields before storage or projection."""
+    if _depth >= _SOURCE_CONFIG_MAX_DEPTH:
+        return "[truncated]"
+    if isinstance(value, dict):
+        return {
+            str(key): (
+                _SOURCE_CONFIG_REDACTED
+                if _source_config_key_is_secret(key) and item not in (None, "", _SOURCE_CONFIG_REDACTED)
+                else redact_source_config(item, _depth=_depth + 1)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list | tuple):
+        return [redact_source_config(item, _depth=_depth + 1) for item in value]
+    return value
+
+
+def safe_source_record(source: SourceRecord) -> SourceRecord:
+    """Return a detached record whose config is safe for persistence and reads."""
+    safe_config = cast(dict[str, Any], redact_source_config(source.config))
+    if safe_config == source.config:
+        return source.model_copy(deep=True)
+    return source.model_copy(update={"config": safe_config}, deep=True)
+
+
+def safe_source_payload(source: SourceRecord) -> dict[str, Any]:
+    """Project one source without exposing legacy unsafe config values."""
+    return safe_source_record(source).model_dump()
 
 
 class SourceStore(Protocol):
@@ -26,16 +81,18 @@ class InMemorySourceStore:
         self._sources: dict[str, SourceRecord] = {}
 
     def put(self, source: SourceRecord) -> None:
-        self._sources[source.source_id] = source
+        safe = safe_source_record(source)
+        self._sources[safe.source_id] = safe
 
     def get(self, source_id: str) -> SourceRecord | None:
-        return self._sources.get(source_id)
+        source = self._sources.get(source_id)
+        return safe_source_record(source) if source is not None else None
 
     def delete(self, source_id: str) -> bool:
         return self._sources.pop(source_id, None) is not None
 
     def list_all(self, tenant_id: str | None = None) -> list[SourceRecord]:
-        sources = list(self._sources.values())
+        sources = [safe_source_record(source) for source in self._sources.values()]
         if tenant_id is None:
             return sorted(sources, key=lambda source: source.display_name.lower())
         return sorted(
@@ -80,6 +137,7 @@ class SQLiteSourceStore:
         self._conn.commit()
 
     def put(self, source: SourceRecord) -> None:
+        source = safe_source_record(source)
         self._conn.execute(
             """INSERT OR REPLACE INTO sources (source_id, enabled, tenant_id, updated_at, data)
                VALUES (?, ?, ?, ?, ?)""",
@@ -98,7 +156,7 @@ class SQLiteSourceStore:
         if row is None:
             return None
         record: SourceRecord = SourceRecord.model_validate_json(row[0])
-        return record
+        return safe_source_record(record)
 
     def delete(self, source_id: str) -> bool:
         cursor = self._conn.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
@@ -113,4 +171,4 @@ class SQLiteSourceStore:
                 "SELECT data FROM sources WHERE tenant_id = ? ORDER BY updated_at DESC, source_id",
                 (tenant_id,),
             ).fetchall()
-        return [SourceRecord.model_validate_json(row[0]) for row in rows]
+        return [safe_source_record(SourceRecord.model_validate_json(row[0])) for row in rows]

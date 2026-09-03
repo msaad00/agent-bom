@@ -1388,6 +1388,64 @@ def test_api_key_middleware_enforces_scopes_when_present():
         set_key_store(original_store)
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "required_scope"),
+    [
+        ("GET", "/v1/sources", "source:read"),
+        ("POST", "/v1/sources/source-1/run", "source:write"),
+        ("PUT", "/v1/sources/source-1", "source:write"),
+        ("DELETE", "/v1/sources/source-1", "source:write"),
+        ("GET", "/v1/scan/job-1", "scan:read"),
+        ("GET", "/v1/scan/job-1/status", "scan:read"),
+        ("GET", "/v1/scan/job-1/stream", "scan:read"),
+        ("GET", "/v1/jobs", "scan:read"),
+        ("GET", "/v1/inventory", "scan:read"),
+        ("POST", "/v1/results/push", "scan:write"),
+        ("POST", "/v1/ocsf/ingest", "scan:write"),
+        ("POST", "/v1/traces", "scan:write"),
+    ],
+)
+def test_api_key_middleware_enforces_evidence_surface_scopes(method: str, path: str, required_scope: str):
+    """A role-qualified delegated key must still stay inside its evidence scope."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_denied, denied = create_api_key(
+        "scoped-admin",
+        Role.ADMIN,
+        tenant_id="tenant-alpha",
+        scopes=["finding:read"],
+    )
+    raw_allowed, allowed = create_api_key(
+        "evidence-admin",
+        Role.ADMIN,
+        tenant_id="tenant-alpha",
+        scopes=[required_scope],
+    )
+    store.add(denied)
+    store.add(allowed)
+    set_key_store(store)
+    try:
+        test_app = Starlette(routes=[Route(path, dummy, methods=[method])])
+        test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+        client = TestClient(test_app)
+
+        denied_response = client.request(method, path, headers={"Authorization": f"Bearer {raw_denied}"})
+        assert denied_response.status_code == 403
+        assert f"requires scope {required_scope}" in denied_response.json()["detail"]
+
+        allowed_response = client.request(method, path, headers={"Authorization": f"Bearer {raw_allowed}"})
+        assert allowed_response.status_code == 200
+    finally:
+        set_key_store(original_store)
+
+
 def test_api_key_middleware_requires_shield_write_scope_for_shield_writes():
     """Scoped admin keys should need shield:write for Shield write routes."""
     from starlette.applications import Starlette

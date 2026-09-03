@@ -1292,11 +1292,29 @@ def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str,
     return redacted
 
 
+def _sanitize_job_progress_line(line: str) -> str:
+    """Sanitize legacy text and structured progress without losing safe detail."""
+    import json
+
+    from agent_bom.security import sanitize_error, sanitize_sensitive_payload
+
+    try:
+        parsed = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        return sanitize_error(line, max_length=1000)
+    sanitized = sanitize_sensitive_payload(parsed)
+    if sanitized == parsed:
+        return line
+    return json.dumps(sanitized, separators=(",", ":"))
+
+
 def _job_response_payload(job: ScanJob) -> ScanJob:
+
     redacted_result = _redact_scan_result_for_response(job.result)
-    if redacted_result is job.result:
+    safe_progress = [_sanitize_job_progress_line(line) for line in job.progress]
+    if redacted_result is job.result and safe_progress == job.progress:
         return job
-    return job.model_copy(update={"result": redacted_result})
+    return job.model_copy(update={"result": redacted_result, "progress": safe_progress})
 
 
 async def _job_response_payload_off_loop(job: ScanJob) -> ScanJob:
@@ -1873,7 +1891,7 @@ async def stream_scan(request: Request, job_id: str) -> Response:
             with lock:
                 new_lines = list(current.progress[sent:])
                 status = current.status
-            from agent_bom.security import sanitize_sensitive_payload
+            from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
             for line in new_lines:
                 try:
@@ -1882,9 +1900,9 @@ async def stream_scan(request: Request, job_id: str) -> Response:
                         parsed = sanitize_sensitive_payload(parsed)
                         yield {"data": _json.dumps(parsed)}
                     else:
-                        yield {"data": _json.dumps({"type": "progress", "message": sanitize_sensitive_payload(line)})}
+                        yield {"data": _json.dumps({"type": "progress", "message": sanitize_error(line, max_length=1000)})}
                 except (_json.JSONDecodeError, ValueError):
-                    yield {"data": _json.dumps({"type": "progress", "message": sanitize_sensitive_payload(line)})}
+                    yield {"data": _json.dumps({"type": "progress", "message": sanitize_error(line, max_length=1000)})}
                 sent += 1
             if status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED):
                 yield {"data": _json.dumps({"type": "done", "status": status, "job_id": job_id})}

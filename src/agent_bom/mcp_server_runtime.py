@@ -245,7 +245,7 @@ def current_tool_request(request_ctx_getter: Callable[[], Any]) -> dict[str, str
     try:
         current_request = request_ctx_getter()
     except LookupError:
-        return {"caller": "local", "client_id": None, "request_id": None, "auth_scopes": ""}
+        return {"caller": "local", "client_id": None, "request_id": None, "auth_scopes": "", "authenticated": ""}
 
     meta = getattr(current_request, "meta", None)
     client_id = getattr(meta, "client_id", None) if meta else None
@@ -273,6 +273,7 @@ def current_tool_request(request_ctx_getter: Callable[[], Any]) -> dict[str, str
         "client_id": client_id,
         "request_id": str(getattr(current_request, "request_id", "")) or None,
         "auth_scopes": ",".join(sorted(auth_scopes)),
+        "authenticated": "true" if verified_caller else "",
     }
 
 
@@ -430,6 +431,29 @@ def authorize_destructive_tool(
     return None
 
 
+def authorize_authenticated_read_tool(
+    tool_name: str,
+    *,
+    auth_scopes: str,
+    required_scope: str,
+) -> dict[str, Any] | None:
+    """Enforce a declared read scope for a verified remote MCP token."""
+    wanted = required_scope.strip().lower()
+    family = wanted.split(":", 1)[0]
+    trusted_scopes = _scope_set(auth_scopes)
+    allowed = {wanted, f"{family}:*", "*", "admin", "admin:*", "operator", "operator:*"}
+    if wanted.endswith(":read"):
+        allowed.add("read")
+    if trusted_scopes & allowed:
+        return None
+    return {
+        "error": f"tool '{tool_name}' requires the '{wanted}' scope",
+        "tool": tool_name,
+        "status": "blocked",
+        "required_scope": wanted,
+    }
+
+
 async def execute_tool_async(
     tool_name: str,
     handler: Callable[..., Awaitable[_ToolReturn]],
@@ -449,10 +473,29 @@ async def execute_tool_async(
     **kwargs,
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
+    auth_scopes = str(request_meta.get("auth_scopes", "") or "")
+    if required_scope and not destructive and request_meta.get("authenticated") == "true":
+        denial = authorize_authenticated_read_tool(
+            tool_name,
+            auth_scopes=auth_scopes,
+            required_scope=required_scope,
+        )
+        if denial is not None:
+            record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="forbidden")
+            record_tool_request_fn(
+                tool_name,
+                caller=request_meta["caller"],
+                client_id=request_meta["client_id"],
+                request_id=request_meta["request_id"],
+                status="forbidden",
+                elapsed_ms=0,
+                error="forbidden",
+            )
+            logger.warning("mcp read tool forbidden: %s caller=%s", tool_name, _log_value(request_meta["caller"]))
+            return truncate_response_fn(json.dumps(denial))
     if destructive:
         authenticated_actor = request_meta.get("client_id") or request_meta.get("caller") or "mcp-operator"
         kwargs.setdefault("_authenticated_actor", authenticated_actor)
-        auth_scopes = str(request_meta.get("auth_scopes", "") or "")
         denial = authorize_destructive_tool(
             tool_name,
             operator_role=str(kwargs.get("operator_role", "") or ""),
@@ -590,10 +633,29 @@ async def execute_tool_sync_async(
     **kwargs,
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
+    auth_scopes = str(request_meta.get("auth_scopes", "") or "")
+    if required_scope and not destructive and request_meta.get("authenticated") == "true":
+        denial = authorize_authenticated_read_tool(
+            tool_name,
+            auth_scopes=auth_scopes,
+            required_scope=required_scope,
+        )
+        if denial is not None:
+            record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="forbidden")
+            record_tool_request_fn(
+                tool_name,
+                caller=request_meta["caller"],
+                client_id=request_meta["client_id"],
+                request_id=request_meta["request_id"],
+                status="forbidden",
+                elapsed_ms=0,
+                error="forbidden",
+            )
+            logger.warning("mcp read tool forbidden: %s caller=%s", tool_name, _log_value(request_meta["caller"]))
+            return truncate_response_fn(json.dumps(denial))
     if destructive:
         authenticated_actor = request_meta.get("client_id") or request_meta.get("caller") or "mcp-operator"
         kwargs.setdefault("_authenticated_actor", authenticated_actor)
-        auth_scopes = str(request_meta.get("auth_scopes", "") or "")
         denial = authorize_destructive_tool(
             tool_name,
             operator_role=str(kwargs.get("operator_role", "") or ""),

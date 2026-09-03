@@ -4,6 +4,7 @@ import json
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _run_scan_sync
+from agent_bom.api.routes.scan import _job_response_payload
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, TransportType, Vulnerability
 
 
@@ -85,6 +86,49 @@ def test_api_pipeline_requested_image_failure_has_failed_scan_outcome(monkeypatc
     assert job.result["scan_run"]["outcome"] == "failed"
     assert job.result["scan_run"]["issues"][0]["code"] == "collector_failed"
     assert "secret" not in json.dumps(job.result)
+
+
+def test_api_pipeline_sanitizes_fleet_sync_failure_before_progress_persistence(monkeypatch):
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="fleet-failure-123",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(images=["agentbom/agent-bom:latest"], enrich=False),
+    )
+    secret = "fleet-token-value-123"
+
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr("agent_bom.image.scan_image", lambda _image: ([], "native"))
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        "agent_bom.api.pipeline._sync_scan_agents_to_fleet",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError(f"token={secret} at /private/fleet/credentials.json")),
+    )
+
+    _run_scan_sync(job)
+
+    persisted = json.dumps([stored.model_dump(mode="json") for stored in store.jobs])
+    assert secret not in persisted
+    assert "/private/fleet/credentials.json" not in persisted
+    assert any("Fleet sync skipped" in line and "<redacted>" in line for line in job.progress)
+
+
+def test_full_scan_response_defensively_sanitizes_legacy_progress() -> None:
+    secret = "legacy-progress-secret-123"
+    job = ScanJob(
+        job_id="legacy-progress",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(),
+        progress=[f"Fleet sync skipped: api_key={secret} at /private/fleet/credentials.json"],
+    )
+
+    response = _job_response_payload(job)
+    encoded = response.model_dump_json()
+
+    assert secret not in encoded
+    assert "/private/fleet/credentials.json" not in encoded
+    assert "api_key=<redacted>" in response.progress[0]
 
 
 def test_api_pipeline_ai_enrichment_inherits_env_and_serializes_typed_provenance(monkeypatch):

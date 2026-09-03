@@ -247,6 +247,83 @@ class TestToolMetrics:
         assert result == "ok"
 
     @pytest.mark.asyncio
+    async def test_execute_tool_async_enforces_authenticated_read_scope(self, monkeypatch):
+        import agent_bom.mcp_server as mod
+
+        called = False
+
+        async def _must_not_run():
+            nonlocal called
+            called = True
+            return "unexpected"
+
+        monkeypatch.setattr(
+            mod,
+            "_current_tool_request",
+            lambda: {
+                "caller": "token-client:reader",
+                "client_id": "reader",
+                "request_id": "request-read-denied",
+                "auth_scopes": "finding:read",
+                "authenticated": "true",
+            },
+        )
+
+        result = await _execute_tool_async(
+            "graph_correlation_status",
+            _must_not_run,
+            required_scope="graph:read",
+        )
+
+        assert json.loads(result)["required_scope"] == "graph:read"
+        assert called is False
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_sync_async_accepts_generic_authenticated_read_scope(self, monkeypatch):
+        import agent_bom.mcp_server as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_current_tool_request",
+            lambda: {
+                "caller": "token-client:reader",
+                "client_id": "reader",
+                "request_id": "request-read-allowed",
+                "auth_scopes": "read",
+                "authenticated": "true",
+            },
+        )
+
+        result = await _execute_tool_sync_async(
+            "graph_correlation_status",
+            lambda: "ok",
+            required_scope="graph:read",
+        )
+
+        assert result == "ok"
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_async_preserves_local_read_compatibility(self, monkeypatch):
+        import agent_bom.mcp_server as mod
+
+        async def _ok():
+            return "ok"
+
+        monkeypatch.setattr(
+            mod,
+            "_current_tool_request",
+            lambda: {
+                "caller": "local",
+                "client_id": None,
+                "request_id": None,
+                "auth_scopes": "",
+                "authenticated": "",
+            },
+        )
+
+        assert await _execute_tool_async("graph_correlation_status", _ok, required_scope="graph:read") == "ok"
+
+    @pytest.mark.asyncio
     async def test_execute_tool_async_returns_sanitized_error_payload(self):
         async def _boom():
             raise RuntimeError("failed token=abc123 at /tmp/private/path")
@@ -315,7 +392,13 @@ class TestToolMetrics:
         assert all("req-1\r\nforged=true" not in message for message in messages)
 
     def test_current_tool_request_defaults_to_local_without_context(self):
-        assert _current_tool_request() == {"caller": "local", "client_id": None, "request_id": None, "auth_scopes": ""}
+        assert _current_tool_request() == {
+            "caller": "local",
+            "client_id": None,
+            "request_id": None,
+            "auth_scopes": "",
+            "authenticated": "",
+        }
 
     def test_caller_keyed_on_verified_token_not_session(self):
         """Reconnecting must not reset the rate-limit window.
@@ -333,9 +416,10 @@ class TestToolMetrics:
         req1 = SimpleNamespace(access_token=token_a, session=object(), meta=None, request_id="r1")
         req2 = SimpleNamespace(access_token=token_b, session=object(), meta=None, request_id="r2")
 
-        caller1 = runtime.current_tool_request(lambda: req1)["caller"]
-        caller2 = runtime.current_tool_request(lambda: req2)["caller"]
-        assert caller1 == caller2 == "token-client:oauth-client-9"
+        meta1 = runtime.current_tool_request(lambda: req1)
+        meta2 = runtime.current_tool_request(lambda: req2)
+        assert meta1["caller"] == meta2["caller"] == "token-client:oauth-client-9"
+        assert meta1["authenticated"] == meta2["authenticated"] == "true"
 
     def test_caller_falls_back_to_token_hash_without_client_id(self):
         from types import SimpleNamespace

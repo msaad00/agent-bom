@@ -1891,7 +1891,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 _sync_scan_agents_to_fleet(agents, tenant_id=str(getattr(job, "tenant_id", None) or "default"))
             except Exception as fleet_exc:  # noqa: BLE001
                 with lock:
-                    job.progress.append(f"Fleet sync skipped: {fleet_exc}")
+                    job.progress.append(f"Fleet sync skipped: {sanitize_error(fleet_exc)}")
 
         if side_effects_enabled:
             try:

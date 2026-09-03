@@ -486,6 +486,9 @@ class PostgresSourceStore:
             conn.commit()
 
     def put(self, source: SourceRecord) -> None:
+        from .source_store import safe_source_record
+
+        source = safe_source_record(source)
         data = source.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
@@ -502,13 +505,14 @@ class PostgresSourceStore:
 
     def get(self, source_id: str) -> SourceRecord | None:
         from .models import SourceRecord
+        from .source_store import safe_source_record
 
         with _tenant_connection(self._pool) as conn:
             row = conn.execute("SELECT data FROM control_plane_sources WHERE source_id = %s", (source_id,)).fetchone()
             if row is None:
                 return None
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
-            return SourceRecord.model_validate_json(raw)
+            return safe_source_record(SourceRecord.model_validate_json(raw))
 
     def delete(self, source_id: str) -> bool:
         with _tenant_connection(self._pool) as conn:
@@ -518,6 +522,7 @@ class PostgresSourceStore:
 
     def list_all(self, tenant_id: str | None = None) -> list:
         from .models import SourceRecord
+        from .source_store import safe_source_record
 
         with _tenant_connection(self._pool) as conn:
             if tenant_id is None:
@@ -529,7 +534,10 @@ class PostgresSourceStore:
                        ORDER BY updated_at DESC, source_id""",
                     (tenant_id,),
                 ).fetchall()
-            return [SourceRecord.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]
+            return [
+                safe_source_record(SourceRecord.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])))
+                for row in rows
+            ]
 
 
 class PostgresCredentialRefStore:

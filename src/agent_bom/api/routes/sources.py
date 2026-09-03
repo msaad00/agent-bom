@@ -24,6 +24,7 @@ from agent_bom.api.models import (
 )
 from agent_bom.api.routes.scan import _sanitize_scan_request_paths, enqueue_scan_job
 from agent_bom.api.scan_batches import scan_request_targets
+from agent_bom.api.source_store import safe_source_payload, source_config_contains_secret
 from agent_bom.api.stores import _get_credential_ref_store, _get_schedule_store, _get_source_store, _get_store
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
@@ -68,6 +69,14 @@ def _tenant_id(request: Request) -> str:
 
 def _actor(request: Request) -> str:
     return getattr(request.state, "api_key_name", "") or getattr(request.state, "auth_method", "") or "system"
+
+
+def _reject_secret_source_config(config: dict[str, object] | None) -> None:
+    if config is not None and source_config_contains_secret(config):
+        raise HTTPException(
+            status_code=422,
+            detail="Source config must not contain credentials; use credential_ref or a brokered connection.",
+        )
 
 
 def _source_for_request(request: Request, source_id: str) -> SourceRecord:
@@ -225,6 +234,7 @@ def _request_for_source(source: SourceRecord) -> ScanRequest:
 async def create_source(request: Request, body: SourceCreate) -> dict:
     tenant_id = _tenant_id(request)
     require_body_tenant_match(body.tenant_id, tenant_id)
+    _reject_secret_source_config(body.config)
 
     now = _now()
     source = SourceRecord(
@@ -256,7 +266,7 @@ async def create_source(request: Request, body: SourceCreate) -> dict:
         kind=source.kind.value,
         connector_name=source.connector_name,
     )
-    return source.model_dump()
+    return safe_source_payload(source)
 
 
 @router.get("/sources", tags=["sources"])
@@ -268,7 +278,7 @@ async def list_sources(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict:
     tenant_id = _tenant_id(request)
-    all_sources = [source.model_dump() for source in _get_source_store().list_all(tenant_id=tenant_id)]
+    all_sources = [safe_source_payload(source) for source in _get_source_store().list_all(tenant_id=tenant_id)]
     total = len(all_sources)
     page = all_sources[offset : offset + limit]
     return {
@@ -284,12 +294,13 @@ async def list_sources(
 
 @router.get("/sources/{source_id}", tags=["sources"])
 async def get_source(request: Request, source_id: str) -> dict:
-    return _source_for_request(request, source_id).model_dump()
+    return safe_source_payload(_source_for_request(request, source_id))
 
 
 @router.put("/sources/{source_id}", tags=["sources"])
 async def update_source(request: Request, source_id: str, body: SourceUpdate) -> dict:
     tenant_id = _tenant_id(request)
+    _reject_secret_source_config(body.config)
     with tenant_quota_guard(tenant_id):
         source = _apply_update(_source_for_request(request, source_id), body)
         _validate_credential_ref_for_tenant(tenant_id, source)
@@ -304,7 +315,7 @@ async def update_source(request: Request, source_id: str, body: SourceUpdate) ->
         enabled=source.enabled,
         status=source.status.value,
     )
-    return source.model_dump()
+    return safe_source_payload(source)
 
 
 @router.delete("/sources/{source_id}", tags=["sources"], status_code=204)

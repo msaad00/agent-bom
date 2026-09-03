@@ -1525,6 +1525,29 @@ def test_source_store_put_get_list_delete(mock_pool):
     assert store.delete("source-1") is True
 
 
+def test_source_store_redacts_secret_config_before_postgres_persistence(mock_pool):
+    from agent_bom.api.models import SourceKind, SourceRecord
+    from agent_bom.api.postgres_store import PostgresSourceStore
+
+    secret = "postgres-source-token-123"
+    store = PostgresSourceStore(pool=mock_pool)
+    source = SourceRecord(
+        source_id="source-secret",
+        tenant_id="tenant-alpha",
+        display_name="Unsafe legacy source",
+        kind=SourceKind.INGEST_RESULT_PUSH,
+        config={"nested": {"token": secret}},
+        created_at="2026-04-20T00:00:00+00:00",
+        updated_at="2026-04-20T00:00:00+00:00",
+    )
+
+    store.put(source)
+
+    _, params = next((sql, params) for sql, params in reversed(mock_pool._conn.executed) if "INSERT INTO control_plane_sources" in sql)
+    assert secret not in str(params)
+    assert "***REDACTED***" in str(params)
+
+
 def test_credential_ref_store_put_get_list_delete(mock_pool):
     from agent_bom.api.models import CredentialRefRecord
     from agent_bom.api.postgres_store import PostgresCredentialRefStore

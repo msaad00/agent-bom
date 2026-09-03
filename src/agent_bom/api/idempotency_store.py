@@ -20,6 +20,7 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version, ensure_
 # (stable observation dedup key) instead of minting a fresh random batch id.
 _BATCH_ID_NAMESPACE = uuid.UUID("6f6b4b2e-2c1a-4d9e-9d3b-8a1f0c5e7d42")
 _DEFAULT_IDEMPOTENCY_TTL_HOURS = 24
+_SQLITE_IDEMPOTENCY_INIT_LOCK = threading.Lock()
 
 
 def deterministic_batch_id(seed: str) -> str:
@@ -87,6 +88,25 @@ class IdempotencyStore(Protocol):
         *,
         request_hash: str = "",
     ) -> None: ...
+    def claim(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        response: dict[str, Any],
+        *,
+        request_hash: str = "",
+    ) -> tuple[dict[str, Any], bool]: ...
+    def release(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str = "",
+    ) -> bool: ...
 
 
 def _utcnow() -> str:
@@ -177,6 +197,53 @@ class InMemoryIdempotencyStore:
                 created_at=_utcnow(),
             )
 
+    def claim(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        response: dict[str, Any],
+        *,
+        request_hash: str = "",
+    ) -> tuple[dict[str, Any], bool]:
+        """Atomically reserve one logical write and return its stable receipt."""
+        key = (endpoint, tenant_id, source_id, idempotency_key)
+        with self._lock:
+            self._prune()
+            existing = self._records.get(key)
+            if existing is not None:
+                _ensure_request_hash_matches(existing.request_hash, request_hash)
+                return json.loads(existing.response_json), False
+            self._records[key] = IdempotencyRecord(
+                endpoint=endpoint,
+                tenant_id=tenant_id,
+                source_id=source_id,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                response_json=json.dumps(response, sort_keys=True),
+                created_at=_utcnow(),
+            )
+            return json.loads(json.dumps(response)), True
+
+    def release(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str = "",
+    ) -> bool:
+        key = (endpoint, tenant_id, source_id, idempotency_key)
+        with self._lock:
+            existing = self._records.get(key)
+            if existing is None:
+                return False
+            _ensure_request_hash_matches(existing.request_hash, request_hash)
+            self._records.pop(key, None)
+            return True
+
 
 class SQLiteIdempotencyStore:
     def __init__(self, db_path: str = "agent_bom_jobs.db", ttl_hours: int | None = None) -> None:
@@ -194,32 +261,38 @@ class SQLiteIdempotencyStore:
     @property
     def _conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
+            self._local.conn = sqlite3.connect(self._db_path, timeout=10, check_same_thread=False)
+            self._local.conn.execute("PRAGMA busy_timeout=10000")
         conn: sqlite3.Connection = self._local.conn
         return conn
 
     def _init_db(self) -> None:
-        ensure_sqlite_schema_version(self._conn, "idempotency")
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS idempotency_keys (
-                endpoint TEXT NOT NULL,
-                tenant_id TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                idempotency_key TEXT NOT NULL,
-                request_hash TEXT NOT NULL DEFAULT '',
-                response_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                PRIMARY KEY (endpoint, tenant_id, source_id, idempotency_key)
+        # WAL mode and schema DDL both take SQLite write locks. Multiple API
+        # replicas/threads can construct this store together during startup, so
+        # serialize that one-time setup instead of racing PRAGMA journal_mode on
+        # every thread-local connection.
+        with _SQLITE_IDEMPOTENCY_INIT_LOCK:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            ensure_sqlite_schema_version(self._conn, "idempotency")
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS idempotency_keys (
+                    endpoint TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    request_hash TEXT NOT NULL DEFAULT '',
+                    response_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (endpoint, tenant_id, source_id, idempotency_key)
+                )
+                """
             )
-            """
-        )
-        columns = {str(row[1]) for row in self._conn.execute("PRAGMA table_info(idempotency_keys)").fetchall()}
-        if "request_hash" not in columns:
-            self._conn.execute("ALTER TABLE idempotency_keys ADD COLUMN request_hash TEXT NOT NULL DEFAULT ''")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at)")
-        self._conn.commit()
+            columns = {str(row[1]) for row in self._conn.execute("PRAGMA table_info(idempotency_keys)").fetchall()}
+            if "request_hash" not in columns:
+                self._conn.execute("ALTER TABLE idempotency_keys ADD COLUMN request_hash TEXT NOT NULL DEFAULT ''")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at)")
+            self._conn.commit()
 
     def get(
         self,
@@ -266,6 +339,55 @@ class SQLiteIdempotencyStore:
         # Prune expired keys on write so the table cannot grow without bound.
         self._prune()
         self._conn.commit()
+
+    def claim(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        response: dict[str, Any],
+        *,
+        request_hash: str = "",
+    ) -> tuple[dict[str, Any], bool]:
+        """Atomically insert a reservation across threads and API processes."""
+        response_json = json.dumps(response, sort_keys=True)
+        cursor = self._conn.execute(
+            """INSERT OR IGNORE INTO idempotency_keys
+               (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, _utcnow()),
+        )
+        acquired = cursor.rowcount == 1
+        row = self._conn.execute(
+            """SELECT response_json, request_hash FROM idempotency_keys
+               WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?""",
+            (endpoint, tenant_id, source_id, idempotency_key),
+        ).fetchone()
+        self._prune()
+        self._conn.commit()
+        if row is None:  # pragma: no cover - protected by same transaction
+            raise RuntimeError("Idempotency reservation was not persisted")
+        _ensure_request_hash_matches(str(row[1] or ""), request_hash)
+        return json.loads(row[0]), acquired
+
+    def release(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str = "",
+    ) -> bool:
+        cursor = self._conn.execute(
+            """DELETE FROM idempotency_keys
+               WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?
+                 AND (? = '' OR request_hash = ?)""",
+            (endpoint, tenant_id, source_id, idempotency_key, request_hash, request_hash),
+        )
+        self._conn.commit()
+        return cursor.rowcount == 1
 
 
 class PostgresIdempotencyStore:
@@ -369,3 +491,58 @@ class PostgresIdempotencyStore:
             # Prune expired keys on write so the table cannot grow without bound.
             self._prune(conn)
             conn.commit()
+
+    def claim(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        response: dict[str, Any],
+        *,
+        request_hash: str = "",
+    ) -> tuple[dict[str, Any], bool]:
+        """Atomically reserve a write across every Postgres-backed replica."""
+        response_json = json.dumps(response, sort_keys=True)
+        with _tenant_connection(self._pool) as conn:
+            inserted = conn.execute(
+                """INSERT INTO idempotency_keys
+                   (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (endpoint, tenant_id, source_id, idempotency_key) DO NOTHING
+                   RETURNING response_json, request_hash""",
+                (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, _utcnow()),
+            ).fetchone()
+            row = (
+                inserted
+                or conn.execute(
+                    """SELECT response_json, request_hash FROM idempotency_keys
+                   WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s""",
+                    (endpoint, tenant_id, source_id, idempotency_key),
+                ).fetchone()
+            )
+            self._prune(conn)
+            conn.commit()
+        if row is None:  # pragma: no cover - protected by the unique key transaction
+            raise RuntimeError("Idempotency reservation was not persisted")
+        _ensure_request_hash_matches(str(row[1] or ""), request_hash)
+        return json.loads(row[0]), inserted is not None
+
+    def release(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str = "",
+    ) -> bool:
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute(
+                """DELETE FROM idempotency_keys
+                   WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s
+                     AND (%s = '' OR request_hash = %s)""",
+                (endpoint, tenant_id, source_id, idempotency_key, request_hash, request_hash),
+            )
+            conn.commit()
+            return cursor.rowcount == 1

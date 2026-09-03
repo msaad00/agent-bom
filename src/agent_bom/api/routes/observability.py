@@ -24,6 +24,11 @@ from pydantic import BaseModel, ConfigDict
 from starlette.responses import Response
 
 from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
+from agent_bom.api.idempotency_store import (
+    IdempotencyConflictError,
+    deterministic_batch_id,
+    idempotency_request_fingerprint,
+)
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.runtime_event_store import (
@@ -31,7 +36,13 @@ from agent_bom.api.runtime_event_store import (
     get_runtime_event_store,
     sanitize_runtime_metadata,
 )
-from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
+from agent_bom.api.stores import (
+    _get_analytics_store,
+    _get_fleet_store,
+    _get_graph_store,
+    _get_idempotency_store,
+    _get_store,
+)
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.canonical_ids import canonical_id
@@ -920,8 +931,46 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     if body.endpoint_inventory is not None and not body.source_id:
         raise HTTPException(status_code=422, detail="endpoint_inventory requires a stable source_id")
     tenant_id = _tenant_id(request)
+    header_idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
+    body_idempotency_key = str(body.idempotency_key or "").strip()
+    if header_idempotency_key and body_idempotency_key and header_idempotency_key != body_idempotency_key:
+        raise HTTPException(status_code=409, detail="Idempotency key header and payload do not match")
+    idempotency_key = header_idempotency_key or body_idempotency_key
+    idempotency_source = body.source_id or "push"
+    request_hash = idempotency_request_fingerprint(body)
+    idempotency_store = _get_idempotency_store()
+    claimed = False
+    reserved_job_id = ""
+    if idempotency_key:
+        reserved_job_id = deterministic_batch_id(f"/v1/results/push:{tenant_id}:{idempotency_source}:{idempotency_key}:{request_hash}")
+        try:
+            receipt, claimed = idempotency_store.claim(
+                "/v1/results/push",
+                tenant_id,
+                idempotency_source,
+                idempotency_key,
+                {"job_id": reserved_job_id, "committed": False},
+                request_hash=request_hash,
+            )
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
+        if not claimed:
+            existing = await _wait_for_pushed_job(
+                str(receipt.get("job_id") or ""),
+                tenant_id=tenant_id,
+                idempotency_source=idempotency_source,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
+            if existing is not None:
+                return _pushed_job_receipt(existing)
+            raise HTTPException(
+                status_code=409,
+                detail="An identical pushed result is still being committed; retry shortly.",
+                headers={"Retry-After": "1"},
+            )
     job = ScanJob(
-        job_id=str(uuid.uuid4()),
+        job_id=reserved_job_id or str(uuid.uuid4()),
         tenant_id=tenant_id,
         source_id=body.source_id or None,
         triggered_by=f"{_triggered_by(request)}:{body.source_id}" if body.source_id else _triggered_by(request),
@@ -936,9 +985,13 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         job_result["pushed"] = True
         job.result = job_result
         job.progress.append(f"Received via push from source={body.source_id}")
+        fleet_store = _get_fleet_store()
+        previous_endpoint = None
+        endpoint = None
         if body.source_id and body.endpoint_inventory:
             from agent_bom.api.fleet_store import endpoint_inventory_evidence, endpoint_summary_from_inventory
 
+            previous_endpoint = fleet_store.get_endpoint(body.source_id, tenant_id=tenant_id)
             endpoint = endpoint_summary_from_inventory(
                 endpoint_id=body.source_id,
                 tenant_id=tenant_id,
@@ -951,23 +1004,142 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
             # application, service, listener, container, and image rows remain
             # on the source endpoint and never enter the control-plane job.
             job_result["endpoint_inventory"] = endpoint_inventory_evidence(endpoint)
-        try:
-            _persist_graph_snapshot(job, job_result)
-        except Exception as exc:  # noqa: BLE001
-            _logger.warning("Pushed-result graph persistence failed: %s", sanitize_text(exc))
-            job.progress.append(f"Graph persistence skipped: {sanitize_error(exc)}")
-        # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
+        job_store = _get_store()
+        job_persisted = False
+        endpoint_persisted = False
+        # Keep quota admission and all three durable projections in one
+        # compensating transaction. Graph persistence is last and atomic within
+        # its backend; a failure restores the prior endpoint and removes the job,
+        # so retained-job quota cannot diverge from visible evidence.
         with tenant_quota_guard(tenant_id, lambda: enforce_retained_jobs_quota(tenant_id)):
-            _get_store().put(job)
+            try:
+                job_store.put(job)
+                job_persisted = True
+                if endpoint is not None:
+                    fleet_store.put_endpoint(endpoint)
+                    endpoint_persisted = True
+                _persist_graph_snapshot(job, job_result)
+                # SQLite/Postgres job stores serialize on put, while graph
+                # persistence adds its receipt to job.result. Persist once more
+                # before exposing the completed idempotency receipt.
+                job_store.put(job)
+                if claimed:
+                    idempotency_store.put(
+                        "/v1/results/push",
+                        tenant_id,
+                        idempotency_source,
+                        idempotency_key,
+                        {"job_id": job.job_id, "committed": True},
+                        request_hash=request_hash,
+                    )
+            except Exception:
+                try:
+                    _get_graph_store().delete_snapshot(
+                        tenant_id=tenant_id,
+                        scan_id=str(job_result.get("scan_id") or job.job_id),
+                    )
+                except Exception as rollback_exc:  # noqa: BLE001
+                    _logger.error("Graph rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
+                if endpoint_persisted and body.source_id:
+                    try:
+                        if previous_endpoint is None:
+                            fleet_store.delete_endpoint(body.source_id, tenant_id=tenant_id)
+                        else:
+                            fleet_store.put_endpoint(previous_endpoint)
+                    except Exception as rollback_exc:  # noqa: BLE001
+                        _logger.error("Endpoint rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
+                if job_persisted:
+                    try:
+                        job_store.delete(job.job_id, tenant_id=tenant_id)
+                    except Exception as rollback_exc:  # noqa: BLE001
+                        _logger.error("Job rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
+                raise
         return job_result
 
-    job_result = await asyncio.to_thread(_persist)
+    try:
+        await asyncio.to_thread(_persist)
+    except HTTPException:
+        if claimed:
+            _release_push_idempotency_claim(
+                idempotency_store,
+                tenant_id=tenant_id,
+                source_id=idempotency_source,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
+        raise
+    except Exception as exc:  # noqa: BLE001
+        if claimed:
+            _release_push_idempotency_claim(
+                idempotency_store,
+                tenant_id=tenant_id,
+                source_id=idempotency_source,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
+        _logger.error("Pushed-result commit failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
+        raise HTTPException(status_code=503, detail="Pushed result could not be committed") from exc
+    return _pushed_job_receipt(job)
+
+
+def _release_push_idempotency_claim(
+    store: Any,
+    *,
+    tenant_id: str,
+    source_id: str,
+    idempotency_key: str,
+    request_hash: str,
+) -> None:
+    try:
+        store.release(
+            "/v1/results/push",
+            tenant_id,
+            source_id,
+            idempotency_key,
+            request_hash=request_hash,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _logger.error("Push idempotency rollback failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
+
+
+def _pushed_job_receipt(job: ScanJob) -> dict[str, Any]:
+    result = job.result if isinstance(job.result, dict) else {}
+    raw_scan_run = result.get("scan_run")
+    scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
     return {
         "job_id": job.job_id,
-        "source_id": body.source_id,
+        "source_id": job.source_id or "",
         "status": "stored",
-        "scan_outcome": job_result["scan_run"]["outcome"],
+        "scan_outcome": str(scan_run.get("outcome") or "failed"),
     }
+
+
+async def _wait_for_pushed_job(
+    job_id: str,
+    *,
+    tenant_id: str,
+    idempotency_source: str,
+    idempotency_key: str,
+    request_hash: str,
+) -> ScanJob | None:
+    """Bounded wait for the reservation owner to finish the durable commit."""
+    if not job_id:
+        return None
+    for _attempt in range(100):
+        receipt = await asyncio.to_thread(
+            _get_idempotency_store().get,
+            "/v1/results/push",
+            tenant_id,
+            idempotency_source,
+            idempotency_key,
+            request_hash=request_hash,
+        )
+        if receipt is not None and receipt.get("committed") is True:
+            job = await asyncio.to_thread(_get_store().get, job_id, tenant_id)
+            if job is not None:
+                return cast(ScanJob, job)
+        await asyncio.sleep(0.01)
+    return None
 
 
 @router.post("/ocsf/ingest", tags=["observability"], status_code=202)

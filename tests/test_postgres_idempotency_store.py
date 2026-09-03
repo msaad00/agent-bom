@@ -79,11 +79,16 @@ class _FakeConn:
 
         if low.startswith("insert into idempotency_keys"):
             endpoint, tenant_id, source_id, key, request_hash, response_json, created_at = params
+            primary_key = (endpoint, tenant_id, source_id, key)
+            if "do nothing" in low and primary_key in self._table:
+                return _FakeCursor()
             self._table[(endpoint, tenant_id, source_id, key)] = {
                 "request_hash": request_hash,
                 "response_json": response_json,
                 "created_at": created_at,
             }
+            if "returning response_json, request_hash" in low:
+                return _FakeCursor([(response_json, request_hash)])
             return _FakeCursor()
 
         if low.startswith("select response_json, request_hash from idempotency_keys"):
@@ -100,6 +105,17 @@ class _FakeConn:
                 self._table.pop(pk, None)
             cur = _FakeCursor()
             cur.rowcount = len(stale)
+            return cur
+
+        if low.startswith("delete from idempotency_keys"):
+            endpoint, tenant_id, source_id, key, request_hash, _same_hash = params
+            primary_key = (endpoint, tenant_id, source_id, key)
+            record = self._table.get(primary_key)
+            deleted = record is not None and (not request_hash or record["request_hash"] == request_hash)
+            if deleted:
+                self._table.pop(primary_key, None)
+            cur = _FakeCursor()
+            cur.rowcount = int(deleted)
             return cur
 
         raise AssertionError(f"unexpected SQL in fake conn: {sql!r}")
@@ -155,6 +171,20 @@ def test_postgres_idempotency_replays_same_payload_and_rejects_mismatch():
 def test_postgres_idempotency_miss_returns_none():
     store = PostgresIdempotencyStore(pool=_FakePool())
     assert store.get("/v1/findings/bulk", "tenant-a", "source-a", "absent") is None
+
+
+def test_postgres_idempotency_claim_has_one_winner_and_can_release() -> None:
+    store = PostgresIdempotencyStore(pool=_FakePool())
+    request_hash = idempotency_request_fingerprint({"value": 1})
+
+    first, first_acquired = store.claim("/v1/scan", "tenant-a", "source-a", "key", {"job_id": "stable"}, request_hash=request_hash)
+    second, second_acquired = store.claim("/v1/scan", "tenant-a", "source-a", "key", {"job_id": "other"}, request_hash=request_hash)
+
+    assert first == second == {"job_id": "stable"}
+    assert first_acquired is True
+    assert second_acquired is False
+    assert store.release("/v1/scan", "tenant-a", "source-a", "key", request_hash=request_hash) is True
+    assert store.get("/v1/scan", "tenant-a", "source-a", "key") is None
 
 
 def test_postgres_idempotency_isolates_by_tenant_key():

@@ -170,6 +170,8 @@ class GraphStoreProtocol(Protocol):
 
     def save_graph(self, graph: UnifiedGraph) -> None: ...
 
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int: ...
+
     def save_graph_streaming(
         self,
         *,
@@ -722,6 +724,30 @@ class SQLiteGraphStore:
                 "graph_filter_presets",
             ):
                 cursor = conn.execute(f"DELETE FROM {table} WHERE tenant_id = ?", (tenant_id,))  # nosec B608 - table list is static
+                total += max(cursor.rowcount, 0)
+            conn.commit()
+            return total
+        finally:
+            conn.close()
+
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+        """Atomically remove one tenant-scoped snapshot and all projections."""
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_rw_conn()
+        try:
+            total = 0
+            for table in (
+                "graph_node_search",
+                "attack_paths",
+                "interaction_risks",
+                "graph_edges",
+                "graph_nodes",
+                "graph_snapshots",
+            ):
+                cursor = conn.execute(
+                    f"DELETE FROM {table} WHERE tenant_id = ? AND scan_id = ?",  # nosec B608 - table list is static
+                    (tenant_id, scan_id),
+                )
                 total += max(cursor.rowcount, 0)
             conn.commit()
             return total

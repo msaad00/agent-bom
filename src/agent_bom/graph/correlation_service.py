@@ -13,13 +13,14 @@ from agent_bom.graph.analysis import analysis_status_map_to_dict
 from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion
 from agent_bom.graph.attack_path_mitre import apply_attack_path_technique_mappings
 from agent_bom.graph.correlation import (
+    CorrelationMergeResult,
     CorrelationRunStatus,
     CorrelationSnapshot,
     GraphCorrelationRun,
     correlation_graph_digest,
     correlation_manifest_digest,
-    merge_graph_snapshots,
 )
+from agent_bom.graph.correlation_workspace import CorrelationMergeBudgetError, CorrelationMergeWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -297,19 +298,6 @@ class GraphCorrelationService:
                     status=CorrelationRunStatus.RUNNING,
                     started_at=now,
                 )
-            snapshots: list[CorrelationSnapshot] = []
-            for item in run.input_manifest:
-                graph = await asyncio.to_thread(
-                    self._store.load_graph,
-                    tenant_id=tenant_id,
-                    scan_id=str(item["scan_id"]),
-                )
-                if not graph.nodes:
-                    raise CorrelationServiceError("input_snapshot_unavailable")
-                snapshot = CorrelationSnapshot.from_graph(graph)
-                if snapshot.digest != str(item.get("digest") or ""):
-                    raise CorrelationServiceError("input_snapshot_changed")
-                snapshots.append(snapshot)
             execution_manifest = _manifest_with_current_freshness(
                 run.input_manifest,
                 now=self._now().astimezone(timezone.utc),
@@ -317,14 +305,12 @@ class GraphCorrelationService:
                 allow_stale=run.allow_stale,
             )
             merged = await asyncio.to_thread(
-                merge_graph_snapshots,
-                correlation_id=correlation_id,
+                self._load_and_merge_inputs,
                 tenant_id=tenant_id,
-                snapshots=snapshots,
+                correlation_id=correlation_id,
                 created_at=run.created_at,
+                input_manifest=execution_manifest,
             )
-            if len(merged.graph.nodes) > self._max_output_nodes or len(merged.graph.edges) > self._max_output_edges:
-                raise CorrelationServiceError("correlation_budget_exceeded")
             freshness_by_scan = {str(item["scan_id"]): str(item["freshness"]) for item in execution_manifest}
             for edge in merged.graph.edges:
                 correlation = edge.provenance.get("correlation")
@@ -359,8 +345,12 @@ class GraphCorrelationService:
                 "analysis_bounds": {
                     "correlation_merge": {
                         "status": "complete",
+                        "execution_strategy": "disk_backed_incremental",
+                        "max_resident_source_graphs": 1,
                         "node_limit": self._max_output_nodes,
                         "edge_limit": self._max_output_edges,
+                        "input_node_observation_count": sum(int(str(item.get("node_count") or 0)) for item in execution_manifest),
+                        "input_edge_observation_count": sum(int(str(item.get("edge_count") or 0)) for item in execution_manifest),
                         "node_count": len(merged.graph.nodes),
                         "edge_count": len(merged.graph.edges),
                         "truncated": False,
@@ -400,6 +390,46 @@ class GraphCorrelationService:
                     failure_code=code,
                     completed_at=self._now().astimezone(timezone.utc).isoformat(),
                 )
+
+    def _load_and_merge_inputs(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        created_at: str,
+        input_manifest: Sequence[dict[str, object]],
+    ) -> CorrelationMergeResult:
+        """Load one source at a time into a private disk-backed accumulator."""
+
+        try:
+            with CorrelationMergeWorkspace(
+                correlation_id=correlation_id,
+                tenant_id=tenant_id,
+                created_at=created_at,
+                max_output_nodes=self._max_output_nodes,
+                max_output_edges=self._max_output_edges,
+            ) as workspace:
+                for item in sorted(
+                    input_manifest,
+                    key=lambda value: (_timestamp(str(value.get("created_at") or "")), str(value.get("scan_id") or "")),
+                ):
+                    graph = self._store.load_graph(
+                        tenant_id=tenant_id,
+                        scan_id=str(item["scan_id"]),
+                    )
+                    if not graph.nodes:
+                        raise CorrelationServiceError("input_snapshot_unavailable")
+                    snapshot = CorrelationSnapshot.from_graph(graph)
+                    if snapshot.digest != str(item.get("digest") or ""):
+                        raise CorrelationServiceError("input_snapshot_changed")
+                    workspace.add_snapshot(snapshot)
+                    # Do not retain the source graph until the next iteration;
+                    # the workspace now owns its serialized observations.
+                    del snapshot
+                    del graph
+                return workspace.finish()
+        except CorrelationMergeBudgetError as exc:
+            raise CorrelationServiceError("correlation_budget_exceeded") from exc
 
 
 async def get_graph_correlation_service(store: GraphStoreProtocol, tenant_id: str) -> GraphCorrelationService:

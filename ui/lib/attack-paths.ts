@@ -36,6 +36,8 @@ export type AttackPathFocus = {
   nodeId?: string | undefined;
   /** Stable Finding.id when stamped on the path or query string. */
   findingId?: string | undefined;
+  /** Exact source/target/hop identity for a correlated path. */
+  pathIdentity?: string | undefined;
 };
 
 export type GraphInvestigationRequest = {
@@ -656,7 +658,12 @@ export function matchesAttackPathFocus(
   const agentName = normalizeLabel(focus.agentName);
   const nodeId = (focus.nodeId || "").trim();
   const findingId = (focus.findingId || "").trim();
-  if (!cve && !packageName && !agentName && !nodeId && !findingId) return false;
+  const pathIdentity = (focus.pathIdentity || "").trim();
+  if (!cve && !packageName && !agentName && !nodeId && !findingId && !pathIdentity) return false;
+
+  if (pathIdentity && attackPathKey(path) !== pathIdentity) {
+    return false;
+  }
 
   const labels = pathNodeLabels(path, nodeById);
 

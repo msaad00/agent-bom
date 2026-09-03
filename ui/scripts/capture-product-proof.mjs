@@ -78,8 +78,19 @@ if (
 ) {
   throw new Error("Reference evidence lab runtime proof is not bound to the completed correlation");
 }
+if (
+  REFERENCE_LAB.remediation_decision?.correlation_id !== REFERENCE_LAB.correlation?.correlation_id
+  || REFERENCE_LAB.remediation_decision?.snapshot_id !== REFERENCE_LAB.correlation?.output_scan_id
+  || REFERENCE_LAB.remediation_decision?.correlation_manifest_sha256 !== REFERENCE_LAB.correlation?.manifest_sha256
+  || REFERENCE_LAB.remediation_decision?.recommendation?.applied !== false
+  || REFERENCE_LAB.remediation_decision?.reverification?.rescan_status !== "not_run"
+  || REFERENCE_LAB.remediation_decision?.reverification?.recorrelation_status !== "not_run"
+) {
+  throw new Error("Reference evidence lab remediation decision is not bound to the completed correlation");
+}
 const REFERENCE_CORRELATION_ID = REFERENCE_LAB.correlation.correlation_id;
 const referenceGraph = REFERENCE_LAB.capture_fixture.graph;
+const referenceRemediationHref = `/remediation?correlation=${encodeURIComponent(REFERENCE_CORRELATION_ID)}&scan=${encodeURIComponent(REFERENCE_CORRELATION_ID)}&cve=${encodeURIComponent(REFERENCE_LAB.remediation_decision.finding.advisory_id)}&path=${encodeURIComponent(REFERENCE_LAB.remediation_decision.path.identity)}`;
 const referenceSnapshots = [
   {
     scan_id: REFERENCE_CORRELATION_ID,
@@ -1049,7 +1060,7 @@ function referenceFixFirstView() {
         { kind: "runtime_blocked", label: "Runtime blocked", detail: `Strict deny event ${REFERENCE_LAB.runtime_control.blocked_event} verifies the opt-in enforcement path.` },
       ],
       next_actions: [
-        { title: "Patch Pillow and re-run correlation", detail: "Upgrade the vulnerable package, rebuild the digest, then verify the correlated path is absent.", href: "/remediation" },
+        { title: "Patch Pillow and re-run correlation", detail: "Upgrade the vulnerable package, rebuild the digest, then verify the correlated path is absent.", href: referenceRemediationHref },
       ],
       affected: {
         agents: pathItem.hops.filter((hop) => hop.startsWith("workload:")),
@@ -1967,6 +1978,17 @@ async function installRoutes(page) {
   await page.route(
     (url) => url.pathname === `/v1/graph/correlations/${REFERENCE_CORRELATION_ID}`,
     (route) => fulfill(route, REFERENCE_LAB.correlation),
+  );
+  await page.route(
+    (url) => url.pathname === `/v1/graph/correlations/${REFERENCE_CORRELATION_ID}/remediation`,
+    (route) => fulfill(route, {
+      schema_version: "agent-bom.graph-correlation-remediation/v1",
+      correlation_id: REFERENCE_CORRELATION_ID,
+      snapshot_id: REFERENCE_LAB.correlation.output_scan_id,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+      count: 1,
+      remediation_decisions: [REFERENCE_LAB.remediation_decision],
+    }),
   );
   await page.route("**/v1/graph/presets**", (route) => fulfill(route, []));
   await page.route(`**/v1/graph/scenarios/${SCENARIO_ID}/comparison?**`, (route) =>

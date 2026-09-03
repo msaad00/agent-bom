@@ -238,6 +238,58 @@ export interface GraphCorrelationList {
   count: number;
 }
 
+export interface CorrelationRemediationDecision {
+  schema_version: "agent-bom.graph-correlation-remediation/v1";
+  decision_id: string;
+  status: "recommended";
+  correlation_id: string;
+  snapshot_id: string;
+  correlation_manifest_sha256: string;
+  finding: { finding_id: string; advisory_id: string; severity: string; is_kev: boolean };
+  package: { node_id: string; name: string; ecosystem: string; purl: string; current_version: string };
+  container: { node_id: string; image_digest: string };
+  path: {
+    path_id: string;
+    identity: string;
+    source: string;
+    target: string;
+    hops: string[];
+    relationships: string[];
+    risk_score: number;
+  };
+  ownership: { owner: string | null; status: "assigned" | "unassigned" };
+  sla: { due_at: string | null; status: "open" | "overdue" | "unassigned"; policy: string };
+  recommendation: {
+    action: "upgrade" | "review";
+    fixed_version: string | null;
+    summary: string;
+    command: string | null;
+    applied: false;
+    requires_human_review: true;
+  };
+  verification: { command: string; expected: string; status: "not_run" };
+  reverification: {
+    rescan_status: "not_run";
+    recorrelation_status: "not_run";
+    predecessor_snapshot_id: string;
+  };
+  evidence_scope: {
+    name?: string | null | undefined;
+    infrastructure?: string | null | undefined;
+    customer_evidence: boolean;
+    live_cloud: boolean;
+  };
+}
+
+export interface CorrelationRemediationResponse {
+  schema_version: "agent-bom.graph-correlation-remediation/v1";
+  correlation_id: string;
+  snapshot_id: string;
+  correlation_manifest_sha256: string;
+  count: number;
+  remediation_decisions: CorrelationRemediationDecision[];
+}
+
 export type GraphScenarioChange =
   | {
       kind: "add_node";

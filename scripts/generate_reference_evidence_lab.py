@@ -26,6 +26,7 @@ from agent_bom.discovery import parse_mcp_config  # noqa: E402
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app  # noqa: E402
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry  # noqa: E402
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode  # noqa: E402
+from agent_bom.graph.correlation import build_correlation_remediation_decisions  # noqa: E402
 from agent_bom.graph.correlation_service import CorrelationRequest, GraphCorrelationService  # noqa: E402
 from agent_bom.graph.correlation_receipts import correlation_run_receipt_payload  # noqa: E402
 from agent_bom.iac import scan_iac_with_context  # noqa: E402
@@ -169,6 +170,8 @@ async def _scanner_evidence() -> dict[str, Any]:
         "severity": vulnerability.severity.value,
         "cvss_score": vulnerability.cvss_score,
         "is_kev": vulnerability.is_kev,
+        "fixed_version": vulnerability.fixed_version,
+        "kev_due_date": vulnerability.kev_due_date,
     }
 
 
@@ -398,7 +401,13 @@ def _snapshots(
             EntityType.PACKAGE,
             "pillow@9.0.0",
             source="repository_parser",
-            attributes={"purl": purl, "canonical_id": purl},
+            attributes={
+                "purl": purl,
+                "canonical_id": purl,
+                "package_name": "pillow",
+                "ecosystem": "pypi",
+                "version": "9.0.0",
+            },
             index=0,
         )
     )
@@ -431,7 +440,13 @@ def _snapshots(
             EntityType.PACKAGE,
             "pillow@9.0.0",
             source="cyclonedx_sbom",
-            attributes={"purl": purl, "canonical_id": purl},
+            attributes={
+                "purl": purl,
+                "canonical_id": purl,
+                "package_name": "pillow",
+                "ecosystem": "pypi",
+                "version": "9.0.0",
+            },
             index=1,
             severity="high",
             risk_score=8.8,
@@ -447,6 +462,14 @@ def _snapshots(
                 "canonical_id": advisory,
                 "finding_id": "reference-finding-cve-2023-4863",
                 "is_kev": bool(scanner_evidence["is_kev"]),
+                "fixed_version": str(scanner_evidence["fixed_version"]),
+                "kev_due_date": str(scanner_evidence["kev_due_date"]),
+                "evidence_scope": {
+                    "name": "reference_evidence_lab",
+                    "infrastructure": "modeled_local",
+                    "customer_evidence": False,
+                    "live_cloud": False,
+                },
             },
             index=1,
             severity="high",
@@ -548,7 +571,19 @@ def _snapshots(
             EntityType.VULNERABILITY,
             advisory,
             source="mcp_config",
-            attributes={"canonical_id": advisory},
+            attributes={
+                "canonical_id": advisory,
+                "finding_id": "reference-finding-cve-2023-4863",
+                "is_kev": bool(scanner_evidence["is_kev"]),
+                "fixed_version": str(scanner_evidence["fixed_version"]),
+                "kev_due_date": str(scanner_evidence["kev_due_date"]),
+                "evidence_scope": {
+                    "name": "reference_evidence_lab",
+                    "infrastructure": "modeled_local",
+                    "customer_evidence": False,
+                    "live_cloud": False,
+                },
+            },
             index=3,
             severity="high",
             risk_score=8.8,
@@ -717,6 +752,13 @@ async def _build_payload() -> dict[str, Any]:
             raise RuntimeError("reference correlation did not produce the expected end-to-end attack path")
         snapshot_metadata = next(row for row in store.list_snapshots(tenant_id=TENANT, limit=32) if row["scan_id"] == CORRELATION_ID)
         runtime_control = _runtime_control(completed, output, snapshot_metadata, runtime_observation)
+        remediation_decisions = build_correlation_remediation_decisions(
+            output,
+            correlation_id=CORRELATION_ID,
+            manifest_sha256=completed.manifest_sha256,
+        )
+        if len(remediation_decisions) != 1:
+            raise RuntimeError("reference correlation did not produce one exact remediation decision")
 
         purl = str(scanner_evidence["package"])
         advisory = str(scanner_evidence["advisory"])
@@ -766,6 +808,7 @@ async def _build_payload() -> dict[str, Any]:
             "runtime_control": runtime_control,
             "correlation": correlation_run_receipt_payload(completed.to_dict(), signing_key=_RUNTIME_FACTS_KEY),
             "proof_path": proof.to_dict(),
+            "remediation_decision": remediation_decisions[0],
             "capture_fixture": {
                 "graph": output.to_dict(),
                 "snapshots": [

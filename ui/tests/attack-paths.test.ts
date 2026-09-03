@@ -589,6 +589,17 @@ describe("attack path helpers", () => {
         packageName: "requests",
       }),
     ).toBe(false);
+
+    expect(
+      matchesAttackPathFocus(path, nodes, {
+        pathIdentity: attackPathKey(path),
+      }),
+    ).toBe(true);
+    expect(
+      matchesAttackPathFocus(path, nodes, {
+        pathIdentity: "different::path::different->path",
+      }),
+    ).toBe(false);
   });
 
   it("returns unique labels for a requested attack-path node type", () => {

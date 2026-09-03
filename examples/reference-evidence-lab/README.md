@@ -33,3 +33,8 @@ Each source receipt uses HMAC-SHA256 and is bound to the lab tenant,
 correlation ID, source digest and counts, freshness policy, and run timestamp.
 Production correlations use the configured runtime-facts signing key; older
 unsigned runs remain readable as hash-bound legacy evidence.
+
+It also contains a deterministic remediation decision bound to that same
+manifest, exact CVE, PURL, OCI digest, and attack path. The lab leaves ownership
+explicitly unassigned and records the fix, verification, re-scan, and
+re-correlation states as not run; it does not claim the advisory was remediated.

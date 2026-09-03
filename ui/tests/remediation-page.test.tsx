@@ -8,6 +8,7 @@ const { apiMock, navigationState } = vi.hoisted(() => ({
   apiMock: {
     listJobs: vi.fn(),
     getRemediation: vi.fn(),
+    getCorrelationRemediation: vi.fn(),
     listTickets: vi.fn(),
     listRiskCampaigns: vi.fn(),
     listRiskCampaignVerificationQueue: vi.fn(),
@@ -118,6 +119,59 @@ describe("RemediationPage", () => {
     expect(apiMock.listJobs).not.toHaveBeenCalled();
     expect(screen.getByText("openssl", { exact: true })).toBeInTheDocument();
     expect(screen.queryByText("requests", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("preserves an exact correlation path decision and returns to its snapshot", async () => {
+    const pathIdentity = "service:a::data:b::service:a->package:pillow->vulnerability:cve->data:b";
+    navigationState.query = new URLSearchParams({
+      correlation: "corr-1",
+      scan: "corr-1",
+      cve: "CVE-2023-4863",
+      path: pathIdentity,
+    }).toString();
+    apiMock.getCorrelationRemediation.mockResolvedValue({
+      schema_version: "agent-bom.graph-correlation-remediation/v1",
+      correlation_id: "corr-1",
+      snapshot_id: "corr-1",
+      correlation_manifest_sha256: `sha256:${"a".repeat(64)}`,
+      count: 1,
+      remediation_decisions: [
+        {
+          decision_id: "remediation:abc",
+          schema_version: "agent-bom.graph-correlation-remediation/v1",
+          status: "recommended",
+          correlation_id: "corr-1",
+          snapshot_id: "corr-1",
+          correlation_manifest_sha256: `sha256:${"a".repeat(64)}`,
+          finding: { finding_id: "finding-1", advisory_id: "CVE-2023-4863", severity: "high", is_kev: true },
+          package: { node_id: "package:pillow", name: "pillow", ecosystem: "pypi", purl: "pkg:pypi/pillow@9.0.0", current_version: "9.0.0" },
+          container: { node_id: "container:image", image_digest: `sha256:${"b".repeat(64)}` },
+          path: { path_id: "path:abc", identity: pathIdentity, source: "service:a", target: "data:b", hops: ["service:a", "package:pillow", "vulnerability:cve", "data:b"], relationships: ["uses", "vulnerable_to", "has_permission"], risk_score: 58 },
+          ownership: { owner: null, status: "unassigned" },
+          sla: { due_at: "2023-10-04T00:00:00+00:00", status: "overdue", policy: "cisa_kev_or_severity" },
+          recommendation: { action: "upgrade", fixed_version: "10.0.1", summary: "Upgrade Pillow and rebuild the digest-pinned image.", command: "pip install 'pillow>=10.0.1'", applied: false, requires_human_review: true },
+          verification: { command: "agent-bom scan . --offline", expected: "The advisory and predecessor path are absent.", status: "not_run" },
+          reverification: { rescan_status: "not_run", recorrelation_status: "not_run", predecessor_snapshot_id: "corr-1" },
+          evidence_scope: { name: "reference_evidence_lab", infrastructure: "modeled_local", customer_evidence: false, live_cloud: false },
+        },
+      ],
+    });
+
+    render(<RemediationPage />);
+
+    await waitFor(() => expect(apiMock.getCorrelationRemediation).toHaveBeenCalledWith("corr-1"));
+    expect(apiMock.getRemediation).not.toHaveBeenCalled();
+    expect(screen.getByText("Correlation remediation decision")).toBeInTheDocument();
+    expect(screen.getByText("Unassigned")).toBeInTheDocument();
+    expect(screen.getByText("Re-scan not run · Re-correlation not run")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Return to exact attack path" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("scan=corr-1"),
+    );
+    expect(screen.getByRole("link", { name: "Return to exact attack path" })).toHaveAttribute(
+      "href",
+      expect.stringContaining(`path=${encodeURIComponent(pathIdentity)}`),
+    );
   });
 
   it("singularizes the caption for a single matching package", async () => {

@@ -441,6 +441,7 @@ class PostgresGraphStore:
                     credential_exposure TEXT DEFAULT '[]',
                     tool_exposure TEXT DEFAULT '[]',
                     vuln_ids TEXT DEFAULT '[]',
+                    finding_ids TEXT DEFAULT '[]',
                     reachability TEXT DEFAULT 'unknown',
                     reachability_basis TEXT DEFAULT '[]',
                     technique_mappings TEXT DEFAULT '[]',
@@ -470,6 +471,7 @@ class PostgresGraphStore:
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS reachability_basis TEXT DEFAULT '[]'")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS hop_evidence TEXT DEFAULT '[]'")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS analysis TEXT DEFAULT '{}'")
+            conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS finding_ids TEXT DEFAULT '[]'")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT '{}'")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_from TEXT DEFAULT ''")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_to TEXT DEFAULT NULL")
@@ -928,6 +930,7 @@ class PostgresGraphStore:
                         json.dumps(ap.credential_exposure),
                         json.dumps(ap.tool_exposure),
                         json.dumps(ap.vuln_ids),
+                        json.dumps(ap.finding_ids),
                         ap.reachability,
                         json.dumps(ap.reachability_basis),
                         json.dumps([m.to_dict() for m in ap.technique_mappings]),
@@ -1052,9 +1055,9 @@ class PostgresGraphStore:
                 INSERT INTO attack_paths (
                     source_node, target_node, hop_count, composite_risk,
                     summary, path_nodes, path_edges, credential_exposure,
-                    tool_exposure, vuln_ids, reachability, reachability_basis,
+                    tool_exposure, vuln_ids, finding_ids, reachability, reachability_basis,
                     technique_mappings, hop_evidence, analysis, scan_id, tenant_id, computed_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source_node, target_node, scan_id, tenant_id) DO UPDATE SET
                     hop_count = EXCLUDED.hop_count,
                     composite_risk = EXCLUDED.composite_risk,
@@ -1064,6 +1067,7 @@ class PostgresGraphStore:
                     credential_exposure = EXCLUDED.credential_exposure,
                     tool_exposure = EXCLUDED.tool_exposure,
                     vuln_ids = EXCLUDED.vuln_ids,
+                    finding_ids = EXCLUDED.finding_ids,
                     reachability = EXCLUDED.reachability,
                     reachability_basis = EXCLUDED.reachability_basis,
                     technique_mappings = EXCLUDED.technique_mappings,
@@ -1387,7 +1391,7 @@ class PostgresGraphStore:
                 for row in conn.execute(
                     """
                     SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                           summary, credential_exposure, tool_exposure, vuln_ids,
+                           summary, credential_exposure, tool_exposure, vuln_ids, finding_ids,
                            reachability, reachability_basis, technique_mappings,
                            hop_evidence, analysis
                     FROM attack_paths
@@ -1407,15 +1411,16 @@ class PostgresGraphStore:
                             credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
                             tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
                             vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
-                            reachability=row[9] or "unknown",
-                            reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                            finding_ids=_decode_json_array(row[9], field="attack path finding IDs"),
+                            reachability=row[10] or "unknown",
+                            reachability_basis=_decode_json_array(row[11], field="attack path reachability basis"),
                             hop_evidence=[
                                 dict(item)
-                                for item in _decode_json_array(row[12], field="attack path hop evidence")
+                                for item in _decode_json_array(row[13], field="attack path hop evidence")
                                 if isinstance(item, dict)
                             ],
-                            analysis=_decode_json_object(row[13], field="attack path analysis"),
-                            technique_mappings=technique_mappings_from_json(row[11]),
+                            analysis=_decode_json_object(row[14], field="attack path analysis"),
+                            technique_mappings=technique_mappings_from_json(row[12]),
                         )
                     )
 
@@ -1929,7 +1934,7 @@ class PostgresGraphStore:
             rows = conn.execute(
                 f"""
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids,
+                       summary, credential_exposure, tool_exposure, vuln_ids, finding_ids,
                        reachability, reachability_basis, technique_mappings,
                        hop_evidence, analysis
                 FROM attack_paths
@@ -1952,13 +1957,14 @@ class PostgresGraphStore:
                 credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
                 tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
                 vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
-                reachability=row[9] or "unknown",
-                reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                finding_ids=_decode_json_array(row[9], field="attack path finding IDs"),
+                reachability=row[10] or "unknown",
+                reachability_basis=_decode_json_array(row[11], field="attack path reachability basis"),
                 hop_evidence=[
-                    dict(item) for item in _decode_json_array(row[12], field="attack path hop evidence") if isinstance(item, dict)
+                    dict(item) for item in _decode_json_array(row[13], field="attack path hop evidence") if isinstance(item, dict)
                 ],
-                analysis=_decode_json_object(row[13], field="attack path analysis"),
-                technique_mappings=technique_mappings_from_json(row[11]),
+                analysis=_decode_json_object(row[14], field="attack path analysis"),
+                technique_mappings=technique_mappings_from_json(row[12]),
             )
             for row in rows
         ]
@@ -1988,7 +1994,7 @@ class PostgresGraphStore:
             rows = conn.execute(
                 """
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids,
+                       summary, credential_exposure, tool_exposure, vuln_ids, finding_ids,
                        reachability, reachability_basis, technique_mappings,
                        hop_evidence, analysis
                 FROM attack_paths
@@ -2015,13 +2021,14 @@ class PostgresGraphStore:
                     credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
                     tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
                     vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
-                    reachability=row[9] or "unknown",
-                    reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                    finding_ids=_decode_json_array(row[9], field="attack path finding IDs"),
+                    reachability=row[10] or "unknown",
+                    reachability_basis=_decode_json_array(row[11], field="attack path reachability basis"),
                     hop_evidence=[
-                        dict(item) for item in _decode_json_array(row[12], field="attack path hop evidence") if isinstance(item, dict)
+                        dict(item) for item in _decode_json_array(row[13], field="attack path hop evidence") if isinstance(item, dict)
                     ],
-                    analysis=_decode_json_object(row[13], field="attack path analysis"),
-                    technique_mappings=technique_mappings_from_json(row[11]),
+                    analysis=_decode_json_object(row[14], field="attack path analysis"),
+                    technique_mappings=technique_mappings_from_json(row[12]),
                 )
                 for row in rows
             ],
@@ -2660,7 +2667,7 @@ class PostgresGraphStore:
         for row in conn.execute(
             """
             SELECT source_node, target_node, hop_count, composite_risk, summary,
-                   path_nodes, path_edges, credential_exposure, tool_exposure, vuln_ids,
+                   path_nodes, path_edges, credential_exposure, tool_exposure, vuln_ids, finding_ids,
                    reachability, reachability_basis, technique_mappings, hop_evidence, analysis
             FROM attack_paths
             WHERE tenant_id = %s AND scan_id = %s
@@ -2680,11 +2687,12 @@ class PostgresGraphStore:
                     "credential_exposure": _decode_json_array(row[7], field="attack path credential exposure"),
                     "tool_exposure": _decode_json_array(row[8], field="attack path tool exposure"),
                     "vuln_ids": _decode_json_array(row[9], field="attack path vulnerability IDs"),
-                    "reachability": row[10] or "unknown",
-                    "reachability_basis": _decode_json_array(row[11], field="attack path reachability basis"),
-                    "technique_mappings": _decode_json_array(row[12], field="attack path technique mappings"),
-                    "hop_evidence": _decode_json_array(row[13], field="attack path hop evidence"),
-                    "analysis": _decode_json_object(row[14], field="attack path analysis"),
+                    "finding_ids": _decode_json_array(row[10], field="attack path finding IDs"),
+                    "reachability": row[11] or "unknown",
+                    "reachability_basis": _decode_json_array(row[12], field="attack path reachability basis"),
+                    "technique_mappings": _decode_json_array(row[13], field="attack path technique mappings"),
+                    "hop_evidence": _decode_json_array(row[14], field="attack path hop evidence"),
+                    "analysis": _decode_json_object(row[15], field="attack path analysis"),
                 }
             )
 

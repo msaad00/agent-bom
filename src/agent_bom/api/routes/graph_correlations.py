@@ -15,6 +15,11 @@ from agent_bom.api import stores as api_stores
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun
+from agent_bom.graph.correlation_receipts import (
+    CorrelationReceiptError,
+    configured_receipt_signing_key,
+    correlation_run_receipt_payload,
+)
 from agent_bom.graph.correlation_service import (
     CorrelationRequest,
     CorrelationServiceError,
@@ -39,13 +44,77 @@ class GraphCorrelationCreate(BaseModel):
     allow_stale: bool = False
 
 
+class GraphCorrelationReceiptSignature(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str
+    algorithm: str
+    key_id: str = ""
+    value: str
+
+
+class GraphCorrelationReceipt(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    scan_id: str
+    created_at: str = ""
+    digest: str = ""
+    node_count: int = 0
+    edge_count: int = 0
+    source_kinds: list[str] = Field(default_factory=list)
+    freshness: str = ""
+    age_hours: float = 0.0
+    signature: GraphCorrelationReceiptSignature | None = None
+    verification: str = "legacy_hash_bound"
+
+
+class GraphCorrelationReceiptVerification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    verified: int = 0
+    legacy_hash_bound: int = 0
+    invalid: int = 0
+    verification_key_unavailable: int = 0
+    total: int = 0
+
+
+class GraphCorrelationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str
+    tenant_id: str
+    idempotency_key: str
+    name: str
+    status: str
+    max_age_hours: int
+    allow_stale: bool
+    input_manifest: list[GraphCorrelationReceipt]
+    receipt_verification: GraphCorrelationReceiptVerification
+    result_manifest: dict[str, Any] = Field(default_factory=dict)
+    manifest_sha256: str = ""
+    output_scan_id: str = ""
+    failure_code: str = ""
+    created_at: str = ""
+    started_at: str = ""
+    completed_at: str = ""
+
+
 class GraphCorrelationList(BaseModel):
-    items: list[dict[str, Any]]
+    items: list[GraphCorrelationResponse]
     count: int
 
 
 def _actor(request: Request) -> str:
     return str(getattr(request.state, "api_key_name", "") or "system")
+
+
+def _run_payload(run: GraphCorrelationRun) -> dict[str, Any]:
+    try:
+        signing_key = configured_receipt_signing_key()
+    except CorrelationReceiptError:
+        signing_key = None
+    return correlation_run_receipt_payload(run.to_dict(), signing_key=signing_key)
 
 
 async def _correlation_service(tenant_id: str) -> GraphCorrelationService:
@@ -93,7 +162,12 @@ def _facts_ttl_seconds() -> int:
     return value
 
 
-@router.post("/graph/correlations", status_code=202, tags=["graph-correlations"])
+@router.post(
+    "/graph/correlations",
+    status_code=202,
+    response_model=GraphCorrelationResponse,
+    tags=["graph-correlations"],
+)
 async def create_graph_correlation(
     request: Request,
     body: GraphCorrelationCreate,
@@ -127,7 +201,7 @@ async def create_graph_correlation(
         max_age_hours=run.max_age_hours,
         allow_stale=run.allow_stale,
     )
-    return run.to_dict()
+    return _run_payload(run)
 
 
 @router.get("/graph/correlations", response_model=GraphCorrelationList, tags=["graph-correlations"])
@@ -145,7 +219,7 @@ async def list_graph_correlations(
         tenant_id=tenant_id,
         result_count=len(runs),
     )
-    return GraphCorrelationList(items=[run.to_dict() for run in runs], count=len(runs))
+    return GraphCorrelationList(items=[_run_payload(run) for run in runs], count=len(runs))
 
 
 def _get_run(tenant_id: str, correlation_id: str) -> GraphCorrelationRun:
@@ -158,7 +232,11 @@ def _get_run(tenant_id: str, correlation_id: str) -> GraphCorrelationRun:
     return run
 
 
-@router.get("/graph/correlations/{correlation_id}", tags=["graph-correlations"])
+@router.get(
+    "/graph/correlations/{correlation_id}",
+    response_model=GraphCorrelationResponse,
+    tags=["graph-correlations"],
+)
 async def get_graph_correlation(request: Request, correlation_id: str) -> dict[str, Any]:
     tenant_id = require_request_tenant_id(request)
     await _correlation_service(tenant_id)
@@ -170,7 +248,7 @@ async def get_graph_correlation(request: Request, correlation_id: str) -> dict[s
         tenant_id=tenant_id,
         status=run.status.value,
     )
-    return run.to_dict()
+    return _run_payload(run)
 
 
 @router.get("/graph/correlations/{correlation_id}/runtime-facts", tags=["graph-correlations"])

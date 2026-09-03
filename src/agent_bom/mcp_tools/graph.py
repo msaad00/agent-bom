@@ -95,7 +95,13 @@ async def graph_correlate_impl(
             allow_stale=run.allow_stale,
             reason_provided=True,
         )
-        encoded = json.dumps(run.to_dict(), indent=2, default=str)
+        from agent_bom.graph.correlation_receipts import configured_receipt_signing_key, correlation_run_receipt_payload
+
+        encoded = json.dumps(
+            correlation_run_receipt_payload(run.to_dict(), signing_key=configured_receipt_signing_key()),
+            indent=2,
+            default=str,
+        )
         return _truncate_response(encoded) if _truncate_response is not None else encoded
     except CorrelationServiceError as exc:
         code = CODE_NOT_FOUND_RESOURCE if exc.code == "input_snapshot_not_found" else CODE_VALIDATION_INVALID_ARGUMENT
@@ -144,7 +150,13 @@ async def graph_correlation_status_impl(
             tenant_id=tenant_id,
             status=run.status.value,
         )
-        encoded = json.dumps(run.to_dict(), indent=2, default=str)
+        from agent_bom.graph.correlation_receipts import configured_receipt_signing_key, correlation_run_receipt_payload
+
+        encoded = json.dumps(
+            correlation_run_receipt_payload(run.to_dict(), signing_key=configured_receipt_signing_key()),
+            indent=2,
+            default=str,
+        )
         return _truncate_response(encoded) if _truncate_response is not None else encoded
     except Exception:
         logger.exception("MCP graph correlation status failed")

@@ -8,6 +8,7 @@ import pytest
 
 from agent_bom.graph.correlation_receipts import (
     CorrelationReceiptError,
+    correlation_run_receipt_payload,
     sign_correlation_receipt,
     verify_correlation_receipt,
 )
@@ -111,3 +112,50 @@ def test_receipt_signing_rejects_short_keys() -> None:
             max_age_hours=168,
             allow_stale=False,
         )
+
+
+def test_run_payload_exposes_server_verified_receipt_state_without_key_material() -> None:
+    run = {
+        "correlation_id": "corr-1",
+        "tenant_id": "tenant-a",
+        "created_at": "2026-09-03T02:15:00+00:00",
+        "max_age_hours": 168,
+        "allow_stale": False,
+        "input_manifest": [_signed()],
+        "result_manifest": {"input_snapshots": [_signed()]},
+    }
+
+    payload = correlation_run_receipt_payload(run, signing_key=KEY)
+
+    assert payload["receipt_verification"] == {
+        "status": "verified",
+        "verified": 1,
+        "legacy_hash_bound": 0,
+        "invalid": 0,
+        "verification_key_unavailable": 0,
+        "total": 1,
+    }
+    assert payload["input_manifest"][0]["verification"] == "verified"
+    assert payload["result_manifest"]["input_snapshots"][0]["verification"] == "verified"
+    assert "signing_key" not in str(payload)
+
+
+def test_run_payload_distinguishes_legacy_invalid_and_unavailable_receipts() -> None:
+    unsigned = dict(RECEIPT)
+    invalid = _signed()
+    invalid["digest"] = "sha256:" + "b" * 64
+    base = {
+        "correlation_id": "corr-1",
+        "tenant_id": "tenant-a",
+        "created_at": "2026-09-03T02:15:00+00:00",
+        "max_age_hours": 168,
+        "allow_stale": False,
+    }
+
+    legacy = correlation_run_receipt_payload({**base, "input_manifest": [unsigned]}, signing_key=KEY)
+    tampered = correlation_run_receipt_payload({**base, "input_manifest": [invalid]}, signing_key=KEY)
+    unavailable = correlation_run_receipt_payload({**base, "input_manifest": [_signed()]}, signing_key=None)
+
+    assert legacy["receipt_verification"]["status"] == "legacy_hash_bound"
+    assert tampered["receipt_verification"]["status"] == "invalid"
+    assert unavailable["receipt_verification"]["status"] == "verification_key_unavailable"

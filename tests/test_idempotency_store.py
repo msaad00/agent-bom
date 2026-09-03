@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from agent_bom.api.idempotency_store import (
@@ -58,6 +60,99 @@ def test_sqlite_idempotency_claim_is_atomic_for_concurrent_callers(tmp_path):
 
     assert sum(1 for _response, acquired in results if acquired) == 1
     assert {response["job_id"] for response, _acquired in results} == {"stable-job"}
+
+
+def test_in_memory_idempotency_claim_reclaims_only_expired_uncommitted_reservation() -> None:
+    store = InMemoryIdempotencyStore()
+    request_hash = idempotency_request_fingerprint({"value": 1})
+    key = ("/v1/scan", "tenant-a", "source-a", "same-key")
+
+    first, acquired = store.claim(
+        *key,
+        {"job_id": "stable-job", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+    )
+    assert acquired is True
+    assert first["committed"] is False
+
+    active, active_acquired = store.claim(
+        *key,
+        {"job_id": "other-job", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+    )
+    assert active_acquired is False
+    assert active == {"job_id": "stable-job", "committed": False}
+
+    store._records[key].created_at = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()  # noqa: SLF001
+    recovered, recovered_acquired = store.claim(
+        *key,
+        {"job_id": "stable-job", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+    )
+    assert recovered_acquired is True
+    assert recovered == {"job_id": "stable-job", "committed": False}
+
+    store.put(*key, {"job_id": "stable-job", "committed": True}, request_hash=request_hash)
+    store._records[key].created_at = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()  # noqa: SLF001
+    committed, committed_acquired = store.claim(
+        *key,
+        {"job_id": "other-job", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+    )
+    assert committed_acquired is False
+    assert committed == {"job_id": "stable-job", "committed": True}
+
+
+def test_sqlite_idempotency_claim_reclaims_expired_reservation_without_cross_tenant_takeover(tmp_path) -> None:
+    store = SQLiteIdempotencyStore(str(tmp_path / "idempotency.db"))
+    request_hash = idempotency_request_fingerprint({"value": 1})
+    mismatch_hash = idempotency_request_fingerprint({"value": 2})
+    args = ("/v1/scan", "tenant-a", "source-a", "same-key")
+    store.claim(
+        *args,
+        {"job_id": "stable-job", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+    )
+    expired = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()
+    store._conn.execute(  # noqa: SLF001
+        "UPDATE idempotency_keys SET created_at = ? WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?",
+        (expired, *args),
+    )
+    store._conn.commit()  # noqa: SLF001
+
+    with pytest.raises(IdempotencyConflictError):
+        store.claim(
+            *args,
+            {"job_id": "wrong", "committed": False},
+            request_hash=mismatch_hash,
+            reservation_lease_seconds=30,
+        )
+
+    recovered, acquired = store.claim(
+        *args,
+        {"job_id": "stable-job", "committed": False},
+        request_hash=request_hash,
+        reservation_lease_seconds=30,
+    )
+    assert acquired is True
+    assert recovered["job_id"] == "stable-job"
+
+    other_tenant, other_acquired = store.claim(
+        "/v1/scan",
+        "tenant-b",
+        "source-a",
+        "same-key",
+        {"job_id": "tenant-b-job", "committed": False},
+        request_hash=mismatch_hash,
+        reservation_lease_seconds=30,
+    )
+    assert other_acquired is True
+    assert other_tenant["job_id"] == "tenant-b-job"
 
 
 @pytest.mark.parametrize("store_factory", [InMemoryIdempotencyStore])

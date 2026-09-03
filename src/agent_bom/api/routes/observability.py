@@ -28,6 +28,7 @@ from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
     deterministic_batch_id,
     idempotency_request_fingerprint,
+    idempotency_reservation_lease_seconds,
 )
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
@@ -951,6 +952,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 idempotency_key,
                 {"job_id": reserved_job_id, "committed": False},
                 request_hash=request_hash,
+                reservation_lease_seconds=idempotency_reservation_lease_seconds(),
             )
         except IdempotencyConflictError as exc:
             raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
@@ -969,6 +971,21 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 detail="An identical pushed result is still being committed; retry shortly.",
                 headers={"Retry-After": "1"},
             )
+        existing = await asyncio.to_thread(
+            _get_store().get,
+            str(receipt.get("job_id") or reserved_job_id),
+            tenant_id,
+        )
+        if existing is not None and _pushed_job_has_persisted_graph(existing):
+            idempotency_store.put(
+                "/v1/results/push",
+                tenant_id,
+                idempotency_source,
+                idempotency_key,
+                {"job_id": existing.job_id, "committed": True},
+                request_hash=request_hash,
+            )
+            return _pushed_job_receipt(existing)
     job = ScanJob(
         job_id=reserved_job_id or str(uuid.uuid4()),
         tenant_id=tenant_id,
@@ -999,7 +1016,6 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 scan_id=str(job_result.get("scan_id") or job.job_id),
                 observed_at=str(job_result.get("observed_at") or job_result.get("scan_timestamp") or job.created_at),
             )
-            _get_fleet_store().put_endpoint(endpoint)
             # Store and graph only the bounded evidence summary. Raw process,
             # application, service, listener, container, and image rows remain
             # on the source endpoint and never enter the control-plane job.
@@ -1114,6 +1130,14 @@ def _pushed_job_receipt(job: ScanJob) -> dict[str, Any]:
     }
 
 
+def _pushed_job_has_persisted_graph(job: ScanJob) -> bool:
+    """Return whether the durable job records a completed graph projection."""
+
+    result = job.result if isinstance(job.result, dict) else {}
+    graph_persistence = result.get("graph_persistence")
+    return isinstance(graph_persistence, dict) and graph_persistence.get("status") == "persisted"
+
+
 async def _wait_for_pushed_job(
     job_id: str,
     *,
@@ -1134,9 +1158,20 @@ async def _wait_for_pushed_job(
             idempotency_key,
             request_hash=request_hash,
         )
-        if receipt is not None and receipt.get("committed") is True:
-            job = await asyncio.to_thread(_get_store().get, job_id, tenant_id)
-            if job is not None:
+        job = await asyncio.to_thread(_get_store().get, job_id, tenant_id)
+        if job is not None and receipt is not None:
+            if receipt.get("committed") is True:
+                return cast(ScanJob, job)
+            if _pushed_job_has_persisted_graph(job):
+                await asyncio.to_thread(
+                    _get_idempotency_store().put,
+                    "/v1/results/push",
+                    tenant_id,
+                    idempotency_source,
+                    idempotency_key,
+                    {"job_id": job.job_id, "committed": True},
+                    request_hash=request_hash,
+                )
                 return cast(ScanJob, job)
         await asyncio.sleep(0.01)
     return None

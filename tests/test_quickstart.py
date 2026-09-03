@@ -37,6 +37,10 @@ def _fake_scan(monkeypatch):
 
     monkeypatch.setattr("agent_bom.cli._quickstart._resolve_agent_bom", lambda: "agent-bom")
     monkeypatch.setattr("agent_bom.cli._quickstart.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "agent_bom.cli._quickstart._verify_persisted_graph",
+        lambda **kwargs: {"scan_id": "fake-scan-id", "nodes": 3, "edges": 2},
+    )
     return calls
 
 
@@ -113,6 +117,37 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     # cockpit handoff must pass a flag that actually lets /v1/overview load on loopback
     assert f"{LOCAL_ANALYST_CONTROL_PLANE} --host 127.0.0.1 --port 8422 --allow-insecure-no-auth" in result.output
     assert "--api-key <key>" in result.output
+    assert "--from-control-plane http://127.0.0.1:8422" in result.output
+    assert "upstreams.yaml" not in result.output
+    assert "Run the gateway baseline (audit):" in result.output
+
+
+def test_quickstart_run_prints_the_configured_control_plane_database(tmp_path, _fake_scan, monkeypatch):
+    sample_dir = tmp_path / "stack"
+    control_plane_db = tmp_path / "configured-control-plane.db"
+    monkeypatch.setenv("AGENT_BOM_DB", str(control_plane_db))
+
+    result = CliRunner().invoke(main, ["quickstart", "--run", "--offline", "--sample-dir", str(sample_dir)])
+
+    assert result.exit_code == 0, result.output
+    assert f"agent-bom serve --persist {control_plane_db}" in result.output
+    assert "--persist ~/.agent-bom/control-plane.db" not in result.output
+
+
+def test_quickstart_run_preserves_a_separate_configured_graph_database(tmp_path, _fake_scan, monkeypatch):
+    sample_dir = tmp_path / "stack"
+    control_plane_db = tmp_path / "control-plane.db"
+    graph_db = tmp_path / "graphs.db"
+    monkeypatch.setenv("AGENT_BOM_DB", str(control_plane_db))
+    monkeypatch.setenv("AGENT_BOM_GRAPH_DB", str(graph_db))
+
+    result = CliRunner().invoke(main, ["quickstart", "--run", "--offline", "--sample-dir", str(sample_dir)])
+
+    assert result.exit_code == 0, result.output
+    assert _fake_scan.environments[0]["AGENT_BOM_DB"] == str(control_plane_db)
+    assert _fake_scan.environments[0]["AGENT_BOM_GRAPH_DB"] == str(graph_db)
+    assert f"AGENT_BOM_GRAPH_DB={graph_db}" in result.output
+    assert f"agent-bom serve --persist {control_plane_db}" in result.output
 
 
 def test_quickstart_run_offline_succeeds_with_empty_vulnerability_db(tmp_path, monkeypatch):
@@ -171,6 +206,10 @@ def test_quickstart_run_treats_a_critical_verdict_as_completed_evidence(tmp_path
 
     monkeypatch.setattr("agent_bom.cli._quickstart._resolve_agent_bom", lambda: "agent-bom")
     monkeypatch.setattr("agent_bom.cli._quickstart.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "agent_bom.cli._quickstart._verify_persisted_graph",
+        lambda **kwargs: {"scan_id": "fake-scan-id", "nodes": 3, "edges": 2},
+    )
 
     result = CliRunner().invoke(main, ["quickstart", "--run", "--offline", "--sample-dir", str(sample_dir)])
 
@@ -193,6 +232,23 @@ def test_quickstart_run_surfaces_scan_failure(tmp_path, monkeypatch):
 
     assert result.exit_code != 0
     assert "Scan exited with status 2" in result.output
+
+
+def test_quickstart_run_rejects_a_success_exit_without_persisted_graph(tmp_path, monkeypatch):
+    sample_dir = tmp_path / "stack"
+    graph_db = tmp_path / "missing-graph.db"
+    monkeypatch.setenv("AGENT_BOM_DB", str(graph_db))
+    monkeypatch.setattr("agent_bom.cli._quickstart._resolve_agent_bom", lambda: "agent-bom")
+    monkeypatch.setattr(
+        "agent_bom.cli._quickstart.subprocess.run",
+        lambda args, check=False, **kwargs: subprocess.CompletedProcess(args, 0),
+    )
+
+    result = CliRunner().invoke(main, ["quickstart", "--run", "--offline", "--sample-dir", str(sample_dir)])
+
+    assert result.exit_code != 0
+    assert "persisted graph could not be verified" in result.output.lower()
+    assert "Onboarding complete" not in result.output
 
 
 def test_all_extra_composes_first_run_extras_without_mlflow():

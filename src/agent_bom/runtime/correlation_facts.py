@@ -8,9 +8,12 @@ import re
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Mapping
 
 from agent_bom.runtime.graph_reachability import AgentReachability, ReachabilityMap
+
+if TYPE_CHECKING:
+    from agent_bom.graph.correlation import GraphCorrelationRun
 
 _SCHEMA = "agent-bom.runtime-facts/v2"
 _ALGORITHM = "HMAC-SHA256"
@@ -360,7 +363,7 @@ def _reachability_from_correlation_graph(graph: Any) -> tuple[ReachabilityMap, d
 
 
 def create_runtime_facts_bundle_from_correlation(
-    run: Any,
+    run: GraphCorrelationRun,
     graph: Any,
     *,
     snapshot_metadata: Mapping[str, Any] | None,

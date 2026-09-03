@@ -159,6 +159,12 @@ def test_cloud_inventory_provider_filter(monkeypatch):
     assert [p["provider"] for p in data["providers"]] == ["aws"]
 
 
+def test_cloud_inventory_rejects_unsupported_provider_truthfully(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-ci3")
+    data = _run(cloud_inventory_impl(providers="snowflake", tenant_id="t-ci3", _truncate_response=_trunc))
+    assert data == {"error": "Unsupported provider: snowflake. Use aws, azure, or gcp."}
+
+
 # ---------------------------------------------------------------------------
 # access_review
 # ---------------------------------------------------------------------------

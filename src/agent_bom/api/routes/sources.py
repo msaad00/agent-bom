@@ -358,7 +358,7 @@ async def test_source(request: Request, source_id: str) -> dict:
     ):
         from agent_bom.connectors import check_connector_health
 
-        connector_status = check_connector_health(source.connector_name)
+        connector_status = await anyio.to_thread.run_sync(check_connector_health, source.connector_name)
         status = SourceStatus.HEALTHY if connector_status.state.value == "healthy" else SourceStatus.DEGRADED
         message = sanitize_text(connector_status.message)
     elif source.kind in (SourceKind.RUNTIME_PROXY, SourceKind.RUNTIME_GATEWAY):

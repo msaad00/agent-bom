@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 logger = logging.getLogger(__name__)
 
@@ -204,22 +204,42 @@ async def cloud_inventory_impl(
     resource/identity counts and a node summary only — never resource secrets.
     """
     try:
+        from agent_bom.backpressure import (
+            ProviderExecutionCapacityError,
+            ProviderExecutionTimeoutError,
+            run_provider_call,
+        )
         from agent_bom.cloud import aws_inventory, azure_inventory, gcp_inventory
+        from agent_bom.config import CLOUD_DISCOVERY_TIMEOUT
 
         selected = {part.strip().lower() for part in providers.split(",") if part.strip()} or {"aws", "azure", "gcp"}
+        unsupported = sorted(selected - {"aws", "azure", "gcp"})
+        if unsupported:
+            return json.dumps({"error": f"Unsupported provider: {unsupported[0]}. Use aws, azure, or gcp."})
         scoped_region = region.strip() or None
-        summaries: list[dict[str, Any]] = []
-        if "aws" in selected:
-            summaries.append(_summarize_inventory_payload("aws", aws_inventory.discover_inventory(region=scoped_region)))
-        if "azure" in selected:
-            summaries.append(_summarize_inventory_payload("azure", azure_inventory.discover_inventory()))
-        if "gcp" in selected:
-            summaries.append(_summarize_inventory_payload("gcp", gcp_inventory.discover_inventory()))
+        resolved_tenant = resolve_mcp_tool_tenant_id(tenant_id)
+
+        def _discover() -> list[dict[str, Any]]:
+            summaries: list[dict[str, Any]] = []
+            if "aws" in selected:
+                summaries.append(_summarize_inventory_payload("aws", aws_inventory.discover_inventory(region=scoped_region)))
+            if "azure" in selected:
+                summaries.append(_summarize_inventory_payload("azure", azure_inventory.discover_inventory()))
+            if "gcp" in selected:
+                summaries.append(_summarize_inventory_payload("gcp", gcp_inventory.discover_inventory()))
+            return summaries
+
+        try:
+            summaries = await run_provider_call(_discover, timeout_seconds=max(float(CLOUD_DISCOVERY_TIMEOUT), 1.0))
+        except ProviderExecutionTimeoutError:
+            return json.dumps({"error": "Cloud inventory timed out before completing.", "status": "unavailable"})
+        except ProviderExecutionCapacityError:
+            return json.dumps({"error": "Cloud provider execution capacity is exhausted; retry later.", "status": "unavailable"})
 
         any_enabled = any(s["status"] != "disabled" for s in summaries)
         payload = {
             "schema_version": "cloud.inventory.summary.v1",
-            "tenant_id": resolve_mcp_tool_tenant_id(tenant_id),
+            "tenant_id": resolved_tenant,
             "status": "ok" if any_enabled else "disabled",
             "total_resources": sum(s["resource_count"] for s in summaries),
             "total_identities": sum(s["identity_count"] for s in summaries),
@@ -229,7 +249,7 @@ async def cloud_inventory_impl(
                 "AGENT_BOM_AZURE_INVENTORY / AGENT_BOM_GCP_INVENTORY. Reference-only counts; no resource secrets are returned."
             ),
         }
-        return _truncate_response(json.dumps(payload, indent=2, default=str))
+        return _truncate_response(json.dumps(sanitize_sensitive_payload(payload), indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP cloud inventory error")
         return json.dumps({"error": sanitize_error(exc)})

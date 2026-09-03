@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 import os
 import random
 import time
 from collections import deque
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, TypeVar
+
+import anyio.to_thread
+
+T = TypeVar("T")
 
 
 class BackpressureRejectedError(RuntimeError):
@@ -29,6 +35,106 @@ class BackpressureRejectedError(RuntimeError):
             "reason": self.reason,
             "retry_after_seconds": self.retry_after_seconds,
         }
+
+
+class ProviderExecutionTimeoutError(TimeoutError):
+    """The caller's wall-clock cloud-provider budget expired."""
+
+
+class ProviderExecutionCapacityError(RuntimeError):
+    """All supervised cloud-provider execution slots are occupied."""
+
+
+_PROVIDER_STATE_LOCK = Lock()
+_ACTIVE_PROVIDER_CALLS = 0
+_PROVIDER_TASKS: set[asyncio.Task[Any]] = set()
+
+
+def _provider_execution_capacity() -> int:
+    from agent_bom.config import WORKER_THREAD_LIMIT
+
+    return max(1, int(WORKER_THREAD_LIMIT))
+
+
+def _reserve_provider_capacity() -> None:
+    global _ACTIVE_PROVIDER_CALLS
+    with _PROVIDER_STATE_LOCK:
+        if _ACTIVE_PROVIDER_CALLS >= _provider_execution_capacity():
+            raise ProviderExecutionCapacityError("Cloud provider execution capacity is exhausted; retry later.")
+        _ACTIVE_PROVIDER_CALLS += 1
+
+
+def _release_provider_capacity() -> None:
+    global _ACTIVE_PROVIDER_CALLS
+    with _PROVIDER_STATE_LOCK:
+        _ACTIVE_PROVIDER_CALLS = max(0, _ACTIVE_PROVIDER_CALLS - 1)
+
+
+def _observe_provider_completion(task: asyncio.Task[Any]) -> None:
+    _PROVIDER_TASKS.discard(task)
+    if task.cancelled():
+        return
+    # Retrieve a background exception so a timed-out call never emits an
+    # unhandled-task warning after its synchronous SDK worker eventually exits.
+    task.exception()
+
+
+async def run_provider_call(
+    fn: Callable[..., T],
+    /,
+    *args: Any,
+    timeout_seconds: float,
+    **kwargs: Any,
+) -> T:
+    """Run synchronous provider work off-loop under retained capacity.
+
+    Provider SDK work cannot be safely force-cancelled. A caller receives its
+    wall-clock timeout while this bridge retains the capacity slot until the
+    underlying thread actually exits, preventing timed-out workers from
+    escaping admission control and exhausting the shared AnyIO pool.
+    """
+    _reserve_provider_capacity()
+
+    async def _invoke() -> T:
+        try:
+            if kwargs:
+                return await anyio.to_thread.run_sync(lambda: fn(*args, **kwargs))
+            return await anyio.to_thread.run_sync(fn, *args)
+        finally:
+            _release_provider_capacity()
+
+    task = asyncio.create_task(_invoke(), name=f"cloud-provider:{getattr(fn, '__name__', 'call')}")
+    _PROVIDER_TASKS.add(task)
+    task.add_done_callback(_observe_provider_completion)
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=max(float(timeout_seconds), 0.001))
+    except TimeoutError as exc:
+        raise ProviderExecutionTimeoutError("Cloud provider execution timed out.") from exc
+
+
+def provider_execution_status() -> dict[str, int]:
+    """Return non-secret process-local cloud-provider capacity posture."""
+    with _PROVIDER_STATE_LOCK:
+        return {"active": _ACTIVE_PROVIDER_CALLS, "capacity": _provider_execution_capacity()}
+
+
+def reset_provider_execution_for_tests() -> None:
+    """Reset provider counters when no worker is active."""
+    global _ACTIVE_PROVIDER_CALLS
+    with _PROVIDER_STATE_LOCK:
+        if _ACTIVE_PROVIDER_CALLS:
+            raise RuntimeError("Cannot reset provider execution while workers are active.")
+        _ACTIVE_PROVIDER_CALLS = 0
+    _PROVIDER_TASKS.clear()
+
+
+async def wait_for_provider_execution_idle_for_tests(timeout_seconds: float = 2.0) -> None:
+    """Wait for supervised background provider workers in focused tests."""
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while provider_execution_status()["active"]:
+        if asyncio.get_running_loop().time() >= deadline:
+            raise TimeoutError("Provider execution did not become idle.")
+        await asyncio.sleep(0.005)
 
 
 @dataclass

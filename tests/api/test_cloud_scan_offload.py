@@ -14,12 +14,47 @@ payload shape is unchanged.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 import anyio.to_thread
 import pytest
 
 from agent_bom.api.routes import cloud
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["inventory", "cis"])
+async def test_cloud_timeout_logs_sanitize_request_derived_provider_labels(monkeypatch, caplog, surface):
+    """Timeout diagnostics cannot inject forged lines through provider labels."""
+
+    malicious_provider = "aws\nforged-log-entry"
+    monkeypatch.setattr(cloud, "_tenant", lambda request: "tenant-a")
+
+    async def _timeout(*_args, **_kwargs):
+        raise cloud.ProviderExecutionTimeoutError
+
+    monkeypatch.setattr(cloud, "run_provider_call", _timeout)
+    caplog.set_level(logging.WARNING, logger=cloud.__name__)
+
+    if surface == "inventory":
+        monkeypatch.setattr(cloud, "_INVENTORY_PROVIDERS", (malicious_provider,))
+        await cloud.cloud_inventory(request=object(), provider=malicious_provider, region="")
+    else:
+        monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
+        monkeypatch.setattr(cloud, "_CIS_PROVIDERS", (malicious_provider,))
+        await cloud.cloud_cis_benchmark(
+            request=object(),
+            provider=malicious_provider,
+            checks="",
+            region="",
+            profile="",
+            subscription_id="",
+            project_id="",
+        )
+
+    assert "forged-log-entry" in caplog.text
+    assert "aws\nforged-log-entry" not in caplog.text
 
 
 def _spy_run_sync(monkeypatch):
@@ -129,8 +164,10 @@ async def test_slow_inventory_scan_keeps_event_loop_responsive(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cloud_cis_timeout_returns_bounded_unavailable_envelope(monkeypatch):
-    monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
     """Provider credential/metadata retries cannot hold an API request forever."""
+    from agent_bom.backpressure import wait_for_provider_execution_idle_for_tests
+
+    monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
     monkeypatch.setattr(cloud, "_tenant", lambda request: "t-timeout")
     monkeypatch.setattr(cloud, "_cloud_cis_timeout_seconds", lambda: 0.01)
 
@@ -162,6 +199,71 @@ async def test_cloud_cis_timeout_returns_bounded_unavailable_envelope(monkeypatc
             "note": "No cloud resource was mutated; retry with a scoped provider connection.",
         },
     }
+    await wait_for_provider_execution_idle_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_cloud_inventory_timeout_returns_bounded_unavailable_envelope(monkeypatch):
+    """Inventory gets the same wall-clock bound as CIS provider execution."""
+    from agent_bom.backpressure import wait_for_provider_execution_idle_for_tests
+
+    monkeypatch.setattr(cloud, "_tenant", lambda request: "t-inventory-timeout")
+    monkeypatch.setattr(cloud, "_cloud_inventory_timeout_seconds", lambda: 0.01)
+
+    def _stuck(*_args, **_kwargs):
+        time.sleep(0.25)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(cloud, "_build_inventory_payload", _stuck)
+    result = await cloud.cloud_inventory(request=object(), provider="aws", region="")
+
+    assert result == {
+        "error": "Provider inventory timed out before completing.",
+        "provider": "aws",
+        "tenant_id": "t-inventory-timeout",
+        "status": "unavailable",
+        "timed_out": True,
+        "audit_metadata": {
+            "read_only": True,
+            "writes_performed": False,
+            "provider": "aws",
+            "note": "No cloud resource was mutated; retry with a scoped provider connection.",
+        },
+    }
+    await wait_for_provider_execution_idle_for_tests()
+
+
+def test_rest_cis_recursively_sanitizes_provider_failure_artifact(monkeypatch):
+    """Nested provider diagnostics cannot expose credentials through REST."""
+
+    class _Report:
+        def to_dict(self):
+            return {
+                "provider": "aws",
+                "checks": [
+                    {
+                        "status": "error",
+                        "details": {
+                            "endpoint": "https://AKIA_TEST:secret-token@example.invalid",
+                            "message": "request failed",
+                        },
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("agent_bom.cloud.aws_cis_benchmark.run_benchmark", lambda **_kwargs: _Report())
+    result = cloud._run_cis_benchmark(
+        "tenant-a",
+        "aws",
+        None,
+        "us-east-1",
+        None,
+        "",
+        "",
+    )
+
+    assert "secret-token" not in str(result)
+    assert result["checks"][0]["details"]["endpoint"] == "https://example.invalid"
 
 
 async def _trivial() -> str:

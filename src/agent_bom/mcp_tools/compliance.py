@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,10 @@ async def cis_benchmark_impl(
         if region and not _re.fullmatch(r"[a-z]{2}(-gov)?-[a-z]+-\d{1,2}", region):
             return json.dumps({"error": f"Invalid AWS region format: {region}"})
 
+        supported = {"aws", "snowflake", "azure", "gcp"}
+        if provider not in supported:
+            return json.dumps({"error": f"Unsupported provider: {provider}. Use 'aws', 'snowflake', 'azure', or 'gcp'."})
+
         # This benchmark spends the control plane's own cloud identity, so it
         # carries the same operator opt-in as the REST surface. Gating one and
         # not the other would leave this tool as a way around it.
@@ -216,32 +221,49 @@ async def cis_benchmark_impl(
         if not ambient_cis_enabled():
             return json.dumps(disabled_payload(provider))
 
-        cis_report: object
-        if provider == "aws":
-            if region:
-                from agent_bom.cloud.aws_cis_benchmark import run_benchmark
+        def _run() -> dict:
+            report: Any
+            if provider == "aws":
+                if region:
+                    from agent_bom.cloud.aws_cis_benchmark import run_benchmark
 
-                cis_report = run_benchmark(region=region, profile=profile, checks=check_list)
+                    report = run_benchmark(region=region, profile=profile, checks=check_list)
+                else:
+                    from agent_bom.cloud.aws_cis_benchmark import run_benchmark_all_regions
+
+                    report = run_benchmark_all_regions(region=region, profile=profile, checks=check_list)
+            elif provider == "snowflake":
+                from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
+
+                report = run_sf_cis(checks=check_list)
+            elif provider == "azure":
+                from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
+
+                report = run_azure_cis(subscription_id=subscription_id, checks=check_list)
             else:
-                from agent_bom.cloud.aws_cis_benchmark import run_benchmark_all_regions
+                from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
 
-                cis_report = run_benchmark_all_regions(region=region, profile=profile, checks=check_list)
-        elif provider == "snowflake":
-            from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
+                report = run_gcp_cis(project_id=project_id, checks=check_list)
+            return report.to_dict()
 
-            cis_report = run_sf_cis(checks=check_list)
-        elif provider == "azure":
-            from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
+        from agent_bom.backpressure import (
+            ProviderExecutionCapacityError,
+            ProviderExecutionTimeoutError,
+            run_provider_call,
+        )
+        from agent_bom.config import CLOUD_CIS_TIMEOUT_SECONDS, MCP_TOOL_TIMEOUT_SECONDS
 
-            cis_report = run_azure_cis(subscription_id=subscription_id, checks=check_list)
-        elif provider == "gcp":
-            from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+        try:
+            result = await run_provider_call(
+                _run,
+                timeout_seconds=min(float(CLOUD_CIS_TIMEOUT_SECONDS), float(MCP_TOOL_TIMEOUT_SECONDS)),
+            )
+        except ProviderExecutionTimeoutError:
+            return json.dumps({"error": "Cloud CIS benchmark timed out before completing.", "status": "unavailable"})
+        except ProviderExecutionCapacityError:
+            return json.dumps({"error": "Cloud provider execution capacity is exhausted; retry later.", "status": "unavailable"})
 
-            cis_report = run_gcp_cis(project_id=project_id, checks=check_list)
-        else:
-            return json.dumps({"error": f"Unsupported provider: {provider}. Use 'aws', 'snowflake', 'azure', or 'gcp'."})
-
-        return _truncate_response(json.dumps(cis_report.to_dict(), indent=2, default=str))  # type: ignore[attr-defined]
+        return _truncate_response(json.dumps(sanitize_sensitive_payload(result), indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP tool error")
         return json.dumps({"error": sanitize_error(exc)})

@@ -15,6 +15,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.credential_store import InMemoryCredentialRefStore
+from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
 from agent_bom.api.models import CredentialRefRecord, CredentialRefStatus, ScanJob, SourceKind, SourceRecord
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.server import app, configure_api
@@ -63,6 +64,7 @@ def source_client(monkeypatch: pytest.MonkeyPatch):
     old_source_store = _stores._source_store
     old_credential_store = _stores._credential_ref_store
     old_job_store = _stores._store
+    old_idempotency_store = _stores._idempotency_store
     old_schedule_store = _stores._schedule_store
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
@@ -71,6 +73,7 @@ def source_client(monkeypatch: pytest.MonkeyPatch):
     _stores.set_source_store(InMemorySourceStore())
     _stores.set_credential_ref_store(InMemoryCredentialRefStore())
     _stores.set_job_store(InMemoryJobStore())
+    _stores.set_idempotency_store(InMemoryIdempotencyStore())
     _stores.set_schedule_store(InMemoryScheduleStore())
 
     try:
@@ -82,6 +85,7 @@ def source_client(monkeypatch: pytest.MonkeyPatch):
         _stores._source_store = old_source_store
         _stores._credential_ref_store = old_credential_store
         _stores._store = old_job_store
+        _stores._idempotency_store = old_idempotency_store
         _stores._schedule_store = old_schedule_store
 
 
@@ -127,6 +131,115 @@ def test_source_crud_and_role_enforcement(source_client: TestClient) -> None:
     deleted = source_client.delete(f"/v1/sources/{source_id}", headers=ADMIN_HEADERS)
     assert deleted.status_code == 204
     assert source_client.get("/v1/sources", headers=VIEWER_HEADERS).json()["count"] == 0
+
+
+def test_source_cohort_run_is_exact_tenant_bound_and_idempotent(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda job: None)
+    source_ids: list[str] = []
+    for payload in (
+        {
+            "display_name": "Repository",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://github.com/example/app"}},
+        },
+        {
+            "display_name": "Digest-pinned image",
+            "kind": "scan.image",
+            "config": {"scan_request": {"images": ["example/app@sha256:" + "a" * 64]}},
+        },
+    ):
+        created = source_client.post("/v1/sources", headers=ANALYST_HEADERS, json=payload)
+        assert created.status_code == 201
+        source_ids.append(created.json()["source_id"])
+
+    headers = {**ANALYST_HEADERS, "Idempotency-Key": "deploy-2026-09-03"}
+    first = source_client.post(
+        "/v1/sources/run-cohort",
+        headers=headers,
+        json={"source_ids": list(reversed(source_ids)), "max_age_hours": 24},
+    )
+
+    assert first.status_code == 202
+    body = first.json()
+    assert body["source_ids"] == sorted(source_ids)
+    assert body["correlation_cohort_id"]
+    assert body["cohort_manifest_hash"]
+    assert body["max_age_hours"] == 24
+    assert body["auto_correlation"]["cohort_basis"] == "correlation_cohort_id"
+    assert body["auto_correlation"]["status"] == "skipped"
+    assert body["auto_correlation"]["reason"] == "durable_job_store_required"
+
+    replay = source_client.post(
+        "/v1/sources/run-cohort",
+        headers=headers,
+        json={"source_ids": source_ids, "max_age_hours": 24},
+    )
+    assert replay.status_code == 202
+    assert replay.json() == body
+
+    changed = source_client.post(
+        "/v1/sources/run-cohort",
+        headers=headers,
+        json={"source_ids": source_ids, "max_age_hours": 48},
+    )
+    assert changed.status_code == 409
+
+    cross_tenant = source_client.post(
+        "/v1/sources/run-cohort",
+        headers={**OTHER_TENANT_ANALYST_HEADERS, "Idempotency-Key": "deploy-2026-09-03"},
+        json={"source_ids": source_ids, "max_age_hours": 24},
+    )
+    assert cross_tenant.status_code == 404
+
+
+def test_source_cohort_run_rejects_duplicate_or_multi_target_members(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda job: None)
+    repo = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Repository",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"repo_url": "https://github.com/example/app"}},
+        },
+    ).json()
+    multi_image = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Two images",
+            "kind": "scan.image",
+            "config": {
+                "scan_request": {
+                    "images": [
+                        "example/app@sha256:" + "a" * 64,
+                        "example/worker@sha256:" + "b" * 64,
+                    ]
+                }
+            },
+        },
+    ).json()
+    headers = {**ANALYST_HEADERS, "Idempotency-Key": "invalid-cohort"}
+
+    duplicate = source_client.post(
+        "/v1/sources/run-cohort",
+        headers=headers,
+        json={"source_ids": [repo["source_id"], repo["source_id"]], "max_age_hours": 168},
+    )
+    assert duplicate.status_code == 422
+
+    multi_target = source_client.post(
+        "/v1/sources/run-cohort",
+        headers={**ANALYST_HEADERS, "Idempotency-Key": "multi-target-cohort"},
+        json={"source_ids": [repo["source_id"], multi_image["source_id"]], "max_age_hours": 168},
+    )
+    assert multi_target.status_code == 422
 
 
 def test_source_create_rejects_mismatched_tenant(source_client: TestClient) -> None:

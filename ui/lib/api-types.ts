@@ -60,6 +60,9 @@ export interface ScanJob {
   created_at: string;
   tenant_id?: string | undefined;
   source_id?: string | undefined;
+  correlation_cohort_id?: string | undefined;
+  correlation_cohort_manifest_hash?: string | undefined;
+  correlation_max_age_hours?: number | undefined;
   triggered_by?: string | undefined;
   schedule_id?: string | undefined;
   started_at?: string | undefined;

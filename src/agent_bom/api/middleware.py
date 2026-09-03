@@ -1354,6 +1354,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/shield/start", "shield:write"),
         ("POST", "/v1/shield/unblock", "shield:write"),
         ("POST", "/v1/shield/break-glass", "shield:write"),
+        ("POST", "/v1/sources/run-cohort", "scan:write"),
         ("POST", "/v1/scan", "scan:write"),
         ("DELETE", "/v1/scan/", "scan:delete"),
         ("POST", "/v1/schedules", "schedule:write"),

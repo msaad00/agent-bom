@@ -334,6 +334,42 @@
       "default": null,
       "title": "Completed At"
     },
+    "correlation_cohort_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Cohort Id"
+    },
+    "correlation_cohort_manifest_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Cohort Manifest Hash"
+    },
+    "correlation_max_age_hours": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Max Age Hours"
+    },
     "created_at": {
       "title": "Created At",
       "type": "string"

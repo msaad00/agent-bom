@@ -257,6 +257,89 @@ def test_source_schedule_resolves_canonical_source_request_and_links_job(monkeyp
     assert updated.last_run_status == "pending"
 
 
+def test_source_cohort_schedule_launches_one_exact_durable_cohort_per_occurrence(tmp_path, monkeypatch):
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.api.server import _enqueue_scheduled_scan
+    from agent_bom.api.store import SQLiteJobStore
+
+    source_store = InMemorySourceStore()
+    schedule_store = InMemoryScheduleStore()
+    for source in (
+        SourceRecord(
+            source_id="source-repo",
+            tenant_id="tenant-alpha",
+            display_name="Repository",
+            kind=SourceKind.SCAN_REPO,
+            config={"scan_request": {"repo_url": "https://example.com/acme/repo"}},
+        ),
+        SourceRecord(
+            source_id="source-image",
+            tenant_id="tenant-alpha",
+            display_name="Image",
+            kind=SourceKind.SCAN_IMAGE,
+            config={"scan_request": {"images": ["example/app@sha256:" + "a" * 64]}},
+        ),
+    ):
+        source_store.put(source)
+    schedule = ScanSchedule(
+        schedule_id="schedule-cohort",
+        tenant_id="tenant-alpha",
+        name="Evidence cohort",
+        cron_expression="0 * * * *",
+        scan_config={"source_ids": ["source-repo", "source-image"], "max_age_hours": 24},
+    )
+    schedule_store.put(schedule)
+    jobs = SQLiteJobStore(tmp_path / "jobs.db")
+    old_source_store = _stores._source_store
+    old_schedule_store = _stores._schedule_store
+    old_job_store = _stores._store
+    old_graph_store = _stores._graph_store
+    _stores.set_source_store(source_store)
+    _stores.set_schedule_store(schedule_store)
+    _stores.set_job_store(jobs)
+    _stores.set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
+    dispatched: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    config = {"source_ids": ["source-image", "source-repo"], "max_age_hours": 24}
+    try:
+        first_id = _enqueue_scheduled_scan(
+            config,
+            schedule_id=schedule.schedule_id,
+            tenant_id="tenant-alpha",
+            scheduled_for="2026-09-03T12:00:00+00:00",
+        )
+        replay_id = _enqueue_scheduled_scan(
+            config,
+            schedule_id=schedule.schedule_id,
+            tenant_id="tenant-alpha",
+            scheduled_for="2026-09-03T12:00:00+00:00",
+        )
+        next_id = _enqueue_scheduled_scan(
+            config,
+            schedule_id=schedule.schedule_id,
+            tenant_id="tenant-alpha",
+            scheduled_for="2026-09-03T13:00:00+00:00",
+        )
+    finally:
+        _stores._source_store = old_source_store
+        _stores._schedule_store = old_schedule_store
+        _stores._store = old_job_store
+        _stores._graph_store = old_graph_store
+
+    assert replay_id == first_id
+    assert next_id != first_id
+    first = jobs.get(first_id, tenant_id="tenant-alpha")
+    assert first is not None
+    assert first.correlation_cohort_id == first.batch_id
+    assert first.correlation_max_age_hours == 24
+    assert [jobs.get(child_id, tenant_id="tenant-alpha").source_id for child_id in first.child_job_ids] == [
+        "source-image",
+        "source-repo",
+    ]
+    assert dispatched[:2] == first.child_job_ids
+    assert len(dispatched) == 4
+
+
 def test_source_schedule_resolution_and_enqueue_are_fenced_against_delete(monkeypatch):
     from agent_bom.api.server import _enqueue_scheduled_scan
     from agent_bom.api.tenant_quota import tenant_quota_guard
@@ -557,6 +640,7 @@ class TestSchedulerLoop:
         assert updated.last_job_id == "job-456"
         assert triggered[0]["metadata"]["schedule_id"] == "s1"
         assert triggered[0]["metadata"]["tenant_id"] == "default"
+        assert triggered[0]["metadata"]["scheduled_for"] == "2020-01-01T00:00:00+00:00"
 
     def test_deleted_schedule_is_not_resurrected_after_trigger(self):
         """A concurrent source deletion can remove a schedule during dispatch."""

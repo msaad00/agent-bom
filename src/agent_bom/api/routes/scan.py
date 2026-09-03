@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import math
@@ -94,6 +95,8 @@ from agent_bom.finding_scope import (
 from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
+
+_CORRELATION_COHORT_NAMESPACE = uuid.UUID("4ed03a68-3d20-5e02-971f-66f17c235c91")
 _logger = logging.getLogger(__name__)
 _LOCAL_SCAN_DISABLE_VALUES = {"0", "false", "no", "off", "disabled"}
 _BULK_FINDINGS_MAX_ITEMS = 1000
@@ -1213,6 +1216,9 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "job_id": job.job_id,
         "tenant_id": job.tenant_id,
         "batch_id": job.batch_id,
+        "correlation_cohort_id": job.correlation_cohort_id,
+        "correlation_cohort_manifest_hash": job.correlation_cohort_manifest_hash,
+        "correlation_max_age_hours": job.correlation_max_age_hours,
         "parent_job_id": job.parent_job_id,
         "child_job_ids": list(job.child_job_ids),
         "target": job.target,
@@ -1307,6 +1313,189 @@ async def _job_response_payload_off_loop(job: ScanJob) -> ScanJob:
         ScanJob,
         await anyio.to_thread.run_sync(partial(_job_response_payload, job)),
     )
+
+
+def correlation_cohort_id(*, tenant_id: str, idempotency_key: str) -> str:
+    """Return an immutable tenant-bound cohort id from an explicit request key."""
+
+    tenant = tenant_id.strip()
+    key = idempotency_key.strip()
+    if not tenant or not key or len(key) > 200:
+        raise ValueError("tenant_id and idempotency_key are required for a correlation cohort")
+    return str(uuid.uuid5(_CORRELATION_COHORT_NAMESPACE, f"{tenant}\x00{key}"))
+
+
+def _cohort_manifest(source_requests: list[tuple[str, ScanRequest]]) -> tuple[list[tuple[str, ScanRequest]], str]:
+    normalized = sorted(((source_id.strip(), request) for source_id, request in source_requests), key=lambda row: row[0])
+    source_ids = [source_id for source_id, _ in normalized]
+    if not 2 <= len(source_ids) <= 32:
+        raise ValueError("a correlation cohort requires between 2 and 32 sources")
+    if any(not source_id for source_id in source_ids) or len(set(source_ids)) != len(source_ids):
+        raise ValueError("a correlation cohort requires distinct source ids")
+    for source_id, request in normalized:
+        if len(scan_request_targets(request)) != 1:
+            raise ValueError(f"cohort source {source_id} must resolve to exactly one scan target")
+    encoded = json.dumps(
+        [{"source_id": source_id, "request": request.model_dump(mode="json", exclude_none=True)} for source_id, request in normalized],
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return normalized, hashlib.sha256(encoded).hexdigest()
+
+
+def enqueue_correlation_cohort(
+    *,
+    tenant_id: str,
+    triggered_by: str,
+    correlation_cohort_id: str,
+    source_requests: list[tuple[str, ScanRequest]],
+    max_age_hours: int,
+    schedule_id: str | None = None,
+    quota_guarded: bool = False,
+    dispatch: bool = True,
+) -> ScanJob:
+    """Launch exact independent source scans as one immutable correlation cohort."""
+
+    try:
+        normalized_cohort_id = str(uuid.UUID(correlation_cohort_id))
+    except ValueError as exc:
+        raise ValueError("correlation_cohort_id must be a UUID") from exc
+    if normalized_cohort_id != correlation_cohort_id:
+        raise ValueError("correlation_cohort_id must use canonical UUID form")
+    if not 1 <= max_age_hours <= 8760:
+        raise ValueError("correlation cohort max_age_hours must be between 1 and 8760")
+
+    members, manifest_hash = _cohort_manifest(source_requests)
+    store = _get_store()
+    parent_job_id = str(uuid.uuid5(_CORRELATION_COHORT_NAMESPACE, f"{tenant_id}\x00{normalized_cohort_id}\x00parent"))
+    expected_child_ids = [
+        str(
+            uuid.uuid5(
+                _CORRELATION_COHORT_NAMESPACE,
+                f"{tenant_id}\x00{normalized_cohort_id}\x00{source_id}",
+            )
+        )
+        for source_id, _request in members
+    ]
+    existing = cast(ScanJob | None, store.get(parent_job_id, tenant_id=tenant_id))
+    if existing is not None:
+        if (
+            existing.correlation_cohort_id != normalized_cohort_id
+            or existing.correlation_cohort_manifest_hash != manifest_hash
+            or existing.correlation_max_age_hours != max_age_hours
+        ):
+            raise ValueError("correlation cohort id was reused with different immutable inputs")
+        if existing.child_job_ids != expected_child_ids:
+            raise ValueError("persisted correlation cohort is incomplete")
+        for expected_child_id, (source_id, _request) in zip(expected_child_ids, members, strict=True):
+            child = cast(ScanJob | None, store.get(expected_child_id, tenant_id=tenant_id))
+            if (
+                child is None
+                or child.parent_job_id != parent_job_id
+                or child.source_id != source_id
+                or child.correlation_cohort_id != normalized_cohort_id
+                or child.correlation_cohort_manifest_hash != manifest_hash
+                or child.correlation_max_age_hours != max_age_hours
+            ):
+                raise ValueError("persisted correlation cohort is incomplete")
+        return existing
+
+    now = _now()
+    child_jobs: list[ScanJob] = []
+    for index, ((source_id, request_body), child_job_id) in enumerate(zip(members, expected_child_ids, strict=True), start=1):
+        target = scan_request_targets(request_body)[0]
+        child_jobs.append(
+            ScanJob(
+                job_id=child_job_id,
+                tenant_id=tenant_id,
+                batch_id=normalized_cohort_id,
+                correlation_cohort_id=normalized_cohort_id,
+                correlation_cohort_manifest_hash=manifest_hash,
+                correlation_max_age_hours=max_age_hours,
+                parent_job_id=parent_job_id,
+                target=target,
+                target_index=index,
+                target_count=len(members),
+                source_id=source_id,
+                schedule_id=schedule_id,
+                triggered_by=triggered_by,
+                created_at=now,
+                request=request_body,
+            )
+        )
+
+    parent = ScanJob(
+        job_id=parent_job_id,
+        tenant_id=tenant_id,
+        batch_id=normalized_cohort_id,
+        correlation_cohort_id=normalized_cohort_id,
+        correlation_cohort_manifest_hash=manifest_hash,
+        correlation_max_age_hours=max_age_hours,
+        child_job_ids=[job.job_id for job in child_jobs],
+        schedule_id=schedule_id,
+        triggered_by=triggered_by,
+        status=JobStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        request=ScanRequest(),
+        progress=[f"Correlation cohort created with {len(child_jobs)} independent source scan(s)"],
+        target_count=len(child_jobs),
+    )
+
+    from agent_bom.api.auto_correlation import (
+        AutoCorrelationPolicy,
+        auto_correlation_backend_skip_reason,
+        auto_correlation_policy_from_env,
+        initial_auto_correlation_decision,
+    )
+
+    configured_policy = auto_correlation_policy_from_env()
+    if configured_policy.enabled:
+        cohort_policy = AutoCorrelationPolicy(
+            enabled=True,
+            max_age_hours=max_age_hours,
+            max_batches_per_poll=configured_policy.max_batches_per_poll,
+            max_active_per_tenant=configured_policy.max_active_per_tenant,
+            poll_seconds=configured_policy.poll_seconds,
+        )
+        parent.result = {
+            "auto_correlation": initial_auto_correlation_decision(
+                parent,
+                policy=cohort_policy,
+                now=datetime.now(timezone.utc),
+                backend_skip_reason=auto_correlation_backend_skip_reason(store, _get_graph_store()),
+            )
+        }
+
+    attempted_jobs = len(child_jobs) + 1
+    admission = (
+        contextlib.nullcontext()
+        if quota_guarded
+        else tenant_quota_guard(
+            tenant_id,
+            lambda: enforce_active_scan_quota(tenant_id, attempted=attempted_jobs),
+            lambda: enforce_retained_jobs_quota(tenant_id, attempted=attempted_jobs),
+        )
+    )
+    with admission:
+        store.put(parent)
+        _jobs_put(parent.job_id, parent)
+        for child in child_jobs:
+            store.put(child)
+            _jobs_put(child.job_id, child)
+        try:
+            refresh_batch_parent(parent.job_id, tenant_id=tenant_id)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            reconcile_scan_jobs_active(store)
+        except Exception:  # noqa: BLE001
+            pass
+
+    if dispatch:
+        for child in child_jobs:
+            dispatch_scan_job(child)
+    return parent
 
 
 def enqueue_scan_job(

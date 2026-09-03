@@ -186,6 +186,7 @@ async def scheduler_loop(
                             schedule.scan_config,
                             schedule_id=schedule.schedule_id,
                             tenant_id=schedule.tenant_id,
+                            scheduled_for=schedule.next_run or now_iso,
                         )
                         # Compute next run
                         next_run = parse_cron_next(schedule.cron_expression, now)

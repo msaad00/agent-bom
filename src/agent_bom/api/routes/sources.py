@@ -8,13 +8,16 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import ValidationError
 
 from agent_bom.api.audit_log import log_action
+from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.models import (
     CredentialRefStatus,
     ScanRequest,
+    SourceCohortRunRequest,
+    SourceCohortRunResponse,
     SourceCreate,
     SourceCredentialMode,
     SourceKind,
@@ -22,12 +25,23 @@ from agent_bom.api.models import (
     SourceStatus,
     SourceUpdate,
 )
-from agent_bom.api.routes.scan import _sanitize_scan_request_paths, enqueue_scan_job
+from agent_bom.api.routes.scan import (
+    _sanitize_scan_request_paths,
+    correlation_cohort_id,
+    enqueue_correlation_cohort,
+    enqueue_scan_job,
+)
 from agent_bom.api.scan_batches import scan_request_targets
-from agent_bom.api.stores import _get_credential_ref_store, _get_schedule_store, _get_source_store, _get_store
+from agent_bom.api.stores import (
+    _get_credential_ref_store,
+    _get_idempotency_store,
+    _get_schedule_store,
+    _get_source_store,
+    _get_store,
+)
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
-from agent_bom.security import sanitize_text
+from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
 
@@ -441,6 +455,111 @@ async def run_source(request: Request, source_id: str) -> dict:
         job_id=job.job_id,
     )
     return {"source_id": source.source_id, "job_id": job.job_id, "status": job.status.value}
+
+
+@router.post(
+    "/sources/run-cohort",
+    tags=["sources"],
+    status_code=202,
+    response_model=SourceCohortRunResponse,
+)
+async def run_source_cohort(
+    request: Request,
+    body: SourceCohortRunRequest,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+) -> SourceCohortRunResponse:
+    """Run exact registered sources and auto-correlate their immutable scan outputs."""
+
+    tenant_id = _tenant_id(request)
+    idempotency_key = idempotency_key.strip()
+    if not idempotency_key:
+        raise HTTPException(status_code=422, detail="Idempotency-Key header is required")
+    if len(idempotency_key) > 200:
+        raise HTTPException(status_code=422, detail="Idempotency-Key must be at most 200 characters")
+
+    request_hash = idempotency_request_fingerprint(body)
+    try:
+        cached = _get_idempotency_store().get(
+            "/v1/sources/run-cohort",
+            tenant_id,
+            "source-cohort",
+            idempotency_key,
+            request_hash=request_hash,
+        )
+    except IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
+    if cached is not None:
+        return SourceCohortRunResponse.model_validate(cached)
+
+    sources: list[SourceRecord] = []
+    source_requests: list[tuple[str, ScanRequest]] = []
+    for source_id in body.source_ids:
+        source = _source_for_request(request, source_id).model_copy(deep=True)
+        if not source.enabled:
+            raise HTTPException(status_code=409, detail=f"Source {source_id} is disabled")
+        _validate_credential_ref(request, source)
+        source_request = _request_for_source(source)
+        if len(scan_request_targets(source_request)) != 1:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Source {source_id} must resolve to exactly one scan target for a correlation cohort",
+            )
+        sources.append(source)
+        source_requests.append((source_id, source_request))
+
+    cohort_id = correlation_cohort_id(tenant_id=tenant_id, idempotency_key=idempotency_key)
+    try:
+        parent = enqueue_correlation_cohort(
+            tenant_id=tenant_id,
+            triggered_by=f"{_actor(request)}:source-cohort",
+            correlation_cohort_id=cohort_id,
+            source_requests=source_requests,
+            max_age_hours=body.max_age_hours,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Correlation cohort conflicts with persisted immutable state",
+        ) from exc
+
+    now = _now()
+    for source, child_job_id in zip(sources, parent.child_job_ids, strict=True):
+        source.last_run_at = now
+        source.last_run_status = "pending"
+        source.last_job_id = child_job_id
+        source.updated_at = now
+        _get_source_store().put(source)
+
+    decision = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
+    response = SourceCohortRunResponse(
+        correlation_cohort_id=cohort_id,
+        cohort_manifest_hash=parent.correlation_cohort_manifest_hash or "",
+        parent_job_id=parent.job_id,
+        child_job_ids=list(parent.child_job_ids),
+        source_ids=list(body.source_ids),
+        max_age_hours=body.max_age_hours,
+        status=parent.status,
+        auto_correlation=decision if isinstance(decision, dict) else None,
+    )
+    response_payload = response.model_dump(mode="json")
+    _get_idempotency_store().put(
+        "/v1/sources/run-cohort",
+        tenant_id,
+        "source-cohort",
+        idempotency_key,
+        response_payload,
+        request_hash=request_hash,
+    )
+    log_action(
+        "source.cohort.run",
+        actor=_actor(request),
+        resource=f"correlation-cohort/{cohort_id}",
+        tenant_id=tenant_id,
+        source_count=len(sources),
+        max_age_hours=body.max_age_hours,
+        parent_job_id=parent.job_id,
+    )
+    return response
 
 
 @router.get("/sources/{source_id}/jobs", tags=["sources"])

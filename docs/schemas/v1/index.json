@@ -262,6 +262,16 @@
       "schema": "SideScanTriggerRequest.json"
     },
     {
+      "doc": "Exact registered sources to scan and correlate as one immutable cohort.",
+      "name": "SourceCohortRunRequest",
+      "schema": "SourceCohortRunRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "SourceCohortRunResponse",
+      "schema": "SourceCohortRunResponse.json"
+    },
+    {
       "doc": "",
       "name": "SourceCreate",
       "schema": "SourceCreate.json"

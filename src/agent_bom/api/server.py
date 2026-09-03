@@ -634,6 +634,17 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         _side_scan_scheduler_task = asyncio.create_task(side_scan_scheduler_loop())
         _logger.info("Cross-cloud side-scan scheduler enabled")
 
+    # ── Exact-batch graph correlation scheduler ──
+    # Opt-in and strict-freshness only.  It correlates the child snapshots from
+    # one explicit multi-target scan batch; it never groups tenant-latest rows,
+    # recurring source ids, mutable tags, or similar labels.
+    global _auto_correlation_task
+    from agent_bom.api.auto_correlation import auto_correlation_enabled, auto_correlation_loop
+
+    if auto_correlation_enabled():
+        _auto_correlation_task = asyncio.create_task(auto_correlation_loop(_get_store(), _stores._get_graph_store()))
+        _logger.info("Exact-batch graph correlation scheduler enabled")
+
     # ── Distributed scan dispatch ──
     # Start a per-replica claim-loop so queued scans are stolen across the
     # cluster. No-op on single-node / non-Postgres deployments.
@@ -683,6 +694,8 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         _export_scheduler_task.cancel()
     if _side_scan_scheduler_task:
         _side_scan_scheduler_task.cancel()
+    if _auto_correlation_task:
+        _auto_correlation_task.cancel()
     if _cleanup_task:
         _cleanup_task.cancel()
     # Drain in-flight scans. Honor the operator-configured drain budget so the
@@ -1124,6 +1137,7 @@ _scheduler_task: asyncio.Task | None = None
 _connection_scheduler_task: asyncio.Task | None = None
 _export_scheduler_task: asyncio.Task | None = None
 _side_scan_scheduler_task: asyncio.Task | None = None
+_auto_correlation_task: asyncio.Task | None = None
 # Flipped to True during graceful shutdown so the /readyz probe goes red
 # and upstream load balancers stop sending new traffic while in-flight
 # requests complete under the drain budget.

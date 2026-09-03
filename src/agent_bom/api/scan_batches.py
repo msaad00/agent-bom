@@ -20,7 +20,7 @@ BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom", "external_scan", 
 # Parent-only metadata computed by the batch roll-up. These keys are never
 # copied up from child results so aggregation cannot clobber the parent's own
 # batch bookkeeping.
-_PARENT_METADATA_RESULT_KEYS = frozenset({"batch", "summary", "aggregation"})
+_PARENT_METADATA_RESULT_KEYS = frozenset({"batch", "summary", "aggregation", "auto_correlation"})
 
 
 def scan_request_targets(request: ScanRequest) -> list[dict[str, Any]]:
@@ -205,6 +205,9 @@ def refresh_batch_parent(parent_job_id: str, *, tenant_id: str | None = None) ->
     result["batch"] = batch
     result["summary"] = batch
     result["aggregation"] = aggregation
+    prior_auto_correlation = parent.result.get("auto_correlation") if isinstance(parent.result, dict) else None
+    if isinstance(prior_auto_correlation, dict):
+        result["auto_correlation"] = prior_auto_correlation
 
     with _job_lock(parent.job_id):
         parent.status = next_status

@@ -86,6 +86,7 @@ describe("GraphCorrelationWorkflow", () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} outcome={outcome} onOpenSnapshot={vi.fn()} />);
 
     expect(await screen.findByTestId("graph-correlation-decision")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Review prioritized path preview"));
     expect(screen.getByText(outcome.title)).toBeInTheDocument();
     expect(screen.getByText("Risk 9.8")).toBeInTheDocument();
     expect(screen.getByText("7 directed hops")).toBeInTheDocument();
@@ -100,6 +101,15 @@ describe("GraphCorrelationWorkflow", () => {
     expect(screen.queryByLabelText("Correlation name")).not.toBeVisible();
     expect(apiMock.createGraphCorrelation).not.toHaveBeenCalled();
     expect(screen.getByText("Fresh evidence")).toBeInTheDocument();
+  });
+
+  it("keeps the duplicated path preview behind progressive disclosure", async () => {
+    render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} outcome={outcome} onOpenSnapshot={vi.fn()} />);
+
+    expect(await screen.findByTestId("graph-correlation-decision")).toBeInTheDocument();
+    expect(screen.getByText("Review prioritized path preview")).toBeInTheDocument();
+    expect(screen.getByText(outcome.title)).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "Open top path" })).toBeVisible();
   });
 
   it("does not preselect evidence outside the confirmed freshness bound", () => {

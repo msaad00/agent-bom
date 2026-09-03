@@ -205,12 +205,9 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "MCP tools · no account required" not in hero
     assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
     assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
-    # The hero links the live demo. This project operates that Cloud Run service
-    # itself (`.github/workflows/demo-deploy-cloudrun.yml`), so its uptime is ours
-    # to own, and trying the product is the first thing the README's personas —
-    # AppSec, GRC, security leadership, and the engineers who remediate — need to
-    # do. Keep the link in the hero and keep it pointed at the deployed service.
-    assert '<a href="https://agent-bom-demo-82102570041.us-central1.run.app">Live demo</a>' in hero
+    # Keep the hero stable and focused: the outcome-first proof section owns the
+    # live product evidence instead of duplicating a volatile service URL here.
+    assert "Live demo" not in hero
     # `demo.agent-bom.com` is not currently mapped to that service. Until a Cloud
     # Run domain mapping exists, the README must not send anyone to a hostname
     # that resolves to nothing.

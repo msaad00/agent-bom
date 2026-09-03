@@ -104,11 +104,27 @@ def _decision(
         "cohort_basis": "batch_id",
         "batch_id": parent.batch_id or "",
         "correlation_id": correlation_id,
+        "output_scan_id": correlation_id if status == "complete" else "",
         "input_scan_ids": list(scan_ids),
         "max_age_hours": policy.max_age_hours,
         "allow_stale": False,
         "updated_at": now.astimezone(timezone.utc).isoformat(),
     }
+
+
+def initial_auto_correlation_decision(parent: ScanJob, *, policy: AutoCorrelationPolicy, now: datetime) -> dict[str, Any]:
+    """Return the durable pending handoff exposed with a new scan batch."""
+
+    correlation_id, _ = _deterministic_identity(tenant_id=parent.tenant_id, batch_id=parent.batch_id or parent.job_id)
+    return _decision(
+        parent=parent,
+        policy=policy,
+        now=now,
+        status="pending",
+        reason="batch_incomplete",
+        correlation_id=correlation_id,
+        scan_ids=tuple(sorted(parent.child_job_ids)),
+    )
 
 
 def _persist_decision(job_store: JobStore, parent: ScanJob, decision: dict[str, Any]) -> None:
@@ -437,5 +453,6 @@ __all__ = [
     "auto_correlation_enabled",
     "auto_correlation_loop",
     "auto_correlation_policy_from_env",
+    "initial_auto_correlation_decision",
     "reconcile_auto_correlations_once",
 ]

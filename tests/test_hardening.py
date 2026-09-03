@@ -92,6 +92,28 @@ def test_job_summary_payload_aliases_generated_at_to_scan_timestamp():
     assert payload["scan_run"]["scan_id"] == "scan-123"
 
 
+def test_job_summary_payload_exposes_bounded_auto_correlation_handoff():
+    from agent_bom.api.routes.scan import _job_summary_payload
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    job = ScanJob(job_id="summary-correlation", created_at="2026-09-03T00:00:00Z", request=ScanRequest())
+    job.status = JobStatus.DONE
+    job.result = {
+        "auto_correlation": {
+            "schema_version": "agent-bom.auto-correlation/v1",
+            "status": "complete",
+            "reason": "completed",
+            "correlation_id": "corr-output",
+            "output_scan_id": "corr-output",
+            "input_scan_ids": ["scan-a", "scan-b"],
+        }
+    }
+
+    payload = _job_summary_payload(job)
+
+    assert payload["auto_correlation"] == job.result["auto_correlation"]
+
+
 def test_jobs_bounded_eviction():
     """When _jobs exceeds _MAX_IN_MEMORY_JOBS, oldest completed jobs are evicted."""
     from agent_bom.api import stores as _stores

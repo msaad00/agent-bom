@@ -285,6 +285,7 @@ async def test_deterministic_idempotency_and_restart_reconciliation(tmp_path: Pa
     persisted_parent = SQLiteJobStore(jobs_path).get(parent.job_id, tenant_id="tenant-a")
     assert persisted_parent is not None
     assert persisted_parent.result["auto_correlation"]["status"] == "complete"
+    assert persisted_parent.result["auto_correlation"]["output_scan_id"] == first[0]["correlation_id"]
     assert persisted_parent.result["auto_correlation"]["max_age_hours"] == 168
 
 

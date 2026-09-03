@@ -109,6 +109,75 @@ describe("ScanResultView cloud evidence", () => {
     expect(screen.getByRole("link", { name: /Remediation/i })).toHaveAttribute("href", "/remediation?scan=scan-cloud-1");
   });
 
+  it("hands a completed automatic correlation to its exact output snapshot", async () => {
+    apiMock.getScan.mockResolvedValue({
+      job_id: "scan-cloud-1",
+      status: "done",
+      created_at: "2026-06-27T00:00:00Z",
+      completed_at: "2026-06-27T00:05:00Z",
+      request: {},
+      progress: [],
+      result: {
+        agents: [],
+        blast_radius: [],
+        auto_correlation: {
+          schema_version: "agent-bom.auto-correlation/v1",
+          status: "complete",
+          reason: "completed",
+          correlation_id: "corr-output",
+          output_scan_id: "corr-output",
+          input_scan_ids: ["scan-repo", "scan-image"],
+          max_age_hours: 168,
+          allow_stale: false,
+        },
+      },
+    });
+
+    render(<ScanResultView id="scan-cloud-1" />);
+
+    const investigation = await screen.findByRole("link", { name: /Correlated investigation/i });
+    expect(investigation).toHaveAttribute(
+      "href",
+      "/security-graph?scan=corr-output&correlation=1&investigate=1&lens=attack-path",
+    );
+    expect(screen.getByText("2 source snapshots automatically correlated")).toBeInTheDocument();
+  });
+
+  it("keeps the source graph available and explains a skipped automatic correlation", async () => {
+    apiMock.getScan.mockResolvedValue({
+      job_id: "scan-cloud-1",
+      status: "done",
+      created_at: "2026-06-27T00:00:00Z",
+      completed_at: "2026-06-27T00:05:00Z",
+      request: {},
+      progress: [],
+      result: {
+        agents: [],
+        blast_radius: [],
+        auto_correlation: {
+          schema_version: "agent-bom.auto-correlation/v1",
+          status: "skipped",
+          reason: "empty_input_snapshot",
+          correlation_id: "corr-output",
+          input_scan_ids: ["scan-repo"],
+          max_age_hours: 168,
+          allow_stale: false,
+        },
+      },
+    });
+
+    render(<ScanResultView id="scan-cloud-1" />);
+
+    const investigation = await screen.findByRole("link", { name: /^Investigation/i });
+    expect(investigation).toHaveAttribute(
+      "href",
+      "/security-graph?scan=scan-cloud-1&investigate=1&lens=attack-path",
+    );
+    expect(
+      screen.getByText("Automatic correlation skipped: empty input snapshot"),
+    ).toBeInTheDocument();
+  });
+
   it("filters and paginates dense blast-radius evidence instead of rendering every path", async () => {
     apiMock.getScan.mockResolvedValue({
       job_id: "scan-cloud-1",

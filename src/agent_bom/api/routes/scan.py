@@ -1207,6 +1207,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
     warning_count = max(0, min(100, raw_warning_count)) if isinstance(raw_warning_count, int) else len(warnings)
     generated_at = result.get("generated_at") or (scan_run or {}).get("generated_at")
     scan_timestamp = result.get("scan_timestamp") or generated_at
+    auto_correlation = sanitize_sensitive_payload(result.get("auto_correlation"))
     request_payload = sanitize_sensitive_payload(job.request.model_dump(exclude_defaults=True, exclude_none=True))
     return {
         "job_id": job.job_id,
@@ -1225,6 +1226,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "request": request_payload if isinstance(request_payload, dict) else {},
         "summary": sanitize_sensitive_payload(summary),
         "aggregation": sanitize_sensitive_payload(aggregation),
+        **({"auto_correlation": auto_correlation} if isinstance(auto_correlation, dict) else {}),
         "scan_timestamp": scan_timestamp,
         "generated_at": generated_at,
         "scan_run": sanitize_sensitive_payload(scan_run),
@@ -1364,6 +1366,17 @@ def enqueue_scan_job(
             progress=[f"Batch scan created with {len(child_jobs)} target job(s)"],
             target_count=len(targets),
         )
+        from agent_bom.api.auto_correlation import auto_correlation_policy_from_env, initial_auto_correlation_decision
+
+        auto_correlation_policy = auto_correlation_policy_from_env()
+        if auto_correlation_policy.enabled:
+            parent.result = {
+                "auto_correlation": initial_auto_correlation_decision(
+                    parent,
+                    policy=auto_correlation_policy,
+                    now=datetime.now(timezone.utc),
+                )
+            }
 
         attempted_jobs = len(child_jobs) + 1
         admission = (

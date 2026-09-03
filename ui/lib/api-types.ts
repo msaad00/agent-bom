@@ -103,6 +103,18 @@ export interface ScanResult {
   skill_audit?: Record<string, unknown> | undefined;
   iac_findings?: unknown | undefined;
   sast?: Record<string, unknown> | undefined;
+  auto_correlation?: AutoCorrelationHandoff | undefined;
+}
+
+export interface AutoCorrelationHandoff {
+  schema_version: "agent-bom.auto-correlation/v1";
+  status: "pending" | "scheduled" | "deferred" | "complete" | "failed" | "skipped";
+  reason: string;
+  correlation_id: string;
+  output_scan_id?: string | undefined;
+  input_scan_ids: string[];
+  max_age_hours: number;
+  allow_stale: boolean;
 }
 
 export interface ScanRunIssue {
@@ -2386,6 +2398,7 @@ export interface JobListItem {
   warning_count?: number | undefined;
   warnings_preview?: string[] | undefined;
   pushed?: boolean | undefined;
+  auto_correlation?: AutoCorrelationHandoff | undefined;
   error?: string | undefined;
 }
 

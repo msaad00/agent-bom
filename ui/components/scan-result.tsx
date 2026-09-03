@@ -26,9 +26,16 @@ function scanArtifactDescriptor(format: string | undefined): { label: string; fi
   return { label: "AI-BOM JSON", fileSuffix: "ai-bom.json" };
 }
 
+function correlationReasonLabel(reason: string): string {
+  return reason.replaceAll("_", " ");
+}
+
 // ─── Scan Result View ───────────────────────────────────────────────────────
 
 function mergeScanStatus(prev: ScanJob | null, status: ScanJobStatus): ScanJob {
+  const result = prev?.result && status.auto_correlation
+    ? { ...prev.result, auto_correlation: status.auto_correlation }
+    : prev?.result;
   return {
     job_id: status.job_id,
     tenant_id: status.tenant_id ?? prev?.tenant_id,
@@ -37,7 +44,7 @@ function mergeScanStatus(prev: ScanJob | null, status: ScanJobStatus): ScanJob {
     completed_at: status.completed_at ?? prev?.completed_at,
     request: status.request ?? prev?.request ?? {},
     progress: prev?.progress ?? [],
-    result: prev?.result,
+    result,
     error: status.error ?? prev?.error,
   };
 }
@@ -140,6 +147,20 @@ export function ScanResultView({ id }: { id: string }) {
       ? job.request.repo_url.trim()
       : null;
   const scanArtifact = scanArtifactDescriptor(job?.request?.format);
+  const autoCorrelation = result?.auto_correlation;
+  const correlatedScanId = autoCorrelation?.status === "complete"
+    ? autoCorrelation.output_scan_id || autoCorrelation.correlation_id
+    : null;
+
+  useEffect(() => {
+    if (!autoCorrelation || !["pending", "scheduled", "deferred"].includes(autoCorrelation.status)) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      void refreshStatus().catch(() => {});
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [autoCorrelation, refreshStatus]);
 
   useEffect(() => {
     setBlastPage(1);
@@ -283,10 +304,18 @@ export function ScanResultView({ id }: { id: string }) {
                 {summary ? `${summary.total_vulnerabilities} vulnerabilities recorded` : "Review findings persisted by this scan"}
               </span>
             </Link>
-            <Link href={`/security-graph?scan=${encodeURIComponent(id)}&investigate=1&lens=attack-path`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">
-              <span className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]"><GitBranch className="h-4 w-4 text-emerald-500" /> Investigation</span>
+            <Link href={correlatedScanId ? `/security-graph?scan=${encodeURIComponent(correlatedScanId)}&correlation=1&investigate=1&lens=attack-path` : `/security-graph?scan=${encodeURIComponent(id)}&investigate=1&lens=attack-path`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">
+              <span className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]"><GitBranch className="h-4 w-4 text-emerald-500" /> {correlatedScanId ? "Correlated investigation" : "Investigation"}</span>
               <span className="mt-1 block text-[11px] text-[color:var(--text-secondary)]">
-                {blastRadius.length > 0 ? `${blastRadius.length} path candidates available` : "Open graph evidence; no attack path is asserted"}
+                {correlatedScanId
+                  ? `${autoCorrelation?.input_scan_ids.length ?? 0} source snapshots automatically correlated`
+                  : autoCorrelation && ["pending", "scheduled", "deferred"].includes(autoCorrelation.status)
+                    ? `Automatic correlation ${autoCorrelation.status}; this view refreshes when the output is ready`
+                    : autoCorrelation && ["failed", "skipped"].includes(autoCorrelation.status)
+                      ? `Automatic correlation ${autoCorrelation.status}: ${correlationReasonLabel(autoCorrelation.reason)}`
+                    : blastRadius.length > 0
+                      ? `${blastRadius.length} path candidates available`
+                      : "Open graph evidence; no attack path is asserted"}
               </span>
             </Link>
             <Link href={`/remediation?scan=${encodeURIComponent(id)}`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">

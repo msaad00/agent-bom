@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -11,7 +14,7 @@ from starlette.testclient import TestClient
 from agent_bom.api import stores
 from agent_bom.api.auto_correlation import AutoCorrelationPolicy, reconcile_auto_correlations_once
 from agent_bom.api.graph_store import SQLiteGraphStore
-from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
+from agent_bom.api.idempotency_store import InMemoryIdempotencyStore, SQLiteIdempotencyStore
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
@@ -221,6 +224,91 @@ def test_cohort_result_replay_is_idempotent_but_changed_duplicate_is_rejected(co
     child = jobs.get(first.json()["job_id"], tenant_id=TENANT)
     assert child is not None
     assert child.result["agents"][0]["name"] == "gateway"
+
+
+def test_cohort_child_claim_rejects_changed_payload_across_replica_locks(
+    cohort_client,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, jobs, _graph_store = cohort_client
+    cohort = _create_external_cohort(client)
+    stores.set_idempotency_store(SQLiteIdempotencyStore(str(tmp_path / "cohort-cas.db")))
+    monkeypatch.setattr("agent_bom.api.correlation_cohort_ingest._job_lock", lambda _job_id: contextlib.nullcontext())
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    graph_calls: list[str] = []
+
+    def _controlled_persist(job, _report) -> None:
+        name = job.result["agents"][0]["name"]
+        graph_calls.append(name)
+        if name == "gateway":
+            first_entered.set()
+            assert release_first.wait(timeout=3)
+
+    monkeypatch.setattr("agent_bom.api.routes.observability._persist_graph_snapshot", _controlled_persist)
+    original = _result_payload(cohort)
+    changed = _result_payload(cohort, suffix="-changed")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        first_future = pool.submit(
+            lambda: TestClient(app, raise_server_exceptions=False).post(
+                "/v1/results/push",
+                headers=HEADERS,
+                json=original,
+            )
+        )
+        assert first_entered.wait(timeout=3)
+        conflicting = TestClient(app, raise_server_exceptions=False).post(
+            "/v1/results/push",
+            headers=HEADERS,
+            json=changed,
+        )
+        release_first.set()
+        first = first_future.result(timeout=3)
+
+    assert first.status_code == 201
+    assert conflicting.status_code == 409
+    assert graph_calls == ["gateway"]
+    child = jobs.get(first.json()["job_id"], tenant_id=TENANT)
+    assert child is not None and child.result["agents"][0]["name"] == "gateway"
+
+
+def test_cohort_push_reconciles_committed_child_before_durable_receipt(
+    cohort_client,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, jobs, _graph_store = cohort_client
+    cohort = _create_external_cohort(client)
+
+    class _FailCommittedReceiptOnce(SQLiteIdempotencyStore):
+        failed = False
+
+        def put(self, *args, **kwargs) -> None:
+            response = args[4]
+            if args[0] == "/v1/results/push/cohort" and response.get("committed") is True and not self.failed:
+                self.failed = True
+                raise RuntimeError("receipt backend interrupted")
+            super().put(*args, **kwargs)
+
+    idempotency = _FailCommittedReceiptOnce(str(tmp_path / "cohort-recovery.db"))
+    stores.set_idempotency_store(idempotency)
+    graph_calls: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.api.routes.observability._persist_graph_snapshot",
+        lambda job, _report: graph_calls.append(job.job_id),
+    )
+    payload = _result_payload(cohort)
+
+    failed = client.post("/v1/results/push", headers=HEADERS, json=payload)
+    replay = client.post("/v1/results/push", headers=HEADERS, json=payload)
+
+    assert failed.status_code == 503
+    assert replay.status_code == 201
+    assert graph_calls == [replay.json()["job_id"]]
+    child = jobs.get(replay.json()["job_id"], tenant_id=TENANT)
+    assert child is not None and child.status.value == "done"
 
 
 @pytest.mark.parametrize("tamper", ["manifest", "source", "signature"])

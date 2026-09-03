@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from threading import Event, Thread
 from types import SimpleNamespace
@@ -15,8 +17,16 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.credential_store import InMemoryCredentialRefStore
-from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
-from agent_bom.api.models import CredentialRefRecord, CredentialRefStatus, ScanJob, SourceKind, SourceRecord
+from agent_bom.api.idempotency_store import InMemoryIdempotencyStore, idempotency_request_fingerprint
+from agent_bom.api.models import (
+    CredentialRefRecord,
+    CredentialRefStatus,
+    ScanJob,
+    SourceCohortRunRequest,
+    SourceKind,
+    SourceRecord,
+)
+from agent_bom.api.routes.scan import correlation_cohort_id, correlation_cohort_parent_job_id
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
@@ -193,6 +203,154 @@ def test_source_cohort_run_is_exact_tenant_bound_and_idempotent(
         json={"source_ids": source_ids, "max_age_hours": 24},
     )
     assert cross_tenant.status_code == 404
+
+
+def test_source_cohort_same_key_dispatches_each_child_once(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_ids: list[str] = []
+    for name in ("z-repository", "a-repository"):
+        created = source_client.post(
+            "/v1/sources",
+            headers=ANALYST_HEADERS,
+            json={
+                "display_name": name,
+                "kind": "scan.repo",
+                "config": {"scan_request": {"repo_url": f"https://github.com/example/{name}"}},
+            },
+        )
+        assert created.status_code == 201
+        source_ids.append(created.json()["source_id"])
+
+    idempotency = _stores._get_idempotency_store()
+    original_get = idempotency.get
+    barrier = threading.Barrier(2)
+
+    def _racing_get(*args, **kwargs):
+        value = original_get(*args, **kwargs)
+        if args[0] == "/v1/sources/run-cohort" and value is None:
+            barrier.wait(timeout=2)
+        return value
+
+    monkeypatch.setattr(idempotency, "get", _racing_get)
+    dispatched: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    headers = {**ANALYST_HEADERS, "Idempotency-Key": "concurrent-deploy"}
+    payload = {"source_ids": list(reversed(source_ids)), "max_age_hours": 24}
+
+    def _post() -> tuple[int, dict[str, Any]]:
+        response = TestClient(app, raise_server_exceptions=False).post(
+            "/v1/sources/run-cohort",
+            headers=headers,
+            json=payload,
+        )
+        return response.status_code, response.json()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _index: _post(), range(2)))
+
+    assert {status for status, _body in results} == {202}
+    assert results[0][1] == results[1][1]
+    assert sorted(dispatched) == sorted(results[0][1]["child_job_ids"])
+    for source_id in source_ids:
+        source = _stores._get_source_store().get(source_id)
+        assert source is not None
+        child = _stores._get_store().get(source.last_job_id or "", tenant_id="tenant-alpha")
+        assert child is not None and child.source_id == source_id
+
+
+def test_source_cohort_reconciles_durable_parent_after_receipt_failure(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_ids: list[str] = []
+    for name in ("repo-one", "repo-two"):
+        created = source_client.post(
+            "/v1/sources",
+            headers=ANALYST_HEADERS,
+            json={
+                "display_name": name,
+                "kind": "scan.repo",
+                "config": {"scan_request": {"repo_url": f"https://github.com/example/{name}"}},
+            },
+        )
+        source_ids.append(created.json()["source_id"])
+
+    class _FailCommittedReceiptOnce(InMemoryIdempotencyStore):
+        failed = False
+
+        def put(self, *args, **kwargs) -> None:
+            response = args[4]
+            if args[0] == "/v1/sources/run-cohort" and response.get("committed") is True and not self.failed:
+                self.failed = True
+                raise RuntimeError("receipt backend interrupted")
+            super().put(*args, **kwargs)
+
+    idempotency = _FailCommittedReceiptOnce()
+    _stores.set_idempotency_store(idempotency)
+    dispatched: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+    headers = {**ANALYST_HEADERS, "Idempotency-Key": "durable-before-receipt"}
+    payload = {"source_ids": source_ids, "max_age_hours": 24}
+
+    failed = source_client.post("/v1/sources/run-cohort", headers=headers, json=payload)
+    replay = source_client.post("/v1/sources/run-cohort", headers=headers, json=payload)
+
+    assert failed.status_code == 503
+    assert replay.status_code == 202
+    assert len(dispatched) == 2
+    receipt = idempotency.get(
+        "/v1/sources/run-cohort",
+        "tenant-alpha",
+        "source-cohort",
+        "durable-before-receipt",
+    )
+    assert receipt is not None and receipt["committed"] is True
+    assert receipt["response"] == replay.json()
+
+
+def test_source_cohort_reclaims_expired_claim_before_any_dispatch(
+    source_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_ids: list[str] = []
+    for name in ("expired-one", "expired-two"):
+        created = source_client.post(
+            "/v1/sources",
+            headers=ANALYST_HEADERS,
+            json={
+                "display_name": name,
+                "kind": "scan.repo",
+                "config": {"scan_request": {"repo_url": f"https://github.com/example/{name}"}},
+            },
+        )
+        source_ids.append(created.json()["source_id"])
+    request = SourceCohortRunRequest(source_ids=source_ids, max_age_hours=24)
+    request_hash = idempotency_request_fingerprint(request)
+    cohort_id = correlation_cohort_id(tenant_id="tenant-alpha", idempotency_key="expired-cohort")
+    parent_id = correlation_cohort_parent_job_id(tenant_id="tenant-alpha", correlation_cohort_id=cohort_id)
+    idempotency = _stores._get_idempotency_store()
+    key = ("/v1/sources/run-cohort", "tenant-alpha", "source-cohort", "expired-cohort")
+    idempotency.claim(
+        *key,
+        {"parent_job_id": parent_id, "committed": False},
+        request_hash=request_hash,
+    )
+    idempotency._records[key].created_at = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()  # type: ignore[attr-defined]  # noqa: SLF001
+    monkeypatch.setenv("AGENT_BOM_IDEMPOTENCY_RESERVATION_LEASE_SECONDS", "30")
+    dispatched: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.scan.dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+
+    response = source_client.post(
+        "/v1/sources/run-cohort",
+        headers={**ANALYST_HEADERS, "Idempotency-Key": "expired-cohort"},
+        json=request.model_dump(mode="json"),
+    )
+
+    assert response.status_code == 202
+    assert response.json()["parent_job_id"] == parent_id
+    assert sorted(dispatched) == sorted(response.json()["child_job_ids"])
 
 
 def test_source_cohort_run_rejects_duplicate_or_multi_target_members(

@@ -368,7 +368,7 @@ async def cloud_inventory(
                 )
             except ProviderExecutionTimeoutError:
                 provider_label = requested if requested != "all" else "all"
-                _logger.warning("Cloud inventory timed out for %s", provider_label)
+                _logger.warning("Cloud inventory timed out for %s", sanitize_log_label(provider_label))
                 return {
                     "error": "Provider inventory timed out before completing.",
                     "provider": provider_label,
@@ -557,7 +557,7 @@ async def cloud_cis_benchmark(
                     timeout_seconds=_cloud_cis_timeout_seconds(),
                 )
             except ProviderExecutionTimeoutError:
-                _logger.warning("Cloud CIS benchmark timed out for %s", requested)
+                _logger.warning("Cloud CIS benchmark timed out for %s", sanitize_log_label(requested))
                 return {
                     "error": "Provider benchmark timed out before completing.",
                     "provider": requested,

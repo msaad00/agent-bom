@@ -14,12 +14,47 @@ payload shape is unchanged.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 import anyio.to_thread
 import pytest
 
 from agent_bom.api.routes import cloud
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["inventory", "cis"])
+async def test_cloud_timeout_logs_sanitize_request_derived_provider_labels(monkeypatch, caplog, surface):
+    """Timeout diagnostics cannot inject forged lines through provider labels."""
+
+    malicious_provider = "aws\nforged-log-entry"
+    monkeypatch.setattr(cloud, "_tenant", lambda request: "tenant-a")
+
+    async def _timeout(*_args, **_kwargs):
+        raise cloud.ProviderExecutionTimeoutError
+
+    monkeypatch.setattr(cloud, "run_provider_call", _timeout)
+    caplog.set_level(logging.WARNING, logger=cloud.__name__)
+
+    if surface == "inventory":
+        monkeypatch.setattr(cloud, "_INVENTORY_PROVIDERS", (malicious_provider,))
+        await cloud.cloud_inventory(request=object(), provider=malicious_provider, region="")
+    else:
+        monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
+        monkeypatch.setattr(cloud, "_CIS_PROVIDERS", (malicious_provider,))
+        await cloud.cloud_cis_benchmark(
+            request=object(),
+            provider=malicious_provider,
+            checks="",
+            region="",
+            profile="",
+            subscription_id="",
+            project_id="",
+        )
+
+    assert "forged-log-entry" in caplog.text
+    assert "aws\nforged-log-entry" not in caplog.text
 
 
 def _spy_run_sync(monkeypatch):

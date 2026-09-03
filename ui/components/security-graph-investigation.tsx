@@ -237,6 +237,7 @@ export function SecurityGraphInvestigation({
   fullGraphHref,
   loading = false,
   scanId,
+  remediationHref = "/remediation",
   onPinnedNodeChange,
   onStepHint,
 }: {
@@ -247,6 +248,7 @@ export function SecurityGraphInvestigation({
   fullGraphHref: string;
   loading?: boolean;
   scanId?: string | undefined;
+  remediationHref?: string | undefined;
   onPinnedNodeChange?: ((nodeId: string | null) => void) | undefined;
   /** Notify parent when expand/impact actions advance the investigation step. */
   onStepHint?: ((step: "expand" | "impact" | "fix") => void) | undefined;
@@ -573,7 +575,7 @@ export function SecurityGraphInvestigation({
             onShowBlastRadius={() => void handleShowImpact()}
             onExpandNeighbors={() => void handleExpandNeighbors()}
             onShowImpact={() => void handleShowImpact()}
-            remediationHref="/remediation"
+            remediationHref={remediationHref}
           />
         </div>
       )}

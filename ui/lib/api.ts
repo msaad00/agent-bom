@@ -16,6 +16,7 @@ import type {
   GraphCorrelationCreate,
   GraphCorrelationList,
   GraphCorrelationRun,
+  CorrelationRemediationResponse,
   GraphScenario,
   GraphScenariosResponse,
   GraphScenarioResponse,
@@ -199,6 +200,8 @@ export type {
   GraphCorrelationCreate,
   GraphCorrelationList,
   GraphCorrelationRun,
+  CorrelationRemediationDecision,
+  CorrelationRemediationResponse,
   GraphScenario,
   GraphScenarioChange,
   GraphScenariosResponse,
@@ -1004,6 +1007,12 @@ export const api = {
   /** List recent tenant-scoped graph correlation runs. */
   listGraphCorrelations: (limit = 50) =>
     get<GraphCorrelationList>(`/v1/graph/correlations?limit=${limit}`),
+
+  /** Read remediation decisions bound to one immutable correlation output. */
+  getCorrelationRemediation: (correlationId: string) =>
+    get<CorrelationRemediationResponse>(
+      `/v1/graph/correlations/${encodeURIComponent(correlationId)}/remediation`,
+    ),
 
   /** List persistent, snapshot-pinned proposed architecture scenarios. */
   getGraphScenarios: () =>

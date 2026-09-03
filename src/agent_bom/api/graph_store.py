@@ -1305,7 +1305,7 @@ class SQLiteGraphStore:
             rows = conn.execute(
                 f"""
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids,
+                       summary, credential_exposure, tool_exposure, vuln_ids, finding_ids,
                        reachability, reachability_basis, technique_mappings,
                        hop_evidence, analysis
                 FROM attack_paths
@@ -1324,6 +1324,7 @@ class SQLiteGraphStore:
                     credential_exposure=json.loads(row["credential_exposure"]),
                     tool_exposure=json.loads(row["tool_exposure"]),
                     vuln_ids=json.loads(row["vuln_ids"]),
+                    finding_ids=json.loads(row["finding_ids"] or "[]"),
                     reachability=row["reachability"] or "unknown",
                     reachability_basis=json.loads(row["reachability_basis"] or "[]"),
                     hop_evidence=json.loads(row["hop_evidence"] or "[]"),
@@ -1358,7 +1359,7 @@ class SQLiteGraphStore:
             rows = conn.execute(
                 """
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids,
+                       summary, credential_exposure, tool_exposure, vuln_ids, finding_ids,
                        reachability, reachability_basis, technique_mappings,
                        hop_evidence, analysis
                 FROM attack_paths
@@ -1382,6 +1383,7 @@ class SQLiteGraphStore:
                         credential_exposure=json.loads(row["credential_exposure"]),
                         tool_exposure=json.loads(row["tool_exposure"]),
                         vuln_ids=json.loads(row["vuln_ids"]),
+                        finding_ids=json.loads(row["finding_ids"] or "[]"),
                         reachability=row["reachability"] or "unknown",
                         reachability_basis=json.loads(row["reachability_basis"] or "[]"),
                         hop_evidence=json.loads(row["hop_evidence"] or "[]"),

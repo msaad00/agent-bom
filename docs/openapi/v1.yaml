@@ -1631,6 +1631,173 @@ components:
           type: array
       title: CompositionModel
       type: object
+    CorrelationRemediationContainer:
+      properties:
+        image_digest:
+          title: Image Digest
+          type: string
+        node_id:
+          title: Node Id
+          type: string
+      required:
+      - node_id
+      - image_digest
+      title: CorrelationRemediationContainer
+      type: object
+    CorrelationRemediationDecision:
+      properties:
+        container:
+          $ref: '#/components/schemas/CorrelationRemediationContainer'
+        correlation_id:
+          title: Correlation Id
+          type: string
+        correlation_manifest_sha256:
+          title: Correlation Manifest Sha256
+          type: string
+        decision_id:
+          title: Decision Id
+          type: string
+        evidence_scope:
+          additionalProperties: true
+          title: Evidence Scope
+          type: object
+        finding:
+          $ref: '#/components/schemas/CorrelationRemediationFinding'
+        ownership:
+          additionalProperties: true
+          title: Ownership
+          type: object
+        package:
+          $ref: '#/components/schemas/CorrelationRemediationPackage'
+        path:
+          $ref: '#/components/schemas/CorrelationRemediationPath'
+        recommendation:
+          additionalProperties: true
+          title: Recommendation
+          type: object
+        reverification:
+          additionalProperties: true
+          title: Reverification
+          type: object
+        schema_version:
+          title: Schema Version
+          type: string
+        sla:
+          additionalProperties: true
+          title: Sla
+          type: object
+        snapshot_id:
+          title: Snapshot Id
+          type: string
+        status:
+          title: Status
+          type: string
+        verification:
+          additionalProperties: true
+          title: Verification
+          type: object
+      required:
+      - schema_version
+      - decision_id
+      - status
+      - correlation_id
+      - snapshot_id
+      - correlation_manifest_sha256
+      - finding
+      - package
+      - container
+      - path
+      - ownership
+      - sla
+      - recommendation
+      - verification
+      - reverification
+      - evidence_scope
+      title: CorrelationRemediationDecision
+      type: object
+    CorrelationRemediationFinding:
+      properties:
+        advisory_id:
+          title: Advisory Id
+          type: string
+        finding_id:
+          title: Finding Id
+          type: string
+        is_kev:
+          title: Is Kev
+          type: boolean
+        severity:
+          title: Severity
+          type: string
+      required:
+      - finding_id
+      - advisory_id
+      - is_kev
+      - severity
+      title: CorrelationRemediationFinding
+      type: object
+    CorrelationRemediationPackage:
+      properties:
+        current_version:
+          title: Current Version
+          type: string
+        ecosystem:
+          title: Ecosystem
+          type: string
+        name:
+          title: Name
+          type: string
+        node_id:
+          title: Node Id
+          type: string
+        purl:
+          title: Purl
+          type: string
+      required:
+      - node_id
+      - name
+      - ecosystem
+      - purl
+      - current_version
+      title: CorrelationRemediationPackage
+      type: object
+    CorrelationRemediationPath:
+      properties:
+        hops:
+          items:
+            type: string
+          title: Hops
+          type: array
+        identity:
+          title: Identity
+          type: string
+        path_id:
+          title: Path Id
+          type: string
+        relationships:
+          items:
+            type: string
+          title: Relationships
+          type: array
+        risk_score:
+          title: Risk Score
+          type: number
+        source:
+          title: Source
+          type: string
+        target:
+          title: Target
+          type: string
+      required:
+      - path_id
+      - identity
+      - source
+      - target
+      - hops
+      - relationships
+      - risk_score
+      title: CorrelationRemediationPath
+      type: object
     CreateBlueprintBody:
       additionalProperties: false
       properties:
@@ -3579,6 +3746,37 @@ components:
       - items
       - count
       title: GraphCorrelationList
+      type: object
+    GraphCorrelationRemediation:
+      properties:
+        correlation_id:
+          title: Correlation Id
+          type: string
+        correlation_manifest_sha256:
+          title: Correlation Manifest Sha256
+          type: string
+        count:
+          title: Count
+          type: integer
+        remediation_decisions:
+          items:
+            $ref: '#/components/schemas/CorrelationRemediationDecision'
+          title: Remediation Decisions
+          type: array
+        schema_version:
+          title: Schema Version
+          type: string
+        snapshot_id:
+          title: Snapshot Id
+          type: string
+      required:
+      - schema_version
+      - correlation_id
+      - snapshot_id
+      - correlation_manifest_sha256
+      - count
+      - remediation_decisions
+      title: GraphCorrelationRemediation
       type: object
     GraphDeployDecisionRequest:
       additionalProperties: false
@@ -16189,6 +16387,33 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Graph Correlation
+      tags:
+      - graph-correlations
+  /v1/graph/correlations/{correlation_id}/remediation:
+    get:
+      description: Return advisory remediation decisions bound to an immutable output.
+      operationId: get_graph_correlation_remediation_v1_graph_correlations__correlation_id__remediation_get
+      parameters:
+      - in: path
+        name: correlation_id
+        required: true
+        schema:
+          title: Correlation Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphCorrelationRemediation'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Graph Correlation Remediation
       tags:
       - graph-correlations
   /v1/graph/correlations/{correlation_id}/runtime-facts:

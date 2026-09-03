@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:6ed11d0a26901636724b3d5ef8d8e59bd64ececd93e8b249139149b921b59365",
+  "artifact_sha256": "sha256:c223fa9808882deeb9eee784a1e2699c51fb100703118d7288fc0c1efbdc3a35",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -55,7 +55,9 @@
             "authenticates_as",
             "has_permission"
           ],
-          "finding_ids": [],
+          "finding_ids": [
+            "reference-finding-cve-2023-4863"
+          ],
           "hop_evidence": [
             {
               "complete": true,
@@ -790,7 +792,7 @@
               "observation_count": 2,
               "observations": [
                 {
-                  "attribute_digest": "sha256:98984700d5f5c77f1b882b1b713cb75c09673593ca8d610940378ec298b7a538",
+                  "attribute_digest": "sha256:4a72c6819ef09eefd18f3757de54cdbf2baf5ba1a5ea2bd8b4700b08ff4e6701",
                   "data_sources": [
                     "repository_parser"
                   ],
@@ -801,7 +803,7 @@
                   "source_node_id": "package:repo:pillow"
                 },
                 {
-                  "attribute_digest": "sha256:98984700d5f5c77f1b882b1b713cb75c09673593ca8d610940378ec298b7a538",
+                  "attribute_digest": "sha256:4a72c6819ef09eefd18f3757de54cdbf2baf5ba1a5ea2bd8b4700b08ff4e6701",
                   "data_sources": [
                     "cyclonedx_sbom"
                   ],
@@ -817,7 +819,10 @@
                 "reference-repository-scan"
               ]
             },
-            "purl": "pkg:pypi/pillow@9.0.0"
+            "ecosystem": "pypi",
+            "package_name": "pillow",
+            "purl": "pkg:pypi/pillow@9.0.0",
+            "version": "9.0.0"
           },
           "canonical_id": "pkg:pypi/pillow@9.0.0",
           "category_uid": 5,
@@ -1062,7 +1067,7 @@
               "observation_count": 2,
               "observations": [
                 {
-                  "attribute_digest": "sha256:914b28e9904543fb9feb40ebed3ebe25bcf8f1d452584ad3c3cfdcfdb6a7515b",
+                  "attribute_digest": "sha256:cb94fcc2c9ad1abf0b884befaa0066b038b6345db3db17cd1942284eb3efd442",
                   "data_sources": [
                     "bundled_advisory_scanner"
                   ],
@@ -1073,7 +1078,7 @@
                   "source_node_id": "vulnerability:sbom:cve-2023-4863"
                 },
                 {
-                  "attribute_digest": "sha256:b466a911cf54c35404aad6f31788d33337b95fe54cf175e1e4e7b78c504670ee",
+                  "attribute_digest": "sha256:cb94fcc2c9ad1abf0b884befaa0066b038b6345db3db17cd1942284eb3efd442",
                   "data_sources": [
                     "mcp_config"
                   ],
@@ -1089,8 +1094,16 @@
                 "reference-mcp-config-scan"
               ]
             },
+            "evidence_scope": {
+              "customer_evidence": false,
+              "infrastructure": "modeled_local",
+              "live_cloud": false,
+              "name": "reference_evidence_lab"
+            },
             "finding_id": "reference-finding-cve-2023-4863",
-            "is_kev": true
+            "fixed_version": "10.0.1",
+            "is_kev": true,
+            "kev_due_date": "2023-10-04"
           },
           "canonical_id": "CVE-2023-4863",
           "category_uid": 2,
@@ -1253,7 +1266,7 @@
       {
         "age_hours": 0.083333,
         "created_at": "2026-08-30T04:01:00+00:00",
-        "digest": "sha256:05cc7f026527282428afea8d2ad300715e518b21b321282225528508e9abaaa1",
+        "digest": "sha256:be07a05fef4f52c87d0f1f97fc374ee93c840d3974ae2de3c00e5afe91ab5b0b",
         "edge_count": 2,
         "freshness": "fresh",
         "node_count": 3,
@@ -1278,7 +1291,7 @@
       {
         "age_hours": 0.05,
         "created_at": "2026-08-30T04:03:00+00:00",
-        "digest": "sha256:44370d37a9b084d5b0ed10e04e5ee5987db627e1a60472117a37b2f9e2dd37bd",
+        "digest": "sha256:1a3e6140e4c3a4f9601a22b26da7402fd2bcd894919bf3a4cb42f0b6101f9d66",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1290,7 +1303,7 @@
       {
         "age_hours": 0.1,
         "created_at": "2026-08-30T04:00:00+00:00",
-        "digest": "sha256:88a545ff01ca49388dc1af6ccd0119c62acbae032905795842911c1521dbaf95",
+        "digest": "sha256:8eb201634ddff877253fe99887bfdf5e94fa6f3853ac9c4e22d31733ec10e3fd",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1312,7 +1325,7 @@
         ]
       }
     ],
-    "manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
+    "manifest_sha256": "sha256:a91348619b7c34c610d1f77245eabbdafa59bc865f7ad1c179ad32ffaa254366",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -1372,7 +1385,7 @@
         {
           "age_hours": 0.083333,
           "created_at": "2026-08-30T04:01:00+00:00",
-          "digest": "sha256:05cc7f026527282428afea8d2ad300715e518b21b321282225528508e9abaaa1",
+          "digest": "sha256:be07a05fef4f52c87d0f1f97fc374ee93c840d3974ae2de3c00e5afe91ab5b0b",
           "edge_count": 2,
           "freshness": "fresh",
           "node_count": 3,
@@ -1397,7 +1410,7 @@
         {
           "age_hours": 0.05,
           "created_at": "2026-08-30T04:03:00+00:00",
-          "digest": "sha256:44370d37a9b084d5b0ed10e04e5ee5987db627e1a60472117a37b2f9e2dd37bd",
+          "digest": "sha256:1a3e6140e4c3a4f9601a22b26da7402fd2bcd894919bf3a4cb42f0b6101f9d66",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1409,7 +1422,7 @@
         {
           "age_hours": 0.1,
           "created_at": "2026-08-30T04:00:00+00:00",
-          "digest": "sha256:88a545ff01ca49388dc1af6ccd0119c62acbae032905795842911c1521dbaf95",
+          "digest": "sha256:8eb201634ddff877253fe99887bfdf5e94fa6f3853ac9c4e22d31733ec10e3fd",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1434,7 +1447,7 @@
       "output": {
         "attack_path_count": 1,
         "edge_count": 8,
-        "graph_digest_sha256": "sha256:368ee568781839b25c02c4f6db2d8d16a55be37c7d4d0c399a5dbc04d60d9dc3",
+        "graph_digest_sha256": "sha256:428b5121b99054d21c9286a1d90f103a4ec86b6958fc2604b0874ac50fb57db3",
         "node_count": 9,
         "scan_id": "reference-evidence-correlation-v1"
       },
@@ -1530,7 +1543,9 @@
       "authenticates_as",
       "has_permission"
     ],
-    "finding_ids": [],
+    "finding_ids": [
+      "reference-finding-cve-2023-4863"
+    ],
     "hop_evidence": [
       {
         "complete": true,
@@ -1707,6 +1722,90 @@
       "CVE-2023-4863"
     ]
   },
+  "remediation_decision": {
+    "container": {
+      "image_digest": "sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a",
+      "node_id": "container:iac:reference-api"
+    },
+    "correlation_id": "reference-evidence-correlation-v1",
+    "correlation_manifest_sha256": "sha256:a91348619b7c34c610d1f77245eabbdafa59bc865f7ad1c179ad32ffaa254366",
+    "decision_id": "remediation:f60952ded300721732371458",
+    "evidence_scope": {
+      "customer_evidence": false,
+      "infrastructure": "modeled_local",
+      "live_cloud": false,
+      "name": "reference_evidence_lab"
+    },
+    "finding": {
+      "advisory_id": "CVE-2023-4863",
+      "finding_id": "reference-finding-cve-2023-4863",
+      "is_kev": true,
+      "severity": "high"
+    },
+    "ownership": {
+      "owner": null,
+      "status": "unassigned"
+    },
+    "package": {
+      "current_version": "9.0.0",
+      "ecosystem": "pypi",
+      "name": "pillow",
+      "node_id": "package:sbom:pillow",
+      "purl": "pkg:pypi/pillow@9.0.0"
+    },
+    "path": {
+      "hops": [
+        "service:reference-api",
+        "workload:reference-api",
+        "container:iac:reference-api",
+        "package:sbom:pillow",
+        "vulnerability:mcp:cve-2023-4863",
+        "tool:runtime:render-untrusted-image",
+        "identity:model:reference-workload",
+        "data-store:reference-customer-records"
+      ],
+      "identity": "service:reference-api::data-store:reference-customer-records::service:reference-api->workload:reference-api->container:iac:reference-api->package:sbom:pillow->vulnerability:mcp:cve-2023-4863->tool:runtime:render-untrusted-image->identity:model:reference-workload->data-store:reference-customer-records",
+      "path_id": "path:b4c20658bd99a9d302035f12",
+      "relationships": [
+        "uses",
+        "contains",
+        "contains",
+        "vulnerable_to",
+        "exploitable_via",
+        "authenticates_as",
+        "has_permission"
+      ],
+      "risk_score": 58.0,
+      "source": "service:reference-api",
+      "target": "data-store:reference-customer-records"
+    },
+    "recommendation": {
+      "action": "upgrade",
+      "applied": false,
+      "command": "pip install 'pillow>=10.0.1'",
+      "fixed_version": "10.0.1",
+      "requires_human_review": true,
+      "summary": "Upgrade pillow to 10.0.1 or later and rebuild the digest-pinned container."
+    },
+    "reverification": {
+      "predecessor_snapshot_id": "reference-evidence-correlation-v1",
+      "recorrelation_status": "not_run",
+      "rescan_status": "not_run"
+    },
+    "schema_version": "agent-bom.graph-correlation-remediation/v1",
+    "sla": {
+      "due_at": "2023-10-04T00:00:00+00:00",
+      "policy": "cisa_kev_or_severity",
+      "status": "overdue"
+    },
+    "snapshot_id": "reference-evidence-correlation-v1",
+    "status": "recommended",
+    "verification": {
+      "command": "agent-bom scan . --offline",
+      "expected": "The advisory and predecessor path are absent from a new scan and correlation.",
+      "status": "not_run"
+    }
+  },
   "runtime_control": {
     "allow_result": "upstream_called",
     "blocked_error_code": -32001,
@@ -1714,7 +1813,7 @@
     "correlation_id": "reference-evidence-correlation-v1",
     "failure_mode": "deny",
     "global_default": "off",
-    "manifest_sha256": "sha256:28d60924616685fba6f58e1082b0fc8f6676a57abfa26981c7dfed62e93bb8e1",
+    "manifest_sha256": "sha256:a91348619b7c34c610d1f77245eabbdafa59bc865f7ad1c179ad32ffaa254366",
     "observed_event": "live-jsonrpc-allow",
     "policy_id": "strict-correlated-evidence",
     "policy_source": "graph_reachability",
@@ -1727,7 +1826,9 @@
     "advisory": "CVE-2023-4863",
     "cvss_score": 8.8,
     "evidence_input": "examples/reference-evidence-lab/pinned-package.txt",
+    "fixed_version": "10.0.1",
     "is_kev": true,
+    "kev_due_date": "2023-10-04",
     "mode": "offline_bundled_pinned_advisory",
     "package": "pkg:pypi/pillow@9.0.0",
     "parser": "agent_bom.parsers.scan_project_directory",

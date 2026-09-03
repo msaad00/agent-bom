@@ -23,8 +23,10 @@ from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.severity import SEVERITY_RANK
+from agent_bom.graph.sla import finding_owner, sla_due_at
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.graph.util import _now_iso
+from agent_bom.remediation_commands import build_fix_command
 
 _EMPTY_VALUES: tuple[Any, ...] = (None, "", [], {})
 _OCI_DIGEST_RE = re.compile(r"sha256:[0-9a-fA-F]{64}")
@@ -754,11 +756,192 @@ def merge_graph_snapshots(
     return CorrelationMergeResult(graph=output, manifest=manifest, manifest_sha256=_digest(manifest))
 
 
+def _path_identity(path: Any) -> str:
+    return f"{path.source}::{path.target}::{'->'.join(path.hops)}"
+
+
+def _package_coordinates(node: UnifiedNode) -> tuple[str, str, str, str]:
+    """Return exact package coordinates without inferring from a display label."""
+
+    attributes = node.attributes
+    raw_purl = attributes.get("purl") or attributes.get("canonical_id")
+    purl = raw_purl.strip() if isinstance(raw_purl, str) else ""
+    ecosystem = str(attributes.get("ecosystem") or node.dimensions.ecosystem or "").strip()
+    name = str(attributes.get("package_name") or "").strip()
+    version = str(attributes.get("version") or "").strip()
+    if purl:
+        try:
+            parsed = PackageURL.from_string(purl)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            ecosystem = ecosystem or parsed.type
+            name = name or parsed.name
+            version = version or (parsed.version or "")
+    return purl, ecosystem, name, version
+
+
+def _evidence_scope(attributes: Mapping[str, Any]) -> dict[str, Any]:
+    raw = attributes.get("evidence_scope")
+    if not isinstance(raw, Mapping):
+        return {}
+    return {
+        "name": raw.get("name"),
+        "infrastructure": raw.get("infrastructure"),
+        "customer_evidence": raw.get("customer_evidence") is True,
+        "live_cloud": raw.get("live_cloud") is True,
+    }
+
+
+def build_correlation_remediation_decisions(
+    graph: UnifiedGraph,
+    *,
+    correlation_id: str,
+    manifest_sha256: str,
+) -> list[dict[str, Any]]:
+    """Derive immutable remediation decisions from persisted correlated paths.
+
+    Decisions remain advisory: they bind an exact finding, package, container,
+    path, and correlation receipt, but never claim that a fix or verification
+    has run. Paths without exact finding/package identity are omitted rather
+    than receiving a guessed remediation.
+    """
+
+    decisions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path in sorted(graph.attack_paths, key=lambda item: _path_identity(item)):
+        path_identity = _path_identity(path)
+        for vulnerability_index, vulnerability_id in enumerate(path.hops):
+            vulnerability = graph.nodes.get(vulnerability_id)
+            if vulnerability is None or vulnerability.entity_type != EntityType.VULNERABILITY:
+                continue
+            finding_id = str(vulnerability.attributes.get("finding_id") or "").strip()
+            if not finding_id:
+                continue
+
+            package = next(
+                (
+                    graph.nodes[node_id]
+                    for node_id in reversed(path.hops[:vulnerability_index])
+                    if node_id in graph.nodes and graph.nodes[node_id].entity_type == EntityType.PACKAGE
+                ),
+                None,
+            )
+            if package is None:
+                continue
+            purl, ecosystem, package_name, current_version = _package_coordinates(package)
+            if not purl or not package_name:
+                continue
+            package_index = path.hops.index(package.id)
+            container = next(
+                (
+                    graph.nodes[node_id]
+                    for node_id in reversed(path.hops[:package_index])
+                    if node_id in graph.nodes and graph.nodes[node_id].entity_type == EntityType.CONTAINER
+                ),
+                None,
+            )
+            if container is None:
+                continue
+            image_digest = str(container.attributes.get("image_digest") or "").strip()
+            if not _OCI_DIGEST_RE.fullmatch(image_digest):
+                continue
+
+            identity_digest = hashlib.sha256(
+                f"{correlation_id}\0{finding_id}\0{purl}\0{image_digest}\0{path_identity}".encode()
+            ).hexdigest()
+            decision_id = f"remediation:{identity_digest[:24]}"
+            if decision_id in seen:
+                continue
+            seen.add(decision_id)
+
+            attributes = vulnerability.attributes
+            fixed_version = str(attributes.get("fixed_version") or "").strip() or None
+            owner = finding_owner(attributes.get("assignee") or attributes.get("owner"))
+            due_at = sla_due_at(
+                vulnerability.severity,
+                vulnerability.first_seen,
+                kev_due_date=attributes.get("kev_due_date"),
+            )
+            due_instant = _timestamp_instant(due_at) if due_at else None
+            observed_at = _timestamp_instant(graph.created_at)
+            sla_status = "unassigned" if due_instant is None else ("overdue" if due_instant < observed_at else "open")
+            advisory_id = str(attributes.get("advisory_id") or vulnerability.canonical_id).strip()
+            command = build_fix_command(ecosystem, package_name, fixed_version or "")
+            action = "upgrade" if fixed_version and command else "review"
+            recommendation_summary = (
+                f"Upgrade {package_name} to {fixed_version} or later and rebuild the digest-pinned container."
+                if action == "upgrade"
+                else f"Review {package_name} and rebuild the digest-pinned container with a verified remediation."
+            )
+            path_id = "path:" + hashlib.sha256(path_identity.encode()).hexdigest()[:24]
+            decisions.append(
+                {
+                    "schema_version": "agent-bom.graph-correlation-remediation/v1",
+                    "decision_id": decision_id,
+                    "status": "recommended",
+                    "correlation_id": correlation_id,
+                    "snapshot_id": graph.scan_id,
+                    "correlation_manifest_sha256": manifest_sha256,
+                    "finding": {
+                        "finding_id": finding_id,
+                        "advisory_id": advisory_id,
+                        "is_kev": attributes.get("is_kev") is True,
+                        "severity": vulnerability.severity.lower(),
+                    },
+                    "package": {
+                        "node_id": package.id,
+                        "name": package_name,
+                        "ecosystem": ecosystem,
+                        "purl": purl,
+                        "current_version": current_version,
+                    },
+                    "container": {"node_id": container.id, "image_digest": image_digest},
+                    "path": {
+                        "path_id": path_id,
+                        "identity": path_identity,
+                        "source": path.source,
+                        "target": path.target,
+                        "hops": list(path.hops),
+                        "relationships": list(path.edges),
+                        "risk_score": path.composite_risk,
+                    },
+                    "ownership": {"owner": owner, "status": "assigned" if owner else "unassigned"},
+                    "sla": {
+                        "due_at": due_at,
+                        "status": sla_status,
+                        "policy": "cisa_kev_or_severity",
+                    },
+                    "recommendation": {
+                        "action": action,
+                        "fixed_version": fixed_version,
+                        "summary": recommendation_summary,
+                        "command": command,
+                        "applied": False,
+                        "requires_human_review": True,
+                    },
+                    "verification": {
+                        "command": "agent-bom scan . --offline",
+                        "expected": "The advisory and predecessor path are absent from a new scan and correlation.",
+                        "status": "not_run",
+                    },
+                    "reverification": {
+                        "rescan_status": "not_run",
+                        "recorrelation_status": "not_run",
+                        "predecessor_snapshot_id": graph.scan_id,
+                    },
+                    "evidence_scope": _evidence_scope(attributes),
+                }
+            )
+    return decisions
+
+
 __all__ = [
     "CorrelationMergeResult",
     "CorrelationRunStatus",
     "CorrelationSnapshot",
     "GraphCorrelationRun",
+    "build_correlation_remediation_decisions",
     "correlation_graph_digest",
     "correlation_identity",
     "correlation_manifest_digest",

@@ -14,7 +14,12 @@ from agent_bom import config as agent_config
 from agent_bom.api import stores as api_stores
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.tenancy import require_request_tenant_id
-from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun
+from agent_bom.graph.correlation import (
+    CorrelationRunStatus,
+    GraphCorrelationRun,
+    build_correlation_remediation_decisions,
+    validate_correlation_output_manifest,
+)
 from agent_bom.graph.correlation_service import (
     CorrelationRequest,
     CorrelationServiceError,
@@ -42,6 +47,64 @@ class GraphCorrelationCreate(BaseModel):
 class GraphCorrelationList(BaseModel):
     items: list[dict[str, Any]]
     count: int
+
+
+class CorrelationRemediationFinding(BaseModel):
+    finding_id: str
+    advisory_id: str
+    is_kev: bool
+    severity: str
+
+
+class CorrelationRemediationPackage(BaseModel):
+    node_id: str
+    name: str
+    ecosystem: str
+    purl: str
+    current_version: str
+
+
+class CorrelationRemediationContainer(BaseModel):
+    node_id: str
+    image_digest: str
+
+
+class CorrelationRemediationPath(BaseModel):
+    path_id: str
+    identity: str
+    source: str
+    target: str
+    hops: list[str]
+    relationships: list[str]
+    risk_score: float
+
+
+class CorrelationRemediationDecision(BaseModel):
+    schema_version: str
+    decision_id: str
+    status: str
+    correlation_id: str
+    snapshot_id: str
+    correlation_manifest_sha256: str
+    finding: CorrelationRemediationFinding
+    package: CorrelationRemediationPackage
+    container: CorrelationRemediationContainer
+    path: CorrelationRemediationPath
+    ownership: dict[str, Any]
+    sla: dict[str, Any]
+    recommendation: dict[str, Any]
+    verification: dict[str, Any]
+    reverification: dict[str, Any]
+    evidence_scope: dict[str, Any]
+
+
+class GraphCorrelationRemediation(BaseModel):
+    schema_version: str
+    correlation_id: str
+    snapshot_id: str
+    correlation_manifest_sha256: str
+    count: int
+    remediation_decisions: list[CorrelationRemediationDecision]
 
 
 def _actor(request: Request) -> str:
@@ -213,3 +276,50 @@ async def get_graph_correlation_runtime_facts(request: Request, correlation_id: 
         manifest_sha256=run.manifest_sha256,
     )
     return bundle
+
+
+@router.get(
+    "/graph/correlations/{correlation_id}/remediation",
+    response_model=GraphCorrelationRemediation,
+    tags=["graph-correlations"],
+)
+async def get_graph_correlation_remediation(request: Request, correlation_id: str) -> GraphCorrelationRemediation:
+    """Return advisory remediation decisions bound to an immutable output."""
+
+    tenant_id = require_request_tenant_id(request)
+    run = await asyncio.to_thread(_get_run, tenant_id, correlation_id)
+    if run.status is not CorrelationRunStatus.COMPLETE:
+        raise HTTPException(status_code=409, detail="correlation_not_complete")
+    store = api_stores._get_graph_store()
+    graph = await asyncio.to_thread(store.load_graph, tenant_id=tenant_id, scan_id=correlation_id)
+    if not graph.nodes:
+        raise HTTPException(status_code=409, detail="correlation_output_unavailable")
+    try:
+        validate_correlation_output_manifest(
+            graph,
+            result_manifest=run.result_manifest,
+            manifest_sha256=run.manifest_sha256,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="correlation_output_invalid") from exc
+    decisions = build_correlation_remediation_decisions(
+        graph,
+        correlation_id=correlation_id,
+        manifest_sha256=run.manifest_sha256,
+    )
+    log_action(
+        "graph.correlation.remediation.read",
+        actor=_actor(request),
+        resource=f"graph/correlation/{correlation_id}/remediation",
+        tenant_id=tenant_id,
+        manifest_sha256=run.manifest_sha256,
+        decision_count=len(decisions),
+    )
+    return GraphCorrelationRemediation(
+        schema_version="agent-bom.graph-correlation-remediation/v1",
+        correlation_id=correlation_id,
+        snapshot_id=graph.scan_id,
+        correlation_manifest_sha256=run.manifest_sha256,
+        count=len(decisions),
+        remediation_decisions=[CorrelationRemediationDecision.model_validate(item) for item in decisions],
+    )

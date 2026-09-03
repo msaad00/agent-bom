@@ -18,6 +18,25 @@ describe("typed page links", () => {
     );
     expect(complianceHref({ scan: "scan/1" })).toBe("/compliance?scan=scan%2F1");
     expect(remediationHref({ q: "AC-2" })).toBe("/remediation?q=AC-2");
+    expect(
+      remediationHref({
+        correlation: "corr/1",
+        scan: "corr/1",
+        cve: "CVE-2023-4863",
+        path: "source::target::source->target",
+      }),
+    ).toBe(
+      "/remediation?correlation=corr%2F1&scan=corr%2F1&cve=CVE-2023-4863&path=source%3A%3Atarget%3A%3Asource-%3Etarget",
+    );
+    expect(
+      securityGraphHref({
+        scan: "corr/1",
+        cve: "CVE-2023-4863",
+        path: "source::target::source->target",
+      }),
+    ).toBe(
+      "/security-graph?lens=attack-path&scan=corr%2F1&cve=CVE-2023-4863&path=source%3A%3Atarget%3A%3Asource-%3Etarget",
+    );
   });
 
   it("maps observed lineage entity kinds to supported graph layers", () => {

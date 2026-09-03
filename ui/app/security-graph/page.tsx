@@ -83,6 +83,7 @@ import { GraphSurface } from "@/app/graph/graph-surface";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
 import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
+import { remediationHref } from "@/lib/page-links";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
   latestCompletedCorrelation,
@@ -148,6 +149,7 @@ function AttackPathInvestigationContent() {
       agentName: searchParams.get("agent") ?? "",
       nodeId: searchParams.get("node") ?? "",
       findingId: searchParams.get("finding") ?? "",
+      pathIdentity: searchParams.get("path") ?? "",
       traceId: searchParams.get("trace") ?? searchParams.get("runtime_trace_id") ?? "",
     }),
     [searchParams],
@@ -206,10 +208,11 @@ function AttackPathInvestigationContent() {
 
   const focusLabel = useMemo(() => {
     const parts = [focus.nodeId, focus.cve, focus.packageName, focus.agentName].filter(Boolean);
+    if (focus.pathIdentity) parts.push("exact path");
     return parts.length > 0 ? parts.join(" · ") : null;
-  }, [focus.agentName, focus.cve, focus.nodeId, focus.packageName]);
+  }, [focus.agentName, focus.cve, focus.nodeId, focus.packageName, focus.pathIdentity]);
   const hasFocusContext = Boolean(
-    focus.cve || focus.packageName || focus.agentName || focus.nodeId || focus.findingId,
+    focus.cve || focus.packageName || focus.agentName || focus.nodeId || focus.findingId || focus.pathIdentity,
   );
 
   useEffect(() => {
@@ -326,7 +329,7 @@ function AttackPathInvestigationContent() {
     return () => {
       cancelled = true;
     };
-  }, [focus.agentName, focus.cve, focus.findingId, focus.nodeId, focus.packageName, selectedScanId]);
+  }, [focus.agentName, focus.cve, focus.findingId, focus.nodeId, focus.packageName, focus.pathIdentity, selectedScanId]);
 
   const selectedSnapshot = useMemo(
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
@@ -561,6 +564,30 @@ function AttackPathInvestigationContent() {
         : [],
     [graphNodeById, selectedAttackPath, selectedScanId],
   );
+  const selectedRemediationHref = useMemo(() => {
+    if (!selectedAttackPath || !selectedScanId) return "/remediation";
+    const correlation = selectedSnapshot?.snapshot_kind === "correlation" ? selectedScanId : undefined;
+    return remediationHref({
+      correlation,
+      scan: selectedScanId,
+      cve: selectedAttackPath.vuln_ids[0],
+      path: correlation ? attackPathKey(selectedAttackPath) : undefined,
+    });
+  }, [selectedAttackPath, selectedScanId, selectedSnapshot?.snapshot_kind]);
+  const selectedCommandActions = useMemo(() => {
+    const sourceActions = selectedFixFirstCard?.next_actions ?? selectedPathActions;
+    if (selectedSnapshot?.snapshot_kind !== "correlation") return sourceActions;
+    const suppliedRemediationAction = sourceActions.find((action) => action.href.startsWith("/remediation"));
+    return [
+      {
+        title: suppliedRemediationAction?.title ?? "Open remediation decision",
+        detail: suppliedRemediationAction?.detail
+          ?? "Carry this exact correlated path, finding, package, and container into the advisory fix workflow.",
+        href: selectedRemediationHref,
+      },
+      ...sourceActions.filter((action) => !action.href.startsWith("/remediation")),
+    ].slice(0, 3);
+  }, [selectedFixFirstCard?.next_actions, selectedPathActions, selectedRemediationHref, selectedSnapshot?.snapshot_kind]);
 
   const emptyGraphState = useMemo(() => {
     const analysis = graphData?.stats.analysis_status?.attack_path_fusion;
@@ -631,7 +658,7 @@ function AttackPathInvestigationContent() {
   useEffect(() => {
     setFocusApplied(false);
     setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
-  }, [focus.agentName, focus.cve, focus.findingId, focus.nodeId, focus.packageName, selectedScanId]);
+  }, [focus.agentName, focus.cve, focus.findingId, focus.nodeId, focus.packageName, focus.pathIdentity, selectedScanId]);
 
   useEffect(() => {
     setPinnedNodeId(focus.nodeId || null);
@@ -700,7 +727,7 @@ function AttackPathInvestigationContent() {
               <GitBranch className="h-4 w-4" />
             </Link>
             <Link
-              href="/remediation"
+              href={selectedRemediationHref}
               className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
             >
               Remediation
@@ -731,9 +758,9 @@ function AttackPathInvestigationContent() {
             onStepChange={setInvestigationStep}
             completed={completedSteps}
             stepHrefs={{
-              owner: "/remediation#campaigns",
-              fix: "/remediation#campaigns",
-              verify: "/remediation#verification",
+              owner: selectedRemediationHref,
+              fix: selectedRemediationHref,
+              verify: selectedRemediationHref,
             }}
           />
           {pinnedNodeId ? (
@@ -941,7 +968,7 @@ function AttackPathInvestigationContent() {
             selectedExposurePath ? (
               <ExposurePathCommandCenter
                 path={selectedExposurePath}
-                actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
+                actions={selectedCommandActions}
                 scanId={selectedScanId || undefined}
                 view={pathView}
                 onViewChange={setPathView}
@@ -969,6 +996,7 @@ function AttackPathInvestigationContent() {
                       scanId={selectedScanId || undefined}
                       onPinnedNodeChange={setPinnedNodeId}
                       onStepHint={handleStepHint}
+                      remediationHref={selectedRemediationHref}
                     />
                   ) : null
                 }

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from starlette.applications import Starlette
@@ -18,6 +20,12 @@ from agent_bom.api.middleware import APIKeyMiddleware
 from agent_bom.api.server import app, configure_api
 from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from agent_bom.graph.correlation import (
+    CorrelationRunStatus,
+    GraphCorrelationRun,
+    correlation_graph_digest,
+    correlation_manifest_digest,
+)
 from agent_bom.runtime.correlation_facts import verify_runtime_facts_bundle
 
 
@@ -260,6 +268,91 @@ def test_runtime_facts_rejects_a_purged_completed_output(correlation_client, mon
 
     assert response.status_code == 409
     assert response.json()["detail"] == "correlation_output_unavailable"
+
+
+def test_completed_correlation_exposes_exact_remediation_decision(correlation_client, monkeypatch) -> None:
+    client, store = correlation_client
+    root = Path(__file__).resolve().parents[1]
+    payload = json.loads(
+        (root / "examples" / "reference-evidence-lab" / "generated" / "correlation-proof.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    graph = UnifiedGraph.from_dict(payload["capture_fixture"]["graph"])
+    graph.tenant_id = "default"
+    vulnerability = graph.nodes["vulnerability:mcp:cve-2023-4863"]
+    vulnerability.attributes.update(
+        {
+            "finding_id": "reference-finding-cve-2023-4863",
+            "fixed_version": "10.0.1",
+            "is_kev": True,
+            "kev_due_date": "2023-10-04",
+            "evidence_scope": {
+                "name": "reference_evidence_lab",
+                "infrastructure": "modeled_local",
+                "customer_evidence": False,
+                "live_cloud": False,
+            },
+        }
+    )
+    graph.nodes["package:sbom:pillow"].attributes.update(
+        {"package_name": "pillow", "ecosystem": "pypi", "version": "9.0.0"}
+    )
+    graph.attack_paths[0].finding_ids = ["reference-finding-cve-2023-4863"]
+    store.save_graph(graph)
+    result_manifest = {
+        "schema_version": "agent-bom.graph-correlation-manifest/v1",
+        "correlation_id": graph.scan_id,
+        "tenant_id": graph.tenant_id,
+        "output": {
+            "scan_id": graph.scan_id,
+            "node_count": len(graph.nodes),
+            "edge_count": len(graph.edges),
+            "attack_path_count": len(graph.attack_paths),
+            "graph_digest_sha256": correlation_graph_digest(graph),
+        },
+    }
+    manifest_sha256 = correlation_manifest_digest(result_manifest)
+    run = GraphCorrelationRun(
+        correlation_id=graph.scan_id,
+        tenant_id=graph.tenant_id,
+        idempotency_key="reference-remediation",
+        name="reference remediation",
+        status=CorrelationRunStatus.COMPLETE,
+        max_age_hours=168,
+        allow_stale=False,
+        input_manifest=[
+            {"scan_id": "repo", "created_at": graph.created_at, "digest": "sha256:" + "a" * 64},
+            {"scan_id": "image", "created_at": graph.created_at, "digest": "sha256:" + "b" * 64},
+        ],
+        result_manifest=result_manifest,
+        manifest_sha256=manifest_sha256,
+        output_scan_id=graph.scan_id,
+        completed_at=graph.created_at,
+    )
+    monkeypatch.setattr("agent_bom.api.routes.graph_correlations._get_run", lambda *_args: run)
+
+    response = client.get(f"/v1/graph/correlations/{graph.scan_id}/remediation")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["correlation_id"] == graph.scan_id
+    assert body["snapshot_id"] == graph.scan_id
+    assert body["correlation_manifest_sha256"] == manifest_sha256
+    assert body["count"] == 1
+    decision = body["remediation_decisions"][0]
+    assert decision["finding"]["finding_id"] == "reference-finding-cve-2023-4863"
+    assert decision["package"]["purl"] == "pkg:pypi/pillow@9.0.0"
+    assert decision["container"]["image_digest"] == payload["container_digest"]
+    assert decision["path"]["hops"] == graph.attack_paths[0].hops
+    assert decision["ownership"]["status"] == "unassigned"
+    assert decision["recommendation"]["fixed_version"] == "10.0.1"
+    assert decision["verification"]["status"] == "not_run"
+    assert decision["reverification"] == {
+        "rescan_status": "not_run",
+        "recorrelation_status": "not_run",
+        "predecessor_snapshot_id": graph.scan_id,
+    }
 
 
 def test_correlation_routes_enforce_scan_write_and_graph_read_scopes() -> None:

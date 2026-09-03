@@ -35,9 +35,10 @@ export function securityGraphHref(input: {
   agent?: string | undefined;
   node?: string | undefined;
   finding?: string | undefined;
+  path?: string | undefined;
 } = {}): string {
   const hasAttackPathFocus = Boolean(
-    input.cve || input.packageName || input.agent || input.node || input.finding,
+    input.cve || input.packageName || input.agent || input.node || input.finding || input.path,
   );
   return buildHref("/security-graph", [
     ["lens", hasAttackPathFocus ? "attack-path" : undefined],
@@ -47,6 +48,7 @@ export function securityGraphHref(input: {
     ["agent", input.agent],
     ["node", input.node],
     ["finding", input.finding],
+    ["path", input.path],
   ]);
 }
 
@@ -54,8 +56,20 @@ export function complianceHref(input: { q?: string | undefined; scan?: string | 
   return buildHref("/compliance", [["q", input.q], ["scan", input.scan]]);
 }
 
-export function remediationHref(input: { q?: string | undefined } = {}): string {
-  return buildHref("/remediation", [["q", input.q]]);
+export function remediationHref(input: {
+  q?: string | undefined;
+  correlation?: string | undefined;
+  scan?: string | undefined;
+  cve?: string | undefined;
+  path?: string | undefined;
+} = {}): string {
+  return buildHref("/remediation", [
+    ["q", input.q],
+    ["correlation", input.correlation],
+    ["scan", input.scan],
+    ["cve", input.cve],
+    ["path", input.path],
+  ]);
 }
 
 const GRAPH_LAYERS = new Set([

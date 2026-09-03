@@ -68,6 +68,51 @@ def test_reference_lab_proves_exact_end_to_end_chain() -> None:
     assert payload["runtime_control"]["policy_source"] == "graph_reachability"
     assert payload["runtime_control"]["tool_id"] == "mcp-tool:reference-lab:render-untrusted-image"
     assert proof["analysis"]["status"] == "complete"
+    assert proof["finding_ids"] == ["reference-finding-cve-2023-4863"]
+
+    decision = payload["remediation_decision"]
+    assert decision["schema_version"] == "agent-bom.graph-correlation-remediation/v1"
+    assert decision["correlation_id"] == payload["correlation"]["correlation_id"]
+    assert decision["snapshot_id"] == payload["correlation"]["output_scan_id"]
+    assert decision["correlation_manifest_sha256"] == payload["correlation"]["manifest_sha256"]
+    assert decision["finding"] == {
+        "finding_id": "reference-finding-cve-2023-4863",
+        "advisory_id": "CVE-2023-4863",
+        "is_kev": True,
+        "severity": "high",
+    }
+    assert decision["package"] == {
+        "node_id": "package:sbom:pillow",
+        "name": "pillow",
+        "ecosystem": "pypi",
+        "purl": "pkg:pypi/pillow@9.0.0",
+        "current_version": "9.0.0",
+    }
+    assert decision["container"]["node_id"] == "container:iac:reference-api"
+    assert decision["container"]["image_digest"] == payload["container_digest"]
+    assert decision["path"]["hops"] == proof["hops"]
+    assert decision["path"]["relationships"] == proof["edges"]
+    assert decision["path"]["identity"] == (
+        f"{proof['source']}::{proof['target']}::{'->'.join(proof['hops'])}"
+    )
+    assert decision["ownership"] == {"owner": None, "status": "unassigned"}
+    assert decision["sla"]["due_at"] == "2023-10-04T00:00:00+00:00"
+    assert decision["sla"]["status"] == "overdue"
+    assert decision["recommendation"]["action"] == "upgrade"
+    assert decision["recommendation"]["fixed_version"] == "10.0.1"
+    assert decision["recommendation"]["command"] == "pip install 'pillow>=10.0.1'"
+    assert decision["recommendation"]["applied"] is False
+    assert decision["verification"]["command"] == "agent-bom scan . --offline"
+    assert decision["verification"]["status"] == "not_run"
+    assert decision["reverification"]["rescan_status"] == "not_run"
+    assert decision["reverification"]["recorrelation_status"] == "not_run"
+    assert decision["reverification"]["predecessor_snapshot_id"] == decision["snapshot_id"]
+    assert decision["evidence_scope"] == {
+        "customer_evidence": False,
+        "infrastructure": "modeled_local",
+        "live_cloud": False,
+        "name": "reference_evidence_lab",
+    }
 
     capture = payload["capture_fixture"]
     assert capture["graph"]["scan_id"] == payload["correlation"]["output_scan_id"]

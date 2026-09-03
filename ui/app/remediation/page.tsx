@@ -2,8 +2,10 @@
 
 import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   api,
+  CorrelationRemediationDecision,
   RemediationItem,
   TicketLink,
   severityColor,
@@ -25,6 +27,7 @@ import {
 } from "lucide-react";
 import { severityRank } from "@/lib/severity";
 import { RiskCampaignCommandCenter } from "@/components/risk-campaign-command-center";
+import { securityGraphHref } from "@/lib/page-links";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,33 @@ type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
 type FrameworkFilter = "all" | "owasp" | "atlas";
 
 const PAGE_SIZE = 25;
+
+function correlationDecisionItem(decision: CorrelationRemediationDecision): RemediationItem {
+  const agents = decision.path.hops.filter((nodeId) => nodeId.includes("agent") || nodeId.includes("workload"));
+  return {
+    package: decision.package.name,
+    ecosystem: decision.package.ecosystem,
+    current_version: decision.package.current_version,
+    fixed_version: decision.recommendation.fixed_version,
+    severity: decision.finding.severity,
+    is_kev: decision.finding.is_kev,
+    impact_score: Math.min(10, decision.path.risk_score > 10 ? decision.path.risk_score / 10 : decision.path.risk_score),
+    action: decision.recommendation.action,
+    reason: decision.recommendation.summary,
+    command: decision.recommendation.command,
+    verify_command: decision.verification.command,
+    vulnerabilities: [decision.finding.advisory_id],
+    affected_agents: agents,
+    agents_pct: 0,
+    exposed_credentials: [],
+    credentials_pct: 0,
+    reachable_tools: decision.path.hops.filter((nodeId) => nodeId.includes("tool")),
+    tools_pct: 0,
+    owasp_tags: [],
+    atlas_tags: [],
+    risk_narrative: decision.recommendation.summary,
+  };
+}
 
 // ─── Compliance Impact Summary ────────────────────────────────────────────────
 
@@ -359,7 +389,11 @@ function RemediationPage() {
   const searchParams = useSearchParams();
   const queryParam = (searchParams.get("q") ?? "").trim().toLowerCase();
   const scanParam = (searchParams.get("scan") ?? "").trim();
+  const correlationParam = (searchParams.get("correlation") ?? "").trim();
+  const cveParam = (searchParams.get("cve") ?? "").trim();
+  const pathParam = (searchParams.get("path") ?? "").trim();
   const [items, setItems] = useState<RemediationItem[]>([]);
+  const [correlationDecision, setCorrelationDecision] = useState<CorrelationRemediationDecision | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
@@ -378,6 +412,17 @@ function RemediationPage() {
     setLoading(true);
     setError("");
     try {
+      if (correlationParam) {
+        const response = await api.getCorrelationRemediation(correlationParam);
+        const decision = response.remediation_decisions.find((candidate) =>
+          (!pathParam || candidate.path.identity === pathParam)
+          && (!cveParam || candidate.finding.advisory_id === cveParam)
+        ) ?? null;
+        setCorrelationDecision(decision);
+        setItems(decision ? [correlationDecisionItem(decision)] : []);
+        return;
+      }
+      setCorrelationDecision(null);
       let targetJobId = scanParam;
       if (!targetJobId) {
         const jobsResp = await api.listJobs();
@@ -413,7 +458,7 @@ function RemediationPage() {
     } finally {
       setLoading(false);
     }
-  }, [scanParam]);
+  }, [correlationParam, cveParam, pathParam, scanParam]);
 
   const upsertTicket = useCallback((ticket: TicketLink) => {
     setTicketsByFinding((prev) => ({ ...prev, [ticket.dedupe_key]: ticket }));
@@ -579,6 +624,57 @@ function RemediationPage() {
           </button>
         )}
       </div>
+
+      {correlationDecision && (
+        <section className="rounded-xl border border-emerald-700/50 bg-emerald-950/15 p-4" aria-label="Correlation remediation decision">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">Correlation remediation decision</h2>
+              <p className="mt-1 font-mono text-xs text-[var(--text-secondary)]">
+                {correlationDecision.finding.advisory_id} · {correlationDecision.package.purl}
+              </p>
+              <p className="mt-1 max-w-3xl truncate font-mono text-[10px] text-[var(--text-tertiary)]">
+                {correlationDecision.container.image_digest}
+              </p>
+            </div>
+            <Link
+              href={securityGraphHref({
+                scan: correlationDecision.snapshot_id,
+                cve: correlationDecision.finding.advisory_id,
+                path: correlationDecision.path.identity,
+              })}
+              className="text-xs font-medium text-emerald-400 hover:text-emerald-300"
+            >
+              Return to exact attack path
+            </Link>
+          </div>
+          <div className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
+            <div>
+              <div className="text-[var(--text-tertiary)]">Owner</div>
+              <div className="mt-0.5 font-medium text-[var(--foreground)]">
+                {correlationDecision.ownership.owner ?? "Unassigned"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[var(--text-tertiary)]">SLA</div>
+              <div className="mt-0.5 font-medium text-[var(--foreground)]">
+                {correlationDecision.sla.status}{correlationDecision.sla.due_at ? ` · ${correlationDecision.sla.due_at.slice(0, 10)}` : ""}
+              </div>
+            </div>
+            <div>
+              <div className="text-[var(--text-tertiary)]">Verification</div>
+              <div className="mt-0.5 font-medium text-[var(--foreground)]">
+                Re-scan not run · Re-correlation not run
+              </div>
+            </div>
+          </div>
+          {correlationDecision.evidence_scope.infrastructure === "modeled_local" && (
+            <p className="mt-3 text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">
+              Reference evidence lab · modeled local infrastructure · not customer or live-cloud evidence
+            </p>
+          )}
+        </section>
+      )}
 
       {/* Loading */}
       {loading && (

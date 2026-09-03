@@ -26,3 +26,7 @@ uv run --extra api python scripts/generate_reference_evidence_lab.py --check
 
 The generated proof is committed at `generated/correlation-proof.json` so the
 product capture harness can pin screenshots to its manifest hash.
+It also contains a deterministic remediation decision bound to that same
+manifest, exact CVE, PURL, OCI digest, and attack path. The lab leaves ownership
+explicitly unassigned and records the fix, verification, re-scan, and
+re-correlation states as not run; it does not claim the advisory was remediated.

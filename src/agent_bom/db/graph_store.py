@@ -1944,6 +1944,25 @@ def list_correlation_runs(
     return [_correlation_run_from_row(row) for row in rows]
 
 
+def count_active_correlation_runs(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+) -> int:
+    """Count pending/running correlations without materializing run history."""
+
+    tenant = normalize_graph_tenant_id(tenant_id)
+    row = conn.execute(
+        "SELECT COUNT(*) FROM graph_correlation_runs WHERE tenant_id = ? AND status IN (?, ?)",
+        (
+            tenant,
+            CorrelationRunStatus.PENDING.value,
+            CorrelationRunStatus.RUNNING.value,
+        ),
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
 def update_correlation_run(
     conn: sqlite3.Connection,
     *,

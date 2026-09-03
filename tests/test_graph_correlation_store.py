@@ -71,6 +71,32 @@ def test_correlation_run_is_tenant_isolated_and_idempotent(tmp_path) -> None:
         assert [item.correlation_id for item in graph_store.list_correlation_runs(conn, tenant_id="acme")] == ["corr-1"]
 
 
+def test_active_correlation_count_is_exact_and_tenant_scoped(tmp_path) -> None:
+    db = tmp_path / "graph.db"
+    with graph_store.open_graph_db(db) as conn:
+        graph_store.create_correlation_run(conn, _run())
+        graph_store.create_correlation_run(
+            conn,
+            _run(tenant_id="acme", correlation_id="corr-2", idempotency_key="idem-2"),
+        )
+        graph_store.create_correlation_run(
+            conn,
+            _run(tenant_id="other", correlation_id="corr-other", idempotency_key="idem-other"),
+        )
+        graph_store.update_correlation_run(
+            conn,
+            tenant_id="acme",
+            correlation_id="corr-2",
+            status=CorrelationRunStatus.FAILED,
+            failure_code="analysis_failed",
+            completed_at="2026-08-30T00:01:00+00:00",
+        )
+
+        assert graph_store.count_active_correlation_runs(conn, tenant_id="acme") == 1
+        assert graph_store.count_active_correlation_runs(conn, tenant_id="other") == 1
+        assert graph_store.count_active_correlation_runs(conn, tenant_id="missing") == 0
+
+
 def test_idempotency_key_rejects_a_different_request(tmp_path) -> None:
     db = tmp_path / "graph.db"
     with graph_store.open_graph_db(db) as conn:

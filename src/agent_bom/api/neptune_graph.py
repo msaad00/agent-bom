@@ -369,6 +369,9 @@ class NeptuneGraphStore:
     def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list["GraphCorrelationRun"]:
         self._unsupported("list_correlation_runs")
 
+    def count_active_correlation_runs(self, *, tenant_id: str) -> int:
+        self._unsupported("count_active_correlation_runs")
+
     def update_correlation_run(
         self,
         *,

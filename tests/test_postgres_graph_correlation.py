@@ -49,6 +49,10 @@ class _Conn:
             tenant, limit = params
             rows = sorted((row for row in self.rows.values() if row[1] == tenant), key=lambda row: (row[12], row[0]), reverse=True)
             return _Cursor(rows[:limit])
+        if low.startswith("select count(*) from graph_correlation_runs"):
+            tenant, *statuses = params
+            count = sum(row[1] == tenant and row[4] in statuses for row in self.rows.values())
+            return _Cursor([(count,)])
         if low.startswith("insert into graph_correlation_runs"):
             tenant, correlation_id, idem = params[1], params[0], params[2]
             if (tenant, correlation_id) in self.rows or any(row[1] == tenant and row[2] == idem for row in self.rows.values()):
@@ -146,6 +150,7 @@ def _run(correlation_id="corr-1", tenant="acme", key="idem-1"):
 
 def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None:
     store, conn = _store(monkeypatch)
+    assert store.count_active_correlation_runs(tenant_id="acme") == 0
     created, was_created = store.create_correlation_run(_run())
     replay, replay_created = store.create_correlation_run(_run(correlation_id="corr-retry"))
 
@@ -156,6 +161,8 @@ def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None
     assert store.get_correlation_run_by_idempotency_key(tenant_id="acme", idempotency_key="idem-1") == created
     assert store.get_correlation_run_by_idempotency_key(tenant_id="other", idempotency_key="idem-1") is None
     assert [run.correlation_id for run in store.list_correlation_runs(tenant_id="acme")] == ["corr-1"]
+    assert store.count_active_correlation_runs(tenant_id="acme") == 1
+    assert store.count_active_correlation_runs(tenant_id="other") == 0
 
     running = store.update_correlation_run(
         tenant_id="acme",
@@ -175,6 +182,7 @@ def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None
         completed_at="2026-08-30T00:02:00+00:00",
     )
     assert running.status is CorrelationRunStatus.RUNNING
+    assert store.count_active_correlation_runs(tenant_id="acme") == 0
     assert complete.status is CorrelationRunStatus.COMPLETE
     assert json.loads(conn.rows[("acme", "corr-1")][7]) == _run().input_manifest
     assert conn.commits == 3

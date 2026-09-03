@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -344,6 +346,115 @@ async def test_active_tenant_quota_defers_without_losing_batch(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_scheduler_offloads_synchronous_job_store_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs = InMemoryJobStore()
+    graph_store = SQLiteGraphStore(tmp_path / "graph.db")
+    release = threading.Event()
+    original = jobs.list_summary
+
+    def blocking_list_summary(*args, **kwargs):  # noqa: ANN002, ANN003
+        release.wait(timeout=0.25)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(jobs, "list_summary", blocking_list_summary)
+    task = asyncio.create_task(
+        reconcile_auto_correlations_once(
+            jobs,
+            graph_store,
+            policy=AutoCorrelationPolicy(enabled=True),
+            now=lambda: NOW,
+        )
+    )
+    started = asyncio.get_running_loop().time()
+    try:
+        await asyncio.sleep(0.02)
+        assert asyncio.get_running_loop().time() - started < 0.1
+    finally:
+        release.set()
+        await task
+
+
+@pytest.mark.asyncio
+async def test_scheduler_offloads_synchronous_graph_store_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs = InMemoryJobStore()
+    graph_store = SQLiteGraphStore(tmp_path / "graph.db")
+    parent = _batch(jobs)
+    for scan_id in parent.child_job_ids:
+        graph_store.save_graph(_graph(scan_id))
+    release = threading.Event()
+    original = graph_store.snapshots_by_ids
+
+    def blocking_snapshots_by_ids(*args, **kwargs):  # noqa: ANN002, ANN003
+        release.wait(timeout=0.25)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(graph_store, "snapshots_by_ids", blocking_snapshots_by_ids)
+    service = GraphCorrelationService(graph_store, now=lambda: NOW)
+    task = asyncio.create_task(
+        reconcile_auto_correlations_once(
+            jobs,
+            graph_store,
+            policy=AutoCorrelationPolicy(enabled=True),
+            now=lambda: NOW,
+            service=service,
+        )
+    )
+    started = asyncio.get_running_loop().time()
+    try:
+        await asyncio.sleep(0.02)
+        assert asyncio.get_running_loop().time() - started < 0.1
+    finally:
+        release.set()
+        await task
+        await service.stop()
+
+
+@pytest.mark.asyncio
+async def test_active_quota_uses_one_exact_count_per_tenant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs = InMemoryJobStore()
+    graph_store = SQLiteGraphStore(tmp_path / "graph.db")
+    first = _batch(jobs, batch_id="batch-first")
+    second = _batch(jobs, batch_id="batch-second")
+    for scan_id in [*first.child_job_ids, *second.child_job_ids]:
+        graph_store.save_graph(_graph(scan_id))
+    count_calls: list[str] = []
+
+    def count_active(*, tenant_id: str) -> int:
+        count_calls.append(tenant_id)
+        return 0
+
+    monkeypatch.setattr(graph_store, "count_active_correlation_runs", count_active, raising=False)
+    monkeypatch.setattr(
+        graph_store,
+        "list_correlation_runs",
+        lambda **_kwargs: pytest.fail("scheduler must not materialize correlation history for an active count"),
+    )
+    service = GraphCorrelationService(graph_store, now=lambda: NOW)
+    try:
+        decisions = await reconcile_auto_correlations_once(
+            jobs,
+            graph_store,
+            policy=AutoCorrelationPolicy(enabled=True, max_batches_per_poll=2, max_active_per_tenant=2),
+            now=lambda: NOW,
+            service=service,
+        )
+    finally:
+        await service.stop()
+
+    assert [decision["status"] for decision in decisions] == ["scheduled", "scheduled"]
+    assert count_calls == ["tenant-a"]
+
+
+@pytest.mark.asyncio
 async def test_scheduler_emits_bounded_metrics_and_audit_for_skip_and_schedule(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -360,6 +471,8 @@ async def test_scheduler_emits_bounded_metrics_and_audit_for_skip_and_schedule(
     jobs = InMemoryJobStore()
     graph_store = SQLiteGraphStore(tmp_path / "graph.db")
     eligible = _batch(jobs, batch_id="eligible")
+    eligible.correlation_cohort_id = "00000000-0000-5000-8000-000000000042"
+    jobs.put(eligible)
     missing = _batch(jobs, batch_id="missing")
     for scan_id in eligible.child_job_ids:
         graph_store.save_graph(_graph(scan_id))
@@ -384,4 +497,8 @@ async def test_scheduler_emits_bounded_metrics_and_audit_for_skip_and_schedule(
         ("graph.auto_correlation_decision", "scheduled"),
         ("graph.auto_correlation_decision", "skipped"),
     }
-    assert {details["cohort_basis"] for _, details in audit_events} == {"batch_id"}
+    assert {details["cohort_basis"] for _, details in audit_events} == {"batch_id", "correlation_cohort_id"}
+    scheduled_details = next(details for _, details in audit_events if details["outcome"] == "scheduled")
+    skipped_details = next(details for _, details in audit_events if details["outcome"] == "skipped")
+    assert scheduled_details["correlation_cohort_id"] == eligible.correlation_cohort_id
+    assert skipped_details["correlation_cohort_id"] == ""

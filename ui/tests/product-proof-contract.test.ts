@@ -110,10 +110,15 @@ describe("product proof capture contract", () => {
     expect(source).toContain("correlation_manifest_sha256");
     expect(source).toContain("Runtime block verified");
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
-    expect(source).toContain('window.scrollTo({ top: workflowTop - 88, behavior: "instant" })');
+    expect(source).toContain("assertFullyInViewport");
+    expect(source).toContain("6 independent evidence sources produced 1 confirmed attack path");
+    expect(source).toContain("Exact-ID correlation");
+    expect(source).toContain("CVE-2023-4863 can reach Modeled customer records");
+    expect(source).toContain('rejectedText: ["hops hidden", "Show all 8 hops"]');
+    expect(source).not.toContain("document.body.style.paddingBottom");
     expect(source).toContain("assertNoHorizontalOverflow: true");
     expect(source).toContain('getByTestId("selected-exposure-path")');
-    expect(source).toContain("< 640 ? -72 : -300");
+    expect(source).not.toContain("< 640 ? -72 : -300");
   });
 
   it("keeps the base graph fixture from swallowing graph subroutes", () => {

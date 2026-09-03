@@ -76,7 +76,7 @@ export function AttackPathCorrelationProof({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-[color:var(--foreground)]">{proofLabel}</p>
+          <p data-testid="path-verification-status" className="text-xs font-semibold text-[color:var(--foreground)]">{proofLabel}</p>
           <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
             {completeHopCount}/{expectedHopCount} directed traversable hops evidenced
           </p>

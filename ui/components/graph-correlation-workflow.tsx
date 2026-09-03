@@ -188,7 +188,7 @@ export function GraphCorrelationWorkflow({
             <Network className="h-4 w-4" />
             {isComplete ? `Correlation complete · ${freshReceiptCount}/${receiptCount} fresh` : "Evidence journey"}
           </p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--foreground)] sm:text-2xl">
+          <h2 data-testid="correlation-outcome-heading" className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--foreground)] sm:text-2xl">
             {isComplete
               ? `${receiptCount} independent evidence sources produced ${attackPaths} confirmed attack path${attackPaths === 1 ? "" : "s"}`
               : "Connect sources, scan once, and investigate the joined risk"}
@@ -251,7 +251,7 @@ export function GraphCorrelationWorkflow({
             </div>
             <div className="flex flex-wrap gap-2">
               {priorityAction ? (
-                <Link href={priorityAction.href} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white transition hover:bg-emerald-500">
+                <Link data-testid="correlation-primary-action" href={priorityAction.href} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white transition hover:bg-emerald-500">
                   {priorityAction.title}
                 </Link>
               ) : null}

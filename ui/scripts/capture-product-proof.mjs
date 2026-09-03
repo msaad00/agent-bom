@@ -2683,6 +2683,23 @@ async function scrollTo(page, y) {
   await page.waitForTimeout(350);
 }
 
+async function assertFullyInViewport(page, testId) {
+  const locator = page.getByTestId(testId);
+  await locator.waitFor({ state: "visible", timeout: 30_000 });
+  const bounds = await locator.boundingBox();
+  const viewport = page.viewportSize();
+  if (
+    !bounds
+    || !viewport
+    || bounds.x < 0
+    || bounds.y < 0
+    || bounds.x + bounds.width > viewport.width + 1
+    || bounds.y + bounds.height > viewport.height + 1
+  ) {
+    throw new Error(`Required proof ${testId} is not fully visible in the capture viewport`);
+  }
+}
+
 async function fitReactFlow(page, { timeout = 30_000 } = {}) {
   await page.waitForSelector(".react-flow", { state: "attached", timeout });
   await page.waitForTimeout(250);
@@ -2723,13 +2740,6 @@ async function main() {
       const workflow = proofPage.getByTestId("graph-correlation-workflow");
       await workflow.waitFor({ state: "visible", timeout: 30_000 });
       await proofPage.getByTestId("graph-correlation-receipt-dag").waitFor({ state: "visible", timeout: 30_000 });
-      // Give the viewport enough trailing room to place Evidence scope just
-      // below the fixed product header. Without this capture-only spacer the
-      // browser hits the document's maximum scroll position and leaves the
-      // previous path card in the hero frame.
-      await proofPage.evaluate(() => {
-        document.body.style.paddingBottom = "900px";
-      });
       const workflowTop = await workflow.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
@@ -2737,23 +2747,39 @@ async function main() {
         window.scrollTo({ top: workflowTop - 88, behavior: "instant" });
       }, workflowTop);
       await proofPage.waitForTimeout(500);
+      const viewportWidth = proofPage.viewportSize()?.width ?? 1440;
+      if (viewportWidth >= 640) {
+        await assertFullyInViewport(proofPage, "graph-correlation-workflow");
+      } else {
+        await assertFullyInViewport(proofPage, "correlation-outcome-heading");
+        await assertFullyInViewport(proofPage, "correlation-primary-action");
+      }
     };
     const prepareCorrelationPath = async (proofPage) => {
       const proof = proofPage.getByTestId("attack-path-correlation-proof");
       await proof.waitFor({ state: "visible", timeout: 30_000 });
       const selectedPath = proofPage.getByTestId("selected-exposure-path");
-      await selectedPath.scrollIntoViewIfNeeded();
-      const topOffset = (proofPage.viewportSize()?.width ?? 1440) < 640 ? -72 : -300;
-      await proofPage.evaluate((offset) => window.scrollBy({ top: offset, behavior: "instant" }), topOffset);
+      const selectedPathTop = await selectedPath.evaluate(
+        (element) => element.getBoundingClientRect().top + window.scrollY,
+      );
+      await proofPage.evaluate((top) => window.scrollTo({ top: top - 88, behavior: "instant" }), selectedPathTop);
       await proofPage.waitForTimeout(500);
+      const viewportWidth = proofPage.viewportSize()?.width ?? 1440;
+      await assertFullyInViewport(proofPage, "exposure-path-primary-action");
+      await assertFullyInViewport(proofPage, "path-verification-status");
+      if (viewportWidth >= 640) {
+        await assertFullyInViewport(proofPage, "attack-path-correlation-proof");
+      }
     };
     const correlationReceiptAssertions = {
       expectedText: [
-        "Evidence journey",
+        "6 independent evidence sources produced 1 confirmed attack path",
         "Evidence correlation complete",
+        "Exact-ID correlation",
         "Image + SBOM",
         "Runtime",
         "1 confirmed attack path",
+        "Patch Pillow and re-run correlation",
       ],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
       readySelector: '[data-testid="graph-correlation-receipt-dag"]',
@@ -2761,6 +2787,7 @@ async function main() {
     const correlationPathAssertions = {
       expectedText: [
         "CVE-2023-4863",
+        "CVE-2023-4863 can reach Modeled customer records",
         REFERENCE_LAB.container_digest,
         "Path verified",
         "Runtime observed",
@@ -2769,6 +2796,7 @@ async function main() {
       ],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
       readySelector: '[data-testid="attack-path-correlation-proof"]',
+      rejectedText: ["hops hidden", "Show all 8 hops"],
     };
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 

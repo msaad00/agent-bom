@@ -213,6 +213,7 @@ export function ExposurePathCommandCenter({
         {primaryAction ? (
           <div className="flex flex-wrap gap-2">
             <Link
+              data-testid="exposure-path-primary-action"
               href={primaryAction.href}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500"
             >

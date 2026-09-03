@@ -107,3 +107,15 @@ def test_reference_lab_never_uses_mutable_identity_for_cross_source_joins() -> N
     serialized = json.dumps(payload["join_receipts"], sort_keys=True).lower()
     assert "latest" not in serialized
     assert "label" not in serialized
+
+
+def test_reference_lab_does_not_claim_a_source_import_from_a_dependency_manifest() -> None:
+    payload = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    dependency_edges = [
+        edge
+        for edge in payload["capture_fixture"]["graph"]["edges"]
+        if edge["source"] == "source:pinned-package"
+    ]
+
+    assert len(dependency_edges) == 1
+    assert dependency_edges[0]["relationship"] == "depends_on"

@@ -20,8 +20,8 @@ smoke uses process-local ephemeral stores and fixed non-secret lab tokens; it
 does not require network or cloud credentials.
 
 ```bash
-uv run python scripts/generate_reference_evidence_lab.py
-uv run python scripts/generate_reference_evidence_lab.py --check
+uv run --extra api python scripts/generate_reference_evidence_lab.py
+uv run --extra api python scripts/generate_reference_evidence_lab.py --check
 ```
 
 The generated proof is committed at `generated/correlation-proof.json` so the

@@ -405,7 +405,7 @@ def _snapshots(
         _edge(
             "source:pinned-package",
             "package:repo:pillow",
-            RelationshipType.IMPORTS,
+            RelationshipType.DEPENDS_ON,
             scan_id=repo.scan_id,
             source_kind="repository_parser",
             evidence_tier="static_evidence",

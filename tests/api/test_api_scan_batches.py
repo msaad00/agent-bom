@@ -21,6 +21,7 @@ def test_multi_target_scan_request_creates_parent_and_child_jobs(monkeypatch):
     store = _reset_store()
     submitted: list[str] = []
     monkeypatch.setattr(scan_routes, "submit_scan_job", lambda job: submitted.append(job.job_id))
+    monkeypatch.setattr("agent_bom.config.GRAPH_AUTO_CORRELATE", True)
 
     parent = scan_routes.enqueue_scan_job(
         tenant_id="tenant-a",
@@ -49,6 +50,9 @@ def test_multi_target_scan_request_creates_parent_and_child_jobs(monkeypatch):
     assert stored_parent is not None
     assert stored_parent.result["batch"]["target_count"] == 3
     assert stored_parent.result["batch"]["pending_targets"] == 3
+    assert stored_parent.result["auto_correlation"]["status"] == "pending"
+    assert stored_parent.result["auto_correlation"]["correlation_id"]
+    assert set(stored_parent.result["auto_correlation"]["input_scan_ids"]) == set(parent.child_job_ids)
 
 
 def test_batch_parent_rolls_up_child_results_without_failing_partial_batch(monkeypatch):

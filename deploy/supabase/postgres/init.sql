@@ -548,6 +548,8 @@ CREATE TABLE IF NOT EXISTS graph_correlation_runs (
     created_at TEXT NOT NULL,
     started_at TEXT NOT NULL DEFAULT '',
     completed_at TEXT NOT NULL DEFAULT '',
+    execution_owner TEXT NOT NULL DEFAULT '',
+    execution_lease_expires_at TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (correlation_id, tenant_id),
     UNIQUE (tenant_id, idempotency_key)
 );

@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "description": "Exact registered sources to scan and correlate as one immutable cohort.",
+  "properties": {
+    "max_age_hours": {
+      "default": 168,
+      "maximum": 8760,
+      "minimum": 1,
+      "title": "Max Age Hours",
+      "type": "integer"
+    },
+    "source_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "minItems": 2,
+      "title": "Source Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "source_ids"
+  ],
+  "title": "SourceCohortRunRequest",
+  "type": "object"
+}

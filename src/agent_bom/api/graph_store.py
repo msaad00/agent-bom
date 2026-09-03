@@ -170,6 +170,8 @@ class GraphStoreProtocol(Protocol):
 
     def save_graph(self, graph: UnifiedGraph) -> None: ...
 
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int: ...
+
     def save_graph_streaming(
         self,
         *,
@@ -193,6 +195,7 @@ class GraphStoreProtocol(Protocol):
         result_manifest: Mapping[str, Any],
         manifest_sha256: str,
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> GraphCorrelationRun: ...
 
     def create_correlation_run(self, run: GraphCorrelationRun) -> tuple[GraphCorrelationRun, bool]: ...
@@ -208,6 +211,28 @@ class GraphStoreProtocol(Protocol):
 
     def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list[GraphCorrelationRun]: ...
 
+    def count_active_correlation_runs(self, *, tenant_id: str) -> int: ...
+
+    def claim_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> GraphCorrelationRun | None: ...
+
+    def heartbeat_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> bool: ...
+
     def update_correlation_run(
         self,
         *,
@@ -220,6 +245,7 @@ class GraphStoreProtocol(Protocol):
         failure_code: str = "",
         started_at: str = "",
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> GraphCorrelationRun: ...
 
     def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = "") -> "PriorSnapshotDigest": ...
@@ -722,6 +748,30 @@ class SQLiteGraphStore:
                 "graph_filter_presets",
             ):
                 cursor = conn.execute(f"DELETE FROM {table} WHERE tenant_id = ?", (tenant_id,))  # nosec B608 - table list is static
+                total += max(cursor.rowcount, 0)
+            conn.commit()
+            return total
+        finally:
+            conn.close()
+
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+        """Atomically remove one tenant-scoped snapshot and all projections."""
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_rw_conn()
+        try:
+            total = 0
+            for table in (
+                "graph_node_search",
+                "attack_paths",
+                "interaction_risks",
+                "graph_edges",
+                "graph_nodes",
+                "graph_snapshots",
+            ):
+                cursor = conn.execute(
+                    f"DELETE FROM {table} WHERE tenant_id = ? AND scan_id = ?",  # nosec B608 - table list is static
+                    (tenant_id, scan_id),
+                )
                 total += max(cursor.rowcount, 0)
             conn.commit()
             return total
@@ -1801,6 +1851,7 @@ class SQLiteGraphStore:
         result_manifest: Mapping[str, Any],
         manifest_sha256: str,
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> GraphCorrelationRun:
         from agent_bom.graph.correlation import validate_correlation_output_manifest
 
@@ -1825,6 +1876,7 @@ class SQLiteGraphStore:
                 evidence_manifest_sha256=manifest_sha256,
                 correlation_result_manifest=result_manifest,
                 correlation_completed_at=completed_at,
+                correlation_execution_owner=execution_owner,
             )
             completed = sqlite_graph_store.get_correlation_run(
                 conn,
@@ -1871,6 +1923,53 @@ class SQLiteGraphStore:
         finally:
             conn.close()
 
+    def count_active_correlation_runs(self, *, tenant_id: str) -> int:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return 0
+        try:
+            return sqlite_graph_store.count_active_correlation_runs(conn, tenant_id=tenant_id)
+        finally:
+            conn.close()
+
+    def claim_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> GraphCorrelationRun | None:
+        with sqlite_graph_store.open_graph_db(self._db_path) as conn:
+            return sqlite_graph_store.claim_correlation_run_execution(
+                conn,
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                owner_token=owner_token,
+                lease_seconds=lease_seconds,
+                now=now,
+            )
+
+    def heartbeat_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> bool:
+        with sqlite_graph_store.open_graph_db(self._db_path) as conn:
+            return sqlite_graph_store.heartbeat_correlation_run_execution(
+                conn,
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                owner_token=owner_token,
+                lease_seconds=lease_seconds,
+                now=now,
+            )
+
     def update_correlation_run(
         self,
         *,
@@ -1883,6 +1982,7 @@ class SQLiteGraphStore:
         failure_code: str = "",
         started_at: str = "",
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> GraphCorrelationRun:
         with sqlite_graph_store.open_graph_db(self._db_path) as conn:
             return sqlite_graph_store.update_correlation_run(
@@ -1896,6 +1996,7 @@ class SQLiteGraphStore:
                 failure_code=failure_code,
                 started_at=started_at,
                 completed_at=completed_at,
+                execution_owner=execution_owner,
             )
 
     def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]:

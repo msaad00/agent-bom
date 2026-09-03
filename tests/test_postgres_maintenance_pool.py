@@ -206,6 +206,21 @@ def test_maintenance_pool_is_distinct_bounded_and_password_is_separate(monkeypat
     assert maintenance_config["kwargs"]["kwargs"]["password"] == "maintenance-secret"
 
 
+def test_idempotency_fence_pool_is_distinct_bounded_and_uses_app_role(monkeypatch, tmp_path):
+    _configure_urls(monkeypatch, tmp_path)
+    captured = _install_pool_factory(monkeypatch)
+
+    app_pool = postgres_common._get_pool()
+    fence_pool = postgres_common._get_idempotency_fence_pool()
+
+    assert fence_pool is not app_pool
+    assert len(captured) == 2
+    assert all("agent_bom_app" in str(item["conninfo"]) for item in captured)
+    fence_config = captured[1]
+    assert fence_config["kwargs"]["min_size"] == 1
+    assert 1 <= fence_config["kwargs"]["max_size"] <= 4
+
+
 def test_combined_preflight_rejects_superuser_app_without_explicit_acknowledgement(
     monkeypatch,
     tmp_path,
@@ -259,17 +274,21 @@ def test_maintenance_connection_applies_scoped_bypass_to_maintenance_pool(monkey
     assert not postgres_common.is_tenant_rls_bypassed()
 
 
-def test_reset_pool_closes_app_and_maintenance_pools(monkeypatch):
+def test_reset_pool_closes_app_fence_and_maintenance_pools(monkeypatch):
     app_pool = _Pool(_Connection("agent_bom_app"))
+    fence_pool = _Pool(_Connection("agent_bom_app"))
     maintenance_pool = _Pool(_Connection("agent_bom_maintenance", maintenance_member=True))
     monkeypatch.setattr(postgres_common, "_pool", app_pool)
+    monkeypatch.setattr(postgres_common, "_idempotency_fence_pool", fence_pool, raising=False)
     monkeypatch.setattr(postgres_common, "_maintenance_pool", maintenance_pool, raising=False)
 
     postgres_common.reset_pool()
 
     assert app_pool.closed is True
+    assert fence_pool.closed is True
     assert maintenance_pool.closed is True
     assert postgres_common._pool is None
+    assert postgres_common._idempotency_fence_pool is None
     assert postgres_common._maintenance_pool is None
 
 

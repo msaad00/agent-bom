@@ -74,6 +74,7 @@ _scan_completions = _LabelledCounter()  # labelled by status (done, failed, canc
 _gateway_relays = _LabelledCounter()  # labelled by "<upstream>|<outcome>"
 _authorization_evidence = _LabelledCounter()  # labelled by "<provider>|<status>"
 _authorization_evidence_gaps = _LabelledCounter()  # labelled by "<provider>|<reason>"
+_auto_correlations = _LabelledCounter()  # labelled by "<outcome>|<bounded-reason>"
 _scan_jobs_active = _Gauge()  # in-flight scans (queued + running)
 
 _AUTHORIZATION_PROVIDERS = frozenset({"azure", "gcp"})
@@ -92,6 +93,33 @@ _AUTHORIZATION_REASON_CODES = frozenset(
         "truncated",
         "unavailable",
         "unsupported",
+    }
+)
+_AUTO_CORRELATION_OUTCOMES = frozenset({"scheduled", "complete", "deferred", "skipped", "failed"})
+_AUTO_CORRELATION_REASONS = frozenset(
+    {
+        "batch_incomplete",
+        "batch_membership_mismatch",
+        "completed",
+        "correlation_budget_exceeded",
+        "correlation_execution_failed",
+        "correlation_failed",
+        "correlation_identity_conflict",
+        "durable_job_store_required",
+        "empty_input_snapshot",
+        "graph_backend_unsupported",
+        "input_snapshot_changed",
+        "input_snapshot_in_future",
+        "input_snapshot_unavailable",
+        "idempotency_conflict",
+        "nested_correlation_unsupported",
+        "queue_capacity_exceeded",
+        "reconciliation_failed",
+        "scheduled",
+        "snapshot_count_out_of_bounds",
+        "snapshot_set_incomplete",
+        "stale_input",
+        "tenant_active_quota",
     }
 )
 
@@ -170,6 +198,14 @@ def record_authorization_evidence(*, provider: str, status: str, reason_codes: t
         _authorization_evidence_gaps.inc(f"{safe_provider}|{safe_reason}")
 
 
+def record_auto_correlation(*, outcome: str, reason: str) -> None:
+    """Record one automatic correlation decision using bounded labels."""
+
+    safe_outcome = outcome if outcome in _AUTO_CORRELATION_OUTCOMES else "failed"
+    safe_reason = reason if reason in _AUTO_CORRELATION_REASONS else "unknown"
+    _auto_correlations.inc(f"{safe_outcome}|{safe_reason}")
+
+
 def render_prometheus_lines() -> list[str]:
     """Return Prometheus text-format lines for all in-process counters."""
     lines: list[str] = []
@@ -246,6 +282,15 @@ def render_prometheus_lines() -> list[str]:
         provider, _, reason = label.partition("|")
         lines.append(f'agent_bom_authorization_evidence_gaps_total{{provider="{provider}",reason="{reason}"}} {count}')
 
+    correlations = _auto_correlations.snapshot()
+    lines.append("# HELP agent_bom_auto_correlations_total Automatic exact-batch graph correlation decisions")
+    lines.append("# TYPE agent_bom_auto_correlations_total counter")
+    if not correlations:
+        lines.append('agent_bom_auto_correlations_total{outcome="none",reason="none"} 0')
+    for label, count in sorted(correlations.items()):
+        outcome, _, reason = label.partition("|")
+        lines.append(f'agent_bom_auto_correlations_total{{outcome="{outcome}",reason="{reason}"}} {count}')
+
     return lines
 
 
@@ -260,6 +305,7 @@ def reset_for_tests() -> None:
         _gateway_relays,
         _authorization_evidence,
         _authorization_evidence_gaps,
+        _auto_correlations,
     ):
         with counter._lock:  # noqa: SLF001
             counter._values.clear()  # noqa: SLF001

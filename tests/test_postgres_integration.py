@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
+import time
 from dataclasses import replace
 from uuid import uuid4
 
@@ -33,6 +35,179 @@ def reset_postgres_pool():
     if pool is not None:
         pool.close()
     postgres_common.reset_pool()
+
+
+def test_postgres_idempotency_commit_uses_db_fence_outside_saturated_app_pool(monkeypatch):
+    """A second replica cannot take over while the first durable action runs."""
+
+    from agent_bom.api.idempotency_store import PostgresIdempotencyStore, idempotency_request_fingerprint
+    from agent_bom.api.postgres_common import _new_application_pool
+
+    monkeypatch.setenv("AGENT_BOM_IDEMPOTENCY_RESERVATION_LEASE_SECONDS", "1")
+    main_a = _new_application_pool(min_size=1, max_size=1)
+    main_b = _new_application_pool(min_size=1, max_size=1)
+    fence_a = _new_application_pool(min_size=1, max_size=1)
+    fence_b = _new_application_pool(min_size=1, max_size=1)
+    pools = (main_a, main_b, fence_a, fence_b)
+    try:
+        store_a = PostgresIdempotencyStore(pool=main_a, fence_pool=fence_a)
+        store_b = PostgresIdempotencyStore(pool=main_b, fence_pool=fence_b)
+        suffix = uuid4().hex
+        args = ("/v1/results/push", "default", f"source-{suffix}", f"key-{suffix}")
+        request_hash = idempotency_request_fingerprint({"value": 1})
+        _receipt, acquired = store_a.claim(
+            *args,
+            {"job_id": f"job-{suffix}", "committed": False},
+            request_hash=request_hash,
+            reservation_lease_seconds=1,
+            owner_token="owner-a",
+        )
+        assert acquired is True
+
+        started = threading.Event()
+        effects: list[str] = []
+        outcomes: dict[str, object] = {}
+
+        def _slow_owner() -> None:
+            try:
+
+                def _action() -> str:
+                    # Saturate replica A's only normal app connection beyond
+                    # the reservation lease. Its row fence uses another pool.
+                    with main_a.connection() as conn:
+                        conn.execute("SELECT 1")
+                        started.set()
+                        time.sleep(2)
+                        effects.append("owner-a")
+                    return "owner-a"
+
+                outcomes["owner-a"] = store_a.commit_claim(
+                    *args,
+                    {"job_id": f"job-{suffix}", "committed": True, "winner": "owner-a"},
+                    action=_action,
+                    request_hash=request_hash,
+                    owner_token="owner-a",
+                )
+            except Exception as exc:  # noqa: BLE001 - captured for a deterministic thread assertion
+                outcomes["owner-a"] = type(exc).__name__
+
+        def _rival() -> None:
+            assert started.wait(5)
+            time.sleep(1.25)
+            _receipt, rival_acquired = store_b.claim(
+                *args,
+                {"job_id": f"job-{suffix}", "committed": False},
+                request_hash=request_hash,
+                reservation_lease_seconds=1,
+                owner_token="owner-b",
+            )
+            outcomes["owner-b-acquired"] = rival_acquired
+            if rival_acquired:
+                store_b.commit_claim(
+                    *args,
+                    {"job_id": f"job-{suffix}", "committed": True, "winner": "owner-b"},
+                    action=lambda: effects.append("owner-b"),
+                    request_hash=request_hash,
+                    owner_token="owner-b",
+                )
+
+        owner_thread = threading.Thread(target=_slow_owner)
+        rival_thread = threading.Thread(target=_rival)
+        owner_thread.start()
+        rival_thread.start()
+        owner_thread.join(8)
+        rival_thread.join(8)
+        assert not owner_thread.is_alive()
+        assert not rival_thread.is_alive()
+        assert outcomes == {"owner-a": "owner-a", "owner-b-acquired": False}
+        assert effects == ["owner-a"]
+        assert store_b.get(*args, request_hash=request_hash) == {
+            "job_id": f"job-{suffix}",
+            "committed": True,
+            "winner": "owner-a",
+        }
+    finally:
+        for pool in pools:
+            pool.close()
+
+
+def test_postgres_idempotency_waiter_cannot_starve_same_replica_callback(monkeypatch):
+    """A contended claim waits on fence capacity, never the callback pool."""
+
+    from agent_bom.api.idempotency_store import PostgresIdempotencyStore, idempotency_request_fingerprint
+    from agent_bom.api.postgres_common import _new_application_pool
+
+    monkeypatch.setenv("AGENT_BOM_IDEMPOTENCY_RESERVATION_LEASE_SECONDS", "1")
+    main_pool = _new_application_pool(min_size=1, max_size=1)
+    fence_pool = _new_application_pool(min_size=1, max_size=1)
+    try:
+        store = PostgresIdempotencyStore(pool=main_pool, fence_pool=fence_pool)
+        suffix = uuid4().hex
+        args = ("/v1/results/push", "default", f"source-{suffix}", f"same-replica-{suffix}")
+        request_hash = idempotency_request_fingerprint({"value": 1})
+        _receipt, acquired = store.claim(
+            *args,
+            {"job_id": f"job-{suffix}", "committed": False},
+            request_hash=request_hash,
+            reservation_lease_seconds=1,
+            owner_token="owner-a",
+        )
+        assert acquired is True
+
+        started = threading.Event()
+        effects: list[str] = []
+        outcomes: dict[str, object] = {}
+
+        def _owner() -> None:
+            try:
+
+                def _action() -> str:
+                    started.set()
+                    # Give the waiter time to contend before the callback asks
+                    # for this replica's only normal application connection.
+                    time.sleep(0.2)
+                    with main_pool.connection() as conn:
+                        conn.execute("SELECT 1")
+                        effects.append("owner-a")
+                    return "owner-a"
+
+                outcomes["owner"] = store.commit_claim(
+                    *args,
+                    {"job_id": f"job-{suffix}", "committed": True},
+                    action=_action,
+                    request_hash=request_hash,
+                    owner_token="owner-a",
+                )
+            except Exception as exc:  # noqa: BLE001 - captured for deterministic thread assertions
+                outcomes["owner"] = type(exc).__name__
+
+        def _waiter() -> None:
+            assert started.wait(5)
+            try:
+                _receipt, waiter_acquired = store.claim(
+                    *args,
+                    {"job_id": f"job-{suffix}", "committed": False},
+                    request_hash=request_hash,
+                    reservation_lease_seconds=1,
+                    owner_token="owner-b",
+                )
+                outcomes["waiter"] = waiter_acquired
+            except Exception as exc:  # noqa: BLE001 - captured for deterministic thread assertions
+                outcomes["waiter"] = type(exc).__name__
+
+        owner_thread = threading.Thread(target=_owner)
+        waiter_thread = threading.Thread(target=_waiter)
+        owner_thread.start()
+        waiter_thread.start()
+        owner_thread.join(5)
+        waiter_thread.join(5)
+        assert not owner_thread.is_alive()
+        assert not waiter_thread.is_alive()
+        assert outcomes == {"owner": "owner-a", "waiter": False}
+        assert effects == ["owner-a"]
+    finally:
+        main_pool.close()
+        fence_pool.close()
 
 
 def test_postgres_job_store_real_roundtrip_and_tenant_filter():

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Sequence
@@ -13,12 +14,12 @@ from agent_bom.graph.analysis import analysis_status_map_to_dict
 from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion
 from agent_bom.graph.attack_path_mitre import apply_attack_path_technique_mappings
 from agent_bom.graph.correlation import (
+    CorrelationMergeResult,
     CorrelationRunStatus,
     CorrelationSnapshot,
     GraphCorrelationRun,
     correlation_graph_digest,
     correlation_manifest_digest,
-    merge_graph_snapshots,
 )
 from agent_bom.graph.correlation_receipts import (
     CorrelationReceiptError,
@@ -26,6 +27,7 @@ from agent_bom.graph.correlation_receipts import (
     sign_correlation_receipt,
     verify_correlation_receipt,
 )
+from agent_bom.graph.correlation_workspace import CorrelationMergeBudgetError, CorrelationMergeWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +106,7 @@ class GraphCorrelationService:
         max_output_edges: int = 500_000,
         receipt_signing_key: bytes | None = None,
         receipt_signing_key_id: str = "",
+        execution_lease_seconds: int = 30,
     ) -> None:
         if queue_capacity < 1:
             raise ValueError("queue_capacity must be positive")
@@ -111,12 +114,15 @@ class GraphCorrelationService:
             raise ValueError("worker_count must be between 1 and 4")
         if max_output_nodes < 1 or max_output_edges < 1:
             raise ValueError("correlation output budgets must be positive")
+        if execution_lease_seconds < 3:
+            raise ValueError("execution_lease_seconds must be at least 3")
         self._store = store
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue(maxsize=queue_capacity)
         self._worker_count = worker_count
         self._max_output_nodes = max_output_nodes
         self._max_output_edges = max_output_edges
+        self._execution_lease_seconds = execution_lease_seconds
         self._receipt_signing_key = receipt_signing_key
         self._receipt_signing_key_id = receipt_signing_key_id.strip()
         self._workers: list[asyncio.Task[None]] = []
@@ -304,24 +310,36 @@ class GraphCorrelationService:
                 self._queue.task_done()
 
     async def _execute(self, tenant_id: str, correlation_id: str) -> None:
+        owner_token = uuid.uuid4().hex
         run = await asyncio.to_thread(
-            self._store.get_correlation_run,
+            self._store.claim_correlation_run_execution,
             tenant_id=tenant_id,
             correlation_id=correlation_id,
+            owner_token=owner_token,
+            lease_seconds=self._execution_lease_seconds,
+            now=self._now().astimezone(timezone.utc).isoformat(),
         )
-        if run is None or run.status in {CorrelationRunStatus.COMPLETE, CorrelationRunStatus.FAILED}:
+        if run is None:
             return
-        now = self._now().astimezone(timezone.utc).isoformat()
-        try:
-            if run.status is CorrelationRunStatus.PENDING:
-                run = await asyncio.to_thread(
-                    self._store.update_correlation_run,
+        lease_lost = asyncio.Event()
+
+        async def heartbeat() -> None:
+            while True:
+                await asyncio.sleep(max(1.0, self._execution_lease_seconds / 3))
+                owned = await asyncio.to_thread(
+                    self._store.heartbeat_correlation_run_execution,
                     tenant_id=tenant_id,
                     correlation_id=correlation_id,
-                    status=CorrelationRunStatus.RUNNING,
-                    started_at=now,
+                    owner_token=owner_token,
+                    lease_seconds=self._execution_lease_seconds,
+                    now=self._now().astimezone(timezone.utc).isoformat(),
                 )
-            snapshots: list[CorrelationSnapshot] = []
+                if not owned:
+                    lease_lost.set()
+                    return
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+        try:
             for item in run.input_manifest:
                 signature = item.get("signature")
                 if signature is not None:
@@ -337,17 +355,6 @@ class GraphCorrelationService:
                         allow_stale=run.allow_stale,
                     ):
                         raise CorrelationServiceError("input_receipt_signature_invalid")
-                graph = await asyncio.to_thread(
-                    self._store.load_graph,
-                    tenant_id=tenant_id,
-                    scan_id=str(item["scan_id"]),
-                )
-                if not graph.nodes:
-                    raise CorrelationServiceError("input_snapshot_unavailable")
-                snapshot = CorrelationSnapshot.from_graph(graph)
-                if snapshot.digest != str(item.get("digest") or ""):
-                    raise CorrelationServiceError("input_snapshot_changed")
-                snapshots.append(snapshot)
             execution_manifest = _manifest_with_current_freshness(
                 run.input_manifest,
                 now=self._now().astimezone(timezone.utc),
@@ -369,14 +376,12 @@ class GraphCorrelationService:
                     for receipt in execution_manifest
                 ]
             merged = await asyncio.to_thread(
-                merge_graph_snapshots,
-                correlation_id=correlation_id,
+                self._load_and_merge_inputs,
                 tenant_id=tenant_id,
-                snapshots=snapshots,
+                correlation_id=correlation_id,
                 created_at=run.created_at,
+                input_manifest=execution_manifest,
             )
-            if len(merged.graph.nodes) > self._max_output_nodes or len(merged.graph.edges) > self._max_output_edges:
-                raise CorrelationServiceError("correlation_budget_exceeded")
             freshness_by_scan = {str(item["scan_id"]): str(item["freshness"]) for item in execution_manifest}
             for edge in merged.graph.edges:
                 correlation = edge.provenance.get("correlation")
@@ -411,8 +416,12 @@ class GraphCorrelationService:
                 "analysis_bounds": {
                     "correlation_merge": {
                         "status": "complete",
+                        "execution_strategy": "disk_backed_incremental",
+                        "max_resident_source_graphs": 1,
                         "node_limit": self._max_output_nodes,
                         "edge_limit": self._max_output_edges,
+                        "input_node_observation_count": sum(int(str(item.get("node_count") or 0)) for item in execution_manifest),
+                        "input_edge_observation_count": sum(int(str(item.get("edge_count") or 0)) for item in execution_manifest),
                         "node_count": len(merged.graph.nodes),
                         "edge_count": len(merged.graph.edges),
                         "truncated": False,
@@ -428,30 +437,77 @@ class GraphCorrelationService:
                 },
             }
             manifest_sha256 = correlation_manifest_digest(result_manifest)
+            if lease_lost.is_set():
+                return
             await asyncio.to_thread(
                 self._store.complete_correlation_run,
                 merged.graph,
                 result_manifest=result_manifest,
                 manifest_sha256=manifest_sha256,
                 completed_at=self._now().astimezone(timezone.utc).isoformat(),
+                execution_owner=owner_token,
             )
         except Exception as exc:  # noqa: BLE001 - persisted as a sanitized code only
             code = exc.code if isinstance(exc, CorrelationServiceError) else "correlation_execution_failed"
             logger.warning("graph correlation failed: %s", code)
-            current = await asyncio.to_thread(
-                self._store.get_correlation_run,
-                tenant_id=tenant_id,
+            if not lease_lost.is_set():
+                try:
+                    await asyncio.to_thread(
+                        self._store.update_correlation_run,
+                        tenant_id=tenant_id,
+                        correlation_id=correlation_id,
+                        status=CorrelationRunStatus.FAILED,
+                        failure_code=code,
+                        completed_at=self._now().astimezone(timezone.utc).isoformat(),
+                        execution_owner=owner_token,
+                    )
+                except ValueError:
+                    # Another replica took over or completed after this worker
+                    # lost its lease. The stale worker must not alter that run.
+                    return
+        finally:
+            heartbeat_task.cancel()
+            await asyncio.gather(heartbeat_task, return_exceptions=True)
+
+    def _load_and_merge_inputs(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        created_at: str,
+        input_manifest: Sequence[dict[str, object]],
+    ) -> CorrelationMergeResult:
+        """Load one source at a time into a private disk-backed accumulator."""
+
+        try:
+            with CorrelationMergeWorkspace(
                 correlation_id=correlation_id,
-            )
-            if current is not None and current.status in {CorrelationRunStatus.PENDING, CorrelationRunStatus.RUNNING}:
-                await asyncio.to_thread(
-                    self._store.update_correlation_run,
-                    tenant_id=tenant_id,
-                    correlation_id=correlation_id,
-                    status=CorrelationRunStatus.FAILED,
-                    failure_code=code,
-                    completed_at=self._now().astimezone(timezone.utc).isoformat(),
-                )
+                tenant_id=tenant_id,
+                created_at=created_at,
+                max_output_nodes=self._max_output_nodes,
+                max_output_edges=self._max_output_edges,
+            ) as workspace:
+                for item in sorted(
+                    input_manifest,
+                    key=lambda value: (_timestamp(str(value.get("created_at") or "")), str(value.get("scan_id") or "")),
+                ):
+                    graph = self._store.load_graph(
+                        tenant_id=tenant_id,
+                        scan_id=str(item["scan_id"]),
+                    )
+                    if not graph.nodes:
+                        raise CorrelationServiceError("input_snapshot_unavailable")
+                    snapshot = CorrelationSnapshot.from_graph(graph)
+                    if snapshot.digest != str(item.get("digest") or ""):
+                        raise CorrelationServiceError("input_snapshot_changed")
+                    workspace.add_snapshot(snapshot)
+                    # Do not retain the source graph until the next iteration;
+                    # the workspace now owns its serialized observations.
+                    del snapshot
+                    del graph
+                return workspace.finish()
+        except CorrelationMergeBudgetError as exc:
+            raise CorrelationServiceError("correlation_budget_exceeded") from exc
 
 
 async def get_graph_correlation_service(store: GraphStoreProtocol, tenant_id: str) -> GraphCorrelationService:

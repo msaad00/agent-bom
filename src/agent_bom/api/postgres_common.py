@@ -39,6 +39,7 @@ else:
 logger = logging.getLogger(__name__)
 
 _pool = None
+_idempotency_fence_pool = None
 _maintenance_pool = None
 _rls_role_checked = False
 _maintenance_roles_checked = False
@@ -46,6 +47,7 @@ _current_tenant: ContextVar[str] = ContextVar("agent_bom_postgres_tenant", defau
 _bypass_tenant_rls: ContextVar[bool] = ContextVar("agent_bom_postgres_bypass_rls", default=False)
 
 _RLS_MAINTENANCE_MARKER_ROLE = "agent_bom_rls_maintenance"
+_IDEMPOTENCY_FENCE_POOL_MAX_SIZE = 4
 _MAINTENANCE_POOL_MAX_SIZE = 4
 
 
@@ -307,65 +309,80 @@ def resolve_postgres_maintenance_secret() -> str | None:
     return unquote(parsed.password)
 
 
+def _new_application_pool(*, min_size: int, max_size: int) -> ConnectionPool:
+    """Build a bounded app-role pool with the shared password/IAM contract."""
+
+    try:
+        import psycopg_pool
+    except ImportError as exc:
+        raise ImportError("PostgreSQL support requires psycopg. Install with: pip install 'agent-bom[postgres]'") from exc
+
+    from agent_bom.api.postgres_auth import AUTH_MODE_IAM, postgres_auth_mode
+
+    url = resolve_postgres_url()
+    auth_mode = postgres_auth_mode()
+    password = resolve_postgres_secret() if auth_mode != AUTH_MODE_IAM else None
+    kwargs: dict[str, object] = {}
+    if POSTGRES_CONNECT_TIMEOUT_SECONDS > 0:
+        kwargs["connect_timeout"] = POSTGRES_CONNECT_TIMEOUT_SECONDS
+    if password is not None:
+        # Keep the secret out of the conninfo/DSN; psycopg forwards these
+        # per-connection kwargs to libpq for every new connection.
+        kwargs["password"] = password
+    if auth_mode == AUTH_MODE_IAM:
+        import psycopg
+
+        base_connect: Callable[..., object] = getattr(psycopg.Connection.connect, "__func__", psycopg.Connection.connect)
+
+        def connect_with_iam_token(cls: type[object], conninfo: str = "", **connect_kwargs: object) -> object:
+            """Resolve a fresh short-lived IAM token for every connection."""
+            connect_kwargs["password"] = resolve_postgres_secret()
+            return base_connect(cls, conninfo, **connect_kwargs)
+
+        # Construct the optional psycopg subclass dynamically so importing
+        # this module remains dependency-free in non-Postgres installs.
+        iam_auth_connection_class = type(
+            "IamAuthConnection",
+            (psycopg.Connection,),
+            {"connect": classmethod(connect_with_iam_token)},
+        )
+        return psycopg_pool.ConnectionPool(
+            conninfo=url,
+            min_size=min_size,
+            max_size=max_size,
+            kwargs=kwargs,
+            connection_class=iam_auth_connection_class,
+            open=True,
+        )
+    return psycopg_pool.ConnectionPool(
+        conninfo=url,
+        min_size=min_size,
+        max_size=max_size,
+        kwargs=kwargs,
+        open=True,
+    )
+
+
 def _get_pool() -> ConnectionPool:
-    """Lazy-create a connection pool (singleton)."""
+    """Lazy-create the shared application connection pool."""
     global _pool
     if _pool is None:
-        try:
-            import psycopg_pool
-        except ImportError as exc:
-            raise ImportError("PostgreSQL support requires psycopg. Install with: pip install 'agent-bom[postgres]'") from exc
-
-        from agent_bom.api.postgres_auth import AUTH_MODE_IAM, postgres_auth_mode
-
-        url = resolve_postgres_url()
-        auth_mode = postgres_auth_mode()
-        password = resolve_postgres_secret() if auth_mode != AUTH_MODE_IAM else None
         min_size = max(1, POSTGRES_POOL_MIN_SIZE)
         max_size = max(min_size, POSTGRES_POOL_MAX_SIZE)
-        kwargs: dict[str, object] = {}
-        if POSTGRES_CONNECT_TIMEOUT_SECONDS > 0:
-            kwargs["connect_timeout"] = POSTGRES_CONNECT_TIMEOUT_SECONDS
-        if password is not None:
-            # Keep the secret out of the conninfo/DSN; psycopg forwards these
-            # per-connection kwargs to libpq for every new connection.
-            kwargs["password"] = password
-        if auth_mode == AUTH_MODE_IAM:
-            import psycopg
-
-            base_connect: Callable[..., object] = getattr(psycopg.Connection.connect, "__func__", psycopg.Connection.connect)
-
-            def connect_with_iam_token(cls: type[object], conninfo: str = "", **connect_kwargs: object) -> object:
-                """Resolve a fresh short-lived IAM token for every connection."""
-                connect_kwargs["password"] = resolve_postgres_secret()
-                return base_connect(cls, conninfo, **connect_kwargs)
-
-            # Construct the optional psycopg subclass dynamically so importing
-            # this module remains dependency-free in non-Postgres installs.
-            iam_auth_connection_class = type(
-                "IamAuthConnection",
-                (psycopg.Connection,),
-                {"connect": classmethod(connect_with_iam_token)},
-            )
-
-            _pool = psycopg_pool.ConnectionPool(
-                conninfo=url,
-                min_size=min_size,
-                max_size=max_size,
-                kwargs=kwargs,
-                connection_class=iam_auth_connection_class,
-                open=True,
-            )
-        else:
-            _pool = psycopg_pool.ConnectionPool(
-                conninfo=url,
-                min_size=min_size,
-                max_size=max_size,
-                kwargs=kwargs,
-                open=True,
-            )
+        _pool = _new_application_pool(min_size=min_size, max_size=max_size)
     _guard_rls_capable_role(_pool)
     return _pool
+
+
+def _get_idempotency_fence_pool() -> ConnectionPool:
+    """Return a small app-role pool reserved for durable commit row locks."""
+
+    global _idempotency_fence_pool
+    if _idempotency_fence_pool is None:
+        max_size = max(1, min(_IDEMPOTENCY_FENCE_POOL_MAX_SIZE, POSTGRES_POOL_MAX_SIZE))
+        _idempotency_fence_pool = _new_application_pool(min_size=1, max_size=max_size)
+    _guard_rls_capable_role(_idempotency_fence_pool)
+    return _idempotency_fence_pool
 
 
 def _guard_maintenance_role_separation(app_pool: ConnectionPool, maintenance_pool: ConnectionPool) -> None:
@@ -530,13 +547,14 @@ def preflight_rls_capable_role() -> None:
     acknowledgement — is surfaced before uvicorn accepts traffic (epic #4274).
     """
     _get_pool()
+    _get_idempotency_fence_pool()
     _get_maintenance_pool()
 
 
 def reset_pool() -> None:
-    """Close and reset the application and maintenance pools."""
-    global _pool, _maintenance_pool, _rls_role_checked, _maintenance_roles_checked
-    for pool in (_pool, _maintenance_pool):
+    """Close and reset application, idempotency-fence, and maintenance pools."""
+    global _pool, _idempotency_fence_pool, _maintenance_pool, _rls_role_checked, _maintenance_roles_checked
+    for pool in (_pool, _idempotency_fence_pool, _maintenance_pool):
         close = getattr(pool, "close", None)
         if callable(close):
             try:
@@ -544,6 +562,7 @@ def reset_pool() -> None:
             except Exception:
                 logger.debug("Postgres pool close skipped during reset", exc_info=False)
     _pool = None
+    _idempotency_fence_pool = None
     _maintenance_pool = None
     _rls_role_checked = False
     _maintenance_roles_checked = False

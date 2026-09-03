@@ -127,7 +127,7 @@ def _recycle_executor_if_idle() -> None:
     _release_scan_memory()
 
 
-def _observe_scan_future(done_future: Future | Any) -> None:
+def _observe_scan_future(done_future: Future | Any, *, local_job_id: str = "") -> None:
     global _executor_active_jobs, _executor_completed_jobs  # noqa: PLW0603
     try:
         exc = done_future.exception()
@@ -136,6 +136,10 @@ def _observe_scan_future(done_future: Future | Any) -> None:
     except Exception:  # noqa: BLE001
         _logger.error("Failed to observe API scan worker completion")
     finally:
+        if local_job_id:
+            from agent_bom.api.scan_queue import release_local_dispatch
+
+            release_local_dispatch(local_job_id)
         with _executor_lock:
             _executor_active_jobs = max(0, _executor_active_jobs - 1)
             _executor_completed_jobs += 1
@@ -161,7 +165,7 @@ def submit_scan_job(job: ScanJob) -> None:
             _executor_active_jobs = max(0, _executor_active_jobs - 1)
             raise
 
-    future.add_done_callback(_observe_scan_future)
+    future.add_done_callback(lambda done: _observe_scan_future(done, local_job_id=job.job_id))
 
 
 def submit_scheduled_scan_job(loop: Any, job: ScanJob) -> None:

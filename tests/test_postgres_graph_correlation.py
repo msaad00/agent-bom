@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -26,6 +27,8 @@ class _Conn:
     def __init__(self):
         self.rows: dict[tuple[str, str], tuple] = {}
         self.commits = 0
+        self.now = datetime(2026, 8, 30, tzinfo=timezone.utc)
+        self.executed: list[tuple[str, tuple]] = []
 
     def __enter__(self):
         return self
@@ -36,6 +39,7 @@ class _Conn:
     def execute(self, sql, params=None):
         low = " ".join(sql.strip().lower().split())
         params = tuple(params or ())
+        self.executed.append((sql, params))
         if low.startswith("select set_config"):
             return _Cursor()
         if low.startswith("select correlation_id") and "idempotency_key = %s" in low:
@@ -49,16 +53,42 @@ class _Conn:
             tenant, limit = params
             rows = sorted((row for row in self.rows.values() if row[1] == tenant), key=lambda row: (row[12], row[0]), reverse=True)
             return _Cursor(rows[:limit])
+        if low.startswith("select count(*) from graph_correlation_runs"):
+            tenant, *statuses = params
+            count = sum(row[1] == tenant and row[4] in statuses for row in self.rows.values())
+            return _Cursor([(count,)])
         if low.startswith("insert into graph_correlation_runs"):
             tenant, correlation_id, idem = params[1], params[0], params[2]
             if (tenant, correlation_id) in self.rows or any(row[1] == tenant and row[2] == idem for row in self.rows.values()):
                 return _Cursor()
             self.rows[(tenant, correlation_id)] = params
             return _Cursor([params])
-        if low.startswith("update graph_correlation_runs"):
-            status, manifest, result_manifest, output, failure, started, completed, tenant, correlation_id, expected = params
+        if low.startswith("update graph_correlation_runs") and "started_at = case" in low:
+            status, owner, lease_seconds, tenant, correlation_id, pending, running = params
             row = self.rows.get((tenant, correlation_id))
-            if row is None or row[4] != expected:
+            lease_expired = bool(row and row[16]) and datetime.fromisoformat(row[16]) <= self.now
+            if row is None or not (row[4] == pending or (row[4] == running and lease_expired)):
+                return _Cursor()
+            now = self.now.isoformat()
+            expires = (self.now + timedelta(seconds=int(lease_seconds))).isoformat()
+            updated = (*row[:4], status, *row[5:13], row[13] or now, row[14], owner, expires)
+            self.rows[(tenant, correlation_id)] = updated
+            return _Cursor([updated])
+        if low.startswith("update graph_correlation_runs") and "set execution_lease_expires_at" in low:
+            lease_seconds, tenant, correlation_id, status, owner = params
+            row = self.rows.get((tenant, correlation_id))
+            if row is None or row[4] != status or row[15] != owner:
+                return _Cursor()
+            expires = (self.now + timedelta(seconds=int(lease_seconds))).isoformat()
+            updated = (*row[:16], expires)
+            self.rows[(tenant, correlation_id)] = updated
+            return _Cursor([(correlation_id,)])
+        if low.startswith("update graph_correlation_runs"):
+            status, manifest, result_manifest, output, failure, started, completed, tenant, correlation_id, expected, owner, owner_again = (
+                params
+            )
+            row = self.rows.get((tenant, correlation_id))
+            if row is None or row[4] != expected or (owner and (owner != owner_again or row[15] != owner)):
                 return _Cursor()
             updated = (
                 row[0],
@@ -76,6 +106,8 @@ class _Conn:
                 row[12],
                 started,
                 completed,
+                row[15],
+                row[16],
             )
             self.rows[(tenant, correlation_id)] = updated
             return _Cursor([updated])
@@ -146,6 +178,7 @@ def _run(correlation_id="corr-1", tenant="acme", key="idem-1"):
 
 def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None:
     store, conn = _store(monkeypatch)
+    assert store.count_active_correlation_runs(tenant_id="acme") == 0
     created, was_created = store.create_correlation_run(_run())
     replay, replay_created = store.create_correlation_run(_run(correlation_id="corr-retry"))
 
@@ -156,6 +189,8 @@ def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None
     assert store.get_correlation_run_by_idempotency_key(tenant_id="acme", idempotency_key="idem-1") == created
     assert store.get_correlation_run_by_idempotency_key(tenant_id="other", idempotency_key="idem-1") is None
     assert [run.correlation_id for run in store.list_correlation_runs(tenant_id="acme")] == ["corr-1"]
+    assert store.count_active_correlation_runs(tenant_id="acme") == 1
+    assert store.count_active_correlation_runs(tenant_id="other") == 0
 
     running = store.update_correlation_run(
         tenant_id="acme",
@@ -175,9 +210,61 @@ def test_postgres_correlation_create_replay_list_and_update(monkeypatch) -> None
         completed_at="2026-08-30T00:02:00+00:00",
     )
     assert running.status is CorrelationRunStatus.RUNNING
+    assert store.count_active_correlation_runs(tenant_id="acme") == 0
     assert complete.status is CorrelationRunStatus.COMPLETE
     assert json.loads(conn.rows[("acme", "corr-1")][7]) == _run().input_manifest
     assert conn.commits == 3
+
+
+def test_postgres_correlation_execution_lease_fences_replica_takeover(monkeypatch) -> None:
+    store, conn = _store(monkeypatch)
+    store.create_correlation_run(_run())
+    first = store.claim_correlation_run_execution(
+        tenant_id="acme",
+        correlation_id="corr-1",
+        owner_token="owner-a",
+        lease_seconds=30,
+        now="2026-08-30T00:00:00+00:00",
+    )
+    assert first is not None and first.execution_owner == "owner-a"
+    assert (
+        store.claim_correlation_run_execution(
+            tenant_id="acme",
+            correlation_id="corr-1",
+            owner_token="owner-b",
+            lease_seconds=30,
+            now="2026-08-30T00:00:29+00:00",
+        )
+        is None
+    )
+    takeover = store.claim_correlation_run_execution(
+        tenant_id="acme",
+        correlation_id="corr-1",
+        owner_token="owner-b",
+        lease_seconds=30,
+        now="2026-08-30T00:00:31+00:00",
+    )
+    assert takeover is None
+    conn.now += timedelta(seconds=31)
+    takeover = store.claim_correlation_run_execution(
+        tenant_id="acme",
+        correlation_id="corr-1",
+        owner_token="owner-b",
+        lease_seconds=30,
+        now="2026-08-29T23:00:00+00:00",
+    )
+    assert takeover is not None and takeover.execution_owner == "owner-b"
+    lease_sql = "\n".join(sql for sql, _params in conn.executed if "execution_lease_expires_at" in sql).lower()
+    assert "now() at time zone 'utc'" in lease_sql
+    assert "interval '1 second'" in lease_sql
+    with pytest.raises(ValueError, match="status changed concurrently"):
+        store.update_correlation_run(
+            tenant_id="acme",
+            correlation_id="corr-1",
+            status=CorrelationRunStatus.FAILED,
+            failure_code="worker_failed",
+            execution_owner="owner-a",
+        )
 
 
 def test_postgres_latest_snapshot_selection_is_scoped_by_kind_and_tenant(monkeypatch) -> None:
@@ -193,6 +280,21 @@ def test_postgres_latest_snapshot_selection_is_scoped_by_kind_and_tenant(monkeyp
 
     with pytest.raises(ValueError, match="snapshot_kind"):
         store.latest_snapshot_id(tenant_id="acme", snapshot_kind="inventory")
+
+
+def test_postgres_graph_requires_v4_schema_marker(monkeypatch) -> None:
+    from agent_bom.api import postgres_graph
+
+    required: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        postgres_graph,
+        "ensure_postgres_schema_version",
+        lambda _conn, component, version: required.append((component, version)) or False,
+    )
+
+    postgres_graph.PostgresGraphStore(pool=_Pool(_Conn()))
+
+    assert required == [("graph", 4)]
 
 
 def test_postgres_correlation_rejects_idempotency_key_reuse_for_different_request(monkeypatch) -> None:

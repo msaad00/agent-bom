@@ -23,7 +23,22 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import Response
 
+from agent_bom.api.correlation_cohort_ingest import (
+    CorrelationCohortIngestError,
+    cohort_evidence_created_at,
+    commit_correlation_cohort_child,
+    prior_or_conflict,
+    validate_correlation_cohort_child,
+)
 from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
+from agent_bom.api.idempotency_store import (
+    IdempotencyConflictError,
+    IdempotencyReservationHeartbeat,
+    deterministic_batch_id,
+    idempotency_owner_token,
+    idempotency_request_fingerprint,
+    idempotency_reservation_lease_seconds,
+)
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.runtime_event_store import (
@@ -31,7 +46,13 @@ from agent_bom.api.runtime_event_store import (
     get_runtime_event_store,
     sanitize_runtime_metadata,
 )
-from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
+from agent_bom.api.stores import (
+    _get_analytics_store,
+    _get_fleet_store,
+    _get_graph_store,
+    _get_idempotency_store,
+    _get_store,
+)
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.canonical_ids import canonical_id
@@ -920,8 +941,240 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     if body.endpoint_inventory is not None and not body.source_id:
         raise HTTPException(status_code=422, detail="endpoint_inventory requires a stable source_id")
     tenant_id = _tenant_id(request)
+    cohort_id = (body.correlation_cohort_id or "").strip()
+    cohort_receipt = body.correlation_child_receipt
+    if bool(cohort_id) != bool(cohort_receipt):
+        raise HTTPException(status_code=422, detail="Correlation cohort id and child receipt must be provided together")
+    if cohort_id and cohort_receipt is not None:
+        if not body.source_id:
+            raise HTTPException(status_code=422, detail="Correlation cohort result requires source_id")
+        request_hash = idempotency_request_fingerprint(body)
+        cohort_claimed = False
+        cohort_owner = idempotency_owner_token()
+        cohort_heartbeat: IdempotencyReservationHeartbeat | None = None
+        cohort_child_id = cohort_receipt.child_job_id
+        try:
+            context = validate_correlation_cohort_child(
+                tenant_id=tenant_id,
+                source_id=body.source_id,
+                correlation_cohort_id=cohort_id,
+                receipt=cohort_receipt,
+                allowed_source_kinds={"ingest.result_push"},
+            )
+            try:
+                _receipt, cohort_claimed = _get_idempotency_store().claim(
+                    "/v1/results/push/cohort",
+                    tenant_id,
+                    body.source_id,
+                    cohort_child_id,
+                    {"job_id": cohort_child_id, "committed": False},
+                    request_hash=request_hash,
+                    reservation_lease_seconds=idempotency_reservation_lease_seconds(),
+                    owner_token=cohort_owner,
+                )
+            except IdempotencyConflictError as exc:
+                raise CorrelationCohortIngestError("duplicate_result") from exc
+            if not cohort_claimed:
+                completed = await _wait_for_cohort_child(
+                    cohort_child_id,
+                    tenant_id=tenant_id,
+                    source_id=body.source_id,
+                    request_hash=request_hash,
+                )
+                if completed is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="An identical correlation cohort result is still being committed; retry shortly.",
+                        headers={"Retry-After": "1"},
+                    )
+                return _cohort_push_response(*completed)
+            cohort_heartbeat = IdempotencyReservationHeartbeat(
+                _get_idempotency_store(),
+                "/v1/results/push/cohort",
+                tenant_id,
+                body.source_id,
+                cohort_child_id,
+                request_hash=request_hash,
+                owner_token=cohort_owner,
+                lease_seconds=idempotency_reservation_lease_seconds(),
+            )
+            cohort_heartbeat.__enter__()
+            current_child = await asyncio.to_thread(_get_store().get, cohort_child_id, tenant_id)
+            if current_child is None:
+                raise CorrelationCohortIngestError("invalid_receipt")
+            context = type(context)(parent=context.parent, child=current_child)
+            replay = prior_or_conflict(context.child, request_hash=request_hash)
+            if replay is not None:
+                parent = _get_store().get(replay.parent_job_id or "", tenant_id=tenant_id)
+                if parent is None:
+                    raise CorrelationCohortIngestError("invalid_receipt")
+                cohort_heartbeat.ensure_owned()
+                cohort_heartbeat.__exit__()
+                cohort_heartbeat = None
+                replay, parent = await asyncio.to_thread(
+                    _get_idempotency_store().commit_claim,
+                    "/v1/results/push/cohort",
+                    tenant_id,
+                    body.source_id,
+                    cohort_child_id,
+                    {"job_id": cohort_child_id, "committed": True},
+                    action=lambda: (replay, parent),
+                    request_hash=request_hash,
+                    owner_token=cohort_owner,
+                )
+                return _cohort_push_response(replay, parent)
+            report = _normalize_pushed_report(body, fallback_scan_id=context.child.job_id)
+            supplied_scan_id = str(report.get("scan_id") or "")
+            if supplied_scan_id != context.child.job_id and "scan_id" in (body.model_extra or {}):
+                raise CorrelationCohortIngestError("invalid_receipt")
+            observed_at = next(
+                (
+                    str(report.get(key) or "").strip()
+                    for key in ("observed_at", "scan_timestamp", "generated_at")
+                    if str(report.get(key) or "").strip()
+                ),
+                "",
+            )
+            report["observed_at"] = cohort_evidence_created_at(
+                [observed_at] if observed_at else [],
+                max_age_hours=cohort_receipt.max_age_hours,
+            )
+            report["scan_id"] = context.child.job_id
+            report["pushed"] = True
+            cohort_heartbeat.ensure_owned()
+            cohort_heartbeat.__exit__()
+            cohort_heartbeat = None
+            child, parent = await asyncio.to_thread(
+                _get_idempotency_store().commit_claim,
+                "/v1/results/push/cohort",
+                tenant_id,
+                body.source_id,
+                cohort_child_id,
+                {"job_id": cohort_child_id, "committed": True},
+                action=lambda: commit_correlation_cohort_child(
+                    context,
+                    result=report,
+                    request_hash=request_hash,
+                    persist_graph=_persist_graph_snapshot,
+                ),
+                request_hash=request_hash,
+                owner_token=cohort_owner,
+            )
+            return _cohort_push_response(child, parent)
+        except CorrelationCohortIngestError as exc:
+            current = await asyncio.to_thread(_get_store().get, cohort_child_id, tenant_id)
+            if cohort_claimed and (current is None or current.status is not JobStatus.DONE):
+                _release_cohort_push_claim(
+                    tenant_id=tenant_id,
+                    source_id=body.source_id,
+                    child_id=cohort_child_id,
+                    request_hash=request_hash,
+                    owner_token=cohort_owner,
+                )
+            if exc.code == "durable_store_required":
+                detail = "Correlation cohort ingest requires durable stores"
+            elif exc.code == "stale_evidence":
+                detail = "Correlation cohort evidence is stale"
+            elif exc.code in {"observation_time_required", "invalid_observation_time"}:
+                raise HTTPException(status_code=422, detail="Correlation cohort evidence requires a valid observation time") from exc
+            elif exc.code == "duplicate_result":
+                detail = "Correlation cohort child already has a different result"
+            else:
+                detail = "Correlation cohort receipt is invalid"
+            raise HTTPException(status_code=409, detail=detail) from exc
+        except Exception as exc:  # noqa: BLE001
+            current = await asyncio.to_thread(_get_store().get, cohort_child_id, tenant_id)
+            if cohort_claimed and (current is None or current.status is not JobStatus.DONE):
+                _release_cohort_push_claim(
+                    tenant_id=tenant_id,
+                    source_id=body.source_id,
+                    child_id=cohort_child_id,
+                    request_hash=request_hash,
+                    owner_token=cohort_owner,
+                )
+            _logger.error("Correlation cohort result commit failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
+            raise HTTPException(status_code=503, detail="Correlation cohort result could not be committed") from exc
+        finally:
+            if cohort_heartbeat is not None:
+                cohort_heartbeat.__exit__()
+
+    request_headers = getattr(request, "headers", {})
+    header_idempotency_key = str(request_headers.get("Idempotency-Key") or "").strip()
+    body_idempotency_key = str(body.idempotency_key or "").strip()
+    if header_idempotency_key and body_idempotency_key and header_idempotency_key != body_idempotency_key:
+        raise HTTPException(status_code=409, detail="Idempotency key header and payload do not match")
+    idempotency_key = header_idempotency_key or body_idempotency_key
+    idempotency_source = body.source_id or "push"
+    request_hash = idempotency_request_fingerprint(body)
+    idempotency_store = _get_idempotency_store()
+    claimed = False
+    idempotency_owner = idempotency_owner_token()
+    idempotency_heartbeat: IdempotencyReservationHeartbeat | None = None
+    reserved_job_id = ""
+    if idempotency_key:
+        reserved_job_id = deterministic_batch_id(f"/v1/results/push:{tenant_id}:{idempotency_source}:{idempotency_key}:{request_hash}")
+        try:
+            receipt, claimed = idempotency_store.claim(
+                "/v1/results/push",
+                tenant_id,
+                idempotency_source,
+                idempotency_key,
+                {"job_id": reserved_job_id, "committed": False},
+                request_hash=request_hash,
+                reservation_lease_seconds=idempotency_reservation_lease_seconds(),
+                owner_token=idempotency_owner,
+            )
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
+        if not claimed:
+            existing = await _wait_for_pushed_job(
+                str(receipt.get("job_id") or ""),
+                tenant_id=tenant_id,
+                idempotency_source=idempotency_source,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
+            if existing is not None:
+                return _pushed_job_receipt(existing)
+            raise HTTPException(
+                status_code=409,
+                detail="An identical pushed result is still being committed; retry shortly.",
+                headers={"Retry-After": "1"},
+            )
+        existing = await asyncio.to_thread(
+            _get_store().get,
+            str(receipt.get("job_id") or reserved_job_id),
+            tenant_id,
+        )
+        if existing is not None and _pushed_job_has_persisted_graph(existing):
+            existing = cast(
+                ScanJob,
+                await asyncio.to_thread(
+                    idempotency_store.commit_claim,
+                    "/v1/results/push",
+                    tenant_id,
+                    idempotency_source,
+                    idempotency_key,
+                    {"job_id": existing.job_id, "committed": True},
+                    action=lambda: existing,
+                    request_hash=request_hash,
+                    owner_token=idempotency_owner,
+                ),
+            )
+            return _pushed_job_receipt(existing)
+        idempotency_heartbeat = IdempotencyReservationHeartbeat(
+            idempotency_store,
+            "/v1/results/push",
+            tenant_id,
+            idempotency_source,
+            idempotency_key,
+            request_hash=request_hash,
+            owner_token=idempotency_owner,
+            lease_seconds=idempotency_reservation_lease_seconds(),
+        )
+        idempotency_heartbeat.__enter__()
     job = ScanJob(
-        job_id=str(uuid.uuid4()),
+        job_id=reserved_job_id or str(uuid.uuid4()),
         tenant_id=tenant_id,
         source_id=body.source_id or None,
         triggered_by=f"{_triggered_by(request)}:{body.source_id}" if body.source_id else _triggered_by(request),
@@ -932,13 +1185,19 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     job.completed_at = _now()
 
     def _persist() -> dict:
+        if idempotency_heartbeat is not None:
+            idempotency_heartbeat.ensure_owned()
         job_result = _normalize_pushed_report(body, fallback_scan_id=job.job_id)
         job_result["pushed"] = True
         job.result = job_result
         job.progress.append(f"Received via push from source={body.source_id}")
+        fleet_store = _get_fleet_store()
+        previous_endpoint = None
+        endpoint = None
         if body.source_id and body.endpoint_inventory:
             from agent_bom.api.fleet_store import endpoint_inventory_evidence, endpoint_summary_from_inventory
 
+            previous_endpoint = fleet_store.get_endpoint(body.source_id, tenant_id=tenant_id)
             endpoint = endpoint_summary_from_inventory(
                 endpoint_id=body.source_id,
                 tenant_id=tenant_id,
@@ -946,27 +1205,235 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 scan_id=str(job_result.get("scan_id") or job.job_id),
                 observed_at=str(job_result.get("observed_at") or job_result.get("scan_timestamp") or job.created_at),
             )
-            _get_fleet_store().put_endpoint(endpoint)
             # Store and graph only the bounded evidence summary. Raw process,
             # application, service, listener, container, and image rows remain
             # on the source endpoint and never enter the control-plane job.
             job_result["endpoint_inventory"] = endpoint_inventory_evidence(endpoint)
-        try:
-            _persist_graph_snapshot(job, job_result)
-        except Exception as exc:  # noqa: BLE001
-            _logger.warning("Pushed-result graph persistence failed: %s", sanitize_text(exc))
-            job.progress.append(f"Graph persistence skipped: {sanitize_error(exc)}")
-        # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
+        job_store = _get_store()
+        job_persisted = False
+        endpoint_persisted = False
+        # Keep quota admission and all three durable projections in one
+        # compensating transaction. Graph persistence is last and atomic within
+        # its backend; a failure restores the prior endpoint and removes the job,
+        # so retained-job quota cannot diverge from visible evidence.
         with tenant_quota_guard(tenant_id, lambda: enforce_retained_jobs_quota(tenant_id)):
-            _get_store().put(job)
+            try:
+                job_store.put(job)
+                job_persisted = True
+                if endpoint is not None:
+                    fleet_store.put_endpoint(endpoint)
+                    endpoint_persisted = True
+                _persist_graph_snapshot(job, job_result)
+                # SQLite/Postgres job stores serialize on put, while graph
+                # persistence adds its receipt to job.result. Persist once more
+                # before exposing the completed idempotency receipt.
+                job_store.put(job)
+            except Exception:
+                try:
+                    _get_graph_store().delete_snapshot(
+                        tenant_id=tenant_id,
+                        scan_id=str(job_result.get("scan_id") or job.job_id),
+                    )
+                except Exception as rollback_exc:  # noqa: BLE001
+                    _logger.error("Graph rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
+                if endpoint_persisted and body.source_id:
+                    try:
+                        if previous_endpoint is None:
+                            fleet_store.delete_endpoint(body.source_id, tenant_id=tenant_id)
+                        else:
+                            fleet_store.put_endpoint(previous_endpoint)
+                    except Exception as rollback_exc:  # noqa: BLE001
+                        _logger.error("Endpoint rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
+                if job_persisted:
+                    try:
+                        job_store.delete(job.job_id, tenant_id=tenant_id)
+                    except Exception as rollback_exc:  # noqa: BLE001
+                        _logger.error("Job rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
+                raise
         return job_result
 
-    job_result = await asyncio.to_thread(_persist)
+    try:
+        if claimed:
+            if idempotency_heartbeat is not None:
+                idempotency_heartbeat.ensure_owned()
+                idempotency_heartbeat.__exit__()
+                idempotency_heartbeat = None
+            await asyncio.to_thread(
+                idempotency_store.commit_claim,
+                "/v1/results/push",
+                tenant_id,
+                idempotency_source,
+                idempotency_key,
+                {"job_id": job.job_id, "committed": True},
+                action=_persist,
+                request_hash=request_hash,
+                owner_token=idempotency_owner,
+            )
+        else:
+            await asyncio.to_thread(_persist)
+    except HTTPException:
+        if claimed:
+            _release_push_idempotency_claim(
+                idempotency_store,
+                tenant_id=tenant_id,
+                source_id=idempotency_source,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                owner_token=idempotency_owner,
+            )
+        raise
+    except Exception as exc:  # noqa: BLE001
+        if claimed:
+            _release_push_idempotency_claim(
+                idempotency_store,
+                tenant_id=tenant_id,
+                source_id=idempotency_source,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                owner_token=idempotency_owner,
+            )
+        _logger.error("Pushed-result commit failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
+        raise HTTPException(status_code=503, detail="Pushed result could not be committed") from exc
+    finally:
+        if idempotency_heartbeat is not None:
+            idempotency_heartbeat.__exit__()
+    return _pushed_job_receipt(job)
+
+
+def _release_push_idempotency_claim(
+    store: Any,
+    *,
+    tenant_id: str,
+    source_id: str,
+    idempotency_key: str,
+    request_hash: str,
+    owner_token: str = "",
+) -> None:
+    try:
+        store.release(
+            "/v1/results/push",
+            tenant_id,
+            source_id,
+            idempotency_key,
+            request_hash=request_hash,
+            owner_token=owner_token,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _logger.error("Push idempotency rollback failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
+
+
+def _pushed_job_receipt(job: ScanJob) -> dict[str, Any]:
+    result = job.result if isinstance(job.result, dict) else {}
+    raw_scan_run = result.get("scan_run")
+    scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
     return {
         "job_id": job.job_id,
-        "source_id": body.source_id,
+        "source_id": job.source_id or "",
         "status": "stored",
-        "scan_outcome": job_result["scan_run"]["outcome"],
+        "scan_outcome": str(scan_run.get("outcome") or "failed"),
+    }
+
+
+def _pushed_job_has_persisted_graph(job: ScanJob) -> bool:
+    """Return whether the durable job records a completed graph projection."""
+
+    result = job.result if isinstance(job.result, dict) else {}
+    graph_persistence = result.get("graph_persistence")
+    return isinstance(graph_persistence, dict) and graph_persistence.get("status") == "persisted"
+
+
+async def _wait_for_pushed_job(
+    job_id: str,
+    *,
+    tenant_id: str,
+    idempotency_source: str,
+    idempotency_key: str,
+    request_hash: str,
+) -> ScanJob | None:
+    """Bounded wait for the reservation owner to finish the durable commit."""
+    if not job_id:
+        return None
+    for _attempt in range(100):
+        receipt = await asyncio.to_thread(
+            _get_idempotency_store().get,
+            "/v1/results/push",
+            tenant_id,
+            idempotency_source,
+            idempotency_key,
+            request_hash=request_hash,
+        )
+        job = await asyncio.to_thread(_get_store().get, job_id, tenant_id)
+        if job is not None and receipt is not None and receipt.get("committed") is True:
+            # The owner publishes this receipt only after its held-claim action
+            # commits every durable projection. The receipt is therefore the
+            # cross-replica completion fence; requiring an additional mutable
+            # marker here can incorrectly reject a successfully committed
+            # request when a backend does not project that marker into the job.
+            return cast(ScanJob, job)
+        await asyncio.sleep(0.01)
+    return None
+
+
+async def _wait_for_cohort_child(
+    child_id: str,
+    *,
+    tenant_id: str,
+    source_id: str,
+    request_hash: str,
+) -> tuple[ScanJob, ScanJob] | None:
+    """Wait briefly for the distributed cohort-child reservation owner."""
+
+    for _attempt in range(100):
+        receipt = await asyncio.to_thread(
+            _get_idempotency_store().get,
+            "/v1/results/push/cohort",
+            tenant_id,
+            source_id,
+            child_id,
+            request_hash=request_hash,
+        )
+        child = await asyncio.to_thread(_get_store().get, child_id, tenant_id)
+        if child is not None and child.status is JobStatus.DONE:
+            replay = prior_or_conflict(child, request_hash=request_hash)
+            if replay is None:
+                raise CorrelationCohortIngestError("invalid_receipt")
+            parent = await asyncio.to_thread(_get_store().get, replay.parent_job_id or "", tenant_id)
+            if parent is None:
+                raise CorrelationCohortIngestError("invalid_receipt")
+            if receipt is not None and receipt.get("committed") is True:
+                return replay, parent
+        await asyncio.sleep(0.01)
+    return None
+
+
+def _release_cohort_push_claim(*, tenant_id: str, source_id: str, child_id: str, request_hash: str, owner_token: str = "") -> None:
+    try:
+        _get_idempotency_store().release(
+            "/v1/results/push/cohort",
+            tenant_id,
+            source_id,
+            child_id,
+            request_hash=request_hash,
+            owner_token=owner_token,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _logger.error("Cohort push idempotency rollback failed: %s", sanitize_text(sanitize_error(exc, generic=True)))
+
+
+def _cohort_push_response(child: ScanJob, parent: ScanJob) -> dict[str, Any]:
+    result = child.result if isinstance(child.result, dict) else {}
+    raw_scan_run = result.get("scan_run")
+    scan_run: dict[str, Any] = raw_scan_run if isinstance(raw_scan_run, dict) else {}
+    auto_correlation = (parent.result or {}).get("auto_correlation") if isinstance(parent.result, dict) else None
+    return {
+        "job_id": child.job_id,
+        "source_id": child.source_id or "",
+        "status": "stored",
+        "scan_outcome": str(scan_run.get("outcome") or "complete"),
+        "correlation_cohort_id": child.correlation_cohort_id or "",
+        "cohort_manifest_hash": child.correlation_cohort_manifest_hash or "",
+        "parent_job_id": parent.job_id,
+        "auto_correlation": auto_correlation if isinstance(auto_correlation, dict) else None,
     }
 
 

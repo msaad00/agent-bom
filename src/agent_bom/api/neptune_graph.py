@@ -363,11 +363,37 @@ class NeptuneGraphStore:
         result_manifest: Mapping[str, Any],
         manifest_sha256: str,
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> "GraphCorrelationRun":
         self._unsupported("complete_correlation_run")
 
     def list_correlation_runs(self, *, tenant_id: str, limit: int = 100) -> list["GraphCorrelationRun"]:
         self._unsupported("list_correlation_runs")
+
+    def count_active_correlation_runs(self, *, tenant_id: str) -> int:
+        self._unsupported("count_active_correlation_runs")
+
+    def claim_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> "GraphCorrelationRun | None":
+        self._unsupported("claim_correlation_run_execution")
+
+    def heartbeat_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> bool:
+        self._unsupported("heartbeat_correlation_run_execution")
 
     def update_correlation_run(
         self,
@@ -381,6 +407,7 @@ class NeptuneGraphStore:
         failure_code: str = "",
         started_at: str = "",
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> "GraphCorrelationRun":
         self._unsupported("update_correlation_run")
 
@@ -500,6 +527,21 @@ class NeptuneGraphStore:
               sideEffect(unfold().drop())
             """,
             {"tenant_id": tenant_id or "default"},
+        )
+        if not rows:
+            return 0
+        count = rows[0].get("count", 0) if isinstance(rows[0], dict) else rows[0]
+        return int(_first(count, 0) or 0)
+
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+        """Remove one tenant-scoped snapshot from the experimental backend."""
+        rows = self._submit(
+            """
+            g.V().has('tenant_id', tenant_id).has('scan_id', scan_id).fold().
+              project('count').by(count(local)).
+              sideEffect(unfold().drop())
+            """,
+            {"tenant_id": tenant_id or "default", "scan_id": scan_id},
         )
         if not rows:
             return 0

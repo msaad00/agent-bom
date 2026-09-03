@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import threading
 import uuid
 from typing import Any
 
@@ -31,6 +32,30 @@ from agent_bom.config import (
 )
 
 _logger = logging.getLogger(__name__)
+_local_dispatch_lock = threading.Lock()
+_local_dispatches: set[str] = set()
+
+
+def claim_local_dispatch(job_id: str) -> bool:
+    """Claim one in-process handoff; a fresh process may reclaim durable PENDING jobs."""
+
+    with _local_dispatch_lock:
+        if job_id in _local_dispatches:
+            return False
+        _local_dispatches.add(job_id)
+        return True
+
+
+def release_local_dispatch(job_id: str) -> None:
+    with _local_dispatch_lock:
+        _local_dispatches.discard(job_id)
+
+
+def reset_local_dispatches_for_tests() -> None:
+    """Clear process-local handoffs between isolated test cases."""
+
+    with _local_dispatch_lock:
+        _local_dispatches.clear()
 
 
 def _truthy(value: str) -> bool:

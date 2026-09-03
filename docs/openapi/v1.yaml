@@ -1631,6 +1631,84 @@ components:
           type: array
       title: CompositionModel
       type: object
+    CorrelationCohortChildReceipt:
+      additionalProperties: false
+      description: Signed assignment for one external producer in an immutable cohort.
+      properties:
+        child_job_id:
+          maxLength: 36
+          minLength: 36
+          title: Child Job Id
+          type: string
+        cohort_manifest_hash:
+          pattern: ^[0-9a-f]{64}$
+          title: Cohort Manifest Hash
+          type: string
+        correlation_cohort_id:
+          maxLength: 36
+          minLength: 36
+          title: Correlation Cohort Id
+          type: string
+        expires_at:
+          maxLength: 64
+          minLength: 1
+          title: Expires At
+          type: string
+        issued_at:
+          maxLength: 64
+          minLength: 1
+          title: Issued At
+          type: string
+        max_age_hours:
+          maximum: 8760.0
+          minimum: 1.0
+          title: Max Age Hours
+          type: integer
+        parent_job_id:
+          maxLength: 36
+          minLength: 36
+          title: Parent Job Id
+          type: string
+        schema_version:
+          const: agent-bom.correlation-cohort-child/v1
+          default: agent-bom.correlation-cohort-child/v1
+          title: Schema Version
+          type: string
+        signature:
+          pattern: ^sha256:[0-9a-f]{64}$
+          title: Signature
+          type: string
+        source_id:
+          maxLength: 200
+          minLength: 1
+          title: Source Id
+          type: string
+        source_kind:
+          enum:
+          - ingest.result_push
+          - runtime.proxy
+          - runtime.gateway
+          title: Source Kind
+          type: string
+        tenant_id:
+          maxLength: 256
+          minLength: 1
+          title: Tenant Id
+          type: string
+      required:
+      - tenant_id
+      - correlation_cohort_id
+      - cohort_manifest_hash
+      - parent_job_id
+      - child_job_id
+      - source_id
+      - source_kind
+      - max_age_hours
+      - issued_at
+      - expires_at
+      - signature
+      title: CorrelationCohortChildReceipt
+      type: object
     CreateBlueprintBody:
       additionalProperties: false
       properties:
@@ -4630,6 +4708,17 @@ components:
             type: object
           title: Blast Radii
           type: array
+        correlation_child_receipt:
+          anyOf:
+          - $ref: '#/components/schemas/CorrelationCohortChildReceipt'
+          - type: 'null'
+        correlation_cohort_id:
+          anyOf:
+          - maxLength: 36
+            minLength: 36
+            type: string
+          - type: 'null'
+          title: Correlation Cohort Id
         endpoint_inventory:
           anyOf:
           - additionalProperties: true
@@ -4898,6 +4987,17 @@ components:
       description: Authenticated, tenant-scoped CWPP runtime workload-evidence ingest
         batch.
       properties:
+        correlation_child_receipt:
+          anyOf:
+          - $ref: '#/components/schemas/CorrelationCohortChildReceipt'
+          - type: 'null'
+        correlation_cohort_id:
+          anyOf:
+          - maxLength: 36
+            minLength: 36
+            type: string
+          - type: 'null'
+          title: Correlation Cohort Id
         secret:
           title: Secret
           type: string
@@ -5041,6 +5141,21 @@ components:
           - type: string
           - type: 'null'
           title: Completed At
+        correlation_cohort_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Correlation Cohort Id
+        correlation_cohort_manifest_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Correlation Cohort Manifest Hash
+        correlation_max_age_hours:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Correlation Max Age Hours
         created_at:
           title: Created At
           type: string
@@ -5721,6 +5836,75 @@ components:
           title: Files
           type: array
       title: SkillsScanRequest
+      type: object
+    SourceCohortRunRequest:
+      additionalProperties: false
+      description: Exact registered sources to scan and correlate as one immutable
+        cohort.
+      properties:
+        max_age_hours:
+          default: 168
+          maximum: 8760.0
+          minimum: 1.0
+          title: Max Age Hours
+          type: integer
+        source_ids:
+          items:
+            type: string
+          maxItems: 32
+          minItems: 2
+          title: Source Ids
+          type: array
+      required:
+      - source_ids
+      title: SourceCohortRunRequest
+      type: object
+    SourceCohortRunResponse:
+      properties:
+        auto_correlation:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Auto Correlation
+        child_job_ids:
+          items:
+            type: string
+          title: Child Job Ids
+          type: array
+        child_receipts:
+          items:
+            $ref: '#/components/schemas/CorrelationCohortChildReceipt'
+          title: Child Receipts
+          type: array
+        cohort_manifest_hash:
+          title: Cohort Manifest Hash
+          type: string
+        correlation_cohort_id:
+          title: Correlation Cohort Id
+          type: string
+        max_age_hours:
+          title: Max Age Hours
+          type: integer
+        parent_job_id:
+          title: Parent Job Id
+          type: string
+        source_ids:
+          items:
+            type: string
+          title: Source Ids
+          type: array
+        status:
+          $ref: '#/components/schemas/JobStatus'
+      required:
+      - correlation_cohort_id
+      - cohort_manifest_hash
+      - parent_job_id
+      - child_job_ids
+      - source_ids
+      - max_age_hours
+      - status
+      title: SourceCohortRunResponse
       type: object
     SourceCreate:
       additionalProperties: false
@@ -23987,6 +24171,42 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Create Source
+      tags:
+      - sources
+  /v1/sources/run-cohort:
+    post:
+      description: Run exact registered sources and auto-correlate their immutable
+        scan outputs.
+      operationId: run_source_cohort_v1_sources_run_cohort_post
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          maxLength: 200
+          minLength: 1
+          title: Idempotency-Key
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceCohortRunRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceCohortRunResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Run Source Cohort
       tags:
       - sources
   /v1/sources/{source_id}:

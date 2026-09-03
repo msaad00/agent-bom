@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from copy import deepcopy
 
 import pytest
@@ -37,6 +39,52 @@ def test_output_manifest_accepts_a_nonempty_graph_with_zero_edges() -> None:
         result_manifest=result_manifest,
         manifest_sha256=correlation_manifest_digest(result_manifest),
     )
+
+
+def test_graph_digest_streams_the_existing_canonical_json_contract() -> None:
+    graph = UnifiedGraph(scan_id="corr-digest", tenant_id="acme", created_at="2026-08-30T12:00:00+00:00")
+    graph.add_node(
+        UnifiedNode(
+            id="package:unicode",
+            entity_type=EntityType.PACKAGE,
+            label="pillow-é",
+            attributes={"purl": "pkg:pypi/pillow@9.0.0", "nested": {"z": 1, "a": "é"}},
+        )
+    )
+    graph.add_node(
+        UnifiedNode(
+            id="vulnerability:CVE-2023-4863",
+            entity_type=EntityType.VULNERABILITY,
+            label="CVE-2023-4863",
+        )
+    )
+    graph.add_edge(
+        UnifiedEdge(
+            source="package:unicode",
+            target="vulnerability:CVE-2023-4863",
+            relationship=RelationshipType.VULNERABLE_TO,
+            source_scan_id="",
+        )
+    )
+
+    edges = []
+    for edge in graph.edges:
+        payload = edge.to_dict()
+        payload["valid_from"] = edge.valid_from or edge.first_seen or graph.created_at
+        payload["source_scan_id"] = edge.source_scan_id or graph.scan_id
+        edges.append(payload)
+    legacy_payload = {
+        "scan_id": graph.scan_id,
+        "tenant_id": graph.tenant_id,
+        "nodes": sorted((node.to_dict() for node in graph.nodes.values()), key=lambda item: str(item["id"])),
+        "edges": sorted(edges, key=lambda item: str(item["canonical_id"])),
+    }
+    legacy_digest = (
+        "sha256:"
+        + hashlib.sha256(json.dumps(legacy_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+    )
+
+    assert correlation_graph_digest(graph) == legacy_digest
 
 
 def test_output_manifest_rejects_an_empty_graph() -> None:

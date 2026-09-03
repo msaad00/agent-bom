@@ -62,6 +62,11 @@
       "schema": "ComplianceThreatModel.json"
     },
     {
+      "doc": "Signed assignment for one external producer in an immutable cohort.",
+      "name": "CorrelationCohortChildReceipt",
+      "schema": "CorrelationCohortChildReceipt.json"
+    },
+    {
       "doc": "",
       "name": "CreateKeyRequest",
       "schema": "CreateKeyRequest.json"
@@ -260,6 +265,16 @@
       "doc": "Trigger one cross-cloud (Azure/GCP) agentless disk side-scan (#4158 Wave 2).",
       "name": "SideScanTriggerRequest",
       "schema": "SideScanTriggerRequest.json"
+    },
+    {
+      "doc": "Exact registered sources to scan and correlate as one immutable cohort.",
+      "name": "SourceCohortRunRequest",
+      "schema": "SourceCohortRunRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "SourceCohortRunResponse",
+      "schema": "SourceCohortRunResponse.json"
     },
     {
       "doc": "",

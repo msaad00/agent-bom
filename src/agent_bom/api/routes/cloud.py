@@ -34,7 +34,22 @@ import anyio
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from agent_bom.api.models import RuntimeEvidenceIngestRequest, SideScanTriggerRequest
+from agent_bom.api.correlation_cohort_ingest import (
+    CorrelationCohortIngestError,
+    cohort_evidence_created_at,
+    commit_correlation_cohort_child,
+    prior_or_conflict,
+    validate_correlation_cohort_child,
+)
+from agent_bom.api.idempotency_store import (
+    IdempotencyConflictError,
+    IdempotencyReservationHeartbeat,
+    idempotency_owner_token,
+    idempotency_request_fingerprint,
+    idempotency_reservation_lease_seconds,
+)
+from agent_bom.api.models import RuntimeEvidenceIngestRequest, ScanJob, SideScanTriggerRequest
+from agent_bom.api.stores import _get_graph_store, _get_idempotency_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import (
     BackpressureRejectedError,
@@ -43,6 +58,7 @@ from agent_bom.backpressure import (
     adaptive_backpressure,
     run_provider_call,
 )
+from agent_bom.canonical_ids import canonical_id
 from agent_bom.cloud.ambient_credentials import (
     PROFILE_REJECTED_NOTE,
     ambient_cis_enabled,
@@ -50,12 +66,16 @@ from agent_bom.cloud.ambient_credentials import (
     disabled_payload,
 )
 from agent_bom.cloud.runtime_workload_evidence import (
+    RuntimeWorkloadSignal,
     SourceAuthenticationError,
     get_runtime_source_registry,
     ingest_runtime_signals,
 )
 from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
 from agent_bom.config import CLOUD_CIS_TIMEOUT_SECONDS, CLOUD_DISCOVERY_TIMEOUT
+from agent_bom.graph.container import UnifiedGraph
+from agent_bom.graph.node import NodeDimensions, UnifiedNode
+from agent_bom.graph.types import EntityType
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_log_label, sanitize_sensitive_payload, sanitize_text
 
@@ -930,6 +950,146 @@ async def cloud_runtime_evidence_ingest(
         # which source ids exist in another tenant.
         if source is None or source.tenant_id != tenant_id:
             raise SourceAuthenticationError("runtime evidence source authentication failed")
+        # Authenticate before checking cohort membership so a signed assignment
+        # never replaces the runtime source's existing secret boundary.
+        registry.authenticate(body.source_id, body.secret)
+        cohort_id = (body.correlation_cohort_id or "").strip()
+        cohort_receipt = body.correlation_child_receipt
+        if bool(cohort_id) != bool(cohort_receipt):
+            raise CorrelationCohortIngestError("incomplete_receipt")
+        if cohort_id and cohort_receipt is not None:
+            context = validate_correlation_cohort_child(
+                tenant_id=tenant_id,
+                source_id=body.source_id,
+                correlation_cohort_id=cohort_id,
+                receipt=cohort_receipt,
+                allowed_source_kinds={"runtime.proxy", "runtime.gateway"},
+            )
+            request_hash = idempotency_request_fingerprint(
+                {
+                    "source_id": body.source_id,
+                    "signals": [signal.model_dump(mode="json", exclude_none=True) for signal in body.signals],
+                    "correlation_cohort_id": cohort_id,
+                    "correlation_child_receipt": cohort_receipt.model_dump(mode="json"),
+                }
+            )
+
+            def _reconcile_runtime_projection(completed_child: ScanJob | None = None) -> None:
+                try:
+                    projection = ingest_runtime_signals(
+                        registry=registry,
+                        source_id=body.source_id,
+                        secret=body.secret,
+                        raw_signals=[signal.model_dump(exclude_none=True) for signal in body.signals],
+                        now=completed_child.completed_at if completed_child is not None else None,
+                        max_age_seconds=cohort_receipt.max_age_hours * 3600,
+                        store=get_runtime_workload_evidence_store(),
+                    )
+                except Exception as exc:  # noqa: BLE001 - safe stable projection error below
+                    raise CorrelationCohortIngestError("runtime_projection_unavailable") from exc
+                if projection.rejected_incomplete:
+                    raise CorrelationCohortIngestError("invalid_runtime_evidence")
+
+            replay = prior_or_conflict(context.child, request_hash=request_hash)
+            if replay is not None:
+                # The graph/job commit is authoritative. Reconcile the derived
+                # runtime lookup projection on replay if the process died in
+                # the narrow post-commit window.
+                _reconcile_runtime_projection(replay)
+                return _runtime_cohort_response(replay)
+            owner_token = idempotency_owner_token()
+            lease_seconds = idempotency_reservation_lease_seconds()
+            try:
+                _receipt, claimed = _get_idempotency_store().claim(
+                    "/v1/cloud/runtime-evidence/ingest/cohort",
+                    tenant_id,
+                    body.source_id,
+                    context.child.job_id,
+                    {"job_id": context.child.job_id, "committed": False},
+                    request_hash=request_hash,
+                    reservation_lease_seconds=lease_seconds,
+                    owner_token=owner_token,
+                )
+            except IdempotencyConflictError as exc:
+                raise CorrelationCohortIngestError("duplicate_result") from exc
+            if not claimed:
+                current = _get_store().get(context.child.job_id, tenant_id=tenant_id)
+                replay = prior_or_conflict(current, request_hash=request_hash) if current is not None else None
+                if replay is not None:
+                    _reconcile_runtime_projection(replay)
+                    return _runtime_cohort_response(replay)
+                raise CorrelationCohortIngestError("child_commit_in_progress")
+
+            heartbeat = IdempotencyReservationHeartbeat(
+                _get_idempotency_store(),
+                "/v1/cloud/runtime-evidence/ingest/cohort",
+                tenant_id,
+                body.source_id,
+                context.child.job_id,
+                request_hash=request_hash,
+                owner_token=owner_token,
+                lease_seconds=lease_seconds,
+            )
+            heartbeat.__enter__()
+            heartbeat_stopped = False
+            try:
+                created_at = cohort_evidence_created_at(
+                    [signal.observed_at for signal in body.signals],
+                    max_age_hours=cohort_receipt.max_age_hours,
+                )
+                result = ingest_runtime_signals(
+                    registry=registry,
+                    source_id=body.source_id,
+                    secret=body.secret,
+                    raw_signals=[signal.model_dump(exclude_none=True) for signal in body.signals],
+                    max_age_seconds=cohort_receipt.max_age_hours * 3600,
+                    store=None,
+                )
+                if not result.accepted or result.rejected_stale or result.rejected_incomplete:
+                    raise CorrelationCohortIngestError("invalid_runtime_evidence")
+                graph = _runtime_cohort_graph(
+                    scan_id=context.child.job_id,
+                    tenant_id=tenant_id,
+                    created_at=created_at,
+                    signals=result.accepted,
+                )
+                result_payload: dict[str, Any] = {
+                    "scan_id": context.child.job_id,
+                    "observed_at": created_at,
+                    "runtime_evidence_ingest": result.to_dict(),
+                }
+
+                def _persist_runtime_graph(_job: ScanJob, _result: dict[str, Any]) -> None:
+                    _get_graph_store().save_graph(graph)
+
+                heartbeat.ensure_owned()
+                heartbeat.__exit__()
+                heartbeat_stopped = True
+
+                def _commit_runtime_result() -> ScanJob:
+                    child, _parent = commit_correlation_cohort_child(
+                        context,
+                        result=result_payload,
+                        request_hash=request_hash,
+                        persist_graph=_persist_runtime_graph,
+                    )
+                    _reconcile_runtime_projection(child)
+                    return child
+
+                child = _get_idempotency_store().commit_claim(
+                    "/v1/cloud/runtime-evidence/ingest/cohort",
+                    tenant_id,
+                    body.source_id,
+                    context.child.job_id,
+                    lambda committed_child: {"job_id": committed_child.job_id, "committed": True},
+                    action=_commit_runtime_result,
+                    request_hash=request_hash,
+                    owner_token=owner_token,
+                )
+                return _runtime_cohort_response(child)
+            finally:
+                if not heartbeat_stopped:
+                    heartbeat.__exit__()
         result = ingest_runtime_signals(
             registry=registry,
             source_id=body.source_id,
@@ -945,6 +1105,22 @@ async def cloud_runtime_evidence_ingest(
     except SourceAuthenticationError as exc:
         # Generic 401 — never reveal whether the source id or the secret was wrong.
         raise HTTPException(status_code=401, detail="Runtime evidence source authentication failed") from exc
+    except CorrelationCohortIngestError as exc:
+        if exc.code == "incomplete_receipt":
+            raise HTTPException(status_code=422, detail="Correlation cohort id and child receipt must be provided together") from exc
+        if exc.code == "durable_store_required":
+            detail = "Correlation cohort ingest requires durable stores"
+        elif exc.code == "stale_evidence":
+            detail = "Correlation cohort evidence is stale"
+        elif exc.code in {"observation_time_required", "invalid_observation_time", "invalid_runtime_evidence"}:
+            raise HTTPException(status_code=422, detail="Correlation cohort runtime evidence is incomplete") from exc
+        elif exc.code == "duplicate_result":
+            detail = "Correlation cohort child already has a different result"
+        elif exc.code == "runtime_projection_unavailable":
+            raise HTTPException(status_code=503, detail="Runtime evidence projection could not be committed") from exc
+        else:
+            detail = "Correlation cohort receipt is invalid"
+        raise HTTPException(status_code=409, detail=detail) from exc
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,
@@ -956,6 +1132,54 @@ async def cloud_runtime_evidence_ingest(
     except Exception as exc:  # noqa: BLE001
         _logger.error("Runtime evidence ingest failed")
         raise HTTPException(status_code=500, detail="Runtime evidence ingest failed; see server logs.") from exc
+
+
+def _runtime_cohort_graph(*, scan_id: str, tenant_id: str, created_at: str, signals: list[RuntimeWorkloadSignal]) -> UnifiedGraph:
+    """Project accepted runtime observations into an exact-identity snapshot."""
+
+    graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id, created_at=created_at)
+    for signal in signals:
+        stable_id = canonical_id("cloud_resource", signal.provider, signal.account_id, signal.workload_ref)
+        graph.add_node(
+            UnifiedNode(
+                id=f"cloud_resource:runtime:{stable_id}",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=signal.workload_ref,
+                risk_score=float({"critical": 100, "high": 80, "medium": 50, "low": 20}.get(signal.severity, 0)),
+                severity=signal.severity,
+                first_seen=signal.observed_at,
+                last_seen=signal.observed_at,
+                attributes={
+                    "canonical_id": stable_id,
+                    "resource_id": signal.workload_ref,
+                    "resource_type": "workload_disk",
+                    "cloud_provider": signal.provider,
+                    "cloud_account_id": signal.account_id,
+                    "account_id": signal.account_id,
+                    "runtime_id": signal.workload_id,
+                    "runtime_observed": True,
+                    "runtime_evidence": signal.to_dict(),
+                },
+                data_sources=[f"runtime:{signal.source_id}"],
+                dimensions=NodeDimensions(cloud_provider=signal.provider, surface="runtime"),
+            )
+        )
+    return graph
+
+
+def _runtime_cohort_response(child: ScanJob) -> dict[str, Any]:
+    result = child.result if isinstance(child.result, dict) else {}
+    summary = result.get("runtime_evidence_ingest")
+    response = dict(summary) if isinstance(summary, dict) else {}
+    response.update(
+        {
+            "job_id": child.job_id,
+            "correlation_cohort_id": child.correlation_cohort_id or "",
+            "cohort_manifest_hash": child.correlation_cohort_manifest_hash or "",
+            "status": "stored",
+        }
+    )
+    return response
 
 
 # ── CWPP side-scan execution (#4158 Wave 2) ─────────────────────────────────

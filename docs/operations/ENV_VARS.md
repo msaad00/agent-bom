@@ -193,6 +193,8 @@ so they cannot regress silently, but they are not part of this reference.
 ## Graph Retention
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_GRAPH_AUTO_CORRELATE` | `bool` | `True` | Supported durable control-plane stores automatically correlate completed multi-target scan batches with strict freshness. The scheduler uses exact batch membership only; recurring source ids and tenant-latest snapshots never form an automat |
+| `AGENT_BOM_GRAPH_AUTO_CORRELATE_MAX_AGE_HOURS` | `int` | `168` | Reject older inputs; automatic runs never allow stale evidence. |
 | `AGENT_BOM_GRAPH_RETENTION_DAYS` | `int` | `180` | Age-based graph snapshot retention for self-hosted graph stores. Per-tenant overrides resolve from ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` (JSON map) and the control-plane tenant retention store before this global default. |
 
 ## HTTP Client

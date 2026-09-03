@@ -196,54 +196,143 @@ class PostgresJobStore:
             conn.commit()
 
     def put(self, job: ScanJob) -> None:
-        data = job.model_dump_json()
         with _tenant_connection(self._pool) as conn:
-            # scan_jobs.team_id references the teams registry (FK root) in the
-            # migration-owned schema; tenants are created dynamically, so the
-            # tenant's team row is provisioned on first write (idempotent).
-            conn.execute(
-                "INSERT INTO teams (team_id, name, slug) VALUES (%s, %s, %s) ON CONFLICT (team_id) DO NOTHING",
-                (job.tenant_id, job.tenant_id, job.tenant_id),
-            )
-            conn.execute(
-                """INSERT INTO scan_jobs (
-                       job_id, status, created_at, completed_at, team_id, batch_id, parent_job_id,
-                       child_job_ids, target, target_index, target_count, schedule_id, triggered_by, data
-                   )
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
-                   ON CONFLICT (job_id) DO UPDATE SET
-                     status = EXCLUDED.status,
-                     completed_at = EXCLUDED.completed_at,
-                     team_id = EXCLUDED.team_id,
-                     batch_id = EXCLUDED.batch_id,
-                     parent_job_id = EXCLUDED.parent_job_id,
-                     child_job_ids = EXCLUDED.child_job_ids,
-                     target = EXCLUDED.target,
-                     target_index = EXCLUDED.target_index,
-                     target_count = EXCLUDED.target_count,
-                     schedule_id = EXCLUDED.schedule_id,
-                     triggered_by = EXCLUDED.triggered_by,
-                     data = EXCLUDED.data""",
-                (
-                    job.job_id,
-                    job.status.value,
-                    job.created_at,
-                    job.completed_at,
-                    job.tenant_id,
-                    getattr(job, "batch_id", None),
-                    getattr(job, "parent_job_id", None),
-                    json.dumps(getattr(job, "child_job_ids", []) or []),
-                    json.dumps(getattr(job, "target", None)) if getattr(job, "target", None) is not None else None,
-                    getattr(job, "target_index", None),
-                    getattr(job, "target_count", None),
-                    getattr(job, "schedule_id", None),
-                    getattr(job, "triggered_by", None),
-                    data,
-                ),
-            )
-            self._replace_cis_checks(conn, job)
+            self._put_on_connection(conn, job)
             conn.commit()
         job_status_count_cache.invalidate_tenant(job.tenant_id)
+
+    def _put_on_connection(self, conn: Connection, job: ScanJob, *, if_absent: bool = False) -> int:
+        data = job.model_dump_json()
+        # scan_jobs.team_id references the teams registry (FK root) in the
+        # migration-owned schema; tenants are created dynamically, so the
+        # tenant's team row is provisioned on first write (idempotent).
+        conn.execute(
+            "INSERT INTO teams (team_id, name, slug) VALUES (%s, %s, %s) ON CONFLICT (team_id) DO NOTHING",
+            (job.tenant_id, job.tenant_id, job.tenant_id),
+        )
+        conflict = (
+            "ON CONFLICT (job_id) DO NOTHING"
+            if if_absent
+            else """ON CONFLICT (job_id) DO UPDATE SET
+                 status = EXCLUDED.status,
+                 completed_at = EXCLUDED.completed_at,
+                 team_id = EXCLUDED.team_id,
+                 batch_id = EXCLUDED.batch_id,
+                 parent_job_id = EXCLUDED.parent_job_id,
+                 child_job_ids = EXCLUDED.child_job_ids,
+                 target = EXCLUDED.target,
+                 target_index = EXCLUDED.target_index,
+                 target_count = EXCLUDED.target_count,
+                 schedule_id = EXCLUDED.schedule_id,
+                 triggered_by = EXCLUDED.triggered_by,
+                 data = EXCLUDED.data"""
+        )
+        cursor = conn.execute(
+            f"""INSERT INTO scan_jobs (
+                   job_id, status, created_at, completed_at, team_id, batch_id, parent_job_id,
+                   child_job_ids, target, target_index, target_count, schedule_id, triggered_by, data
+               )
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
+               {conflict}""",  # nosec B608 - conflict is selected from static SQL literals
+            (
+                job.job_id,
+                job.status.value,
+                job.created_at,
+                job.completed_at,
+                job.tenant_id,
+                getattr(job, "batch_id", None),
+                getattr(job, "parent_job_id", None),
+                json.dumps(getattr(job, "child_job_ids", []) or []),
+                json.dumps(getattr(job, "target", None)) if getattr(job, "target", None) is not None else None,
+                getattr(job, "target_index", None),
+                getattr(job, "target_count", None),
+                getattr(job, "schedule_id", None),
+                getattr(job, "triggered_by", None),
+                data,
+            ),
+        )
+        inserted = int(cursor.rowcount or 0)
+        if not if_absent or inserted == 1:
+            self._replace_cis_checks(conn, job)
+        return inserted
+
+    def put_many_atomic(self, jobs: list[ScanJob]) -> None:
+        """Commit a same-tenant parent/child set in one Postgres transaction."""
+        if not jobs:
+            return
+        tenants = {job.tenant_id for job in jobs}
+        if len(tenants) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        tenant_id = jobs[0].tenant_id
+        with _tenant_connection(self._pool) as conn:
+            for job in jobs:
+                self._put_on_connection(conn, job)
+            conn.commit()
+        job_status_count_cache.invalidate_tenant(tenant_id)
+
+    def put_many_if_absent_atomic(self, jobs: list[ScanJob]) -> list[str]:
+        if not jobs:
+            return []
+        if len({job.tenant_id for job in jobs}) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        tenant_id = jobs[0].tenant_id
+        inserted: list[str] = []
+        with _tenant_connection(self._pool) as conn:
+            for job in jobs:
+                if self._put_on_connection(conn, job, if_absent=True) == 1:
+                    inserted.append(job.job_id)
+            conn.commit()
+        job_status_count_cache.invalidate_tenant(tenant_id)
+        return inserted
+
+    def put_many_and_enqueue_atomic(self, jobs: list[ScanJob], dispatch_jobs: list[ScanJob]) -> None:
+        """Commit a batch and its distributed dispatch handoff together."""
+
+        if not jobs:
+            return
+        tenants = {job.tenant_id for job in jobs}
+        if len(tenants) != 1 or any(job.tenant_id not in tenants for job in dispatch_jobs):
+            raise ValueError("atomic job batches must belong to one tenant")
+        job_ids = {job.job_id for job in jobs}
+        if any(job.job_id not in job_ids for job in dispatch_jobs):
+            raise ValueError("dispatch jobs must belong to the atomic job batch")
+        tenant_id = jobs[0].tenant_id
+        with _tenant_connection(self._pool) as conn:
+            for job in jobs:
+                self._put_on_connection(conn, job)
+            for job in dispatch_jobs:
+                conn.execute(
+                    """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
+                       VALUES (%s, %s, %s, 'pending')
+                       ON CONFLICT (job_id) DO NOTHING""",
+                    (job.job_id, job.tenant_id, job.created_at),
+                )
+            conn.commit()
+        job_status_count_cache.invalidate_tenant(tenant_id)
+
+    def put_many_if_absent_and_enqueue_atomic(self, jobs: list[ScanJob]) -> list[str]:
+        """Insert missing jobs and their distributed handoff in one transaction."""
+
+        if not jobs:
+            return []
+        if len({job.tenant_id for job in jobs}) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        tenant_id = jobs[0].tenant_id
+        inserted: list[str] = []
+        with _tenant_connection(self._pool) as conn:
+            for job in jobs:
+                if self._put_on_connection(conn, job, if_absent=True) != 1:
+                    continue
+                inserted.append(job.job_id)
+                conn.execute(
+                    """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
+                       VALUES (%s, %s, %s, 'pending')
+                       ON CONFLICT (job_id) DO NOTHING""",
+                    (job.job_id, job.tenant_id, job.created_at),
+                )
+            conn.commit()
+        job_status_count_cache.invalidate_tenant(tenant_id)
+        return inserted
 
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         from .server import ScanJob

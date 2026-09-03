@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS scim_groups (tenant_id TEXT NOT NULL,group_id TEXT NO
 CREATE INDEX IF NOT EXISTS idx_scim_users_lookup ON scim_users(tenant_id,user_name,external_id);
 CREATE INDEX IF NOT EXISTS idx_scim_groups_lookup ON scim_groups(tenant_id,display_name,external_id);
 
-CREATE TABLE IF NOT EXISTS idempotency_keys (endpoint TEXT NOT NULL,tenant_id TEXT NOT NULL,source_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT NOT NULL DEFAULT '',response_json TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(endpoint,tenant_id,source_id,idempotency_key));
+CREATE TABLE IF NOT EXISTS idempotency_keys (endpoint TEXT NOT NULL,tenant_id TEXT NOT NULL,source_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT NOT NULL DEFAULT '',response_json TEXT NOT NULL,created_at TEXT NOT NULL,reservation_owner TEXT NOT NULL DEFAULT '',lease_expires_at TEXT NOT NULL DEFAULT '',PRIMARY KEY(endpoint,tenant_id,source_id,idempotency_key));
 CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at);
 CREATE TABLE IF NOT EXISTS proxy_replay_log (row_id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),not_after TIMESTAMPTZ NOT NULL,record JSONB NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_replay_not_after ON proxy_replay_log(not_after);

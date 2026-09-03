@@ -50,6 +50,15 @@ class _FakeConn:
 
     def execute(self, sql, params=None):
         low = " ".join(sql.strip().lower().split())
+        if low.startswith("delete from"):
+            table = low.split()[2]
+            values = tuple(params or ())
+            self.deletes.append((table, values))
+            if table == "graph_snapshots" and len(values) == 2:
+                self.snapshots.pop((values[0], values[1]), None)
+            cursor = _FakeCursor()
+            cursor.rowcount = 1
+            return cursor
         if low.startswith("select scan_id, created_at from graph_snapshots where tenant_id"):
             tenant = params[0]
             rows = [(scan, ts) for (t, scan), ts in self.snapshots.items() if t == tenant]
@@ -58,6 +67,15 @@ class _FakeConn:
             scan, tenant, created = params[0], params[1], params[2]
             self.snapshots[(tenant, scan)] = created
             return _FakeCursor()
+        if low.startswith("delete from"):
+            table = low.split()[2]
+            self.deletes.append((table, tuple(params)))
+            if table == "graph_snapshots":
+                tenant, scan = params
+                self.snapshots.pop((tenant, scan), None)
+            cursor = _FakeCursor()
+            cursor.rowcount = 1
+            return cursor
         # previous-snapshot / latest lookups etc. — behave as empty history
         return _FakeCursor()
 
@@ -118,6 +136,23 @@ def test_purge_deletes_expired_and_keeps_recent(monkeypatch) -> None:
     assert conn.committed >= 1
 
 
+def test_delete_snapshot_removes_only_requested_tenant_scan(monkeypatch) -> None:
+    conn = _FakeConn(
+        {
+            ("acme", "same-scan"): RECENT,
+            ("other", "same-scan"): RECENT,
+        }
+    )
+    store = _make_store(conn, monkeypatch)
+
+    removed = store.delete_snapshot(tenant_id="acme", scan_id="same-scan")
+
+    assert removed == 6
+    assert ("acme", "same-scan") not in conn.snapshots
+    assert ("other", "same-scan") in conn.snapshots
+    assert all(params == ("acme", "same-scan") for _table, params in conn.deletes)
+
+
 def test_purge_scoped_to_tenant(monkeypatch) -> None:
     conn = _FakeConn(
         {
@@ -160,10 +195,39 @@ def test_purge_retains_unparseable_timestamps(monkeypatch) -> None:
     assert conn.deletes == []
 
 
+def test_delete_snapshot_removes_only_the_exact_tenant_snapshot(monkeypatch) -> None:
+    conn = _FakeConn(
+        {
+            ("acme", "shared-scan"): RECENT,
+            ("other", "shared-scan"): RECENT,
+        }
+    )
+    store = _make_store(conn, monkeypatch)
+
+    removed = store.delete_snapshot(tenant_id="acme", scan_id="shared-scan")
+
+    assert removed == len(postgres_delete_snapshot_tables())
+    assert ("acme", "shared-scan") not in conn.snapshots
+    assert ("other", "shared-scan") in conn.snapshots
+    for table in postgres_delete_snapshot_tables():
+        assert (table, ("acme", "shared-scan")) in conn.deletes
+
+
 def postgres_purge_tables():
     from agent_bom.api.postgres_graph import _GRAPH_RETENTION_PURGE_TABLES
 
     return _GRAPH_RETENTION_PURGE_TABLES
+
+
+def postgres_delete_snapshot_tables() -> tuple[str, ...]:
+    return (
+        "graph_node_search",
+        "attack_paths",
+        "interaction_risks",
+        "graph_edges",
+        "graph_nodes",
+        "graph_snapshots",
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

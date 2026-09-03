@@ -125,11 +125,20 @@ clarity, and source-to-evidence provenance.
 | `DELETE /v1/sources/{source_id}` | disable or remove a source |
 | `POST /v1/sources/{source_id}/test` | validate stored scan configuration and connector health |
 | `POST /v1/sources/{source_id}/run` | trigger a job for direct-scan, artifact-import, or named-connector kinds; push/runtime kinds return `409` |
+| `POST /v1/sources/run-cohort` | launch 2-32 exact runnable source IDs as one tenant-bound immutable cohort; requires `Idempotency-Key` and records a strict freshness bound for automatic correlation |
 | `GET /v1/sources/{source_id}/jobs` | show source-linked job history |
 
 Source-linked evidence is currently reached through the job records returned by
 `GET /v1/sources/{source_id}/jobs` and the existing job export routes. There is
 no separate source-evidence endpoint.
+
+Recurring cohorts use the same contract in a scan schedule: set
+`scan_config.source_ids` to 2-32 exact registered source IDs and optionally set
+`scan_config.max_age_hours` (default `168`). Each scheduled occurrence receives
+its own deterministic cohort ID; retries of that exact occurrence reuse it.
+Membership is never inferred from source names, labels, image tags, or whichever
+snapshot happens to be newest. Push-driven runtime sources remain ingest-owned
+and cannot be launched through this route.
 
 ### Credential reference routes
 

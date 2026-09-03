@@ -58,6 +58,7 @@ agent-bom agents --snowflake
 | `POST /v1/findings/bulk` | Normalized findings batch | API / integrations |
 | `POST /v1/ocsf/ingest` | OCSF security events | SIEM / observability hooks |
 | `POST /v1/sources` + `POST /v1/sources/{id}/run` | Registered connector/source registry | Dashboard **Scan → Sources** |
+| `POST /v1/sources/run-cohort` | Exact registered-source cohort → child scans → strict-freshness automatic correlation | API; poll the returned parent job and open `auto_correlation.output_scan_id` when complete |
 
 Hosted source kinds (`scan.*`, `connector.*`, `ingest.*`, `runtime.*`) are defined in `src/agent_bom/api/models.py` (`SourceKind`).
 

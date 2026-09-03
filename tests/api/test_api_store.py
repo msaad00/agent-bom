@@ -34,6 +34,52 @@ def test_in_memory_put_and_get():
     assert store.get("test-123", all_tenants=True).job_id == "test-123"
 
 
+def test_in_memory_atomic_job_batch_rejects_cross_tenant_without_partial_write() -> None:
+    store = InMemoryJobStore()
+    with pytest.raises(ValueError, match="one tenant"):
+        store.put_many_atomic(
+            [
+                _make_job("tenant-a-job", tenant_id="tenant-a"),
+                _make_job("tenant-b-job", tenant_id="tenant-b"),
+            ]
+        )
+    assert store.list_all(all_tenants=True) == []
+
+
+def test_sqlite_atomic_job_batch_rolls_back_every_row_when_one_insert_aborts(tmp_path: Path) -> None:
+    store = SQLiteJobStore(str(tmp_path / "atomic-jobs.db"))
+    store._conn.execute(  # noqa: SLF001
+        """CREATE TRIGGER fail_second_atomic_job BEFORE INSERT ON jobs
+           WHEN NEW.job_id = 'child-fail'
+           BEGIN SELECT RAISE(ABORT, 'injected atomic write failure'); END"""
+    )
+    store._conn.commit()  # noqa: SLF001
+
+    with pytest.raises(Exception, match="injected atomic write failure"):
+        store.put_many_atomic(
+            [
+                _make_job("parent", tenant_id="tenant-a", child_job_ids=["child-fail"]),
+                _make_job("child-fail", tenant_id="tenant-a", parent_job_id="parent"),
+            ]
+        )
+
+    assert store.list_all(tenant_id="tenant-a") == []
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_atomic_repair_insert_returns_only_new_rows_and_preserves_winner(tmp_path: Path, backend: str) -> None:
+    store = InMemoryJobStore() if backend == "memory" else SQLiteJobStore(str(tmp_path / "repair-jobs.db"))
+    winner = _make_job("repair-child", tenant_id="tenant-a", target_index=1)
+    loser = _make_job("repair-child", tenant_id="tenant-a", target_index=99)
+
+    assert store.put_many_if_absent_atomic([winner]) == ["repair-child"]
+    assert store.put_many_if_absent_atomic([loser]) == []
+
+    persisted = store.get("repair-child", tenant_id="tenant-a")
+    assert persisted is not None
+    assert persisted.target_index == 1
+
+
 def test_in_memory_get_missing():
     store = InMemoryJobStore()
     assert store.get("nonexistent", all_tenants=True) is None

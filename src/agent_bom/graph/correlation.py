@@ -125,20 +125,36 @@ def correlation_graph_digest(graph: UnifiedGraph) -> str:
     the digest stable before save and after a complete backend round trip.
     """
 
-    edges: list[dict[str, Any]] = []
-    for edge in graph.edges:
+    digest = hashlib.sha256()
+    encoder = json.JSONEncoder(sort_keys=True, separators=(",", ":"), default=str)
+
+    def write(value: Any) -> None:
+        # One node/edge is bounded; encode it in one chunk to avoid the method
+        # call overhead of feeding every punctuation token separately.
+        digest.update(encoder.encode(value).encode("utf-8"))
+
+    # This is the exact canonical JSON emitted by _digest above.  Stream each
+    # item so hashing does not duplicate the full graph as dictionaries plus one
+    # giant encoded bytes object at peak RSS.
+    digest.update(b'{"edges":[')
+    for index, edge in enumerate(sorted(graph.edges, key=lambda item: str(item.canonical_id))):
+        if index:
+            digest.update(b",")
         payload = edge.to_dict()
         payload["valid_from"] = edge.valid_from or edge.first_seen or graph.created_at
         payload["source_scan_id"] = edge.source_scan_id or graph.scan_id
-        edges.append(payload)
-    return _digest(
-        {
-            "scan_id": graph.scan_id,
-            "tenant_id": graph.tenant_id,
-            "nodes": sorted((node.to_dict() for node in graph.nodes.values()), key=lambda item: str(item["id"])),
-            "edges": sorted(edges, key=lambda item: str(item["canonical_id"])),
-        }
-    )
+        write(payload)
+    digest.update(b'],"nodes":[')
+    for index, node in enumerate(sorted(graph.nodes.values(), key=lambda item: str(item.id))):
+        if index:
+            digest.update(b",")
+        write(node.to_dict())
+    digest.update(b'],"scan_id":')
+    write(graph.scan_id)
+    digest.update(b',"tenant_id":')
+    write(graph.tenant_id)
+    digest.update(b"}")
+    return "sha256:" + digest.hexdigest()
 
 
 def validate_correlation_output_manifest(
@@ -377,6 +393,8 @@ class GraphCorrelationRun:
     created_at: str = ""
     started_at: str = ""
     completed_at: str = ""
+    execution_owner: str = ""
+    execution_lease_expires_at: str = ""
 
     def __post_init__(self) -> None:
         if not self.correlation_id.strip():
@@ -459,6 +477,8 @@ class GraphCorrelationRun:
             created_at=str(value.get("created_at") or ""),
             started_at=str(value.get("started_at") or ""),
             completed_at=str(value.get("completed_at") or ""),
+            execution_owner=str(value.get("execution_owner") or ""),
+            execution_lease_expires_at=str(value.get("execution_lease_expires_at") or ""),
         )
 
 

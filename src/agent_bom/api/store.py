@@ -98,6 +98,8 @@ class JobStore(Protocol):
     """Protocol for scan job persistence."""
 
     def put(self, job: ScanJob) -> None: ...
+    def put_many_atomic(self, jobs: list[ScanJob]) -> None: ...
+    def put_many_if_absent_atomic(self, jobs: list[ScanJob]) -> list[str]: ...
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None: ...
     def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool: ...
     def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list[ScanJob]: ...
@@ -147,6 +149,29 @@ class InMemoryJobStore:
         with self._lock:
             self._jobs[job.job_id] = job
             self._evict_completed_locked()
+
+    def put_many_atomic(self, jobs: list[ScanJob]) -> None:
+        """Publish a related parent/child set under one process-local lock."""
+        if not jobs:
+            return
+        tenants = {job.tenant_id for job in jobs}
+        if len(tenants) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        with self._lock:
+            self._jobs.update({job.job_id: job for job in jobs})
+            self._evict_completed_locked()
+
+    def put_many_if_absent_atomic(self, jobs: list[ScanJob]) -> list[str]:
+        if not jobs:
+            return []
+        if len({job.tenant_id for job in jobs}) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        with self._lock:
+            inserted = [job.job_id for job in jobs if job.job_id not in self._jobs]
+            for job in jobs:
+                self._jobs.setdefault(job.job_id, job)
+            self._evict_completed_locked()
+            return inserted
 
     def _evict_completed_locked(self) -> None:
         if self._max_retained_jobs is None or self._max_retained_jobs <= 0:
@@ -401,32 +426,76 @@ class SQLiteJobStore:
     def _deserialize(data: str) -> ScanJob:
         return ScanJob.model_validate_json(data)
 
+    def _put_on_connection(self, job: ScanJob, *, if_absent: bool = False) -> int:
+        verb = "INSERT OR IGNORE" if if_absent else "INSERT OR REPLACE"
+        cursor = self._conn.execute(
+            f"""{verb} INTO jobs (
+                   job_id, status, created_at, completed_at, tenant_id, batch_id, parent_job_id,
+                   child_job_ids, target, target_index, target_count, schedule_id, triggered_by, data
+               )
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (  # nosec B608 - verb is selected from two static SQL literals
+                job.job_id,
+                job.status.value,
+                job.created_at,
+                job.completed_at,
+                job.tenant_id,
+                job.batch_id,
+                job.parent_job_id,
+                json.dumps(job.child_job_ids),
+                json.dumps(job.target) if job.target is not None else None,
+                job.target_index,
+                job.target_count,
+                job.schedule_id,
+                job.triggered_by,
+                self._serialize(job),
+            ),
+        )
+        return int(cursor.rowcount or 0)
+
     def put(self, job: ScanJob) -> None:
         try:
-            self._conn.execute(
-                """INSERT OR REPLACE INTO jobs (
-                       job_id, status, created_at, completed_at, tenant_id, batch_id, parent_job_id,
-                       child_job_ids, target, target_index, target_count, schedule_id, triggered_by, data
-                   )
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    job.job_id,
-                    job.status.value,
-                    job.created_at,
-                    job.completed_at,
-                    job.tenant_id,
-                    job.batch_id,
-                    job.parent_job_id,
-                    json.dumps(job.child_job_ids),
-                    json.dumps(job.target) if job.target is not None else None,
-                    job.target_index,
-                    job.target_count,
-                    job.schedule_id,
-                    job.triggered_by,
-                    self._serialize(job),
-                ),
-            )
+            self._put_on_connection(job)
             self._conn.commit()
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
+
+    def put_many_atomic(self, jobs: list[ScanJob]) -> None:
+        """Commit a same-tenant parent/child set in one SQLite transaction."""
+        if not jobs:
+            return
+        if len({job.tenant_id for job in jobs}) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+            for job in jobs:
+                self._put_on_connection(job)
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
+
+    def put_many_if_absent_atomic(self, jobs: list[ScanJob]) -> list[str]:
+        """Insert repair rows once; concurrent replicas dispatch only winners."""
+        if not jobs:
+            return []
+        if len({job.tenant_id for job in jobs}) != 1:
+            raise ValueError("atomic job batches must belong to one tenant")
+        inserted: list[str] = []
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+            for job in jobs:
+                if self._put_on_connection(job, if_absent=True) == 1:
+                    inserted.append(job.job_id)
+            self._conn.commit()
+            return inserted
+        except Exception:
+            self._conn.rollback()
+            raise
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()

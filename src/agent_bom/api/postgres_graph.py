@@ -53,7 +53,9 @@ from .postgres_common import (
 )
 
 logger = logging.getLogger(__name__)
-_GRAPH_STORAGE_SCHEMA_VERSION = 2
+_GRAPH_STORAGE_SCHEMA_VERSION = 4
+_DB_NOW_ISO = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
+_DB_LEASE_ISO = "to_char(now() AT TIME ZONE 'UTC' + (%s * INTERVAL '1 second'), 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 
 
 def select_expired_snapshot_ids(
@@ -226,7 +228,8 @@ def _decode_json_array(value: Any, *, field: str) -> list[Any]:
 _CORRELATION_RUN_COLUMNS = """
     correlation_id, tenant_id, idempotency_key, name, status,
     max_age_hours, allow_stale, input_manifest, manifest_sha256, result_manifest,
-    output_scan_id, failure_code, created_at, started_at, completed_at
+    output_scan_id, failure_code, created_at, started_at, completed_at,
+    execution_owner, execution_lease_expires_at
 """
 
 
@@ -248,6 +251,8 @@ def _correlation_run_from_row(row: Sequence[Any]) -> GraphCorrelationRun:
             "created_at": row[12],
             "started_at": row[13],
             "completed_at": row[14],
+            "execution_owner": row[15],
+            "execution_lease_expires_at": row[16],
         }
     )
 
@@ -419,6 +424,8 @@ class PostgresGraphStore:
                     created_at TEXT NOT NULL,
                     started_at TEXT NOT NULL DEFAULT '',
                     completed_at TEXT NOT NULL DEFAULT '',
+                    execution_owner TEXT NOT NULL DEFAULT '',
+                    execution_lease_expires_at TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (correlation_id, tenant_id),
                     UNIQUE (tenant_id, idempotency_key)
                 )
@@ -428,6 +435,8 @@ class PostgresGraphStore:
                 "CREATE INDEX IF NOT EXISTS idx_pg_graph_correlation_runs_recent ON graph_correlation_runs(tenant_id, created_at DESC)"
             )
             conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN IF NOT EXISTS result_manifest TEXT NOT NULL DEFAULT '{}'")
+            conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN IF NOT EXISTS execution_owner TEXT NOT NULL DEFAULT ''")
+            conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN IF NOT EXISTS execution_lease_expires_at TEXT NOT NULL DEFAULT ''")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS attack_paths (
@@ -666,6 +675,27 @@ class PostgresGraphStore:
             conn.commit()
         return total
 
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+        """Atomically remove one tenant-scoped snapshot and all projections."""
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        total = 0
+        with _tenant_connection(self._pool) as conn:
+            for table in (
+                "graph_node_search",
+                "attack_paths",
+                "interaction_risks",
+                "graph_edges",
+                "graph_nodes",
+                "graph_snapshots",
+            ):
+                cursor = conn.execute(
+                    f"DELETE FROM {table} WHERE tenant_id = %s AND scan_id = %s",  # nosec B608 - table list is static
+                    (tenant_id, scan_id),
+                )
+                total += max(int(cursor.rowcount or 0), 0)
+            conn.commit()
+        return total
+
     def save_graph(self, graph: UnifiedGraph) -> None:
         """Persist a fully built ``UnifiedGraph`` via the streamed write path."""
         self.save_graph_streaming(
@@ -695,6 +725,7 @@ class PostgresGraphStore:
         evidence_manifest_sha256: str = "",
         correlation_result_manifest: Mapping[str, Any] | None = None,
         correlation_completed_at: str = "",
+        correlation_execution_owner: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables without materialising a graph.
 
@@ -1144,6 +1175,7 @@ class PostgresGraphStore:
                     SET status = %s, manifest_sha256 = %s, result_manifest = %s,
                         output_scan_id = %s, failure_code = %s, completed_at = %s
                     WHERE tenant_id = %s AND correlation_id = %s AND status = %s
+                      AND (%s = '' OR execution_owner = %s)
                     RETURNING correlation_id
                     """,
                     (
@@ -1156,6 +1188,8 @@ class PostgresGraphStore:
                         tenant,
                         correlation_id,
                         existing.status.value,
+                        correlation_execution_owner,
+                        correlation_execution_owner,
                     ),
                 ).fetchone()
                 if updated is None:
@@ -2460,6 +2494,7 @@ class PostgresGraphStore:
         result_manifest: Mapping[str, Any],
         manifest_sha256: str,
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> GraphCorrelationRun:
         from agent_bom.graph.correlation import validate_correlation_output_manifest
 
@@ -2482,6 +2517,7 @@ class PostgresGraphStore:
             evidence_manifest_sha256=manifest_sha256,
             correlation_result_manifest=result_manifest,
             correlation_completed_at=completed_at,
+            correlation_execution_owner=execution_owner,
         )
         completed = self.get_correlation_run(tenant_id=graph.tenant_id, correlation_id=graph.scan_id)
         if completed is None:  # pragma: no cover - defensive invariant
@@ -2503,7 +2539,7 @@ class PostgresGraphStore:
             row = conn.execute(
                 f"""
                 INSERT INTO graph_correlation_runs ({_CORRELATION_RUN_COLUMNS})
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 RETURNING {_CORRELATION_RUN_COLUMNS}
                 """,  # nosec B608 - static internal column list
@@ -2523,6 +2559,8 @@ class PostgresGraphStore:
                     run.created_at,
                     run.started_at,
                     run.completed_at,
+                    run.execution_owner,
+                    run.execution_lease_expires_at,
                 ),
             ).fetchone()
             if row is not None:
@@ -2549,6 +2587,78 @@ class PostgresGraphStore:
             ).fetchall()
         return [_correlation_run_from_row(row) for row in rows]
 
+    def count_active_correlation_runs(self, *, tenant_id: str) -> int:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM graph_correlation_runs WHERE tenant_id = %s AND status IN (%s, %s)",
+                (
+                    tenant,
+                    CorrelationRunStatus.PENDING.value,
+                    CorrelationRunStatus.RUNNING.value,
+                ),
+            ).fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def claim_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> GraphCorrelationRun | None:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                f"""
+                UPDATE graph_correlation_runs
+                SET status = %s, started_at = CASE WHEN started_at = '' THEN {_DB_NOW_ISO} ELSE started_at END,
+                    execution_owner = %s, execution_lease_expires_at = {_DB_LEASE_ISO}
+                WHERE tenant_id = %s AND correlation_id = %s
+                  AND (status = %s OR (status = %s AND execution_lease_expires_at <= {_DB_NOW_ISO}))
+                RETURNING {_CORRELATION_RUN_COLUMNS}
+                """,  # nosec B608 - static internal column list and fixed clock expressions
+                (
+                    CorrelationRunStatus.RUNNING.value,
+                    owner_token,
+                    max(1, int(lease_seconds)),
+                    tenant,
+                    correlation_id,
+                    CorrelationRunStatus.PENDING.value,
+                    CorrelationRunStatus.RUNNING.value,
+                ),
+            ).fetchone()
+            if row is None:
+                return None
+            conn.commit()
+            return _correlation_run_from_row(row)
+
+    def heartbeat_correlation_run_execution(
+        self,
+        *,
+        tenant_id: str,
+        correlation_id: str,
+        owner_token: str,
+        lease_seconds: int,
+        now: str,
+    ) -> bool:
+        tenant = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                f"""
+                UPDATE graph_correlation_runs SET execution_lease_expires_at = {_DB_LEASE_ISO}
+                WHERE tenant_id = %s AND correlation_id = %s AND status = %s AND execution_owner = %s
+                RETURNING correlation_id
+                """,  # nosec B608 - fixed internal clock expression
+                (max(1, int(lease_seconds)), tenant, correlation_id, CorrelationRunStatus.RUNNING.value, owner_token),
+            ).fetchone()
+            if row is None:
+                return False
+            conn.commit()
+            return True
+
     def update_correlation_run(
         self,
         *,
@@ -2561,6 +2671,7 @@ class PostgresGraphStore:
         failure_code: str = "",
         started_at: str = "",
         completed_at: str = "",
+        execution_owner: str = "",
     ) -> GraphCorrelationRun:
         tenant = normalize_graph_tenant_id(tenant_id)
         existing = self.get_correlation_run(tenant_id=tenant, correlation_id=correlation_id)
@@ -2581,6 +2692,7 @@ class PostgresGraphStore:
                 SET status = %s, manifest_sha256 = %s, result_manifest = %s, output_scan_id = %s,
                     failure_code = %s, started_at = %s, completed_at = %s
                 WHERE tenant_id = %s AND correlation_id = %s AND status = %s
+                  AND (%s = '' OR execution_owner = %s)
                 RETURNING {_CORRELATION_RUN_COLUMNS}
                 """,  # nosec B608 - static internal column list
                 (
@@ -2594,6 +2706,8 @@ class PostgresGraphStore:
                     tenant,
                     correlation_id,
                     existing.status.value,
+                    execution_owner,
+                    execution_owner,
                 ),
             ).fetchone()
             if row is None:

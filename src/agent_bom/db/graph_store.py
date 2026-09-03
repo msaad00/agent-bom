@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GRAPH_TENANT_ID = "default"
 GRAPH_SNAPSHOT_KINDS = frozenset({"scan", "correlation"})
-_GRAPH_SCHEMA_VERSION = 5
+_GRAPH_SCHEMA_VERSION = 6
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
 _DEFAULT_GRAPH_RETENTION_DAYS = 180
 _FINDING_ENTITY_TYPES = {
@@ -231,6 +231,8 @@ CREATE TABLE IF NOT EXISTS graph_correlation_runs (
     created_at      TEXT NOT NULL,
     started_at      TEXT NOT NULL DEFAULT '',
     completed_at    TEXT NOT NULL DEFAULT '',
+    execution_owner TEXT NOT NULL DEFAULT '',
+    execution_lease_expires_at TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (correlation_id, tenant_id),
     UNIQUE (tenant_id, idempotency_key)
 );
@@ -435,6 +437,10 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     correlation_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_correlation_runs)").fetchall()}
     if "result_manifest" not in correlation_columns:
         conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN result_manifest TEXT NOT NULL DEFAULT '{}'")
+    if "execution_owner" not in correlation_columns:
+        conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN execution_owner TEXT NOT NULL DEFAULT ''")
+    if "execution_lease_expires_at" not in correlation_columns:
+        conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN execution_lease_expires_at TEXT NOT NULL DEFAULT ''")
     conn.execute("INSERT OR IGNORE INTO graph_schema_version (version) VALUES (?)", (_GRAPH_SCHEMA_VERSION,))
     if backfill_legacy_tenants:
         _backfill_empty_tenant_ids(conn)
@@ -833,6 +839,7 @@ def save_graph_streaming(
     evidence_manifest_sha256: str = "",
     correlation_result_manifest: Mapping[str, Any] | None = None,
     correlation_completed_at: str = "",
+    correlation_execution_owner: str = "",
 ) -> dict[str, int]:
     """Persist a graph snapshot from streamed node/edge iterables.
 
@@ -1167,6 +1174,7 @@ def save_graph_streaming(
             SET status = ?, manifest_sha256 = ?, result_manifest = ?, output_scan_id = ?,
                 failure_code = ?, completed_at = ?
             WHERE tenant_id = ? AND correlation_id = ? AND status = ?
+              AND (? = '' OR execution_owner = ?)
             """,
             (
                 CorrelationRunStatus.COMPLETE.value,
@@ -1178,6 +1186,8 @@ def save_graph_streaming(
                 tenant,
                 correlation_id,
                 existing.status.value,
+                correlation_execution_owner,
+                correlation_execution_owner,
             ),
         )
         if conn.execute("SELECT changes()").fetchone()[0] != 1:
@@ -1846,6 +1856,8 @@ def _correlation_run_from_row(row: sqlite3.Row) -> GraphCorrelationRun:
             "created_at": row["created_at"],
             "started_at": row["started_at"],
             "completed_at": row["completed_at"],
+            "execution_owner": row["execution_owner"],
+            "execution_lease_expires_at": row["execution_lease_expires_at"],
         }
     )
 
@@ -1902,8 +1914,9 @@ def create_correlation_run(
         INSERT INTO graph_correlation_runs (
             correlation_id, tenant_id, idempotency_key, name, status,
             max_age_hours, allow_stale, input_manifest, manifest_sha256,
-            result_manifest, output_scan_id, failure_code, created_at, started_at, completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            result_manifest, output_scan_id, failure_code, created_at, started_at, completed_at,
+            execution_owner, execution_lease_expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run.correlation_id,
@@ -1921,6 +1934,8 @@ def create_correlation_run(
             run.created_at,
             run.started_at,
             run.completed_at,
+            run.execution_owner,
+            run.execution_lease_expires_at,
         ),
     )
     conn.commit()
@@ -1944,6 +1959,98 @@ def list_correlation_runs(
     return [_correlation_run_from_row(row) for row in rows]
 
 
+def count_active_correlation_runs(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+) -> int:
+    """Count pending/running correlations without materializing run history."""
+
+    tenant = normalize_graph_tenant_id(tenant_id)
+    row = conn.execute(
+        "SELECT COUNT(*) FROM graph_correlation_runs WHERE tenant_id = ? AND status IN (?, ?)",
+        (
+            tenant,
+            CorrelationRunStatus.PENDING.value,
+            CorrelationRunStatus.RUNNING.value,
+        ),
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def claim_correlation_run_execution(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    correlation_id: str,
+    owner_token: str,
+    lease_seconds: int,
+    now: str,
+) -> GraphCorrelationRun | None:
+    """Lease one pending or abandoned run to exactly one worker replica."""
+
+    tenant = normalize_graph_tenant_id(tenant_id)
+    started = datetime.fromisoformat(now)
+    expires = (started + timedelta(seconds=max(1, int(lease_seconds)))).isoformat()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE graph_correlation_runs
+            SET status = ?, started_at = CASE WHEN started_at = '' THEN ? ELSE started_at END,
+                execution_owner = ?, execution_lease_expires_at = ?
+            WHERE tenant_id = ? AND correlation_id = ?
+              AND (status = ? OR (status = ? AND execution_lease_expires_at <= ?))
+            """,
+            (
+                CorrelationRunStatus.RUNNING.value,
+                now,
+                owner_token,
+                expires,
+                tenant,
+                correlation_id,
+                CorrelationRunStatus.PENDING.value,
+                CorrelationRunStatus.RUNNING.value,
+                now,
+            ),
+        )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return None
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return get_correlation_run(conn, tenant_id=tenant, correlation_id=correlation_id)
+
+
+def heartbeat_correlation_run_execution(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    correlation_id: str,
+    owner_token: str,
+    lease_seconds: int,
+    now: str,
+) -> bool:
+    expires = (datetime.fromisoformat(now) + timedelta(seconds=max(1, int(lease_seconds)))).isoformat()
+    cursor = conn.execute(
+        """
+        UPDATE graph_correlation_runs SET execution_lease_expires_at = ?
+        WHERE tenant_id = ? AND correlation_id = ? AND status = ? AND execution_owner = ?
+        """,
+        (
+            expires,
+            normalize_graph_tenant_id(tenant_id),
+            correlation_id,
+            CorrelationRunStatus.RUNNING.value,
+            owner_token,
+        ),
+    )
+    conn.commit()
+    return cursor.rowcount == 1
+
+
 def update_correlation_run(
     conn: sqlite3.Connection,
     *,
@@ -1956,6 +2063,7 @@ def update_correlation_run(
     failure_code: str = "",
     started_at: str = "",
     completed_at: str = "",
+    execution_owner: str = "",
 ) -> GraphCorrelationRun:
     existing = get_correlation_run(conn, tenant_id=tenant_id, correlation_id=correlation_id)
     if existing is None:
@@ -1974,6 +2082,7 @@ def update_correlation_run(
         SET status = ?, manifest_sha256 = ?, result_manifest = ?, output_scan_id = ?, failure_code = ?,
             started_at = ?, completed_at = ?
         WHERE tenant_id = ? AND correlation_id = ?
+          AND (? = '' OR execution_owner = ?)
         """,
         (
             status.value,
@@ -1985,8 +2094,12 @@ def update_correlation_run(
             completed_at or existing.completed_at,
             normalize_graph_tenant_id(tenant_id),
             correlation_id,
+            execution_owner,
+            execution_owner,
         ),
     )
+    if conn.execute("SELECT changes()").fetchone()[0] != 1:
+        raise ValueError("correlation execution lease is not owned")
     conn.commit()
     updated = get_correlation_run(conn, tenant_id=tenant_id, correlation_id=correlation_id)
     if updated is None:  # pragma: no cover - defensive persistence invariant

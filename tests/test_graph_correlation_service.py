@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import gc
 import json
 import sqlite3
+import weakref
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -83,6 +86,11 @@ async def test_service_persists_complete_correlation_and_manifest(tmp_path: Path
     assert completed.manifest_sha256.startswith("sha256:")
     assert completed.result_manifest["correlation_id"] == "corr-1"
     assert completed.result_manifest["analysis_bounds"]["attack_path_fusion"]["status"] == "complete"
+    merge_bounds = completed.result_manifest["analysis_bounds"]["correlation_merge"]
+    assert merge_bounds["execution_strategy"] == "disk_backed_incremental"
+    assert merge_bounds["max_resident_source_graphs"] == 1
+    assert merge_bounds["input_node_observation_count"] == 4
+    assert merge_bounds["input_edge_observation_count"] == 2
     assert {item["freshness"] for item in completed.result_manifest["input_snapshots"]} == {"fresh"}
 
     output = store.load_graph(tenant_id="tenant-a", scan_id="corr-1")
@@ -300,6 +308,33 @@ async def test_pending_run_is_reconciled_after_restart(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_two_service_replicas_execute_one_durable_correlation_once(tmp_path: Path) -> None:
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))
+    store.save_graph(_graph("image", "2026-08-30T11:00:00+00:00"))
+    dormant = GraphCorrelationService(store, now=lambda: NOW)
+    await dormant.submit(CorrelationRequest("corr-replicas", "tenant-a", "idem-replicas", "replicas", ("repo", "image"), 24))
+
+    executions: list[str] = []
+
+    class TrackingService(GraphCorrelationService):
+        def _load_and_merge_inputs(self, **kwargs):
+            executions.append(str(kwargs["correlation_id"]))
+            return super()._load_and_merge_inputs(**kwargs)
+
+    first = TrackingService(store, now=lambda: NOW)
+    second = TrackingService(store, now=lambda: NOW)
+    await asyncio.gather(first.start(tenants=["tenant-a"]), second.start(tenants=["tenant-a"]))
+    try:
+        completed = await first.wait("tenant-a", "corr-replicas", timeout_seconds=5)
+    finally:
+        await asyncio.gather(first.stop(), second.stop())
+
+    assert completed.status is CorrelationRunStatus.COMPLETE
+    assert executions == ["corr-replicas"]
+
+
+@pytest.mark.asyncio
 async def test_restart_reconciliation_backpressures_instead_of_dropping_pending_runs(tmp_path: Path) -> None:
     store = SQLiteGraphStore(tmp_path / "graph.db")
     store.save_graph(_graph("repo", "2026-08-30T10:00:00+00:00"))
@@ -394,6 +429,99 @@ async def test_merge_budget_exceeded_leaves_no_selectable_partial_snapshot(tmp_p
     assert failed.status is CorrelationRunStatus.FAILED
     assert failed.failure_code == "correlation_budget_exceeded"
     assert store.load_graph(tenant_id="tenant-a", scan_id="corr-over-budget").nodes == {}
+
+
+@pytest.mark.asyncio
+async def test_signed_execution_releases_each_source_graph_before_loading_the_next(tmp_path: Path) -> None:
+    class TrackingStore(SQLiteGraphStore):
+        def __init__(self, path: Path) -> None:
+            super().__init__(path)
+            self.load_calls = 0
+            self.last_execution_graph: weakref.ReferenceType[UnifiedGraph] | None = None
+
+        def load_graph(self, **kwargs: object) -> UnifiedGraph:
+            # The first three reads are admission digest checks. Execution starts
+            # at read four; every later execution read must observe the previous
+            # source graph as collectable instead of retained in a snapshots list.
+            if self.load_calls > 3 and self.last_execution_graph is not None:
+                gc.collect()
+                assert self.last_execution_graph() is None
+            graph = super().load_graph(**kwargs)
+            self.load_calls += 1
+            if self.load_calls > 3:
+                self.last_execution_graph = weakref.ref(graph)
+            return graph
+
+    store = TrackingStore(tmp_path / "graph.db")
+    created_at = "2026-08-30T11:00:00+00:00"
+    for scan_id in ("repo", "image", "runtime"):
+        store.save_graph(_graph(scan_id, created_at))
+    service = GraphCorrelationService(
+        store,
+        now=lambda: NOW,
+        receipt_signing_key=RECEIPT_KEY,
+        receipt_signing_key_id="test-v1",
+    )
+    await service.start(tenants=["tenant-a"])
+    try:
+        await service.submit(CorrelationRequest("corr-streamed", "tenant-a", "idem-streamed", "streamed", ("repo", "image", "runtime"), 24))
+        completed = await service.wait("tenant-a", "corr-streamed", timeout_seconds=5)
+    finally:
+        await service.stop()
+
+    assert completed.status is CorrelationRunStatus.COMPLETE
+    assert store.load_calls == 6
+    assert all(
+        verify_correlation_receipt(
+            receipt,
+            signing_key=RECEIPT_KEY,
+            tenant_id="tenant-a",
+            correlation_id="corr-streamed",
+            correlation_created_at=completed.created_at,
+            max_age_hours=24,
+            allow_stale=False,
+        )
+        for receipt in completed.result_manifest["input_snapshots"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_output_budget_stops_before_loading_later_execution_sources(tmp_path: Path) -> None:
+    class CountingStore(SQLiteGraphStore):
+        def __init__(self, path: Path) -> None:
+            super().__init__(path)
+            self.load_calls = 0
+
+        def load_graph(self, **kwargs: object) -> UnifiedGraph:
+            self.load_calls += 1
+            return super().load_graph(**kwargs)
+
+    store = CountingStore(tmp_path / "graph.db")
+    created_at = "2026-08-30T11:00:00+00:00"
+    store.save_graph(_graph("repo", created_at))
+    store.save_graph(_graph("image", created_at, purl="pkg:pypi/pillow@10.0.0"))
+    store.save_graph(_graph("runtime", created_at, purl="pkg:pypi/pillow@11.0.0"))
+    service = GraphCorrelationService(store, now=lambda: NOW, max_output_nodes=2)
+    await service.start(tenants=["tenant-a"])
+    try:
+        await service.submit(
+            CorrelationRequest(
+                "corr-progressive-budget",
+                "tenant-a",
+                "idem-progressive-budget",
+                "bounded",
+                ("repo", "image", "runtime"),
+                24,
+            )
+        )
+        failed = await service.wait("tenant-a", "corr-progressive-budget", timeout_seconds=5)
+    finally:
+        await service.stop()
+
+    assert failed.status is CorrelationRunStatus.FAILED
+    assert failed.failure_code == "correlation_budget_exceeded"
+    assert store.load_calls == 5  # three admission checks plus two execution reads
+    assert store.load_graph(tenant_id="tenant-a", scan_id="corr-progressive-budget").nodes == {}
 
 
 @pytest.mark.asyncio

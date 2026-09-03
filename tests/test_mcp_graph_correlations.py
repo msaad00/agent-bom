@@ -71,6 +71,7 @@ def test_graph_correlate_uses_same_service_contract(monkeypatch) -> None:
 
     payload = json.loads(raw)
     assert payload["correlation_id"] == "corr-1"
+    assert payload["receipt_verification"]["status"] == "legacy_hash_bound"
     assert service.request.scan_ids == ("image", "runtime")
     assert service.request.tenant_id == "tenant-a"
     assert service.request.idempotency_key == "idem-1"
@@ -176,6 +177,7 @@ def test_graph_correlation_status_is_tenant_scoped(monkeypatch) -> None:
     missing = json.loads(asyncio.run(graph_correlation_status_impl("corr-1", tenant_id="tenant-b", _get_graph_store=lambda: _Store())))
 
     assert payload["correlation_id"] == "corr-1"
+    assert payload["receipt_verification"]["status"] == "legacy_hash_bound"
     assert missing["tenant_id"] == "tenant-a"
 
 

@@ -86,7 +86,9 @@ def test_create_requires_idempotency_key(correlation_client) -> None:
     assert "Idempotency-Key" in response.text
 
 
-def test_create_list_status_and_tenant_isolation(correlation_client) -> None:
+def test_create_list_status_and_tenant_isolation(correlation_client, monkeypatch) -> None:
+    monkeypatch.setattr("agent_bom.config.RUNTIME_FACTS_HMAC_KEY", "correlation-receipt-api-test-key-material")
+    monkeypatch.setattr("agent_bom.config.RUNTIME_FACTS_KEY_ID", "api-test-v1")
     client, store = correlation_client
 
     created = client.post(
@@ -105,6 +107,10 @@ def test_create_list_status_and_tenant_isolation(correlation_client) -> None:
     assert payload["tenant_id"] == "default"
     assert payload["max_age_hours"] == 168
     assert [row["scan_id"] for row in payload["input_manifest"]] == ["image-scan", "repo-scan"]
+    assert payload["receipt_verification"]["status"] == "verified"
+    assert payload["receipt_verification"]["verified"] == 2
+    assert {row["verification"] for row in payload["input_manifest"]} == {"verified"}
+    assert {row["signature"]["key_id"] for row in payload["input_manifest"]} == {"api-test-v1"}
 
     replay = client.post(
         "/v1/graph/correlations",
@@ -125,6 +131,7 @@ def test_create_list_status_and_tenant_isolation(correlation_client) -> None:
     status = client.get(f"/v1/graph/correlations/{payload['correlation_id']}")
     assert status.status_code == 200
     assert status.json()["correlation_id"] == payload["correlation_id"]
+    assert status.json()["receipt_verification"]["status"] == "verified"
 
     assert store.get_correlation_run(tenant_id="tenant-b", correlation_id=payload["correlation_id"]) is None
 

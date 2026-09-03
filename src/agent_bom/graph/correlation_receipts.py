@@ -143,6 +143,85 @@ def verify_correlation_receipt(
     )
 
 
+def _receipt_verification(
+    receipt: Mapping[str, Any],
+    *,
+    signing_key: bytes | None,
+    tenant_id: str,
+    correlation_id: str,
+    correlation_created_at: str,
+    max_age_hours: int,
+    allow_stale: bool,
+) -> str:
+    if not isinstance(receipt.get("signature"), Mapping):
+        return "legacy_hash_bound"
+    if signing_key is None:
+        return "verification_key_unavailable"
+    return (
+        "verified"
+        if verify_correlation_receipt(
+            receipt,
+            signing_key=signing_key,
+            tenant_id=tenant_id,
+            correlation_id=correlation_id,
+            correlation_created_at=correlation_created_at,
+            max_age_hours=max_age_hours,
+            allow_stale=allow_stale,
+        )
+        else "invalid"
+    )
+
+
+def correlation_run_receipt_payload(run: Mapping[str, Any], *, signing_key: bytes | None) -> dict[str, Any]:
+    """Decorate a stored run with server-computed receipt verification state."""
+
+    payload = deepcopy(dict(run))
+    context = {
+        "signing_key": signing_key,
+        "tenant_id": str(payload.get("tenant_id") or ""),
+        "correlation_id": str(payload.get("correlation_id") or ""),
+        "correlation_created_at": str(payload.get("created_at") or ""),
+        "max_age_hours": int(payload.get("max_age_hours") or 0),
+        "allow_stale": bool(payload.get("allow_stale", False)),
+    }
+
+    receipts: list[dict[str, Any]] = []
+    for item in payload.get("input_manifest") or []:
+        if not isinstance(item, Mapping):
+            continue
+        receipt = deepcopy(dict(item))
+        receipt["verification"] = _receipt_verification(receipt, **context)
+        receipts.append(receipt)
+    payload["input_manifest"] = receipts
+
+    result_manifest = payload.get("result_manifest")
+    if isinstance(result_manifest, Mapping):
+        result_copy = deepcopy(dict(result_manifest))
+        execution_receipts: list[dict[str, Any]] = []
+        for item in result_copy.get("input_snapshots") or []:
+            if not isinstance(item, Mapping):
+                continue
+            receipt = deepcopy(dict(item))
+            receipt["verification"] = _receipt_verification(receipt, **context)
+            execution_receipts.append(receipt)
+        if "input_snapshots" in result_copy:
+            result_copy["input_snapshots"] = execution_receipts
+        payload["result_manifest"] = result_copy
+
+    statuses = [str(item["verification"]) for item in receipts]
+    counts = {
+        "verified": statuses.count("verified"),
+        "legacy_hash_bound": statuses.count("legacy_hash_bound"),
+        "invalid": statuses.count("invalid"),
+        "verification_key_unavailable": statuses.count("verification_key_unavailable"),
+        "total": len(statuses),
+    }
+    present = [name for name in counts if name != "total" and counts[name]]
+    status = present[0] if len(present) == 1 else "mixed" if present else "none"
+    payload["receipt_verification"] = {"status": status, **counts}
+    return payload
+
+
 def configured_receipt_signing_key() -> bytes | None:
     """Resolve the runtime-facts key used to bind correlation receipts."""
 
@@ -165,6 +244,7 @@ def configured_receipt_signing_key() -> bytes | None:
 
 __all__ = [
     "CorrelationReceiptError",
+    "correlation_run_receipt_payload",
     "configured_receipt_signing_key",
     "sign_correlation_receipt",
     "verify_correlation_receipt",

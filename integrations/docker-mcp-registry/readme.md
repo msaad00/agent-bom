@@ -32,7 +32,8 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom scan -p /workspace -f 
 - **Blast radius mapping** — package → server → agent → credentials → tools
 - **Runtime MCP proxy** — 7 inline detectors for drift, injection, credential leak, cloaking, rate limiting, vector DB injection, and cross-agent correlation
 - **Framework-aware evidence** — OWASP, MITRE, NIST, EU AI Act, ISO 27001, SOC 2, CIS, CMMC, and more
-- **MCP tools** — available to any MCP-compatible AI assistant
+- **MCP tools** — available to assistants that negotiate the verified
+  `2025-11-25` handshake or retain that fallback
 
 ## Source
 

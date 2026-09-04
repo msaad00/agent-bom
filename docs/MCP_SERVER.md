@@ -1,9 +1,17 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 86 MCP tools as an MCP server. Any MCP-compatible client can
-connect and get vulnerability scanning, blast radius analysis, compliance
-checks, runtime posture, and supply-chain verification through natural
-conversation.
+agent-bom exposes 86 MCP tools as an MCP server. Clients that negotiate the
+locked MCP SDK's session-era `2025-11-25` handshake can connect over stdio or
+Streamable HTTP and use vulnerability scanning, blast radius analysis,
+compliance checks, runtime posture, and supply-chain verification. SSE remains
+available as a deprecated transport, but it has not been wire-verified by the
+compatibility contract.
+
+The current official MCP revision is `2026-07-28`; agent-bom does not claim
+compatibility with it. Clients must retain a `2025-11-25` fallback until the
+2026 protocol lane, including stateless requests, `server/discover`, required
+headers, extensions, and updated authorization rules, has executable evidence.
+See `src/agent_bom/data/mcp_protocol_compatibility.json` for the bounded matrix.
 
 See also:
 

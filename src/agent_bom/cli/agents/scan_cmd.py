@@ -1063,7 +1063,8 @@ def scan(
             )
 
     _explicit_target_scan = bool(inventory or sbom_file or images or image_tars or filesystem_paths or k8s or external_scan_path)
-    if project and not skill_only and not no_discover and not _explicit_target_scan:
+    # Named project expansion is bounded to the requested root, not ambient discovery.
+    if project and not skill_only and not _explicit_target_scan:
         from agent_bom.repo_auto_detect import expand_project_scan_targets
 
         auto_targets = expand_project_scan_targets(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from agent_bom.evidence.semantics import ReachabilityVerdict
+from agent_bom.graph.reachability_truth import assess_reachability
 from agent_bom.models import BlastRadius, MCPTool, Package, Severity, Vulnerability
 
 
@@ -35,6 +37,13 @@ def test_proven_unreachable_overrides_exposure_heuristics_everywhere() -> None:
 def test_confirmed_path_and_symbol_evidence_produce_confirmed_label() -> None:
     assert _blast(severity=Severity.HIGH, graph=True).reachability == "confirmed"
     assert _blast(severity=Severity.HIGH, symbol="function_reachable").reachability == "confirmed"
+
+
+def test_reachability_truth_uses_the_canonical_typed_verdict() -> None:
+    assessment = assess_reachability(graph_reachable=True)
+
+    assert assessment.verdict is ReachabilityVerdict.CONFIRMED
+    assert assessment.verdict == "confirmed"
 
 
 def test_unrated_active_exploitation_never_ranks_below_equivalent_low() -> None:

@@ -15,6 +15,11 @@ Evidence rows attached to findings split across two persistence tiers:
 Driven by community feedback on r/mcp (anderson_the_one, 455 upvotes).
 """
 
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
+
 from agent_bom.evidence.policy import (
     DEFAULT_REPLAY_TTL_DAYS,
     REPLAY_TTL_ENV,
@@ -30,6 +35,60 @@ from agent_bom.evidence.policy import (
     tier_badge,
 )
 from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun, effective_scan_run
+
+if TYPE_CHECKING:
+    from agent_bom.evidence.semantics import (
+        CompletenessEntry,
+        EvidenceBasis,
+        EvidenceCompletenessLedger,
+        EvidenceFreshness,
+        EvidenceProvenance,
+        EvidenceStage,
+        EvidenceStatus,
+        ExploitabilityDimension,
+        ExploitabilityVerdict,
+        ExposureAssessment,
+        FreshnessStatus,
+        ImpactDimension,
+        LikelihoodDimension,
+        ReachabilityDimension,
+        ReachabilityVerdict,
+        RiskDimension,
+        SecurityDimensions,
+    )
+
+_SEMANTICS_EXPORTS = frozenset(
+    {
+        "CompletenessEntry",
+        "EvidenceBasis",
+        "EvidenceCompletenessLedger",
+        "EvidenceFreshness",
+        "EvidenceProvenance",
+        "EvidenceStage",
+        "EvidenceStatus",
+        "ExploitabilityDimension",
+        "ExploitabilityVerdict",
+        "ExposureAssessment",
+        "FreshnessStatus",
+        "ImpactDimension",
+        "LikelihoodDimension",
+        "ReachabilityDimension",
+        "ReachabilityVerdict",
+        "RiskDimension",
+        "SecurityDimensions",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Load Pydantic-backed semantics only when that public API is requested."""
+    if name not in _SEMANTICS_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    semantics = import_module("agent_bom.evidence.semantics")
+    value = getattr(semantics, name)
+    globals()[name] = value
+    return value
+
 
 __all__ = [
     "DEFAULT_REPLAY_TTL_DAYS",
@@ -48,4 +107,21 @@ __all__ = [
     "ScanOutcome",
     "ScanRun",
     "effective_scan_run",
+    "CompletenessEntry",
+    "EvidenceBasis",
+    "EvidenceCompletenessLedger",
+    "EvidenceFreshness",
+    "EvidenceProvenance",
+    "EvidenceStage",
+    "EvidenceStatus",
+    "ExploitabilityDimension",
+    "ExploitabilityVerdict",
+    "ExposureAssessment",
+    "FreshnessStatus",
+    "ImpactDimension",
+    "LikelihoodDimension",
+    "ReachabilityDimension",
+    "ReachabilityVerdict",
+    "RiskDimension",
+    "SecurityDimensions",
 ]

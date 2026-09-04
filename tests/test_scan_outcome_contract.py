@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
+from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun, ScanScope, ScanScopeStatus
+from agent_bom.evidence.semantics import EvidenceStage, EvidenceStatus
 from agent_bom.models import AIBOMReport
 from agent_bom.output.json_fmt import to_json
 from agent_bom.output.sarif import to_sarif
@@ -108,3 +109,64 @@ def test_push_payload_rejects_noncanonical_outcome() -> None:
 
     with pytest.raises(ValidationError):
         PushPayload.model_validate({"agents": [], "scan_run": {"outcome": "done"}})
+
+
+def test_scan_run_projects_requested_scopes_to_completeness_ledger() -> None:
+    run = ScanRun(
+        scopes=[
+            ScanScope(name="repository", status=ScanScopeStatus.COMPLETE, item_count=4),
+            ScanScope(name="azure", status=ScanScopeStatus.PERMISSION_DENIED, message="denied"),
+            ScanScope(name="optional-intel", status=ScanScopeStatus.SKIPPED, requested=False),
+        ]
+    )
+
+    ledger = run.to_evidence_ledger()
+    by_component = {entry.component: entry for entry in ledger.entries}
+
+    assert by_component["repository"].stage is EvidenceStage.COLLECTION
+    assert by_component["repository"].status is EvidenceStatus.COMPLETE
+    assert by_component["azure"].status is EvidenceStatus.UNAVAILABLE
+    assert by_component["azure"].reason_codes == ("permission_denied",)
+    assert by_component["optional-intel"].affects_coverage is False
+    assert ledger.overall_status is EvidenceStatus.PARTIAL
+
+
+def test_scan_run_without_recorded_scopes_does_not_invent_complete_ledger() -> None:
+    ledger = ScanRun().to_evidence_ledger()
+
+    assert ledger.entries == ()
+    assert ledger.overall_status is EvidenceStatus.UNAVAILABLE
+
+
+def test_failed_scan_without_scopes_remains_failed_in_ledger() -> None:
+    ledger = ScanRun(outcome=ScanOutcome.FAILED).to_evidence_ledger()
+
+    assert ledger.overall_status is EvidenceStatus.FAILED
+    assert ledger.entries[0].reason_codes == ("scan_failed",)
+
+
+def test_scan_run_outcome_cannot_be_hidden_by_a_complete_scope() -> None:
+    partial = ScanRun(
+        scopes=[ScanScope(name="repository", status=ScanScopeStatus.COMPLETE)],
+        issues=[
+            ScanIssue(
+                code="catalog_timeout",
+                stage="enrichment",
+                source="vulnerability-data",
+                message="bounded lookup timed out",
+            )
+        ],
+    ).to_evidence_ledger()
+    failed = ScanRun(
+        outcome=ScanOutcome.FAILED,
+        scopes=[ScanScope(name="repository", status=ScanScopeStatus.COMPLETE)],
+    ).to_evidence_ledger()
+
+    assert partial.overall_status is EvidenceStatus.PARTIAL
+    assert failed.overall_status is EvidenceStatus.FAILED
+
+
+def test_only_unrequested_scopes_do_not_create_complete_evidence() -> None:
+    ledger = ScanRun(scopes=[ScanScope(name="optional-intel", status=ScanScopeStatus.SKIPPED, requested=False)]).to_evidence_ledger()
+
+    assert ledger.overall_status is EvidenceStatus.UNAVAILABLE

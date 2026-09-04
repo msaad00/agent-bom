@@ -1,0 +1,910 @@
+{
+  "$defs": {
+    "CompletenessEntry": {
+      "additionalProperties": false,
+      "description": "Completeness of one component at one processing stage.",
+      "properties": {
+        "affects_coverage": {
+          "default": true,
+          "title": "Affects Coverage",
+          "type": "boolean"
+        },
+        "component": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Component",
+          "type": "string"
+        },
+        "expected_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Count"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "requested": {
+          "default": true,
+          "title": "Requested",
+          "type": "boolean"
+        },
+        "returned_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Returned Count"
+        },
+        "stage": {
+          "$ref": "#/$defs/EvidenceStage"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "stage",
+        "component",
+        "status"
+      ],
+      "title": "CompletenessEntry",
+      "type": "object"
+    },
+    "EvidenceBasis": {
+      "description": "How an evidence record was established.",
+      "enum": [
+        "observed",
+        "runtime_observed",
+        "inferred",
+        "modeled"
+      ],
+      "title": "EvidenceBasis",
+      "type": "string"
+    },
+    "EvidenceCompletenessLedger": {
+      "additionalProperties": false,
+      "description": "Deterministic aggregation of bounded component completeness.",
+      "properties": {
+        "entries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CompletenessEntry"
+          },
+          "maxItems": 500,
+          "title": "Entries",
+          "type": "array"
+        },
+        "overall_status": {
+          "$ref": "#/$defs/EvidenceStatus",
+          "readOnly": true
+        },
+        "schema_version": {
+          "const": "evidence-completeness.v1",
+          "default": "evidence-completeness.v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "overall_status"
+      ],
+      "title": "EvidenceCompletenessLedger",
+      "type": "object"
+    },
+    "EvidenceFreshness": {
+      "additionalProperties": false,
+      "description": "Freshness evaluated at a caller-supplied decision time.",
+      "properties": {
+        "evaluated_at": {
+          "format": "date-time",
+          "title": "Evaluated At",
+          "type": "string"
+        },
+        "max_age_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Age Seconds"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
+        },
+        "status": {
+          "$ref": "#/$defs/FreshnessStatus"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "status",
+        "evaluated_at"
+      ],
+      "title": "EvidenceFreshness",
+      "type": "object"
+    },
+    "EvidenceProvenance": {
+      "additionalProperties": false,
+      "description": "A bounded, referenceable evidence receipt.",
+      "properties": {
+        "basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceBasis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "evidence_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "freshness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceFreshness"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "evidence-provenance.v1",
+          "default": "evidence-provenance.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Source",
+          "type": "string"
+        },
+        "source_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "status",
+        "source"
+      ],
+      "title": "EvidenceProvenance",
+      "type": "object"
+    },
+    "EvidenceStage": {
+      "enum": [
+        "collection",
+        "normalization",
+        "catalog_lookup",
+        "persistence",
+        "graph_join",
+        "analysis"
+      ],
+      "title": "EvidenceStage",
+      "type": "string"
+    },
+    "EvidenceStatus": {
+      "description": "Whether a bounded evidence-producing operation completed.",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable",
+        "failed"
+      ],
+      "title": "EvidenceStatus",
+      "type": "string"
+    },
+    "ExploitabilityDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "attack_complexity": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attack Complexity"
+        },
+        "attack_vector": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attack Vector"
+        },
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "privileges_required": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Privileges Required"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        },
+        "user_interaction": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Interaction"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExploitabilityVerdict"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ExploitabilityDimension",
+      "type": "object"
+    },
+    "ExploitabilityVerdict": {
+      "enum": [
+        "exploitable",
+        "not_exploitable",
+        "unknown"
+      ],
+      "title": "ExploitabilityVerdict",
+      "type": "string"
+    },
+    "ExposureAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "credential_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Credential Ids",
+          "type": "array"
+        },
+        "entry_point_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Entry Point Ids",
+          "type": "array"
+        },
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "internet_exposed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Internet Exposed"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        },
+        "tool_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Tool Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ExposureAssessment",
+      "type": "object"
+    },
+    "FreshnessStatus": {
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown"
+      ],
+      "title": "FreshnessStatus",
+      "type": "string"
+    },
+    "ImpactDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_asset_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Affected Asset Count"
+        },
+        "business_criticality": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Business Criticality"
+        },
+        "data_sensitivity": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data Sensitivity"
+        },
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        },
+        "technical_categories": {
+          "default": [],
+          "items": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Technical Categories",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ImpactDimension",
+      "type": "object"
+    },
+    "LikelihoodDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        },
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "known_exploited": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Known Exploited"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Method"
+        },
+        "model_version": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Version"
+        },
+        "probability": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Probability"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "LikelihoodDimension",
+      "type": "object"
+    },
+    "ReachabilityDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "min_hops": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Hops"
+        },
+        "path_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Path Ids",
+          "type": "array"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReachabilityVerdict"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ReachabilityDimension",
+      "type": "object"
+    },
+    "ReachabilityVerdict": {
+      "enum": [
+        "confirmed",
+        "likely",
+        "unknown",
+        "unlikely"
+      ],
+      "title": "ReachabilityVerdict",
+      "type": "string"
+    },
+    "RiskDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "factor_dimensions": {
+          "default": [],
+          "items": {
+            "enum": [
+              "exposure",
+              "reachability",
+              "exploitability",
+              "likelihood",
+              "impact"
+            ],
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Factor Dimensions",
+          "type": "array"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Method"
+        },
+        "method_version": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Method Version"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 10.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "RiskDimension",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Public contract keeping security dimensions and evidence independent.",
+  "properties": {
+    "completeness": {
+      "$ref": "#/$defs/EvidenceCompletenessLedger"
+    },
+    "evidence": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EvidenceProvenance"
+      },
+      "maxItems": 500,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "exploitability": {
+      "$ref": "#/$defs/ExploitabilityDimension"
+    },
+    "exposure": {
+      "$ref": "#/$defs/ExposureAssessment"
+    },
+    "impact": {
+      "$ref": "#/$defs/ImpactDimension"
+    },
+    "likelihood": {
+      "$ref": "#/$defs/LikelihoodDimension"
+    },
+    "reachability": {
+      "$ref": "#/$defs/ReachabilityDimension"
+    },
+    "risk": {
+      "$ref": "#/$defs/RiskDimension"
+    },
+    "schema_version": {
+      "const": "security-dimensions.v1",
+      "default": "security-dimensions.v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "exposure",
+    "reachability",
+    "exploitability",
+    "likelihood",
+    "impact",
+    "risk",
+    "completeness"
+  ],
+  "title": "SecurityDimensions",
+  "type": "object"
+}

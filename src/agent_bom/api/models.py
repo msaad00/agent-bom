@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_seriali
 from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
 from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
 from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
+from agent_bom.evidence.semantics import EvidenceCompletenessLedger as _CoreEvidenceCompletenessLedger
+from agent_bom.evidence.semantics import SecurityDimensions as _CoreSecurityDimensions
 from agent_bom.finding_scope import FindingClass, FindingSeverityFilter, canonical_finding_severity_filter
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
@@ -43,6 +45,14 @@ class AIFindingAssessment(_CoreAIFindingAssessment):
     """Public schema contract for one advisory AI assessment."""
 
     provenance: AIProvenance
+
+
+class EvidenceCompletenessLedger(_CoreEvidenceCompletenessLedger):
+    """Public contract for explicit collection and analysis completeness."""
+
+
+class SecurityDimensions(_CoreSecurityDimensions):
+    """Public contract keeping security dimensions and evidence independent."""
 
 
 # Fields that fan out one child scan job per element when a request carries more

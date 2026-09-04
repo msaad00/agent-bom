@@ -1,0 +1,127 @@
+{
+  "$defs": {
+    "CompletenessEntry": {
+      "additionalProperties": false,
+      "description": "Completeness of one component at one processing stage.",
+      "properties": {
+        "affects_coverage": {
+          "default": true,
+          "title": "Affects Coverage",
+          "type": "boolean"
+        },
+        "component": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Component",
+          "type": "string"
+        },
+        "expected_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Count"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "requested": {
+          "default": true,
+          "title": "Requested",
+          "type": "boolean"
+        },
+        "returned_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Returned Count"
+        },
+        "stage": {
+          "$ref": "#/$defs/EvidenceStage"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "stage",
+        "component",
+        "status"
+      ],
+      "title": "CompletenessEntry",
+      "type": "object"
+    },
+    "EvidenceStage": {
+      "enum": [
+        "collection",
+        "normalization",
+        "catalog_lookup",
+        "persistence",
+        "graph_join",
+        "analysis"
+      ],
+      "title": "EvidenceStage",
+      "type": "string"
+    },
+    "EvidenceStatus": {
+      "description": "Whether a bounded evidence-producing operation completed.",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable",
+        "failed"
+      ],
+      "title": "EvidenceStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Public contract for explicit collection and analysis completeness.",
+  "properties": {
+    "entries": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CompletenessEntry"
+      },
+      "maxItems": 500,
+      "title": "Entries",
+      "type": "array"
+    },
+    "overall_status": {
+      "$ref": "#/$defs/EvidenceStatus",
+      "readOnly": true
+    },
+    "schema_version": {
+      "const": "evidence-completeness.v1",
+      "default": "evidence-completeness.v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "overall_status"
+  ],
+  "title": "EvidenceCompletenessLedger",
+  "type": "object"
+}

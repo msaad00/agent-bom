@@ -102,6 +102,11 @@
       "schema": "EvaluateRequest.json"
     },
     {
+      "doc": "Public contract for explicit collection and analysis completeness.",
+      "name": "EvidenceCompletenessLedger",
+      "schema": "EvidenceCompletenessLedger.json"
+    },
+    {
       "doc": "",
       "name": "ExceptionRequest",
       "schema": "ExceptionRequest.json"
@@ -260,6 +265,11 @@
       "doc": "",
       "name": "ScheduleCreate",
       "schema": "ScheduleCreate.json"
+    },
+    {
+      "doc": "Public contract keeping security dimensions and evidence independent.",
+      "name": "SecurityDimensions",
+      "schema": "SecurityDimensions.json"
     },
     {
       "doc": "Trigger one cross-cloud (Azure/GCP) agentless disk side-scan (#4158 Wave 2).",

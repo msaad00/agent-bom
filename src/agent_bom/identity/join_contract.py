@@ -453,6 +453,14 @@ class IdentityResourceJoinContract(_StrictIdentityModel):
             [(resource.resource_id, resource.native_ids) for resource in self.resources],
             kind="resource",
         )
+        identity_native_keys = {
+            _native_key(native_id) for identity in self.identities for native_id in identity.native_ids
+        }
+        resource_native_keys = {
+            _native_key(native_id) for resource in self.resources for native_id in resource.native_ids
+        }
+        if identity_native_keys & resource_native_keys:
+            raise ValueError("one provider-native ID cannot resolve to both a canonical identity and resource")
 
         evidence_by_id = {item.evidence_id: item for item in self.evidence}
         if len(evidence_by_id) != len(self.evidence):

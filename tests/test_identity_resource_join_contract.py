@@ -462,6 +462,17 @@ def test_provider_native_resource_cannot_resolve_to_two_resources() -> None:
         IdentityResourceJoinContract.model_validate(contract)
 
 
+def test_provider_native_id_cannot_resolve_to_both_identity_and_resource() -> None:
+    contract = _payload()
+    shared_native_id = deepcopy(contract["identities"][0]["native_ids"][0])
+    contract["resources"][0]["native_ids"] = [shared_native_id]
+    contract["resources"][0]["evidence_refs"] = contract["identities"][0]["evidence_refs"]
+    contract["relationships"] = []
+
+    with pytest.raises(ValidationError, match="both.*identity.*resource"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
 def test_complete_catalog_row_rejects_unavailable_evidence() -> None:
     contract = _payload()
     contract["evidence"][0].update(status="unavailable", basis=None, reason_codes=["collector_denied"])

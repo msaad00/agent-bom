@@ -53,15 +53,14 @@ type ScanFormProps = {
   /**
    * Optional preset carried in the URL (``/scan?preset=enterprise``) by the
    * in-product "Run introspection scan" actions. It pre-fills the form to the
-   * equivalent of the ``agent-bom scan --introspect --preset enterprise`` CLI:
-   * an ad-hoc workstation introspection scan with enrichment on. Absent or
-   * unknown values leave the normal defaults untouched.
+   * enrichment portion of ``agent-bom scan --introspect --preset enterprise``.
+   * The operator still selects an explicit mounted-project path inside the configured
+   * API scan root; the browser never implies ambient server-host discovery.
    */
   initialPreset?: string | undefined;
 };
 
-/** ``enterprise`` mirrors ``--introspect --preset enterprise``: an ad-hoc
- * workstation introspection scan with CVSS/EPSS/KEV enrichment enabled. */
+/** ``enterprise`` pre-fills CVSS/EPSS/KEV enrichment. */
 function isEnterprisePreset(preset: string | undefined): boolean {
   return preset === "enterprise";
 }
@@ -268,6 +267,22 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
         setLoading(false);
         return;
       }
+      if (
+        target !== "repository" &&
+        !(request.agent_projects ?? []).length &&
+        !(request.images ?? []).length &&
+        !request.k8s &&
+        !(request.tf_dirs ?? []).length &&
+        !request.gha_path?.trim() &&
+        !request.inventory?.trim() &&
+        !request.sbom?.trim()
+      ) {
+        setError(
+          "Choose a scan target: add a project path or image, enable Kubernetes, or add an advanced path.",
+        );
+        setLoading(false);
+        return;
+      }
       const job = await api.startScan(request);
       router.push(`/scan?id=${job.job_id}`);
     } catch (err) {
@@ -442,7 +457,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                   {(
                     [
                       { id: "repository" as const, label: "Public repo", icon: Link2 },
-                      { id: "workstation" as const, label: "Workstation", icon: Bot },
+                      { id: "workstation" as const, label: "Mounted project", icon: Bot },
                       { id: "containers" as const, label: "Containers", icon: Container },
                       { id: "kubernetes" as const, label: "Kubernetes", icon: Server },
                     ] as const
@@ -455,7 +470,10 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                         type="button"
                         role="tab"
                         aria-selected={active}
-                        onClick={() => setTarget(option.id)}
+                        onClick={() => {
+                          setTarget(option.id);
+                          setError("");
+                        }}
                         className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                           active
                             ? "border-emerald-600/50 bg-emerald-500/10 text-[color:var(--foreground)]"
@@ -508,14 +526,19 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                 )}
 
                 {target === "workstation" && (
-                  <ListInput
-                    placeholder="/path/to/agent-project"
-                    value={apInput}
-                    onChange={setApInput}
-                    onAdd={() => addToList("agent_projects", apInput, () => setApInput(""))}
-                    items={form.agent_projects ?? []}
-                    onRemove={(i) => removeFromList("agent_projects", i)}
-                  />
+                  <div className="space-y-3">
+                    <ListInput
+                      placeholder="projects/agent"
+                      value={apInput}
+                      onChange={setApInput}
+                      onAdd={() => addToList("agent_projects", apInput, () => setApInput(""))}
+                      items={form.agent_projects ?? []}
+                      onRemove={(i) => removeFromList("agent_projects", i)}
+                    />
+                    <p className="text-xs leading-5 text-[color:var(--text-secondary)]">
+                      Enter a path relative to <code className="font-mono">AGENT_BOM_API_SCAN_ROOT</code>, not a path on the browser machine or an absolute server path. An administrator must set <code className="font-mono">AGENT_BOM_API_LOCAL_PATH_SCANS=enabled</code> and mount the intended project inside that root.
+                    </p>
+                  </div>
                 )}
 
                 {target === "containers" && (
@@ -569,7 +592,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                     </summary>
                     <div className="space-y-3 border-t border-[color:var(--border-subtle)] px-4 py-3">
                       <ListInput
-                        placeholder="Terraform directory"
+                        placeholder="terraform/prod"
                         value={tfInput}
                         onChange={setTfInput}
                         onAdd={() => addToList("tf_dirs", tfInput, () => setTfInput(""))}
@@ -578,7 +601,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                       />
                       <input
                         type="text"
-                        placeholder="GitHub Actions repo path"
+                        placeholder="repos/app"
                         className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm"
                         value={form.gha_path ?? ""}
                         onChange={(e) => setForm((f) => ({ ...f, gha_path: e.target.value || undefined }))}
@@ -612,7 +635,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
             )}
 
             {error ? (
-              <p className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-400">{error}</p>
+              <p role="alert" className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-400">{error}</p>
             ) : null}
 
             <div className="border-t border-[color:var(--border-subtle)] pt-5">
@@ -689,7 +712,7 @@ function scanPlanCopy(mode: FormMode, target: AdhocScanTarget, enrich: boolean) 
   if (target === "repository") return `Agent and MCP discovery → dependencies, SBOM, secrets, IaC, and SAST → ${enrich ? "CVSS, EPSS, and KEV" : "local correlation"}.`;
   if (target === "containers") return `Image manifest → package inventory → vulnerability matching → ${enrich ? "threat enrichment" : "local correlation"}.`;
   if (target === "kubernetes") return "Workload discovery → Kubernetes posture → image evidence → graph correlation.";
-  return `Agent and MCP discovery → packages and secret indicators → ${enrich ? "threat enrichment" : "local correlation"} → prioritized findings.`;
+  return `Mounted project discovery → agents, MCP, packages, and secret indicators → ${enrich ? "threat enrichment" : "local correlation"} → prioritized findings.`;
 }
 
 function boundaryCopy(mode: FormMode, target: AdhocScanTarget): string {

@@ -48,16 +48,16 @@ describe("scan-scope", () => {
     expect(chips.find((chip) => chip.label === "Schedule")?.value).toBe("Every 1440 min");
   });
 
-  it("builds ad-hoc scope chips for queued targets and baseline discovery", () => {
+  it("builds ad-hoc scope chips for queued targets without claiming ambient host discovery", () => {
     const form: ScanRequest = {
-      agent_projects: ["/repo/a"],
+      agent_projects: ["repo/a"],
       images: ["nginx:1.25"],
       k8s: true,
       k8s_namespace: "prod",
       enrich: true,
     };
     const chips = adhocScopeChips(form, "kubernetes");
-    expect(chips.find((chip) => chip.label === "Baseline")?.value).toContain("Local MCP");
+    expect(chips.find((chip) => chip.label === "Baseline")).toBeUndefined();
     expect(chips.find((chip) => chip.label === "Agent projects")?.value).toBe("1 path");
     expect(chips.find((chip) => chip.label === "Container images")?.value).toBe("1 image");
     expect(chips.find((chip) => chip.label === "Kubernetes")?.value).toBe("Namespace prod");
@@ -74,5 +74,16 @@ describe("scan-scope", () => {
     expect(chips.find((chip) => chip.label === "Auto-detect")?.value).toContain("secrets");
     expect(chips.find((chip) => chip.label === "Lockfiles")?.value).toContain("uv.lock");
     expect(chips.find((chip) => chip.label === "Not in repo URL")?.value).toContain("SaaS connectors");
+  });
+
+  it("keeps an empty repository target isolated from queued local paths", () => {
+    const chips = adhocScopeChips(
+      { agent_projects: ["projects/agent"], images: ["nginx:1.25"] },
+      "repository",
+    );
+
+    expect(chips).toEqual([
+      { label: "Repository", value: "Not selected — enter a public http(s) URL" },
+    ]);
   });
 });

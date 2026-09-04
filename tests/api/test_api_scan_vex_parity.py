@@ -225,6 +225,9 @@ def test_api_pipeline_ingests_external_scan(monkeypatch, tmp_path):
 
 
 def test_api_pipeline_applies_vex_and_rebuilds_findings(monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "default")
+
     class _DummyStore:
         def __init__(self) -> None:
             self.jobs: list[ScanJob] = []

@@ -530,6 +530,56 @@ def test_source_config_uses_the_api_local_path_jail(
     assert "/private/tenant-secret" not in response.text
 
 
+@pytest.mark.parametrize("bound_tenant", ["", "tenant-beta", "tenant-alpha"])
+def test_host_discovery_source_requires_operator_bound_tenant(source_client, monkeypatch, bound_tenant):
+    from agent_bom.api.routes.sources import _request_for_source
+
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", bound_tenant)
+    source = SourceRecord(
+        source_id="host-fixture",
+        tenant_id="tenant-alpha",
+        display_name="Host fixture",
+        kind=SourceKind.SCAN_MCP_CONFIG,
+        config={"scan_request": {"discover_host": True}},
+    )
+    if bound_tenant == source.tenant_id:
+        assert _request_for_source(source).discover_host is True
+    else:
+        with pytest.raises(HTTPException) as rejected:
+            _request_for_source(source)
+        assert rejected.value.status_code == 403
+        assert rejected.value.detail == "Host discovery is not enabled for this tenant"
+
+
+def test_generic_schedule_host_discovery_rejects_before_admission(monkeypatch):
+    from agent_bom.api.routes.schedules import _validate_enabled_source_schedule
+
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.delenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", raising=False)
+    with pytest.raises(HTTPException) as rejected:
+        _validate_enabled_source_schedule("tenant-alpha", {"discover_host": True})
+    assert rejected.value.status_code == 403
+
+
+def test_generic_schedule_rechecks_host_permission_before_queue(monkeypatch):
+    from agent_bom.api.server import _enqueue_scheduled_scan
+    from agent_bom.security import SecurityError
+
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "tenant-beta")
+    queued = []
+
+    def fake_enqueue(**kwargs):
+        queued.append(kwargs)
+        return SimpleNamespace(job_id="unexpected")
+
+    monkeypatch.setattr("agent_bom.api.routes.scan.enqueue_scan_job", fake_enqueue)
+    with pytest.raises(SecurityError, match="not enabled"):
+        _enqueue_scheduled_scan({"discover_host": True}, tenant_id="tenant-alpha")
+    assert queued == []
+
+
 def test_source_repo_target_rejects_embedded_credentials_without_persisting(source_client: TestClient) -> None:
     response = source_client.post(
         "/v1/sources",

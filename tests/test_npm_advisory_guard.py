@@ -79,6 +79,99 @@ def test_gate_blocks_high_advisories(tmp_path: Path, monkeypatch) -> None:
     assert check_npm_advisories.run(lockfile) == 1
 
 
+def test_gate_consumes_exact_npm_install_audit_without_a_second_request(tmp_path: Path, monkeypatch) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+    install_report = tmp_path / "npm-ci.json"
+    install_report.write_text(
+        json.dumps(
+            {
+                "audited": 2,
+                "audit": {
+                    "vulnerabilities": {
+                        "info": 0,
+                        "low": 0,
+                        "moderate": 2,
+                        "high": 0,
+                        "critical": 0,
+                        "total": 2,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        check_npm_advisories,
+        "fetch_report",
+        lambda _payload: (_ for _ in ()).throw(AssertionError("duplicate advisory request")),
+    )
+
+    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 0
+
+
+def test_gate_blocks_high_severity_from_npm_install_audit(tmp_path: Path, monkeypatch) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+    install_report = tmp_path / "npm-ci.json"
+    install_report.write_text(
+        json.dumps(
+            {
+                "audited": 2,
+                "audit": {
+                    "vulnerabilities": {
+                        "info": 0,
+                        "low": 0,
+                        "moderate": 0,
+                        "high": 1,
+                        "critical": 0,
+                        "total": 1,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        check_npm_advisories,
+        "fetch_report",
+        lambda _payload: (_ for _ in ()).throw(AssertionError("duplicate advisory request")),
+    )
+
+    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 1
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {},
+        {"audit": {}},
+        {"audited": 2, "audit": {"vulnerabilities": {"high": -1, "critical": 0}}},
+        {"audited": 2, "audit": {"vulnerabilities": {"high": "0", "critical": 0}}},
+        {
+            "audited": 1,
+            "audit": {
+                "vulnerabilities": {
+                    "info": 0,
+                    "low": 0,
+                    "moderate": 0,
+                    "high": 0,
+                    "critical": 0,
+                    "total": 0,
+                }
+            },
+        },
+    ],
+)
+def test_gate_fails_closed_on_invalid_or_incomplete_npm_install_audit(tmp_path: Path, report) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+    install_report = tmp_path / "npm-ci.json"
+    install_report.write_text(json.dumps(report), encoding="utf-8")
+
+    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 2
+
+
 def test_gate_retries_and_fails_closed_on_transport_errors(tmp_path: Path, monkeypatch) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
@@ -118,6 +211,7 @@ def test_decode_report_bounds_uncompressed_and_gzip_expansion(monkeypatch) -> No
 
 def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
     seen_limits: list[int] = []
+    seen_timeouts: list[int] = []
 
     class _Response:
         def __enter__(self):
@@ -130,7 +224,12 @@ def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
             seen_limits.append(limit)
             return b"{}"
 
-    monkeypatch.setattr(check_npm_advisories.urllib.request, "urlopen", lambda _request, timeout: _Response())
+    def open_response(_request, timeout: int):
+        seen_timeouts.append(timeout)
+        return _Response()
+
+    monkeypatch.setattr(check_npm_advisories.urllib.request, "urlopen", open_response)
 
     assert check_npm_advisories.fetch_report({"pkg": ["1.0.0"]}) == {}
     assert seen_limits == [check_npm_advisories.MAX_COMPRESSED_RESPONSE_BYTES + 1]
+    assert seen_timeouts == [120]

@@ -982,8 +982,9 @@ jobs:
       - name: npm bulk advisory gate (ui/ deps) — block release on high/critical
         run: |
           cd ui
-          npm ci --ignore-scripts
-          python ../scripts/check_npm_advisories.py package-lock.json
+          npm ci --ignore-scripts --json > "${RUNNER_TEMP}/npm-ci-ui-release.json"
+          python ../scripts/check_npm_advisories.py package-lock.json \
+            --npm-install-report "${RUNNER_TEMP}/npm-ci-ui-release.json"
 
       - name: OSV scanner (ui lockfile) — block release on fixable CVEs
         # Without pipefail the `| tee` below swallowed osv-scanner's exit code,

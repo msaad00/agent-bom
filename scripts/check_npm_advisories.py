@@ -18,6 +18,7 @@ BLOCKING_SEVERITIES = {"high", "critical"}
 VALID_SEVERITIES = {"info", "low", "moderate", "high", "critical"}
 MAX_COMPRESSED_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_DECOMPRESSED_RESPONSE_BYTES = 32 * 1024 * 1024
+REQUEST_TIMEOUT_SECONDS = 120
 
 
 def _package_name(package_path: str, record: dict[str, Any]) -> str | None:
@@ -112,16 +113,55 @@ def fetch_report(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]
             "User-Agent": "agent-bom-npm-advisory-gate/1",
         },
     )
-    with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310 -- fixed HTTPS registry URL
+    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:  # noqa: S310 -- fixed HTTPS registry URL
         return decode_report(response.read(MAX_COMPRESSED_RESPONSE_BYTES + 1))
 
 
-def run(path: Path) -> int:
+def npm_install_audit_counts(path: Path) -> tuple[dict[str, int], int]:
+    """Validate severity counts emitted by npm ci --json's completed audit."""
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise ValueError("npm install report must be an object")
+    audited = document.get("audited")
+    if isinstance(audited, bool) or not isinstance(audited, int) or audited < 1:
+        raise ValueError("npm install report did not audit any packages")
+    audit = document.get("audit")
+    counts = audit.get("vulnerabilities") if isinstance(audit, dict) else None
+    required = (*sorted(VALID_SEVERITIES), "total")
+    if not isinstance(counts, dict):
+        raise ValueError("npm install report is missing vulnerability counts")
+    normalized: dict[str, int] = {}
+    for severity in required:
+        value = counts.get(severity)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("npm install report has an invalid vulnerability count")
+        normalized[severity] = value
+    if normalized["total"] != sum(normalized[severity] for severity in VALID_SEVERITIES):
+        raise ValueError("npm install report vulnerability total does not match severity counts")
+    return normalized, audited
+
+
+def run(path: Path, *, npm_install_report: Path | None = None) -> int:
     try:
         payload = lockfile_payload(path)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"::error::invalid npm lockfile for advisory scan ({type(exc).__name__})", file=sys.stderr)
         return 2
+
+    if npm_install_report is not None:
+        try:
+            counts, audited = npm_install_audit_counts(npm_install_report)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"::error::invalid npm install audit report ({type(exc).__name__})", file=sys.stderr)
+            return 2
+        if audited < len(payload) + 1:
+            print("::error::npm install audit report did not cover the exact lockfile inventory", file=sys.stderr)
+            return 2
+        if counts["high"] or counts["critical"]:
+            print(json.dumps({"blocking_severity_counts": counts}, indent=2, sort_keys=True))
+            return 1
+        print(f"npm install audit gate passed: {len(payload)} package names, no high/critical vulnerabilities")
+        return 0
 
     report: dict[str, list[dict[str, Any]]] | None = None
     for attempt in range(1, 4):
@@ -150,8 +190,14 @@ def run(path: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("lockfile", type=Path)
+    parser.add_argument(
+        "--npm-install-report",
+        type=Path,
+        default=None,
+        help="Validated JSON emitted by npm ci --json for the same exact lockfile.",
+    )
     args = parser.parse_args()
-    return run(args.lockfile)
+    return run(args.lockfile, npm_install_report=args.npm_install_report)
 
 
 if __name__ == "__main__":

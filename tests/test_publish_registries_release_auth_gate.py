@@ -36,6 +36,9 @@ def test_smithery_publication_is_idempotent_and_bounds_authorization_recovery() 
     assert "smithery-expected-tool-contract.json" in workflow
     assert "smithery-actual-tool-contract.json" in workflow
     assert "cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json" in workflow
+    assert "smithery-expected-listing-metadata.json" in workflow
+    assert "smithery-actual-listing-metadata.json" in workflow
+    assert "cmp -s /tmp/smithery-expected-listing-metadata.json /tmp/smithery-actual-listing-metadata.json" in workflow
     assert "LATEST_SUCCESS_UPSTREAM" in workflow
     assert 'select(.type == "external_shttp" and .status == "SUCCESS")' in workflow
     assert ": > /tmp/smithery-success-releases.jsonl" in workflow
@@ -46,6 +49,7 @@ def test_smithery_publication_is_idempotent_and_bounds_authorization_recovery() 
     assert "smithery-expected-tool-names.json" in workflow
     assert "skipping a duplicate deployment" in workflow
     assert "Smithery catalog is unavailable; refusing to create a potentially duplicate release" in workflow
+    assert "released tool, schema, and listing contract" in workflow
     assert "for ATTEMPT in $(seq 1 90)" in workflow
     assert "AUTH_REQUIRED)" in workflow
     assert "bounded recovery attempt" in workflow

@@ -222,7 +222,9 @@ jobs:
               if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-server-card-tool-names.json; then
                 jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
                   /tmp/smithery-server-card.json > /tmp/smithery-expected-tool-contract.json
-                echo "Smithery server card matches the immutable v${VERSION} contract with ${EXPECTED_TOOL_COUNT} live tool schemas"
+                jq -S '{description}' \
+                  /tmp/smithery-server-card.json > /tmp/smithery-expected-listing-metadata.json
+                echo "Smithery server card matches the immutable v${VERSION} contract with ${EXPECTED_TOOL_COUNT} live tool schemas and listing metadata"
                 exit 0
               fi
             fi
@@ -271,8 +273,11 @@ jobs:
           jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
           jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
             /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-contract.json
+          jq -S '{description}' \
+            /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json
           if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \
             cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
+            cmp -s /tmp/smithery-expected-listing-metadata.json /tmp/smithery-actual-listing-metadata.json && \
             [ "$LATEST_SUCCESS_UPSTREAM" = "$SMITHERY_MCP_URL" ]; then
             TOOL_COUNT=$(jq -r '.tools | length' /tmp/smithery-catalog.json)
             echo "fresh=true" >> "$GITHUB_OUTPUT"
@@ -457,14 +462,17 @@ jobs:
               jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
               jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
                 /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-contract.json
+              jq -S '{description}' \
+                /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json
               ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
             else
               ACTUAL=unavailable
             fi
             if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ] && \
               cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \
-              cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json; then
-              echo "Smithery catalog exposes all ${ACTUAL} tools and exact input schemas for v${VERSION}"
+              cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
+              cmp -s /tmp/smithery-expected-listing-metadata.json /tmp/smithery-actual-listing-metadata.json; then
+              echo "Smithery catalog exposes the released tool, schema, and listing contract for v${VERSION} (${ACTUAL} tools)"
               exit 0
             fi
             echo "Smithery catalog attempt ${ATTEMPT}/12 does not match the released ${EXPECTED_TOOL_COUNT}-tool name set (actual=${ACTUAL})"

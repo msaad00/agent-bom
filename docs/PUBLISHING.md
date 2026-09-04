@@ -47,10 +47,11 @@ remote deployment metadata, and non-empty tools.
 The `publish-registries.yml` workflow parses the static server-card tool names
 from the immutable release commit, then compares that contract with both the
 live server card and Smithery's public catalog before publishing. It also
-compares the catalog's input schemas with the live release-bound server card.
-If names, schemas, and the latest successful upstream URL already match, the
-workflow skips a duplicate deployment. If capabilities or the upstream
-changed, it creates an external release using:
+compares the catalog's input schemas and public description with the live
+release-bound server card. If names, schemas, description, and the latest
+successful upstream URL already match, the workflow skips a duplicate
+deployment. If capabilities, listing metadata, or the upstream changed, it
+creates an external release using:
 - `SMITHERY_API_TOKEN`
 
 `SMITHERY_MCP_URL` is retained only for the external-upstream publish mode. It

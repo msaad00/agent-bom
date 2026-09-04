@@ -109,7 +109,7 @@
           ]
         },
         "implementation_state": {
-          "enum": ["implemented", "partial", "not_implemented", "not_applicable"]
+          "enum": ["implemented", "partial", "not_implemented", "unverified", "not_applicable"]
         },
         "conformance_state": {
           "enum": ["conformant", "nonconformant", "unverified", "not_applicable"]
@@ -169,6 +169,120 @@
               },
               "evidence_outcome": {"const": "passed"},
               "reason_codes": {"maxItems": 0}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "evidence_refs": {
+                "contains": {
+                  "type": "object",
+                  "properties": {"kind": {"const": "executable_test"}},
+                  "required": ["kind"]
+                }
+              }
+            },
+            "required": ["evidence_refs"]
+          },
+          "then": {
+            "properties": {
+              "evidence_basis": {"contains": {"const": "executable_contract"}}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "evidence_basis": {"contains": {"const": "executable_contract"}}
+            },
+            "required": ["evidence_basis"]
+          },
+          "then": {
+            "properties": {
+              "evidence_refs": {
+                "contains": {
+                  "type": "object",
+                  "properties": {"kind": {"const": "executable_test"}},
+                  "required": ["kind"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "evidence_refs": {
+                "contains": {
+                  "type": "object",
+                  "properties": {"kind": {"const": "source"}},
+                  "required": ["kind"]
+                }
+              }
+            },
+            "required": ["evidence_refs"]
+          },
+          "then": {
+            "properties": {
+              "evidence_basis": {"contains": {"const": "static_code"}}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "evidence_basis": {"contains": {"const": "static_code"}}
+            },
+            "required": ["evidence_basis"]
+          },
+          "then": {
+            "properties": {
+              "evidence_refs": {
+                "contains": {
+                  "type": "object",
+                  "properties": {"kind": {"const": "source"}},
+                  "required": ["kind"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "evidence_refs": {
+                "contains": {
+                  "type": "object",
+                  "properties": {"kind": {"const": "official_spec"}},
+                  "required": ["kind"]
+                }
+              }
+            },
+            "required": ["evidence_refs"]
+          },
+          "then": {
+            "properties": {
+              "evidence_basis": {"contains": {"const": "official_spec"}}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "evidence_basis": {"contains": {"const": "official_spec"}}
+            },
+            "required": ["evidence_basis"]
+          },
+          "then": {
+            "properties": {
+              "evidence_refs": {
+                "contains": {
+                  "type": "object",
+                  "properties": {"kind": {"const": "official_spec"}},
+                  "required": ["kind"]
+                }
+              }
             }
           }
         }

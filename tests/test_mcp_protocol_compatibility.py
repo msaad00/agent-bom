@@ -36,6 +36,11 @@ EXECUTABLE_EVIDENCE_IDS = {
     "tests/test_mcp_protocol_compatibility.py::test_2026_server_discover_is_rejected_by_session_era_server",
     "tests/test_mcp_protocol_compatibility.py::test_oauth_2025_resource_binding_gap_is_recorded_as_nonconformant",
 }
+EVIDENCE_KIND_BASIS = {
+    "executable_test": "executable_contract",
+    "official_spec": "official_spec",
+    "source": "static_code",
+}
 
 
 def _load(path: Path) -> dict:
@@ -83,6 +88,28 @@ def test_schema_rejects_conformance_claim_without_passing_wire_evidence() -> Non
     assert errors, "the published schema must fail closed on unsupported conformance claims"
 
 
+def test_schema_rejects_evidence_ref_without_matching_basis() -> None:
+    schema = _load(SCHEMA_PATH)
+    manifest = copy.deepcopy(_manifest())
+    feature = next(row for row in manifest["features"] if row["feature_id"] == "server.2026.no_session_id")
+    feature["evidence_basis"] = ["live_wire", "official_spec"]
+
+    errors = list(Draft202012Validator(schema).iter_errors(manifest))
+
+    assert errors, "the published schema must bind evidence reference kinds to their declared evidence basis"
+
+
+def test_schema_rejects_evidence_basis_without_matching_ref() -> None:
+    schema = _load(SCHEMA_PATH)
+    manifest = copy.deepcopy(_manifest())
+    feature = next(row for row in manifest["features"] if row["feature_id"] == "server.sse.transport")
+    feature["evidence_basis"].append("executable_contract")
+
+    errors = list(Draft202012Validator(schema).iter_errors(manifest))
+
+    assert errors, "the published schema must bind declared evidence basis to a matching reference kind"
+
+
 def test_feature_ids_are_unique_and_claims_bind_to_passing_executable_tests() -> None:
     rows = _manifest()["features"]
     ids = [row["feature_id"] for row in rows]
@@ -95,6 +122,13 @@ def test_feature_ids_are_unique_and_claims_bind_to_passing_executable_tests() ->
             assert passed_refs, row["feature_id"]
             assert row["evidence_outcome"] == "passed", row["feature_id"]
             assert row["assessment_status"] == "complete", row["feature_id"]
+
+
+def test_evidence_reference_kinds_match_declared_basis() -> None:
+    for row in _manifest()["features"]:
+        ref_kinds = {ref["kind"] for ref in row["evidence_refs"]}
+        for ref_kind, basis in EVIDENCE_KIND_BASIS.items():
+            assert (ref_kind in ref_kinds) == (basis in row["evidence_basis"]), row["feature_id"]
 
 
 def test_sdk_policy_separates_locked_capability_from_current_official_revision() -> None:
@@ -154,6 +188,8 @@ def test_2026_protocol_deltas_are_independent_and_not_claimed_conformant() -> No
     assert {row["feature_id"] for row in rows} == required
     assert all(row["conformance_state"] != "conformant" for row in rows)
     assert all(row["assessment_status"] in {"partial", "unavailable"} for row in rows)
+    unassessed = [row for row in rows if "not_assessed" in row["evidence_basis"]]
+    assert all(row["implementation_state"] == "unverified" for row in unassessed)
 
 
 def test_surface_and_role_gaps_are_explicit() -> None:
@@ -301,7 +337,11 @@ def test_oauth_2025_resource_binding_gap_is_recorded_as_nonconformant() -> None:
 
 
 def test_docs_bound_client_compatibility_to_the_verified_handshake_era() -> None:
-    text = (REPO_ROOT / "docs" / "MCP_SERVER.md").read_text(encoding="utf-8")
-    assert "Any MCP-compatible client" not in text
-    assert LOCKED_PROTOCOL in text
-    assert OFFICIAL_REVISION in text
+    roots = (REPO_ROOT / "docs", REPO_ROOT / "site-docs", REPO_ROOT / "integrations")
+    paths = [REPO_ROOT / "README.md", *(path for root in roots for path in root.rglob("*.md"))]
+    offenders = [str(path.relative_to(REPO_ROOT)) for path in paths if "any mcp-compatible" in path.read_text(encoding="utf-8").lower()]
+    assert offenders == []
+
+    server_docs = (REPO_ROOT / "docs" / "MCP_SERVER.md").read_text(encoding="utf-8")
+    assert LOCKED_PROTOCOL in server_docs
+    assert OFFICIAL_REVISION in server_docs

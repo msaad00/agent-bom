@@ -94,10 +94,10 @@ def test_npm_audits_use_committed_lockfiles() -> None:
 
     assert ci.count("check_npm_advisories.py package-lock.json") == 2
     assert release.count("check_npm_advisories.py package-lock.json") == 1
-    assert ci.count("--npm-install-report") == 2
-    assert release.count("--npm-install-report") == 1
-    assert ci.count("npm ci --ignore-scripts --json") == 2
-    assert release.count("npm ci --ignore-scripts --json") == 1
+    assert "--npm-install-report" not in ci
+    assert "--npm-install-report" not in release
+    assert ci.count("npm ci --ignore-scripts --no-audit") == 2
+    assert release.count("npm ci --ignore-scripts --no-audit") == 1
     assert "npm audit" not in ci
     assert "npm audit" not in release
 

@@ -1,15 +1,16 @@
-"""Contract tests for the npm bulk-advisory release gate."""
+"""Contract tests for the exact-lockfile npm advisory release gate."""
 
 from __future__ import annotations
 
-import gzip
 import json
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from scripts import check_npm_advisories
-from scripts.check_npm_advisories import blocking_advisories, decode_report, lockfile_payload
+from scripts.check_npm_advisories import lockfile_payload, validate_audit_report
 
 
 def _write_lockfile(path: Path) -> None:
@@ -22,6 +23,23 @@ def _write_lockfile(path: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _audit_report(*, severity: str | None = None, audited: int = 1) -> dict:
+    counts = {name: 0 for name in (*sorted(check_npm_advisories.VALID_SEVERITIES), "total")}
+    vulnerabilities = {}
+    if severity is not None:
+        counts[severity] = 1
+        counts["total"] = 1
+        vulnerabilities["pkg"] = {"name": "pkg", "severity": severity, "via": []}
+    return {
+        "auditReportVersion": 2,
+        "vulnerabilities": vulnerabilities,
+        "metadata": {
+            "vulnerabilities": counts,
+            "dependencies": {"prod": audited, "dev": 0, "optional": 0, "peer": 0, "peerOptional": 0, "total": audited},
+        },
+    }
 
 
 def test_lockfile_payload_preserves_exact_nested_and_scoped_versions(tmp_path: Path) -> None:
@@ -47,231 +65,122 @@ def test_lockfile_payload_preserves_exact_nested_and_scoped_versions(tmp_path: P
     }
 
 
-def test_decode_report_accepts_unlabelled_gzip_and_blocks_high_severity() -> None:
-    report = {
-        "safe-package": [{"id": 1, "severity": "moderate", "title": "moderate"}],
-        "unsafe-package": [{"id": 2, "severity": "high", "title": "high risk", "url": "https://example.test/2"}],
-    }
-
-    decoded = decode_report(gzip.compress(json.dumps(report).encode("utf-8")))
-
-    assert decoded == report
-    assert blocking_advisories(decoded) == [
-        {
-            "package": "unsafe-package",
-            "id": 2,
-            "severity": "high",
-            "title": "high risk",
-            "url": "https://example.test/2",
-        }
-    ]
-
-
-def test_gate_blocks_high_advisories(tmp_path: Path, monkeypatch) -> None:
+def test_gate_accepts_valid_complete_audit(tmp_path: Path, monkeypatch) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
-    monkeypatch.setattr(
-        check_npm_advisories,
-        "fetch_report",
-        lambda _payload: {"pkg": [{"id": 2, "severity": "critical", "title": "unsafe"}]},
-    )
+    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", lambda _path: (_audit_report(), 0))
+
+    assert check_npm_advisories.run(lockfile) == 0
+
+
+def test_gate_blocks_validated_high_or_critical_audit(tmp_path: Path, monkeypatch) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", lambda _path: (_audit_report(severity="critical"), 1))
 
     assert check_npm_advisories.run(lockfile) == 1
-
-
-def test_gate_consumes_installed_tree_audit_without_a_second_request(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    install_report = tmp_path / "npm-ci.json"
-    install_report.write_text(
-        json.dumps(
-            {
-                "audited": 2,
-                "audit": {
-                    "dependencies": {"total": 1},
-                    "vulnerabilities": {
-                        "info": 0,
-                        "low": 0,
-                        "moderate": 2,
-                        "high": 0,
-                        "critical": 0,
-                        "total": 2,
-                    },
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        check_npm_advisories,
-        "fetch_report",
-        lambda _payload: (_ for _ in ()).throw(AssertionError("duplicate advisory request")),
-    )
-
-    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 0
-
-
-def test_gate_accepts_complete_installed_projection_with_optional_lockfile_entries(tmp_path: Path) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    lockfile.write_text(
-        json.dumps(
-            {
-                "lockfileVersion": 3,
-                "packages": {
-                    "": {"name": "app", "version": "1.0.0"},
-                    "node_modules/pkg": {"version": "2.0.0"},
-                    "node_modules/optional-pkg": {"version": "3.0.0", "optional": True},
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    install_report = tmp_path / "npm-ci.json"
-    install_report.write_text(
-        json.dumps(
-            {
-                "audited": 2,
-                "audit": {
-                    "dependencies": {"total": 1},
-                    "vulnerabilities": {
-                        "info": 0,
-                        "low": 0,
-                        "moderate": 0,
-                        "high": 0,
-                        "critical": 0,
-                        "total": 0,
-                    },
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 0
-
-
-def test_gate_blocks_high_severity_from_npm_install_audit(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    install_report = tmp_path / "npm-ci.json"
-    install_report.write_text(
-        json.dumps(
-            {
-                "audited": 2,
-                "audit": {
-                    "dependencies": {"total": 1},
-                    "vulnerabilities": {
-                        "info": 0,
-                        "low": 0,
-                        "moderate": 0,
-                        "high": 1,
-                        "critical": 0,
-                        "total": 1,
-                    },
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        check_npm_advisories,
-        "fetch_report",
-        lambda _payload: (_ for _ in ()).throw(AssertionError("duplicate advisory request")),
-    )
-
-    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 1
 
 
 @pytest.mark.parametrize(
     "report",
     [
         {},
-        {"audit": {}},
-        {"audited": 2, "audit": {"vulnerabilities": {"high": -1, "critical": 0}}},
-        {"audited": 2, "audit": {"vulnerabilities": {"high": "0", "critical": 0}}},
+        {"auditReportVersion": 1},
+        _audit_report(audited=0),
         {
-            "audited": 1,
-            "audit": {
-                "dependencies": {"total": 1},
-                "vulnerabilities": {
-                    "info": 0,
-                    "low": 0,
-                    "moderate": 0,
-                    "high": 0,
-                    "critical": 0,
-                    "total": 0,
-                },
-            },
+            **_audit_report(),
+            "vulnerabilities": {"not-requested": {"name": "not-requested", "severity": "high"}},
+        },
+        {
+            **_audit_report(),
+            "vulnerabilities": {"pkg": {"name": "pkg", "severity": "unknown"}},
         },
     ],
 )
-def test_gate_fails_closed_on_invalid_or_incomplete_npm_install_audit(tmp_path: Path, report) -> None:
+def test_gate_fails_closed_on_invalid_or_incomplete_report(tmp_path: Path, monkeypatch, report) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
-    install_report = tmp_path / "npm-ci.json"
-    install_report.write_text(json.dumps(report), encoding="utf-8")
-
-    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 2
-
-
-def test_gate_retries_and_fails_closed_on_transport_errors(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    attempts = 0
-
-    def fail(_payload) -> dict:
-        nonlocal attempts
-        attempts += 1
-        raise OSError("registry unavailable")
-
-    monkeypatch.setattr(check_npm_advisories, "fetch_report", fail)
-    monkeypatch.setattr(check_npm_advisories.time, "sleep", lambda _seconds: None)
-
-    assert check_npm_advisories.run(lockfile) == 2
-    assert attempts == 3
-
-
-@pytest.mark.parametrize("advisory", [{}, {"severity": "unknown"}, {"severity": None}])
-def test_gate_fails_closed_on_missing_or_unknown_severity(tmp_path: Path, monkeypatch, advisory) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    monkeypatch.setattr(check_npm_advisories, "fetch_report", lambda _payload: {"pkg": [advisory]})
-    monkeypatch.setattr(check_npm_advisories.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", lambda _path: (report, 0))
 
     assert check_npm_advisories.run(lockfile) == 2
 
 
-def test_decode_report_bounds_uncompressed_and_gzip_expansion(monkeypatch) -> None:
-    monkeypatch.setattr(check_npm_advisories, "MAX_COMPRESSED_RESPONSE_BYTES", 32)
-    monkeypatch.setattr(check_npm_advisories, "MAX_DECOMPRESSED_RESPONSE_BYTES", 64)
+@pytest.mark.parametrize("report,returncode", [(_audit_report(), 1), (_audit_report(severity="high"), 0)])
+def test_gate_fails_closed_when_exit_status_disagrees_with_report(tmp_path: Path, monkeypatch, report, returncode) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", lambda _path: (report, returncode))
 
-    with pytest.raises(ValueError, match="compressed response exceeds"):
-        decode_report(b"{" + b" " * 32)
-    with pytest.raises(ValueError, match="decompressed response exceeds"):
-        decode_report(gzip.compress(b"{" + b" " * 64))
+    assert check_npm_advisories.run(lockfile) == 2
 
 
-def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
-    seen_limits: list[int] = []
-    seen_timeouts: list[int] = []
+def test_validate_audit_report_rejects_count_mismatch() -> None:
+    report = _audit_report()
+    report["metadata"]["vulnerabilities"]["high"] = 1
+    report["metadata"]["vulnerabilities"]["total"] = 1
 
-    class _Response:
-        def __enter__(self):
-            return self
+    with pytest.raises(ValueError, match="counts do not match"):
+        validate_audit_report(report, {"pkg": ["2.0.0"]})
 
-        def __exit__(self, *_args):
-            return None
 
-        def read(self, limit: int) -> bytes:
-            seen_limits.append(limit)
-            return b"{}"
+def test_run_npm_audit_uses_supported_bounded_client(tmp_path: Path, monkeypatch) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+    seen: dict = {}
 
-    def open_response(_request, timeout: int):
-        seen_timeouts.append(timeout)
-        return _Response()
+    def fake_run(command, **kwargs):
+        seen.update(command=command, **kwargs)
+        kwargs["stdout"].write(json.dumps(_audit_report()).encode())
+        return SimpleNamespace(returncode=0)
 
-    monkeypatch.setattr(check_npm_advisories.urllib.request, "urlopen", open_response)
+    monkeypatch.setattr(check_npm_advisories.subprocess, "run", fake_run)
 
-    assert check_npm_advisories.fetch_report({"pkg": ["1.0.0"]}) == {}
-    assert seen_limits == [check_npm_advisories.MAX_COMPRESSED_RESPONSE_BYTES + 1]
-    assert seen_timeouts == [120]
+    report, returncode = check_npm_advisories.run_npm_audit(lockfile)
+
+    assert returncode == 0
+    assert report == _audit_report()
+    assert seen["command"] == [
+        "npm",
+        "audit",
+        "--package-lock-only",
+        "--ignore-scripts",
+        "--audit-level=high",
+        "--json",
+    ]
+    assert seen["cwd"] == tmp_path
+    assert seen["stdin"] is subprocess.DEVNULL
+    assert seen["check"] is False
+    assert seen["timeout"] == check_npm_advisories.NPM_AUDIT_TIMEOUT_SECONDS
+
+
+def test_run_npm_audit_rejects_oversized_or_failed_output(tmp_path: Path, monkeypatch) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+    monkeypatch.setattr(check_npm_advisories, "MAX_AUDIT_REPORT_BYTES", 32)
+
+    def oversized(_command, **kwargs):
+        kwargs["stdout"].write(b"{" + b" " * 32)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(check_npm_advisories.subprocess, "run", oversized)
+    with pytest.raises(ValueError, match="size limit"):
+        check_npm_advisories.run_npm_audit(lockfile)
+
+    def failed(_command, **_kwargs):
+        return SimpleNamespace(returncode=2)
+
+    monkeypatch.setattr(check_npm_advisories.subprocess, "run", failed)
+    with pytest.raises(OSError, match="transport failed"):
+        check_npm_advisories.run_npm_audit(lockfile)
+
+
+def test_gate_fails_closed_on_npm_timeout(tmp_path: Path, monkeypatch) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+
+    def timeout(_path):
+        raise subprocess.TimeoutExpired(["npm", "audit"], 360)
+
+    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", timeout)
+
+    assert check_npm_advisories.run(lockfile) == 2

@@ -597,6 +597,9 @@ def test_surface_freshness_targets_the_latest_published_release():
     # advertises a tool list. The Glama-specific spelling this used to pin is
     # still accepted by the script as an alias.
     assert '--expected-tool-count "${{ steps.expected.outputs.tool_count }}"' in workflow
+    assert "--write-tool-names /tmp/surface-expected-tool-names.json" in workflow
+    assert '--git-ref "${{ steps.expected.outputs.release_sha }}"' in workflow
+    assert "--expected-tool-names-file /tmp/surface-expected-tool-names.json" in workflow
     assert 'git show "${RELEASE_SHA}:docs/PRODUCT_METRICS.json"' in workflow
     assert 'select(.name == "MCP tools")' in workflow
     assert 'METRICS_VERSION" != "$VERSION"' in workflow

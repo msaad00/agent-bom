@@ -83,9 +83,13 @@ jobs:
           GLAMA_API_URL: ${{ vars.GLAMA_API_URL }}
           DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
         run: |
+          python3 scripts/check_glama_listing.py \
+            --write-tool-names /tmp/surface-expected-tool-names.json \
+            --git-ref "${{ steps.expected.outputs.release_sha }}"
           PYTHONPATH=src python3 scripts/check_surface_freshness.py \
             --expected "$EXPECTED_VERSION" \
             --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
+            --expected-tool-names-file /tmp/surface-expected-tool-names.json \
             --out surface-freshness.json
           {
             echo "report<<EOF"
@@ -107,6 +111,7 @@ jobs:
 
             const emoji = (s) => ({
               fresh: "✅ fresh",
+              fresh_degraded: "⚠️ partial evidence",
               stale: "⚠️ STALE",
               not_configured: "❓ unmonitored (misconfigured)",
               unreachable: "🔌 unreachable",
@@ -127,6 +132,7 @@ jobs:
               "- `stale` — surface published a different version; use that provider's supported publish or sync path, then re-run verification.",
               "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
               "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
+              "- `partial evidence` — the visible listing matches, but exact machine-readable verification is unavailable; the issue remains open.",
               "",
               "Optional overrides (blank/unset repo vars fall back to defaults): `DOCKER_IMAGE` (`ghcr.io/msaad00/agent-bom`), `GLAMA_LISTING_URL`, `GLAMA_API_URL`, `SMITHERY_SERVER_QUALIFIED_NAME` (`agent-bom/agent-bom`).",
               "",

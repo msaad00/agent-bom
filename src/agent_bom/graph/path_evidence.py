@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from typing import Any
 
 from agent_bom.graph.container import AttackPath, UnifiedGraph
@@ -184,4 +185,125 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
     return path
 
 
-__all__ = ["annotate_attack_path_evidence"]
+def _unavailable_dimension(reason: str, **facts: object) -> dict[str, Any]:
+    return {
+        "status": "unavailable",
+        **facts,
+        "basis": [],
+        "reasonCodes": [reason],
+    }
+
+
+def _path_completeness(path: AttackPath) -> dict[str, Any]:
+    """Project only recorded analyzer and hop coverage; never infer complete."""
+
+    analysis = path.analysis if isinstance(path.analysis, Mapping) else {}
+    analysis_status = str(analysis.get("status") or "")
+    analysis_reasons = [str(item) for item in analysis.get("reason_codes", []) if str(item)]
+    receipts = [item for item in path.hop_evidence if isinstance(item, Mapping)]
+    expected_hops = max(len(path.hops) - 1, 0)
+    base = {
+        "expectedHops": expected_hops,
+        "evidencedHops": len(receipts),
+        "analysisStatus": analysis_status or None,
+    }
+    if not analysis_status:
+        return {"status": "unavailable", **base, "reasonCodes": ["analysis_not_recorded"]}
+    if analysis_status == "failed":
+        return {"status": "failed", **base, "reasonCodes": analysis_reasons or ["analysis_failed"]}
+    if analysis_status in {"skipped", "not_recorded"}:
+        return {"status": "unavailable", **base, "reasonCodes": analysis_reasons or [analysis_status]}
+    if analysis_status == "limited":
+        return {"status": "partial", **base, "reasonCodes": analysis_reasons or ["analysis_limited"]}
+    if analysis_status != "complete":
+        return {"status": "unavailable", **base, "reasonCodes": ["analysis_status_unknown"]}
+    if expected_hops and not receipts:
+        return {"status": "unavailable", **base, "reasonCodes": ["hop_evidence_not_recorded"]}
+    if len(receipts) != expected_hops or any(not item.get("complete") or item.get("truncated") for item in receipts):
+        return {"status": "partial", **base, "reasonCodes": ["incomplete_hop_evidence"]}
+    return {"status": "complete", **base, "reasonCodes": []}
+
+
+def exposure_evidence_dimensions(path: AttackPath, target_node: Any | None) -> dict[str, Any]:
+    """Build independent evidence dimensions shared by graph response surfaces."""
+
+    attributes = getattr(target_node, "attributes", {}) if target_node is not None else {}
+    attributes = attributes if isinstance(attributes, Mapping) else {}
+    completeness = _path_completeness(path)
+
+    reachability_value = str(path.reachability or "").lower()
+    reachability_basis = [str(item) for item in path.reachability_basis if str(item)]
+    if (
+        reachability_value in {"confirmed", "likely", "unlikely"}
+        and reachability_basis
+        and completeness["status"] in {"complete", "partial"}
+    ):
+        reachability = {
+            "status": completeness["status"],
+            "verdict": reachability_value,
+            "basis": reachability_basis,
+        }
+        if completeness["status"] == "partial":
+            reachability["reasonCodes"] = list(completeness["reasonCodes"])
+    else:
+        reachability = _unavailable_dimension("reachability_not_assessed", verdict=None)
+
+    explicit_exploitability = str(attributes.get("exploitability") or "").lower()
+    if explicit_exploitability in {"exploitable", "not_exploitable"}:
+        exploitability = {
+            "status": "complete",
+            "verdict": explicit_exploitability,
+            "basis": ["finding_attribute:exploitability"],
+        }
+    elif attributes.get("network_exploitable") is True:
+        exploitability = {
+            "status": "complete",
+            "verdict": "exploitable",
+            "basis": ["finding_attribute:network_exploitable"],
+        }
+    else:
+        exploitability = _unavailable_dimension("exploitability_not_assessed", verdict=None)
+
+    impact_category = str(attributes.get("impact_category") or "").strip()
+    impact = (
+        {
+            "status": "complete",
+            "category": impact_category,
+            "basis": ["finding_attribute:impact_category"],
+        }
+        if impact_category
+        else _unavailable_dimension("impact_not_assessed", category=None)
+    )
+
+    explicit_actionability = attributes.get("actionability")
+    if isinstance(explicit_actionability, bool):
+        actionability = {
+            "status": "complete",
+            "actionable": explicit_actionability,
+            "basis": ["finding_attribute:actionability"],
+        }
+    elif attributes.get("actionable") is True:
+        actionability = {
+            "status": "complete",
+            "actionable": True,
+            "basis": ["finding_attribute:actionable"],
+        }
+    elif attributes.get("fixed_version") or attributes.get("remediation"):
+        actionability = {
+            "status": "complete",
+            "actionable": True,
+            "basis": ["finding_remediation_evidence"],
+        }
+    else:
+        actionability = _unavailable_dimension("actionability_not_assessed", actionable=None)
+
+    return {
+        "reachability": reachability,
+        "exploitability": exploitability,
+        "impact": impact,
+        "actionability": actionability,
+        "completeness": completeness,
+    }
+
+
+__all__ = ["annotate_attack_path_evidence", "exposure_evidence_dimensions"]

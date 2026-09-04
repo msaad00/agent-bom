@@ -1724,7 +1724,8 @@ class TestGraphStoreBackendSelection:
         assert body["attack_paths"][0]["tool_exposure"] == ["run_shell"]
         assert body["attack_paths"][0]["exposure_path"]["source"]["id"] == "agent:a"
         assert body["attack_paths"][0]["exposure_path"]["target"]["id"] == "vuln:cve"
-        assert body["attack_paths"][0]["exposure_path"]["severity"] == "high"
+        assert body["attack_paths"][0]["exposure_path"]["riskScore"] == 8.8
+        assert body["attack_paths"][0]["exposure_path"]["severity"] == "unknown"
         assert body["stats"]["analysis_status"]["attack_path_fusion"]["status"] == "limited"
         assert attack_path_response.json()["stats"]["analysis_status"]["attack_path_fusion"]["status"] == "limited"
         assert ("latest_snapshot_id", "default", "scan") in recording_graph_store.calls

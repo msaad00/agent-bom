@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -61,6 +62,25 @@ def test_manifest_validates_against_strict_schema() -> None:
     Draft202012Validator.check_schema(schema)
     errors = sorted(Draft202012Validator(schema).iter_errors(_manifest()), key=lambda error: list(error.path))
     assert errors == [], "\n".join(error.message for error in errors)
+
+
+def test_schema_rejects_conformance_claim_without_passing_wire_evidence() -> None:
+    schema = _load(SCHEMA_PATH)
+    manifest = copy.deepcopy(_manifest())
+    feature = next(row for row in manifest["features"] if row["feature_id"] == "server.sse.transport")
+    feature.update(
+        implementation_state="implemented",
+        conformance_state="conformant",
+        assessment_status="complete",
+        evidence_basis=["static_code"],
+        evidence_refs=[],
+        evidence_outcome="passed",
+        reason_codes=[],
+    )
+
+    errors = list(Draft202012Validator(schema).iter_errors(manifest))
+
+    assert errors, "the published schema must fail closed on unsupported conformance claims"
 
 
 def test_feature_ids_are_unique_and_claims_bind_to_passing_executable_tests() -> None:
@@ -167,7 +187,11 @@ def test_locked_sdk_streamable_http_wire_contract(monkeypatch, tmp_path) -> None
         assert initialized.status_code == 200
         assert payload["result"]["protocolVersion"] == LOCKED_PROTOCOL
         session_id = initialized.headers["mcp-session-id"]
-        session_headers = {**headers, "mcp-session-id": session_id}
+        session_headers = {
+            **headers,
+            "mcp-session-id": session_id,
+            "mcp-protocol-version": LOCKED_PROTOCOL,
+        }
         ready = client.post("/mcp", headers=session_headers, json={"jsonrpc": "2.0", "method": "notifications/initialized"})
         assert ready.status_code in {200, 202}
         for request_id, method, result_key, expected_count in (
@@ -183,6 +207,19 @@ def test_locked_sdk_streamable_http_wire_contract(monkeypatch, tmp_path) -> None
             result = _sse_json(response)["result"]
             assert response.status_code == 200
             assert len(result[result_key]) == expected_count
+
+        for rejected_version in ("not-a-protocol-version", OFFICIAL_REVISION):
+            response = client.post(
+                "/mcp",
+                headers={**session_headers, "mcp-protocol-version": rejected_version},
+                json={"jsonrpc": "2.0", "id": 5, "method": "tools/list", "params": {}},
+            )
+            assert response.status_code == 400
+            assert response.json()["error"]["code"] == -32600
+
+        malformed = client.post("/mcp", headers=session_headers, content=b"{")
+        assert malformed.status_code == 400
+        assert malformed.json()["error"]["code"] == -32700
 
 
 def test_locked_sdk_stdio_wire_contract(tmp_path) -> None:

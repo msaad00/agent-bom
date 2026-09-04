@@ -140,7 +140,39 @@
           "uniqueItems": true,
           "items": {"type": "string", "pattern": "^[a-z0-9_]+$"}
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"conformance_state": {"const": "conformant"}},
+            "required": ["conformance_state"]
+          },
+          "then": {
+            "properties": {
+              "implementation_state": {"const": "implemented"},
+              "assessment_status": {"const": "complete"},
+              "evidence_basis": {
+                "allOf": [
+                  {"contains": {"const": "live_wire"}},
+                  {"contains": {"const": "executable_contract"}}
+                ]
+              },
+              "evidence_refs": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {"const": "executable_test"},
+                    "outcome": {"const": "passed"}
+                  },
+                  "required": ["kind", "outcome"]
+                }
+              },
+              "evidence_outcome": {"const": "passed"},
+              "reason_codes": {"maxItems": 0}
+            }
+          }
+        }
+      ]
     },
     "evidence_ref": {
       "type": "object",

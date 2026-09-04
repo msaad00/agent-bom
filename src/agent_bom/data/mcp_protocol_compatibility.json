@@ -1,0 +1,120 @@
+{
+  "schema_version": "agent-bom.mcp-protocol-compatibility.v1",
+  "scope": "agent-bom MCP server and runtime-introspection surfaces",
+  "state_definitions": {
+    "supported": "Implemented and covered by repository contract tests against the locked MCP SDK.",
+    "unsupported": "The product does not implement this capability.",
+    "unavailable": "Compatibility has not been assessed with sufficient evidence.",
+    "not_applicable": "The capability does not apply to this transport or surface."
+  },
+  "sdk_policy": {
+    "dependency": "mcp>=1.26,<2",
+    "locked_version": "1.29.1",
+    "verified_latest_protocol": "2025-11-25",
+    "verification_basis": "locked_sdk_constants_and_repository_contract_tests"
+  },
+  "protocol_eras": [
+    {
+      "protocol_version": "2025-06-18",
+      "state": "supported",
+      "assessment_status": "complete",
+      "verified_features": [
+        "transport:stdio",
+        "transport:sse",
+        "transport:streamable-http",
+        "capability:tools/list",
+        "capability:resources/list",
+        "capability:prompts/list",
+        "auth:remote_static_bearer_server",
+        "auth:oauth_authorization_server"
+      ],
+      "reason_codes": []
+    },
+    {
+      "protocol_version": "2025-11-25",
+      "state": "supported",
+      "assessment_status": "complete",
+      "verified_features": [
+        "transport:stdio",
+        "transport:sse",
+        "transport:streamable-http",
+        "capability:tools/list",
+        "capability:resources/list",
+        "capability:prompts/list",
+        "auth:remote_static_bearer_server",
+        "auth:oauth_authorization_server"
+      ],
+      "reason_codes": []
+    },
+    {
+      "protocol_version": "2026-07-28",
+      "state": "unsupported",
+      "assessment_status": "unavailable",
+      "verified_features": [],
+      "reason_codes": [
+        "not_in_locked_sdk_protocol_set",
+        "compatibility_not_verified"
+      ],
+      "readiness_gate": "Require upstream SDK support, protocol-delta review, and transport/auth/capability contract tests before changing this state."
+    }
+  ],
+  "features": {
+    "transports": {
+      "stdio": "supported",
+      "sse": "supported",
+      "streamable-http": "supported"
+    },
+    "capability_discovery": {
+      "tools/list": "supported",
+      "resources/list": "supported",
+      "prompts/list": "supported"
+    },
+    "auth": {
+      "remote_static_bearer_server": "supported",
+      "oauth_authorization_server": "supported",
+      "authenticated_remote_introspection": "unsupported",
+      "stdio_transport_auth": "not_applicable"
+    },
+    "future_protocol": {
+      "2026-07-28_features": "unavailable"
+    }
+  },
+  "limitations": {
+    "authenticated_remote_introspection:unsupported": "SSE and Streamable HTTP introspection do not currently accept operator-authored request headers or an auth provider.",
+    "2026-07-28_features:unavailable": "The locked MCP SDK does not advertise this protocol version, so its feature and compatibility deltas have not been verified."
+  },
+  "evidence": [
+    {
+      "claim": "stdio, SSE, and Streamable HTTP introspection use distinct SDK clients",
+      "path": "src/agent_bom/mcp_introspect.py"
+    },
+    {
+      "claim": "tools, resources, and prompts are queried independently and retain partial results",
+      "path": "src/agent_bom/mcp_introspect.py"
+    },
+    {
+      "claim": "remote server bearer and OAuth authorization-server paths are implemented",
+      "path": "src/agent_bom/mcp_server_factory.py"
+    },
+    {
+      "claim": "remote transport authentication defaults fail closed outside loopback",
+      "path": "src/agent_bom/cli/_server.py"
+    },
+    {
+      "claim": "transport-specific introspection and capability collection are regression tested",
+      "path": "tests/test_mcp_introspect.py"
+    },
+    {
+      "claim": "bearer and OAuth authorization-server behavior are regression tested",
+      "path": "tests/test_mcp_oauth_authorization_server.py"
+    },
+    {
+      "claim": "the supported MCP SDK range is bounded below major version 2",
+      "path": "pyproject.toml"
+    },
+    {
+      "claim": "the verified SDK version is reproducibly locked",
+      "path": "uv.lock"
+    }
+  ]
+}

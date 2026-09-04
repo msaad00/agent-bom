@@ -1090,19 +1090,13 @@ def _exposure_relationships_for_path(
     relationships: list[dict[str, Any]] = []
     for index, (source, target) in enumerate(zip(path.hops, path.hops[1:], strict=False)):
         edge: UnifiedEdge | None = by_pair.get((source, target))
-        relationship = ""
-        if edge is not None:
-            relationship = _rel_value(edge)
-            edge_id = edge.id
-            direction = edge.direction
-            traversable = edge.traversable
-            confidence = edge.confidence
-        else:
-            relationship = path.edges[index] if index < len(path.edges) else "related"
-            edge_id = f"{relationship}:{source}:{target}"
-            direction = "directed"
-            traversable = True
-            confidence = 1.0
+        if edge is None:
+            continue
+        relationship = _rel_value(edge)
+        edge_id = edge.id
+        direction = edge.direction
+        traversable = edge.traversable
+        confidence = edge.confidence
         relationships.append(
             {
                 "id": edge_id,
@@ -1125,13 +1119,7 @@ def _severity_for_exposure_path(path: AttackPath, nodes_by_id: dict[str, Any]) -
             severity = str(node.severity).lower()
     if severity:
         return severity
-    if path.composite_risk >= 90 or path.composite_risk >= 9:
-        return "critical"
-    if path.composite_risk >= 70 or path.composite_risk >= 7:
-        return "high"
-    if path.composite_risk >= 40 or path.composite_risk >= 4:
-        return "medium"
-    return "none"
+    return "unknown"
 
 
 def _exposure_path_for_attack_path(
@@ -1153,6 +1141,9 @@ def _exposure_path_for_attack_path(
     agents = [hop for hop in hops if hop["role"] == "agent"]
     findings = _finding_ids_for_nodes(nodes_by_id, path.hops, path.vuln_ids)
     label_parts = [findings[0] if findings else target["label"], agents[0]["label"] if agents else source["label"]]
+    from agent_bom.graph.path_evidence import exposure_evidence_dimensions
+
+    finding_node = nodes_by_id.get(path.target)
     exposure: dict[str, Any] = {
         "id": f"{path.source}::{path.target}::{'->'.join(path.hops)}",
         "label": " via ".join(part for part in label_parts if part) or path.summary or "Exposure path",
@@ -1172,6 +1163,7 @@ def _exposure_path_for_attack_path(
         "exposedCredentials": list(path.credential_exposure),
         "reachability": path.reachability,
         "reachabilityBasis": list(path.reachability_basis),
+        "evidenceDimensions": exposure_evidence_dimensions(path, finding_node),
         "provenance": {"source": "graph_attack_path", "scanId": scan_id} if scan_id else {"source": "graph_attack_path"},
     }
     if rank is not None:
@@ -1184,19 +1176,18 @@ def _exposure_path_for_attack_path(
             "ecosystem": getattr(package_node, "attributes", {}).get("ecosystem", "") if package_node is not None else "",
             "serverName": servers[0]["label"] if servers else "",
         }
-    finding_node = nodes_by_id.get(path.target)
     if finding_node is not None:
         attributes = getattr(finding_node, "attributes", {}) or {}
         exposure["evidence"] = {
             "cvssScore": attributes.get("cvss_score"),
             "cvssVector": attributes.get("cvss_vector"),
             "epssScore": attributes.get("epss_score"),
-            "isKev": bool(attributes.get("is_kev")),
+            "isKev": attributes.get("is_kev"),
             "attackVector": attributes.get("attack_vector"),
             "attackComplexity": attributes.get("attack_complexity"),
             "privilegesRequired": attributes.get("privileges_required"),
             "userInteraction": attributes.get("user_interaction"),
-            "networkExploitable": bool(attributes.get("network_exploitable")),
+            "networkExploitable": attributes.get("network_exploitable"),
             "impactCategory": attributes.get("impact_category"),
             "source": "graph_attack_path",
         }

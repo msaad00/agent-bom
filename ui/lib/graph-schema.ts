@@ -385,7 +385,8 @@ export interface TechniqueMapping {
   /** Observed evidence that produced the mapping. */
   provenance: string;
   /** 0..1 signal, never an assertion of activity. */
-  confidence: number;
+  confidence: number | null;
+  evidence_basis?: "observed" | "runtime_observed" | "inferred" | "modeled" | null;
 }
 
 export interface AttackPath {

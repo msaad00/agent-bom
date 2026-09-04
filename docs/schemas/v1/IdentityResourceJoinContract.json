@@ -1,0 +1,1107 @@
+{
+  "$comment": "Cross-record identity, resource, relationship, freshness, and evidence-anchor invariants require IdentityResourceJoinContract.model_validate; JSON Schema alone is not sufficient.",
+  "$defs": {
+    "CanonicalIdentityEntity": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "description": "Canonical identity with one or more authoritative provider-native IDs.",
+      "properties": {
+        "display_name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "entity_id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "$ref": "#/$defs/CanonicalIdentityType"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "native_ids": {
+          "items": {
+            "$ref": "#/$defs/ProviderNativeId"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Native Ids",
+          "type": "array"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus",
+          "default": "complete"
+        }
+      },
+      "required": [
+        "display_name",
+        "native_ids",
+        "evidence_refs",
+        "entity_id",
+        "entity_type"
+      ],
+      "title": "CanonicalIdentityEntity",
+      "type": "object"
+    },
+    "CanonicalIdentityType": {
+      "description": "Provider-neutral identity entities used by the join contract.",
+      "enum": [
+        "person",
+        "service_account",
+        "workload_identity",
+        "role",
+        "group"
+      ],
+      "title": "CanonicalIdentityType",
+      "type": "string"
+    },
+    "CanonicalResourceReference": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "description": "Bounded resource reference that an observed identity relationship targets.",
+      "properties": {
+        "display_name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "native_ids": {
+          "items": {
+            "$ref": "#/$defs/ProviderNativeId"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Native Ids",
+          "type": "array"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "resource_id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus",
+          "default": "complete"
+        }
+      },
+      "required": [
+        "display_name",
+        "native_ids",
+        "evidence_refs",
+        "resource_id",
+        "resource_type"
+      ],
+      "title": "CanonicalResourceReference",
+      "type": "object"
+    },
+    "CompletenessEntry": {
+      "additionalProperties": false,
+      "description": "Completeness of one component at one processing stage.",
+      "properties": {
+        "affects_coverage": {
+          "default": true,
+          "title": "Affects Coverage",
+          "type": "boolean"
+        },
+        "component": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Component",
+          "type": "string"
+        },
+        "expected_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Count"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "requested": {
+          "default": true,
+          "title": "Requested",
+          "type": "boolean"
+        },
+        "returned_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Returned Count"
+        },
+        "stage": {
+          "$ref": "#/$defs/EvidenceStage"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "stage",
+        "component",
+        "status"
+      ],
+      "title": "CompletenessEntry",
+      "type": "object"
+    },
+    "EvidenceBasis": {
+      "description": "How an evidence record was established.",
+      "enum": [
+        "observed",
+        "runtime_observed",
+        "inferred",
+        "modeled"
+      ],
+      "title": "EvidenceBasis",
+      "type": "string"
+    },
+    "EvidenceCompletenessLedger": {
+      "additionalProperties": false,
+      "description": "Deterministic aggregation of bounded component completeness.",
+      "properties": {
+        "entries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CompletenessEntry"
+          },
+          "maxItems": 500,
+          "title": "Entries",
+          "type": "array"
+        },
+        "overall_status": {
+          "$ref": "#/$defs/EvidenceStatus",
+          "readOnly": true
+        },
+        "schema_version": {
+          "const": "evidence-completeness.v1",
+          "default": "evidence-completeness.v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "overall_status"
+      ],
+      "title": "EvidenceCompletenessLedger",
+      "type": "object"
+    },
+    "EvidenceFreshness": {
+      "additionalProperties": false,
+      "description": "Freshness evaluated at a caller-supplied decision time.",
+      "properties": {
+        "evaluated_at": {
+          "format": "date-time",
+          "title": "Evaluated At",
+          "type": "string"
+        },
+        "max_age_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Age Seconds"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
+        },
+        "status": {
+          "$ref": "#/$defs/FreshnessStatus"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "status",
+        "evaluated_at"
+      ],
+      "title": "EvidenceFreshness",
+      "type": "object"
+    },
+    "EvidenceProvenance": {
+      "additionalProperties": false,
+      "description": "A bounded, referenceable evidence receipt.",
+      "properties": {
+        "basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceBasis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "evidence_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "freshness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceFreshness"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "evidence-provenance.v1",
+          "default": "evidence-provenance.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Source",
+          "type": "string"
+        },
+        "source_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "status",
+        "source"
+      ],
+      "title": "EvidenceProvenance",
+      "type": "object"
+    },
+    "EvidenceStage": {
+      "enum": [
+        "collection",
+        "normalization",
+        "catalog_lookup",
+        "persistence",
+        "graph_join",
+        "analysis"
+      ],
+      "title": "EvidenceStage",
+      "type": "string"
+    },
+    "EvidenceStatus": {
+      "description": "Whether a bounded evidence-producing operation completed.",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable",
+        "failed"
+      ],
+      "title": "EvidenceStatus",
+      "type": "string"
+    },
+    "FreshnessStatus": {
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown"
+      ],
+      "title": "FreshnessStatus",
+      "type": "string"
+    },
+    "IdentityJoinMethod": {
+      "description": "Authoritative provider mechanism that established a structural join.",
+      "enum": [
+        "directory_membership",
+        "role_assignment",
+        "trust_policy",
+        "workload_binding",
+        "ownership_record"
+      ],
+      "title": "IdentityJoinMethod",
+      "type": "string"
+    },
+    "IdentityRelationship": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "member_of"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "directory_membership"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "assumes"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "role_assignment"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "trusts"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "trust_policy"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "runs_as"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "workload_binding"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "owns"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "ownership_record"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "complete"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "evidence_refs": {
+                "minItems": 1
+              },
+              "provider_assertion_ids": {
+                "minItems": 1
+              },
+              "source_native_id": {
+                "type": "object"
+              },
+              "source_ref": {
+                "type": "string"
+              },
+              "target_native_id": {
+                "type": "object"
+              },
+              "target_ref": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source_ref",
+              "target_ref",
+              "evidence_refs",
+              "source_native_id",
+              "target_native_id",
+              "provider_assertion_ids"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "properties": {
+                  "source_ref": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "target_ref": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target_ref"
+                ]
+              }
+            ],
+            "properties": {
+              "evidence_refs": {
+                "minItems": 1
+              },
+              "reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "partial",
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "description": "One structural join assertion or an explicit incomplete join attempt.",
+      "properties": {
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "join_method": {
+          "$ref": "#/$defs/IdentityJoinMethod"
+        },
+        "provider_assertion_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Provider Assertion Ids",
+          "type": "array"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "relationship_id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Relationship Id",
+          "type": "string"
+        },
+        "relationship_type": {
+          "$ref": "#/$defs/IdentityRelationshipType"
+        },
+        "source_native_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderNativeId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source_ref": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "pattern": "^[^\\s]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Ref"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        },
+        "target_native_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderNativeId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "target_ref": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "pattern": "^[^\\s]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Ref"
+        }
+      },
+      "required": [
+        "relationship_id",
+        "relationship_type",
+        "join_method",
+        "status"
+      ],
+      "title": "IdentityRelationship",
+      "type": "object"
+    },
+    "IdentityRelationshipType": {
+      "description": "Structural relationships only; permissions are deliberately excluded.",
+      "enum": [
+        "member_of",
+        "assumes",
+        "trusts",
+        "runs_as",
+        "owns"
+      ],
+      "title": "IdentityRelationshipType",
+      "type": "string"
+    },
+    "IdentitySourceKind": {
+      "description": "Supported identity-source families; ``provider`` keeps the exact vendor.",
+      "enum": [
+        "okta",
+        "aws",
+        "azure",
+        "gcp",
+        "saas"
+      ],
+      "title": "IdentitySourceKind",
+      "type": "string"
+    },
+    "ProviderNativeId": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "okta"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "okta"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "aws"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "aws"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "azure"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "azure",
+                  "entra"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "gcp"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "gcp"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "saas"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "not": {
+                  "enum": [
+                    "aws",
+                    "azure",
+                    "entra",
+                    "gcp",
+                    "okta"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "One exact provider identifier retained for deterministic correlation.",
+      "properties": {
+        "account": {
+          "description": "Required provider scope: account, organization, tenant, subscription, or project identifier.",
+          "maxLength": 2048,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Account",
+          "type": "string"
+        },
+        "id_type": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Id Type",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Provider",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/IdentitySourceKind"
+        },
+        "value": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "provider",
+        "id_type",
+        "value",
+        "account"
+      ],
+      "title": "ProviderNativeId",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Public shape for evidence-backed cross-provider identity/resource joins.\n\nJSON Schema enforces local field/status constraints. Cross-record identity,\nresource, freshness, and evidence-anchor invariants require the executable\nPydantic validator inherited from the core contract.",
+  "properties": {
+    "completeness": {
+      "$ref": "#/$defs/EvidenceCompletenessLedger"
+    },
+    "evaluated_at": {
+      "format": "date-time",
+      "title": "Evaluated At",
+      "type": "string"
+    },
+    "evidence": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EvidenceProvenance"
+      },
+      "maxItems": 5000,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "freshness_max_age_seconds": {
+      "maximum": 31536000,
+      "minimum": 1,
+      "title": "Freshness Max Age Seconds",
+      "type": "integer"
+    },
+    "identities": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CanonicalIdentityEntity"
+      },
+      "maxItems": 10000,
+      "title": "Identities",
+      "type": "array"
+    },
+    "relationships": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/IdentityRelationship"
+      },
+      "maxItems": 50000,
+      "title": "Relationships",
+      "type": "array"
+    },
+    "resources": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CanonicalResourceReference"
+      },
+      "maxItems": 10000,
+      "title": "Resources",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "identity-resource-joins.v1",
+      "default": "identity-resource-joins.v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tenant_id": {
+      "maxLength": 500,
+      "minLength": 1,
+      "pattern": "^[^\\s]+$",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "evaluated_at",
+    "freshness_max_age_seconds",
+    "completeness"
+  ],
+  "title": "IdentityResourceJoinContract",
+  "type": "object"
+}

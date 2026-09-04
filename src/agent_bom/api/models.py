@@ -14,6 +14,7 @@ from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
 from agent_bom.evidence.semantics import EvidenceCompletenessLedger as _CoreEvidenceCompletenessLedger
 from agent_bom.evidence.semantics import SecurityDimensions as _CoreSecurityDimensions
 from agent_bom.finding_scope import FindingClass, FindingSeverityFilter, canonical_finding_severity_filter
+from agent_bom.identity.join_contract import IdentityResourceJoinContract as _CoreIdentityResourceJoinContract
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,15 @@ class EvidenceCompletenessLedger(_CoreEvidenceCompletenessLedger):
 
 class SecurityDimensions(_CoreSecurityDimensions):
     """Public contract keeping security dimensions and evidence independent."""
+
+
+class IdentityResourceJoinContract(_CoreIdentityResourceJoinContract):
+    """Public shape for evidence-backed cross-provider identity/resource joins.
+
+    JSON Schema enforces local field/status constraints. Cross-record identity,
+    resource, freshness, and evidence-anchor invariants require the executable
+    Pydantic validator inherited from the core contract.
+    """
 
 
 # Fields that fan out one child scan job per element when a request carries more

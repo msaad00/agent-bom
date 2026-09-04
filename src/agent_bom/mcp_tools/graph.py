@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 from agent_bom.graph.completeness import graph_completeness
+from agent_bom.graph.path_evidence import exposure_evidence_dimensions
 from agent_bom.graph.severity import severity_rank
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
@@ -188,6 +189,8 @@ def _relationship_refs(path: Any, edges: list[Any]) -> list[dict[str, Any]]:
                 "source": source,
                 "target": target,
                 "relationship": relationship_value,
+                "direction": str(getattr(edge, "direction", "")) or "unknown",
+                "traversable": bool(getattr(edge, "traversable", False)),
                 "confidence": float(getattr(edge, "confidence", 1.0) or 0.0),
             }
         )
@@ -203,14 +206,7 @@ def _severity_for_path(path: Any, nodes_by_id: dict[str, Any]) -> str:
             severity = candidate
     if severity:
         return severity
-    risk = float(getattr(path, "composite_risk", 0.0) or 0.0)
-    if risk >= 90 or risk >= 9:
-        return "critical"
-    if risk >= 70 or risk >= 7:
-        return "high"
-    if risk >= 40 or risk >= 4:
-        return "medium"
-    return "none"
+    return "unknown"
 
 
 def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: list[Any], rank: int, scan_id: str) -> dict[str, Any]:
@@ -218,6 +214,7 @@ def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: lis
     source = _node_ref(str(getattr(path, "source", "") or ""), nodes_by_id) if getattr(path, "source", "") else (hops[0] if hops else {})
     target = _node_ref(str(getattr(path, "target", "") or ""), nodes_by_id) if getattr(path, "target", "") else (hops[-1] if hops else {})
     relationships = _relationship_refs(path, edges)
+    target_node = nodes_by_id.get(str(getattr(path, "target", "") or ""))
     return {
         "id": f"{source.get('id', '')}::{target.get('id', '')}::{'->'.join(getattr(path, 'hops', []) or [])}",
         "rank": rank,
@@ -234,6 +231,9 @@ def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: lis
         "findings": list(getattr(path, "vuln_ids", []) or []),
         "reachableTools": list(getattr(path, "tool_exposure", []) or []),
         "exposedCredentials": list(getattr(path, "credential_exposure", []) or []),
+        "reachability": str(getattr(path, "reachability", "unknown") or "unknown"),
+        "reachabilityBasis": list(getattr(path, "reachability_basis", []) or []),
+        "evidenceDimensions": exposure_evidence_dimensions(path, target_node),
         "provenance": {"source": "mcp_exposure_paths", "scanId": scan_id},
     }
 

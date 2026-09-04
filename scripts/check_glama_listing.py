@@ -164,9 +164,7 @@ def _api_inventory_result(
         failures.extend(tool_set_failures)
         exact_tool_set = not tool_set_failures
     if expected_tool_contract is not None:
-        actual_by_name = {
-            str(tool["name"]): tool for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str)
-        }
+        actual_by_name = {str(tool["name"]): tool for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str)}
         schema_failures: list[str] = []
         for expected_tool in expected_tool_contract:
             name = str(expected_tool["name"])
@@ -385,9 +383,7 @@ def main(argv: list[str] | None = None) -> int:
 
     version = (args.expected or _load_version()).lstrip("v").strip()
     expected_tool_names = _load_expected_tool_names(args.expected_tool_names_file) if args.expected_tool_names_file else None
-    expected_tool_contract = (
-        _load_expected_tool_contract(args.expected_tool_contract_file) if args.expected_tool_contract_file else None
-    )
+    expected_tool_contract = _load_expected_tool_contract(args.expected_tool_contract_file) if args.expected_tool_contract_file else None
     if expected_tool_contract is not None:
         contract_names = [str(tool["name"]) for tool in expected_tool_contract]
         if expected_tool_names is not None and contract_names != expected_tool_names:

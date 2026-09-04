@@ -189,9 +189,7 @@ def test_glama_listing_rejects_exact_public_schema_when_directory_api_is_stale(m
 def test_glama_listing_marks_schema_only_success_as_degraded(monkeypatch, capsys):
     script = _load_script("check_glama_listing.py")
     current_page = "v0.98.3 MCP server mode exposes 2 MCP tools"
-    schema_page = "".join(
-        f'<a href="/mcp/servers/msaad00/agent-bom/tools/tool_{index}">tool_{index}</a>' for index in range(2)
-    )
+    schema_page = "".join(f'<a href="/mcp/servers/msaad00/agent-bom/tools/tool_{index}">tool_{index}</a>' for index in range(2))
 
     def fetch(url, _timeout):
         return schema_page if url.endswith("/schema") else current_page
@@ -220,9 +218,7 @@ def test_glama_listing_rejects_stale_input_schema_from_reachable_api(monkeypatch
     monkeypatch.setattr(
         script,
         "_fetch_json",
-        lambda _url, _timeout: {
-            "tools": [expected_contract[0], {"name": "check", "inputSchema": {"type": "object"}}]
-        },
+        lambda _url, _timeout: {"tools": [expected_contract[0], {"name": "check", "inputSchema": {"type": "object"}}]},
     )
 
     assert (

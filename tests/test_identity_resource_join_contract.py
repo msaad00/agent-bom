@@ -617,6 +617,46 @@ def test_catalog_evidence_must_bind_to_exact_provider_native_id() -> None:
         IdentityResourceJoinContract.model_validate(contract)
 
 
+@pytest.mark.parametrize(
+    ("relationship_index", "catalog_name", "row_index"),
+    [
+        (0, "identities", 0),
+        (1, "resources", 0),
+    ],
+)
+def test_complete_join_rejects_unreceipted_native_id_on_partial_endpoint(
+    relationship_index: int,
+    catalog_name: str,
+    row_index: int,
+) -> None:
+    contract = _payload()
+    fabricated_native_id = deepcopy(contract[catalog_name][row_index]["native_ids"][0])
+    fabricated_native_id["value"] = "00uFabricated"
+    contract[catalog_name][row_index].update(
+        native_ids=[fabricated_native_id],
+        status="partial",
+        reason_codes=["source_incomplete"],
+    )
+    contract["relationships"][relationship_index]["source_native_id"] = fabricated_native_id
+    relationship = IdentityRelationship.model_validate(contract["relationships"][relationship_index])
+    contract["relationships"][relationship_index]["relationship_id"] = canonical_identity_relationship_id(
+        tenant_id=contract["tenant_id"],
+        relationship=relationship,
+    )
+
+    with pytest.raises(ValidationError, match="endpoint native assertions.*catalog evidence source_ids"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_complete_join_allows_receipted_native_id_on_partial_endpoint() -> None:
+    contract = _payload()
+    contract["identities"][0].update(status="partial", reason_codes=["source_incomplete"])
+
+    validated = IdentityResourceJoinContract.model_validate(contract)
+
+    assert validated.relationships[0].asserted is True
+
+
 def test_provider_native_resource_scope_includes_account() -> None:
     contract = _payload()
     account_a = deepcopy(contract["resources"][0])

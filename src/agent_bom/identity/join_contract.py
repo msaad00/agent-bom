@@ -492,6 +492,24 @@ class IdentityResourceJoinContract(_StrictIdentityModel):
             if not native_assertion_ids.issubset(evidence_source_ids):
                 raise ValueError("complete catalog row native assertions must match evidence source_ids")
 
+        endpoint_evidence_refs: dict[str, tuple[str, ...]] = {
+            **{item.entity_id: item.evidence_refs for item in self.identities},
+            **{item.resource_id: item.evidence_refs for item in self.resources},
+        }
+        endpoint_catalog_receipts = {
+            endpoint_id: {
+                source_id
+                for ref in evidence_refs
+                if (
+                    evidence_by_id[ref].status is EvidenceStatus.COMPLETE
+                    and evidence_by_id[ref].basis in {EvidenceBasis.OBSERVED, EvidenceBasis.RUNTIME_OBSERVED}
+                    and self._is_fresh_for_decision(evidence_by_id[ref])
+                )
+                for source_id in evidence_by_id[ref].source_ids
+            }
+            for endpoint_id, evidence_refs in endpoint_evidence_refs.items()
+        }
+
         endpoint_types: dict[str, CanonicalIdentityType | str] = {
             **{item.entity_id: item.entity_type for item in self.identities},
             **{item.resource_id: _RESOURCE_TYPE for item in self.resources},
@@ -538,6 +556,21 @@ class IdentityResourceJoinContract(_StrictIdentityModel):
                 if relationship.target_native_id not in endpoint_native_ids[relationship.target_ref]:
                     raise ValueError("target evidence anchor does not match the canonical endpoint")
             if relationship.asserted:
+                source_ref = relationship.source_ref
+                target_ref = relationship.target_ref
+                source_native_id = relationship.source_native_id
+                target_native_id = relationship.target_native_id
+                if source_ref is None or target_ref is None or source_native_id is None or target_native_id is None:
+                    raise ValueError("complete relationships require exact canonical and provider-native endpoints")
+                source_assertion_id = canonical_provider_native_assertion_id(source_native_id)
+                target_assertion_id = canonical_provider_native_assertion_id(target_native_id)
+                if (
+                    source_assertion_id not in endpoint_catalog_receipts[source_ref]
+                    or target_assertion_id not in endpoint_catalog_receipts[target_ref]
+                ):
+                    raise ValueError(
+                        "complete relationship endpoint native assertions must match authoritative catalog evidence source_ids"
+                    )
                 join_evidence = [evidence_by_id[ref] for ref in relationship.evidence_refs]
                 if any(
                     item.status is not EvidenceStatus.COMPLETE or item.basis not in {EvidenceBasis.OBSERVED, EvidenceBasis.RUNTIME_OBSERVED}

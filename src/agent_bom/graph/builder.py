@@ -5362,16 +5362,20 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     )
 
     # ── Data / secret / registry / network resources (normalized model) ──
-    _add_normalized_cloud_resources(
-        graph,
-        original_inventory,
-        provider=provider,
-        account_id=account_id,
-        account_node_id=account_node_id,
-        region=region,
-        data_sources=data_sources,
-        resource_ids=resource_ids,
-    )
+    # AWS and GCP still use the dedicated builder loops above. Their normalized
+    # adapters are an additive contract until those paths are migrated; feeding
+    # them through this Azure gap-fill path would double-emit the same resource.
+    if provider == "azure":
+        _add_normalized_cloud_resources(
+            graph,
+            original_inventory,
+            provider=provider,
+            account_id=account_id,
+            account_node_id=account_node_id,
+            region=region,
+            data_sources=data_sources,
+            resource_ids=resource_ids,
+        )
 
     # ── Network edge: WAF, API gateways, ENIs/NICs, subnets, NAT/IGW, IPs ──
     _add_network_edge_inventory(

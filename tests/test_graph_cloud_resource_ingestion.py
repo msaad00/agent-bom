@@ -8,6 +8,8 @@ attack-path analysis.
 
 from __future__ import annotations
 
+import pytest
+
 from agent_bom.graph.builder import build_unified_graph_from_report
 
 
@@ -110,3 +112,38 @@ def test_public_ip_exposed_to_load_balancer_edge() -> None:
     lb_node = "cloud_resource:azure:load_balancer:lb"
     exposed = [e for e in edges if e.relationship.value == "exposed_to" and e.source == pip_node and e.target == lb_node]
     assert exposed, "no EXPOSED_TO edge from public IP to the load balancer it fronts"
+
+
+@pytest.mark.parametrize(
+    ("inventory", "dedicated_node", "duplicate_node"),
+    [
+        (
+            {
+                "provider": "aws",
+                "status": "ok",
+                "account_id": "123456789012",
+                "region": "us-east-1",
+                "rds_instances": [{"name": "orders", "arn": "arn:aws:rds:us-east-1:123456789012:db:orders"}],
+            },
+            "cloud_resource:aws:rds:database:orders",
+            "cloud_resource:aws:database:orders",
+        ),
+        (
+            {
+                "provider": "gcp",
+                "status": "ok",
+                "project_id": "project-1",
+                "account_id": "project-1",
+                "cloud_sql_instances": [{"name": "orders", "id": "projects/project-1/instances/orders"}],
+            },
+            "cloud_resource:gcp:cloudsql:database:orders",
+            "cloud_resource:gcp:database:orders",
+        ),
+    ],
+)
+def test_normalized_views_do_not_double_emit_builder_specific_resources(inventory: dict, dedicated_node: str, duplicate_node: str) -> None:
+    """Adapters are additive until each provider's builder path is migrated."""
+    graph = build_unified_graph_from_report({"cloud_inventory": [inventory]})
+
+    assert dedicated_node in graph.nodes
+    assert duplicate_node not in graph.nodes

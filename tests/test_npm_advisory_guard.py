@@ -170,16 +170,28 @@ def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
 
     assert check_npm_advisories.fetch_report({"pkg": ["1.0.0"]}) == {}
     assert seen_limits == [check_npm_advisories.MAX_COMPRESSED_RESPONSE_BYTES + 1]
-    assert seen_timeouts == [30]
-    assert seen_requests[0].data == b'{"pkg":["1.0.0"]}'
+    assert seen_timeouts == [120]
+    assert json.loads(seen_requests[0].data) == {"pkg": ["1.0.0"]}
     assert seen_requests[0].get_header("Content-encoding") is None
     assert seen_requests[0].get_header("Content-type") == "application/json"
 
 
-def test_fetch_report_batches_large_lockfiles_and_rejects_unrequested_packages(
+def test_fetch_report_bounds_the_exact_request_body(monkeypatch) -> None:
+    monkeypatch.setattr(check_npm_advisories, "MAX_REQUEST_BODY_BYTES", 8, raising=False)
+    monkeypatch.setattr(
+        check_npm_advisories.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: pytest.fail("oversized request must not reach the network"),
+    )
+
+    with pytest.raises(ValueError, match="request exceeds"):
+        check_npm_advisories.fetch_report({"package-name": ["1.0.0"]})
+
+
+def test_fetch_report_sends_large_lockfiles_once_and_rejects_unrequested_packages(
     monkeypatch,
 ) -> None:
-    batch_sizes: list[int] = []
+    request_payloads: list[dict[str, list[str]]] = []
 
     class Response:
         def __init__(self, body: bytes):
@@ -197,7 +209,7 @@ def test_fetch_report_batches_large_lockfiles_and_rejects_unrequested_packages(
     def open_response(request, timeout: int):
         assert timeout == check_npm_advisories.REQUEST_TIMEOUT_SECONDS
         request_payload = json.loads(request.data)
-        batch_sizes.append(len(request_payload))
+        request_payloads.append(request_payload)
         first_name = next(iter(request_payload))
         return Response(json.dumps({first_name: []}).encode())
 
@@ -206,19 +218,12 @@ def test_fetch_report_batches_large_lockfiles_and_rejects_unrequested_packages(
         "urlopen",
         open_response,
     )
-    monkeypatch.setattr(check_npm_advisories, "MAX_PARALLEL_REQUESTS", 1)
     payload = {f"pkg-{index:03d}": ["1.0.0"] for index in range(205)}
 
     report = check_npm_advisories.fetch_report(payload)
 
-    assert batch_sizes == [50, 50, 50, 50, 5]
-    assert sorted(report) == [
-        "pkg-000",
-        "pkg-050",
-        "pkg-100",
-        "pkg-150",
-        "pkg-200",
-    ]
+    assert request_payloads == [payload]
+    assert report == {"pkg-000": []}
 
     def inject_unrequested(_request, timeout: int):
         assert timeout == check_npm_advisories.REQUEST_TIMEOUT_SECONDS
@@ -233,20 +238,34 @@ def test_fetch_report_batches_large_lockfiles_and_rejects_unrequested_packages(
         check_npm_advisories.fetch_report({"pkg": ["1.0.0"]})
 
 
-def test_fetch_report_retries_only_the_failed_batch(monkeypatch) -> None:
-    attempts: dict[str, int] = {}
+def test_fetch_report_retries_the_exact_payload(monkeypatch) -> None:
+    seen_payloads: list[dict[str, list[str]]] = []
 
-    def fetch_batch(batch):
-        first_name = next(iter(batch))
-        attempts[first_name] = attempts.get(first_name, 0) + 1
-        if first_name == "pkg-050" and attempts[first_name] == 1:
+    def fetch_once(payload):
+        seen_payloads.append(payload)
+        if len(seen_payloads) == 1:
             raise TimeoutError("transient npm timeout")
         return {}
 
-    monkeypatch.setattr(check_npm_advisories, "_fetch_batch", fetch_batch)
-    monkeypatch.setattr(check_npm_advisories, "MAX_PARALLEL_REQUESTS", 1)
+    monkeypatch.setattr(check_npm_advisories, "_fetch_once", fetch_once, raising=False)
     monkeypatch.setattr(check_npm_advisories.time, "sleep", lambda _seconds: None)
     payload = {f"pkg-{index:03d}": ["1.0.0"] for index in range(101)}
 
     assert check_npm_advisories.fetch_report(payload) == {}
-    assert attempts == {"pkg-000": 1, "pkg-050": 2, "pkg-100": 1}
+    assert seen_payloads == [payload, payload]
+
+
+def test_fetch_report_exhausts_bounded_retries(monkeypatch) -> None:
+    attempts = 0
+
+    def fail(_payload):
+        nonlocal attempts
+        attempts += 1
+        raise TimeoutError("npm registry unavailable")
+
+    monkeypatch.setattr(check_npm_advisories, "_fetch_once", fail, raising=False)
+    monkeypatch.setattr(check_npm_advisories.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(TimeoutError, match="registry unavailable"):
+        check_npm_advisories.fetch_report({"pkg": ["1.0.0"]})
+    assert attempts == check_npm_advisories.MAX_REQUEST_ATTEMPTS

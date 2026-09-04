@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import gzip
 import io
 import json
@@ -19,10 +18,9 @@ BLOCKING_SEVERITIES = {"high", "critical"}
 VALID_SEVERITIES = {"info", "low", "moderate", "high", "critical"}
 MAX_COMPRESSED_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_DECOMPRESSED_RESPONSE_BYTES = 32 * 1024 * 1024
-REQUEST_TIMEOUT_SECONDS = 30
-MAX_PACKAGES_PER_REQUEST = 50
-MAX_PARALLEL_REQUESTS = 4
-MAX_BATCH_ATTEMPTS = 3
+MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024
+REQUEST_TIMEOUT_SECONDS = 120
+MAX_REQUEST_ATTEMPTS = 3
 
 
 def _package_name(package_path: str, record: dict[str, Any]) -> str | None:
@@ -104,8 +102,10 @@ def blocking_advisories(report: dict[str, list[dict[str, Any]]]) -> list[dict[st
     return blocking
 
 
-def _fetch_batch(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+def _fetch_once(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
     encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_REQUEST_BODY_BYTES:
+        raise ValueError("npm advisory request exceeds the size limit")
     request = urllib.request.Request(
         AUDIT_URL,
         data=encoded,
@@ -123,38 +123,20 @@ def _fetch_batch(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]
     return report
 
 
-def _fetch_batch_with_retries(
-    batch_number: int,
-    payload: dict[str, list[str]],
-) -> dict[str, list[dict[str, Any]]]:
-    for attempt in range(1, MAX_BATCH_ATTEMPTS + 1):
+def fetch_report(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+    """Fetch the exact lockfile projection with bounded retries."""
+    for attempt in range(1, MAX_REQUEST_ATTEMPTS + 1):
         try:
-            return _fetch_batch(payload)
+            return _fetch_once(payload)
         except (OSError, ValueError, json.JSONDecodeError):
-            if attempt == MAX_BATCH_ATTEMPTS:
+            if attempt == MAX_REQUEST_ATTEMPTS:
                 raise
             print(
-                f"::warning::npm bulk advisory batch {batch_number} attempt {attempt} failed; retrying",
+                f"::warning::npm bulk advisory attempt {attempt} failed; retrying",
                 file=sys.stderr,
             )
             time.sleep(attempt * 2)
     raise AssertionError("unreachable")
-
-
-def fetch_report(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
-    """Fetch deterministic size-bounded batches with bounded concurrency."""
-    items = sorted(payload.items())
-    batches = [dict(items[offset : offset + MAX_PACKAGES_PER_REQUEST]) for offset in range(0, len(items), MAX_PACKAGES_PER_REQUEST)]
-    if not batches:
-        return {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_REQUESTS, len(batches))) as executor:
-        reports = executor.map(
-            _fetch_batch_with_retries,
-            range(1, len(batches) + 1),
-            batches,
-        )
-        combined = {package: advisories for report in reports for package, advisories in report.items()}
-    return combined
 
 
 def run(path: Path) -> int:

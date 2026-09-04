@@ -1,7 +1,39 @@
 {
+  "$comment": "Cross-record identity, resource, relationship, freshness, and evidence-anchor invariants require IdentityResourceJoinContract.model_validate; JSON Schema alone is not sufficient.",
   "$defs": {
     "CanonicalIdentityEntity": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
       "description": "Canonical identity with one or more authoritative provider-native IDs.",
       "properties": {
         "display_name": {
@@ -80,6 +112,37 @@
     },
     "CanonicalResourceReference": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
       "description": "Bounded resource reference that an observed identity relationship targets.",
       "properties": {
         "display_name": {
@@ -446,8 +509,226 @@
       "title": "FreshnessStatus",
       "type": "string"
     },
+    "IdentityJoinMethod": {
+      "description": "Authoritative provider mechanism that established a structural join.",
+      "enum": [
+        "directory_membership",
+        "role_assignment",
+        "trust_policy",
+        "workload_binding",
+        "ownership_record"
+      ],
+      "title": "IdentityJoinMethod",
+      "type": "string"
+    },
     "IdentityRelationship": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "member_of"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "directory_membership"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "assumes"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "role_assignment"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "trusts"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "trust_policy"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "runs_as"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "workload_binding"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_type": {
+                "const": "owns"
+              }
+            },
+            "required": [
+              "relationship_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "join_method": {
+                "const": "ownership_record"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "complete"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "evidence_refs": {
+                "minItems": 1
+              },
+              "provider_assertion_ids": {
+                "minItems": 1
+              },
+              "source_native_id": {
+                "type": "object"
+              },
+              "source_ref": {
+                "type": "string"
+              },
+              "target_native_id": {
+                "type": "object"
+              },
+              "target_ref": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source_ref",
+              "target_ref",
+              "evidence_refs",
+              "source_native_id",
+              "target_native_id",
+              "provider_assertion_ids"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "properties": {
+                  "source_ref": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "target_ref": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target_ref"
+                ]
+              }
+            ],
+            "properties": {
+              "evidence_refs": {
+                "minItems": 1
+              },
+              "reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "partial",
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
       "description": "One structural join assertion or an explicit incomplete join attempt.",
       "properties": {
         "evidence_refs": {
@@ -460,6 +741,21 @@
           },
           "maxItems": 50,
           "title": "Evidence Refs",
+          "type": "array"
+        },
+        "join_method": {
+          "$ref": "#/$defs/IdentityJoinMethod"
+        },
+        "provider_assertion_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Provider Assertion Ids",
           "type": "array"
         },
         "reason_codes": {
@@ -482,6 +778,17 @@
         "relationship_type": {
           "$ref": "#/$defs/IdentityRelationshipType"
         },
+        "source_native_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderNativeId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "source_ref": {
           "anyOf": [
             {
@@ -499,6 +806,17 @@
         },
         "status": {
           "$ref": "#/$defs/EvidenceStatus"
+        },
+        "target_native_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderNativeId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "target_ref": {
           "anyOf": [
@@ -519,6 +837,7 @@
       "required": [
         "relationship_id",
         "relationship_type",
+        "join_method",
         "status"
       ],
       "title": "IdentityRelationship",
@@ -550,6 +869,120 @@
     },
     "ProviderNativeId": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "okta"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "okta"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "aws"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "aws"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "azure"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "azure",
+                  "entra"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "gcp"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "gcp"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "saas"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "not": {
+                  "enum": [
+                    "aws",
+                    "azure",
+                    "entra",
+                    "gcp",
+                    "okta"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
       "description": "One exact provider identifier retained for deterministic correlation.",
       "properties": {
         "account": {
@@ -603,10 +1036,15 @@
     }
   },
   "additionalProperties": false,
-  "description": "Public contract for evidence-backed cross-provider identity/resource joins.",
+  "description": "Public shape for evidence-backed cross-provider identity/resource joins.\n\nJSON Schema enforces local field/status constraints. Cross-record identity,\nresource, freshness, and evidence-anchor invariants require the executable\nPydantic validator inherited from the core contract.",
   "properties": {
     "completeness": {
       "$ref": "#/$defs/EvidenceCompletenessLedger"
+    },
+    "evaluated_at": {
+      "format": "date-time",
+      "title": "Evaluated At",
+      "type": "string"
     },
     "evidence": {
       "default": [],
@@ -616,6 +1054,12 @@
       "maxItems": 5000,
       "title": "Evidence",
       "type": "array"
+    },
+    "freshness_max_age_seconds": {
+      "maximum": 31536000,
+      "minimum": 1,
+      "title": "Freshness Max Age Seconds",
+      "type": "integer"
     },
     "identities": {
       "default": [],
@@ -660,6 +1104,8 @@
   },
   "required": [
     "tenant_id",
+    "evaluated_at",
+    "freshness_max_age_seconds",
     "completeness"
   ],
   "title": "IdentityResourceJoinContract",

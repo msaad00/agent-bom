@@ -17,11 +17,13 @@ from agent_bom.identity.join_contract import (
     CanonicalIdentityEntity,
     CanonicalIdentityType,
     CanonicalResourceReference,
+    IdentityJoinMethod,
     IdentityRelationship,
     IdentityRelationshipType,
     IdentityResourceJoinContract,
     IdentitySourceKind,
     ProviderNativeId,
+    canonical_identity_relationship_id,
 )
 from agent_bom.identity.okta_nhi import (
     DiscoveredNonHumanIdentity,
@@ -37,11 +39,13 @@ __all__ = [
     "CanonicalIdentityEntity",
     "CanonicalIdentityType",
     "CanonicalResourceReference",
+    "IdentityJoinMethod",
     "IdentityRelationship",
     "IdentityRelationshipType",
     "IdentityResourceJoinContract",
     "IdentitySourceKind",
     "ProviderNativeId",
+    "canonical_identity_relationship_id",
     "discover_entra_non_human_identities",
     "discover_okta_non_human_identities",
 ]

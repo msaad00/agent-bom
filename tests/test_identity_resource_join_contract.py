@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import json
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import jsonschema
 import pytest
 from pydantic import ValidationError
 
+import agent_bom.identity.join_contract as join_contract_module
 from agent_bom.evidence.semantics import (
     CompletenessEntry,
     EvidenceBasis,
     EvidenceCompletenessLedger,
+    EvidenceFreshness,
     EvidenceProvenance,
     EvidenceStage,
     EvidenceStatus,
@@ -17,12 +25,17 @@ from agent_bom.identity.join_contract import (
     CanonicalIdentityEntity,
     CanonicalIdentityType,
     CanonicalResourceReference,
+    IdentityJoinMethod,
     IdentityRelationship,
     IdentityRelationshipType,
     IdentityResourceJoinContract,
     IdentitySourceKind,
     ProviderNativeId,
+    canonical_identity_relationship_id,
 )
+
+_EVALUATED_AT = datetime(2026, 9, 4, tzinfo=timezone.utc)
+_FRESHNESS_MAX_AGE_SECONDS = 86_400
 
 
 def _evidence(
@@ -31,12 +44,20 @@ def _evidence(
     *,
     basis: EvidenceBasis = EvidenceBasis.OBSERVED,
     status: EvidenceStatus = EvidenceStatus.COMPLETE,
+    source_id: str | None = None,
 ) -> EvidenceProvenance:
+    freshness = EvidenceFreshness.evaluate(
+        observed_at=_EVALUATED_AT - timedelta(hours=1),
+        evaluated_at=_EVALUATED_AT,
+        max_age_seconds=_FRESHNESS_MAX_AGE_SECONDS,
+    )
     return EvidenceProvenance(
         evidence_id=evidence_id,
         basis=basis,
         status=status,
         source=source,
+        source_ids=((source_id or evidence_id),),
+        freshness=freshness,
         reason_codes=() if status is EvidenceStatus.COMPLETE else ("source_incomplete",),
     )
 
@@ -88,16 +109,20 @@ def _payload() -> dict:
 
 
 def _contract() -> IdentityResourceJoinContract:
+    membership_assertion = "okta-membership:00uABCDef123:00gEng-Prod"
+    workload_assertion = "azure-workload-binding:payments-api"
+    trust_assertion = "aws-trust-policy:DeployRole:gcp-scanner"
+    owner_assertion = "asset-owner:github-bot:artifact-bucket"
     evidence = (
         _evidence("evidence:okta:1", "okta-scim"),
         _evidence("evidence:aws:1", "aws-iam"),
         _evidence("evidence:azure:1", "azure-graph"),
         _evidence("evidence:gcp:1", "gcp-iam"),
         _evidence("evidence:saas:1", "github-saas"),
-        _evidence("evidence:okta-membership:1", "okta-membership"),
-        _evidence("evidence:azure-binding:1", "azure-workload-binding"),
-        _evidence("evidence:aws-trust:1", "aws-trust-policy"),
-        _evidence("evidence:asset-owner:1", "asset-owner-catalog"),
+        _evidence("evidence:okta-membership:1", "okta-membership", source_id=membership_assertion),
+        _evidence("evidence:azure-binding:1", "azure-workload-binding", source_id=workload_assertion),
+        _evidence("evidence:aws-trust:1", "aws-trust-policy", source_id=trust_assertion),
+        _evidence("evidence:asset-owner:1", "asset-owner-catalog", source_id=owner_assertion),
     )
     identities = (
         _identity(
@@ -183,45 +208,72 @@ def _contract() -> IdentityResourceJoinContract:
             evidence_refs=("evidence:aws:1",),
         ),
     )
-    relationships = (
-        IdentityRelationship(
-            relationship_id="join:okta:alice-engineering",
+    relationship_specs = (
+        dict(
             relationship_type=IdentityRelationshipType.MEMBER_OF,
+            join_method=IdentityJoinMethod.DIRECTORY_MEMBERSHIP,
             source_ref="identity:person:alice",
             target_ref="identity:group:engineering",
+            source_native_id=identities[0].native_ids[0],
+            target_native_id=identities[1].native_ids[0],
+            provider_assertion_ids=(membership_assertion,),
             status=EvidenceStatus.COMPLETE,
             evidence_refs=("evidence:okta-membership:1",),
         ),
-        IdentityRelationship(
-            relationship_id="join:azure:payments-runs-as",
+        dict(
             relationship_type=IdentityRelationshipType.RUNS_AS,
+            join_method=IdentityJoinMethod.WORKLOAD_BINDING,
             source_ref="resource:azure:payments-api",
             target_ref="identity:workload:payments",
+            source_native_id=resources[0].native_ids[0],
+            target_native_id=identities[3].native_ids[0],
+            provider_assertion_ids=(workload_assertion,),
             status=EvidenceStatus.COMPLETE,
             evidence_refs=("evidence:azure-binding:1",),
         ),
-        IdentityRelationship(
-            relationship_id="join:aws:deploy-trust",
+        dict(
             relationship_type=IdentityRelationshipType.TRUSTS,
+            join_method=IdentityJoinMethod.TRUST_POLICY,
             source_ref="identity:role:deploy",
             target_ref="identity:service-account:gcp-scanner",
+            source_native_id=identities[2].native_ids[0],
+            target_native_id=identities[4].native_ids[0],
+            provider_assertion_ids=(trust_assertion,),
             status=EvidenceStatus.COMPLETE,
             evidence_refs=("evidence:aws-trust:1",),
         ),
-        IdentityRelationship(
-            relationship_id="join:saas:github-owns-bucket",
+        dict(
             relationship_type=IdentityRelationshipType.OWNS,
+            join_method=IdentityJoinMethod.OWNERSHIP_RECORD,
             source_ref="identity:service-account:github-bot",
             target_ref="resource:aws:artifact-bucket",
+            source_native_id=identities[5].native_ids[0],
+            target_native_id=resources[1].native_ids[0],
+            provider_assertion_ids=(owner_assertion,),
             status=EvidenceStatus.COMPLETE,
             evidence_refs=("evidence:asset-owner:1",),
         ),
     )
+    relationships = []
+    for spec in relationship_specs:
+        relationship = IdentityRelationship(relationship_id="pending", **spec)
+        relationships.append(
+            relationship.model_copy(
+                update={
+                    "relationship_id": canonical_identity_relationship_id(
+                        tenant_id="tenant-acme",
+                        relationship=relationship,
+                    )
+                }
+            )
+        )
     return IdentityResourceJoinContract(
         tenant_id="tenant-acme",
+        evaluated_at=_EVALUATED_AT,
+        freshness_max_age_seconds=_FRESHNESS_MAX_AGE_SECONDS,
         identities=identities,
         resources=resources,
-        relationships=relationships,
+        relationships=tuple(relationships),
         evidence=evidence,
         completeness=_complete_ledger(),
     )
@@ -256,6 +308,7 @@ def test_incomplete_join_attempts_are_explicit_non_edges(status: EvidenceStatus)
     relationship = IdentityRelationship(
         relationship_id=f"join:attempt:{status.value}",
         relationship_type=IdentityRelationshipType.ASSUMES,
+        join_method=IdentityJoinMethod.ROLE_ASSIGNMENT,
         source_ref="identity:person:alice",
         target_ref=None,
         status=status,
@@ -272,6 +325,7 @@ def test_incomplete_join_requires_a_bounded_reason() -> None:
         IdentityRelationship(
             relationship_id="join:attempt:missing-reason",
             relationship_type=IdentityRelationshipType.ASSUMES,
+            join_method=IdentityJoinMethod.ROLE_ASSIGNMENT,
             source_ref="identity:person:alice",
             status=EvidenceStatus.UNAVAILABLE,
         )
@@ -342,3 +396,217 @@ def test_public_schema_exposes_closed_types_and_explicit_evidence_states() -> No
     assert definitions["EvidenceStatus"]["enum"] == ["complete", "partial", "unavailable", "failed"]
     assert "has_permission" not in definitions["IdentityRelationshipType"]["enum"]
     assert schema["additionalProperties"] is False
+
+
+def test_account_is_part_of_provider_native_identity_scope() -> None:
+    contract = _payload()
+    account_a = deepcopy(contract["identities"][0])
+    account_a["entity_id"] = "identity:person:alice-in-org-a"
+    account_a["native_ids"][0]["account"] = "okta-org-a"
+    account_b = deepcopy(contract["identities"][0])
+    account_b["entity_id"] = "identity:person:alice-in-org-b"
+    account_b["native_ids"][0]["account"] = "okta-org-b"
+    contract["identities"].extend((account_a, account_b))
+
+    validated = IdentityResourceJoinContract.model_validate(contract)
+
+    assert len(validated.identities) == 8
+
+
+def test_provider_native_resource_cannot_resolve_to_two_resources() -> None:
+    contract = _payload()
+    duplicate = deepcopy(contract["resources"][0])
+    duplicate["resource_id"] = "resource:azure:payments-api-duplicate"
+    contract["resources"].append(duplicate)
+
+    with pytest.raises(ValidationError, match="provider-native resource"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_complete_catalog_row_rejects_unavailable_evidence() -> None:
+    contract = _payload()
+    contract["evidence"][0].update(status="unavailable", basis=None, reason_codes=["collector_denied"])
+
+    with pytest.raises(ValidationError, match="complete catalog rows"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_complete_join_rejects_stale_evidence() -> None:
+    contract = _payload()
+    evaluated_at = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    membership = next(item for item in contract["evidence"] if item["evidence_id"] == "evidence:okta-membership:1")
+    membership["freshness"] = {
+        "status": "stale",
+        "observed_at": (evaluated_at - timedelta(days=2)).isoformat(),
+        "valid_until": (evaluated_at - timedelta(days=1)).isoformat(),
+        "evaluated_at": evaluated_at.isoformat(),
+        "max_age_seconds": 86_400,
+    }
+
+    with pytest.raises(ValidationError, match="fresh evidence"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_complete_join_rejects_unknown_freshness() -> None:
+    contract = _payload()
+    membership = next(item for item in contract["evidence"] if item["evidence_id"] == "evidence:okta-membership:1")
+    membership["freshness"] = None
+
+    with pytest.raises(ValidationError, match="fresh evidence"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_complete_join_rejects_evidence_observed_after_decision_time() -> None:
+    contract = _payload()
+    membership = next(item for item in contract["evidence"] if item["evidence_id"] == "evidence:okta-membership:1")
+    membership["freshness"] = {
+        "status": "fresh",
+        "observed_at": (_EVALUATED_AT + timedelta(hours=1)).isoformat(),
+        "valid_until": (_EVALUATED_AT + timedelta(hours=25)).isoformat(),
+        "evaluated_at": _EVALUATED_AT.isoformat(),
+        "max_age_seconds": _FRESHNESS_MAX_AGE_SECONDS,
+    }
+
+    with pytest.raises(ValidationError, match="future evidence"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_complete_join_rejects_evidence_not_bound_to_endpoints() -> None:
+    contract = _payload()
+    contract["relationships"][0]["source_ref"] = "identity:service-account:github-bot"
+
+    with pytest.raises(ValidationError, match="evidence anchor"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_provider_assertion_id_must_be_present_in_evidence_source_ids() -> None:
+    contract = _payload()
+    contract["relationships"][0]["provider_assertion_ids"] = ["unrelated-provider-assertion"]
+
+    with pytest.raises(ValidationError, match="evidence anchors.*source_ids"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_semantically_duplicate_relationship_is_rejected() -> None:
+    contract = _payload()
+    duplicate = deepcopy(contract["relationships"][0])
+    duplicate["relationship_id"] = "join:okta:alice-engineering-copy"
+    contract["relationships"].append(duplicate)
+
+    with pytest.raises(ValidationError, match="semantic relationship"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_relationship_id_must_match_tenant_scoped_semantics() -> None:
+    contract = _payload()
+    contract["relationships"][0]["relationship_id"] = "join:caller-selected"
+
+    with pytest.raises(ValidationError, match="deterministic tenant-scoped"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_join_method_must_match_relationship_type() -> None:
+    contract = _payload()
+    contract["relationships"][0]["join_method"] = "trust_policy"
+
+    with pytest.raises(ValidationError, match="join method"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_provider_must_match_its_source_family() -> None:
+    contract = _payload()
+    contract["identities"][0]["native_ids"][0]["provider"] = "aws"
+
+    with pytest.raises(ValidationError, match="provider.*source family"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_provider_native_resource_scope_includes_account() -> None:
+    contract = _payload()
+    account_a = deepcopy(contract["resources"][0])
+    account_a["resource_id"] = "resource:azure:payments-api-org-a"
+    account_a["native_ids"][0]["account"] = "subscription-a"
+    account_b = deepcopy(contract["resources"][0])
+    account_b["resource_id"] = "resource:azure:payments-api-org-b"
+    account_b["native_ids"][0]["account"] = "subscription-b"
+    contract["resources"].extend((account_a, account_b))
+
+    validated = IdentityResourceJoinContract.model_validate(contract)
+
+    assert len(validated.resources) == 4
+
+
+def test_group_cannot_be_a_member_of_itself() -> None:
+    contract = _payload()
+    contract["relationships"][0].update(
+        source_ref="identity:group:engineering",
+        target_ref="identity:group:engineering",
+    )
+
+    with pytest.raises(ValidationError, match="member_of self-loop"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_checked_in_json_schema_enforces_complete_relationship_shape() -> None:
+    schema = json.loads((Path("docs/schemas/v1/IdentityResourceJoinContract.json")).read_text())
+    contract = _contract().model_dump(mode="json")
+    contract["relationships"][0]["evidence_refs"] = []
+
+    with pytest.raises(jsonschema.ValidationError) as exc_info:
+        jsonschema.validate(contract, schema)
+
+    assert list(exc_info.value.path)[-1] == "evidence_refs"
+
+
+def test_checked_in_json_schema_enforces_partial_reason_codes() -> None:
+    schema = json.loads((Path("docs/schemas/v1/IdentityResourceJoinContract.json")).read_text())
+    contract = _contract().model_dump(mode="json")
+    contract["relationships"][0].update(status="partial", reason_codes=[])
+
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(contract, schema)
+
+
+@pytest.mark.parametrize(
+    ("mutator", "field"),
+    [
+        (lambda payload: payload["identities"][0]["native_ids"][0].update(provider="aws"), "provider"),
+        (lambda payload: payload["relationships"][0].update(join_method="trust_policy"), "join_method"),
+    ],
+)
+def test_checked_in_json_schema_enforces_local_cross_field_rules(mutator, field: str) -> None:
+    schema = json.loads((Path("docs/schemas/v1/IdentityResourceJoinContract.json")).read_text())
+    contract = _contract().model_dump(mode="json")
+    mutator(contract)
+
+    with pytest.raises(jsonschema.ValidationError) as exc_info:
+        jsonschema.validate(contract, schema)
+
+    assert field in str(exc_info.value)
+
+
+def test_checked_in_schema_names_the_executable_validator_boundary() -> None:
+    schema = json.loads((Path("docs/schemas/v1/IdentityResourceJoinContract.json")).read_text())
+
+    assert "model_validate" in schema["$comment"]
+    assert "JSON Schema alone is not sufficient" in schema["$comment"]
+
+
+def test_aggregate_evidence_reference_budget_is_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    contract = _payload()
+    current_reference_count = sum(
+        len(item["evidence_refs"]) for group in (contract["identities"], contract["resources"], contract["relationships"]) for item in group
+    )
+    monkeypatch.setattr(join_contract_module, "MAX_IDENTITY_JOIN_EVIDENCE_REFERENCES", current_reference_count - 1)
+
+    with pytest.raises(ValidationError, match="aggregate evidence-reference budget"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_aggregate_native_identifier_budget_is_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    contract = _payload()
+    current_native_id_count = sum(len(item["native_ids"]) for group in (contract["identities"], contract["resources"]) for item in group)
+    monkeypatch.setattr(join_contract_module, "MAX_IDENTITY_JOIN_NATIVE_IDENTIFIERS", current_native_id_count - 1)
+
+    with pytest.raises(ValidationError, match="aggregate provider-native identifier budget"):
+        IdentityResourceJoinContract.model_validate(contract)

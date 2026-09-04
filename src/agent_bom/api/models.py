@@ -57,7 +57,12 @@ class SecurityDimensions(_CoreSecurityDimensions):
 
 
 class IdentityResourceJoinContract(_CoreIdentityResourceJoinContract):
-    """Public contract for evidence-backed cross-provider identity/resource joins."""
+    """Public shape for evidence-backed cross-provider identity/resource joins.
+
+    JSON Schema enforces local field/status constraints. Cross-record identity,
+    resource, freshness, and evidence-anchor invariants require the executable
+    Pydantic validator inherited from the core contract.
+    """
 
 
 # Fields that fan out one child scan job per element when a request carries more

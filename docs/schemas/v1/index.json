@@ -152,7 +152,7 @@
       "schema": "HealthResponse.json"
     },
     {
-      "doc": "Public contract for evidence-backed cross-provider identity/resource joins.",
+      "doc": "Public shape for evidence-backed cross-provider identity/resource joins.",
       "name": "IdentityResourceJoinContract",
       "schema": "IdentityResourceJoinContract.json"
     },

@@ -1,14 +1,4 @@
-"""An unconfigured optional integration must not fail the whole publish.
-
-`Publish to Registries` pushes PyPI, Docker, Smithery and Glama. The Glama step
-failed the entire workflow when `GLAMA_WEBHOOK_URL` was unset, on the reasoning
-that a *manual repair* which cannot do what was asked should fail loudly. That
-intent is right, but `workflow_dispatch` carried no inputs, so an ordinary
-re-run of the publish was indistinguishable from an explicit Glama repair — and
-a third-party webhook nobody had configured became a release blocker (#4651).
-
-The operator now says which one they meant.
-"""
+"""Glama publication must use provider-supported automatic synchronization."""
 
 from __future__ import annotations
 
@@ -19,11 +9,10 @@ import yaml
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "publish-registries.yml"
 
 
-def _glama_step_text() -> str:
-    """Just the Glama step. The release job legitimately branches on event_name."""
+def _glama_job_text() -> str:
+    """Return the Glama job without unrelated registry implementation text."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    start = text.index("Trigger Glama rebuild")
-    return text[start:]
+    return text.split("  glama:\n", 1)[1].split("  clawhub:\n", 1)[0]
 
 
 def _workflow() -> dict:
@@ -32,27 +21,48 @@ def _workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
 
 
-def test_dispatch_exposes_an_explicit_glama_repair_input() -> None:
+def test_dispatch_does_not_expose_an_unsupported_glama_trigger() -> None:
     triggers = _workflow()[True]
-    inputs = triggers["workflow_dispatch"]["inputs"]
+    inputs = (triggers["workflow_dispatch"] or {}).get("inputs", {})
 
-    assert "glama_repair" in inputs, "an operator cannot signal a Glama repair without an input"
-    assert inputs["glama_repair"]["type"] == "boolean"
-    assert inputs["glama_repair"]["default"] is False, "repair must be opt-in, never the default for a re-run"
+    assert "glama_repair" not in inputs
 
 
-def test_a_missing_webhook_only_fails_an_explicit_repair() -> None:
-    """The gate must read the intent input, not merely that the run was dispatched."""
-    step = _glama_step_text()
-
-    assert "GLAMA_REPAIR: ${{ inputs.glama_repair }}" in step
-    assert '[ "$EVENT_NAME" = "workflow_dispatch" ]' not in step, "gating on event_name treats every manual re-run as a repair request"
-    assert '[ "$GLAMA_REPAIR" = "true" ]' in step
-
-
-def test_the_unconfigured_path_still_reports_and_leaves_the_issue_open() -> None:
-    """Warning quietly is how a stale listing survives for months — say it out loud."""
+def test_registry_reconciliation_retries_every_idempotent_registry_automatically() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
+    triggers = _workflow()[True]
 
-    assert "rebuild_triggered=false" in text
-    assert "the freshness issue will remain open" in text
+    assert triggers["schedule"] == [{"cron": "17 */6 * * *"}]
+    assert text.count("github.event_name == 'schedule'") == 4
+    clawhub = text.split("  clawhub:\n", 1)[1]
+    assert "github.event_name == 'schedule'" in clawhub
+    assert "already published" in clawhub
+
+
+def test_glama_job_verifies_provider_managed_sync_without_inventing_an_api() -> None:
+    job = _glama_job_text()
+
+    assert "GLAMA_WEBHOOK_URL" not in job
+    assert "Trigger Glama rebuild" not in job
+    assert "-X POST" not in job
+    assert "--verify-manifest --git-ref" in job
+    assert '--expected "$EXPECTED_VERSION"' in job
+    assert '--expected-tool-count "$EXPECTED_TOOL_COUNT"' in job
+    assert "--write-tool-names /tmp/glama-expected-tool-names.json" in job
+    assert '--git-ref "${{ needs.release.outputs.release_sha }}"' in job
+    assert "Validate released public server card for Glama" in job
+    assert "glama-expected-tool-names.json" in job
+    assert "--expected-tool-names-file /tmp/glama-expected-tool-names.json" in job
+    assert "glama-actual-server-card-tool-names.json" in job
+    assert "cmp -s /tmp/glama-expected-tool-names.json /tmp/glama-actual-server-card-tool-names.json" in job
+    assert "glama-expected-tool-contract.json" in job
+    assert "--expected-tool-contract-file /tmp/glama-expected-tool-contract.json" in job
+
+
+def test_stale_glama_directory_fails_with_supported_recovery_guidance() -> None:
+    """A stale provider directory stays visible without a fictitious trigger claim."""
+    job = _glama_job_text()
+
+    assert "Glama syncs linked GitHub repositories automatically at least daily" in job
+    assert "Sync Server" in job
+    assert "exit 1" in job

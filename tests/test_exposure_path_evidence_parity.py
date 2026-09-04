@@ -44,6 +44,7 @@ def test_exposure_path_surfaces_carry_independent_evidence_dimensions() -> None:
                 "source_node_id": "agent:a",
                 "target_node_id": target.id,
                 "relationship": "vulnerable_to",
+                "freshness": "fresh",
                 "complete": True,
                 "truncated": False,
             }
@@ -106,6 +107,41 @@ def test_missing_path_evidence_stays_unavailable_and_does_not_alias_risk() -> No
     api_payload = _serialize_both(path, nodes=[target], edges=[])[1]
     assert api_payload["evidence"]["isKev"] is None
     assert api_payload["evidence"]["networkExploitable"] is None
+
+
+def test_persisted_confirmed_path_without_freshness_is_not_reprojected_as_confirmed() -> None:
+    target = UnifiedNode(
+        id="vuln:cve",
+        entity_type=EntityType.VULNERABILITY,
+        label="CVE-2026-1",
+        severity="critical",
+    )
+    path = AttackPath(
+        source="agent:a",
+        target=target.id,
+        hops=["agent:a", target.id],
+        edges=["vulnerable_to"],
+        composite_risk=99.0,
+        reachability="confirmed",
+        reachability_basis=["legacy_structural_path"],
+        hop_evidence=[
+            {
+                "source_node_id": "agent:a",
+                "target_node_id": target.id,
+                "relationship": "vulnerable_to",
+                "complete": True,
+                "truncated": False,
+            }
+        ],
+        analysis={"status": "complete", "reason_codes": [], "limits": {}, "observed": {"hop_count": 1}},
+    )
+
+    for payload in _serialize_both(path, nodes=[target], edges=[]):
+        dimensions = payload["evidenceDimensions"]
+        assert dimensions["completeness"]["status"] == "partial"
+        assert dimensions["completeness"]["reasonCodes"] == ["unknown_evidence_freshness"]
+        assert dimensions["reachability"]["status"] == "unavailable"
+        assert dimensions["reachability"]["verdict"] is None
 
 
 def test_path_relationship_names_do_not_fabricate_edges_or_traversability() -> None:

@@ -41,8 +41,19 @@ def _has_relationship_provenance(edge: UnifiedEdge) -> bool:
     """Require an edge-level receipt; snapshot membership alone is structural."""
 
     correlation = _correlation_provenance(edge)
-    source_ids = correlation.get("source_scan_ids")
-    return bool(edge.source_scan_id or (isinstance(source_ids, list) and source_ids) or edge.provenance)
+    observations = correlation.get("observations")
+    if isinstance(observations, list) and any(
+        isinstance(item, Mapping)
+        and str(item.get("scan_id") or "").strip()
+        and str(item.get("source_edge_id") or "").strip()
+        and str(item.get("evidence_digest") or "").strip()
+        for item in observations
+    ):
+        return True
+
+    provenance_source = edge.provenance.get("source") if isinstance(edge.provenance, dict) else None
+    relationship_evidence = {key: value for key, value in edge.evidence.items() if key != "freshness"}
+    return bool(str(provenance_source or "").strip() or relationship_evidence)
 
 
 def _freshness(edge: UnifiedEdge) -> str:
@@ -74,7 +85,12 @@ def _evidence_tier(edge: UnifiedEdge) -> str:
 def _analysis(graph: UnifiedGraph, *, hop_count: int) -> dict[str, Any]:
     status = graph.analysis_status.get("attack_path_fusion")
     if status is None:
-        return {"status": "complete", "reason_codes": [], "limits": {}, "observed": {"hop_count": hop_count}}
+        return {
+            "status": "not_recorded",
+            "reason_codes": ["analysis_not_recorded"],
+            "limits": {},
+            "observed": {"hop_count": hop_count},
+        }
     result = status.to_dict()
     observed = dict(result.get("observed") or {})
     observed["hop_count"] = hop_count
@@ -127,6 +143,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
             )
             continue
         source_ids = _source_snapshot_ids(edge, graph)
+        freshness = _freshness(edge)
         receipts.append(
             {
                 "source_node_id": source,
@@ -135,7 +152,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                 "source_snapshot_ids": source_ids,
                 "evidence_tier": _evidence_tier(edge),
                 "confidence": float(edge.confidence),
-                "freshness": _freshness(edge),
+                "freshness": freshness,
                 "runtime_observed_state": _runtime_state(edge),
                 "direction": edge.direction,
                 "traversable": bool(edge.traversable),
@@ -144,6 +161,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                     and edge.direction == "directed"
                     and source_ids
                     and _has_relationship_provenance(edge)
+                    and freshness in {"fresh", "stale_allowed"}
                     and edge.source == source
                     and edge.target == target
                 ),
@@ -152,7 +170,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
         )
 
     analysis = _analysis(graph, hop_count=max(len(path.hops) - 1, 0))
-    truncated = analysis.get("status") in {"limited", "skipped", "failed"}
+    truncated = analysis.get("status") in {"limited", "skipped", "failed", "not_recorded"}
     if truncated:
         for receipt in receipts:
             receipt["truncated"] = True
@@ -219,7 +237,11 @@ def _path_completeness(path: AttackPath) -> dict[str, Any]:
         return {"status": "unavailable", **base, "reasonCodes": ["analysis_status_unknown"]}
     if expected_hops and not receipts:
         return {"status": "unavailable", **base, "reasonCodes": ["hop_evidence_not_recorded"]}
-    if len(receipts) != expected_hops or any(not item.get("complete") or item.get("truncated") for item in receipts):
+    if len(receipts) != expected_hops or any(item.get("truncated") for item in receipts):
+        return {"status": "partial", **base, "reasonCodes": ["incomplete_hop_evidence"]}
+    if any(str(item.get("freshness") or "unknown") not in {"fresh", "stale_allowed"} for item in receipts):
+        return {"status": "partial", **base, "reasonCodes": ["unknown_evidence_freshness"]}
+    if any(not item.get("complete") for item in receipts):
         return {"status": "partial", **base, "reasonCodes": ["incomplete_hop_evidence"]}
     return {"status": "complete", **base, "reasonCodes": []}
 
@@ -233,11 +255,10 @@ def exposure_evidence_dimensions(path: AttackPath, target_node: Any | None) -> d
 
     reachability_value = str(path.reachability or "").lower()
     reachability_basis = [str(item) for item in path.reachability_basis if str(item)]
-    if (
-        reachability_value in {"confirmed", "likely", "unlikely"}
-        and reachability_basis
-        and completeness["status"] in {"complete", "partial"}
-    ):
+    reachability_supported = completeness["status"] == "complete" or (
+        completeness["status"] == "partial" and reachability_value in {"likely", "unlikely"}
+    )
+    if reachability_value in {"confirmed", "likely", "unlikely"} and reachability_basis and reachability_supported:
         reachability = {
             "status": completeness["status"],
             "verdict": reachability_value,

@@ -490,6 +490,127 @@ async def test_introspect_server_no_url():
 
 
 @pytest.mark.asyncio
+async def test_introspect_server_routes_streamable_http_to_its_client():
+    from agent_bom.mcp_introspect import ServerIntrospection, introspect_server
+
+    server = MCPServer(
+        name="streamable-server",
+        transport=TransportType.STREAMABLE_HTTP,
+        url="https://example.test/mcp",
+    )
+    expected = ServerIntrospection(server_name=server.name, success=True)
+    wrong_transport = ServerIntrospection(server_name=server.name, success=False)
+
+    with (
+        patch("agent_bom.mcp_introspect._check_mcp_sdk"),
+        patch(
+            "agent_bom.mcp_introspect._introspect_streamable_http",
+            new=AsyncMock(return_value=expected),
+        ) as streamable_http,
+        patch(
+            "agent_bom.mcp_introspect._introspect_sse",
+            new=AsyncMock(return_value=wrong_transport),
+        ) as sse,
+    ):
+        result = await introspect_server(server, timeout=1.0)
+
+    assert result is expected
+    streamable_http.assert_awaited_once()
+    sse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_introspect_streamable_http_uses_streamable_client_and_queries_capabilities():
+    from agent_bom.mcp_introspect import ServerIntrospection, _introspect_streamable_http
+
+    server = MCPServer(
+        name="streamable-server",
+        transport=TransportType.STREAMABLE_HTTP,
+        url="https://example.test/mcp",
+    )
+    result = ServerIntrospection(server_name=server.name, success=False)
+    completed = ServerIntrospection(server_name=server.name, success=True)
+
+    transport_context = MagicMock()
+    transport_context.__aenter__ = AsyncMock(return_value=("read", "write", lambda: "session-id"))
+    transport_context.__aexit__ = AsyncMock(return_value=None)
+    session = MagicMock()
+    session.initialize = AsyncMock(return_value=SimpleNamespace(protocolVersion="2025-06-18"))
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=session)
+    session_context.__aexit__ = AsyncMock(return_value=None)
+
+    with (
+        patch(
+            "mcp.client.streamable_http.streamable_http_client",
+            return_value=transport_context,
+        ) as streamable_http_client,
+        patch("mcp.ClientSession", return_value=session_context) as client_session,
+        patch(
+            "agent_bom.mcp_introspect._query_capabilities",
+            new=AsyncMock(return_value=completed),
+        ) as query_capabilities,
+    ):
+        actual = await _introspect_streamable_http(server, result, timeout=1.0)
+
+    assert actual is completed
+    assert result.protocol_version == "2025-06-18"
+    streamable_http_client.assert_called_once_with(server.url)
+    client_session.assert_called_once_with("read", "write")
+    query_capabilities.assert_awaited_once_with(session, server, result)
+
+
+@pytest.mark.asyncio
+async def test_introspect_streamable_http_preserves_timeout_error():
+    from agent_bom.mcp_introspect import ServerIntrospection, _introspect_streamable_http
+
+    server = MCPServer(
+        name="streamable-server",
+        transport=TransportType.STREAMABLE_HTTP,
+        url="https://example.test/mcp",
+    )
+    result = ServerIntrospection(server_name=server.name, success=False)
+    transport_context = MagicMock()
+    transport_context.__aenter__ = AsyncMock(side_effect=TimeoutError)
+    transport_context.__aexit__ = AsyncMock(return_value=None)
+
+    with patch(
+        "mcp.client.streamable_http.streamable_http_client",
+        return_value=transport_context,
+    ):
+        actual = await _introspect_streamable_http(server, result, timeout=0.25)
+
+    assert actual is result
+    assert actual.success is False
+    assert actual.error == "Connection timed out after 0.25s"
+
+
+@pytest.mark.asyncio
+async def test_introspect_streamable_http_sanitizes_transport_error():
+    from agent_bom.mcp_introspect import ServerIntrospection, _introspect_streamable_http
+
+    server = MCPServer(
+        name="streamable-server",
+        transport=TransportType.STREAMABLE_HTTP,
+        url="https://example.test/mcp",
+    )
+    result = ServerIntrospection(server_name=server.name, success=False)
+    transport_context = MagicMock()
+    transport_context.__aenter__ = AsyncMock(side_effect=RuntimeError("failed with token=super-secret"))
+    transport_context.__aexit__ = AsyncMock(return_value=None)
+
+    with patch(
+        "mcp.client.streamable_http.streamable_http_client",
+        return_value=transport_context,
+    ):
+        actual = await _introspect_streamable_http(server, result, timeout=1.0)
+
+    assert actual is result
+    assert actual.success is False
+    assert "super-secret" not in (actual.error or "")
+
+
+@pytest.mark.asyncio
 async def test_introspect_server_rejects_security_blocked_before_transport():
     """A discovery block is an execution boundary, not advisory metadata."""
     from agent_bom.mcp_introspect import introspect_server

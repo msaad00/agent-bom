@@ -79,7 +79,7 @@ def test_gate_blocks_high_advisories(tmp_path: Path, monkeypatch) -> None:
     assert check_npm_advisories.run(lockfile) == 1
 
 
-def test_gate_consumes_exact_npm_install_audit_without_a_second_request(tmp_path: Path, monkeypatch) -> None:
+def test_gate_consumes_installed_tree_audit_without_a_second_request(tmp_path: Path, monkeypatch) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
     install_report = tmp_path / "npm-ci.json"
@@ -88,6 +88,7 @@ def test_gate_consumes_exact_npm_install_audit_without_a_second_request(tmp_path
             {
                 "audited": 2,
                 "audit": {
+                    "dependencies": {"total": 1},
                     "vulnerabilities": {
                         "info": 0,
                         "low": 0,
@@ -110,6 +111,45 @@ def test_gate_consumes_exact_npm_install_audit_without_a_second_request(tmp_path
     assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 0
 
 
+def test_gate_accepts_complete_installed_projection_with_optional_lockfile_entries(tmp_path: Path) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    lockfile.write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {
+                    "": {"name": "app", "version": "1.0.0"},
+                    "node_modules/pkg": {"version": "2.0.0"},
+                    "node_modules/optional-pkg": {"version": "3.0.0", "optional": True},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    install_report = tmp_path / "npm-ci.json"
+    install_report.write_text(
+        json.dumps(
+            {
+                "audited": 2,
+                "audit": {
+                    "dependencies": {"total": 1},
+                    "vulnerabilities": {
+                        "info": 0,
+                        "low": 0,
+                        "moderate": 0,
+                        "high": 0,
+                        "critical": 0,
+                        "total": 0,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 0
+
+
 def test_gate_blocks_high_severity_from_npm_install_audit(tmp_path: Path, monkeypatch) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
@@ -119,6 +159,7 @@ def test_gate_blocks_high_severity_from_npm_install_audit(tmp_path: Path, monkey
             {
                 "audited": 2,
                 "audit": {
+                    "dependencies": {"total": 1},
                     "vulnerabilities": {
                         "info": 0,
                         "low": 0,
@@ -151,6 +192,7 @@ def test_gate_blocks_high_severity_from_npm_install_audit(tmp_path: Path, monkey
         {
             "audited": 1,
             "audit": {
+                "dependencies": {"total": 1},
                 "vulnerabilities": {
                     "info": 0,
                     "low": 0,
@@ -158,7 +200,7 @@ def test_gate_blocks_high_severity_from_npm_install_audit(tmp_path: Path, monkey
                     "high": 0,
                     "critical": 0,
                     "total": 0,
-                }
+                },
             },
         },
     ],

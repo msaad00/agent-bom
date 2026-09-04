@@ -118,7 +118,7 @@ def fetch_report(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]
 
 
 def npm_install_audit_counts(path: Path) -> tuple[dict[str, int], int]:
-    """Validate severity counts emitted by npm ci --json's completed audit."""
+    """Validate the installed-tree audit emitted by npm ci --json."""
     document = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(document, dict):
         raise ValueError("npm install report must be an object")
@@ -127,6 +127,12 @@ def npm_install_audit_counts(path: Path) -> tuple[dict[str, int], int]:
         raise ValueError("npm install report did not audit any packages")
     audit = document.get("audit")
     counts = audit.get("vulnerabilities") if isinstance(audit, dict) else None
+    dependencies = audit.get("dependencies") if isinstance(audit, dict) else None
+    dependency_total = dependencies.get("total") if isinstance(dependencies, dict) else None
+    if isinstance(dependency_total, bool) or not isinstance(dependency_total, int) or dependency_total < 0:
+        raise ValueError("npm install report has an invalid dependency total")
+    if audited != dependency_total + 1:
+        raise ValueError("npm install report audited count does not match its dependency total")
     required = (*sorted(VALID_SEVERITIES), "total")
     if not isinstance(counts, dict):
         raise ValueError("npm install report is missing vulnerability counts")
@@ -154,13 +160,10 @@ def run(path: Path, *, npm_install_report: Path | None = None) -> int:
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             print(f"::error::invalid npm install audit report ({type(exc).__name__})", file=sys.stderr)
             return 2
-        if audited < len(payload) + 1:
-            print("::error::npm install audit report did not cover the exact lockfile inventory", file=sys.stderr)
-            return 2
         if counts["high"] or counts["critical"]:
             print(json.dumps({"blocking_severity_counts": counts}, indent=2, sort_keys=True))
             return 1
-        print(f"npm install audit gate passed: {len(payload)} package names, no high/critical vulnerabilities")
+        print(f"npm install audit gate passed: {audited} installed packages, no high/critical vulnerabilities")
         return 0
 
     report: dict[str, list[dict[str, Any]]] | None = None
@@ -194,7 +197,7 @@ def main() -> int:
         "--npm-install-report",
         type=Path,
         default=None,
-        help="Validated JSON emitted by npm ci --json for the same exact lockfile.",
+        help="Validated JSON emitted by npm ci --json for the installed tree produced from this lockfile.",
     )
     args = parser.parse_args()
     return run(args.lockfile, npm_install_report=args.npm_install_report)

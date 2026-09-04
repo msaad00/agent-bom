@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
+
+if TYPE_CHECKING:
+    from agent_bom.evidence.semantics import CompletenessEntry
 
 
 class GraphAnalysisState(str, Enum):
@@ -31,6 +34,29 @@ class GraphAnalysisStatus:
             "limits": {str(key): int(value) for key, value in self.limits.items()},
             "observed": {str(key): int(value) for key, value in self.observed.items()},
         }
+
+    def to_completeness_entry(self, *, component: str) -> CompletenessEntry:
+        """Project this analyzer status without changing snapshot serialization."""
+
+        from agent_bom.evidence.semantics import CompletenessEntry, EvidenceStage, EvidenceStatus
+
+        status_map = {
+            GraphAnalysisState.COMPLETE: EvidenceStatus.COMPLETE,
+            GraphAnalysisState.LIMITED: EvidenceStatus.PARTIAL,
+            GraphAnalysisState.SKIPPED: EvidenceStatus.UNAVAILABLE,
+            GraphAnalysisState.FAILED: EvidenceStatus.FAILED,
+            GraphAnalysisState.NOT_RECORDED: EvidenceStatus.UNAVAILABLE,
+        }
+        reasons = self.reason_codes
+        if not reasons and self.status is not GraphAnalysisState.COMPLETE:
+            reasons = (self.status.value,)
+        return CompletenessEntry(
+            stage=EvidenceStage.ANALYSIS,
+            component=component,
+            status=status_map[self.status],
+            returned_count=max(self.observed.values(), default=None),
+            reason_codes=reasons,
+        )
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> GraphAnalysisStatus:

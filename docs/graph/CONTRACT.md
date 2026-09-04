@@ -68,6 +68,38 @@ Edges carry `weight` and `evidence` (a metadata dict). Bidirectional edges (`sha
 
 ---
 
+## Evidence truth dimensions
+
+The versioned `SecurityDimensions` contract keeps six questions independent:
+
+| Dimension | Question | Value when not assessed |
+|---|---|---|
+| Exposure | Is there an entry point, credential, or tool exposure? | `status=unavailable`; no inferred `false` |
+| Reachability | Is a directed, traversable path supported by evidence? | `verdict=null`; never copied from exposure |
+| Exploitability | Do the vulnerability and execution conditions permit exploitation? | `verdict=null`; never copied from risk |
+| Likelihood | What bounded probability model applies as of a stated time? | `probability=null`; never a risk score |
+| Impact | Which technical or business assets could be affected? | empty facts with an explicit reason code |
+| Risk | What versioned method combines named input dimensions? | `score=null`; never an unavailable zero |
+
+Each asserted fact references an `EvidenceProvenance` receipt. Its `basis`
+(`observed`, `runtime_observed`, `inferred`, or `modeled`) is separate from its
+collection `status` (`complete`, `partial`, `unavailable`, or `failed`).
+Freshness is evaluated against an explicit `evaluated_at` timestamp and validity
+window; process time is not consulted during model validation.
+
+`EvidenceCompletenessLedger` records collection, normalization, catalog lookup,
+persistence, graph-join, and analysis coverage by component. An empty ledger is
+`unavailable`, any relevant failed entry makes it `failed`, and any other
+relevant incomplete entry makes it `partial`. Counts and reason codes describe
+only what the producing component reported; they do not fabricate a clean or
+complete state.
+
+These contracts are additive foundations. Existing finding, graph, and endpoint
+payloads retain their current serialization until their producers can populate
+every field honestly and their migrations are independently tested.
+
+---
+
 ## 2. Accuracy guarantees
 
 agent-bom's graph is a static analytical artifact derived from inventory plus canonical advisory feeds. The guarantees below are the ones we will defend in an audit.

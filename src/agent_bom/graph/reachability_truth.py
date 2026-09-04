@@ -10,19 +10,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agent_bom.evidence.semantics import ReachabilityVerdict
+
 
 @dataclass(frozen=True, slots=True)
 class ReachabilityAssessment:
     """A normalized verdict plus the evidence that produced it."""
 
-    verdict: str
+    verdict: ReachabilityVerdict
     basis: tuple[str, ...]
 
     @property
     def permits_exploit_chain(self) -> bool:
         """Whether evidence is strong enough to assert an exploit chain."""
 
-        return self.verdict in {"confirmed", "likely"}
+        return self.verdict in {ReachabilityVerdict.CONFIRMED, ReachabilityVerdict.LIKELY}
 
 
 def assess_reachability(
@@ -50,7 +52,7 @@ def assess_reachability(
     if symbol == "unreachable":
         negative.append("symbol_unreachable")
     if negative:
-        return ReachabilityAssessment("unlikely", tuple(negative))
+        return ReachabilityAssessment(ReachabilityVerdict.UNLIKELY, tuple(negative))
 
     positive: list[str] = []
     if graph_reachable is True:
@@ -58,7 +60,7 @@ def assess_reachability(
     if symbol == "function_reachable":
         positive.append("function_reachable")
     if positive:
-        return ReachabilityAssessment("confirmed", tuple(positive))
+        return ReachabilityAssessment(ReachabilityVerdict.CONFIRMED, tuple(positive))
 
     likely: list[str] = []
     if symbol == "package_reachable":
@@ -68,10 +70,10 @@ def assess_reachability(
     if direct_dependency and affected_agents and not declaration_only:
         likely.append("direct_agent_dependency")
     if likely:
-        return ReachabilityAssessment("likely", tuple(likely))
+        return ReachabilityAssessment(ReachabilityVerdict.LIKELY, tuple(likely))
 
     if dependency_reachable is False:
-        return ReachabilityAssessment("unlikely", ("dependency_unreachable",))
+        return ReachabilityAssessment(ReachabilityVerdict.UNLIKELY, ("dependency_unreachable",))
 
     context: list[str] = []
     if declaration_only:
@@ -82,7 +84,7 @@ def assess_reachability(
         context.append("tool_exposure")
     if direct_dependency:
         context.append("direct_dependency")
-    return ReachabilityAssessment("unknown", tuple(context or ["insufficient_evidence"]))
+    return ReachabilityAssessment(ReachabilityVerdict.UNKNOWN, tuple(context or ["insufficient_evidence"]))
 
 
 def node_reachability(attributes: dict[str, object] | None) -> ReachabilityAssessment:
@@ -93,7 +95,7 @@ def node_reachability(attributes: dict[str, object] | None) -> ReachabilityAsses
     if explicit in {"confirmed", "likely", "unlikely"}:
         basis = attrs.get("reachability_basis")
         normalized_basis = tuple(str(item) for item in basis) if isinstance(basis, list) else ("persisted_verdict",)
-        return ReachabilityAssessment(explicit, normalized_basis)
+        return ReachabilityAssessment(ReachabilityVerdict(explicit), normalized_basis)
     graph_value = attrs.get("graph_reachable")
     dependency_value = attrs.get("dependency_reachable")
     return assess_reachability(

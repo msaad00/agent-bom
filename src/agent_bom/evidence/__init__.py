@@ -30,6 +30,25 @@ from agent_bom.evidence.policy import (
     tier_badge,
 )
 from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun, effective_scan_run
+from agent_bom.evidence.semantics import (
+    CompletenessEntry,
+    EvidenceBasis,
+    EvidenceCompletenessLedger,
+    EvidenceFreshness,
+    EvidenceProvenance,
+    EvidenceStage,
+    EvidenceStatus,
+    ExploitabilityDimension,
+    ExploitabilityVerdict,
+    ExposureAssessment,
+    FreshnessStatus,
+    ImpactDimension,
+    LikelihoodDimension,
+    ReachabilityDimension,
+    ReachabilityVerdict,
+    RiskDimension,
+    SecurityDimensions,
+)
 
 __all__ = [
     "DEFAULT_REPLAY_TTL_DAYS",
@@ -48,4 +67,21 @@ __all__ = [
     "ScanOutcome",
     "ScanRun",
     "effective_scan_run",
+    "CompletenessEntry",
+    "EvidenceBasis",
+    "EvidenceCompletenessLedger",
+    "EvidenceFreshness",
+    "EvidenceProvenance",
+    "EvidenceStage",
+    "EvidenceStatus",
+    "ExploitabilityDimension",
+    "ExploitabilityVerdict",
+    "ExposureAssessment",
+    "FreshnessStatus",
+    "ImpactDimension",
+    "LikelihoodDimension",
+    "ReachabilityDimension",
+    "ReachabilityVerdict",
+    "RiskDimension",
+    "SecurityDimensions",
 ]

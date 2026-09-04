@@ -9,9 +9,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from agent_bom.security import sanitize_text
+
+if TYPE_CHECKING:
+    from agent_bom.evidence.semantics import EvidenceCompletenessLedger, EvidenceStage
 
 
 class ScanOutcome(str, Enum):
@@ -159,6 +162,63 @@ class ScanRun:
             "scopes": [scope.to_dict() for scope in self.scopes],
         }
 
+    def to_evidence_ledger(self) -> EvidenceCompletenessLedger:
+        """Project recorded scan scopes onto the canonical completeness model.
+
+        This adapter is intentionally non-mutating and is not included in the
+        legacy report serialization contract.
+        """
+
+        from agent_bom.evidence.semantics import (
+            CompletenessEntry,
+            EvidenceCompletenessLedger,
+            EvidenceStage,
+            EvidenceStatus,
+        )
+
+        status_map = {
+            ScanScopeStatus.COMPLETE: EvidenceStatus.COMPLETE,
+            ScanScopeStatus.PARTIAL: EvidenceStatus.PARTIAL,
+            ScanScopeStatus.UNSUPPORTED: EvidenceStatus.UNAVAILABLE,
+            ScanScopeStatus.UNAVAILABLE: EvidenceStatus.UNAVAILABLE,
+            ScanScopeStatus.PERMISSION_DENIED: EvidenceStatus.UNAVAILABLE,
+            ScanScopeStatus.SKIPPED: EvidenceStatus.UNAVAILABLE,
+        }
+        entries = [
+            CompletenessEntry(
+                stage=EvidenceStage.COLLECTION,
+                component=_ledger_token(scope.name),
+                status=status_map[scope.status],
+                requested=scope.requested,
+                affects_coverage=scope.requested and scope.status is not ScanScopeStatus.SKIPPED,
+                returned_count=scope.item_count,
+                reason_codes=() if scope.status is ScanScopeStatus.COMPLETE else (scope.status.value,),
+            )
+            for scope in self.scopes
+        ]
+        entries.extend(
+            CompletenessEntry(
+                stage=_ledger_stage(issue.stage),
+                component=_ledger_token(issue.source),
+                status=EvidenceStatus.FAILED
+                if self.outcome is ScanOutcome.FAILED and issue.severity == "error"
+                else EvidenceStatus.PARTIAL,
+                affects_coverage=issue.affects_coverage,
+                reason_codes=(_ledger_token(issue.code, max_len=64),),
+            )
+            for issue in self.issues
+        )
+        if self.outcome is not ScanOutcome.COMPLETE:
+            entries.append(
+                CompletenessEntry(
+                    stage=EvidenceStage.COLLECTION,
+                    component="scan-run",
+                    status=EvidenceStatus.FAILED if self.outcome is ScanOutcome.FAILED else EvidenceStatus.PARTIAL,
+                    reason_codes=("scan_failed" if self.outcome is ScanOutcome.FAILED else "scan_partial",),
+                )
+            )
+        return EvidenceCompletenessLedger(entries=tuple(entries))
+
 
 def effective_scan_run(report: Any) -> ScanRun:
     """Return the report's canonical run with legacy coverage gaps folded in."""
@@ -185,6 +245,31 @@ def effective_scan_run(report: Any) -> ScanRun:
             )
         )
     return run
+
+
+def _ledger_token(value: str, *, max_len: int = 100) -> str:
+    """Return a bounded structural identifier, never arbitrary diagnostic text."""
+
+    token = re.sub(r"[^a-z0-9_.:-]+", "-", value.strip().lower()).strip("-._:")
+    return (token or "unknown")[:max_len]
+
+
+def _ledger_stage(value: str) -> EvidenceStage:
+    from agent_bom.evidence.semantics import EvidenceStage
+
+    normalized = value.strip().lower().replace("-", "_")
+    aliases = {
+        "enrichment": EvidenceStage.CATALOG_LOOKUP,
+        "parsing": EvidenceStage.NORMALIZATION,
+        "scanning": EvidenceStage.COLLECTION,
+        "discovery": EvidenceStage.COLLECTION,
+        "correlation": EvidenceStage.GRAPH_JOIN,
+        "storage": EvidenceStage.PERSISTENCE,
+    }
+    try:
+        return EvidenceStage(normalized)
+    except ValueError:
+        return aliases.get(normalized, EvidenceStage.COLLECTION)
 
 
 # Issue codes that mean the VULNERABILITY lane specifically could not be fully

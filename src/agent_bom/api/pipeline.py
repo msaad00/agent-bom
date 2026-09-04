@@ -1051,6 +1051,10 @@ def _run_scan_sync(job: ScanJob) -> None:
         reset_scan_warnings()
 
         req = job.request
+        if req.discover_host:
+            from agent_bom.api.scan_boundary import require_host_discovery_for_tenant
+
+            require_host_discovery_for_tenant(job.tenant_id)
         agents: list[Any] = []
         warnings_all: list[str] = []
         coverage_warning_messages: set[str] = set()

@@ -84,9 +84,19 @@ export function adhocScopeChips(
 ): ScanScopeChip[] {
   const chips: ScanScopeChip[] = [];
 
-  if (target === "repository" && form.repo_url?.trim()) {
+  if (target === "repository") {
+    const repositoryUrl = form.repo_url?.trim();
+    if (!repositoryUrl) {
+      return [
+        {
+          label: "Repository",
+          value: "Not selected — enter a public http(s) URL",
+        },
+      ];
+    }
+
     chips.push(
-      { label: "Repository", value: form.repo_url.trim() },
+      { label: "Repository", value: repositoryUrl },
       { label: "Clone", value: "Shallow read-only git clone on control plane" },
       { label: "Execution", value: "Static parse only — repo code never runs" },
       { label: "Auto-detect", value: "Agents · MCP · Skills · Terraform · IaC · CI/CD · deps · notebooks · secrets · crypto · optional Semgrep SAST" },
@@ -100,11 +110,6 @@ export function adhocScopeChips(
     return chips;
   }
 
-  chips.push({
-    label: "Baseline",
-    value: "Local MCP configs on control plane host",
-  });
-
   const projects = form.agent_projects ?? [];
   const images = form.images ?? [];
   const tfDirs = form.tf_dirs ?? [];
@@ -115,7 +120,7 @@ export function adhocScopeChips(
       value:
         projects.length > 0
           ? `${projects.length} path${projects.length === 1 ? "" : "s"}`
-          : "None queued — baseline discovery only",
+          : "None queued",
     });
   }
 

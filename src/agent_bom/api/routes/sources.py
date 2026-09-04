@@ -252,7 +252,7 @@ def _request_for_source(source: SourceRecord) -> ScanRequest:
     # Source runs enqueue directly rather than entering POST /v1/scan. Apply
     # the identical local-path jail before either Test or Run can accept the
     # source configuration.
-    return _sanitize_scan_request_paths(request)
+    return _sanitize_scan_request_paths(request, tenant_id=source.tenant_id)
 
 
 @router.post("/sources", tags=["sources"], status_code=201)

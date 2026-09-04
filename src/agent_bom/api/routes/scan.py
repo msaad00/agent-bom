@@ -277,7 +277,7 @@ _SCAN_LOCAL_PATH_SINGLE_FIELDS = ("inventory", "gha_path", "sbom", "external_sca
 _SCAN_LOCAL_PATH_LIST_FIELDS = ("tf_dirs", "agent_projects", "jupyter_dirs", "filesystem_paths")
 
 
-def _sanitize_scan_request_paths(body: ScanRequest) -> ScanRequest:
+def _sanitize_scan_request_paths(body: ScanRequest, *, tenant_id: str = "") -> ScanRequest:
     """Confine every local-path field on a scan request to the API scan jail.
 
     The primary ``POST /v1/scan`` flow historically ran only
@@ -290,6 +290,14 @@ def _sanitize_scan_request_paths(body: ScanRequest) -> ScanRequest:
     local-path scans consistently on the primary endpoint too. ``external_scan``
     and ``vex`` are included here even though they were opened unvalidated.
     """
+    if body.discover_host:
+        from agent_bom.api.scan_boundary import require_host_discovery_for_tenant
+        from agent_bom.security import SecurityError
+
+        try:
+            require_host_discovery_for_tenant(tenant_id)
+        except SecurityError as exc:
+            raise HTTPException(status_code=403, detail="Host discovery is not enabled for this tenant") from exc
     updates: dict[str, Any] = {}
     for field in _SCAN_LOCAL_PATH_SINGLE_FIELDS:
         value = getattr(body, field)
@@ -1850,7 +1858,7 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     tenant_id = _tenant_id(request)
     # Confine local-path targets to the API scan jail before any queueing or
     # idempotency work — the same gate/helper the dedicated scan endpoints use.
-    body = _sanitize_scan_request_paths(body)
+    body = _sanitize_scan_request_paths(body, tenant_id=tenant_id)
     idem_key = _request_header(request, "Idempotency-Key")
     idem_source = _request_header(request, "X-Agent-Bom-Source-Id") or "scan"
     request_hash = idempotency_request_fingerprint(body)

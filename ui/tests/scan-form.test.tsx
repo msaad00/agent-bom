@@ -143,7 +143,7 @@ describe("ScanForm", () => {
     expect(screen.getByText("What this scan collects and produces")).toBeInTheDocument();
     expect(screen.getByText("Read-only boundary")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText(/Agent and MCP discovery/)).toBeInTheDocument();
+      expect(screen.getByText(/Mounted project discovery/)).toBeInTheDocument();
     });
     expect(screen.getByRole("link", { name: "Scan jobs" })).toHaveAttribute("href", "/jobs");
 
@@ -166,18 +166,18 @@ describe("ScanForm", () => {
   it("pre-fills the enterprise introspection preset from the URL", async () => {
     render(<ScanForm initialPreset="enterprise" />);
 
-    // Enterprise preset lands on the ad-hoc workstation introspection scan…
+    // Enterprise preset lands on the ad-hoc mounted-project configuration…
     await waitFor(() => {
       expect(screen.getByRole("tab", { name: "Ad-hoc" })).toHaveAttribute(
         "aria-selected",
         "true",
       );
     });
-    expect(screen.getByRole("tab", { name: /Workstation/i })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: /Mounted project/i })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    // …with enrichment turned on, mirroring `--preset enterprise`.
+    // …with enrichment on, while the operator still chooses a project scope.
     expect(
       screen.getByRole("checkbox", { name: /Enrich with CVSS/i }),
     ).toBeChecked();
@@ -193,23 +193,43 @@ describe("ScanForm", () => {
     ).not.toBeChecked();
   });
 
-  it("shows ad-hoc scope chips and starts a direct scan job", async () => {
+  it("does not claim ambient host discovery and blocks an empty ad-hoc request", async () => {
+    const user = userEvent.setup();
+    const startScan = vi.spyOn(api, "startScan");
+
+    render(<ScanForm />);
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    expect(screen.getByText("Scope now")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /control plane host/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Local MCP configs on control plane host/i)).not.toBeInTheDocument();
+    expect(screen.getByText("AGENT_BOM_API_SCAN_ROOT")).toBeInTheDocument();
+    expect(screen.getByText("AGENT_BOM_API_LOCAL_PATH_SCANS=enabled")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("terraform/prod")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("repos/app")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Start scan/i }));
+    expect(startScan).not.toHaveBeenCalled();
+    expect(screen.getByText(/Choose a scan target/i)).toBeInTheDocument();
+  });
+
+  it("runs an explicitly selected relative project path without ambient host discovery", async () => {
     const user = userEvent.setup();
     const startScan = vi.spyOn(api, "startScan").mockResolvedValue({
-      job_id: "job-123",
+      job_id: "job-project-1",
       status: "pending",
       created_at: "2026-01-01T00:00:00Z",
-      request: {},
+      request: { agent_projects: ["projects/agent"] },
       progress: [],
     });
 
     render(<ScanForm />);
     await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
-    expect(screen.getByText("Scope now")).toBeInTheDocument();
-    expect(screen.getByText(/Local MCP configs on control plane host/i)).toBeInTheDocument();
-
+    await user.type(screen.getByPlaceholderText("projects/agent"), "projects/agent");
+    await user.click(screen.getAllByRole("button", { name: "Add" })[0]!);
     await user.click(screen.getByRole("button", { name: /Start scan/i }));
-    expect(startScan).toHaveBeenCalled();
+
+    expect(startScan).toHaveBeenCalledWith(expect.objectContaining({ agent_projects: ["projects/agent"] }));
+    expect(startScan.mock.calls[0]?.[0]).not.toHaveProperty("discover_host");
   });
 
   it("runs a brokered cloud scan for the selected connection", async () => {
@@ -235,14 +255,22 @@ describe("ScanForm", () => {
     authState.capabilities = ["inventory.read"];
     authState.role = "viewer";
     const scanCloudConnection = vi.spyOn(api, "scanCloudConnection");
+    const startScan = vi.spyOn(api, "startScan");
+    const user = userEvent.setup();
 
     render(<ScanForm initialConnectionId="conn-aws-1" />);
 
     const runButton = await screen.findByRole("button", { name: /Run cloud scan/i });
     expect(runButton).toBeDisabled();
     expect(screen.getByText(/Scans require the Contributor role or higher/i)).toBeInTheDocument();
-    await userEvent.click(runButton);
+    await user.click(runButton);
     expect(scanCloudConnection).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    const startButton = screen.getByRole("button", { name: /Start scan/i });
+    expect(startButton).toBeDisabled();
+    await user.click(startButton);
+    expect(startScan).not.toHaveBeenCalled();
   });
 
   it("intersects role capabilities with the managed-trial route envelope", async () => {
@@ -327,7 +355,11 @@ describe("ScanForm", () => {
 
     render(<ScanForm />);
     await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    await user.type(screen.getByPlaceholderText("projects/agent"), "projects/agent");
+    await user.click(screen.getAllByRole("button", { name: "Add" })[0]!);
     await user.click(screen.getByRole("tab", { name: /Public repo/i }));
+    expect(screen.getByText("Not selected — enter a public http(s) URL")).toBeInTheDocument();
+    expect(screen.queryByText("Agent projects")).not.toBeInTheDocument();
     await user.type(
       screen.getByPlaceholderText("https://github.com/org/repo"),
       "https://github.com/org/repo",

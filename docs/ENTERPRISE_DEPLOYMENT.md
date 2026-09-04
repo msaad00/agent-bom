@@ -519,6 +519,17 @@ tenant workspace mount; paths are still relative-only, resolved through
 symlinks, confined to that root, and rejected when owned outside the API
 process unless `AGENT_BOM_API_SCAN_ALLOW_FOREIGN_OWNER=1` is explicitly set.
 
+Ambient host MCP discovery is a separate, broader boundary: it reads the API
+process's own MCP configuration, not the browser's workstation and not only
+the configured scan-root mount. The request flag `discover_host=true` grants
+no permission by itself. On an exclusively assigned single-tenant host, an
+operator must enable local scans and set
+`AGENT_BOM_API_HOST_DISCOVERY_TENANT` to that tenant's exact ID. Other tenants
+are denied. Leave this variable unset on shared control planes. The gate is
+checked both before accepting API/source runs and again by the worker;
+revoking permission also blocks queued jobs before discovery. Rejections are
+fail-closed and do not include filesystem paths or other tenant identifiers.
+
 For secret lifecycle posture, production deployments should declare the external
 secret authority and rotation metadata without exposing secret values:
 

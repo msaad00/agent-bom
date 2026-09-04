@@ -986,19 +986,12 @@
       "description": "One exact provider identifier retained for deterministic correlation.",
       "properties": {
         "account": {
-          "anyOf": [
-            {
-              "maxLength": 2048,
-              "minLength": 1,
-              "pattern": "^[^\\s]+$",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Account"
+          "description": "Required provider scope: account, organization, tenant, subscription, or project identifier.",
+          "maxLength": 2048,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Account",
+          "type": "string"
         },
         "id_type": {
           "maxLength": 100,
@@ -1029,7 +1022,8 @@
         "source",
         "provider",
         "id_type",
-        "value"
+        "value",
+        "account"
       ],
       "title": "ProviderNativeId",
       "type": "object"

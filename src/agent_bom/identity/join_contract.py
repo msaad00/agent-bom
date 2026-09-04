@@ -121,7 +121,7 @@ _PROVIDER_NATIVE_JSON_SCHEMA_EXTRA: dict[str, Any] = {
 
 
 def _native_key(value: ProviderNativeId) -> tuple[IdentitySourceKind, str, str, str, str]:
-    return (value.source, value.provider, value.account or "", value.id_type, value.value)
+    return (value.source, value.provider, value.account, value.id_type, value.value)
 
 
 class ProviderNativeId(_StrictIdentityModel):
@@ -133,7 +133,9 @@ class ProviderNativeId(_StrictIdentityModel):
     provider: ComponentName
     id_type: ComponentName
     value: NativeIdentifier
-    account: NativeIdentifier | None = None
+    account: NativeIdentifier = Field(
+        description="Required provider scope: account, organization, tenant, subscription, or project identifier."
+    )
 
     @model_validator(mode="after")
     def validate_provider_family(self) -> Self:
@@ -143,6 +145,17 @@ class ProviderNativeId(_StrictIdentityModel):
         if self.source is IdentitySourceKind.SAAS and self.provider in _RESERVED_PROVIDERS:
             raise ValueError("provider must match its source family")
         return self
+
+
+def canonical_provider_native_assertion_id(native_id: ProviderNativeId) -> str:
+    """Return a stable receipt anchor for one fully scoped provider-native ID."""
+
+    material = {
+        "schema_version": "provider-native-assertion.v1",
+        **native_id.model_dump(mode="json"),
+    }
+    encoded = json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return "native:sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 _CATALOG_ROW_JSON_SCHEMA_EXTRA: dict[str, Any] = {
@@ -201,6 +214,21 @@ class CanonicalResourceReference(_ObservedCatalogReference):
 
     resource_id: CanonicalIdentifier
     resource_type: ComponentName
+
+
+def _validate_native_owners(
+    rows: list[tuple[str, tuple[ProviderNativeId, ...]]],
+    *,
+    kind: Literal["identity", "resource"],
+) -> None:
+    native_owner: dict[tuple[IdentitySourceKind, str, str, str, str], str] = {}
+    for canonical_id, native_ids in rows:
+        for native_id in native_ids:
+            key = _native_key(native_id)
+            owner = native_owner.setdefault(key, canonical_id)
+            if owner != canonical_id:
+                plural = "entities" if kind == "identity" else "resources"
+                raise ValueError(f"one provider-native {kind} cannot resolve to two canonical {plural}")
 
 
 _RELATIONSHIP_JSON_SCHEMA_EXTRA: dict[str, Any] = {
@@ -417,21 +445,14 @@ class IdentityResourceJoinContract(_StrictIdentityModel):
         if len(relationship_ids) != len(self.relationships):
             raise ValueError("relationship IDs must be unique")
 
-        native_owner: dict[tuple[IdentitySourceKind, str, str, str, str], str] = {}
-        for identity in self.identities:
-            for native_id in identity.native_ids:
-                key = _native_key(native_id)
-                owner = native_owner.setdefault(key, identity.entity_id)
-                if owner != identity.entity_id:
-                    raise ValueError("one provider-native identity cannot resolve to two canonical entities")
-
-        resource_native_owner: dict[tuple[IdentitySourceKind, str, str, str, str], str] = {}
-        for resource in self.resources:
-            for native_id in resource.native_ids:
-                key = _native_key(native_id)
-                owner = resource_native_owner.setdefault(key, resource.resource_id)
-                if owner != resource.resource_id:
-                    raise ValueError("one provider-native resource cannot resolve to two canonical resources")
+        _validate_native_owners(
+            [(identity.entity_id, identity.native_ids) for identity in self.identities],
+            kind="identity",
+        )
+        _validate_native_owners(
+            [(resource.resource_id, resource.native_ids) for resource in self.resources],
+            kind="resource",
+        )
 
         evidence_by_id = {item.evidence_id: item for item in self.evidence}
         if len(evidence_by_id) != len(self.evidence):
@@ -456,6 +477,12 @@ class IdentityResourceJoinContract(_StrictIdentityModel):
                 for item in row_evidence
             ):
                 raise ValueError("complete catalog rows require complete, authoritative evidence")
+            if any(not self._is_fresh_for_decision(item) for item in row_evidence):
+                raise ValueError("complete catalog rows require fresh evidence under the contract policy")
+            evidence_source_ids = set(chain.from_iterable(item.source_ids for item in row_evidence))
+            native_assertion_ids = {canonical_provider_native_assertion_id(native_id) for native_id in row.native_ids}
+            if not native_assertion_ids.issubset(evidence_source_ids):
+                raise ValueError("complete catalog row native assertions must match evidence source_ids")
 
         endpoint_types: dict[str, CanonicalIdentityType | str] = {
             **{item.entity_id: item.entity_type for item in self.identities},
@@ -528,6 +555,8 @@ class IdentityResourceJoinContract(_StrictIdentityModel):
     def _is_fresh_for_decision(self, evidence: EvidenceProvenance) -> bool:
         freshness = evidence.freshness
         if freshness is None or freshness.observed_at is None:
+            return False
+        if freshness.observed_at > self.evaluated_at:
             return False
         expected = EvidenceFreshness.evaluate(
             observed_at=freshness.observed_at,

@@ -24,6 +24,7 @@ from agent_bom.identity.join_contract import (
     IdentitySourceKind,
     ProviderNativeId,
     canonical_identity_relationship_id,
+    canonical_provider_native_assertion_id,
 )
 from agent_bom.identity.okta_nhi import (
     DiscoveredNonHumanIdentity,
@@ -46,6 +47,7 @@ __all__ = [
     "IdentitySourceKind",
     "ProviderNativeId",
     "canonical_identity_relationship_id",
+    "canonical_provider_native_assertion_id",
     "discover_entra_non_human_identities",
     "discover_okta_non_human_identities",
 ]

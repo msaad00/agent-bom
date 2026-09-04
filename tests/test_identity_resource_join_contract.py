@@ -32,6 +32,7 @@ from agent_bom.identity.join_contract import (
     IdentitySourceKind,
     ProviderNativeId,
     canonical_identity_relationship_id,
+    canonical_provider_native_assertion_id,
 )
 
 _EVALUATED_AT = datetime(2026, 9, 4, tzinfo=timezone.utc)
@@ -44,7 +45,7 @@ def _evidence(
     *,
     basis: EvidenceBasis = EvidenceBasis.OBSERVED,
     status: EvidenceStatus = EvidenceStatus.COMPLETE,
-    source_id: str | None = None,
+    source_ids: tuple[str, ...] | None = None,
 ) -> EvidenceProvenance:
     freshness = EvidenceFreshness.evaluate(
         observed_at=_EVALUATED_AT - timedelta(hours=1),
@@ -56,14 +57,14 @@ def _evidence(
         basis=basis,
         status=status,
         source=source,
-        source_ids=((source_id or evidence_id),),
+        source_ids=source_ids or (evidence_id,),
         freshness=freshness,
         reason_codes=() if status is EvidenceStatus.COMPLETE else ("source_incomplete",),
     )
 
 
-def _native(source: IdentitySourceKind, provider: str, id_type: str, value: str) -> ProviderNativeId:
-    return ProviderNativeId(source=source, provider=provider, id_type=id_type, value=value)
+def _native(source: IdentitySourceKind, provider: str, account: str, id_type: str, value: str) -> ProviderNativeId:
+    return ProviderNativeId(source=source, provider=provider, account=account, id_type=id_type, value=value)
 
 
 def _identity(
@@ -108,34 +109,28 @@ def _payload() -> dict:
     return _contract().model_dump(mode="json", exclude_computed_fields=True)
 
 
+def _bind_native_assertion(contract: dict, *, evidence_id: str, native_id: dict) -> None:
+    evidence = next(item for item in contract["evidence"] if item["evidence_id"] == evidence_id)
+    evidence["source_ids"].append(canonical_provider_native_assertion_id(ProviderNativeId.model_validate(native_id)))
+
+
 def _contract() -> IdentityResourceJoinContract:
     membership_assertion = "okta-membership:00uABCDef123:00gEng-Prod"
     workload_assertion = "azure-workload-binding:payments-api"
     trust_assertion = "aws-trust-policy:DeployRole:gcp-scanner"
     owner_assertion = "asset-owner:github-bot:artifact-bucket"
-    evidence = (
-        _evidence("evidence:okta:1", "okta-scim"),
-        _evidence("evidence:aws:1", "aws-iam"),
-        _evidence("evidence:azure:1", "azure-graph"),
-        _evidence("evidence:gcp:1", "gcp-iam"),
-        _evidence("evidence:saas:1", "github-saas"),
-        _evidence("evidence:okta-membership:1", "okta-membership", source_id=membership_assertion),
-        _evidence("evidence:azure-binding:1", "azure-workload-binding", source_id=workload_assertion),
-        _evidence("evidence:aws-trust:1", "aws-trust-policy", source_id=trust_assertion),
-        _evidence("evidence:asset-owner:1", "asset-owner-catalog", source_id=owner_assertion),
-    )
     identities = (
         _identity(
             "identity:person:alice",
             CanonicalIdentityType.PERSON,
-            _native(IdentitySourceKind.OKTA, "okta", "user_id", "00uABCDef123"),
+            _native(IdentitySourceKind.OKTA, "okta", "okta-org-acme", "user_id", "00uABCDef123"),
             "evidence:okta:1",
             display_name="Alice Example",
         ),
         _identity(
             "identity:group:engineering",
             CanonicalIdentityType.GROUP,
-            _native(IdentitySourceKind.OKTA, "okta", "group_id", "00gEng-Prod"),
+            _native(IdentitySourceKind.OKTA, "okta", "okta-org-acme", "group_id", "00gEng-Prod"),
             "evidence:okta:1",
         ),
         _identity(
@@ -144,6 +139,7 @@ def _contract() -> IdentityResourceJoinContract:
             _native(
                 IdentitySourceKind.AWS,
                 "aws",
+                "123456789012",
                 "arn",
                 "arn:aws:iam::123456789012:role/DeployRole",
             ),
@@ -155,6 +151,7 @@ def _contract() -> IdentityResourceJoinContract:
             _native(
                 IdentitySourceKind.AZURE,
                 "azure",
+                "subscription-sub-1",
                 "principal_id",
                 "7D41A138-3028-4B6A-9D21-A61C4E978173",
             ),
@@ -166,6 +163,7 @@ def _contract() -> IdentityResourceJoinContract:
             _native(
                 IdentitySourceKind.GCP,
                 "gcp",
+                "project-1",
                 "email",
                 "Scanner@project-1.iam.gserviceaccount.com",
             ),
@@ -174,7 +172,7 @@ def _contract() -> IdentityResourceJoinContract:
         _identity(
             "identity:service-account:github-bot",
             CanonicalIdentityType.SERVICE_ACCOUNT,
-            _native(IdentitySourceKind.SAAS, "github", "app_id", "Iv1.AbcDEF-123"),
+            _native(IdentitySourceKind.SAAS, "github", "github-org-acme", "app_id", "Iv1.AbcDEF-123"),
             "evidence:saas:1",
         ),
     )
@@ -187,6 +185,7 @@ def _contract() -> IdentityResourceJoinContract:
                 _native(
                     IdentitySourceKind.AZURE,
                     "azure",
+                    "subscription-sub-1",
                     "resource_id",
                     "/subscriptions/Sub-1/resourceGroups/Prod/providers/Microsoft.App/containerApps/payments-api",
                 ),
@@ -201,12 +200,50 @@ def _contract() -> IdentityResourceJoinContract:
                 _native(
                     IdentitySourceKind.AWS,
                     "aws",
+                    "123456789012",
                     "arn",
                     "arn:aws:s3:::Artifact-Bucket-Prod",
                 ),
             ),
             evidence_refs=("evidence:aws:1",),
         ),
+    )
+    evidence = (
+        _evidence(
+            "evidence:okta:1",
+            "okta-scim",
+            source_ids=tuple(canonical_provider_native_assertion_id(item.native_ids[0]) for item in identities[:2]),
+        ),
+        _evidence(
+            "evidence:aws:1",
+            "aws-iam",
+            source_ids=(
+                canonical_provider_native_assertion_id(identities[2].native_ids[0]),
+                canonical_provider_native_assertion_id(resources[1].native_ids[0]),
+            ),
+        ),
+        _evidence(
+            "evidence:azure:1",
+            "azure-graph",
+            source_ids=(
+                canonical_provider_native_assertion_id(identities[3].native_ids[0]),
+                canonical_provider_native_assertion_id(resources[0].native_ids[0]),
+            ),
+        ),
+        _evidence(
+            "evidence:gcp:1",
+            "gcp-iam",
+            source_ids=(canonical_provider_native_assertion_id(identities[4].native_ids[0]),),
+        ),
+        _evidence(
+            "evidence:saas:1",
+            "github-saas",
+            source_ids=(canonical_provider_native_assertion_id(identities[5].native_ids[0]),),
+        ),
+        _evidence("evidence:okta-membership:1", "okta-membership", source_ids=(membership_assertion,)),
+        _evidence("evidence:azure-binding:1", "azure-workload-binding", source_ids=(workload_assertion,)),
+        _evidence("evidence:aws-trust:1", "aws-trust-policy", source_ids=(trust_assertion,)),
+        _evidence("evidence:asset-owner:1", "asset-owner-catalog", source_ids=(owner_assertion,)),
     )
     relationship_specs = (
         dict(
@@ -407,6 +444,8 @@ def test_account_is_part_of_provider_native_identity_scope() -> None:
     account_b["entity_id"] = "identity:person:alice-in-org-b"
     account_b["native_ids"][0]["account"] = "okta-org-b"
     contract["identities"].extend((account_a, account_b))
+    _bind_native_assertion(contract, evidence_id="evidence:okta:1", native_id=account_a["native_ids"][0])
+    _bind_native_assertion(contract, evidence_id="evidence:okta:1", native_id=account_b["native_ids"][0])
 
     validated = IdentityResourceJoinContract.model_validate(contract)
 
@@ -521,6 +560,52 @@ def test_provider_must_match_its_source_family() -> None:
         IdentityResourceJoinContract.model_validate(contract)
 
 
+def test_complete_provider_native_id_requires_explicit_account_scope() -> None:
+    contract = _payload()
+    contract["identities"][0]["native_ids"][0].pop("account", None)
+
+    with pytest.raises(ValidationError, match="account"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_native_assertion_id_is_deterministic_and_scope_sensitive() -> None:
+    native_id = _contract().identities[0].native_ids[0]
+    same_native_id = ProviderNativeId.model_validate(native_id.model_dump(mode="json"))
+    other_scope = native_id.model_copy(update={"account": "okta-org-other"})
+
+    assert canonical_provider_native_assertion_id(native_id) == canonical_provider_native_assertion_id(same_native_id)
+    assert canonical_provider_native_assertion_id(native_id) != canonical_provider_native_assertion_id(other_scope)
+
+
+def test_complete_catalog_row_rejects_stale_evidence() -> None:
+    contract = _payload()
+    inventory = next(item for item in contract["evidence"] if item["evidence_id"] == "evidence:okta:1")
+    inventory["freshness"] = {
+        "status": "stale",
+        "observed_at": (_EVALUATED_AT - timedelta(days=2)).isoformat(),
+        "valid_until": (_EVALUATED_AT - timedelta(days=1)).isoformat(),
+        "evaluated_at": _EVALUATED_AT.isoformat(),
+        "max_age_seconds": _FRESHNESS_MAX_AGE_SECONDS,
+    }
+
+    with pytest.raises(ValidationError, match="catalog.*fresh"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
+def test_catalog_evidence_must_bind_to_exact_provider_native_id() -> None:
+    contract = _payload()
+    contract["identities"][0]["native_ids"][0]["value"] = "00uFabricated"
+    contract["relationships"][0]["source_native_id"]["value"] = "00uFabricated"
+    relationship = IdentityRelationship.model_validate(contract["relationships"][0])
+    contract["relationships"][0]["relationship_id"] = canonical_identity_relationship_id(
+        tenant_id=contract["tenant_id"],
+        relationship=relationship,
+    )
+
+    with pytest.raises(ValidationError, match="native.*evidence source_ids"):
+        IdentityResourceJoinContract.model_validate(contract)
+
+
 def test_provider_native_resource_scope_includes_account() -> None:
     contract = _payload()
     account_a = deepcopy(contract["resources"][0])
@@ -530,6 +615,8 @@ def test_provider_native_resource_scope_includes_account() -> None:
     account_b["resource_id"] = "resource:azure:payments-api-org-b"
     account_b["native_ids"][0]["account"] = "subscription-b"
     contract["resources"].extend((account_a, account_b))
+    _bind_native_assertion(contract, evidence_id="evidence:azure:1", native_id=account_a["native_ids"][0])
+    _bind_native_assertion(contract, evidence_id="evidence:azure:1", native_id=account_b["native_ids"][0])
 
     validated = IdentityResourceJoinContract.model_validate(contract)
 
@@ -565,6 +652,17 @@ def test_checked_in_json_schema_enforces_partial_reason_codes() -> None:
 
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(contract, schema)
+
+
+def test_checked_in_json_schema_requires_provider_scope() -> None:
+    schema = json.loads((Path("docs/schemas/v1/IdentityResourceJoinContract.json")).read_text())
+    contract = _contract().model_dump(mode="json")
+    del contract["identities"][0]["native_ids"][0]["account"]
+
+    with pytest.raises(jsonschema.ValidationError) as exc_info:
+        jsonschema.validate(contract, schema)
+
+    assert "account" in str(exc_info.value)
 
 
 @pytest.mark.parametrize(

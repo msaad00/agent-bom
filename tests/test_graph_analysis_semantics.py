@@ -14,9 +14,7 @@ def test_graph_analysis_state_adapter_preserves_incomplete_truth() -> None:
     }
 
     for state, status in expected.items():
-        entry = GraphAnalysisStatus(status=state, reason_codes=(state.value,)).to_completeness_entry(
-            component="attack-path-fusion"
-        )
+        entry = GraphAnalysisStatus(status=state, reason_codes=(state.value,)).to_completeness_entry(component="attack-path-fusion")
         assert entry.stage is EvidenceStage.ANALYSIS
         assert entry.status is status
         assert entry.reason_codes == (state.value,)

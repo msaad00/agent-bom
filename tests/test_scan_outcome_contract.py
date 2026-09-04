@@ -167,8 +167,6 @@ def test_scan_run_outcome_cannot_be_hidden_by_a_complete_scope() -> None:
 
 
 def test_only_unrequested_scopes_do_not_create_complete_evidence() -> None:
-    ledger = ScanRun(
-        scopes=[ScanScope(name="optional-intel", status=ScanScopeStatus.SKIPPED, requested=False)]
-    ).to_evidence_ledger()
+    ledger = ScanRun(scopes=[ScanScope(name="optional-intel", status=ScanScopeStatus.SKIPPED, requested=False)]).to_evidence_ledger()
 
     assert ledger.overall_status is EvidenceStatus.UNAVAILABLE

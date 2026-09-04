@@ -119,12 +119,7 @@ class EvidenceFreshness(_StrictEvidenceModel):
     ) -> EvidenceFreshness:
         """Evaluate freshness without consulting the process clock."""
 
-        if (
-            observed_at.tzinfo is None
-            or observed_at.utcoffset() is None
-            or evaluated_at.tzinfo is None
-            or evaluated_at.utcoffset() is None
-        ):
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None or evaluated_at.tzinfo is None or evaluated_at.utcoffset() is None:
             return cls(
                 status=FreshnessStatus.UNKNOWN,
                 observed_at=observed_at,
@@ -248,10 +243,7 @@ class ExposureAssessment(_Dimension):
     @model_validator(mode="after")
     def validate_dimension(self) -> Self:
         self._validate_common(
-            has_facts=self.internet_exposed is not None
-            or bool(self.entry_point_ids)
-            or bool(self.credential_ids)
-            or bool(self.tool_ids)
+            has_facts=self.internet_exposed is not None or bool(self.entry_point_ids) or bool(self.credential_ids) or bool(self.tool_ids)
         )
         return self
 

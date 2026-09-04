@@ -170,7 +170,7 @@ def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
 
     assert check_npm_advisories.fetch_report({"pkg": ["1.0.0"]}) == {}
     assert seen_limits == [check_npm_advisories.MAX_COMPRESSED_RESPONSE_BYTES + 1]
-    assert seen_timeouts == [120]
+    assert seen_timeouts == [30]
     assert json.loads(seen_requests[0].data) == {"pkg": ["1.0.0"]}
     assert seen_requests[0].get_header("Content-encoding") is None
     assert seen_requests[0].get_header("Content-type") == "application/json"
@@ -188,14 +188,13 @@ def test_fetch_report_bounds_the_exact_request_body(monkeypatch) -> None:
         check_npm_advisories.fetch_report({"package-name": ["1.0.0"]})
 
 
-def test_fetch_report_sends_large_lockfiles_once_and_rejects_unrequested_packages(
-    monkeypatch,
-) -> None:
+def test_fetch_report_batches_large_lockfiles_across_four_workers(monkeypatch) -> None:
+    seen_workers: list[int] = []
     request_payloads: list[dict[str, list[str]]] = []
 
-    class Response:
-        def __init__(self, body: bytes):
-            self.body = body
+    class Executor:
+        def __init__(self, max_workers: int):
+            seen_workers.append(max_workers)
 
         def __enter__(self):
             return self
@@ -203,31 +202,43 @@ def test_fetch_report_sends_large_lockfiles_once_and_rejects_unrequested_package
         def __exit__(self, *_args):
             return None
 
-        def read(self, _limit: int) -> bytes:
-            return self.body
+        def map(self, function, payloads):
+            return [function(payload) for payload in payloads]
 
-    def open_response(request, timeout: int):
-        assert timeout == check_npm_advisories.REQUEST_TIMEOUT_SECONDS
-        request_payload = json.loads(request.data)
-        request_payloads.append(request_payload)
-        first_name = next(iter(request_payload))
-        return Response(json.dumps({first_name: []}).encode())
+    def fetch_once(payload):
+        request_payloads.append(payload)
+        return {name: [] for name in payload}
 
     monkeypatch.setattr(
-        check_npm_advisories.urllib.request,
-        "urlopen",
-        open_response,
+        check_npm_advisories,
+        "ThreadPoolExecutor",
+        Executor,
+        raising=False,
     )
+    monkeypatch.setattr(check_npm_advisories, "_fetch_once", fetch_once)
     payload = {f"pkg-{index:03d}": ["1.0.0"] for index in range(205)}
 
     report = check_npm_advisories.fetch_report(payload)
 
-    assert request_payloads == [payload]
-    assert report == {"pkg-000": []}
+    assert seen_workers == [4]
+    assert [len(request_payload) for request_payload in request_payloads] == [50, 50, 50, 50, 5]
+    assert report == {name: [] for name in payload}
+
+
+def test_fetch_report_rejects_unrequested_packages(monkeypatch) -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return b'{"not-requested":[]}'
 
     def inject_unrequested(_request, timeout: int):
         assert timeout == check_npm_advisories.REQUEST_TIMEOUT_SECONDS
-        return Response(b'{"not-requested":[]}')
+        return Response()
 
     monkeypatch.setattr(
         check_npm_advisories.urllib.request,
@@ -239,11 +250,12 @@ def test_fetch_report_sends_large_lockfiles_once_and_rejects_unrequested_package
 
 
 def test_fetch_report_retries_the_exact_payload(monkeypatch) -> None:
-    seen_payloads: list[dict[str, list[str]]] = []
+    attempts_by_batch: dict[str, int] = {}
 
     def fetch_once(payload):
-        seen_payloads.append(payload)
-        if len(seen_payloads) == 1:
+        first_package = next(iter(payload))
+        attempts_by_batch[first_package] = attempts_by_batch.get(first_package, 0) + 1
+        if first_package == "pkg-050" and attempts_by_batch[first_package] == 1:
             raise TimeoutError("transient npm timeout")
         return {}
 
@@ -252,7 +264,7 @@ def test_fetch_report_retries_the_exact_payload(monkeypatch) -> None:
     payload = {f"pkg-{index:03d}": ["1.0.0"] for index in range(101)}
 
     assert check_npm_advisories.fetch_report(payload) == {}
-    assert seen_payloads == [payload, payload]
+    assert attempts_by_batch == {"pkg-000": 1, "pkg-050": 2, "pkg-100": 1}
 
 
 def test_fetch_report_exhausts_bounded_retries(monkeypatch) -> None:

@@ -622,13 +622,17 @@ export interface GraphAttackCampaign {
   partition?: string;
   owner?: string;
   business_impact?: string;
-  exploitability?: number;
-  expected_risk_reduction?: number;
+  exploitability?: number | null;
+  expected_risk_reduction?: number | null;
   path_count: number;
   top_path_summary?: string;
   cross_partition?: boolean;
   evidence?: string[];
   member_paths?: string[];
+  priority_score?: number | null;
+  priority_method?: string | null;
+  exploitability_evidence?: { status: string; basis?: string; evidence_refs: string[]; reason_codes?: string[] };
+  expected_risk_reduction_evidence?: { status: string; basis?: string; evidence_refs: string[]; reason_codes?: string[] };
 }
 
 export interface FixFirstGraphViewResponse {

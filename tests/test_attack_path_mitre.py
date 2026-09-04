@@ -10,6 +10,8 @@ claim of detected attacker activity.
 
 from __future__ import annotations
 
+import pytest
+
 from agent_bom.atlas import ATLAS_TECHNIQUES
 from agent_bom.db import graph_store as gs
 from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion, compute_fused_attack_paths
@@ -67,6 +69,8 @@ def _kill_chain_graph(tenant_id: str = "t", scan_id: str = "s") -> UnifiedGraph:
             evidence={"access": "assume_chain"},
         )
     )
+    for edge in g.edges:
+        edge.provenance = {"basis": "observed", "collector": "fixture"}
     return g
 
 
@@ -280,3 +284,45 @@ def test_technique_mapping_to_dict_from_dict_symmetry():
         confidence=0.7,
     )
     assert TechniqueMapping.from_dict(m.to_dict()) == m
+
+
+@pytest.mark.parametrize("kind", ["absent", "reverse", "relationship", "nontraversable", "bidirectional"])
+def test_mitre_requires_actual_directed_traversable_hop(kind):
+    graph = UnifiedGraph(scan_id="proof", tenant_id="tenant")
+    graph.add_node(UnifiedNode(id="role", entity_type=EntityType.ROLE, label="role"))
+    graph.add_node(UnifiedNode(id="data", entity_type=EntityType.DATA_STORE, label="data"))
+    path = AttackPath(source="role", target="data", hops=["role", "data"], edges=["has_permission"])
+    if kind != "absent":
+        graph.add_edge(
+            UnifiedEdge(
+                source="data" if kind == "reverse" else "role",
+                target="role" if kind == "reverse" else "data",
+                relationship=RelationshipType.CONTAINS if kind == "relationship" else RelationshipType.HAS_PERMISSION,
+                traversable=kind != "nontraversable",
+                direction="bidirectional" if kind == "bidirectional" else "directed",
+            )
+        )
+    assert derive_attack_path_techniques(path, graph) == []
+
+
+@pytest.mark.parametrize("basis", ["observed", "inferred", "modeled"])
+def test_mitre_preserves_explicit_relationship_basis(basis):
+    graph = _kill_chain_graph()
+    for edge in graph.edges:
+        edge.provenance = {"basis": basis}
+    path = AttackPath(source="role:admin", target="data_store:vault", hops=["role:admin", "data_store:vault"], edges=["has_permission"])
+    mapping = derive_attack_path_techniques(path, graph)[0]
+    assert mapping.evidence_basis == basis
+    assert mapping.provenance.startswith(basis + " ")
+    assert TechniqueMapping.from_dict(mapping.to_dict()).evidence_basis == basis
+
+
+def test_mitre_missing_basis_does_not_claim_observed_confidence():
+    graph = _kill_chain_graph()
+    for edge in graph.edges:
+        edge.provenance = {}
+    path = AttackPath(source="role:admin", target="data_store:vault", hops=["role:admin", "data_store:vault"], edges=["has_permission"])
+    mapping = derive_attack_path_techniques(path, graph)[0]
+    assert mapping.evidence_basis is None
+    assert mapping.confidence is None
+    assert not mapping.provenance.startswith("observed ")

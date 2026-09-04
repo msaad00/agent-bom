@@ -28,14 +28,15 @@ def test_dispatch_does_not_expose_an_unsupported_glama_trigger() -> None:
     assert "glama_repair" not in inputs
 
 
-def test_registry_reconciliation_retries_automatically_without_republishing_clawhub() -> None:
+def test_registry_reconciliation_retries_every_idempotent_registry_automatically() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     triggers = _workflow()[True]
 
     assert triggers["schedule"] == [{"cron": "17 */6 * * *"}]
-    assert text.count("github.event_name == 'schedule'") == 3
+    assert text.count("github.event_name == 'schedule'") == 4
     clawhub = text.split("  clawhub:\n", 1)[1]
-    assert "github.event_name == 'schedule'" not in clawhub
+    assert "github.event_name == 'schedule'" in clawhub
+    assert "already published" in clawhub
 
 
 def test_glama_job_verifies_provider_managed_sync_without_inventing_an_api() -> None:
@@ -54,6 +55,8 @@ def test_glama_job_verifies_provider_managed_sync_without_inventing_an_api() -> 
     assert "--expected-tool-names-file /tmp/glama-expected-tool-names.json" in job
     assert "glama-actual-server-card-tool-names.json" in job
     assert "cmp -s /tmp/glama-expected-tool-names.json /tmp/glama-actual-server-card-tool-names.json" in job
+    assert "glama-expected-tool-contract.json" in job
+    assert "--expected-tool-contract-file /tmp/glama-expected-tool-contract.json" in job
 
 
 def test_stale_glama_directory_fails_with_supported_recovery_guidance() -> None:

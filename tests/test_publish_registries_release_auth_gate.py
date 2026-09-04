@@ -33,8 +33,13 @@ def test_smithery_publication_is_idempotent_and_bounds_authorization_recovery() 
     assert "--write-tool-names /tmp/smithery-expected-tool-names.json" in workflow
     assert "smithery-actual-server-card-tool-names.json" in workflow
     assert "cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-server-card-tool-names.json" in workflow
+    assert "smithery-expected-tool-contract.json" in workflow
+    assert "smithery-actual-tool-contract.json" in workflow
+    assert "cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json" in workflow
     assert "LATEST_SUCCESS_UPSTREAM" in workflow
     assert 'select(.type == "external_shttp" and .status == "SUCCESS")' in workflow
+    assert ": > /tmp/smithery-success-releases.jsonl" in workflow
+    assert 'GET "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases?page=${PAGE}&pageSize=100"' in workflow
     assert '"$LATEST_SUCCESS_UPSTREAM" = "$SMITHERY_MCP_URL"' in workflow
     assert "tool catalog matches but the successful release upstream differs" in workflow
     assert "smithery_catalog.outputs.fresh != 'true'" in workflow
@@ -91,6 +96,7 @@ def test_registry_publication_runs_are_serialized() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "concurrency:\n  group: publish-registries\n  cancel-in-progress: false" in workflow
+    assert "github.event_name == 'schedule'" in workflow.split("  clawhub:\n", 1)[1]
 
 
 def test_delayed_release_event_cannot_republish_an_older_version_as_latest() -> None:

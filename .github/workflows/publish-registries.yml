@@ -1,8 +1,9 @@
 name: Publish to Registries
 
-# Publishes to Smithery and ClawHub after a successful Release workflow, and
-# reconciles the provider-managed Smithery and Glama directories every six
-# hours until their public catalogs match the latest release contract.
+# Publishes after a successful Release workflow and reconciles every
+# idempotent registry every six hours until the public surfaces match the
+# latest release contract. Scheduled ClawHub retries also recover a release
+# event displaced from GitHub's single pending concurrency slot.
 # Secrets needed (add via Settings → Secrets):
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
@@ -219,6 +220,8 @@ jobs:
                 /tmp/smithery-server-card.json >/dev/null; then
               jq -S '[.tools[].name] | sort' /tmp/smithery-server-card.json > /tmp/smithery-actual-server-card-tool-names.json
               if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-server-card-tool-names.json; then
+                jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
+                  /tmp/smithery-server-card.json > /tmp/smithery-expected-tool-contract.json
                 echo "Smithery server card matches the immutable v${VERSION} contract with ${EXPECTED_TOOL_COUNT} live tool schemas"
                 exit 0
               fi
@@ -244,21 +247,36 @@ jobs:
             echo "::error::Smithery catalog is unavailable; refusing to create a potentially duplicate release"
             exit 1
           fi
-          curl -fsS --connect-timeout 10 --max-time 30 \
-            -X GET "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases?page=1&pageSize=100" \
-            -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
-            -o /tmp/smithery-latest-releases.json
-          jq -e '(.releases | type == "array") and (.pagination.currentPage == 1)' \
-            /tmp/smithery-latest-releases.json >/dev/null
-          LATEST_SUCCESS_UPSTREAM=$(jq -r \
-            '[.releases[] | select(.type == "external_shttp" and .status == "SUCCESS")] | first | .upstreamUrl // empty' \
-            /tmp/smithery-latest-releases.json)
+          MAX_RELEASE_PAGES=20
+          : > /tmp/smithery-success-releases.jsonl
+          for PAGE in $(seq 1 "$MAX_RELEASE_PAGES"); do
+            curl -fsS --connect-timeout 10 --max-time 30 \
+              -X GET "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases?page=${PAGE}&pageSize=100" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -o /tmp/smithery-latest-releases.json
+            jq -e \
+              --argjson page "$PAGE" \
+              --argjson max_pages "$MAX_RELEASE_PAGES" \
+              '(.releases | type == "array") and (.pagination.currentPage == $page) and (.pagination.totalPages | type == "number") and (.pagination.totalPages >= 0) and (.pagination.totalPages <= $max_pages)' \
+              /tmp/smithery-latest-releases.json >/dev/null
+            jq -c \
+              '.releases[] | select(.type == "external_shttp" and .status == "SUCCESS")' \
+              /tmp/smithery-latest-releases.json >> /tmp/smithery-success-releases.jsonl
+            TOTAL_PAGES=$(jq -er '.pagination.totalPages' /tmp/smithery-latest-releases.json)
+            if [ "$PAGE" -ge "$TOTAL_PAGES" ]; then
+              break
+            fi
+          done
+          LATEST_SUCCESS_UPSTREAM=$(jq -sr 'first | .upstreamUrl // empty' /tmp/smithery-success-releases.jsonl)
           jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
+          jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
+            /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-contract.json
           if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \
+            cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
             [ "$LATEST_SUCCESS_UPSTREAM" = "$SMITHERY_MCP_URL" ]; then
             TOOL_COUNT=$(jq -r '.tools | length' /tmp/smithery-catalog.json)
             echo "fresh=true" >> "$GITHUB_OUTPUT"
-            echo "Smithery already exposes the released ${TOOL_COUNT}-tool catalog; skipping a duplicate deployment"
+            echo "Smithery already exposes the released ${TOOL_COUNT}-tool name and input-schema contract; skipping a duplicate deployment"
           else
             EXPECTED=$(jq -r 'length' /tmp/smithery-expected-tool-names.json)
             ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
@@ -437,13 +455,16 @@ jobs:
                 "https://api.smithery.ai/servers/agent-bom/agent-bom" \
                 -o /tmp/smithery-catalog.json; then
               jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
+              jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
+                /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-contract.json
               ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
             else
               ACTUAL=unavailable
             fi
             if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ] && \
-              cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json; then
-              echo "Smithery catalog exposes all ${ACTUAL} tools for v${VERSION}"
+              cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \
+              cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json; then
+              echo "Smithery catalog exposes all ${ACTUAL} tools and exact input schemas for v${VERSION}"
               exit 0
             fi
             echo "Smithery catalog attempt ${ATTEMPT}/12 does not match the released ${EXPECTED_TOOL_COUNT}-tool name set (actual=${ACTUAL})"
@@ -502,6 +523,8 @@ jobs:
                 /tmp/glama-server-card.json >/dev/null; then
               jq -S '[.tools[].name] | sort' /tmp/glama-server-card.json > /tmp/glama-actual-server-card-tool-names.json
               if cmp -s /tmp/glama-expected-tool-names.json /tmp/glama-actual-server-card-tool-names.json; then
+                jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
+                  /tmp/glama-server-card.json > /tmp/glama-expected-tool-contract.json
                 echo "Public server card matches the immutable v${EXPECTED_VERSION} tool contract"
                 exit 0
               fi
@@ -522,6 +545,7 @@ jobs:
               --expected "$EXPECTED_VERSION" \
               --expected-tool-count "$EXPECTED_TOOL_COUNT" \
               --expected-tool-names-file /tmp/glama-expected-tool-names.json \
+              --expected-tool-contract-file /tmp/glama-expected-tool-contract.json \
               --retries 6 \
               --delay-seconds 30; then
             exit 0
@@ -536,7 +560,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    if: ${{ needs.release.outputs.publish_current == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    if: ${{ needs.release.outputs.publish_current == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

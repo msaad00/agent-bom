@@ -96,6 +96,28 @@ def _load_expected_tool_names(path: Path) -> list[str]:
     return normalized
 
 
+def _load_expected_tool_contract(path: Path) -> list[dict[str, object]]:
+    if path.stat().st_size > _MAX_TOOL_NAMES_BYTES:
+        raise ValueError("expected tool contract exceeds the bounded input size")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("expected tool contract must be a non-empty JSON list")
+    normalized: list[dict[str, object]] = []
+    for tool in payload:
+        if not isinstance(tool, dict):
+            raise ValueError("expected tool contract contains a non-object tool")
+        name = tool.get("name")
+        input_schema = tool.get("inputSchema")
+        if not isinstance(name, str) or not name or name != name.strip() or not isinstance(input_schema, dict):
+            raise ValueError("expected tool contract contains an invalid name or input schema")
+        normalized.append({"name": name, "inputSchema": input_schema})
+    normalized.sort(key=lambda tool: str(tool["name"]))
+    names = [str(tool["name"]) for tool in normalized]
+    if len(set(names)) != len(names):
+        raise ValueError("expected tool contract contains duplicate names")
+    return normalized
+
+
 def _tool_set_failures(actual: list[str], expected: list[str]) -> list[str]:
     actual_set = set(actual)
     expected_set = set(expected)
@@ -107,6 +129,53 @@ def _tool_set_failures(actual: list[str], expected: list[str]) -> list[str]:
     if unexpected:
         failures.append(f"unexpected tools: {', '.join(unexpected[:10])}")
     return failures
+
+
+def _api_inventory_result(
+    tools: object,
+    *,
+    tool_count: int,
+    expected_tool_names: list[str] | None,
+    expected_tool_contract: list[dict[str, object]] | None,
+) -> tuple[int, list[str], bool | None, bool | None]:
+    if not isinstance(tools, list):
+        raise ValueError("Glama public API tools field is not a list")
+    failures: list[str] = []
+    actual_tool_count = len(tools)
+    raw_tool_names = [tool.get("name") for tool in tools if isinstance(tool, dict)]
+    valid_tool_names = len(raw_tool_names) == actual_tool_count and all(
+        isinstance(name, str) and bool(name) and name == name.strip() for name in raw_tool_names
+    )
+    exact_tool_set: bool | None = None
+    exact_input_schemas: bool | None = None
+    tool_names: list[str] = []
+    if not valid_tool_names:
+        failures.append("Glama public API inventory contains a tool without a name")
+        exact_tool_set = False
+    else:
+        tool_names = [name for name in raw_tool_names if isinstance(name, str)]
+        if len(set(tool_names)) != actual_tool_count:
+            failures.append("Glama public API inventory contains duplicate tool names")
+            exact_tool_set = False
+    if actual_tool_count != tool_count:
+        failures.append(f"Glama public API exposes {actual_tool_count} tools; expected {tool_count}")
+    if expected_tool_names is not None and valid_tool_names and len(set(tool_names)) == actual_tool_count:
+        tool_set_failures = _tool_set_failures(tool_names, expected_tool_names)
+        failures.extend(tool_set_failures)
+        exact_tool_set = not tool_set_failures
+    if expected_tool_contract is not None:
+        actual_by_name = {
+            str(tool["name"]): tool for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str)
+        }
+        schema_failures: list[str] = []
+        for expected_tool in expected_tool_contract:
+            name = str(expected_tool["name"])
+            actual_tool = actual_by_name.get(name)
+            if actual_tool is None or actual_tool.get("inputSchema") != expected_tool["inputSchema"]:
+                schema_failures.append(f"input schema differs for tool: {name}")
+        failures.extend(schema_failures)
+        exact_input_schemas = not schema_failures and len(actual_by_name) == len(expected_tool_contract)
+    return actual_tool_count, failures, exact_tool_set, exact_input_schemas
 
 
 def _release_tool_names(git_ref: str | None) -> list[str]:
@@ -269,6 +338,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="JSON list of exact released tool names required from the public inventory.",
     )
+    parser.add_argument(
+        "--expected-tool-contract-file",
+        type=Path,
+        default=None,
+        help="JSON list of name/inputSchema objects required from a reachable public machine inventory.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit a machine-readable freshness result.")
     parser.add_argument("--timeout", type=int, default=20)
     parser.add_argument("--retries", type=int, default=1)
@@ -310,6 +385,14 @@ def main(argv: list[str] | None = None) -> int:
 
     version = (args.expected or _load_version()).lstrip("v").strip()
     expected_tool_names = _load_expected_tool_names(args.expected_tool_names_file) if args.expected_tool_names_file else None
+    expected_tool_contract = (
+        _load_expected_tool_contract(args.expected_tool_contract_file) if args.expected_tool_contract_file else None
+    )
+    if expected_tool_contract is not None:
+        contract_names = [str(tool["name"]) for tool in expected_tool_contract]
+        if expected_tool_names is not None and contract_names != expected_tool_names:
+            raise SystemExit("expected Glama tool-name and input-schema contracts do not match")
+        expected_tool_names = contract_names
     tool_count = args.expected_tool_count if args.expected_tool_count is not None else int(_load_readme_tool_count())
     if tool_count < 1:
         raise SystemExit("expected Glama tool count must be positive")
@@ -320,11 +403,15 @@ def main(argv: list[str] | None = None) -> int:
     actual_tool_count: int | None = None
     inventory_source: str | None = None
     exact_tool_set: bool | None = None
+    exact_input_schemas: bool | None = None
+    degraded_reason: str | None = None
     last_probe_unreachable = False
     for attempt in range(1, max(1, args.retries) + 1):
         actual_tool_count = None
         inventory_source = None
         exact_tool_set = None
+        exact_input_schemas = None
+        degraded_reason = None
         last_probe_unreachable = False
         try:
             page = _fetch(args.url, args.timeout)
@@ -342,8 +429,21 @@ def main(argv: list[str] | None = None) -> int:
                 # Schema page cannot be fetched or has not populated yet.
                 pass
 
+            api_result: tuple[int, list[str], bool | None, bool | None] | None = None
+            api_error: Exception | None = None
+            try:
+                api_payload = _fetch_json(args.api_url, args.timeout)
+                api_result = _api_inventory_result(
+                    api_payload.get("tools"),
+                    tool_count=tool_count,
+                    expected_tool_names=expected_tool_names,
+                    expected_tool_contract=expected_tool_contract,
+                )
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
+                api_error = exc
+
             if schema_tools:
-                inventory_source = "schema"
+                inventory_source = "schema+api" if api_result is not None else "schema"
                 actual_tool_count = len(schema_tools)
                 if actual_tool_count != tool_count:
                     failures.append(f"Glama public Schema exposes {actual_tool_count} tools; expected {tool_count}")
@@ -351,55 +451,46 @@ def main(argv: list[str] | None = None) -> int:
                     tool_set_failures = _tool_set_failures(schema_tools, expected_tool_names)
                     failures.extend(tool_set_failures)
                     exact_tool_set = not tool_set_failures
+                if api_result is None:
+                    degraded_reason = "Glama public API inventory was unreachable"
+                else:
+                    api_count, api_failures, api_exact_set, api_exact_schemas = api_result
+                    actual_tool_count = api_count
+                    failures.extend(api_failures)
+                    if api_exact_set is not None:
+                        exact_tool_set = bool(exact_tool_set is not False and api_exact_set)
+                    exact_input_schemas = api_exact_schemas
+            elif api_result is not None:
+                inventory_source = "api"
+                actual_tool_count, api_failures, exact_tool_set, exact_input_schemas = api_result
+                failures.extend(api_failures)
             else:
                 inventory_source = "api"
-                try:
-                    api_payload = _fetch_json(args.api_url, args.timeout)
-                    tools = api_payload.get("tools")
-                    if not isinstance(tools, list):
-                        raise ValueError("Glama public API tools field is not a list")
-                    actual_tool_count = len(tools)
-                    raw_tool_names = [tool.get("name") for tool in tools if isinstance(tool, dict)]
-                    valid_tool_names = len(raw_tool_names) == actual_tool_count and all(
-                        isinstance(name, str) and bool(name) and name == name.strip() for name in raw_tool_names
-                    )
-                    if not valid_tool_names:
-                        failures.append("Glama public API inventory contains a tool without a name")
-                        exact_tool_set = False
-                        tool_names: list[str] = []
-                    else:
-                        tool_names = [name for name in raw_tool_names if isinstance(name, str)]
-                        if len(set(tool_names)) != actual_tool_count:
-                            failures.append("Glama public API inventory contains duplicate tool names")
-                            exact_tool_set = False
-                    if actual_tool_count != tool_count:
-                        failures.append(f"Glama public API exposes {actual_tool_count} tools; expected {tool_count}")
-                    if expected_tool_names is not None and valid_tool_names and len(set(tool_names)) == actual_tool_count:
-                        tool_set_failures = _tool_set_failures(tool_names, expected_tool_names)
-                        failures.extend(tool_set_failures)
-                        exact_tool_set = not tool_set_failures
-                except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
-                    failures.append(f"failed to verify Glama public API tool inventory: {exc}")
-                    last_probe_unreachable = True
+                failures.append(f"failed to verify Glama public API tool inventory: {api_error}")
+                last_probe_unreachable = True
             if not failures:
+                status = "fresh_degraded" if degraded_reason else "fresh"
                 if args.json:
                     print(
                         json.dumps(
                             {
                                 "surface": "Glama",
-                                "status": "fresh",
+                                "status": status,
                                 "expected": version,
                                 "listing_version": listing_version,
                                 "tool_count": actual_tool_count,
                                 "expected_tool_count": tool_count,
                                 "inventory_source": inventory_source,
                                 "exact_tool_set": exact_tool_set,
+                                "exact_input_schemas": exact_input_schemas,
+                                "degraded_reason": degraded_reason,
                             },
                             separators=(",", ":"),
                         )
                     )
                     return 0
-                print(f"Glama listing is fresh for agent-bom v{version} with {actual_tool_count} MCP tools")
+                suffix = f" ({degraded_reason})" if degraded_reason else ""
+                print(f"Glama listing is {status} for agent-bom v{version} with {actual_tool_count} MCP tools{suffix}")
                 return 0
             last_error = "\n".join(failures)
 
@@ -419,6 +510,8 @@ def main(argv: list[str] | None = None) -> int:
                     "expected_tool_count": tool_count,
                     "inventory_source": inventory_source,
                     "exact_tool_set": exact_tool_set,
+                    "exact_input_schemas": exact_input_schemas,
+                    "degraded_reason": degraded_reason,
                     "error": last_error,
                 },
                 separators=(",", ":"),

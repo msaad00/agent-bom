@@ -46,10 +46,11 @@ remote deployment metadata, and non-empty tools.
 **Option B — Automated**:
 The `publish-registries.yml` workflow parses the static server-card tool names
 from the immutable release commit, then compares that contract with both the
-live server card and Smithery's public catalog before publishing. If they
-already match and the latest successful release is bound to the configured
-upstream URL, the workflow skips a duplicate deployment. If capabilities or
-the upstream changed, it creates an external release using:
+live server card and Smithery's public catalog before publishing. It also
+compares the catalog's input schemas with the live release-bound server card.
+If names, schemas, and the latest successful upstream URL already match, the
+workflow skips a duplicate deployment. If capabilities or the upstream
+changed, it creates an external release using:
 - `SMITHERY_API_TOKEN`
 
 `SMITHERY_MCP_URL` is retained only for the external-upstream publish mode. It
@@ -105,7 +106,10 @@ Search for "agent-bom" at: https://registry.modelcontextprotocol.io
 
 ## 3. ClawHub / OpenClaw
 
-Automated via `publish-registries.yml` using `CLAWHUB_TOKEN`.
+Automated via `publish-registries.yml` using `CLAWHUB_TOKEN`. The exact
+release version is retried every six hours, and ClawHub's already-published
+response is treated as an idempotent success. This also recovers publication
+when GitHub replaces an older pending workflow run in its concurrency queue.
 
 The public ClawHub surface is intentionally curated. Release automation publishes only:
 - `agent-bom-scan`
@@ -151,7 +155,10 @@ For an immediate provider-side refresh, open the server's admin page and use
 **Sync Server**, then dispatch **Publish to Registries** again. Verification
 requires both the released version marker and the exact MCP tool-name set
 parsed from the immutable release commit; the live server card is checked
-independently against the same contract.
+independently against the same contract. When Glama's machine inventory is
+reachable, its input schemas must also match the live release-bound server
+card. A user-visible Schema page match with an unreachable machine inventory
+is reported as degraded rather than full parity.
 
 A Glama hosted release is separate from directory synchronization. Creating
 one remains a maintainer action in Glama: configure the Dockerfile build,

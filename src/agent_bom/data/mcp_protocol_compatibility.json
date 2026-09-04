@@ -1,120 +1,638 @@
 {
-  "schema_version": "agent-bom.mcp-protocol-compatibility.v1",
-  "scope": "agent-bom MCP server and runtime-introspection surfaces",
-  "state_definitions": {
-    "supported": "Implemented and covered by repository contract tests against the locked MCP SDK.",
-    "unsupported": "The product does not implement this capability.",
-    "unavailable": "Compatibility has not been assessed with sufficient evidence.",
-    "not_applicable": "The capability does not apply to this transport or surface."
+  "schema_version": "agent-bom.mcp-protocol-compatibility.v2",
+  "scope": "Evidence for the agent-bom MCP server, introspection client, runtime proxy, runtime gateway, and absent API/UI compatibility surfaces. This is not an official MCP conformance certification.",
+  "official_protocol": {
+    "current_revision": "2026-07-28",
+    "immutable_revision": "2026-07-28",
+    "source_url": "https://modelcontextprotocol.io/specification/2026-07-28/changelog",
+    "retrieved_at": "2026-09-04"
   },
   "sdk_policy": {
-    "dependency": "mcp>=1.26,<2",
+    "dependency_constraint": "mcp>=1.26,<2",
+    "locked_distribution": "mcp",
     "locked_version": "1.29.1",
-    "verified_latest_protocol": "2025-11-25",
-    "verification_basis": "locked_sdk_constants_and_repository_contract_tests"
+    "latest_protocol_supported_by_locked_sdk": "2025-11-25",
+    "protocol_versions_supported_by_locked_sdk": [
+      "2024-11-05",
+      "2025-03-26",
+      "2025-06-18",
+      "2025-11-25"
+    ]
   },
-  "protocol_eras": [
+  "official_conformance_suite": {
+    "status": "not_run",
+    "outcome": "unavailable"
+  },
+  "features": [
     {
-      "protocol_version": "2025-06-18",
-      "state": "supported",
-      "assessment_status": "complete",
-      "verified_features": [
-        "transport:stdio",
-        "transport:sse",
-        "transport:streamable-http",
-        "capability:tools/list",
-        "capability:resources/list",
-        "capability:prompts/list",
-        "auth:remote_static_bearer_server",
-        "auth:oauth_authorization_server"
-      ],
-      "reason_codes": []
-    },
-    {
+      "feature_id": "server.stdio.handshake_and_inventory",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "stdio",
       "protocol_version": "2025-11-25",
-      "state": "supported",
+      "implementation_state": "implemented",
+      "conformance_state": "conformant",
       "assessment_status": "complete",
-      "verified_features": [
-        "transport:stdio",
-        "transport:sse",
-        "transport:streamable-http",
-        "capability:tools/list",
-        "capability:resources/list",
-        "capability:prompts/list",
-        "auth:remote_static_bearer_server",
-        "auth:oauth_authorization_server"
+      "lifecycle": "active",
+      "evidence_basis": ["live_wire", "executable_contract"],
+      "evidence_refs": [
+        {
+          "kind": "executable_test",
+          "ref": "tests/test_mcp_protocol_compatibility.py::test_locked_sdk_stdio_wire_contract",
+          "outcome": "passed"
+        }
       ],
+      "evidence_outcome": "passed",
       "reason_codes": []
     },
     {
-      "protocol_version": "2026-07-28",
-      "state": "unsupported",
-      "assessment_status": "unavailable",
-      "verified_features": [],
-      "reason_codes": [
-        "not_in_locked_sdk_protocol_set",
-        "compatibility_not_verified"
+      "feature_id": "server.streamable_http.handshake_and_inventory",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "streamable_http",
+      "protocol_version": "2025-11-25",
+      "implementation_state": "implemented",
+      "conformance_state": "conformant",
+      "assessment_status": "complete",
+      "lifecycle": "active",
+      "evidence_basis": ["live_wire", "executable_contract"],
+      "evidence_refs": [
+        {
+          "kind": "executable_test",
+          "ref": "tests/test_mcp_protocol_compatibility.py::test_locked_sdk_streamable_http_wire_contract",
+          "outcome": "passed"
+        }
       ],
-      "readiness_gate": "Require upstream SDK support, protocol-delta review, and transport/auth/capability contract tests before changing this state."
-    }
-  ],
-  "features": {
-    "transports": {
-      "stdio": "supported",
-      "sse": "supported",
-      "streamable-http": "supported"
-    },
-    "capability_discovery": {
-      "tools/list": "supported",
-      "resources/list": "supported",
-      "prompts/list": "supported"
-    },
-    "auth": {
-      "remote_static_bearer_server": "supported",
-      "oauth_authorization_server": "supported",
-      "authenticated_remote_introspection": "unsupported",
-      "stdio_transport_auth": "not_applicable"
-    },
-    "future_protocol": {
-      "2026-07-28_features": "unavailable"
-    }
-  },
-  "limitations": {
-    "authenticated_remote_introspection:unsupported": "SSE and Streamable HTTP introspection do not currently accept operator-authored request headers or an auth provider.",
-    "2026-07-28_features:unavailable": "The locked MCP SDK does not advertise this protocol version, so its feature and compatibility deltas have not been verified."
-  },
-  "evidence": [
-    {
-      "claim": "stdio, SSE, and Streamable HTTP introspection use distinct SDK clients",
-      "path": "src/agent_bom/mcp_introspect.py"
+      "evidence_outcome": "passed",
+      "reason_codes": []
     },
     {
-      "claim": "tools, resources, and prompts are queried independently and retain partial results",
-      "path": "src/agent_bom/mcp_introspect.py"
+      "feature_id": "server.sse.transport",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "sse",
+      "protocol_version": "2025-11-25",
+      "implementation_state": "partial",
+      "conformance_state": "unverified",
+      "assessment_status": "partial",
+      "lifecycle": "deprecated",
+      "evidence_basis": ["static_code", "official_spec"],
+      "evidence_refs": [
+        {"kind": "source", "ref": "src/agent_bom/cli/_server.py", "outcome": "reviewed"},
+        {
+          "kind": "official_spec",
+          "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog",
+          "outcome": "reviewed"
+        }
+      ],
+      "evidence_outcome": "unverified",
+      "reason_codes": ["wire_test_not_run", "transport_deprecated_upstream"]
     },
     {
-      "claim": "remote server bearer and OAuth authorization-server paths are implemented",
-      "path": "src/agent_bom/mcp_server_factory.py"
+      "feature_id": "introspection.remote.authenticated",
+      "role": "introspection_client",
+      "surface": "mcp_introspection",
+      "transport": "streamable_http",
+      "protocol_version": "2025-11-25",
+      "implementation_state": "not_implemented",
+      "conformance_state": "nonconformant",
+      "assessment_status": "complete",
+      "lifecycle": "active",
+      "evidence_basis": ["static_code"],
+      "evidence_refs": [
+        {"kind": "source", "ref": "src/agent_bom/mcp_introspect.py", "outcome": "observed_nonconformance"}
+      ],
+      "evidence_outcome": "observed_nonconformance",
+      "reason_codes": ["operator_auth_headers_not_supported"]
     },
     {
-      "claim": "remote transport authentication defaults fail closed outside loopback",
-      "path": "src/agent_bom/cli/_server.py"
+      "feature_id": "server.oauth.authorization_server.2025",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "http",
+      "protocol_version": "2025-11-25",
+      "implementation_state": "partial",
+      "conformance_state": "nonconformant",
+      "assessment_status": "partial",
+      "lifecycle": "active",
+      "evidence_basis": ["live_wire", "executable_contract", "static_code", "official_spec"],
+      "evidence_refs": [
+        {
+          "kind": "executable_test",
+          "ref": "tests/test_mcp_protocol_compatibility.py::test_oauth_2025_resource_binding_gap_is_recorded_as_nonconformant",
+          "outcome": "passed"
+        },
+        {"kind": "source", "ref": "src/agent_bom/api/oauth_as.py", "outcome": "observed_nonconformance"},
+        {
+          "kind": "official_spec",
+          "ref": "https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization",
+          "outcome": "reviewed"
+        }
+      ],
+      "evidence_outcome": "observed_nonconformance",
+      "reason_codes": ["resource_parameter_not_bound", "token_audience_not_resource_server"]
     },
     {
-      "claim": "transport-specific introspection and capability collection are regression tested",
-      "path": "tests/test_mcp_introspect.py"
+      "feature_id": "proxy.session_era.forwarding",
+      "role": "proxy",
+      "surface": "runtime_proxy",
+      "transport": "transport_agnostic",
+      "protocol_version": "2025-11-25",
+      "implementation_state": "partial",
+      "conformance_state": "unverified",
+      "assessment_status": "partial",
+      "lifecycle": "active",
+      "evidence_basis": ["static_code"],
+      "evidence_refs": [
+        {"kind": "source", "ref": "src/agent_bom/proxy.py", "outcome": "reviewed"}
+      ],
+      "evidence_outcome": "unverified",
+      "reason_codes": ["wire_conformance_not_run"]
     },
     {
-      "claim": "bearer and OAuth authorization-server behavior are regression tested",
-      "path": "tests/test_mcp_oauth_authorization_server.py"
+      "feature_id": "gateway.session_era.forwarding",
+      "role": "gateway",
+      "surface": "runtime_gateway",
+      "transport": "http",
+      "protocol_version": "2025-11-25",
+      "implementation_state": "partial",
+      "conformance_state": "unverified",
+      "assessment_status": "partial",
+      "lifecycle": "active",
+      "evidence_basis": ["static_code"],
+      "evidence_refs": [
+        {"kind": "source", "ref": "src/agent_bom/gateway_server.py", "outcome": "reviewed"}
+      ],
+      "evidence_outcome": "unverified",
+      "reason_codes": ["wire_conformance_not_run"]
     },
     {
-      "claim": "the supported MCP SDK range is bounded below major version 2",
-      "path": "pyproject.toml"
+      "feature_id": "api.compatibility_contract",
+      "role": "server",
+      "surface": "api",
+      "transport": "not_applicable",
+      "protocol_version": "not_applicable",
+      "implementation_state": "not_implemented",
+      "conformance_state": "not_applicable",
+      "assessment_status": "unavailable",
+      "lifecycle": "not_applicable",
+      "evidence_basis": ["not_assessed"],
+      "evidence_refs": [],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["no_api_exposure"]
     },
     {
-      "claim": "the verified SDK version is reproducibly locked",
-      "path": "uv.lock"
+      "feature_id": "ui.compatibility_contract",
+      "role": "server",
+      "surface": "ui",
+      "transport": "not_applicable",
+      "protocol_version": "not_applicable",
+      "implementation_state": "not_implemented",
+      "conformance_state": "not_applicable",
+      "assessment_status": "unavailable",
+      "lifecycle": "not_applicable",
+      "evidence_basis": ["not_assessed"],
+      "evidence_refs": [],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["no_ui_exposure"]
+    },
+    {
+      "feature_id": "server.2026.stateless_requests",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "streamable_http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "nonconformant",
+      "assessment_status": "partial",
+      "lifecycle": "active",
+      "evidence_basis": ["live_wire", "executable_contract", "official_spec"],
+      "evidence_refs": [
+        {"kind": "executable_test", "ref": "tests/test_mcp_protocol_compatibility.py::test_2026_server_discover_is_rejected_by_session_era_server", "outcome": "passed"},
+        {"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}
+      ],
+      "evidence_outcome": "observed_nonconformance",
+      "reason_codes": ["session_id_required_by_current_server"]
+    },
+    {
+      "feature_id": "server.2026.server_discover",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "streamable_http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "nonconformant",
+      "assessment_status": "partial",
+      "lifecycle": "active",
+      "evidence_basis": ["live_wire", "executable_contract", "official_spec"],
+      "evidence_refs": [
+        {"kind": "executable_test", "ref": "tests/test_mcp_protocol_compatibility.py::test_2026_server_discover_is_rejected_by_session_era_server", "outcome": "passed"},
+        {"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}
+      ],
+      "evidence_outcome": "observed_nonconformance",
+      "reason_codes": ["method_rejected_before_dispatch"]
+    },
+    {
+      "feature_id": "server.2026.no_initialize",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "nonconformant",
+      "assessment_status": "partial",
+      "lifecycle": "active",
+      "evidence_basis": ["live_wire", "official_spec"],
+      "evidence_refs": [
+        {"kind": "executable_test", "ref": "tests/test_mcp_protocol_compatibility.py::test_locked_sdk_streamable_http_wire_contract", "outcome": "passed"},
+        {"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}
+      ],
+      "evidence_outcome": "observed_nonconformance",
+      "reason_codes": ["initialize_required_by_locked_sdk"]
+    },
+    {
+      "feature_id": "server.2026.no_session_id",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "streamable_http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "nonconformant",
+      "assessment_status": "partial",
+      "lifecycle": "active",
+      "evidence_basis": ["live_wire", "official_spec"],
+      "evidence_refs": [
+        {"kind": "executable_test", "ref": "tests/test_mcp_protocol_compatibility.py::test_2026_server_discover_is_rejected_by_session_era_server", "outcome": "passed"},
+        {"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}
+      ],
+      "evidence_outcome": "observed_nonconformance",
+      "reason_codes": ["mcp_session_id_emitted_and_required"]
+    },
+    {
+      "feature_id": "server.2026.per_request_meta",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["locked_sdk_does_not_model_2026_request_meta"]
+    },
+    {
+      "feature_id": "server.2026.method_name_headers",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["mcp_method_and_mcp_name_not_verified"]
+    },
+    {
+      "feature_id": "server.2026.subscriptions_listen",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["subscriptions_listen_not_assessed"]
+    },
+    {
+      "feature_id": "server.2026.extensions",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["extension_framework_not_in_locked_sdk"]
+    },
+    {
+      "feature_id": "server.2026.tasks_extension",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["tasks_extension_not_in_locked_sdk"]
+    },
+    {
+      "feature_id": "server.2026.mrtr",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["multi_round_tool_responses_not_in_locked_sdk"]
+    },
+    {
+      "feature_id": "server.2026.result_type",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["result_type_not_in_locked_sdk"]
+    },
+    {
+      "feature_id": "server.2026.cache_hints",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["ttl_ms_and_cache_scope_not_in_locked_sdk"]
+    },
+    {
+      "feature_id": "gateway.2026.trace_context",
+      "role": "gateway",
+      "surface": "runtime_gateway",
+      "transport": "http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["w3c_trace_context_not_wire_verified"]
+    },
+    {
+      "feature_id": "server.2026.json_schema_2020_12",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["full_json_schema_dialect_not_verified"]
+    },
+    {
+      "feature_id": "server.2026.resource_error_code",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["resource_error_code_not_wire_verified"]
+    },
+    {
+      "feature_id": "server.2026.oauth_issuer_identification",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["rfc9207_iss_not_verified"]
+    },
+    {
+      "feature_id": "server.2026.oauth_application_type",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["dcr_application_type_not_verified"]
+    },
+    {
+      "feature_id": "server.2026.oauth_issuer_bound_credentials",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["credentials_not_bound_to_issuer"]
+    },
+    {
+      "feature_id": "server.2026.cimd",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["client_id_metadata_documents_not_implemented"]
+    },
+    {
+      "feature_id": "server.2026.deprecated_capabilities",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "deprecated",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["roots_sampling_logging_deprecations_not_assessed"]
+    },
+    {
+      "feature_id": "server.2026.deterministic_tools_list",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["tools_list_order_not_contract_tested"]
+    },
+    {
+      "feature_id": "server.2026.no_sse_resumability",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "streamable_http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "removed",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["last_event_id_and_event_id_removal_not_assessed"]
+    },
+    {
+      "feature_id": "server.2026.removed_control_methods",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "removed",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["ping_logging_set_level_and_roots_change_removal_not_assessed"]
+    },
+    {
+      "feature_id": "server.2026.elicitation_completion_removed",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "removed",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["elicitation_complete_and_id_removal_not_assessed"]
+    },
+    {
+      "feature_id": "server.2026.error_code_allocation",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "active",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["reserved_error_codes_and_header_mismatch_not_assessed"]
+    },
+    {
+      "feature_id": "server.2026.http_sse_deprecated",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "sse",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "partial",
+      "conformance_state": "unverified",
+      "assessment_status": "partial",
+      "lifecycle": "deprecated",
+      "evidence_basis": ["static_code", "official_spec"],
+      "evidence_refs": [
+        {"kind": "source", "ref": "src/agent_bom/cli/_server.py", "outcome": "reviewed"},
+        {"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}
+      ],
+      "evidence_outcome": "unverified",
+      "reason_codes": ["deprecated_transport_still_exposed", "wire_test_not_run"]
+    },
+    {
+      "feature_id": "server.2026.include_context_deprecated",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "transport_agnostic",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "not_implemented",
+      "conformance_state": "unverified",
+      "assessment_status": "unavailable",
+      "lifecycle": "deprecated",
+      "evidence_basis": ["official_spec", "not_assessed"],
+      "evidence_refs": [{"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}],
+      "evidence_outcome": "unavailable",
+      "reason_codes": ["include_context_values_not_assessed"]
+    },
+    {
+      "feature_id": "server.2026.oauth_dcr_deprecated",
+      "role": "server",
+      "surface": "mcp_server",
+      "transport": "http",
+      "protocol_version": "2026-07-28",
+      "implementation_state": "partial",
+      "conformance_state": "unverified",
+      "assessment_status": "partial",
+      "lifecycle": "deprecated",
+      "evidence_basis": ["static_code", "official_spec"],
+      "evidence_refs": [
+        {"kind": "source", "ref": "src/agent_bom/api/oauth_as.py", "outcome": "reviewed"},
+        {"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}
+      ],
+      "evidence_outcome": "unverified",
+      "reason_codes": ["deprecated_dcr_is_implemented", "cimd_not_implemented"]
     }
   ]
 }

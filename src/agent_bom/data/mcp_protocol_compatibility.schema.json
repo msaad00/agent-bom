@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-bom:schema:mcp-protocol-compatibility:v2",
+  "title": "agent-bom MCP protocol compatibility evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scope",
+    "official_protocol",
+    "sdk_policy",
+    "official_conformance_suite",
+    "features"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agent-bom.mcp-protocol-compatibility.v2"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "official_protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current_revision", "immutable_revision", "source_url", "retrieved_at"],
+      "properties": {
+        "current_revision": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "immutable_revision": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "source_url": {"type": "string", "pattern": "^https://modelcontextprotocol\\.io/specification/"},
+        "retrieved_at": {"type": "string", "format": "date"}
+      }
+    },
+    "sdk_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dependency_constraint",
+        "locked_distribution",
+        "locked_version",
+        "latest_protocol_supported_by_locked_sdk",
+        "protocol_versions_supported_by_locked_sdk"
+      ],
+      "properties": {
+        "dependency_constraint": {"type": "string", "minLength": 1},
+        "locked_distribution": {"const": "mcp"},
+        "locked_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "latest_protocol_supported_by_locked_sdk": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "protocol_versions_supported_by_locked_sdk": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
+        }
+      }
+    },
+    "official_conformance_suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "outcome"],
+      "properties": {
+        "status": {"const": "not_run"},
+        "outcome": {"const": "unavailable"}
+      }
+    },
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/feature"}
+    }
+  },
+  "$defs": {
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature_id",
+        "role",
+        "surface",
+        "transport",
+        "protocol_version",
+        "implementation_state",
+        "conformance_state",
+        "assessment_status",
+        "lifecycle",
+        "evidence_basis",
+        "evidence_refs",
+        "evidence_outcome",
+        "reason_codes"
+      ],
+      "properties": {
+        "feature_id": {"type": "string", "pattern": "^[a-z0-9._-]+$"},
+        "role": {
+          "enum": ["server", "introspection_client", "proxy", "gateway"]
+        },
+        "surface": {
+          "enum": ["mcp_server", "mcp_introspection", "runtime_proxy", "runtime_gateway", "api", "ui"]
+        },
+        "transport": {
+          "enum": ["stdio", "sse", "streamable_http", "http", "transport_agnostic", "not_applicable"]
+        },
+        "protocol_version": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+            {"const": "not_applicable"}
+          ]
+        },
+        "implementation_state": {
+          "enum": ["implemented", "partial", "not_implemented", "not_applicable"]
+        },
+        "conformance_state": {
+          "enum": ["conformant", "nonconformant", "unverified", "not_applicable"]
+        },
+        "assessment_status": {
+          "enum": ["complete", "partial", "unavailable", "not_applicable"]
+        },
+        "lifecycle": {
+          "enum": ["active", "deprecated", "removed", "not_applicable"]
+        },
+        "evidence_basis": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["live_wire", "executable_contract", "static_code", "official_spec", "not_assessed"]
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence_ref"}
+        },
+        "evidence_outcome": {
+          "enum": ["passed", "observed_nonconformance", "unverified", "not_run", "unavailable"]
+        },
+        "reason_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z0-9_]+$"}
+        }
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref", "outcome"],
+      "properties": {
+        "kind": {
+          "enum": ["executable_test", "source", "official_spec"]
+        },
+        "ref": {"type": "string", "minLength": 1},
+        "outcome": {
+          "enum": ["passed", "reviewed", "observed_nonconformance", "not_run", "unavailable"]
+        }
+      }
+    }
+  }
+}

@@ -237,7 +237,8 @@ For cross-agent correlation, use the broader runtime protection engine (`agent-b
 agent-bom mcp server
 ```
 
-Exposes 86 tools to any MCP-compatible AI assistant. Your agent can run scans,
+Exposes 86 tools to AI assistants that negotiate the verified session-era
+`2025-11-25` MCP handshake (or retain that fallback). Your agent can run scans,
 check packages, query ExposurePaths, ask for deploy decisions, query threat
 intel, inspect runtime posture, run admin-gated Shield actions, and generate
 compliance reports without leaving the chat:

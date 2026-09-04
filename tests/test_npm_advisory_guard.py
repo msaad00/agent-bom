@@ -1,16 +1,20 @@
-"""Contract tests for the exact-lockfile npm advisory release gate."""
+"""Contract tests for the npm bulk-advisory release gate."""
 
 from __future__ import annotations
 
+import gzip
 import json
-import subprocess
+import urllib.request
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from scripts import check_npm_advisories
-from scripts.check_npm_advisories import lockfile_payload, validate_audit_report
+from scripts.check_npm_advisories import (
+    blocking_advisories,
+    decode_report,
+    lockfile_payload,
+)
 
 
 def _write_lockfile(path: Path) -> None:
@@ -18,31 +22,19 @@ def _write_lockfile(path: Path) -> None:
         json.dumps(
             {
                 "lockfileVersion": 3,
-                "packages": {"": {"name": "app", "version": "1.0.0"}, "node_modules/pkg": {"version": "2.0.0"}},
+                "packages": {
+                    "": {"name": "app", "version": "1.0.0"},
+                    "node_modules/pkg": {"version": "2.0.0"},
+                },
             }
         ),
         encoding="utf-8",
     )
 
 
-def _audit_report(*, severity: str | None = None, audited: int = 1) -> dict:
-    counts = {name: 0 for name in (*sorted(check_npm_advisories.VALID_SEVERITIES), "total")}
-    vulnerabilities = {}
-    if severity is not None:
-        counts[severity] = 1
-        counts["total"] = 1
-        vulnerabilities["pkg"] = {"name": "pkg", "severity": severity, "via": []}
-    return {
-        "auditReportVersion": 2,
-        "vulnerabilities": vulnerabilities,
-        "metadata": {
-            "vulnerabilities": counts,
-            "dependencies": {"prod": audited, "dev": 0, "optional": 0, "peer": 0, "peerOptional": 0, "total": audited},
-        },
-    }
-
-
-def test_lockfile_payload_preserves_exact_nested_and_scoped_versions(tmp_path: Path) -> None:
+def test_lockfile_payload_preserves_exact_nested_and_scoped_versions(
+    tmp_path: Path,
+) -> None:
     lockfile = tmp_path / "package-lock.json"
     lockfile.write_text(
         json.dumps(
@@ -65,122 +57,196 @@ def test_lockfile_payload_preserves_exact_nested_and_scoped_versions(tmp_path: P
     }
 
 
-def test_gate_accepts_valid_complete_audit(tmp_path: Path, monkeypatch) -> None:
+def test_decode_report_accepts_unlabelled_gzip_and_blocks_high_severity() -> None:
+    report = {
+        "safe-package": [{"id": 1, "severity": "moderate", "title": "moderate"}],
+        "unsafe-package": [
+            {
+                "id": 2,
+                "severity": "high",
+                "title": "high risk",
+                "url": "https://example.test/2",
+            }
+        ],
+    }
+
+    decoded = decode_report(gzip.compress(json.dumps(report).encode("utf-8")))
+
+    assert decoded == report
+    assert blocking_advisories(decoded) == [
+        {
+            "package": "unsafe-package",
+            "id": 2,
+            "severity": "high",
+            "title": "high risk",
+            "url": "https://example.test/2",
+        }
+    ]
+
+
+def test_gate_blocks_high_advisories(tmp_path: Path, monkeypatch) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
-    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", lambda _path: (_audit_report(), 0))
-
-    assert check_npm_advisories.run(lockfile) == 0
-
-
-def test_gate_blocks_validated_high_or_critical_audit(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", lambda _path: (_audit_report(severity="critical"), 1))
+    monkeypatch.setattr(
+        check_npm_advisories,
+        "fetch_report",
+        lambda _payload: {"pkg": [{"id": 2, "severity": "critical", "title": "unsafe"}]},
+    )
 
     assert check_npm_advisories.run(lockfile) == 1
 
 
+def test_gate_fails_closed_on_exhausted_transport_errors(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    _write_lockfile(lockfile)
+
+    def fail(_payload) -> dict:
+        raise OSError("registry unavailable")
+
+    monkeypatch.setattr(check_npm_advisories, "fetch_report", fail)
+
+    assert check_npm_advisories.run(lockfile) == 2
+
+
 @pytest.mark.parametrize(
-    "report",
-    [
-        {},
-        {"auditReportVersion": 1},
-        _audit_report(audited=0),
-        {
-            **_audit_report(),
-            "vulnerabilities": {"not-requested": {"name": "not-requested", "severity": "high"}},
-        },
-        {
-            **_audit_report(),
-            "vulnerabilities": {"pkg": {"name": "pkg", "severity": "unknown"}},
-        },
-    ],
+    "advisory",
+    [{}, {"severity": "unknown"}, {"severity": None}],
 )
-def test_gate_fails_closed_on_invalid_or_incomplete_report(tmp_path: Path, monkeypatch, report) -> None:
+def test_gate_fails_closed_on_missing_or_unknown_severity(
+    tmp_path: Path,
+    monkeypatch,
+    advisory,
+) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
-    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", lambda _path: (report, 0))
+    monkeypatch.setattr(
+        check_npm_advisories,
+        "fetch_report",
+        lambda _payload: {"pkg": [advisory]},
+    )
 
     assert check_npm_advisories.run(lockfile) == 2
 
 
-@pytest.mark.parametrize("report,returncode", [(_audit_report(), 1), (_audit_report(severity="high"), 0)])
-def test_gate_fails_closed_when_exit_status_disagrees_with_report(tmp_path: Path, monkeypatch, report, returncode) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", lambda _path: (report, returncode))
+def test_decode_report_bounds_uncompressed_and_gzip_expansion(monkeypatch) -> None:
+    monkeypatch.setattr(check_npm_advisories, "MAX_COMPRESSED_RESPONSE_BYTES", 32)
+    monkeypatch.setattr(check_npm_advisories, "MAX_DECOMPRESSED_RESPONSE_BYTES", 64)
 
-    assert check_npm_advisories.run(lockfile) == 2
-
-
-def test_validate_audit_report_rejects_count_mismatch() -> None:
-    report = _audit_report()
-    report["metadata"]["vulnerabilities"]["high"] = 1
-    report["metadata"]["vulnerabilities"]["total"] = 1
-
-    with pytest.raises(ValueError, match="counts do not match"):
-        validate_audit_report(report, {"pkg": ["2.0.0"]})
+    with pytest.raises(ValueError, match="compressed response exceeds"):
+        decode_report(b"{" + b" " * 32)
+    with pytest.raises(ValueError, match="decompressed response exceeds"):
+        decode_report(gzip.compress(b"{" + b" " * 64))
 
 
-def test_run_npm_audit_uses_supported_bounded_client(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    seen: dict = {}
+def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
+    seen_limits: list[int] = []
+    seen_timeouts: list[int] = []
+    seen_requests: list[urllib.request.Request] = []
 
-    def fake_run(command, **kwargs):
-        seen.update(command=command, **kwargs)
-        kwargs["stdout"].write(json.dumps(_audit_report()).encode())
-        return SimpleNamespace(returncode=0)
+    class Response:
+        def __enter__(self):
+            return self
 
-    monkeypatch.setattr(check_npm_advisories.subprocess, "run", fake_run)
+        def __exit__(self, *_args):
+            return None
 
-    report, returncode = check_npm_advisories.run_npm_audit(lockfile)
+        def read(self, limit: int) -> bytes:
+            seen_limits.append(limit)
+            return b"{}"
 
-    assert returncode == 0
-    assert report == _audit_report()
-    assert seen["command"] == [
-        "npm",
-        "audit",
-        "--package-lock-only",
-        "--ignore-scripts",
-        "--audit-level=high",
-        "--json",
+    def open_response(request, timeout: int):
+        seen_requests.append(request)
+        seen_timeouts.append(timeout)
+        return Response()
+
+    monkeypatch.setattr(
+        check_npm_advisories.urllib.request,
+        "urlopen",
+        open_response,
+    )
+
+    assert check_npm_advisories.fetch_report({"pkg": ["1.0.0"]}) == {}
+    assert seen_limits == [check_npm_advisories.MAX_COMPRESSED_RESPONSE_BYTES + 1]
+    assert seen_timeouts == [30]
+    assert seen_requests[0].data == b'{"pkg":["1.0.0"]}'
+    assert seen_requests[0].get_header("Content-encoding") is None
+    assert seen_requests[0].get_header("Content-type") == "application/json"
+
+
+def test_fetch_report_batches_large_lockfiles_and_rejects_unrequested_packages(
+    monkeypatch,
+) -> None:
+    batch_sizes: list[int] = []
+
+    class Response:
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return self.body
+
+    def open_response(request, timeout: int):
+        assert timeout == check_npm_advisories.REQUEST_TIMEOUT_SECONDS
+        request_payload = json.loads(request.data)
+        batch_sizes.append(len(request_payload))
+        first_name = next(iter(request_payload))
+        return Response(json.dumps({first_name: []}).encode())
+
+    monkeypatch.setattr(
+        check_npm_advisories.urllib.request,
+        "urlopen",
+        open_response,
+    )
+    monkeypatch.setattr(check_npm_advisories, "MAX_PARALLEL_REQUESTS", 1)
+    payload = {f"pkg-{index:03d}": ["1.0.0"] for index in range(205)}
+
+    report = check_npm_advisories.fetch_report(payload)
+
+    assert batch_sizes == [50, 50, 50, 50, 5]
+    assert sorted(report) == [
+        "pkg-000",
+        "pkg-050",
+        "pkg-100",
+        "pkg-150",
+        "pkg-200",
     ]
-    assert seen["cwd"] == tmp_path
-    assert seen["stdin"] is subprocess.DEVNULL
-    assert seen["check"] is False
-    assert seen["timeout"] == check_npm_advisories.NPM_AUDIT_TIMEOUT_SECONDS
+
+    def inject_unrequested(_request, timeout: int):
+        assert timeout == check_npm_advisories.REQUEST_TIMEOUT_SECONDS
+        return Response(b'{"not-requested":[]}')
+
+    monkeypatch.setattr(
+        check_npm_advisories.urllib.request,
+        "urlopen",
+        inject_unrequested,
+    )
+    with pytest.raises(ValueError, match="unrequested package"):
+        check_npm_advisories.fetch_report({"pkg": ["1.0.0"]})
 
 
-def test_run_npm_audit_rejects_oversized_or_failed_output(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    monkeypatch.setattr(check_npm_advisories, "MAX_AUDIT_REPORT_BYTES", 32)
+def test_fetch_report_retries_only_the_failed_batch(monkeypatch) -> None:
+    attempts: dict[str, int] = {}
 
-    def oversized(_command, **kwargs):
-        kwargs["stdout"].write(b"{" + b" " * 32)
-        return SimpleNamespace(returncode=0)
+    def fetch_batch(batch):
+        first_name = next(iter(batch))
+        attempts[first_name] = attempts.get(first_name, 0) + 1
+        if first_name == "pkg-050" and attempts[first_name] == 1:
+            raise TimeoutError("transient npm timeout")
+        return {}
 
-    monkeypatch.setattr(check_npm_advisories.subprocess, "run", oversized)
-    with pytest.raises(ValueError, match="size limit"):
-        check_npm_advisories.run_npm_audit(lockfile)
+    monkeypatch.setattr(check_npm_advisories, "_fetch_batch", fetch_batch)
+    monkeypatch.setattr(check_npm_advisories, "MAX_PARALLEL_REQUESTS", 1)
+    monkeypatch.setattr(check_npm_advisories.time, "sleep", lambda _seconds: None)
+    payload = {f"pkg-{index:03d}": ["1.0.0"] for index in range(101)}
 
-    def failed(_command, **_kwargs):
-        return SimpleNamespace(returncode=2)
-
-    monkeypatch.setattr(check_npm_advisories.subprocess, "run", failed)
-    with pytest.raises(OSError, match="transport failed"):
-        check_npm_advisories.run_npm_audit(lockfile)
-
-
-def test_gate_fails_closed_on_npm_timeout(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-
-    def timeout(_path):
-        raise subprocess.TimeoutExpired(["npm", "audit"], 360)
-
-    monkeypatch.setattr(check_npm_advisories, "run_npm_audit", timeout)
-
-    assert check_npm_advisories.run(lockfile) == 2
+    assert check_npm_advisories.fetch_report(payload) == {}
+    assert attempts == {"pkg-000": 1, "pkg-050": 2, "pkg-100": 1}

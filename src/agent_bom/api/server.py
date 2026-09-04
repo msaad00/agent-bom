@@ -426,6 +426,10 @@ def _enqueue_scheduled_scan(
     if isinstance(legacy_path, str) and legacy_path and not request_payload.get("agent_projects"):
         request_payload["agent_projects"] = [legacy_path]
     request_body = ScanRequest(**request_payload)
+    if request_body.discover_host:
+        from agent_bom.api.scan_boundary import require_host_discovery_for_tenant
+
+        require_host_discovery_for_tenant(resolved_tenant_id)
     job = enqueue_scan_job(
         tenant_id=resolved_tenant_id,
         triggered_by="scheduler",

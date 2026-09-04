@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _run_scan_sync
 from agent_bom.api.store import InMemoryJobStore
@@ -70,12 +72,35 @@ def test_scan_without_scope_does_not_sweep_host_by_default(monkeypatch):
 
 
 def test_scan_opts_into_host_discovery_explicitly(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "tenant-a")
     store = InMemoryJobStore()
     calls = _record_discovery(monkeypatch, store)
 
     _run(store, ScanRequest(offline=True, enrich=False, discover_host=True))
 
     assert None in calls, "discover_host=True must run ambient host-wide discovery"
+
+
+@pytest.mark.parametrize(
+    ("local_scans", "bound_tenant"),
+    [("disabled", ""), ("enabled", ""), ("enabled", "tenant-b"), ("disabled", "tenant-a")],
+)
+def test_worker_rejects_host_discovery_without_deployment_tenant_permission(monkeypatch, local_scans, bound_tenant):
+    """A request flag cannot grant a tenant access to ambient server files."""
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", local_scans)
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", bound_tenant)
+    store = InMemoryJobStore()
+    calls = _record_discovery(monkeypatch, store)
+
+    job = _run(store, ScanRequest(discover_host=True, offline=True))
+
+    assert calls == [], "deny before any discovery, including persisted/replayed jobs"
+    assert job is not None
+    assert job.status == JobStatus.FAILED
+    assert job.result is not None
+    assert job.result["scan_run"]["outcome"] == "failed"
+    assert "agents" not in job.result
 
 
 def test_api_scan_projects_partial_js_ts_coverage_into_result(monkeypatch, tmp_path):

@@ -56,6 +56,17 @@ def _validate_enabled_source_schedule(tenant_id: str, scan_config: dict) -> None
                 )
         return
     if not source_id:
+        if "discover_host" in scan_config:
+            from pydantic import ValidationError
+
+            from agent_bom.api.models import ScanRequest
+            from agent_bom.api.routes.scan import _sanitize_scan_request_paths
+
+            try:
+                host_request = ScanRequest(discover_host=scan_config["discover_host"])
+            except ValidationError as exc:
+                raise HTTPException(status_code=422, detail="Invalid host discovery setting") from exc
+            _sanitize_scan_request_paths(host_request, tenant_id=tenant_id)
         return
     source = _get_source_store().get(source_id)
     if source is None or source.tenant_id != tenant_id or not source.enabled:

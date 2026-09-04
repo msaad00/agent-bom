@@ -347,7 +347,7 @@ def _cluster_campaigns(
         members.sort(key=lambda p: (p.composite_risk, len(p.hops)), reverse=True)
         jewel = graph.nodes.get(jewel_id)
         top = members[0]
-        exploitability = round(max(p.composite_risk for p in members), 2)
+        priority_score = round(max(p.composite_risk for p in members), 2)
         _reward, prize = _jewel_reward(jewel) if jewel is not None else (0.0, "sensitive data")
         owner = ""
         if jewel is not None:
@@ -362,8 +362,10 @@ def _cluster_campaigns(
                 partition=partition_of.get(jewel_id, ""),
                 owner=owner or "unknown",
                 business_impact=prize,
-                exploitability=exploitability,
-                expected_risk_reduction=exploitability,
+                exploitability=None,
+                expected_risk_reduction=None,
+                priority_score=priority_score,
+                priority_method="structural_path_rank.v1",
                 path_count=len(members),
                 top_path_summary=top.summary,
                 cross_partition=cross_partition,
@@ -371,5 +373,5 @@ def _cluster_campaigns(
                 member_paths=[f"{p.source}->{p.target}" for p in members],
             )
         )
-    campaigns.sort(key=lambda c: (c.exploitability, c.path_count, c.campaign_id), reverse=True)
+    campaigns.sort(key=lambda c: (c.priority_score if c.priority_score is not None else -1, c.path_count, c.campaign_id), reverse=True)
     return campaigns

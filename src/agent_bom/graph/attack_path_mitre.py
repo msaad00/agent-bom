@@ -57,8 +57,28 @@ def _resolve_hop(
 ) -> UnifiedEdge | None:
     """Return the observed edge object for this hop (carries edge evidence)."""
     for edge in graph.adjacency.get(source_id, []):
-        if edge.target == target_id and edge.relationship == rel:
+        if (
+            edge.source == source_id
+            and edge.target == target_id
+            and edge.relationship == rel
+            and edge.traversable
+            and edge.direction == "directed"
+        ):
             return edge
+    return None
+
+
+def relationship_evidence_basis(edge: UnifiedEdge) -> str | None:
+    """Use explicit collector semantics; topology alone never implies observation."""
+    for values in (edge.provenance, edge.evidence):
+        for key in ("basis", "evidence_basis", "evidence_tier"):
+            value = values.get(key)
+            if value in ("observed", "runtime_observed", "inferred", "modeled"):
+                return str(value)
+            if value == "modeled_infrastructure":
+                return "modeled"
+        if values.get("source") == "modeled_policy":
+            return "modeled"
     return None
 
 
@@ -158,10 +178,14 @@ def derive_attack_path_techniques(path: AttackPath, graph: UnifiedGraph) -> list
         source = graph.nodes.get(hops[i])
         target = graph.nodes.get(hops[i + 1])
         edge = _resolve_hop(graph, hops[i], hops[i + 1], rel)
+        if edge is None:
+            continue
         candidate = _candidate(rel, source, target, edge)
         if candidate is None:
             continue
         technique_id, catalog, confidence, provenance = candidate
+        basis = relationship_evidence_basis(edge)
+        provenance = provenance.replace("observed ", f"{basis or 'unclassified'} ", 1)
         if catalog == _ATLAS:
             resolved = _atlas_meta(technique_id)
             if resolved is None:
@@ -183,7 +207,8 @@ def derive_attack_path_techniques(path: AttackPath, graph: UnifiedGraph) -> list
                 catalog=catalog,
                 tactics=tactics,
                 provenance=provenance,
-                confidence=confidence,
+                confidence=min(confidence, edge.confidence) if basis else None,
+                evidence_basis=basis,
             )
         )
     return mappings

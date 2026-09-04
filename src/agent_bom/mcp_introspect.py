@@ -359,7 +359,7 @@ async def introspect_server(
     Connects via the server's configured transport, performs the MCP handshake,
     and queries tools/list + resources/list.
 
-    Only stdio and SSE transports are supported for introspection.
+    Stdio, SSE, and Streamable HTTP transports are supported for introspection.
     """
     result = ServerIntrospection(
         server_name=server.name,
@@ -387,11 +387,17 @@ async def introspect_server(
             return result
         return await _introspect_stdio(server, result, timeout)
 
-    elif server.transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP):
+    elif server.transport == TransportType.SSE:
         if not server.url:
             result.error = f"No URL configured for {server.transport.value} server"
             return result
         return await _introspect_sse(server, result, timeout)
+
+    elif server.transport == TransportType.STREAMABLE_HTTP:
+        if not server.url:
+            result.error = f"No URL configured for {server.transport.value} server"
+            return result
+        return await _introspect_streamable_http(server, result, timeout)
 
     else:
         result.error = f"Unsupported transport: {server.transport.value}"
@@ -446,6 +452,36 @@ async def _introspect_sse(
     try:
         async with asyncio.timeout(timeout):
             async with sse_client(server.url) as (read, write):  # type: ignore[arg-type]
+                async with ClientSession(read, write) as session:
+                    init_result = await session.initialize()
+                    result.protocol_version = getattr(init_result, "protocolVersion", None)
+
+                    result = await _query_capabilities(session, server, result)
+
+    except TimeoutError:
+        result.error = f"Connection timed out after {timeout}s"
+    except Exception as exc:
+        result.error = _safe_runtime_text(exc)
+
+    return result
+
+
+async def _introspect_streamable_http(
+    server: MCPServer,
+    result: ServerIntrospection,
+    timeout: float,
+) -> ServerIntrospection:
+    """Introspect via MCP Streamable HTTP transport."""
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
+    if not server.url:
+        result.error = "Server URL is not set"
+        return result
+
+    try:
+        async with asyncio.timeout(timeout):
+            async with streamable_http_client(server.url) as (read, write, _get_session_id):
                 async with ClientSession(read, write) as session:
                     init_result = await session.initialize()
                     result.protocol_version = getattr(init_result, "protocolVersion", None)

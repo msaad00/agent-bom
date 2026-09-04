@@ -112,6 +112,27 @@ def test_no_jewel_yields_no_campaigns() -> None:
     assert result.campaigns == []
 
 
+def test_non_traversable_edge_never_yields_partitioned_path() -> None:
+    """Large-estate fusion must honor the same edge gate as small graphs."""
+    g = UnifiedGraph(scan_id="s", tenant_id="tenant-alpha")
+    g.add_node(_entry("entry", "acct-a"))
+    g.add_node(_jewel("ds:crown", "acct-a"))
+    g.add_edge(
+        UnifiedEdge(
+            source="entry",
+            target="ds:crown",
+            relationship=RelationshipType.CAN_ACCESS,
+            traversable=False,
+        )
+    )
+    _pad(g, _MAX_NODES + 10, account="acct-a")
+
+    result = compute_partitioned_campaigns(g)
+
+    assert result.paths == []
+    assert result.campaigns == []
+
+
 def test_cross_partition_path_is_reconciled() -> None:
     """Entry in account A -> (cross-account ASSUMES) -> crown jewel in account B.
 

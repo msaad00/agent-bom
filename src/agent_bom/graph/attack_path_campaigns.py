@@ -284,7 +284,7 @@ def _explore_partition(
             return
 
         for edge in graph.adjacency.get(node_id, []):
-            if _rel(edge) not in _TRAVERSABLE_RELS:
+            if not edge.traversable or _rel(edge) not in _TRAVERSABLE_RELS:
                 continue
             nxt = edge.target
             if nxt in prefix_set or nxt in hops:

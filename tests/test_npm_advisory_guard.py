@@ -83,6 +83,7 @@ def test_gate_blocks_high_advisories(tmp_path: Path, monkeypatch) -> None:
 def test_gate_fails_closed_on_exhausted_transport_errors(tmp_path: Path, monkeypatch) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
+
     def fail(_payload) -> dict:
         raise OSError("registry unavailable")
 

@@ -13,6 +13,16 @@ degrades to a clear status rather than raising.
 from __future__ import annotations
 
 from agent_bom.identity.entra_nhi import discover_entra_non_human_identities
+from agent_bom.identity.join_contract import (
+    CanonicalIdentityEntity,
+    CanonicalIdentityType,
+    CanonicalResourceReference,
+    IdentityRelationship,
+    IdentityRelationshipType,
+    IdentityResourceJoinContract,
+    IdentitySourceKind,
+    ProviderNativeId,
+)
 from agent_bom.identity.okta_nhi import (
     DiscoveredNonHumanIdentity,
     NHIDiscoveryResult,
@@ -24,6 +34,14 @@ __all__ = [
     "DiscoveredNonHumanIdentity",
     "NHIDiscoveryResult",
     "NHIDiscoveryStatus",
+    "CanonicalIdentityEntity",
+    "CanonicalIdentityType",
+    "CanonicalResourceReference",
+    "IdentityRelationship",
+    "IdentityRelationshipType",
+    "IdentityResourceJoinContract",
+    "IdentitySourceKind",
+    "ProviderNativeId",
     "discover_entra_non_human_identities",
     "discover_okta_non_human_identities",
 ]

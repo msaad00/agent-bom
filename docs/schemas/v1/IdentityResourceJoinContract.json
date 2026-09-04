@@ -1,0 +1,667 @@
+{
+  "$defs": {
+    "CanonicalIdentityEntity": {
+      "additionalProperties": false,
+      "description": "Canonical identity with one or more authoritative provider-native IDs.",
+      "properties": {
+        "display_name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "entity_id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "$ref": "#/$defs/CanonicalIdentityType"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "native_ids": {
+          "items": {
+            "$ref": "#/$defs/ProviderNativeId"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Native Ids",
+          "type": "array"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus",
+          "default": "complete"
+        }
+      },
+      "required": [
+        "display_name",
+        "native_ids",
+        "evidence_refs",
+        "entity_id",
+        "entity_type"
+      ],
+      "title": "CanonicalIdentityEntity",
+      "type": "object"
+    },
+    "CanonicalIdentityType": {
+      "description": "Provider-neutral identity entities used by the join contract.",
+      "enum": [
+        "person",
+        "service_account",
+        "workload_identity",
+        "role",
+        "group"
+      ],
+      "title": "CanonicalIdentityType",
+      "type": "string"
+    },
+    "CanonicalResourceReference": {
+      "additionalProperties": false,
+      "description": "Bounded resource reference that an observed identity relationship targets.",
+      "properties": {
+        "display_name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "native_ids": {
+          "items": {
+            "$ref": "#/$defs/ProviderNativeId"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Native Ids",
+          "type": "array"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "resource_id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus",
+          "default": "complete"
+        }
+      },
+      "required": [
+        "display_name",
+        "native_ids",
+        "evidence_refs",
+        "resource_id",
+        "resource_type"
+      ],
+      "title": "CanonicalResourceReference",
+      "type": "object"
+    },
+    "CompletenessEntry": {
+      "additionalProperties": false,
+      "description": "Completeness of one component at one processing stage.",
+      "properties": {
+        "affects_coverage": {
+          "default": true,
+          "title": "Affects Coverage",
+          "type": "boolean"
+        },
+        "component": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Component",
+          "type": "string"
+        },
+        "expected_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Count"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "requested": {
+          "default": true,
+          "title": "Requested",
+          "type": "boolean"
+        },
+        "returned_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Returned Count"
+        },
+        "stage": {
+          "$ref": "#/$defs/EvidenceStage"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "stage",
+        "component",
+        "status"
+      ],
+      "title": "CompletenessEntry",
+      "type": "object"
+    },
+    "EvidenceBasis": {
+      "description": "How an evidence record was established.",
+      "enum": [
+        "observed",
+        "runtime_observed",
+        "inferred",
+        "modeled"
+      ],
+      "title": "EvidenceBasis",
+      "type": "string"
+    },
+    "EvidenceCompletenessLedger": {
+      "additionalProperties": false,
+      "description": "Deterministic aggregation of bounded component completeness.",
+      "properties": {
+        "entries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CompletenessEntry"
+          },
+          "maxItems": 500,
+          "title": "Entries",
+          "type": "array"
+        },
+        "overall_status": {
+          "$ref": "#/$defs/EvidenceStatus",
+          "readOnly": true
+        },
+        "schema_version": {
+          "const": "evidence-completeness.v1",
+          "default": "evidence-completeness.v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "overall_status"
+      ],
+      "title": "EvidenceCompletenessLedger",
+      "type": "object"
+    },
+    "EvidenceFreshness": {
+      "additionalProperties": false,
+      "description": "Freshness evaluated at a caller-supplied decision time.",
+      "properties": {
+        "evaluated_at": {
+          "format": "date-time",
+          "title": "Evaluated At",
+          "type": "string"
+        },
+        "max_age_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Age Seconds"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
+        },
+        "status": {
+          "$ref": "#/$defs/FreshnessStatus"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "status",
+        "evaluated_at"
+      ],
+      "title": "EvidenceFreshness",
+      "type": "object"
+    },
+    "EvidenceProvenance": {
+      "additionalProperties": false,
+      "description": "A bounded, referenceable evidence receipt.",
+      "properties": {
+        "basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceBasis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "evidence_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "freshness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceFreshness"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "evidence-provenance.v1",
+          "default": "evidence-provenance.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Source",
+          "type": "string"
+        },
+        "source_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "status",
+        "source"
+      ],
+      "title": "EvidenceProvenance",
+      "type": "object"
+    },
+    "EvidenceStage": {
+      "enum": [
+        "collection",
+        "normalization",
+        "catalog_lookup",
+        "persistence",
+        "graph_join",
+        "analysis"
+      ],
+      "title": "EvidenceStage",
+      "type": "string"
+    },
+    "EvidenceStatus": {
+      "description": "Whether a bounded evidence-producing operation completed.",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable",
+        "failed"
+      ],
+      "title": "EvidenceStatus",
+      "type": "string"
+    },
+    "FreshnessStatus": {
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown"
+      ],
+      "title": "FreshnessStatus",
+      "type": "string"
+    },
+    "IdentityRelationship": {
+      "additionalProperties": false,
+      "description": "One structural join assertion or an explicit incomplete join attempt.",
+      "properties": {
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^\\s]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "reason_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "relationship_id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Relationship Id",
+          "type": "string"
+        },
+        "relationship_type": {
+          "$ref": "#/$defs/IdentityRelationshipType"
+        },
+        "source_ref": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "pattern": "^[^\\s]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Ref"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        },
+        "target_ref": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "pattern": "^[^\\s]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Ref"
+        }
+      },
+      "required": [
+        "relationship_id",
+        "relationship_type",
+        "status"
+      ],
+      "title": "IdentityRelationship",
+      "type": "object"
+    },
+    "IdentityRelationshipType": {
+      "description": "Structural relationships only; permissions are deliberately excluded.",
+      "enum": [
+        "member_of",
+        "assumes",
+        "trusts",
+        "runs_as",
+        "owns"
+      ],
+      "title": "IdentityRelationshipType",
+      "type": "string"
+    },
+    "IdentitySourceKind": {
+      "description": "Supported identity-source families; ``provider`` keeps the exact vendor.",
+      "enum": [
+        "okta",
+        "aws",
+        "azure",
+        "gcp",
+        "saas"
+      ],
+      "title": "IdentitySourceKind",
+      "type": "string"
+    },
+    "ProviderNativeId": {
+      "additionalProperties": false,
+      "description": "One exact provider identifier retained for deterministic correlation.",
+      "properties": {
+        "account": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "pattern": "^[^\\s]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Account"
+        },
+        "id_type": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Id Type",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9_.:-]*$",
+          "title": "Provider",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/IdentitySourceKind"
+        },
+        "value": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "provider",
+        "id_type",
+        "value"
+      ],
+      "title": "ProviderNativeId",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Public contract for evidence-backed cross-provider identity/resource joins.",
+  "properties": {
+    "completeness": {
+      "$ref": "#/$defs/EvidenceCompletenessLedger"
+    },
+    "evidence": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EvidenceProvenance"
+      },
+      "maxItems": 5000,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "identities": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CanonicalIdentityEntity"
+      },
+      "maxItems": 10000,
+      "title": "Identities",
+      "type": "array"
+    },
+    "relationships": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/IdentityRelationship"
+      },
+      "maxItems": 50000,
+      "title": "Relationships",
+      "type": "array"
+    },
+    "resources": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CanonicalResourceReference"
+      },
+      "maxItems": 10000,
+      "title": "Resources",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "identity-resource-joins.v1",
+      "default": "identity-resource-joins.v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tenant_id": {
+      "maxLength": 500,
+      "minLength": 1,
+      "pattern": "^[^\\s]+$",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "completeness"
+  ],
+  "title": "IdentityResourceJoinContract",
+  "type": "object"
+}

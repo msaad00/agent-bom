@@ -152,6 +152,11 @@
       "schema": "HealthResponse.json"
     },
     {
+      "doc": "Public contract for evidence-backed cross-provider identity/resource joins.",
+      "name": "IdentityResourceJoinContract",
+      "schema": "IdentityResourceJoinContract.json"
+    },
+    {
       "doc": "Body for POST /v1/auth/invitations \u2014 admin provisions a NEW tenant.",
       "name": "InvitationRequest",
       "schema": "InvitationRequest.json"

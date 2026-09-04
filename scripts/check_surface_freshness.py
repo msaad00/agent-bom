@@ -54,7 +54,6 @@ DEFAULT_ATTEMPTS = 3
 DEFAULT_BACKOFF = 5.0
 
 OK_STATUSES = {"fresh"}
-ALERT_STATUSES = {"stale", "not_configured", "unreachable"}
 
 
 def expected_tool_count() -> int:
@@ -71,6 +70,20 @@ def expected_tool_count() -> int:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return int(module._load_readme_tool_count())
+
+
+def _load_expected_tool_names(path: Path) -> list[str]:
+    """Load a release-bound tool-name contract from a JSON list."""
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"could not read expected tool-name contract: {exc}") from exc
+    if not isinstance(payload, list) or not payload or not all(isinstance(name, str) and name for name in payload):
+        raise SystemExit("expected tool-name contract must be a non-empty JSON string list")
+    if len(payload) != len(set(payload)):
+        raise SystemExit("expected tool-name contract contains duplicate names")
+    return sorted(payload)
 
 
 def _env_or(name: str, default: str) -> str:
@@ -251,11 +264,19 @@ def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
         return _classify("Docker", None, expected, error=str(exc))
 
 
-def probe_glama(expected: str, *, expected_tool_count: int | None = None, **kw: Any) -> dict[str, Any]:
+def probe_glama(
+    expected: str,
+    *,
+    expected_tool_count: int | None = None,
+    expected_tool_names_file: Path | None = None,
+    **kw: Any,
+) -> dict[str, Any]:
     """Delegate to check_glama_listing.py so the probe logic stays in one place."""
     command = [sys.executable, str(GLAMA_SCRIPT), "--expected", expected, "--json"]
     if expected_tool_count is not None:
         command.extend(["--expected-tool-count", str(expected_tool_count)])
+    if expected_tool_names_file is not None:
+        command.extend(["--expected-tool-names-file", str(expected_tool_names_file)])
     proc = subprocess.run(
         command,
         capture_output=True,
@@ -278,11 +299,21 @@ def probe_glama(expected: str, *, expected_tool_count: int | None = None, **kw: 
         "expected": expected,
         "tool_count": payload.get("tool_count"),
         "expected_tool_count": payload.get("expected_tool_count"),
+        "exact_tool_set": payload.get("exact_tool_set"),
+        "exact_input_schemas": payload.get("exact_input_schemas"),
+        "degraded_reason": payload.get("degraded_reason"),
         "error": payload.get("error"),
     }
 
 
-def probe_smithery(expected: str, qualified_name: str, *, expected_tool_count: int | None = None, **kw: Any) -> dict[str, Any]:
+def probe_smithery(
+    expected: str,
+    qualified_name: str,
+    *,
+    expected_tool_count: int | None = None,
+    expected_tool_names: list[str] | None = None,
+    **kw: Any,
+) -> dict[str, Any]:
     """Probe Smithery's public catalog listing.
 
     Smithery-hosted remote servers are OAuth-gated and do not expose agent-bom's
@@ -316,11 +347,23 @@ def probe_smithery(expected: str, qualified_name: str, *, expected_tool_count: i
             "deployment_url": deployment_url,
             "tool_count": len(tools),
         }
+        actual_tool_names = sorted(tool.get("name") for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str))
         if expected_tool_count is not None:
             result["expected_tool_count"] = expected_tool_count
             if len(tools) != expected_tool_count:
                 result["status"] = "stale"
                 result["error"] = f"catalog advertises {len(tools)} tools; expected {expected_tool_count}"
+        if expected_tool_names is not None:
+            exact_tool_set = actual_tool_names == expected_tool_names
+            result["exact_tool_set"] = exact_tool_set
+            if not exact_tool_set:
+                result["status"] = "stale"
+                missing = sorted(set(expected_tool_names) - set(actual_tool_names))
+                unexpected = sorted(set(actual_tool_names) - set(expected_tool_names))
+                result["error"] = (
+                    "catalog tool-name set differs from the immutable release contract"
+                    f"; missing={missing or 'none'}; unexpected={unexpected or 'none'}"
+                )
         return result
     except (RuntimeError, ValueError) as exc:
         return _classify("Smithery", None, expected, error=str(exc))
@@ -332,6 +375,12 @@ def main(argv: list[str] | None = None) -> int:
     # One shipped tool inventory, so one expectation. The Glama-specific spelling
     # stays accepted because the workflow passes it.
     parser.add_argument("--expected-tool-count", "--expected-glama-tool-count", dest="expected_tool_count", type=int, default=None)
+    parser.add_argument(
+        "--expected-tool-names-file",
+        type=Path,
+        default=None,
+        help="JSON list of immutable released MCP tool names required from marketplace inventories.",
+    )
     parser.add_argument("--docker-image", default=_env_or("DOCKER_IMAGE", DEFAULT_DOCKER_IMAGE))
     parser.add_argument("--smithery-server", default=_env_or("SMITHERY_SERVER_QUALIFIED_NAME", DEFAULT_SMITHERY_SERVER))
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
@@ -355,16 +404,30 @@ def main(argv: list[str] | None = None) -> int:
     # reported a catalog advertising 36 of 77 tools as fresh — the drift this
     # monitor exists to catch, invisible to the person most likely to look.
     tool_count = args.expected_tool_count if args.expected_tool_count is not None else expected_tool_count()
+    expected_tool_names = _load_expected_tool_names(args.expected_tool_names_file) if args.expected_tool_names_file else None
+    if expected_tool_names is not None and len(expected_tool_names) != tool_count:
+        raise SystemExit("expected tool-name contract and tool count do not match")
     kw = {"timeout": args.timeout, "attempts": args.attempts, "backoff": args.backoff_seconds}
 
     surfaces = [
         probe_pypi(expected, **kw),
         probe_docker(expected, args.docker_image, **kw),
-        probe_glama(expected, expected_tool_count=tool_count, **kw),
-        probe_smithery(expected, args.smithery_server, expected_tool_count=tool_count, **kw),
+        probe_glama(
+            expected,
+            expected_tool_count=tool_count,
+            expected_tool_names_file=args.expected_tool_names_file,
+            **kw,
+        ),
+        probe_smithery(
+            expected,
+            args.smithery_server,
+            expected_tool_count=tool_count,
+            expected_tool_names=expected_tool_names,
+            **kw,
+        ),
     ]
 
-    drift = [s for s in surfaces if s["status"] in ALERT_STATUSES]
+    drift = [s for s in surfaces if s["status"] not in OK_STATUSES]
     report = {
         "expected": expected,
         "all_fresh": len(drift) == 0,

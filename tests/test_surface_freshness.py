@@ -435,6 +435,85 @@ def test_smithery_listing_matching_the_shipped_tool_count_is_fresh(monkeypatch):
     assert result["tool_count"] == 77
 
 
+def test_smithery_listing_rejects_count_collision_with_wrong_tool_names(monkeypatch):
+    """A matching count must not substitute for the immutable name set."""
+    script = _load_script("check_surface_freshness.py")
+    monkeypatch.setattr(script, "_http_json", _smithery_listing_with(2))
+
+    result = script.probe_smithery(
+        "0.103.2",
+        "agent-bom/agent-bom",
+        expected_tool_count=2,
+        expected_tool_names=["graph_correlate", "scan"],
+        timeout=1,
+        attempts=1,
+        backoff=0,
+    )
+
+    assert result["status"] == "stale"
+    assert result["exact_tool_set"] is False
+    assert "tool-name set differs" in result["error"]
+
+
+def test_glama_probe_forwards_immutable_tool_name_contract(monkeypatch, tmp_path):
+    script = _load_script("check_surface_freshness.py")
+    names_file = tmp_path / "expected-tool-names.json"
+    names_file.write_text('["graph_correlate", "scan"]\n', encoding="utf-8")
+    seen: list[str] = []
+
+    def fake_run(command, **_kwargs):
+        seen.extend(command)
+        return subprocess.CompletedProcess(command, 0, stdout='{"status":"fresh"}\n', stderr="")
+
+    monkeypatch.setattr(script.subprocess, "run", fake_run)
+
+    result = script.probe_glama(
+        "0.103.2",
+        expected_tool_count=2,
+        expected_tool_names_file=names_file,
+        timeout=1,
+        attempts=1,
+        backoff=0,
+    )
+
+    assert result["status"] == "fresh"
+    assert seen[seen.index("--expected-tool-names-file") + 1] == str(names_file)
+
+
+def test_surface_freshness_does_not_close_on_degraded_evidence(monkeypatch, tmp_path):
+    """An unavailable machine inventory is partial evidence, never all-fresh."""
+    script = _load_script("check_surface_freshness.py")
+
+    def fresh(name):
+        return lambda expected, *args, **kwargs: {
+            "surface": name,
+            "status": "fresh",
+            "version": expected,
+            "expected": expected,
+        }
+
+    monkeypatch.setattr(script, "probe_pypi", fresh("PyPI"))
+    monkeypatch.setattr(script, "probe_docker", fresh("Docker"))
+    monkeypatch.setattr(
+        script,
+        "probe_glama",
+        lambda expected, **_kwargs: {
+            "surface": "Glama",
+            "status": "fresh_degraded",
+            "version": expected,
+            "expected": expected,
+            "degraded_reason": "Glama public API inventory was unreachable",
+        },
+    )
+    monkeypatch.setattr(script, "probe_smithery", fresh("Smithery"))
+
+    out = tmp_path / "report.json"
+    assert script.main(["--expected", "0.103.2", "--out", str(out)]) == 0
+
+    report = json.loads(out.read_text())
+    assert report["all_fresh"] is False
+
+
 def test_legacy_glama_tool_count_flag_is_still_accepted(monkeypatch, tmp_path):
     """Renaming the flag must not break anything still passing the old spelling."""
     script = _load_script("check_surface_freshness.py")

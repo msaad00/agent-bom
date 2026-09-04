@@ -175,6 +175,12 @@ Fix it once, on the existing database, before rolling the new image:
 ALTER ROLE agent_bom NOSUPERUSER NOBYPASSRLS;
 ```
 
+Role inspection fails closed: a connection error, missing role record, or rejected
+role blocks pool access on every retry. Successful checks are scoped to each
+application pool and cleared when pools are reset; the idempotency pool cannot
+reuse another pool's authorization. Restart the service after changing database
+role grants so that startup validates the new configuration.
+
 Then point `AGENT_BOM_POSTGRES_URL` at the least-privilege `agent_bom_app` role
 (the intended production connection role). As a temporary stopgap only — for a
 single-tenant or local/dev deployment where tenant isolation is not required —

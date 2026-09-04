@@ -1317,6 +1317,13 @@ def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
             captured["kwargs"] = kwargs or {}
             captured["open"] = open
 
+        def connection(self):
+            from unittest.mock import MagicMock
+
+            connection = MagicMock()
+            connection.__enter__.return_value.execute.return_value.fetchone.return_value = (False, False, "app")
+            return connection
+
     reset = postgres_common.reset_pool
     reset()
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://localhost/test")

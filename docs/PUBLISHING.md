@@ -44,10 +44,14 @@ remote deployment metadata, and non-empty tools.
 5. Click **Continue**
 
 **Option B — Automated**:
-The `publish-registries.yml` workflow compares the released server-card tool
-names with Smithery's public catalog before publishing. If they already match,
-the workflow skips a duplicate deployment. If capabilities changed, it creates
-an external release using:
+The `publish-registries.yml` workflow parses the static server-card tool names
+from the immutable release commit, then compares that contract with both the
+live server card and Smithery's public catalog before publishing. It also
+compares the catalog's input schemas and public description with the live
+release-bound server card. If names, schemas, description, and the latest
+successful upstream URL already match, the workflow skips a duplicate
+deployment. If capabilities, listing metadata, or the upstream changed, it
+creates an external release using:
 - `SMITHERY_API_TOKEN`
 
 `SMITHERY_MCP_URL` is retained only for the external-upstream publish mode. It
@@ -55,11 +59,15 @@ must never point at Smithery's hosted proxy URL. Freshness monitoring no longer
 depends on that variable; it uses the Smithery catalog API directly.
 
 Do not add the upstream bearer token to Smithery `configSchema`. Smithery
-reserves the `Authorization` header for OAuth. A new authenticated capability
-scan can pause as `AUTH_REQUIRED`; authorize that pending release in Smithery's
-**Releases** UI. The workflow waits up to 15 minutes and otherwise fails
-honestly. After authorization, re-running the workflow verifies catalog parity
-without creating another deployment.
+reserves the `Authorization` header for OAuth. If a capability scan pauses as
+`AUTH_REQUIRED`, the workflow reads the release through Smithery's authenticated
+API, accepts only an authorization URL on the configured Agent-Bom origin,
+follows the bounded machine-to-machine PKCE callback without logging its OAuth
+state. The only permitted redirect is the configured authorization endpoint to
+Smithery's exact HTTPS callback; a second redirect or alternate host, port, or
+path fails closed. The workflow never creates a duplicate while a matching
+release remains active, retries every six hours, and fails honestly if the
+provider still requires authorization or the exact catalog does not converge.
 
 ### Verification
 
@@ -99,7 +107,10 @@ Search for "agent-bom" at: https://registry.modelcontextprotocol.io
 
 ## 3. ClawHub / OpenClaw
 
-Automated via `publish-registries.yml` using `CLAWHUB_TOKEN`.
+Automated via `publish-registries.yml` using `CLAWHUB_TOKEN`. The exact
+release version is retried every six hours, and ClawHub's already-published
+response is treated as an idempotent success. This also recovers publication
+when GitHub replaces an older pending workflow run in its concurrency queue.
 
 The public ClawHub surface is intentionally curated. Release automation publishes only:
 - `agent-bom-scan`
@@ -135,18 +146,28 @@ clawhub install agent-bom-scan
 ## 4. Glama
 
 Glama indexes the repository README and builds the MCP schema from
-`integrations/glama/Dockerfile`. Automatic forward releases require the
-`GLAMA_WEBHOOK_URL` Actions secret; a missing webhook or a stale public listing
-fails the registry workflow rather than reporting a green publication.
+`integrations/glama/Dockerfile`. Glama synchronizes linked GitHub repositories
+automatically at least daily. `publish-registries.yml` verifies the exact
+released version and MCP tool set immediately after a release and every six
+hours; it does not call an undocumented provider endpoint or report stale data
+as published.
 
-For a manual repair, open the server's **Admin → Repository** page and run
-**Sync**, then dispatch **Publish to Registries** again. Verification requires
-both the released version marker and the exact released MCP tool count.
+For an immediate provider-side refresh, open the server's admin page and use
+**Sync Server**, then dispatch **Publish to Registries** again. Verification
+requires both the released version marker and the exact MCP tool-name set
+parsed from the immutable release commit; the live server card is checked
+independently against the same contract. When Glama's machine inventory is
+reachable, its input schemas must also match the live release-bound server
+card. A user-visible Schema page match with an unreachable machine inventory
+is reported as degraded rather than full parity.
+
+A Glama hosted release is separate from directory synchronization. Creating
+one remains a maintainer action in Glama: configure the Dockerfile build,
+deploy and pass the build test, then create and publish the Glama release.
 
 ```bash
 python scripts/check_glama_listing.py \
-  --expected 0.103.2 \
-  --expected-tool-count 84
+  --expected 0.103.2
 ```
 
 ---
@@ -234,6 +255,7 @@ For dependency-heavy or security-driven releases, also verify:
 | **GHCR (stdio)** | `Dockerfile.mcp` | publish-mcp.yml | workflow_run |
 | **GHCR (SSE)** | `deploy/docker/Dockerfile.sse` | publish-mcp.yml | workflow_run |
 | **Smithery** | workflow API | publish-registries.yml | workflow_run |
+| **Glama directory** | `glama.json` + `integrations/glama/Dockerfile` | provider sync + strict verification | provider daily sync / publish-registries.yml every 6 hours |
 | **ClawHub** | curated `integrations/openclaw/*/SKILL.md` set | publish-registries.yml | workflow_run |
 | **MCP Registry** | `integrations/mcp-registry/server.json` | publish-mcp-registry.yml | workflow_run |
 | **Railway** | `deploy/docker/Dockerfile.sse` | deploy-mcp-sse.yml | release workflow_call / workflow_dispatch |

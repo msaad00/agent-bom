@@ -387,25 +387,27 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: python scripts/check_npm_lockfile.py ui/package-lock.json sdks/typescript/package-lock.json
 
-      - name: npm audit (ui/ transitive deps)
+      - name: npm bulk advisory gate (ui/ transitive deps)
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           cd ui
           npm config set fetch-retries 5
           npm config set fetch-retry-mintimeout 20000
           npm config set fetch-retry-maxtimeout 120000
-          npm ci --ignore-scripts
-          npm audit --audit-level=high
+          npm ci --ignore-scripts --json > "${RUNNER_TEMP}/npm-ci-ui.json"
+          python ../scripts/check_npm_advisories.py package-lock.json \
+            --npm-install-report "${RUNNER_TEMP}/npm-ci-ui.json"
 
-      - name: npm audit (TypeScript SDK transitive deps)
+      - name: npm bulk advisory gate (TypeScript SDK transitive deps)
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           cd sdks/typescript
           npm config set fetch-retries 5
           npm config set fetch-retry-mintimeout 20000
           npm config set fetch-retry-maxtimeout 120000
-          npm ci --ignore-scripts
-          npm audit --audit-level=high
+          npm ci --ignore-scripts --json > "${RUNNER_TEMP}/npm-ci-typescript-sdk.json"
+          python ../../scripts/check_npm_advisories.py package-lock.json \
+            --npm-install-report "${RUNNER_TEMP}/npm-ci-typescript-sdk.json"
 
       - name: JavaScript supply-chain guard
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'

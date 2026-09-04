@@ -124,7 +124,7 @@ jobs:
               rows,
               "",
               "**Statuses**",
-              "- `stale` — surface published a different version; re-run the publish workflow.",
+              "- `stale` — surface published a different version; use that provider's supported publish or sync path, then re-run verification.",
               "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
               "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
               "",

@@ -8,6 +8,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 
 
 def _ci() -> dict[str, object]:
@@ -84,6 +85,21 @@ def test_dependency_security_skips_only_proven_docs_only_changes() -> None:
         condition = jobs[name]["if"]
         assert "needs.changes.result != 'success'" in condition
         assert "needs.changes.outputs.docs_only != 'true'" in condition
+
+
+def test_npm_audits_use_committed_lockfiles() -> None:
+    """Advisory checks must use the bulk API without npm's retired fallback."""
+    ci = CI_WORKFLOW.read_text(encoding="utf-8")
+    release = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    assert ci.count("check_npm_advisories.py package-lock.json") == 2
+    assert release.count("check_npm_advisories.py package-lock.json") == 1
+    assert ci.count("--npm-install-report") == 2
+    assert release.count("--npm-install-report") == 1
+    assert ci.count("npm ci --ignore-scripts --json") == 2
+    assert release.count("npm ci --ignore-scripts --json") == 1
+    assert "npm audit" not in ci
+    assert "npm audit" not in release
 
 
 def test_gitleaks_remains_unconditional_for_documentation_changes() -> None:

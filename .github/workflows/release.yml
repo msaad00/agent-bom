@@ -979,11 +979,12 @@ jobs:
       - name: Verify release evidence matrix
         run: python scripts/check_release_evidence_matrix.py
 
-      - name: npm audit (ui/ deps) — block release on high/critical
+      - name: npm bulk advisory gate (ui/ deps) — block release on high/critical
         run: |
           cd ui
-          npm ci --ignore-scripts
-          npm audit --audit-level=high
+          npm ci --ignore-scripts --json > "${RUNNER_TEMP}/npm-ci-ui-release.json"
+          python ../scripts/check_npm_advisories.py package-lock.json \
+            --npm-install-report "${RUNNER_TEMP}/npm-ci-ui-release.json"
 
       - name: OSV scanner (ui lockfile) — block release on fixable CVEs
         # Without pipefail the `| tee` below swallowed osv-scanner's exit code,

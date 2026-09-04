@@ -48,7 +48,9 @@ class _FakeConn:
     def __init__(self, table: dict[tuple, dict]) -> None:
         self._table = table
         self.executed: list[tuple[str, object]] = []
-        self.now = datetime(2026, 9, 3, tzinfo=timezone.utc)
+        # Keep fake inserts inside the production TTL window. A fixed wall-clock
+        # date made every reservation expire once CI crossed the next UTC day.
+        self.now = datetime.now(timezone.utc)
 
     def __enter__(self) -> _FakeConn:
         return self

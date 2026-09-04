@@ -1,6 +1,9 @@
 name: Publish to Registries
 
-# Auto-publishes to Smithery and ClawHub after a successful Release workflow.
+# Publishes after a successful Release workflow and reconciles every
+# idempotent registry every six hours until the public surfaces match the
+# latest release contract. Scheduled ClawHub retries also recover a release
+# event displaced from GitHub's single pending concurrency slot.
 # Secrets needed (add via Settings → Secrets):
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
@@ -11,27 +14,20 @@ name: Publish to Registries
 # release is only fresh when the catalog converges to the released tool count.
 # Optional vars:
 #   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
-# Optional secret:
-#   GLAMA_WEBHOOK_URL   — Glama rebuild webhook (POST JSON: ref, commit, version, dockerfile)
-
 on:
+  schedule:
+    - cron: "17 */6 * * *"
   workflow_run:
     workflows: ["Release"]
     types: [completed]
   workflow_dispatch:
-    inputs:
-      glama_repair:
-        description: >-
-          Fail the run if the Glama rebuild cannot be triggered. Opt in only when
-          repairing the Glama listing is the point of this run; an ordinary
-          re-publish should leave this off so an unconfigured third-party
-          webhook cannot block the other registries.
-        type: boolean
-        required: false
-        default: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: publish-registries
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -40,13 +36,14 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
       version: ${{ steps.release.outputs.version }}
       release_ref: ${{ steps.release.outputs.release_ref }}
       release_sha: ${{ steps.release.outputs.release_sha }}
       tool_count: ${{ steps.release.outputs.tool_count }}
       smithery_oauth_ready: ${{ steps.release.outputs.smithery_oauth_ready }}
+      publish_current: ${{ steps.release.outputs.publish_current }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,10 +64,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            # Manual repair always targets the latest published release. This
-            # workflow fans out to multiple registries, so accepting an older
-            # tag here could downgrade Smithery or ClawHub as a side effect.
+          if [ "$EVENT_NAME" != "workflow_run" ]; then
+            # Manual and scheduled reconciliation always target the latest
+            # published release. Accepting an older tag here could downgrade a
+            # registry as a side effect.
             RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest")
             RELEASE_TAG=$(echo "$RELEASE_JSON" | jq -er '.tag_name')
             if [ "$(echo "$RELEASE_JSON" | jq -r '.draft != false')" = "true" ]; then
@@ -91,12 +88,18 @@ jobs:
               echo "::error::Successful Release workflow did not report a release commit"
               exit 1
             fi
+            LATEST_RELEASE_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+            if [ "$LATEST_RELEASE_TAG" != "$RELEASE_TAG" ]; then
+              echo "publish_current=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Skipping delayed ${RELEASE_TAG} registry event because ${LATEST_RELEASE_TAG} is already the latest published release"
+              exit 0
+            fi
           fi
 
           git fetch --force --no-tags origin \
             "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           RELEASE_SHA=$(git rev-list -n 1 "refs/tags/${RELEASE_TAG}")
-          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$RELEASE_SHA" != "$HEAD_SHA" ]; then
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$RELEASE_SHA" != "$HEAD_SHA" ]; then
             echo "::error::Release tag and successful workflow commit do not match"
             exit 1
           fi
@@ -130,6 +133,7 @@ jobs:
             SMITHERY_OAUTH_READY=false
           fi
           {
+            echo "publish_current=true"
             echo "version=$VERSION"
             echo "release_ref=refs/tags/${RELEASE_TAG}"
             echo "release_sha=$RELEASE_SHA"
@@ -144,7 +148,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ needs.release.outputs.publish_current == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -185,6 +189,19 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch release commit for Smithery contract verification
+        if: steps.smithery_config.outputs.enabled == 'true'
+        env:
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
+        run: git fetch --no-tags --depth=1 origin "$RELEASE_SHA"
+
+      - name: Extract immutable Smithery release tool contract
+        if: steps.smithery_config.outputs.enabled == 'true'
+        run: >-
+          python scripts/check_glama_listing.py
+          --write-tool-names /tmp/smithery-expected-tool-names.json
+          --git-ref "${{ needs.release.outputs.release_sha }}"
+
       - name: Validate Smithery public server card
         if: steps.smithery_config.outputs.enabled == 'true'
         env:
@@ -201,8 +218,15 @@ jobs:
                 --argjson tool_count "$EXPECTED_TOOL_COUNT" \
                 '.serverInfo.version == $version and (.authentication.required == true) and (.authentication.schemes | index("oauth2") != null) and (.tools | length) == $tool_count and all(.tools[]; (.name | type == "string") and (.inputSchema | type == "object"))' \
                 /tmp/smithery-server-card.json >/dev/null; then
-              echo "Smithery server card matches v${VERSION} with ${EXPECTED_TOOL_COUNT} live tool schemas"
-              exit 0
+              jq -S '[.tools[].name] | sort' /tmp/smithery-server-card.json > /tmp/smithery-actual-server-card-tool-names.json
+              if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-server-card-tool-names.json; then
+                jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
+                  /tmp/smithery-server-card.json > /tmp/smithery-expected-tool-contract.json
+                jq -S '{description}' \
+                  /tmp/smithery-server-card.json > /tmp/smithery-expected-listing-metadata.json
+                echo "Smithery server card matches the immutable v${VERSION} contract with ${EXPECTED_TOOL_COUNT} live tool schemas and listing metadata"
+                exit 0
+              fi
             fi
             echo "Smithery server card attempt ${ATTEMPT}/12 has not reached the released contract"
             sleep 10
@@ -213,30 +237,122 @@ jobs:
       - name: Check Smithery catalog parity
         id: smithery_catalog
         if: steps.smithery_config.outputs.enabled == 'true'
+        env:
+          SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
         run: |
           set -euo pipefail
           echo "fresh=false" >> "$GITHUB_OUTPUT"
           if ! curl -fsS --connect-timeout 10 --max-time 30 \
               "https://api.smithery.ai/servers/agent-bom/agent-bom" \
               -o /tmp/smithery-catalog.json; then
-            echo "::notice::Smithery catalog could not be read before publication; creating a release"
-            exit 0
+            echo "::error::Smithery catalog is unavailable; refusing to create a potentially duplicate release"
+            exit 1
           fi
-          jq -S '[.tools[].name] | sort' /tmp/smithery-server-card.json > /tmp/smithery-expected-tool-names.json
+          MAX_RELEASE_PAGES=20
+          : > /tmp/smithery-success-releases.jsonl
+          for PAGE in $(seq 1 "$MAX_RELEASE_PAGES"); do
+            curl -fsS --connect-timeout 10 --max-time 30 \
+              -X GET "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases?page=${PAGE}&pageSize=100" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -o /tmp/smithery-latest-releases.json
+            jq -e \
+              --argjson page "$PAGE" \
+              --argjson max_pages "$MAX_RELEASE_PAGES" \
+              '(.releases | type == "array") and (.pagination.currentPage == $page) and (.pagination.totalPages | type == "number") and (.pagination.totalPages >= 0) and (.pagination.totalPages <= $max_pages)' \
+              /tmp/smithery-latest-releases.json >/dev/null
+            jq -c \
+              '.releases[] | select(.type == "external_shttp" and .status == "SUCCESS")' \
+              /tmp/smithery-latest-releases.json >> /tmp/smithery-success-releases.jsonl
+            TOTAL_PAGES=$(jq -er '.pagination.totalPages' /tmp/smithery-latest-releases.json)
+            if [ "$PAGE" -ge "$TOTAL_PAGES" ]; then
+              break
+            fi
+          done
+          LATEST_SUCCESS_UPSTREAM=$(jq -sr 'first | .upstreamUrl // empty' /tmp/smithery-success-releases.jsonl)
           jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
-          if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json; then
+          jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
+            /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-contract.json
+          jq -S '{description}' \
+            /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json
+          if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \
+            cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
+            cmp -s /tmp/smithery-expected-listing-metadata.json /tmp/smithery-actual-listing-metadata.json && \
+            [ "$LATEST_SUCCESS_UPSTREAM" = "$SMITHERY_MCP_URL" ]; then
             TOOL_COUNT=$(jq -r '.tools | length' /tmp/smithery-catalog.json)
             echo "fresh=true" >> "$GITHUB_OUTPUT"
-            echo "Smithery already exposes the released ${TOOL_COUNT}-tool catalog; skipping a duplicate deployment"
+            echo "Smithery already exposes the released ${TOOL_COUNT}-tool name and input-schema contract; skipping a duplicate deployment"
           else
             EXPECTED=$(jq -r 'length' /tmp/smithery-expected-tool-names.json)
             ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
-            echo "Smithery catalog differs from the released contract (${ACTUAL}/${EXPECTED} tools); publishing a new deployment"
+            if [ "$LATEST_SUCCESS_UPSTREAM" != "$SMITHERY_MCP_URL" ]; then
+              echo "Smithery tool catalog matches but the successful release upstream differs; publishing a new deployment"
+            else
+              echo "Smithery catalog differs from the released contract (${ACTUAL}/${EXPECTED} tools); publishing a new deployment"
+            fi
+          fi
+
+      - name: List resumable Smithery releases
+        id: smithery_pending
+        if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
+        env:
+          SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+        run: |
+          set -euo pipefail
+          QUALIFIED_NAME="agent-bom%2Fagent-bom"
+          echo "release_id=" >> "$GITHUB_OUTPUT"
+          MAX_RELEASE_PAGES=20
+          : > /tmp/smithery-active-releases.jsonl
+          for PAGE in $(seq 1 "$MAX_RELEASE_PAGES"); do
+            curl -fsS --connect-timeout 10 --max-time 30 \
+              -X GET "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases?page=${PAGE}&pageSize=100" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -o /tmp/smithery-releases.json
+            jq -e \
+              --argjson page "$PAGE" \
+              --argjson max_pages "$MAX_RELEASE_PAGES" \
+              '(.releases | type == "array") and (.pagination.currentPage == $page) and (.pagination.totalPages | type == "number") and (.pagination.totalPages >= 0) and (.pagination.totalPages <= $max_pages)' \
+              /tmp/smithery-releases.json >/dev/null
+            jq -c --arg upstream "$SMITHERY_MCP_URL" \
+              '.releases[] | select(.type == "external_shttp" and .upstreamUrl == $upstream) | select(.status == "AUTH_REQUIRED" or .status == "QUEUED" or .status == "WORKING")' \
+              /tmp/smithery-releases.json >> /tmp/smithery-active-releases.jsonl
+            TOTAL_PAGES=$(jq -er '.pagination.totalPages' /tmp/smithery-releases.json)
+            if [ "$PAGE" -ge "$TOTAL_PAGES" ]; then
+              break
+            fi
+          done
+          RELEASE=$(jq -sc 'first // empty' /tmp/smithery-active-releases.jsonl)
+          if [ -z "$RELEASE" ]; then
+            exit 0
+          fi
+          RELEASE_ID=$(echo "$RELEASE" | jq -er '.id')
+          RELEASE_STATUS=$(echo "$RELEASE" | jq -er '.status')
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "Reusing matching Smithery release ${RELEASE_ID} (${RELEASE_STATUS})"
+          if [ "$RELEASE_STATUS" = "AUTH_REQUIRED" ]; then
+            curl -fsS --connect-timeout 10 --max-time 30 \
+              "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases/${RELEASE_ID}" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -o /tmp/smithery-release.json
+            echo "Complete Smithery scan authorization for the pending release"
+            python scripts/authorize_smithery_release.py \
+              --release-json /tmp/smithery-release.json \
+              --upstream-url "$SMITHERY_MCP_URL"
+            HTTP_STATUS=$(curl -sS --connect-timeout 10 --max-time 30 \
+              -o /tmp/smithery-resume-response.json -w "%{http_code}" \
+              -X POST "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases/${RELEASE_ID}/resume" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}")
+            if [ "$HTTP_STATUS" != "202" ]; then
+              echo "::error::Matching Smithery release could not be resumed (HTTP ${HTTP_STATUS}); authorize it with the publisher identity, then retry"
+              exit 1
+            fi
+            echo "Smithery accepted resume for release ${RELEASE_ID}"
           fi
 
       - name: Publish to Smithery
         id: smithery_publish
-        if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
+        if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true' && steps.smithery_pending.outputs.release_id == ''
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
@@ -286,13 +402,17 @@ jobs:
         if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
-          RELEASE_ID: ${{ steps.smithery_publish.outputs.release_id }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+          RELEASE_ID: ${{ steps.smithery_pending.outputs.release_id || steps.smithery_publish.outputs.release_id }}
         run: |
           set -euo pipefail
+          AUTHORIZATION_ATTEMPTED=false
           for ATTEMPT in $(seq 1 90); do
-            STATUS=$(curl -fsS --connect-timeout 10 --max-time 30 \
+            curl -fsS --connect-timeout 10 --max-time 30 \
               "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases/${RELEASE_ID}" \
-              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" | jq -er '.status')
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -o /tmp/smithery-release.json
+            STATUS=$(jq -er '.status' /tmp/smithery-release.json)
             echo "Smithery release attempt ${ATTEMPT}/90 — ${STATUS}"
             case "$STATUS" in
               SUCCESS)
@@ -300,7 +420,23 @@ jobs:
                 exit 0
                 ;;
               AUTH_REQUIRED)
-                echo "::notice::Smithery is waiting for publisher authorization; authorize the pending release in the Smithery UI"
+                if [ "$AUTHORIZATION_ATTEMPTED" = "true" ]; then
+                  echo "::error::Smithery authorization remained required after the bounded recovery attempt"
+                  exit 1
+                fi
+                echo "Complete Smithery scan authorization for the new release"
+                python scripts/authorize_smithery_release.py \
+                  --release-json /tmp/smithery-release.json \
+                  --upstream-url "$SMITHERY_MCP_URL"
+                HTTP_STATUS=$(curl -sS --connect-timeout 10 --max-time 30 \
+                  -o /tmp/smithery-resume-response.json -w "%{http_code}" \
+                  -X POST "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases/${RELEASE_ID}/resume" \
+                  -H "Authorization: Bearer ${SMITHERY_API_TOKEN}")
+                if [ "$HTTP_STATUS" != "202" ]; then
+                  echo "::error::Smithery release could not be resumed after scan authorization (HTTP ${HTTP_STATUS})"
+                  exit 1
+                fi
+                AUTHORIZATION_ATTEMPTED=true
                 ;;
               FAILURE|FAILURE_SCAN|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR)
                 echo "::error::Smithery release did not complete successfully (${STATUS})"
@@ -309,7 +445,7 @@ jobs:
             esac
             sleep 10
           done
-          echo "::error::Smithery release did not finish within 15 minutes; authorize the pending release in the Smithery UI and re-run this workflow"
+          echo "::error::Smithery release did not finish within 15 minutes after bounded automatic recovery"
           exit 1
 
       - name: Verify Smithery catalog inventory
@@ -324,13 +460,19 @@ jobs:
                 "https://api.smithery.ai/servers/agent-bom/agent-bom" \
                 -o /tmp/smithery-catalog.json; then
               jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
+              jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
+                /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-contract.json
+              jq -S '{description}' \
+                /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json
               ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
             else
               ACTUAL=unavailable
             fi
             if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ] && \
-              cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json; then
-              echo "Smithery catalog exposes all ${ACTUAL} tools for v${VERSION}"
+              cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \
+              cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
+              cmp -s /tmp/smithery-expected-listing-metadata.json /tmp/smithery-actual-listing-metadata.json; then
+              echo "Smithery catalog exposes the released tool, schema, and listing contract for v${VERSION} (${ACTUAL} tools)"
               exit 0
             fi
             echo "Smithery catalog attempt ${ATTEMPT}/12 does not match the released ${EXPECTED_TOOL_COUNT}-tool name set (actual=${ACTUAL})"
@@ -340,14 +482,13 @@ jobs:
           exit 1
 
   glama:
-    name: Trigger Glama Rebuild
+    name: Verify Glama Directory
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      actions: read
       contents: read
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ needs.release.outputs.publish_current == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -362,69 +503,63 @@ jobs:
       - name: Verify Glama build manifest
         run: python scripts/check_glama_listing.py --verify-manifest --git-ref "${{ needs.release.outputs.release_sha }}"
 
-      - name: Trigger Glama rebuild
-        id: glama_trigger
+      - name: Extract immutable release tool contract
+        run: >-
+          python scripts/check_glama_listing.py
+          --write-tool-names /tmp/glama-expected-tool-names.json
+          --git-ref "${{ needs.release.outputs.release_sha }}"
+
+      - name: Validate released public server card for Glama
         env:
-          GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}
-          GLAMA_REPAIR: ${{ inputs.glama_repair }}
-          REGISTRY_PUBLISH_REQUIRED: ${{ github.event_name == 'workflow_run' }}
-          RELEASE_REF: ${{ needs.release.outputs.release_ref }}
-          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
-          VERSION: ${{ needs.release.outputs.version }}
-          GLAMA_DOCKERFILE: integrations/glama/Dockerfile
+          MCP_SERVER_URL: ${{ vars.SMITHERY_MCP_URL }}
+          EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
+          EXPECTED_VERSION: ${{ needs.release.outputs.version }}
         run: |
-          set -u
-
-          fail_or_warn() {
-            local message="$1"
-            echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"
-            if [ "$REGISTRY_PUBLISH_REQUIRED" = "true" ] || [ "$GLAMA_REPAIR" = "true" ]; then
-              echo "::error::Required Glama publication ${message}"
-              return 1
+          set -euo pipefail
+          if [ -z "${MCP_SERVER_URL:-}" ]; then
+            echo "::error::SMITHERY_MCP_URL is required to verify the public server card"
+            exit 1
+          fi
+          SERVER_CARD_URL=$(python3 -c 'import sys; from urllib.parse import urlsplit, urlunsplit; p=urlsplit(sys.argv[1]); assert p.scheme == "https" and p.netloc; print(urlunsplit((p.scheme, p.netloc, "/.well-known/mcp/server-card.json", "", "")))' "$MCP_SERVER_URL")
+          for ATTEMPT in $(seq 1 6); do
+            if curl -fsS --connect-timeout 10 --max-time 30 \
+                "$SERVER_CARD_URL" -o /tmp/glama-server-card.json && \
+              jq -e \
+                --arg version "$EXPECTED_VERSION" \
+                --argjson tool_count "$EXPECTED_TOOL_COUNT" \
+                '.serverInfo.version == $version and (.tools | length) == $tool_count and all(.tools[]; (.name | type == "string") and (.name | length > 0) and (.inputSchema | type == "object")) and (([.tools[].name] | unique | length) == $tool_count)' \
+                /tmp/glama-server-card.json >/dev/null; then
+              jq -S '[.tools[].name] | sort' /tmp/glama-server-card.json > /tmp/glama-actual-server-card-tool-names.json
+              if cmp -s /tmp/glama-expected-tool-names.json /tmp/glama-actual-server-card-tool-names.json; then
+                jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
+                  /tmp/glama-server-card.json > /tmp/glama-expected-tool-contract.json
+                echo "Public server card matches the immutable v${EXPECTED_VERSION} tool contract"
+                exit 0
+              fi
             fi
-            echo "::warning::Automatic Glama rebuild ${message}; the freshness issue will remain open"
-            return 0
-          }
-
-          if [ -z "$GLAMA_WEBHOOK_URL" ]; then
-            echo "Release pin for Glama: ${RELEASE_REF} (${RELEASE_SHA:0:7}) dockerfile=${GLAMA_DOCKERFILE}"
-            echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL as a repository Actions secret"
-            fail_or_warn "failed because GLAMA_WEBHOOK_URL is not configured. No Glama rebuild was triggered"
-            exit $?
-          fi
-          PAYLOAD=$(jq -n \
-            --arg ref "$RELEASE_REF" \
-            --arg commit "$RELEASE_SHA" \
-            --arg version "$VERSION" \
-            --arg dockerfile "$GLAMA_DOCKERFILE" \
-            '{ref: $ref, commit: $commit, version: $version, dockerfile: $dockerfile}')
-          echo "Triggering Glama rebuild for ${RELEASE_REF} (${RELEASE_SHA:0:7}) using ${GLAMA_DOCKERFILE}"
-          if ! HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
-              -o /dev/null -w "%{http_code}" \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD" \
-              -X POST "$GLAMA_WEBHOOK_URL"); then
-            fail_or_warn "request failed before an HTTP response was received"
-            exit $?
-          fi
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "rebuild_triggered=true" >> "$GITHUB_OUTPUT"
-            echo "Glama rebuild triggered successfully"
-          else
-            fail_or_warn "returned HTTP ${HTTP_STATUS}"
-            exit $?
-          fi
+            echo "Public server card attempt ${ATTEMPT}/6 has not reached the immutable release contract"
+            sleep 10
+          done
+          echo "::error::Public server card does not match the immutable released tool-name contract"
+          exit 1
 
       - name: Verify Glama listing freshness
         env:
           EXPECTED_VERSION: ${{ needs.release.outputs.version }}
           EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
         run: |
-          python scripts/check_glama_listing.py \
-            --expected "$EXPECTED_VERSION" \
-            --expected-tool-count "$EXPECTED_TOOL_COUNT" \
-            --retries 6 \
-            --delay-seconds 30
+          set -euo pipefail
+          if python scripts/check_glama_listing.py \
+              --expected "$EXPECTED_VERSION" \
+              --expected-tool-count "$EXPECTED_TOOL_COUNT" \
+              --expected-tool-names-file /tmp/glama-expected-tool-names.json \
+              --expected-tool-contract-file /tmp/glama-expected-tool-contract.json \
+              --retries 6 \
+              --delay-seconds 30; then
+            exit 0
+          fi
+          echo "::error::Glama has not synchronized the exact released catalog yet. Glama syncs linked GitHub repositories automatically at least daily; this workflow retries every six hours. For an immediate provider-side refresh, use Sync Server in the Glama admin interface, then rerun this verification."
+          exit 1
 
   clawhub:
     name: Publish to ClawHub
@@ -433,7 +568,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ needs.release.outputs.publish_current == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

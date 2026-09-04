@@ -9,6 +9,8 @@ import urllib.error
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -83,8 +85,90 @@ def test_glama_listing_accepts_exact_public_api_tool_inventory(monkeypatch, caps
     assert payload["expected_tool_count"] == 77
 
 
-def test_glama_listing_accepts_exact_public_schema_when_directory_api_is_empty(monkeypatch, capsys):
-    """The rendered Schema inventory is evidence even when the directory API lags."""
+def test_glama_listing_rejects_same_count_with_a_different_tool(monkeypatch, capsys, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    expected_names = ["graph_correlate", "graph_correlation_status"]
+    names_file = tmp_path / "expected-tools.json"
+    names_file.write_text(json.dumps(expected_names), encoding="utf-8")
+    current_page = "v0.103.2 MCP server mode exposes 2 MCP tools"
+
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: current_page)
+    monkeypatch.setattr(
+        script,
+        "_fetch_json",
+        lambda _url, _timeout: {"tools": [{"name": "graph_correlate"}, {"name": "unrelated_tool"}]},
+    )
+
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "2",
+                "--expected-tool-names-file",
+                str(names_file),
+                "--json",
+                "--retries",
+                "1",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "stale"
+    assert payload["exact_tool_set"] is False
+    assert "missing expected tools: graph_correlation_status" in payload["error"]
+    assert "unexpected tools: unrelated_tool" in payload["error"]
+
+
+@pytest.mark.parametrize("bad_name", [None, ["nested"], {"nested": "value"}, " scan "])
+def test_glama_listing_reports_malformed_tool_names_as_stale(monkeypatch, capsys, tmp_path, bad_name):
+    script = _load_script("check_glama_listing.py")
+    names_file = tmp_path / "expected-tools.json"
+    names_file.write_text(json.dumps(["scan", "check"]), encoding="utf-8")
+    current_page = "v0.103.2 MCP server mode exposes 2 MCP tools"
+
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: current_page)
+    monkeypatch.setattr(script, "_fetch_json", lambda _url, _timeout: {"tools": [{"name": "scan"}, {"name": bad_name}]})
+
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "2",
+                "--expected-tool-names-file",
+                str(names_file),
+                "--json",
+                "--retries",
+                "1",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "stale"
+    assert payload["exact_tool_set"] is False
+    assert "tool without a name" in payload["error"]
+
+
+def test_glama_tool_names_are_extracted_inertly_from_the_release_ref(tmp_path):
+    script = _load_script("check_glama_listing.py")
+    destination = tmp_path / "tool-names.json"
+
+    assert script.main(["--write-tool-names", str(destination), "--git-ref", "HEAD"]) == 0
+    names = json.loads(destination.read_text(encoding="utf-8"))
+
+    assert names == sorted(names)
+    assert len(names) == len(set(names)) == 86
+    assert "graph_correlate" in names
+    assert "graph_correlation_status" in names
+
+
+def test_glama_listing_rejects_exact_public_schema_when_directory_api_is_stale(monkeypatch, capsys):
+    """One fresh public surface must not hide a reachable stale machine API."""
     script = _load_script("check_glama_listing.py")
     current_page = "v0.98.3 MCP server mode exposes 77 MCP tools"
     schema_page = "".join(f'<a href="/mcp/servers/msaad00/agent-bom/tools/tool_{index}">tool_{index}</a>' for index in range(77))
@@ -95,11 +179,68 @@ def test_glama_listing_accepts_exact_public_schema_when_directory_api_is_empty(m
     monkeypatch.setattr(script, "_fetch", fetch)
     monkeypatch.setattr(script, "_fetch_json", lambda _url, _timeout: {"tools": []})
 
-    assert script.main(["--expected", "0.98.3", "--expected-tool-count", "77", "--json", "--retries", "1"]) == 0
+    assert script.main(["--expected", "0.98.3", "--expected-tool-count", "77", "--json", "--retries", "1"]) == 1
     payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    assert payload["status"] == "fresh"
-    assert payload["tool_count"] == 77
+    assert payload["status"] == "stale"
+    assert payload["inventory_source"] == "schema+api"
+    assert "public API exposes 0 tools; expected 77" in payload["error"]
+
+
+def test_glama_listing_marks_schema_only_success_as_degraded(monkeypatch, capsys):
+    script = _load_script("check_glama_listing.py")
+    current_page = "v0.98.3 MCP server mode exposes 2 MCP tools"
+    schema_page = "".join(f'<a href="/mcp/servers/msaad00/agent-bom/tools/tool_{index}">tool_{index}</a>' for index in range(2))
+
+    def fetch(url, _timeout):
+        return schema_page if url.endswith("/schema") else current_page
+
+    monkeypatch.setattr(script, "_fetch", fetch)
+    monkeypatch.setattr(script, "_fetch_json", lambda _url, _timeout: (_ for _ in ()).throw(urllib.error.URLError("401")))
+
+    assert script.main(["--expected", "0.98.3", "--expected-tool-count", "2", "--json", "--retries", "1"]) == 0
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "fresh_degraded"
     assert payload["inventory_source"] == "schema"
+    assert payload["degraded_reason"] == "Glama public API inventory was unreachable"
+
+
+def test_glama_listing_rejects_stale_input_schema_from_reachable_api(monkeypatch, capsys, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    expected_contract = [
+        {"name": "scan", "inputSchema": {"type": "object", "additionalProperties": False}},
+        {"name": "check", "inputSchema": {"type": "object", "required": ["package"]}},
+    ]
+    contract_file = tmp_path / "expected-contract.json"
+    contract_file.write_text(json.dumps(expected_contract), encoding="utf-8")
+    current_page = "v0.103.2 MCP server mode exposes 2 MCP tools"
+
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: current_page)
+    monkeypatch.setattr(
+        script,
+        "_fetch_json",
+        lambda _url, _timeout: {"tools": [expected_contract[0], {"name": "check", "inputSchema": {"type": "object"}}]},
+    )
+
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "2",
+                "--expected-tool-contract-file",
+                str(contract_file),
+                "--json",
+                "--retries",
+                "1",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "stale"
+    assert payload["exact_input_schemas"] is False
+    assert "input schema differs for tool: check" in payload["error"]
 
 
 def test_glama_listing_checks_visible_copy_not_hidden_stale_metadata(monkeypatch, capsys):

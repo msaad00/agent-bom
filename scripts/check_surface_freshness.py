@@ -347,9 +347,7 @@ def probe_smithery(
             "deployment_url": deployment_url,
             "tool_count": len(tools),
         }
-        actual_tool_names = sorted(
-            tool.get("name") for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str)
-        )
+        actual_tool_names = sorted(tool.get("name") for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str))
         if expected_tool_count is not None:
             result["expected_tool_count"] = expected_tool_count
             if len(tools) != expected_tool_count:

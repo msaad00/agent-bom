@@ -96,7 +96,7 @@ def test_gate_consumes_exact_npm_install_audit_without_a_second_request(tmp_path
                         "critical": 0,
                         "total": 2,
                     },
-                }
+                },
             }
         ),
         encoding="utf-8",
@@ -127,7 +127,7 @@ def test_gate_blocks_high_severity_from_npm_install_audit(tmp_path: Path, monkey
                         "critical": 0,
                         "total": 1,
                     },
-                }
+                },
             }
         ),
         encoding="utf-8",

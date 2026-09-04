@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import gzip
 import io
 import json
@@ -18,7 +19,10 @@ BLOCKING_SEVERITIES = {"high", "critical"}
 VALID_SEVERITIES = {"info", "low", "moderate", "high", "critical"}
 MAX_COMPRESSED_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_DECOMPRESSED_RESPONSE_BYTES = 32 * 1024 * 1024
-REQUEST_TIMEOUT_SECONDS = 120
+REQUEST_TIMEOUT_SECONDS = 30
+MAX_PACKAGES_PER_REQUEST = 50
+MAX_PARALLEL_REQUESTS = 4
+MAX_BATCH_ATTEMPTS = 3
 
 
 def _package_name(package_path: str, record: dict[str, Any]) -> str | None:
@@ -100,88 +104,64 @@ def blocking_advisories(report: dict[str, list[dict[str, Any]]]) -> list[dict[st
     return blocking
 
 
-def fetch_report(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
-    encoded = gzip.compress(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+def _fetch_batch(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     request = urllib.request.Request(
         AUDIT_URL,
         data=encoded,
         method="POST",
         headers={
             "Accept": "application/json",
-            "Content-Encoding": "gzip",
             "Content-Type": "application/json",
             "User-Agent": "agent-bom-npm-advisory-gate/1",
         },
     )
     with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:  # noqa: S310 -- fixed HTTPS registry URL
-        return decode_report(response.read(MAX_COMPRESSED_RESPONSE_BYTES + 1))
+        report = decode_report(response.read(MAX_COMPRESSED_RESPONSE_BYTES + 1))
+    if unexpected := sorted(set(report) - set(payload)):
+        raise ValueError(f"npm advisory response contains an unrequested package: {unexpected[0]}")
+    return report
 
 
-def npm_install_audit_counts(path: Path) -> tuple[dict[str, int], int]:
-    """Validate the installed-tree audit emitted by npm ci --json."""
-    document = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict):
-        raise ValueError("npm install report must be an object")
-    audited = document.get("audited")
-    if isinstance(audited, bool) or not isinstance(audited, int) or audited < 1:
-        raise ValueError("npm install report did not audit any packages")
-    audit = document.get("audit")
-    counts = audit.get("vulnerabilities") if isinstance(audit, dict) else None
-    dependencies = audit.get("dependencies") if isinstance(audit, dict) else None
-    dependency_total = dependencies.get("total") if isinstance(dependencies, dict) else None
-    if isinstance(dependency_total, bool) or not isinstance(dependency_total, int) or dependency_total < 0:
-        raise ValueError("npm install report has an invalid dependency total")
-    if audited != dependency_total + 1:
-        raise ValueError("npm install report audited count does not match its dependency total")
-    required = (*sorted(VALID_SEVERITIES), "total")
-    if not isinstance(counts, dict):
-        raise ValueError("npm install report is missing vulnerability counts")
-    normalized: dict[str, int] = {}
-    for severity in required:
-        value = counts.get(severity)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise ValueError("npm install report has an invalid vulnerability count")
-        normalized[severity] = value
-    if normalized["total"] != sum(normalized[severity] for severity in VALID_SEVERITIES):
-        raise ValueError("npm install report vulnerability total does not match severity counts")
-    return normalized, audited
+def _fetch_batch_with_retries(batch_number: int, payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+    for attempt in range(1, MAX_BATCH_ATTEMPTS + 1):
+        try:
+            return _fetch_batch(payload)
+        except (OSError, ValueError, json.JSONDecodeError):
+            if attempt == MAX_BATCH_ATTEMPTS:
+                raise
+            print(
+                f"::warning::npm bulk advisory batch {batch_number} attempt {attempt} failed; retrying",
+                file=sys.stderr,
+            )
+            time.sleep(attempt * 2)
+    raise AssertionError("unreachable")
 
 
-def run(path: Path, *, npm_install_report: Path | None = None) -> int:
+def fetch_report(payload: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+    """Fetch deterministic size-bounded batches with bounded concurrency."""
+    items = sorted(payload.items())
+    batches = [dict(items[offset : offset + MAX_PACKAGES_PER_REQUEST]) for offset in range(0, len(items), MAX_PACKAGES_PER_REQUEST)]
+    if not batches:
+        return {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_REQUESTS, len(batches))) as executor:
+        reports = executor.map(_fetch_batch_with_retries, range(1, len(batches) + 1), batches)
+        combined = {package: advisories for report in reports for package, advisories in report.items()}
+    return combined
+
+
+def run(path: Path) -> int:
     try:
         payload = lockfile_payload(path)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"::error::invalid npm lockfile for advisory scan ({type(exc).__name__})", file=sys.stderr)
         return 2
 
-    if npm_install_report is not None:
-        try:
-            counts, audited = npm_install_audit_counts(npm_install_report)
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            print(f"::error::invalid npm install audit report ({type(exc).__name__})", file=sys.stderr)
-            return 2
-        if counts["high"] or counts["critical"]:
-            print(json.dumps({"blocking_severity_counts": counts}, indent=2, sort_keys=True))
-            return 1
-        print(f"npm install audit gate passed: {audited} installed packages, no high/critical vulnerabilities")
-        return 0
-
-    report: dict[str, list[dict[str, Any]]] | None = None
-    for attempt in range(1, 4):
-        try:
-            report = _validate_report(fetch_report(payload))
-            break
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            if attempt == 3:
-                print(
-                    f"::error::npm bulk advisory request failed after 3 attempts ({type(exc).__name__})",
-                    file=sys.stderr,
-                )
-                return 2
-            print(f"::warning::npm bulk advisory attempt {attempt} failed; retrying", file=sys.stderr)
-            time.sleep(attempt * 2)
-
-    assert report is not None
+    try:
+        report = _validate_report(fetch_report(payload))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"::error::npm bulk advisory request failed after bounded retries ({type(exc).__name__})", file=sys.stderr)
+        return 2
     blocking = blocking_advisories(report)
     if blocking:
         print(json.dumps({"blocking_advisories": blocking}, indent=2, sort_keys=True))
@@ -193,14 +173,8 @@ def run(path: Path, *, npm_install_report: Path | None = None) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("lockfile", type=Path)
-    parser.add_argument(
-        "--npm-install-report",
-        type=Path,
-        default=None,
-        help="Validated JSON emitted by npm ci --json for the installed tree produced from this lockfile.",
-    )
     args = parser.parse_args()
-    return run(args.lockfile, npm_install_report=args.npm_install_report)
+    return run(args.lockfile)
 
 
 if __name__ == "__main__":

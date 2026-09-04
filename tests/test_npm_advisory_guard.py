@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -79,156 +80,16 @@ def test_gate_blocks_high_advisories(tmp_path: Path, monkeypatch) -> None:
     assert check_npm_advisories.run(lockfile) == 1
 
 
-def test_gate_consumes_installed_tree_audit_without_a_second_request(tmp_path: Path, monkeypatch) -> None:
+def test_gate_fails_closed_on_exhausted_transport_errors(tmp_path: Path, monkeypatch) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)
-    install_report = tmp_path / "npm-ci.json"
-    install_report.write_text(
-        json.dumps(
-            {
-                "audited": 2,
-                "audit": {
-                    "dependencies": {"total": 1},
-                    "vulnerabilities": {
-                        "info": 0,
-                        "low": 0,
-                        "moderate": 2,
-                        "high": 0,
-                        "critical": 0,
-                        "total": 2,
-                    },
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        check_npm_advisories,
-        "fetch_report",
-        lambda _payload: (_ for _ in ()).throw(AssertionError("duplicate advisory request")),
-    )
-
-    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 0
-
-
-def test_gate_accepts_complete_installed_projection_with_optional_lockfile_entries(tmp_path: Path) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    lockfile.write_text(
-        json.dumps(
-            {
-                "lockfileVersion": 3,
-                "packages": {
-                    "": {"name": "app", "version": "1.0.0"},
-                    "node_modules/pkg": {"version": "2.0.0"},
-                    "node_modules/optional-pkg": {"version": "3.0.0", "optional": True},
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    install_report = tmp_path / "npm-ci.json"
-    install_report.write_text(
-        json.dumps(
-            {
-                "audited": 2,
-                "audit": {
-                    "dependencies": {"total": 1},
-                    "vulnerabilities": {
-                        "info": 0,
-                        "low": 0,
-                        "moderate": 0,
-                        "high": 0,
-                        "critical": 0,
-                        "total": 0,
-                    },
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 0
-
-
-def test_gate_blocks_high_severity_from_npm_install_audit(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    install_report = tmp_path / "npm-ci.json"
-    install_report.write_text(
-        json.dumps(
-            {
-                "audited": 2,
-                "audit": {
-                    "dependencies": {"total": 1},
-                    "vulnerabilities": {
-                        "info": 0,
-                        "low": 0,
-                        "moderate": 0,
-                        "high": 1,
-                        "critical": 0,
-                        "total": 1,
-                    },
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        check_npm_advisories,
-        "fetch_report",
-        lambda _payload: (_ for _ in ()).throw(AssertionError("duplicate advisory request")),
-    )
-
-    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 1
-
-
-@pytest.mark.parametrize(
-    "report",
-    [
-        {},
-        {"audit": {}},
-        {"audited": 2, "audit": {"vulnerabilities": {"high": -1, "critical": 0}}},
-        {"audited": 2, "audit": {"vulnerabilities": {"high": "0", "critical": 0}}},
-        {
-            "audited": 1,
-            "audit": {
-                "dependencies": {"total": 1},
-                "vulnerabilities": {
-                    "info": 0,
-                    "low": 0,
-                    "moderate": 0,
-                    "high": 0,
-                    "critical": 0,
-                    "total": 0,
-                },
-            },
-        },
-    ],
-)
-def test_gate_fails_closed_on_invalid_or_incomplete_npm_install_audit(tmp_path: Path, report) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    install_report = tmp_path / "npm-ci.json"
-    install_report.write_text(json.dumps(report), encoding="utf-8")
-
-    assert check_npm_advisories.run(lockfile, npm_install_report=install_report) == 2
-
-
-def test_gate_retries_and_fails_closed_on_transport_errors(tmp_path: Path, monkeypatch) -> None:
-    lockfile = tmp_path / "package-lock.json"
-    _write_lockfile(lockfile)
-    attempts = 0
-
     def fail(_payload) -> dict:
-        nonlocal attempts
-        attempts += 1
         raise OSError("registry unavailable")
 
     monkeypatch.setattr(check_npm_advisories, "fetch_report", fail)
     monkeypatch.setattr(check_npm_advisories.time, "sleep", lambda _seconds: None)
 
     assert check_npm_advisories.run(lockfile) == 2
-    assert attempts == 3
 
 
 @pytest.mark.parametrize("advisory", [{}, {"severity": "unknown"}, {"severity": None}])
@@ -254,6 +115,7 @@ def test_decode_report_bounds_uncompressed_and_gzip_expansion(monkeypatch) -> No
 def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
     seen_limits: list[int] = []
     seen_timeouts: list[int] = []
+    seen_requests: list[urllib.request.Request] = []
 
     class _Response:
         def __enter__(self):
@@ -266,7 +128,8 @@ def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
             seen_limits.append(limit)
             return b"{}"
 
-    def open_response(_request, timeout: int):
+    def open_response(request, timeout: int):
+        seen_requests.append(request)
         seen_timeouts.append(timeout)
         return _Response()
 
@@ -274,4 +137,67 @@ def test_fetch_report_uses_a_bounded_transport_read(monkeypatch) -> None:
 
     assert check_npm_advisories.fetch_report({"pkg": ["1.0.0"]}) == {}
     assert seen_limits == [check_npm_advisories.MAX_COMPRESSED_RESPONSE_BYTES + 1]
-    assert seen_timeouts == [120]
+    assert seen_timeouts == [30]
+    assert seen_requests[0].data == b'{"pkg":["1.0.0"]}'
+    assert seen_requests[0].get_header("Content-encoding") is None
+    assert seen_requests[0].get_header("Content-type") == "application/json"
+
+
+def test_fetch_report_batches_large_lockfiles_and_rejects_unrequested_packages(monkeypatch) -> None:
+    batch_sizes: list[int] = []
+
+    class _Response:
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return self.body
+
+    def open_response(request, timeout: int):
+        assert timeout == check_npm_advisories.REQUEST_TIMEOUT_SECONDS
+        request_payload = json.loads(request.data)
+        batch_sizes.append(len(request_payload))
+        first_name = next(iter(request_payload))
+        return _Response(json.dumps({first_name: []}).encode())
+
+    monkeypatch.setattr(check_npm_advisories.urllib.request, "urlopen", open_response)
+    monkeypatch.setattr(check_npm_advisories, "MAX_PARALLEL_REQUESTS", 1)
+    payload = {f"pkg-{index:03d}": ["1.0.0"] for index in range(205)}
+
+    report = check_npm_advisories.fetch_report(payload)
+
+    assert batch_sizes == [50, 50, 50, 50, 5]
+    assert sorted(report) == ["pkg-000", "pkg-050", "pkg-100", "pkg-150", "pkg-200"]
+
+    def inject_unrequested(_request, timeout: int):
+        assert timeout == check_npm_advisories.REQUEST_TIMEOUT_SECONDS
+        return _Response(b'{"not-requested":[]}')
+
+    monkeypatch.setattr(check_npm_advisories.urllib.request, "urlopen", inject_unrequested)
+    with pytest.raises(ValueError, match="unrequested package"):
+        check_npm_advisories.fetch_report({"pkg": ["1.0.0"]})
+
+
+def test_fetch_report_retries_only_the_failed_batch(monkeypatch) -> None:
+    attempts: dict[str, int] = {}
+
+    def fetch_batch(batch):
+        first_name = next(iter(batch))
+        attempts[first_name] = attempts.get(first_name, 0) + 1
+        if first_name == "pkg-050" and attempts[first_name] == 1:
+            raise TimeoutError("transient npm timeout")
+        return {}
+
+    monkeypatch.setattr(check_npm_advisories, "_fetch_batch", fetch_batch)
+    monkeypatch.setattr(check_npm_advisories, "MAX_PARALLEL_REQUESTS", 1)
+    monkeypatch.setattr(check_npm_advisories.time, "sleep", lambda _seconds: None)
+    payload = {f"pkg-{index:03d}": ["1.0.0"] for index in range(101)}
+
+    assert check_npm_advisories.fetch_report(payload) == {}
+    assert attempts == {"pkg-000": 1, "pkg-050": 2, "pkg-100": 1}

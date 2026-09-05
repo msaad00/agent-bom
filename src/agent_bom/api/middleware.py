@@ -1660,8 +1660,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if not raw_key:
             return Absent()
         if self._api_key and secrets.compare_digest(raw_key, self._api_key):
+            from agent_bom.api.auth import Role
+            from agent_bom.api.server import get_dev_api_key, get_dev_api_role
+
+            role = get_dev_api_role() if get_dev_api_key() == self._api_key else Role.ADMIN
+            required = Role(self._required_role(request.method, request.url.path))
+            if not self._role_allows(role, required):
+                return Resolved(JSONResponse(status_code=403, content={"detail": "Forbidden — insufficient role"}))
             request.state.api_key_name = "static-key"
-            request.state.api_key_role = "admin"
+            request.state.api_key_role = role.value
             request.state.tenant_id = "default"
             request.state.auth_method = "static_api_key"
             return Resolved(await self._call_with_tenant_context(request, call_next))
@@ -1902,6 +1909,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             if not await anyio.to_thread.run_sync(tenant_access_active, tenant_id):
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized — managed trial is inactive"})
         effective_role = session_role
+        if auth_method == "browser_session_dev_key":
+            from agent_bom.api.server import get_dev_api_key, get_dev_api_role
+
+            if get_dev_api_key() is None or session_role != get_dev_api_role():
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized — loopback session is no longer active"})
         if auth_method in {"oidc", "saml"} or subject.startswith("saml:"):
             resolved_role, scim_error = self._resolve_runtime_role(
                 request,

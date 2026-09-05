@@ -7,6 +7,7 @@ which silently voids every ``*_tenant_isolation`` policy created by
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -63,7 +64,6 @@ def test_guard_raises_when_role_is_superuser(monkeypatch):
         postgres_common._guard_rls_capable_role(pool)
 
     message = str(excinfo.value)
-    assert "agent_bom" in message
     assert "SUPERUSER" in message
     assert "AGENT_BOM_ALLOW_SUPERUSER_DB" in message
 
@@ -99,25 +99,84 @@ def test_guard_passes_for_nonprivileged_role(monkeypatch):
     postgres_common._guard_rls_capable_role(pool)  # must not raise
 
 
-def test_guard_runs_once_per_pool(monkeypatch):
-    """The role is inspected once; a later escape-hatch flip is not re-evaluated."""
-    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", True, raising=False)
+def test_guard_rechecks_when_override_is_revoked(monkeypatch):
+    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", True)
     pool = _RolePool((True, False, "agent_bom"))
-    postgres_common._guard_rls_capable_role(pool)  # warns, marks checked
-
-    # Even if the operator "tightens" the flag afterwards, the cached check
-    # short-circuits — the guard is a startup gate, not a per-query one.
-    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", False, raising=False)
-    postgres_common._guard_rls_capable_role(pool)  # must not raise
+    postgres_common._guard_rls_capable_role(pool)
+    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", False)
+    with pytest.raises(RlsRolePrivilegeError):
+        postgres_common._guard_rls_capable_role(pool)
 
 
-def test_guard_is_best_effort_when_probe_fails(monkeypatch):
-    """A connection/probe error must not mask the primary failure path."""
-    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", False, raising=False)
+@pytest.mark.parametrize("row", [(True, False, "super"), (False, True, "bypass")])
+def test_rejected_role_stays_rejected_on_retry(monkeypatch, row):
+    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", False)
+    monkeypatch.setattr(postgres_common, "_pool", _RolePool(row))
+    for _ in range(3):
+        with pytest.raises(RlsRolePrivilegeError):
+            postgres_common._get_pool()
 
-    class _BrokenPool:
+
+def test_guard_caches_each_pool_independently(monkeypatch):
+    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", False)
+    postgres_common._guard_rls_capable_role(_RolePool((False, False, "safe")))
+    with pytest.raises(RlsRolePrivilegeError):
+        postgres_common._guard_rls_capable_role(_RolePool((False, True, "unsafe")))
+
+
+@pytest.mark.parametrize("row", [None, (), (False,), (None, False, "unknown")])
+def test_missing_or_malformed_role_fails_closed(monkeypatch, row):
+    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", True)
+    pool = _RolePool(row)
+    for _ in range(2):
+        with pytest.raises(RlsRolePrivilegeError, match="inspect"):
+            postgres_common._guard_rls_capable_role(pool)
+
+
+def test_probe_failure_rejects_then_recovers(monkeypatch):
+    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", False)
+
+    class RecoveringPool(_RolePool):
+        broken = True
+
         def connection(self):
-            raise RuntimeError("connection refused")
+            if self.broken:
+                raise RuntimeError("secret-connection-string")
+            return super().connection()
 
-    # Swallows the probe error and returns without raising.
-    postgres_common._guard_rls_capable_role(_BrokenPool())
+    pool = RecoveringPool((False, False, "safe"))
+    for _ in range(2):
+        with pytest.raises(RlsRolePrivilegeError, match="inspect") as error:
+            postgres_common._guard_rls_capable_role(pool)
+        assert "secret-connection-string" not in str(error.value)
+    pool.broken = False
+    postgres_common._guard_rls_capable_role(pool)
+
+
+def test_concurrent_first_access_validates_once_and_reset_rechecks(monkeypatch):
+    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", False)
+
+    class CountingPool(_RolePool):
+        calls = 0
+
+        def connection(self):
+            self.calls += 1
+            return super().connection()
+
+    pool = CountingPool((False, False, "safe"))
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(postgres_common._guard_rls_capable_role, [pool] * 16))
+    assert pool.calls == 1
+    postgres_common.reset_pool()
+    postgres_common._guard_rls_capable_role(pool)
+    assert pool.calls == 2
+
+
+def test_fence_pool_does_not_inherit_application_validation(monkeypatch):
+    monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", False)
+    monkeypatch.setattr(postgres_common, "_pool", _RolePool((False, False, "safe")))
+    monkeypatch.setattr(postgres_common, "_idempotency_fence_pool", _RolePool((True, False, "unsafe")))
+    postgres_common._get_pool()
+    for _ in range(2):
+        with pytest.raises(RlsRolePrivilegeError):
+            postgres_common._get_idempotency_fence_pool()

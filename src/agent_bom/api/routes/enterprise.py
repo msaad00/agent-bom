@@ -621,7 +621,7 @@ async def create_loopback_dev_session(request: Request, response: Response) -> N
     browser session as the packaged, same-origin dashboard.
     """
     from agent_bom.api.audit_log import log_action
-    from agent_bom.api.server import get_dev_api_key
+    from agent_bom.api.server import get_dev_api_key, get_dev_api_role
 
     if get_dev_api_key() is None:
         raise HTTPException(status_code=404, detail="Loopback dev session is not active")
@@ -632,7 +632,7 @@ async def create_loopback_dev_session(request: Request, response: Response) -> N
         response,
         request,
         subject="loopback-dev-key",
-        role="admin",
+        role=get_dev_api_role().value,
         tenant_id="default",
         auth_method="browser_session_dev_key",
     )

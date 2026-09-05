@@ -2677,3 +2677,57 @@ def test_scan_dot_names_the_project_agent_after_the_directory(tmp_path, monkeypa
     agent = project_agents[0]
     assert agent["name"] == "project:myproject"
     assert [s["name"] for s in agent.get("mcp_servers", [])] == ["myproject"]
+
+
+@pytest.mark.parametrize("output_format", ["json", "sarif"])
+def test_no_discover_preserves_explicit_project_iac(tmp_path, monkeypatch, output_format):
+    project = tmp_path / "project"
+    (project / "infra").mkdir(parents=True)
+    (project / "requirements.txt").write_text("requests==2.34.2\n")
+    (project / "Dockerfile").write_text("FROM python:latest\nUSER root\n")
+    (project / "infra" / "Dockerfile").write_text("FROM node:latest\nUSER root\n")
+    ambient = tmp_path / "ambient"
+    ambient.mkdir()
+    (ambient / "Dockerfile").write_text("FROM ubuntu:latest\nUSER root\n")
+    monkeypatch.chdir(ambient)
+    reports = []
+    for no_discover in (False, True):
+        output = tmp_path / f"report-{no_discover}.{output_format}"
+        args = [
+            "scan",
+            str(project),
+            "--no-scan",
+            "--offline",
+            "--no-auto-update-db",
+            "--exit-zero",
+            "--format",
+            output_format,
+            "--output",
+            str(output),
+        ]
+        if no_discover:
+            args.append("--no-discover")
+        result = _run(args)
+        assert result.exit_code == 0, result.output
+        reports.append(json.loads(output.read_text()))
+    if output_format == "json":
+        findings = [[finding for finding in report["findings"] if "DOCKER-" in finding["title"]] for report in reports]
+        assert findings[0]
+
+        def stable(value):
+            if isinstance(value, dict):
+                return {key: stable(item) for key, item in value.items() if key not in {"first_seen", "sla_due_at"}}
+            if isinstance(value, list):
+                return [stable(item) for item in value]
+            return value
+
+        assert stable(findings[0]) == stable(findings[1])
+        assert "iac" in reports[1]["scan_sources"]
+    else:
+        findings = [report["runs"][0]["results"] for report in reports]
+        assert findings[0]
+        assert findings[0] == findings[1]
+    serialized = json.dumps(findings[1])
+    assert "node:latest" in serialized  # Only the nested Dockerfile uses this image.
+    assert "ubuntu:latest" not in serialized
+    assert "ambient" not in serialized

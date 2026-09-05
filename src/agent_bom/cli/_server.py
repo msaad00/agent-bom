@@ -719,12 +719,12 @@ def serve_cmd(
 
     from agent_bom.api.server import configure_api, set_dev_api_key, set_job_store
 
+    set_dev_api_key(dev_api_key)
     configure_api(
         cors_allow_all=cors_allow_all,
         api_key=api_key or dev_api_key,
         allow_unauthenticated=allow_insecure_no_auth,
     )
-    set_dev_api_key(dev_api_key)
     if persist_path:
         # Do not rely only on the server module's first-import environment
         # selection. Embedded callers and tests can import the app before the

@@ -142,6 +142,12 @@ pip install 'agent-bom[ui]'
 AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db
 ```
 
+The explicit role applies to the generated loopback API key and browser sessions.
+`analyst` can run scans but cannot manage API keys. With no explicit role, the
+local bootstrap retains its admin default; non-loopback listeners still require
+configured authentication. Restart after changing the bootstrap role.
+
+
 The explicit SQLite path keeps scan jobs, findings, compliance history, and
 graph inventory available together after a restart. Omit `--persist` only for
 an intentionally ephemeral process. The explicit local `analyst` role permits

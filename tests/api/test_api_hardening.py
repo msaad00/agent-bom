@@ -2318,3 +2318,65 @@ def test_dev_session_cookie_not_reissued_when_session_present(monkeypatch):
     _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={SESSION_COOKIE_NAME: existing_token}))
     set_cookies = [v.decode() for k, v in response.raw_headers if k == b"set-cookie"]
     assert set_cookies == []
+
+
+@pytest.mark.parametrize("role", ["viewer", "analyst", "admin"])
+@pytest.mark.parametrize("transport", ["bearer", "header", "packaged_cookie", "dev_session"])
+def test_explicit_loopback_role_is_shared_across_credentials(monkeypatch, role, transport):
+    from agent_bom.api import server
+    from agent_bom.cli._server import _generate_dev_api_key
+
+    _clear_dev_key_auth_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", role)
+    key = _generate_dev_api_key()
+    server.set_dev_api_key(key)
+    server.configure_api(api_key=key)
+    client = TestClient(app)
+    headers = {}
+    if transport == "bearer":
+        headers = {"Authorization": f"Bearer {key}"}
+    elif transport == "header":
+        headers = {"X-API-Key": key}
+    elif transport == "dev_session":
+        assert client.post("/v1/auth/dev-session", headers={"Origin": "http://localhost:3000"}).status_code == 204
+    else:
+        response = Response()
+        server._maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}))
+        for name, value in response.raw_headers:
+            if name == b"set-cookie":
+                cookie = value.decode().split(";", 1)[0]
+                cookie_name, cookie_value = cookie.split("=", 1)
+                client.cookies.set(cookie_name, cookie_value)
+    try:
+        response = client.get("/v1/auth/me", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["role"] == role
+        assert client.get("/v1/auth/keys", headers=headers).status_code == (200 if role == "admin" else 403)
+    finally:
+        server.set_dev_api_key(None)
+
+
+def test_invalid_explicit_dev_role_rejects_bootstrap(monkeypatch):
+    from agent_bom.api.server import set_dev_api_key
+
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "owner")
+    with pytest.raises(ValueError, match="role"):
+        set_dev_api_key("ephemeral-test-key")
+
+
+def test_dev_session_cannot_retain_previous_bootstrap_role(monkeypatch):
+    from agent_bom.api import server
+
+    _clear_dev_key_auth_env(monkeypatch)
+    monkeypatch.delenv("AGENT_BOM_NO_AUTH_ROLE", raising=False)
+    server.set_dev_api_key("ephemeral-role-test")
+    server.configure_api(api_key="ephemeral-role-test")
+    client = TestClient(app)
+    assert client.post("/v1/auth/dev-session", headers={"Origin": "http://localhost:3000"}).status_code == 204
+    assert client.get("/v1/auth/me").json()["role"] == "admin"
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "analyst")
+    server.set_dev_api_key("ephemeral-role-test")
+    try:
+        assert client.get("/v1/auth/me").status_code == 401
+    finally:
+        server.set_dev_api_key(None)

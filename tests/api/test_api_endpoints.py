@@ -50,6 +50,35 @@ def _fresh_client():
     return TestClient(app, raise_server_exceptions=False), store
 
 
+@pytest.mark.parametrize("local_scans", ["disabled", "enabled"])
+def test_scan_host_discovery_requires_deployment_opt_in(monkeypatch, local_scans):
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", local_scans)
+    monkeypatch.delenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", raising=False)
+    queued = []
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", queued.append)
+    client, store = _fresh_client()
+
+    response = client.post("/v1/scan", json={"discover_host": True})
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Host discovery is not enabled for this tenant"
+    assert queued == []
+
+
+def test_scan_host_discovery_accepts_only_the_bound_authenticated_tenant(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "default")
+    queued = []
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", queued.append)
+    client, _store = _fresh_client()
+
+    response = client.post("/v1/scan", json={"discover_host": True})
+
+    assert response.status_code == 202
+    assert len(queued) == 1
+    assert queued[0].tenant_id == "default"
+
+
 # ---------------------------------------------------------------------------
 # 1. Health endpoint
 # ---------------------------------------------------------------------------

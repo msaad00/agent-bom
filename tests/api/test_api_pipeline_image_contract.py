@@ -91,6 +91,8 @@ def test_api_pipeline_ai_enrichment_inherits_env_and_serializes_typed_provenance
     from agent_bom import config
     from agent_bom.ai_enrich import AI_PROVIDER_DESCRIPTORS, AIProviderResolution
 
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "default")
     store = _DummyStore()
     job = ScanJob(
         job_id="ai-api-123",
@@ -223,6 +225,8 @@ def test_api_pipeline_persistence_failure_is_surfaced_not_silent_success(monkeyp
 def test_api_pipeline_no_scan_skips_vulnerability_scan_and_result_side_effects(monkeypatch):
     from agent_bom.scanners import record_coverage_warning
 
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "default")
     store = _DummyStore()
     job = ScanJob(
         job_id="no-scan-123",
@@ -264,6 +268,8 @@ def test_api_pipeline_no_scan_skips_vulnerability_scan_and_result_side_effects(m
 
 
 def test_api_pipeline_offline_scan_never_retries_online(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "default")
     store = _DummyStore()
     job = ScanJob(
         job_id="offline-123",

@@ -213,7 +213,9 @@ class ScanRequest(BaseModel):
     ~/.cursor, …). Off by default: on the hosted/multi-tenant scan path the
     server host is not the tenant's estate, so sweeping it would fold the
     server's own AI clients into a tenant's results. Opt in only for
-    self-hosted single-tenant deployments where the host IS the scan target."""
+    self-hosted single-tenant deployments where the host IS the scan target.
+    Requires operator-enabled local scans and AGENT_BOM_API_HOST_DISCOVERY_TENANT
+    matching the authenticated tenant; the request flag cannot grant access."""
 
     scope_agents: list[ScanGlobPattern] = Field(default_factory=list)
     """Filter discovered agents by name (glob patterns, e.g. ['claude-*', 'cursor'])."""

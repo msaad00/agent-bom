@@ -3,12 +3,50 @@
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
 from agent_bom.api import postgres_common
+
+
+@pytest.mark.parametrize("failing_pool", ["", "app"])
+def test_process_exit_closes_all_postgres_pools(tmp_path, failing_pool):
+    marker = tmp_path / "closed.txt"
+    script = """
+import sys
+from pathlib import Path
+from agent_bom.api import postgres_common
+
+class Pool:
+    def __init__(self, name):
+        self.name = name
+
+    def close(self):
+        with Path(sys.argv[1]).open('a') as output:
+            output.write(self.name + '\\n')
+        if self.name == sys.argv[2]:
+            raise RuntimeError('close failed')
+
+postgres_common._pool = Pool('app')
+postgres_common._idempotency_fence_pool = Pool('fence')
+postgres_common._maintenance_pool = Pool('maintenance')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(marker), failing_pool],
+        env={**os.environ, "PYTHONPATH": str(Path(postgres_common.__file__).resolve().parents[2])},
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert marker.exists(), "Process exit left Postgres pools open"
+    assert marker.read_text().splitlines() == ["app", "fence", "maintenance"]
+    assert "Exception ignored" not in result.stderr
 
 
 class _Cursor:

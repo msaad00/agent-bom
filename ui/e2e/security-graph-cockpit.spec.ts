@@ -597,6 +597,25 @@ test("ranked persisted paths render before slower fix guidance", async ({ page }
   await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toBeVisible();
 });
 
+test("top-path deep links settle and keep subsequent queue selection interactive", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && /Maximum update depth/.test(message.text())) errors.push(message.text());
+  });
+  await routeCockpit(page);
+  await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&path=top`);
+  const detail = page.getByTestId("selected-exposure-path");
+  await expect(detail.getByRole("heading", { name: "Critical package reachable from MCP server" })).toBeVisible();
+  await page.getByLabel("Attack path queue").getByRole("button", { name: /#2/ }).click();
+  await expect(page.getByRole("status")).toContainText("Focused path 2");
+  // Let post-selection effects settle before checking that focus stays put.
+  await page.waitForTimeout(500);
+  await expect(page.getByRole("status")).toContainText("Focused path 2");
+  await expect(detail).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("ranked path selection focuses the in-place interactive graph and announces the change", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await routeCockpit(page);

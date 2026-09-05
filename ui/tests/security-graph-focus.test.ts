@@ -1,3 +1,4 @@
+import { resolveSecurityGraphSurface } from "@/lib/security-graph-route";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -241,7 +242,19 @@ describe("correlation outcome focus", () => {
       "corr-output",
     );
 
-    expect(href).toBe("/security-graph?scan=corr-output&path=top#selected-investigation-path");
+    const params = new URL(href, "http://localhost").searchParams;
+    expect(resolveSecurityGraphSurface(params)).toBe("attack-path");
+    expect(params.get("scan")).toBe("corr-output");
+    expect(params.get("path")).toBe("top");
+    for (const key of ["cve", "package", "agent", "step"]) expect(params.has(key)).toBe(false);
+  });
+
+  it("keeps the modeled-evidence label when drilling into a capture fixture", () => {
+    const href = buildCorrelationPathHref("/security-graph", new URLSearchParams("capture=1&lens=estate&scenario=old"), "corr-output");
+    const params = new URL(href, "http://localhost").searchParams;
+    expect(params.get("capture")).toBe("1");
+    expect(resolveSecurityGraphSurface(params)).toBe("attack-path");
+    expect(params.has("scenario")).toBe(false);
   });
 
   it("focuses and scrolls the selected Investigation path into view", () => {

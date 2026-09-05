@@ -7,10 +7,10 @@ labeled. None are customer or live-cloud evidence.
 
 ## Correlated evidence proof
 
-Independent repository, image/SBOM, Kubernetes IaC, MCP, identity, and runtime
-receipts converge into one immutable snapshot before path analysis.
+Start with the affected service, vulnerable package, and reachable asset. Open
+the selected path or its remediation; source receipts remain available on demand.
 
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/correlation-receipts-live.png" alt="Reference evidence lab correlation receipt DAG" width="900" />
+<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/correlation-receipts-live.png" alt="Reference evidence lab investigation overview with impact and remediation" width="900" />
 
 The confirmed `CVE-2023-4863` path retains exact identifiers, per-hop evidence,
 freshness, runtime observation and strict-block proof, and a remediation handoff.
@@ -19,7 +19,7 @@ freshness, runtime observation and strict-block proof, and a remediation handoff
 
 ## Overview
 
-Posture, finding, coverage, and operations summaries provide the first read.
+Posture and top risks lead; coverage and operations provide supporting context.
 
 <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview with posture, finding, coverage, and operations summaries" width="900" />
 

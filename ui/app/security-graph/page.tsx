@@ -544,19 +544,21 @@ function AttackPathInvestigationContent() {
       focusedTopPathRef.current = null;
       return;
     }
-    if (selectedAttackPathKey !== null) {
-      setSelectedAttackPathKey(null);
+    const topPath = attackPaths[0];
+    if (!topPath) return;
+    const topPathKey = attackPathKey(topPath);
+    const focusKey = `${selectedScanId}:${topPathKey}`;
+    if (focusedTopPathRef.current === focusKey) return;
+    if (selectedAttackPathKey !== topPathKey) {
+      setSelectedAttackPathKey(topPathKey);
       return;
     }
-    if (!selectedAttackPath) return;
-    const focusKey = `${selectedScanId}:${attackPathKey(selectedAttackPath)}`;
-    if (focusedTopPathRef.current === focusKey) return;
     focusedTopPathRef.current = focusKey;
     const frame = window.requestAnimationFrame(() => {
       focusCorrelationPathTarget(document);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [requestedPathMode, requestedPathScanId, selectedAttackPath, selectedAttackPathKey, selectedScanId]);
+  }, [attackPaths, requestedPathMode, requestedPathScanId, selectedAttackPathKey, selectedScanId]);
   const investigationRoot = useMemo(
     () =>
       selectedAttackPath

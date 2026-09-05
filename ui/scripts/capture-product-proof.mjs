@@ -3508,7 +3508,7 @@ async function main() {
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
       "correlation-receipts-mobile-live.png",
       prepareCorrelationReceipts,
-      { ...correlationReceiptAssertions, viewportSelectors: ["#demo-estate-watermark"], readmeTextContract: undefined, assertNoHorizontalOverflow: true },
+      { ...correlationReceiptAssertions, viewportSelectors: ["#demo-estate-watermark", '[data-testid="correlation-primary-action"]', '[data-testid="correlation-open-path"]'], readmeTextContract: undefined, assertNoHorizontalOverflow: true },
     );
     await capture(
       mobilePage,

@@ -280,6 +280,10 @@ export function GraphCorrelationWorkflow({
                 <div className="gc-outcome" aria-label="Prioritized path">
                   <h3 className="gc-heading">{outcomeTitle}</h3>
                   <p className="gc-preview-summary-copy">{boundOutcome.summary}</p>
+                  <div className="gc-outcome-actions">
+                    {boundOutcome.action ? <a data-testid="correlation-primary-action" href={boundOutcome.action.href} className="gc-primary gc-primary-inline">{boundOutcome.action.title}<ArrowRight className="h-4 w-4" aria-hidden="true" /></a> : null}
+                    <button data-testid="correlation-open-path" type="button" onClick={() => onOpenSnapshot(run.output_scan_id)} className="gc-open-path">Open top path</button>
+                  </div>
                   <div className="gc-impact-route">
                     <div><span className="gc-impact-label">Entry point</span><strong>{boundOutcome.source}</strong></div>
                     <ArrowRight className="gc-impact-arrow" aria-hidden="true" />
@@ -294,10 +298,7 @@ export function GraphCorrelationWorkflow({
                     {boundOutcome.runtimeObserved ? <span className="gc-runtime">Runtime observed</span> : null}
                     {boundOutcome.runtimeBlocked ? <span className="gc-blocked">Runtime block verified</span> : null}
                   </div>
-                  <div className="gc-outcome-actions">
-                    {boundOutcome.action ? <a data-testid="correlation-primary-action" href={boundOutcome.action.href} className="gc-primary gc-primary-inline">{boundOutcome.action.title}<ArrowRight className="h-4 w-4" aria-hidden="true" /></a> : null}
-                    <button data-testid="correlation-open-path" type="button" onClick={() => onOpenSnapshot(run.output_scan_id)} className="gc-open-path">Open top path</button>
-                  </div>
+
                 </div>
               ) : isComplete && attackPaths === 0 ? (
                 <>

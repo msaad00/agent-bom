@@ -225,6 +225,9 @@ def _trust_contract_payload(capabilities: ExtensionCapabilities) -> dict[str, An
 def provider_contracts() -> dict[str, Any]:
     """Return provider capability contracts without importing provider SDK modules."""
 
+    from agent_bom.cloud_sdk_freshness import cloud_sdk_posture
+
+    sdk_posture = cloud_sdk_posture()["sdks"]
     providers: list[dict[str, Any]] = []
     for registration in list_registered_providers():
         capabilities = registration.capabilities
@@ -236,6 +239,7 @@ def provider_contracts() -> dict[str, Any]:
                 "discover_attr": registration.discover_attr,
                 "capabilities": _capabilities_payload(capabilities),
                 "trust_contract": _trust_contract_payload(capabilities),
+                "sdk_readiness": [sdk for sdk in sdk_posture if sdk["provider"] == registration.name],
             }
         )
     return {

@@ -1606,6 +1606,7 @@ function ConnectionsHub() {
       {wizardOpen ? (
         <AddConnectionWizard
           initialProvider={wizardProvider}
+          providerContracts={providerContracts}
           managedTrial={managedTrialSession}
           managedTrialEnvelope={managedTrialEnvelope}
           providerConnectionCount={
@@ -3523,6 +3524,7 @@ type WizardStep = 0 | 1 | 2 | 3;
 type VerifyState = "idle" | "running" | "ok" | "error";
 
 function AddConnectionWizard({
+  providerContracts,
   initialProvider,
   managedTrial,
   managedTrialEnvelope,
@@ -3530,6 +3532,7 @@ function AddConnectionWizard({
   onClose,
   onCreated,
 }: {
+  providerContracts: DiscoveryProvidersResponse | null;
   initialProvider?: string | undefined;
   managedTrial: boolean;
   managedTrialEnvelope: ManagedTrialEnvelope | null;
@@ -3910,6 +3913,16 @@ function AddConnectionWizard({
                     );
                   })}
                 </div>
+                <section aria-label="Server SDK prerequisites" className="rounded-xl border border-[var(--border-subtle)] p-3 text-sm">
+                  <p className="font-medium">Server SDK prerequisites</p>
+                  {(providerContracts?.providers.find((item) => item.name === form.provider)?.sdk_readiness ?? []).map((sdk) => (
+                    <p key={sdk.distribution}>{sdk.distribution}: {sdk.status === "ok" ? "installed" : sdk.status.replaceAll("_", " ")}{sdk.installed_version ? ` (${sdk.installed_version})` : ""}</p>
+                  ))}
+                  {!providerContracts?.providers.find((item) => item.name === form.provider)?.sdk_readiness?.length && <p>SDK readiness unavailable.</p>}
+                  <p className="mt-2">Install in the control-plane environment before configuring credentials:</p>
+                  <code className="block break-all">{`pip install 'agent-bom[ui,${form.provider}]'`}</code>
+                  <p className="mt-2 text-[var(--text-secondary)]">SDK checks do not verify cloud credentials or collection permissions.</p>
+                </section>
               </fieldset>
             ) : null}
 

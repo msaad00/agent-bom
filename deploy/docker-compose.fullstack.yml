@@ -147,9 +147,9 @@ services:
     restart: unless-stopped
     environment:
       # The browser same-origins to this UI; the UI's Node server proxies
-      # /v1,/health,/ws to NEXT_PUBLIC_API_URL, which must be the API
+      # /v1,/health,/version,/ws to AGENT_BOM_API_URL, which must be the API
       # container's in-network DNS name — not the browser's localhost.
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://api:8422}
+      AGENT_BOM_API_URL: ${AGENT_BOM_API_URL:-${NEXT_PUBLIC_API_URL:-http://api:8422}}
     ports:
       - "127.0.0.1:${UI_PORT:-3000}:3000"
     networks:

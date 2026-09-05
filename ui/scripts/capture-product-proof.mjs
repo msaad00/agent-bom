@@ -255,7 +255,7 @@ function buildGraph() {
   const edgeIdsFor = (hops) =>
     hops.slice(0, -1).map((source, index) => {
       const target = hops[index + 1];
-      return edges.find((item) => item.source === source && item.target === target)?.id ?? `${source}->${target}:related`;
+      return edges.find((item) => item.source === source && item.target === target)?.relationship ?? "related";
     });
   const hopEvidenceFor = (hops) =>
     hops.slice(0, -1).map((source, index) => {
@@ -273,6 +273,8 @@ function buildGraph() {
         direction: graphEdge?.direction ?? "unknown",
         traversable: graphEdge?.traversable === true,
         complete: true,
+        relationship_provenance: graphEdge ? "recorded" : "unavailable",
+        correlation_identity_status: "current",
         truncated: false,
       };
     });
@@ -283,6 +285,7 @@ function buildGraph() {
       target: "cve:next",
       hops: ["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"],
       edges: edgeIdsFor(["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"]),
+      analysis: { status: "complete" },
       hop_evidence: hopEvidenceFor(["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"]),
       composite_risk: 9.8,
       reachability: "confirmed",

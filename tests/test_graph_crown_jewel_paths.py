@@ -9,6 +9,7 @@ graph cockpit humans use.
 from __future__ import annotations
 
 from agent_bom.api.routes.graph import _derived_attack_paths, _derived_toxic_combination_paths
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -17,6 +18,7 @@ from agent_bom.graph.types import EntityType, RelationshipType
 
 def _crown_jewel_graph(*, evidence_backed: bool = True) -> UnifiedGraph:
     g = UnifiedGraph(scan_id="cj", tenant_id="t")
+    g.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(status=GraphAnalysisState.COMPLETE)
     # An internet-exposed, vulnerable VM that reaches a PCI data store.
     g.add_node(
         UnifiedNode(

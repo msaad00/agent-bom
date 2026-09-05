@@ -32,9 +32,11 @@ This gives Cortex CoCo access to agent-bom's MCP security and analysis tools via
 
 ## Install as a Cortex Code Skill
 
-Copy the skill to your Cortex Code skills directory:
+From an agent-bom repository checkout, copy the skill to your Cortex Code skills
+directory. The Python distribution does not include these repository skill files:
 
 ```bash
+mkdir -p ~/.snowflake/cortex/skills/agent-bom
 cp integrations/cortex-code/SKILL.md ~/.snowflake/cortex/skills/agent-bom/SKILL.md
 ```
 

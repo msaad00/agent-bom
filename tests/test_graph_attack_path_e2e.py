@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from agent_bom.api.agent_identity_store import InMemoryAgentIdentityStore, issue_identity, issue_jit_grant
 from agent_bom.api.routes.graph import _derived_attack_paths, _fusion_signals_for_path
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.cnapp_overlay import apply_cnapp_overlay
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
@@ -95,6 +96,14 @@ def test_every_attack_path_class_fires_end_to_end():
     cnapp = apply_cnapp_overlay(g)
     eff = apply_effective_permissions(g)
     gov = apply_governance_overlay(g, tenant_id="default", identity_store=store, drift_store=_NoDrift())
+
+    # This fixture asserts the scored, fully evidenced path class. Record both
+    # analyzer completion and relationship freshness explicitly rather than
+    # relying on in-memory topology to imply either contract.
+    g.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(status=GraphAnalysisState.COMPLETE)
+    for edge in g.edges:
+        edge.evidence.setdefault("source", "e2e_fixture")
+        edge.evidence["freshness"] = "fresh"
 
     # Overlays produced the structure for every class.
     assert cnapp["exposed_nodes"] >= 1 and cnapp["data_stores_added"] >= 1

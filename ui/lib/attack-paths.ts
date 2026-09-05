@@ -372,11 +372,12 @@ function fallbackExposureRef(id: string, role: ExposureEntityRole): ExposureEnti
   };
 }
 
-function highestNodeSeverity(hops: ExposureEntityRef[], fallback: string): string {
-  return hops.reduce(
-    (highest, hop) => (exposureSeverityRank(hop.severity) > exposureSeverityRank(highest) ? String(hop.severity) : highest),
-    fallback,
-  );
+function highestNodeSeverity(hops: ExposureEntityRef[]): string {
+  const known = hops.filter((hop) => hop.role === "finding" &&
+    ["critical", "high", "medium", "low", "none"].includes(String(hop.severity).toLowerCase()));
+  return known.reduce((highest, hop) =>
+    highest === "Unavailable" || exposureSeverityRank(hop.severity) > exposureSeverityRank(highest)
+      ? String(hop.severity) : highest, "Unavailable");
 }
 
 function parsePackageHopLabel(label: string): { packageName: string; packageVersion?: string } {
@@ -435,7 +436,7 @@ export function toExposurePathFromAttackPath(
     label: path.summary || `${source.label} -> ${target.label}`,
     summary: path.summary,
     riskScore: path.composite_risk,
-    severity: normalizeExposureSeverity(highestNodeSeverity(hops, path.composite_risk >= 9 ? "critical" : "high")),
+    severity: normalizeExposureSeverity(highestNodeSeverity(hops)),
     source,
     target,
     hops,

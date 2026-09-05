@@ -891,3 +891,49 @@ test("the deploy gate is disclosure-gated rather than always expanded", async ({
 
   await expect(page.getByPlaceholder(/agent:claude-desktop/)).toBeHidden();
 });
+
+
+test("selected paths 13 and 25 retain hydrated anchors beyond fix-first enrichment", async ({ page }) => {
+  await routeCockpit(page);
+  const graph = buildCockpitGraph();
+  const paths = Array.from({ length: 25 }, (_, index) => {
+    const ordinal = index + 1;
+    const source = `container:occurrence-${ordinal}`;
+    const target = `finding:occurrence-${ordinal}`;
+    graph.nodes.push(node(source, "container", `runtime-anchor-${ordinal}`));
+    graph.nodes.push(node(target, "vulnerability", `finding-anchor-${ordinal}`, "high", 7));
+    graph.edges.push(edge(source, target, "vulnerable_to"));
+    return {
+      ...graph.attack_paths[0]!, source, target,
+      hops: [source, target], edges: ["vulnerable_to"],
+      composite_risk: 10 - ordinal / 100,
+      summary: `Occurrence ${ordinal} exposure`, vuln_ids: [`finding-${ordinal}`],
+    };
+  });
+  await page.route("**/v1/graph/views/fix-first?**", route => route.fulfill({
+    json: { scan_id: scanId, tenant_id: "default", created_at: createdAt, cards: [], attack_campaigns: [],
+      summary: { total_paths: 25, matched_paths: 25, returned_paths: 0, highest_risk: 9.99, covered_findings: 25, node_count: graph.nodes.length, edge_count: graph.edges.length } },
+  }));
+  await page.route("**/v1/graph/attack-paths?**", route => {
+    const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
+    const selected = offset === 0 ? paths.slice(0, 12) : paths.slice(12);
+    return route.fulfill({ json: {
+      ...graph, attack_paths: selected,
+      pagination: { total: 25, offset, limit: offset === 0 ? 12 : 100, has_more: offset === 0 },
+    } });
+  });
+  await page.goto("/security-graph?lens=attack-path");
+  const queue = page.getByLabel("Attack path queue");
+  await expect(queue.getByRole("button", { name: /#12\b/ })).toBeVisible();
+  await page.getByRole("button", { name: "Show 12 more", exact: true }).click();
+  await queue.getByRole("button", { name: /#13\b/ }).click();
+  const proof = page.getByTestId("attack-path-correlation-proof");
+  await expect(proof.getByText("runtime-anchor-13", { exact: true })).toBeVisible();
+  await expect(proof.getByText("finding-anchor-13", { exact: true })).toBeVisible();
+  await expect(proof.getByText(/path nodes unavailable/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Show 1 more", exact: true }).click();
+  await queue.getByRole("button", { name: /#25\b/ }).click();
+  await expect(proof.getByText("runtime-anchor-25", { exact: true })).toBeVisible();
+  await expect(proof.getByText("finding-anchor-25", { exact: true })).toBeVisible();
+  await expect(proof.getByText(/path nodes unavailable/)).toHaveCount(0);
+});

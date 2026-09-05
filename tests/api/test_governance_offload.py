@@ -11,7 +11,8 @@ exact return payloads and error semantics.
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
+import importlib
+from types import ModuleType, SimpleNamespace
 
 import anyio.to_thread
 import pytest
@@ -19,8 +20,17 @@ import pytest
 from agent_bom.api.routes import governance
 
 
-@pytest.fixture()
-def offload_spy(monkeypatch):
+@pytest.fixture(params=[False, True], ids=["canonical", "stale-package-alias"])
+def offload_spy(monkeypatch, request):
+    if request.param:
+        # Optional SDK import tests can restore sys.modules while a package
+        # attribute still points at a prior module object. Patch the module
+        # resolved by Python imports, even under that import-order condition.
+        canonical = importlib.import_module("agent_bom.cloud.snowflake")
+        stale = ModuleType(canonical.__name__)
+        stale.__dict__.update(canonical.__dict__)
+        monkeypatch.setattr(importlib.import_module("agent_bom.cloud"), "snowflake", stale)
+
     real = anyio.to_thread.run_sync
     offloaded: list[object] = []
 
@@ -68,9 +78,10 @@ def test_activity_timeline_offloads(monkeypatch, offload_spy):
 
 def test_cortex_telemetry_offloads(monkeypatch, offload_spy):
     conn = SimpleNamespace(close=lambda: None)
-    monkeypatch.setattr("agent_bom.cloud.snowflake._get_connection", lambda: conn)
+    monkeypatch.setattr(importlib.import_module("agent_bom.cloud.snowflake"), "_get_connection", lambda: conn)
     monkeypatch.setattr(
-        "agent_bom.cloud.snowflake_observability.get_cortex_telemetry",
+        importlib.import_module("agent_bom.cloud.snowflake_observability"),
+        "get_cortex_telemetry",
         lambda c, **kw: {"agents": []},
     )
 
@@ -82,9 +93,10 @@ def test_cortex_telemetry_offloads(monkeypatch, offload_spy):
 
 def test_cortex_agent_telemetry_offloads(monkeypatch, offload_spy):
     conn = SimpleNamespace(close=lambda: None)
-    monkeypatch.setattr("agent_bom.cloud.snowflake._get_connection", lambda: conn)
+    monkeypatch.setattr(importlib.import_module("agent_bom.cloud.snowflake"), "_get_connection", lambda: conn)
     monkeypatch.setattr(
-        "agent_bom.cloud.snowflake_observability.get_cortex_telemetry",
+        importlib.import_module("agent_bom.cloud.snowflake_observability"),
+        "get_cortex_telemetry",
         lambda c, **kw: {"agent": kw.get("agent_name")},
     )
 
@@ -96,17 +108,20 @@ def test_cortex_agent_telemetry_offloads(monkeypatch, offload_spy):
 
 def test_cortex_health_offloads(monkeypatch, offload_spy):
     conn = SimpleNamespace(close=lambda: None)
-    monkeypatch.setattr("agent_bom.cloud.snowflake._get_connection", lambda: conn)
+    monkeypatch.setattr(importlib.import_module("agent_bom.cloud.snowflake"), "_get_connection", lambda: conn)
     monkeypatch.setattr(
-        "agent_bom.cloud.snowflake._mine_cortex_agent_usage",
+        importlib.import_module("agent_bom.cloud.snowflake"),
+        "_mine_cortex_agent_usage",
         lambda c, days=1: ([], []),
     )
     monkeypatch.setattr(
-        "agent_bom.cloud.snowflake_observability.aggregate_agent_metrics",
+        importlib.import_module("agent_bom.cloud.snowflake_observability"),
+        "aggregate_agent_metrics",
         lambda records, hours=24: [],
     )
     monkeypatch.setattr(
-        "agent_bom.cloud.snowflake_observability.assess_agent_health",
+        importlib.import_module("agent_bom.cloud.snowflake_observability"),
+        "assess_agent_health",
         lambda m: m,
     )
 

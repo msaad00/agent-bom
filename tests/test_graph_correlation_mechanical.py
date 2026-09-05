@@ -12,12 +12,15 @@ from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion, compute
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
-from agent_bom.graph.path_evidence import annotate_attack_path_evidence
+from agent_bom.graph.path_evidence import annotate_attack_path_evidence, exposure_evidence_dimensions
 from agent_bom.graph.types import EntityType, RelationshipType
 
 
 def _ordinary_vulnerability_graph() -> UnifiedGraph:
     graph = UnifiedGraph(scan_id="scan-a", tenant_id="tenant-a")
+    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+        status=GraphAnalysisState.COMPLETE,
+    )
     graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
     graph.add_node(UnifiedNode(id="server:a", entity_type=EntityType.SERVER, label="server-a"))
     graph.add_node(
@@ -37,6 +40,7 @@ def _ordinary_vulnerability_graph() -> UnifiedGraph:
             relationship=RelationshipType.USES,
             source_scan_id="scan-a",
             provenance={"source": "repository"},
+            evidence={"freshness": "fresh"},
         )
     )
     graph.add_edge(
@@ -45,7 +49,7 @@ def _ordinary_vulnerability_graph() -> UnifiedGraph:
             target="vuln:CVE-2026-1",
             relationship=RelationshipType.VULNERABLE_TO,
             source_scan_id="scan-a",
-            evidence={"advisory": "CVE-2026-1"},
+            evidence={"advisory": "CVE-2026-1", "freshness": "fresh"},
         )
     )
     return graph
@@ -242,6 +246,7 @@ def test_bidirectional_hop_remains_structural_not_confirmed() -> None:
 
 def test_stale_allowed_hop_cannot_be_promoted_to_confirmed() -> None:
     graph = UnifiedGraph(scan_id="corr-stale", tenant_id="tenant-a")
+    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(status=GraphAnalysisState.COMPLETE)
     graph.add_node(UnifiedNode(id="workload:public", entity_type=EntityType.CLOUD_RESOURCE, label="public workload"))
     graph.add_node(UnifiedNode(id="data_store:crown", entity_type=EntityType.DATA_STORE, label="crown jewel"))
     graph.add_edge(
@@ -250,7 +255,20 @@ def test_stale_allowed_hop_cannot_be_promoted_to_confirmed() -> None:
             target="data_store:crown",
             relationship=RelationshipType.CAN_ACCESS,
             source_scan_id="corr-stale",
-            provenance={"correlation": {"source_scan_ids": ["scan-a"], "freshness": "stale_allowed"}},
+            provenance={
+                "correlation": {
+                    "source_scan_ids": ["scan-a"],
+                    "freshness": "stale_allowed",
+                    "identity_version": "runtime-occurrence.v2",
+                    "observations": [
+                        {
+                            "scan_id": "scan-a",
+                            "source_edge_id": "can_access:workload:public:data_store:crown",
+                            "evidence_digest": "sha256:receipt",
+                        }
+                    ],
+                }
+            },
         )
     )
     path = AttackPath(
@@ -316,9 +334,11 @@ def test_confirmed_path_carries_complete_per_hop_evidence() -> None:
         "target_node_id": "server:a",
         "relationship": "uses",
         "source_snapshot_ids": ["scan-a"],
+        "relationship_provenance": "recorded",
+        "correlation_identity_status": "current",
         "evidence_tier": "static_evidence",
         "confidence": 1.0,
-        "freshness": "unknown",
+        "freshness": "fresh",
         "runtime_observed_state": "not_observed",
         "direction": "directed",
         "traversable": True,
@@ -345,6 +365,125 @@ def test_attack_path_evidence_survives_sqlite_round_trip(tmp_path: Path) -> None
 
     assert restored.hop_evidence == path.hop_evidence
     assert restored.analysis == path.analysis
+    assert restored.reachability == "confirmed"
+    assert exposure_evidence_dimensions(restored, graph.nodes[restored.target])["reachability"] == {
+        "status": "complete",
+        "verdict": "confirmed",
+        "basis": ["import_path"],
+    }
+
+
+def test_missing_analyzer_status_cannot_confirm_fresh_hops() -> None:
+    graph = UnifiedGraph(scan_id="scan-a", tenant_id="tenant-a")
+    graph.add_node(UnifiedNode(id="workload:public", entity_type=EntityType.CLOUD_RESOURCE, label="public workload"))
+    graph.add_node(UnifiedNode(id="data_store:crown", entity_type=EntityType.DATA_STORE, label="crown jewel"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="workload:public",
+            target="data_store:crown",
+            relationship=RelationshipType.CAN_ACCESS,
+            source_scan_id="scan-a",
+            evidence={"source": "policy_evaluator", "freshness": "fresh"},
+        )
+    )
+    path = AttackPath(
+        source="workload:public",
+        target="data_store:crown",
+        hops=["workload:public", "data_store:crown"],
+        edges=[RelationshipType.CAN_ACCESS.value],
+        composite_risk=80.0,
+        reachability="likely",
+    )
+
+    annotate_attack_path_evidence(path, graph)
+
+    assert path.analysis["status"] == "not_recorded"
+    assert path.hop_evidence[0]["truncated"] is True
+    assert path.reachability == "unknown"
+    dimensions = exposure_evidence_dimensions(path, graph.nodes[path.target])
+    assert dimensions["reachability"]["status"] == "unavailable"
+    assert dimensions["completeness"]["status"] == "unavailable"
+
+
+def test_unknown_freshness_cannot_complete_or_confirm_hop_evidence(tmp_path: Path) -> None:
+    graph = UnifiedGraph(scan_id="scan-a", tenant_id="tenant-a")
+    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(status=GraphAnalysisState.COMPLETE)
+    graph.add_node(UnifiedNode(id="workload:public", entity_type=EntityType.CLOUD_RESOURCE, label="public workload"))
+    graph.add_node(UnifiedNode(id="data_store:crown", entity_type=EntityType.DATA_STORE, label="crown jewel"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="workload:public",
+            target="data_store:crown",
+            relationship=RelationshipType.CAN_ACCESS,
+            source_scan_id="scan-a",
+            evidence={"source": "policy_evaluator"},
+        )
+    )
+    path = AttackPath(
+        source="workload:public",
+        target="data_store:crown",
+        hops=["workload:public", "data_store:crown"],
+        edges=[RelationshipType.CAN_ACCESS.value],
+        composite_risk=80.0,
+        reachability="likely",
+    )
+
+    annotate_attack_path_evidence(path, graph)
+
+    assert path.hop_evidence[0]["freshness"] == "unknown"
+    assert path.hop_evidence[0]["complete"] is False
+    assert path.reachability == "unknown"
+    dimensions = exposure_evidence_dimensions(path, graph.nodes[path.target])
+    assert dimensions["reachability"]["status"] == "unavailable"
+    assert dimensions["completeness"] == {
+        "status": "partial",
+        "expectedHops": 1,
+        "evidencedHops": 1,
+        "analysisStatus": "complete",
+        "reasonCodes": ["unknown_evidence_freshness"],
+    }
+
+    graph.attack_paths = [path]
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(graph)
+    restored = store.load_graph(tenant_id="tenant-a", scan_id="scan-a").attack_paths[0]
+    restored_dimensions = exposure_evidence_dimensions(restored, graph.nodes[restored.target])
+    assert restored.reachability == "unknown"
+    assert restored_dimensions["reachability"]["status"] == "unavailable"
+    assert restored_dimensions["completeness"]["reasonCodes"] == ["unknown_evidence_freshness"]
+
+
+def test_snapshot_membership_and_irrelevant_provenance_are_not_relationship_receipts() -> None:
+    graph = UnifiedGraph(scan_id="corr-a", tenant_id="tenant-a")
+    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(status=GraphAnalysisState.COMPLETE)
+    graph.add_node(UnifiedNode(id="workload:public", entity_type=EntityType.CLOUD_RESOURCE, label="public workload"))
+    graph.add_node(UnifiedNode(id="data_store:crown", entity_type=EntityType.DATA_STORE, label="crown jewel"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="workload:public",
+            target="data_store:crown",
+            relationship=RelationshipType.CAN_ACCESS,
+            source_scan_id="corr-a",
+            provenance={
+                "note": "not a relationship receipt",
+                "correlation": {"source_scan_ids": ["scan-a"], "freshness": "fresh"},
+            },
+        )
+    )
+    path = AttackPath(
+        source="workload:public",
+        target="data_store:crown",
+        hops=["workload:public", "data_store:crown"],
+        edges=[RelationshipType.CAN_ACCESS.value],
+        composite_risk=80.0,
+        reachability="likely",
+    )
+
+    annotate_attack_path_evidence(path, graph)
+
+    assert path.hop_evidence[0]["complete"] is False
+    assert path.reachability == "unknown"
+    assert exposure_evidence_dimensions(path, graph.nodes[path.target])["completeness"]["status"] == "partial"
 
 
 def test_final_fusion_runs_after_runtime_code_ci_and_endpoint_overlays(monkeypatch: Any) -> None:

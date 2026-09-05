@@ -84,7 +84,7 @@ import {
 } from "@/lib/attack-paths";
 import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
 import { GraphSurface } from "@/app/graph/graph-surface";
-import type { UnifiedGraphData } from "@/lib/graph-schema";
+import type { UnifiedGraphData, UnifiedNode } from "@/lib/graph-schema";
 import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
 import { useCaptureMode } from "@/lib/use-capture-mode";
@@ -1039,7 +1039,7 @@ function AttackPathInvestigationContent() {
                     <AttackPathCorrelationProof
                       path={selectedAttackPath}
                       riskReasons={selectedFixFirstCard?.risk_reasons}
-                      nodes={selectedFixFirstCard?.nodes}
+                      nodes={selectedAttackPath.hops.map((id) => graphNodeById.get(id)).filter((node): node is UnifiedNode => Boolean(node))}
                     />
                   ) : null
                 }

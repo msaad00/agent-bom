@@ -1,5 +1,6 @@
 "use client";
 
+import { completeDirectedHopCount } from "@/lib/security-graph-focus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -1822,13 +1823,7 @@ function GraphPageInner() {
       ? finding.attributes.fixed_version
       : null;
     const packageName = packageNode?.label.split("@")[0] || "affected package";
-    const directedTraversable = selectedAttackPath.hop_evidence?.filter((receipt) =>
-      receipt.direction !== "undirected" &&
-      receipt.traversable === true &&
-      receipt.complete === true &&
-      receipt.truncated === false &&
-      receipt.source_snapshot_ids.length > 0,
-    ).length ?? 0;
+    const directedTraversable = completeDirectedHopCount(selectedAttackPath);
     const findingLabel = finding?.label ?? selectedAttackPath.vuln_ids[0] ?? "finding";
     return {
       findingLabel,
@@ -3688,7 +3683,7 @@ function GraphPageInner() {
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--text-secondary)]">
                 <span>{selectedEvidenceHopCount} evidence hops</span>
                 <span>{selectedPathDecision.hasHopReceipts
-                  ? `${selectedPathDecision.directedTraversable}/${selectedEvidenceHopCount} directed traversable relationships evidenced`
+                  ? `${selectedPathDecision.directedTraversable === null ? "Unavailable" : `${selectedPathDecision.directedTraversable}/${selectedEvidenceHopCount}`} directed traversable relationships evidenced`
                   : "Directed hop verification not recorded"}</span>
                 <span>Snapshot freshness: {activeSnapshot ? new Date(activeSnapshot.created_at).toLocaleString() : "unavailable"}</span>
                 <span className="font-medium text-[var(--foreground)]">Next: {selectedPathDecision.nextAction}</span>

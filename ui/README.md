@@ -22,14 +22,12 @@ agent-bom api
 npm run dev
 ```
 
-The UI reads `NEXT_PUBLIC_API_URL`.
+The Next.js server reads `AGENT_BOM_API_URL` at runtime, with
+`NEXT_PUBLIC_API_URL` retained as a legacy fallback. Browser API calls stay
+same-origin. Changing the server destination does not require rebuilding.
 
-- in development, the Next server uses it for local rewrites
-- in containers, the runtime entrypoint writes it into `public/runtime-config.js`
-  so the same image can be pointed at a different API endpoint at startup
-  without baking the endpoint into the Docker build
-
-If it is unset, the dev server proxies `/v1/*`, `/health`, and `/ws/*` to `http://localhost:8422`.
+If neither variable is set, the server proxies `/v1/*`, `/health`, `/version`,
+and `/ws/*` to `http://localhost:8422`.
 
 For same-origin ingress in Kubernetes or other reverse-proxy setups, set:
 
@@ -67,7 +65,7 @@ If you see `Failed to fetch`:
 
 1. Make sure `agent-bom api` is running.
 2. Check the browser console for CORS or network errors.
-3. Confirm `NEXT_PUBLIC_API_URL` points at the backend you expect.
+3. Confirm `AGENT_BOM_API_URL` points at the backend reachable from the UI server.
 
 ## Offline demo path
 
@@ -78,3 +76,19 @@ agent-bom agents --demo --offline -f json -o report.json
 ```
 
 Then import `report.json` from the dashboard home page.
+
+
+### Runtime API destination
+
+Run `AGENT_BOM_API_URL=http://api:8422 node server.js` inside the standalone
+bundle, or set that variable on the UI container. The server forwards `/v1`,
+`/health`, `/version`, and `/ws` to that origin at runtime. The same built image
+can target a different API without rebuilding. Use an HTTP(S) origin without
+credentials, paths, query parameters, or fragments. Invalid configuration returns
+503; an unreachable backend fails the request rather than returning API success.
+
+`AGENT_BOM_API_URL` takes precedence over the legacy `NEXT_PUBLIC_API_URL` runtime
+setting. With neither set, the server uses `http://localhost:8422`. Browser API
+requests and credentials remain same-origin. Use `npm run dev` and `npm run build`
+to generate the server Proxy entry; `NEXT_EXPORT=1 npm run build` excludes it
+for Python-served static assets.

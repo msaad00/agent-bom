@@ -49,6 +49,13 @@ describe("attack path helpers", () => {
     };
   }
 
+  it.each(["low", "medium", "none", "unknown"])("keeps known finding severity %s independent of path priority", (severity) => {
+    const path: AttackPath = { source: "finding", target: "agent", hops: ["finding", "agent"], edges: ["affects"], composite_risk: 9.9, summary: "", credential_exposure: [], tool_exposure: [], vuln_ids: [] };
+    const finding = { ...graphNode("finding", EntityType.VULNERABILITY, "finding"), severity };
+    const agent = graphNode("agent", EntityType.AGENT, "agent");
+    expect(toExposurePathFromAttackPath(path, new Map([[finding.id, finding], [agent.id, agent]])).severity).toBe(severity === "unknown" ? "Unavailable" : severity);
+  });
+
   it("builds a stable key from source, target, and hops", () => {
     const path: AttackPath = {
       source: "pkg",

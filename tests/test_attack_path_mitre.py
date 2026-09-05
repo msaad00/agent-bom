@@ -326,3 +326,23 @@ def test_mitre_missing_basis_does_not_claim_observed_confidence():
     assert mapping.evidence_basis is None
     assert mapping.confidence is None
     assert not mapping.provenance.startswith("observed ")
+
+
+@pytest.mark.parametrize("edges", [[], [UnifiedEdge(source="b", target="a", relationship=RelationshipType.ASSUMES)]])
+def test_api_does_not_replay_legacy_mitre_mapping_without_matching_edge(edges):
+    from agent_bom.api.routes.graph import _serialize_attack_path
+
+    path = AttackPath(
+        source="a",
+        target="b",
+        hops=["a", "b"],
+        edges=["assumes"],
+        composite_risk=8,
+        technique_mappings=[TechniqueMapping(hop_index=0, technique_id="T1078", evidence_basis="observed", confidence=1)],
+    )
+    nodes = {
+        "a": UnifiedNode(id="a", entity_type=EntityType.AGENT, label="a"),
+        "b": UnifiedNode(id="b", entity_type=EntityType.ROLE, label="b"),
+    }
+    assert _serialize_attack_path(path, edges, nodes_by_id=nodes)["technique_mappings"] == []
+    assert path.technique_mappings  # Stored source receipts are not rewritten by projection.

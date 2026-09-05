@@ -254,17 +254,51 @@ def _path_completeness(path: AttackPath) -> dict[str, Any]:
         return {"status": "partial", **base, "reasonCodes": ["incomplete_hop_evidence"]}
     if any(str(item.get("freshness") or "unknown") not in {"fresh", "stale_allowed"} for item in receipts):
         return {"status": "partial", **base, "reasonCodes": ["unknown_evidence_freshness"]}
-    if any(not item.get("complete") for item in receipts):
+    ordered = (
+        expected_hops > 0
+        and len(path.edges) == expected_hops
+        and path.source == path.hops[0]
+        and path.target == path.hops[-1]
+        and all(
+            item.get("source_node_id") == path.hops[index]
+            and item.get("target_node_id") == path.hops[index + 1]
+            and item.get("relationship") == path.edges[index]
+            and bool(path.edges[index])
+            and item.get("complete") is True
+            and item.get("truncated") is False
+            and item.get("direction") == "directed"
+            and item.get("traversable") is True
+            and item.get("relationship_provenance") == "recorded"
+            and item.get("correlation_identity_status") == "current"
+            and isinstance(item.get("source_snapshot_ids"), list)
+            and bool(item["source_snapshot_ids"])
+            and all(isinstance(ref, str) and ref.strip() for ref in item["source_snapshot_ids"])
+            for index, item in enumerate(receipts)
+        )
+    )
+    if not ordered:
         return {"status": "partial", **base, "reasonCodes": ["incomplete_hop_evidence"]}
+    if any(item.get("freshness") != "fresh" for item in receipts):
+        return {"status": "partial", **base, "reasonCodes": ["stale_evidence_allowed"]}
     return {"status": "complete", **base, "reasonCodes": []}
 
 
-def exposure_evidence_dimensions(path: AttackPath, target_node: Any | None) -> dict[str, Any]:
+def exposure_evidence_dimensions(
+    path: AttackPath, target_node: Any | None, *, relationships: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     """Build independent evidence dimensions shared by graph response surfaces."""
 
     attributes = getattr(target_node, "attributes", {}) if target_node is not None else {}
     attributes = attributes if isinstance(attributes, Mapping) else {}
     completeness = _path_completeness(path)
+    if relationships is not None and completeness["status"] == "complete":
+        directed_edges = {
+            (item.get("source"), item.get("target"), item.get("relationship"))
+            for item in relationships
+            if item.get("direction") == "directed" and item.get("traversable") is True
+        }
+        if any((source, path.hops[index + 1], path.edges[index]) not in directed_edges for index, source in enumerate(path.hops[:-1])):
+            completeness = {**completeness, "status": "partial", "reasonCodes": ["matching_topology_not_recorded"]}
 
     reachability_value = str(path.reachability or "").lower()
     reachability_basis = [str(item) for item in path.reachability_basis if str(item)]

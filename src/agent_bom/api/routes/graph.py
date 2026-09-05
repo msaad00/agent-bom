@@ -87,7 +87,7 @@ _FILTERED_GRAPH_ATTACK_PATH_LIMIT = 100
 _GOVERNANCE_EDGE_LIMIT = 5_000
 _GOVERNANCE_ATTACK_PATH_LIMIT = 100
 
-_EdgeLookup = dict[tuple[str, str], UnifiedEdge]
+_EdgeLookup = dict[tuple[str, ...], UnifiedEdge]
 
 
 class GraphScopeDescriptor(BaseModel):
@@ -1019,6 +1019,7 @@ def _build_edge_lookup(edges: list[UnifiedEdge] | None) -> _EdgeLookup:
     by_pair: _EdgeLookup = {}
     for edge in edges or []:
         by_pair.setdefault((edge.source, edge.target), edge)
+        by_pair.setdefault((edge.source, edge.target, _rel_value(edge)), edge)
         if edge.is_bidirectional:
             by_pair.setdefault((edge.target, edge.source), edge)
     return by_pair
@@ -1089,7 +1090,8 @@ def _exposure_relationships_for_path(
 
     relationships: list[dict[str, Any]] = []
     for index, (source, target) in enumerate(zip(path.hops, path.hops[1:], strict=False)):
-        edge: UnifiedEdge | None = by_pair.get((source, target))
+        relationship_key = path.edges[index] if index < len(path.edges) else None
+        edge: UnifiedEdge | None = by_pair.get((source, target, relationship_key)) if relationship_key else by_pair.get((source, target))
         if edge is None:
             continue
         relationship = _rel_value(edge)
@@ -1163,7 +1165,7 @@ def _exposure_path_for_attack_path(
         "exposedCredentials": list(path.credential_exposure),
         "reachability": path.reachability,
         "reachabilityBasis": list(path.reachability_basis),
-        "evidenceDimensions": exposure_evidence_dimensions(path, finding_node),
+        "evidenceDimensions": exposure_evidence_dimensions(path, finding_node, relationships=relationships),
         "provenance": {"source": "graph_attack_path", "scanId": scan_id} if scan_id else {"source": "graph_attack_path"},
     }
     if rank is not None:
@@ -1204,6 +1206,26 @@ def _serialize_attack_path(
     edge_lookup: _EdgeLookup | None = None,
 ) -> dict:
     data = path.to_dict()
+    if edges is not None:
+        from agent_bom.graph.attack_path_mitre import derive_attack_path_techniques
+
+        # Re-derive the projection from bounded matching topology. Historical
+        # receipt objects stay intact; old serialized mappings cannot supply
+        # evidence for an absent, reversed, or non-traversable relationship.
+        by_pair = edge_lookup if edge_lookup is not None else _build_edge_lookup(edges)
+        proof_graph = UnifiedGraph()
+        for hop in path.hops:
+            node = (nodes_by_id or {}).get(hop)
+            if node is not None:
+                proof_graph.add_node(node)
+        for index, (source, target) in enumerate(zip(path.hops, path.hops[1:], strict=False)):
+            if index < len(path.edges):
+                edge = by_pair.get((source, target, path.edges[index]))
+                if edge is not None:
+                    proof_graph.add_edge(edge)
+        mappings = derive_attack_path_techniques(path, proof_graph)
+        data["technique_mappings"] = [mapping.to_dict() for mapping in mappings]
+        data["mitre_technique_ids"] = sorted({mapping.technique_id for mapping in mappings})
     if not data.get("edges") and edges is not None:
         data["edges"] = _edge_relationships_for_hops(path.hops, edges, edge_lookup=edge_lookup)
     if nodes_by_id is not None:
@@ -1549,8 +1571,7 @@ def _with_technique_mappings(paths: list[AttackPath], graph: UnifiedGraph) -> li
         from agent_bom.graph.attack_path_mitre import derive_attack_path_techniques
 
         for path in paths:
-            if not path.technique_mappings:
-                path.technique_mappings = derive_attack_path_techniques(path, graph)
+            path.technique_mappings = derive_attack_path_techniques(path, graph)
     except Exception:  # noqa: BLE001
         pass
     return paths

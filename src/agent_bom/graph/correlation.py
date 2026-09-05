@@ -260,11 +260,12 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
         for key in ("cloud_provider", "environment"):
             dimension = str(getattr(node.dimensions, key, "") or "").strip()
             if dimension:
-                scope[f"dimension_{key}"] = dimension
+                if key in scope and scope[key] != dimension:
+                    scope[f"conflicting_dimension_{key}"] = dimension
                 scope.setdefault(key, dimension)
-        located = bool(scope.get("cluster_id") or scope.get("cluster_arn") or scope.get("runtime_host_id")) or bool(
-            scope.get("cloud_provider")
-            and any(scope.get(key) for key in ("cloud_account_id", "account_id", "subscription_id", "project_id"))
+        located = bool(scope.get("cloud_provider")) and any(
+            scope.get(key)
+            for key in ("cluster_id", "cluster_arn", "runtime_host_id", "cloud_account_id", "account_id", "subscription_id", "project_id")
         )
         uid_key = "runtime_uid" if attrs.get("runtime_uid") else "container_id"
         uid = str(attrs.get(uid_key) or "").strip()

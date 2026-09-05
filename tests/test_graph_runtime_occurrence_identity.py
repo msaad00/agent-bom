@@ -34,6 +34,17 @@ def _snapshots(kind):
         other["environment"] = "development"
     elif kind == "different_account":
         other["cloud_account_id"] = "other-account"
+    elif kind == "missing_provider":
+        attrs.pop("cloud_provider")
+        other.pop("cloud_provider")
+    elif kind in {"same_kubernetes_container", "different_kubernetes_container", "kubernetes_without_name"}:
+        for obj in (attrs, other):
+            obj.pop("runtime_uid")
+            obj["kubernetes_uid"] = "pod-uid"
+            if kind != "kubernetes_without_name":
+                obj["container_name"] = "api"
+        if kind == "different_kubernetes_container":
+            other["container_name"] = "sidecar"
     elif kind == "missing_uid":
         attrs.pop("runtime_uid")
         other.pop("runtime_uid")
@@ -59,7 +70,19 @@ def _snapshots(kind):
 
 @pytest.mark.parametrize(
     "kind",
-    ["different_uid", "different_cluster", "different_account", "different_environment", "missing_uid", "missing_scope", "same_occurrence"],
+    [
+        "different_uid",
+        "different_cluster",
+        "different_account",
+        "different_environment",
+        "missing_uid",
+        "missing_scope",
+        "missing_provider",
+        "same_occurrence",
+        "same_kubernetes_container",
+        "different_kubernetes_container",
+        "kubernetes_without_name",
+    ],
 )
 @pytest.mark.parametrize("engine", ["memory", "disk"])
 def test_runtime_occurrence_joins_never_follow_shared_image_digest(tmp_path, kind, engine):
@@ -73,7 +96,7 @@ def test_runtime_occurrence_joins_never_follow_shared_image_digest(tmp_path, kin
             for snapshot in snapshots:
                 workspace.add_snapshot(snapshot)
             result = workspace.finish()
-    expected = kind == "same_occurrence"
+    expected = kind in {"same_occurrence", "same_kubernetes_container"}
     assert bool(compute_fused_attack_paths(result.graph)) is expected
     assert result.manifest["identity_version"] == "runtime-occurrence.v2"
     with open_graph_db(tmp_path / "graph.db") as connection:
@@ -122,3 +145,63 @@ def test_recorrelating_legacy_output_does_not_upgrade_its_receipts():
         annotate_attack_path_evidence(path, graph)
         assert path.reachability != "confirmed"
         assert "correlation_recomputation_required" in path.reachability_basis
+
+
+@pytest.mark.parametrize("engine", ["memory", "disk"])
+def test_runtime_scope_dimensions_and_attributes_have_the_same_identity(engine):
+    snapshots = _snapshots("same_occurrence")
+    right = snapshots[1].graph.nodes["dev:container"]
+    right.dimensions.cloud_provider = right.attributes.pop("cloud_provider")
+    if engine == "memory":
+        result = merge_graph_snapshots(correlation_id="correlated", tenant_id="tenant", snapshots=snapshots)
+    else:
+        with CorrelationMergeWorkspace(
+            correlation_id="correlated", tenant_id="tenant", created_at="2026-09-04T00:00:00Z", max_output_nodes=100, max_output_edges=100
+        ) as workspace:
+            for snapshot in snapshots:
+                workspace.add_snapshot(snapshot)
+            result = workspace.finish()
+    assert compute_fused_attack_paths(result.graph)
+
+
+@pytest.mark.parametrize("kind", ["same_occurrence", "different_uid", "missing_uid"])
+@pytest.mark.parametrize("engine", ["memory", "disk"])
+def test_runtime_occurrences_survive_live_postgres_roundtrip(kind, engine):
+    import os
+    import uuid
+
+    dsn = os.environ.get("AGENT_BOM_POSTGRES_URL")
+    if not dsn:
+        pytest.skip("AGENT_BOM_POSTGRES_URL not set")
+    from psycopg_pool import ConnectionPool
+
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_graph import PostgresGraphStore
+
+    correlation_id = f"runtime-identity-{uuid.uuid4().hex}"
+    snapshots = _snapshots(kind)
+    if engine == "memory":
+        result = merge_graph_snapshots(correlation_id=correlation_id, tenant_id="tenant", snapshots=snapshots)
+    else:
+        with CorrelationMergeWorkspace(
+            correlation_id=correlation_id, tenant_id="tenant", created_at="2026-09-04T00:00:00Z", max_output_nodes=100, max_output_edges=100
+        ) as workspace:
+            for snapshot in snapshots:
+                workspace.add_snapshot(snapshot)
+            result = workspace.finish()
+    with ConnectionPool(dsn, min_size=1, max_size=2) as pool:
+        store = PostgresGraphStore(pool=pool)
+        token = set_current_tenant("tenant")
+        try:
+            store.save_graph(result.graph)
+            restored = store.load_graph(tenant_id="tenant", scan_id=correlation_id)
+            assert bool(compute_fused_attack_paths(restored)) is (kind == "same_occurrence")
+            assert all(edge.provenance["correlation"]["identity_version"] == "runtime-occurrence.v2" for edge in restored.edges)
+            foreign = set_current_tenant("foreign")
+            try:
+                assert not store.load_graph(tenant_id="tenant", scan_id=correlation_id).nodes
+            finally:
+                reset_current_tenant(foreign)
+        finally:
+            store.delete_snapshot(tenant_id="tenant", scan_id=correlation_id)
+            reset_current_tenant(token)

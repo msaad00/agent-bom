@@ -275,6 +275,8 @@ describe("correlation outcome focus", () => {
       target_node_id: "server:github",
       relationship: "uses",
       source_snapshot_ids: ["scan-1"],
+      relationship_provenance: "recorded" as const,
+      correlation_identity_status: "current" as const,
       evidence_tier: "static_evidence",
       confidence: 1,
       freshness: "fresh",
@@ -291,11 +293,11 @@ describe("correlation outcome focus", () => {
       { ...receipt, source_node_id: "pkg:form-data", target_node_id: "cve:form-data", relationship: "vulnerable_to" },
     ];
 
-    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: receipts })).toBe(3);
-    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipts[1]!, receipts[0]!, receipts[2]!] })).toBeNull();
-    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipt, { ...receipts[1]!, target_node_id: "wrong" }, receipts[2]!] })).toBeNull();
-    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipt, { ...receipts[1]!, direction: "forward" }, receipts[2]!] })).toBeNull();
-    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipt, { ...receipts[1]!, truncated: true }, receipts[2]!] })).toBeNull();
-    expect(completeDirectedHopCount({ ...attackPath, hop_evidence: [receipt, { ...receipts[1]!, source_snapshot_ids: [] }, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: receipts })).toBe(3);
+    expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipts[1]!, receipts[0]!, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipt, { ...receipts[1]!, target_node_id: "wrong" }, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipt, { ...receipts[1]!, direction: "forward" }, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipt, { ...receipts[1]!, truncated: true }, receipts[2]!] })).toBeNull();
+    expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipt, { ...receipts[1]!, source_snapshot_ids: [] }, receipts[2]!] })).toBeNull();
   });
 });

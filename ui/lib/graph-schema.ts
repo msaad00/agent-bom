@@ -410,6 +410,8 @@ export interface AttackPath {
     target_node_id: string;
     relationship: string;
     source_snapshot_ids: string[];
+    relationship_provenance?: "recorded" | "unavailable";
+    correlation_identity_status?: "current" | "recomputation_required" | "unavailable";
     evidence_tier: "static_evidence" | "modeled_infrastructure" | "runtime_observed" | "unknown" | string;
     confidence: number;
     freshness: "fresh" | "stale_allowed" | "unknown" | string;

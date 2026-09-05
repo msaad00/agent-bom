@@ -38,7 +38,7 @@ import {
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
 import { mergeGraphNodeDetail } from "@/lib/graph-entity-detail";
-import { buildFocusedGraphData } from "@/lib/security-graph-focus";
+import { buildFocusedGraphData, completeDirectedHopCount } from "@/lib/security-graph-focus";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import { useGraphLayout } from "@/lib/use-graph-layout";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
@@ -501,7 +501,7 @@ export function SecurityGraphInvestigation({
             </span>
           ))}
           <span className="text-[10px] text-[color:var(--text-tertiary)]">
-            {attackPath.hop_evidence?.filter((receipt) => receipt.complete).length ?? 0}/{Math.max(attackPath.hops.length - 1, 0)} directed hops evidenced
+            {completeDirectedHopCount(attackPath) ?? "Unavailable"} directed hops evidenced
           </span>
         </div>
       ) : null}

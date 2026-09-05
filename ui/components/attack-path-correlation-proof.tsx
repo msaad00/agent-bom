@@ -1,3 +1,4 @@
+import { completeDirectedHopCount } from "@/lib/security-graph-focus";
 import type { FixFirstRiskReason, GraphAttackPath } from "@/lib/api-types";
 import type { UnifiedNode } from "@/lib/graph-schema";
 
@@ -18,8 +19,8 @@ export function AttackPathCorrelationProof({
   riskReasons?: FixFirstRiskReason[] | undefined;
   nodes?: UnifiedNode[] | undefined;
 }) {
-  const receipts = path.hop_evidence ?? [];
-  if (receipts.length === 0) return null;
+  const receipts = Array.isArray(path.hop_evidence) ? path.hop_evidence.filter((receipt) => receipt && typeof receipt === "object") : [];
+
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const anchors = path.hops
     .map((nodeId) => nodeById.get(nodeId))
@@ -29,25 +30,13 @@ export function AttackPathCorrelationProof({
       return kind === "container" || kind === "package" || kind === "vulnerability" || kind === "finding";
     });
   const expectedHopCount = Math.max(path.hops.length - 1, 0);
-  const completeHopCount = receipts.filter(
-    (receipt) =>
-      receipt.complete &&
-      receipt.direction === "directed" &&
-      receipt.traversable &&
-      !receipt.truncated,
-  ).length;
-  const hopChainComplete =
-    expectedHopCount > 0 && completeHopCount === expectedHopCount && receipts.length === expectedHopCount;
-  const allEvidenceFresh = receipts.every((receipt) => receipt.freshness === "fresh");
-  const analysisComplete = !path.analysis?.status || path.analysis.status === "complete";
-  const pathVerified =
-    path.reachability === "confirmed" && hopChainComplete && allEvidenceFresh && analysisComplete;
-  const proofLabel = pathVerified
-    ? "Path verified"
-    : hopChainComplete
-      ? "Path not verified"
-      : "Path evidence incomplete";
-  const sourceCount = new Set(receipts.flatMap((receipt) => receipt.source_snapshot_ids)).size;
+  const completeHopCount = completeDirectedHopCount(path);
+  const pathVerified = path.reachability === "confirmed" && completeHopCount !== null;
+  const proofLabel = pathVerified ? "Path verified" : "Path evidence incomplete";
+  const missingNodes = path.hops.filter((id) => !nodeById.has(id));
+  const sourceCount = new Set(receipts.flatMap((receipt) =>
+    Array.isArray(receipt?.source_snapshot_ids) ? receipt.source_snapshot_ids.filter(Boolean) : [],
+  )).size;
 
   const kinds = new Map<string, string>();
   for (const receipt of receipts) {
@@ -74,7 +63,7 @@ export function AttackPathCorrelationProof({
         <div>
           <p className="text-base font-semibold text-[color:var(--foreground)]">{proofLabel}</p>
           <p className="mt-0.5 text-[15px] text-[color:var(--text-tertiary)]">
-            {completeHopCount}/{expectedHopCount} directed traversable hops evidenced
+            {completeHopCount === null ? "Unavailable" : `${completeHopCount}/${expectedHopCount}`} directed traversable hops evidenced
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -87,6 +76,7 @@ export function AttackPathCorrelationProof({
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5">
         <span className="text-[15px] font-medium text-[color:var(--text-tertiary)]">Exact anchors</span>
+        {missingNodes.length > 0 && <span role="status">{missingNodes.length} path nodes unavailable</span>}
         {anchors.map((node) => (
           <span key={node.id} className="max-w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-1 font-mono text-[15px] text-[color:var(--foreground)] [overflow-wrap:anywhere]">
             {node.label || node.id}
@@ -101,9 +91,9 @@ export function AttackPathCorrelationProof({
         <div className="grid gap-1.5 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2">
           {receipts.map((receipt, index) => (
             <div key={`${receipt.source_node_id}-${receipt.target_node_id}-${index}`} className="min-w-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-2 text-[10px]">
-              <p className="truncate font-mono text-[color:var(--foreground)]">{index + 1}. {receipt.relationship}</p>
-              <p className="mt-1 truncate text-[color:var(--text-secondary)]">{receipt.source_snapshot_ids.join(" + ")}</p>
-              <p className="mt-1 text-[color:var(--text-tertiary)]">{receipt.evidence_tier.replaceAll("_", " ")} · {receipt.freshness.replaceAll("_", " ")} · {receipt.runtime_observed_state.replaceAll("_", " ")}</p>
+              <p className="break-words font-mono text-[color:var(--foreground)]">{index + 1}. {receipt.relationship}</p>
+              <p className="mt-1 break-words text-[color:var(--text-secondary)]">{Array.isArray(receipt.source_snapshot_ids) ? receipt.source_snapshot_ids.join(" + ") : "Sources unavailable"}</p>
+              <p className="mt-1 text-[color:var(--text-tertiary)]">{String(receipt.evidence_tier ?? "unknown").replaceAll("_", " ")} · {String(receipt.freshness ?? "unknown").replaceAll("_", " ")} · {String(receipt.runtime_observed_state ?? "unknown").replaceAll("_", " ")}</p>
             </div>
           ))}
         </div>

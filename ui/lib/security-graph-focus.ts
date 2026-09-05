@@ -79,17 +79,25 @@ export function buildCorrelationRemediationHref(
 }
 
 export function completeDirectedHopCount(path: AttackPath): number | null {
-  const expected = Math.max(0, path.hops.length - 1);
-  const receipts = path.hop_evidence ?? [];
-  if (receipts.length !== expected) return null;
+  const expected = path.hops.length - 1;
+  const receipts = path.hop_evidence;
+  if (
+    expected < 1 || path.analysis?.status !== "complete" ||
+    path.source !== path.hops[0] || path.target !== path.hops.at(-1) ||
+    path.edges.length !== expected || !Array.isArray(receipts) || receipts.length !== expected
+  ) return null;
   const valid = receipts.every((receipt, index) =>
+    receipt != null &&
     receipt.source_node_id === path.hops[index] &&
     receipt.target_node_id === path.hops[index + 1] &&
-    receipt.direction === "directed" &&
-    receipt.traversable === true &&
-    receipt.complete === true &&
-    receipt.truncated === false &&
-    receipt.source_snapshot_ids.length > 0
+    typeof receipt.relationship === "string" && receipt.relationship.trim().length > 0 &&
+    receipt.relationship === path.edges[index] &&
+    receipt.direction === "directed" && receipt.traversable === true &&
+    receipt.complete === true && receipt.truncated === false &&
+    receipt.freshness === "fresh" && receipt.relationship_provenance === "recorded" &&
+    receipt.correlation_identity_status === "current" &&
+    Array.isArray(receipt.source_snapshot_ids) && receipt.source_snapshot_ids.length > 0 &&
+    receipt.source_snapshot_ids.every((id) => typeof id === "string" && id.trim().length > 0)
   );
   return valid ? receipts.length : null;
 }

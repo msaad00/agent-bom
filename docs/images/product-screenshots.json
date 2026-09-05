@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-05T00:00:50.101Z",
-  "source_commit": "0745e06564a31254ee8b731e70a359ec8d222dc5",
+  "captured_at": "2026-09-05T00:27:12.092Z",
+  "source_commit": "7b8a5301af343794b18a6a3a37be961e6a6af4a8",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:53de665912a2ef385cc621d8dc966c32eb324acc62dd5a0e6fa148270912a06a",
+  "capture_inputs_sha256": "sha256:49a55cade3757099d30af8e853338e022fc990af4b4c4a799159f16fcb444b17",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -52,7 +52,7 @@
       "page": "/scan?capture=1",
       "scope": "New Scan workspace with scope summary, read-only boundary, expected evidence, connected sources, and job navigation",
       "visible_version": "0.103.2",
-      "sha256": "sha256:009da9fba3c59af9275c59c1b03dcb5469a9bfde6bc9c4b4d78aa127b2e2b3f7"
+      "sha256": "sha256:f15c825cd6b3db7478825f1ce22e3bc4a99c31441019110840f18d2089f21bef"
     },
     {
       "presentation": "dark desktop",
@@ -92,7 +92,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.103.2",
-      "sha256": "sha256:d0ce0c04246bcf70911625da2d15dd028e44be913afd6728e13fcc73778a2933"
+      "sha256": "sha256:ee230ba5707d91901e8eea86cf08a0cc215b39fd269832d58cd51649a7de7ca3"
     },
     {
       "presentation": "dark desktop",
@@ -166,7 +166,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.103.2",
-      "sha256": "sha256:9c5e824260ec839f174ae6a37e6e81555a42242fdd3595ee45625d2de685ae8e"
+      "sha256": "sha256:541ab7f079d1bdfad403a832c4067adeb8c4171a894b96241ca9962f1f53178e"
     },
     {
       "presentation": "dark mobile",

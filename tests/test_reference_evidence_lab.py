@@ -121,3 +121,11 @@ def test_reference_lab_does_not_claim_a_source_import_from_a_dependency_manifest
 
     assert len(dependency_edges) == 1
     assert dependency_edges[0]["relationship"] == "depends_on"
+
+
+def test_reference_lab_keeps_image_inventory_separate_from_deployment_occurrences() -> None:
+    payload = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    containers = [node for node in payload["capture_fixture"]["graph"]["nodes"] if node["entity_type"] == "container"]
+    assert len(containers) == 2
+    assert all(receipt["basis"] != "oci_digest" for receipt in payload["join_receipts"])
+    assert payload["artifact_bindings"][0]["basis"] == "modeled_pinned_image_composition"

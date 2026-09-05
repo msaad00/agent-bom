@@ -412,10 +412,20 @@ ingest_external_scan(scan_json="<SARIF or scanner JSON>", parse_only=true)
 ### runtime_evidence_ingest
 Ingest CWPP runtime/EDR workload signals into the durable evidence store.
 Requires a pre-registered source (`AGENT_BOM_RUNTIME_EVIDENCE_SOURCES`) and
-shared secret. Metadata only; never writes to a customer cloud target. Fail-closed
-on auth. Write-annotated (`findings:write`).
+shared secret. The source tenant must match the MCP server's authoritative
+tenant binding. Metadata only; never writes to a customer cloud target.
+Fail-closed on auth. Write-annotated (`findings:write`). If evidence persistence
+succeeds but the audit sink fails, the response reports `status: partial` and
+`audit_status: unavailable` rather than implying complete success.
 ```
-runtime_evidence_ingest(source_id="edr-1", secret="...", signals_json="[]")
+runtime_evidence_ingest(
+  source_id="edr-1",
+  secret="...",
+  signals_json="[]",
+  operator_role="admin",
+  operator_scopes="findings:write",
+  reason="ingest approved runtime evidence"
+)
 ```
 
 ## Resources

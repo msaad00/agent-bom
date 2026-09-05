@@ -370,7 +370,8 @@ _SERVER_CARD_TOOLS = [
         "name": "runtime_evidence_ingest",
         "description": (
             "Ingest CWPP runtime/EDR workload signals into the durable evidence store "
-            "(authenticated source; metadata only; never writes to a customer cloud target)"
+            "(authenticated source matching the server tenant; admin + findings:write + "
+            "audit reason; metadata only; never writes to a customer cloud target)"
         ),
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },

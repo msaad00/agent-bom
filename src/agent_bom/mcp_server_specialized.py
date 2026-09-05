@@ -318,6 +318,18 @@ def register_specialized_ai_tools(
                 ),
             ),
         ],
+        operator_role: Annotated[
+            str,
+            Field(description="Operator role for this write action. Must be admin."),
+        ] = "viewer",
+        operator_scopes: Annotated[
+            str,
+            Field(description="Comma-separated operator scopes. Must include findings:write."),
+        ] = "",
+        reason: Annotated[
+            str,
+            Field(description="Human audit reason for ingesting runtime evidence."),
+        ] = "",
     ) -> str:
         """Ingest CWPP runtime/EDR workload signals into the local evidence store.
 
@@ -328,9 +340,14 @@ def register_specialized_ai_tools(
         return await execute_tool_async(
             "runtime_evidence_ingest",
             runtime_evidence_ingest_impl,
+            destructive=True,
+            required_scope="findings:write",
             source_id=source_id,
             secret=secret,
             signals_json=signals_json,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
             _truncate_response=truncate_response,
         )
 

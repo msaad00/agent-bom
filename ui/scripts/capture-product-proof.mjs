@@ -3184,7 +3184,7 @@ async function main() {
         .getByTestId("selected-exposure-path")
         .waitFor({ state: "visible", timeout: 30_000 });
     }, {
-      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
@@ -3488,7 +3488,7 @@ async function main() {
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
-      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
@@ -3529,7 +3529,7 @@ async function main() {
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
-      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="exposure-path-sequence"]',
       rejectedText: [/Loading/i],

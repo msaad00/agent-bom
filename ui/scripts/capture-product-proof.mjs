@@ -2953,11 +2953,7 @@ async function main() {
       await proofPage.evaluate(() => {
         document.body.style.paddingBottom = "900px";
       });
-      const mobile = (proofPage.viewportSize()?.width ?? 1440) < 640;
-      const framingTarget = mobile
-        ? proofPage.getByTestId("graph-correlation-decision")
-        : workflow;
-      const workflowTop = await framingTarget.evaluate(
+      const workflowTop = await workflow.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
       await proofPage.evaluate(({ top, offset }) => {
@@ -3018,7 +3014,7 @@ async function main() {
       ],
       nonOverlappingPairs: [[
         "#demo-estate-watermark",
-        '[data-testid="graph-correlation-decision"]',
+        '[data-testid="graph-correlation-workflow"]',
       ]],
       readmeTextContract: {
         selector: '[data-testid="graph-correlation-decision"]',

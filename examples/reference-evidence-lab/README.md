@@ -11,7 +11,11 @@ execution.
 
 The infrastructure is intentionally local and modeled. It is not customer or
 live-cloud evidence. Cross-source joins use exact canonical identifiers only;
-mutable image tags and similar labels are never join keys.
+mutable image tags and similar labels are never join keys. Image inventory
+and deployment containers remain separate occurrences. After validating that
+the deployment pins the exact SBOM image digest, the lab models an explicit
+container-to-package composition edge; the digest does not merge runtime
+permissions. The artifact binding is recorded separately from identity joins.
 
 `pinned-package.txt` is intentionally vulnerable evidence input, not an
 installable project dependency. The generator materializes it as

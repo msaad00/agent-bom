@@ -211,8 +211,10 @@ def test_campaign_carries_decision_fields() -> None:
     assert campaign.crown_jewel == "ds:crown"
     assert campaign.owner == "team-acct-a"
     assert "PCI-DSS" in campaign.business_impact
-    assert campaign.exploitability > 0
-    assert campaign.expected_risk_reduction > 0
+    assert campaign.priority_score > 0
+    assert campaign.priority_method == "structural_path_rank.v1"
+    assert campaign.exploitability is None
+    assert campaign.expected_risk_reduction is None
     assert campaign.path_count >= 1
     assert campaign.top_path_summary
 
@@ -239,3 +241,28 @@ def test_apply_is_idempotent_on_large_graph() -> None:
     apply_attack_path_fusion(g)
     assert len(g.attack_paths) == first_paths
     assert [c.campaign_id for c in g.attack_campaigns] == first_campaigns
+
+
+def test_legacy_campaign_metrics_remain_unavailable():
+    from agent_bom.graph.container import Campaign
+
+    campaign = Campaign.from_dict({"campaign_id": "old", "exploitability": 28.0, "expected_risk_reduction": 28.0})
+    data = campaign.to_dict()
+    assert data["exploitability"] is None
+    assert data["expected_risk_reduction"] is None
+    assert data["exploitability_evidence"]["status"] == "unavailable"
+    assert data["priority_score"] is None
+
+
+def test_campaign_assessed_metric_roundtrip_requires_evidence():
+    from agent_bom.graph.container import Campaign
+
+    data = {
+        "campaign_id": "assessed",
+        "exploitability": 0.7,
+        "exploitability_evidence": {"status": "complete", "basis": "modeled", "evidence_refs": ["assessment:1"]},
+    }
+    campaign = Campaign.from_dict(data)
+    assert campaign.to_dict()["exploitability"] == 0.7
+    data["exploitability_evidence"]["evidence_refs"] = []
+    assert Campaign.from_dict(data).to_dict()["exploitability"] is None

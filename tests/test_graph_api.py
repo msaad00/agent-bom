@@ -3332,3 +3332,20 @@ def test_removed_edge_route_emits_ocsf_close_activity(tmp_path) -> None:
         assert removed[0]["activity_id"] == 3
     finally:
         set_graph_store(original)
+
+
+@pytest.mark.parametrize("node_id", ["misconfig:iac:/workspace/Dockerfile:2", "pkg:npm/@scope/tool", "resource:/cluster/neighbors"])
+def test_graph_node_query_routes_preserve_slashes_and_suffixes(recording_graph_store, node_id):
+    graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+    graph.add_node(UnifiedNode(id="source", entity_type=EntityType.AGENT, label="source"))
+    graph.add_node(UnifiedNode(id=node_id, entity_type=EntityType.MISCONFIGURATION, label="finding"))
+    graph.add_edge(UnifiedEdge(source="source", target=node_id, relationship=RelationshipType.VULNERABLE_TO, traversable=True))
+    recording_graph_store.graph = graph
+    client = TestClient(app)
+    detail = client.get("/v1/graph/node-context", params={"node_id": node_id, "scan_id": "store-scan"})
+    assert detail.status_code == 200
+    assert detail.json()["node"]["id"] == node_id
+    neighbors = client.get("/v1/graph/node-neighbors", params={"node_id": node_id, "scan_id": "store-scan"})
+    assert neighbors.status_code == 200
+    assert neighbors.json()["node_id"] == node_id
+    assert neighbors.json()["total_neighbors"] == 1

@@ -1248,3 +1248,20 @@ describe('api error handling', () => {
     await expect(api.getScan('id')).rejects.toThrow('Network error')
   })
 })
+
+
+describe('graph node addressing', () => {
+  it.each(['misconfig:iac:/workspace/Dockerfile:2', 'pkg:npm/@scope/tool', 'resource:/cluster/neighbors'])('preserves the full node ID %s', async (nodeId) => {
+    const fetchMock = mockFetch({})
+    global.fetch = fetchMock
+    await api.getGraphNode(nodeId, 'scan-1')
+    await api.getGraphNodeNeighbors(nodeId, { scanId: 'scan-1', limit: 12 })
+    const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url), 'http://localhost'))
+    expect(urls.map(url => url.pathname)).toEqual(['/v1/graph/node-context', '/v1/graph/node-neighbors'])
+    for (const url of urls) {
+      expect(url.searchParams.get('node_id')).toBe(nodeId)
+      expect(url.searchParams.get('scan_id')).toBe('scan-1')
+    }
+    expect(urls[1]!.searchParams.get('limit')).toBe('12')
+  })
+})

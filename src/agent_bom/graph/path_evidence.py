@@ -37,6 +37,11 @@ def _source_snapshot_ids(edge: UnifiedEdge, graph: UnifiedGraph) -> list[str]:
     return sorted(set(item for item in values if item))
 
 
+def _correlation_identity_current(edge: UnifiedEdge) -> bool:
+    correlation = _correlation_provenance(edge)
+    return not correlation or correlation.get("identity_version") == "runtime-occurrence.v2"
+
+
 def _has_relationship_provenance(edge: UnifiedEdge) -> bool:
     """Require an edge-level receipt; snapshot membership alone is structural."""
 
@@ -131,6 +136,8 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                     "target_node_id": target,
                     "relationship": relationship,
                     "source_snapshot_ids": [],
+                    "relationship_provenance": "unavailable",
+                    "correlation_identity_status": "unavailable",
                     "evidence_tier": "unknown",
                     "confidence": 0.0,
                     "freshness": "unknown",
@@ -150,6 +157,8 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                 "target_node_id": target,
                 "relationship": _relationship(edge),
                 "source_snapshot_ids": source_ids,
+                "relationship_provenance": "recorded" if _has_relationship_provenance(edge) else "unavailable",
+                "correlation_identity_status": "current" if _correlation_identity_current(edge) else "recomputation_required",
                 "evidence_tier": _evidence_tier(edge),
                 "confidence": float(edge.confidence),
                 "freshness": freshness,
@@ -161,6 +170,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                     and edge.direction == "directed"
                     and source_ids
                     and _has_relationship_provenance(edge)
+                    and _correlation_identity_current(edge)
                     and freshness in {"fresh", "stale_allowed"}
                     and edge.source == source
                     and edge.target == target
@@ -174,6 +184,9 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
     if truncated:
         for receipt in receipts:
             receipt["truncated"] = True
+    if any(receipt.get("correlation_identity_status") == "recomputation_required" for receipt in receipts):
+        if "correlation_recomputation_required" not in path.reachability_basis:
+            path.reachability_basis.append("correlation_recomputation_required")
     path.hop_evidence = receipts
     path.analysis = analysis
 
@@ -241,17 +254,51 @@ def _path_completeness(path: AttackPath) -> dict[str, Any]:
         return {"status": "partial", **base, "reasonCodes": ["incomplete_hop_evidence"]}
     if any(str(item.get("freshness") or "unknown") not in {"fresh", "stale_allowed"} for item in receipts):
         return {"status": "partial", **base, "reasonCodes": ["unknown_evidence_freshness"]}
-    if any(not item.get("complete") for item in receipts):
+    ordered = (
+        expected_hops > 0
+        and len(path.edges) == expected_hops
+        and path.source == path.hops[0]
+        and path.target == path.hops[-1]
+        and all(
+            item.get("source_node_id") == path.hops[index]
+            and item.get("target_node_id") == path.hops[index + 1]
+            and item.get("relationship") == path.edges[index]
+            and bool(path.edges[index])
+            and item.get("complete") is True
+            and item.get("truncated") is False
+            and item.get("direction") == "directed"
+            and item.get("traversable") is True
+            and item.get("relationship_provenance") == "recorded"
+            and item.get("correlation_identity_status") == "current"
+            and isinstance(item.get("source_snapshot_ids"), list)
+            and bool(item["source_snapshot_ids"])
+            and all(isinstance(ref, str) and ref.strip() for ref in item["source_snapshot_ids"])
+            for index, item in enumerate(receipts)
+        )
+    )
+    if not ordered:
         return {"status": "partial", **base, "reasonCodes": ["incomplete_hop_evidence"]}
+    if any(item.get("freshness") != "fresh" for item in receipts):
+        return {"status": "partial", **base, "reasonCodes": ["stale_evidence_allowed"]}
     return {"status": "complete", **base, "reasonCodes": []}
 
 
-def exposure_evidence_dimensions(path: AttackPath, target_node: Any | None) -> dict[str, Any]:
+def exposure_evidence_dimensions(
+    path: AttackPath, target_node: Any | None, *, relationships: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     """Build independent evidence dimensions shared by graph response surfaces."""
 
     attributes = getattr(target_node, "attributes", {}) if target_node is not None else {}
     attributes = attributes if isinstance(attributes, Mapping) else {}
     completeness = _path_completeness(path)
+    if relationships is not None and completeness["status"] == "complete":
+        directed_edges = {
+            (item.get("source"), item.get("target"), item.get("relationship"))
+            for item in relationships
+            if item.get("direction") == "directed" and item.get("traversable") is True
+        }
+        if any((source, path.hops[index + 1], path.edges[index]) not in directed_edges for index, source in enumerate(path.hops[:-1])):
+            completeness = {**completeness, "status": "partial", "reasonCodes": ["matching_topology_not_recorded"]}
 
     reachability_value = str(path.reachability or "").lower()
     reachability_basis = [str(item) for item in path.reachability_basis if str(item)]
@@ -325,6 +372,31 @@ def exposure_evidence_dimensions(path: AttackPath, target_node: Any | None) -> d
         "actionability": actionability,
         "completeness": completeness,
     }
+
+
+def finding_severity_for_path(path: AttackPath, nodes_by_id: Mapping[str, Any]) -> str:
+    """Keep finding severity independent of permission-bearing asset priority."""
+    from agent_bom.graph.severity import severity_rank
+
+    known = []
+    for hop in path.hops:
+        node = nodes_by_id.get(hop)
+        kind = getattr(node, "entity_type", "")
+        kind = getattr(kind, "value", kind)
+        severity = str(getattr(node, "severity", "") or "").lower()
+        if kind in {"vulnerability", "misconfiguration"} and severity in {"critical", "high", "medium", "low", "none"}:
+            known.append(severity)
+    return max(known, key=severity_rank, default="unknown")
+
+
+def qualify_exposure_reachability(payload: dict[str, Any]) -> dict[str, Any]:
+    """Qualify legacy projection labels without rewriting historical receipts."""
+    dimensions = payload["evidenceDimensions"]
+    if payload.get("reachability") == "confirmed" and dimensions["reachability"].get("verdict") != "confirmed":
+        payload["reachability"] = "unknown"
+        reasons = dimensions["completeness"].get("reasonCodes") or ["incomplete_hop_evidence"]
+        payload["reachabilityBasis"] = list(dict.fromkeys([*payload.get("reachabilityBasis", []), *reasons]))
+    return payload
 
 
 __all__ = ["annotate_attack_path_evidence", "exposure_evidence_dimensions"]

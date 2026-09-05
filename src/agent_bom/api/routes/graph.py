@@ -87,7 +87,7 @@ _FILTERED_GRAPH_ATTACK_PATH_LIMIT = 100
 _GOVERNANCE_EDGE_LIMIT = 5_000
 _GOVERNANCE_ATTACK_PATH_LIMIT = 100
 
-_EdgeLookup = dict[tuple[str, str], UnifiedEdge]
+_EdgeLookup = dict[tuple[str, ...], UnifiedEdge]
 
 
 class GraphScopeDescriptor(BaseModel):
@@ -157,7 +157,8 @@ _TECHNIQUE_MAPPING_OPENAPI_SCHEMA: dict[str, Any] = {
         "catalog": {"type": "string", "enum": ["attack", "atlas"]},
         "tactics": {"type": "array", "items": {"type": "string"}, "description": "Catalog-resolved tactic phase names / IDs."},
         "provenance": {"type": "string", "description": "The observed edge evidence that produced the mapping."},
-        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "confidence": {"anyOf": [{"type": "number", "minimum": 0.0, "maximum": 1.0}, {"type": "null"}]},
+        "evidence_basis": {"type": ["string", "null"], "enum": ["observed", "runtime_observed", "inferred", "modeled", None]},
     },
     "additionalProperties": False,
 }
@@ -175,6 +176,17 @@ _ATTACK_PATH_ITEM_OPENAPI_SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string"},
             "description": "Machine-readable evidence that produced the reachability verdict.",
+        },
+        "hop_evidence": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "relationship_provenance": {"type": "string", "enum": ["recorded", "unavailable"]},
+                    "correlation_identity_status": {"type": "string", "enum": ["current", "recomputation_required", "unavailable"]},
+                },
+                "additionalProperties": True,
+            },
         },
         "technique_mappings": {"type": "array", "items": _TECHNIQUE_MAPPING_OPENAPI_SCHEMA},
         "mitre_technique_ids": {
@@ -228,6 +240,24 @@ _FIX_FIRST_VIEW_OPENAPI_RESPONSE: dict[str, Any] = {
                     "scan_id": {"type": "string"},
                     "tenant_id": {"type": "string"},
                     "created_at": {"type": "string"},
+                    "attack_campaigns": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "priority_score": {"type": ["number", "null"]},
+                                "priority_method": {
+                                    "type": ["string", "null"],
+                                    "description": "Versioned structural ranking method; not an exploitability assessment.",
+                                },
+                                "exploitability": {"type": ["number", "null"]},
+                                "expected_risk_reduction": {"type": ["number", "null"]},
+                                "exploitability_evidence": {"type": "object", "additionalProperties": True},
+                                "expected_risk_reduction_evidence": {"type": "object", "additionalProperties": True},
+                            },
+                            "additionalProperties": True,
+                        },
+                    },
                     "cards": {
                         "type": "array",
                         "items": {
@@ -239,6 +269,7 @@ _FIX_FIRST_VIEW_OPENAPI_RESPONSE: dict[str, Any] = {
                                 "occurrence_path_ids": {"type": "array", "items": {"type": "string"}},
                                 "rank": {"type": "integer", "minimum": 1},
                                 "title": {"type": "string"},
+                                "attack_path": _ATTACK_PATH_ITEM_OPENAPI_SCHEMA,
                                 "exposure_path": _EXPOSURE_PATH_OPENAPI_SCHEMA,
                                 "rank_meta": {
                                     "type": "object",
@@ -1019,6 +1050,7 @@ def _build_edge_lookup(edges: list[UnifiedEdge] | None) -> _EdgeLookup:
     by_pair: _EdgeLookup = {}
     for edge in edges or []:
         by_pair.setdefault((edge.source, edge.target), edge)
+        by_pair.setdefault((edge.source, edge.target, _rel_value(edge)), edge)
         if edge.is_bidirectional:
             by_pair.setdefault((edge.target, edge.source), edge)
     return by_pair
@@ -1089,7 +1121,8 @@ def _exposure_relationships_for_path(
 
     relationships: list[dict[str, Any]] = []
     for index, (source, target) in enumerate(zip(path.hops, path.hops[1:], strict=False)):
-        edge: UnifiedEdge | None = by_pair.get((source, target))
+        relationship_key = path.edges[index] if index < len(path.edges) else None
+        edge: UnifiedEdge | None = by_pair.get((source, target, relationship_key)) if relationship_key else by_pair.get((source, target))
         if edge is None:
             continue
         relationship = _rel_value(edge)
@@ -1112,14 +1145,9 @@ def _exposure_relationships_for_path(
 
 
 def _severity_for_exposure_path(path: AttackPath, nodes_by_id: dict[str, Any]) -> str:
-    severity = ""
-    for hop in path.hops:
-        node = nodes_by_id.get(hop)
-        if node is not None and SEVERITY_RANK.get(str(getattr(node, "severity", "") or "").lower(), 0) > SEVERITY_RANK.get(severity, 0):
-            severity = str(node.severity).lower()
-    if severity:
-        return severity
-    return "unknown"
+    from agent_bom.graph.path_evidence import finding_severity_for_path
+
+    return finding_severity_for_path(path, nodes_by_id)
 
 
 def _exposure_path_for_attack_path(
@@ -1141,7 +1169,7 @@ def _exposure_path_for_attack_path(
     agents = [hop for hop in hops if hop["role"] == "agent"]
     findings = _finding_ids_for_nodes(nodes_by_id, path.hops, path.vuln_ids)
     label_parts = [findings[0] if findings else target["label"], agents[0]["label"] if agents else source["label"]]
-    from agent_bom.graph.path_evidence import exposure_evidence_dimensions
+    from agent_bom.graph.path_evidence import exposure_evidence_dimensions, qualify_exposure_reachability
 
     finding_node = nodes_by_id.get(path.target)
     exposure: dict[str, Any] = {
@@ -1163,7 +1191,7 @@ def _exposure_path_for_attack_path(
         "exposedCredentials": list(path.credential_exposure),
         "reachability": path.reachability,
         "reachabilityBasis": list(path.reachability_basis),
-        "evidenceDimensions": exposure_evidence_dimensions(path, finding_node),
+        "evidenceDimensions": exposure_evidence_dimensions(path, finding_node, relationships=relationships),
         "provenance": {"source": "graph_attack_path", "scanId": scan_id} if scan_id else {"source": "graph_attack_path"},
     }
     if rank is not None:
@@ -1191,7 +1219,7 @@ def _exposure_path_for_attack_path(
             "impactCategory": attributes.get("impact_category"),
             "source": "graph_attack_path",
         }
-    return exposure
+    return qualify_exposure_reachability(exposure)
 
 
 def _serialize_attack_path(
@@ -1204,6 +1232,26 @@ def _serialize_attack_path(
     edge_lookup: _EdgeLookup | None = None,
 ) -> dict:
     data = path.to_dict()
+    if edges is not None:
+        from agent_bom.graph.attack_path_mitre import derive_attack_path_techniques
+
+        # Re-derive the projection from bounded matching topology. Historical
+        # receipt objects stay intact; old serialized mappings cannot supply
+        # evidence for an absent, reversed, or non-traversable relationship.
+        by_pair = edge_lookup if edge_lookup is not None else _build_edge_lookup(edges)
+        proof_graph = UnifiedGraph()
+        for hop in path.hops:
+            node = (nodes_by_id or {}).get(hop)
+            if node is not None:
+                proof_graph.add_node(node)
+        for index, (source, target) in enumerate(zip(path.hops, path.hops[1:], strict=False)):
+            if index < len(path.edges):
+                edge = by_pair.get((source, target, path.edges[index]))
+                if edge is not None:
+                    proof_graph.add_edge(edge)
+        mappings = derive_attack_path_techniques(path, proof_graph)
+        data["technique_mappings"] = [mapping.to_dict() for mapping in mappings]
+        data["mitre_technique_ids"] = sorted({mapping.technique_id for mapping in mappings})
     if not data.get("edges") and edges is not None:
         data["edges"] = _edge_relationships_for_hops(path.hops, edges, edge_lookup=edge_lookup)
     if nodes_by_id is not None:
@@ -1219,6 +1267,9 @@ def _serialize_attack_path(
             scan_id=scan_id,
             edge_lookup=edge_lookup,
         )
+        if data.get("reachability") == "confirmed" and data["exposure_path"]["reachability"] != "confirmed":
+            data["reachability"] = data["exposure_path"]["reachability"]
+            data["reachability_basis"] = list(data["exposure_path"]["reachabilityBasis"])
     return data
 
 
@@ -1549,8 +1600,7 @@ def _with_technique_mappings(paths: list[AttackPath], graph: UnifiedGraph) -> li
         from agent_bom.graph.attack_path_mitre import derive_attack_path_techniques
 
         for path in paths:
-            if not path.technique_mappings:
-                path.technique_mappings = derive_attack_path_techniques(path, graph)
+            path.technique_mappings = derive_attack_path_techniques(path, graph)
     except Exception:  # noqa: BLE001
         pass
     return paths
@@ -3408,6 +3458,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     }
 
 
+@router.get("/graph/node-context", tags=["graph"])
 @router.get("/graph/node/{node_id}", tags=["graph"])
 async def get_graph_node(
     request: Request,
@@ -3435,6 +3486,7 @@ async def get_graph_node(
     }
 
 
+@router.get("/graph/node-neighbors", tags=["graph"])
 @router.get("/graph/node/{node_id}/neighbors", tags=["graph"])
 async def get_graph_node_neighbors(
     request: Request,

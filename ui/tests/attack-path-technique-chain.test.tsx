@@ -135,3 +135,13 @@ describe("AttackPathTechniqueChain", () => {
     expect(missing).toBeEmptyDOMElement();
   });
 });
+
+
+it("shows unavailable rather than zero confidence when assessment is missing", () => {
+  render(<AttackPathTechniqueChain path={basePath({ technique_mappings: [{
+    hop_index: 0, technique_id: "T1530", technique_name: "Data from Cloud Storage",
+    catalog: "attack", tactics: [], provenance: "unclassified has_permission edge", confidence: null,
+  }] })} />);
+  expect(screen.getByText(/Confidence Unavailable/i)).toBeInTheDocument();
+  expect(screen.queryByText(/Confidence 0%/i)).not.toBeInTheDocument();
+});

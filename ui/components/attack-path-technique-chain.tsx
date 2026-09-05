@@ -6,7 +6,8 @@ function catalogLabel(catalog: string): string {
   return catalog?.toLowerCase() === "atlas" ? "ATLAS" : "ATT&CK";
 }
 
-function confidenceLabel(confidence: number): string {
+function confidenceLabel(confidence: number | null | undefined): string {
+  if (confidence == null || !Number.isFinite(confidence)) return "Unavailable";
   const pct = Math.round(Math.max(0, Math.min(1, confidence)) * 100);
   return `${pct}%`;
 }

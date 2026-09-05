@@ -517,6 +517,30 @@ def _snapshots(
             index=2,
         )
     )
+    # The parsed deployment pins this exact SBOM image (validated above).
+    # Model its package composition as an explicit edge; never merge the
+    # SBOM image node with a permission-bearing deployment by digest.
+    iac.add_node(
+        _node(
+            "package:iac:pillow",
+            EntityType.PACKAGE,
+            "pillow@9.0.0",
+            source="kubernetes_iac_sbom_projection",
+            attributes={"purl": purl, "canonical_id": purl, "modeled": True},
+            index=2,
+        )
+    )
+    composition_edge = _edge(
+        "container:iac:reference-api",
+        "package:iac:pillow",
+        RelationshipType.CONTAINS,
+        scan_id=iac.scan_id,
+        source_kind="kubernetes_iac_sbom_projection",
+        evidence_tier="modeled_infrastructure",
+        index=2,
+    )
+    composition_edge.evidence.update({"image_digest": image_digest, "sbom_artifact": str(SBOM_INPUT.relative_to(ROOT))})
+    iac.add_edge(composition_edge)
     iac.add_edge(
         _edge(
             "service:reference-api",
@@ -730,18 +754,20 @@ async def _build_payload() -> dict[str, Any]:
             "container_digest": image_digest,
             "scanner_evidence": scanner_evidence,
             "source_artifacts": source_artifacts,
+            "artifact_bindings": [
+                {
+                    "image_digest": image_digest,
+                    "package_purl": purl,
+                    "basis": "modeled_pinned_image_composition",
+                    "source_snapshots": ["reference-image-sbom-scan", "reference-kubernetes-iac-scan"],
+                }
+            ],
             "join_receipts": [
                 {
                     "entity_type": "package",
                     "canonical_id": purl,
                     "basis": "exact_purl",
                     "source_snapshots": ["reference-repository-scan", "reference-image-sbom-scan"],
-                },
-                {
-                    "entity_type": "container",
-                    "canonical_id": image_digest,
-                    "basis": "oci_digest",
-                    "source_snapshots": ["reference-image-sbom-scan", "reference-kubernetes-iac-scan"],
                 },
                 {
                     "entity_type": "vulnerability",

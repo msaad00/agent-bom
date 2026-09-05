@@ -16,6 +16,7 @@ vi.mock("next/navigation", () => ({
 const originalFetch = global.fetch;
 
 afterEach(() => {
+  window.history.replaceState({}, "", "/");
   global.fetch = originalFetch;
   window.__AGENT_BOM_CONFIG__ = undefined;
   clearSessionApiKey();
@@ -77,6 +78,13 @@ describe("AuthGate", () => {
       expect(mockReplace).toHaveBeenCalledWith("/login?returnTo=%2Fagents"),
     );
     expect(screen.queryByText("protected surface")).not.toBeInTheDocument();
+  });
+
+  it("preserves the login query and selected-path anchor", async () => {
+    window.history.replaceState({}, "", "/agents?scan=scan-2&path=13#selected-path");
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({detail: "Unauthorized"}) });
+    render(<AuthProvider><AuthGate><div>private</div></AuthGate></AuthProvider>);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/login?returnTo=%2Fagents%3Fscan%3Dscan-2%26path%3D13%23selected-path"));
   });
 
   it("recovers a separately served loopback UI through the ephemeral dev session", async () => {

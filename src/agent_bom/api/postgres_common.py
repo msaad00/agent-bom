@@ -8,6 +8,7 @@ session and row-level-security setup.
 
 from __future__ import annotations
 
+import atexit
 import inspect
 import logging
 import os
@@ -571,6 +572,11 @@ def reset_pool() -> None:
         _maintenance_pool = None
         _validated_role_pools.clear()
         _maintenance_roles_checked = False
+
+
+# CLI commands can initialize stores without entering the API lifespan. Close
+# their worker pools before Python finalization makes thread joins unavailable.
+atexit.register(reset_pool)
 
 
 def _apply_tenant_session(conn: Connection) -> None:

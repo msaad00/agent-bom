@@ -200,3 +200,52 @@ These are the shapes we do not model yet. They are documented here so operators 
 - **Identity provider chains.** SCIM ingest models the customer's primary IdP. Federated chains (Okta → Azure AD → AWS IAM Identity Center) collapse into the entry point's `user` and `group` nodes; the upstream IdP graph is not modelled.
 
 These gaps are tracked as roadmap work. None of them block the guarantees in §2.
+
+## Correlated runtime identity and path proof
+
+Correlation manifests and edge receipts identify the join contract as
+`runtime-occurrence.v2`. Container occurrences join only when an authoritative
+runtime identifier and its provider and account, cluster, or host scope match
+within the requesting tenant. Kubernetes pod identifiers additionally require
+container names. Missing identity stays specific to the source snapshot. Image
+digests remain artifact metadata; reusing an image does not join deployment
+permissions.
+
+Historical receipts remain stored. Correlated edges without the current identity
+version require recomputation before they can support a verified path. Run a new
+correlation using the original source snapshots; correlating an already merged
+legacy output does not recover the original occurrence boundaries or upgrade
+its receipts. Existing snapshots remain available for inspection and rollback.
+
+A verified path requires a complete recorded analysis and one ordered receipt
+for every hop, matching the source, target, and relationship. Receipts must be
+directed, traversable, fresh, untruncated, backed by source references and recorded
+relationship provenance, and use the current correlation identity contract.
+Incomplete or historical evidence remains unavailable for verification. API and
+MCP exposure projections also check the matching directed topology. Page-size
+limits on the path queue do not certify or invalidate an individual hop receipt.
+
+MITRE mappings describe potential techniques supported by matching directed,
+traversable edges. Their `evidence_basis` preserves observed, inferred, or modeled
+provenance; absent provenance leaves confidence unavailable. A mapped technique
+is not evidence that an attacker used it.
+
+Attack-path campaigns expose `priority_score` with
+`priority_method: structural_path_rank.v1` for structural prioritization.
+`exploitability` and `expected_risk_reduction` remain nullable, each with its own
+`*_evidence` status and references. Historical numeric values without supporting
+assessment metadata become unavailable; priority is not a substitute for either
+quantity. Finding severity is displayed separately from path priority.
+
+Exposure-path projections use the maximum known vulnerability/misconfiguration
+severity, independently of asset priority. Missing finding severity remains
+unknown, including when a high-priority asset is present. API and MCP legacy
+`reachability: confirmed` labels are downgraded to unknown when the current
+evidence dimensions cannot support that verdict. Projection qualification does
+not rewrite stored path receipts.
+
+Node IDs containing slashes (filesystem findings and scoped package identifiers)
+use `GET /v1/graph/node-context?node_id=...` and
+`GET /v1/graph/node-neighbors?node_id=...`. These authenticated query aliases
+preserve the complete ID without URL-path decoding ambiguities. Existing
+single-segment node routes remain supported.

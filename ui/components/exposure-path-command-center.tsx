@@ -169,7 +169,7 @@ export function ExposurePathCommandCenter({
           <div className="ep-header-copy">
             <div className="ep-badges">
               <span className="ep-severity">
-                {String(path.severity)} risk
+                {String(path.severity)} severity
               </span>
               {evidence?.isKev ? (
                 <span className="ep-kev">
@@ -187,7 +187,7 @@ export function ExposurePathCommandCenter({
             </p>
           </div>
           <div className="ep-metrics">
-            <MetricPill label="Path risk" value={path.riskScore.toFixed(1)} tone="red" />
+            <MetricPill label="Path priority" value={path.riskScore.toFixed(1)} tone="red" />
             <MetricPill label="Path span" value={pathSpanLabel(path.hops.length)} />
             <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
             {fixLabel ? <MetricPill label="Fix" value={fixLabel} tone="green" /> : null}
@@ -250,7 +250,7 @@ export function ExposurePathCommandCenter({
               Relationship proof
             </div>
             <div className="ep-proof-list">
-              {path.relationships.slice(0, 8).map((relationship) => (
+              {path.relationships.map((relationship) => (
                 <div key={relationship.id} className="ep-proof-row">
                   <div className="min-w-0">
                     <span className="ep-proof-source">{relationship.relationship}</span>

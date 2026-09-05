@@ -251,11 +251,11 @@ function NarrativeRow({
           )}
         </td>
 
-        {/* Actions */}
-        <td className="px-4 py-3">
+        {/* Actions remain visible while the evidence columns scroll on narrow screens. */}
+        <td className="sticky right-0 bg-[var(--background)] px-2 py-3 sm:static sm:px-4">
           <button
             onClick={() => onCreateTicket(item)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
+            className="flex min-h-11 items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
             title={ticket ? "View or sync ticket" : "Create a ticket"}
           >
             {ticket ? (
@@ -720,7 +720,7 @@ function RemediationPage() {
                   <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
                     Details
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide sticky right-0 bg-[var(--surface)] sm:static">
                     Actions
                   </th>
                 </tr>

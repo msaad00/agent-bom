@@ -138,7 +138,7 @@ defaults to an explicit first scan after verification; scheduled scans are an
 explicit operator opt-in.
 
 ```bash
-pip install 'agent-bom[ui]'
+pip install 'agent-bom[ui,aws]'
 AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db
 ```
 
@@ -147,6 +147,10 @@ The explicit role applies to the generated loopback API key and browser sessions
 local bootstrap retains its admin default; non-loopback listeners still require
 configured authentication. Restart after changing the bootstrap role.
 
+The example installs AWS collection support on the control-plane server. For
+Azure, GCP, or Snowflake, install `agent-bom[ui,azure]`, `agent-bom[ui,gcp]`, or
+`agent-bom[ui,snowflake]` instead. Install the selected provider extra before
+entering credentials; `agent-bom[ui]` alone does not include provider SDKs.
 
 The explicit SQLite path keeps scan jobs, findings, compliance history, and
 graph inventory available together after a restart. Omit `--persist` only for

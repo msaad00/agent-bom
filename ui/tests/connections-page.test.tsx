@@ -226,6 +226,15 @@ function openAwsWizard(): HTMLElement {
 }
 
 describe("ConnectionsPage — Connect segment", () => {
+  it("shows missing server SDK prerequisites before credential setup", async () => {
+    apiMock.listDiscoveryProviders.mockResolvedValue({providers: [{name: "aws", module: "agent_bom.cloud.aws", source: "builtin", discover_attr: "discover", trust_contract: {read_only: true, supports_scope_zero: true, agentless: true, redaction_status: "central", data_residency: "operator_environment"}, capabilities: {permissions_used: [], scan_modes: [], outbound_destinations: [], required_scopes: [], guarantees: []}, sdk_readiness: [{distribution: "boto3", status: "not_installed", installed_version: null, recommended_floor: "1.34"}]}]});
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+    const wizard = openAwsWizard();
+    expect(within(wizard).getByText("boto3: not installed")).toBeInTheDocument();
+    expect(within(wizard).getByText("pip install 'agent-bom[ui,aws]'" )).toBeInTheDocument();
+  });
+
   const TEST_OK = {
     schema_version: "cloud.connections.test.v1",
     connection_id: "conn-1",

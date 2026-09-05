@@ -259,6 +259,7 @@ def test_stale_allowed_hop_cannot_be_promoted_to_confirmed() -> None:
                 "correlation": {
                     "source_scan_ids": ["scan-a"],
                     "freshness": "stale_allowed",
+                    "identity_version": "runtime-occurrence.v2",
                     "observations": [
                         {
                             "scan_id": "scan-a",
@@ -333,6 +334,8 @@ def test_confirmed_path_carries_complete_per_hop_evidence() -> None:
         "target_node_id": "server:a",
         "relationship": "uses",
         "source_snapshot_ids": ["scan-a"],
+        "relationship_provenance": "recorded",
+        "correlation_identity_status": "current",
         "evidence_tier": "static_evidence",
         "confidence": 1.0,
         "freshness": "fresh",

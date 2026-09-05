@@ -255,7 +255,7 @@ function buildGraph() {
   const edgeIdsFor = (hops) =>
     hops.slice(0, -1).map((source, index) => {
       const target = hops[index + 1];
-      return edges.find((item) => item.source === source && item.target === target)?.id ?? `${source}->${target}:related`;
+      return edges.find((item) => item.source === source && item.target === target)?.relationship ?? "related";
     });
   const hopEvidenceFor = (hops) =>
     hops.slice(0, -1).map((source, index) => {
@@ -273,6 +273,8 @@ function buildGraph() {
         direction: graphEdge?.direction ?? "unknown",
         traversable: graphEdge?.traversable === true,
         complete: true,
+        relationship_provenance: graphEdge ? "recorded" : "unavailable",
+        correlation_identity_status: "current",
         truncated: false,
       };
     });
@@ -283,6 +285,7 @@ function buildGraph() {
       target: "cve:next",
       hops: ["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"],
       edges: edgeIdsFor(["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"]),
+      analysis: { status: "complete" },
       hop_evidence: hopEvidenceFor(["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"]),
       composite_risk: 9.8,
       reachability: "confirmed",
@@ -2103,10 +2106,10 @@ async function installRoutes(page) {
     results: graph.nodes.filter((item) => ["agent:developer-copilot", "server:github", "cve:next", "cred:github"].includes(item.id)),
     pagination: { total: 4, offset: 0, limit: 16, has_more: false },
   }));
-  await page.route("**/v1/graph/node/**", async (route) => {
+  await page.route((url) => url.pathname.startsWith("/v1/graph/node/") || url.pathname === "/v1/graph/node-context", async (route) => {
     const url = new URL(route.request().url());
     const parts = url.pathname.split("/");
-    const nodeId = decodeURIComponent(parts[parts.length - 1] ?? "");
+    const nodeId = url.searchParams.get("node_id") ?? decodeURIComponent(parts[parts.length - 1] ?? "");
     const selected = graph.nodes.find((item) => item.id === nodeId) ?? graph.nodes[0];
     await fulfill(route, {
       node: selected,
@@ -3159,7 +3162,7 @@ async function main() {
     );
     await correlationPage.close();
 
-    await page.setViewportSize({ width: 1120, height: 1400 });
+    await page.setViewportSize({ width: 1120, height: 1640 });
     await capture(
       page,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
@@ -3434,7 +3437,7 @@ async function main() {
       prepareCorrelationReceipts,
       correlationReceiptAssertions,
     );
-    await lightPage.setViewportSize({ width: 1120, height: 1400 });
+    await lightPage.setViewportSize({ width: 1120, height: 1640 });
     await capture(
       lightPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,

@@ -65,6 +65,11 @@ afterEach(() => {
 });
 
 describe("InvestigationPathWorkspace", () => {
+  it("offers a direct mobile jump to the selected path", () => {
+    render(<Harness />);
+    expect(screen.getByRole("link", {name: "View selected path"})).toHaveAttribute("href", "#selected-investigation-path");
+  });
+
   it("keeps the bounded path queue and selected graph detail in one desktop workspace", () => {
     setNarrowViewport(false);
     render(<Harness />);

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -35,7 +36,13 @@ class TechniqueMapping:
     catalog: str = "attack"  # "attack" | "atlas"
     tactics: list[str] = field(default_factory=list)
     provenance: str = ""  # observed evidence that produced the mapping
-    confidence: float = 0.0  # 0..1 signal, never an assertion of activity
+    confidence: float | None = None  # 0..1 mapping confidence, unavailable without a basis
+    evidence_basis: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.evidence_basis not in {"observed", "runtime_observed", "inferred", "modeled"}:
+            self.evidence_basis = None
+            self.confidence = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -45,7 +52,8 @@ class TechniqueMapping:
             "catalog": self.catalog,
             "tactics": self.tactics,
             "provenance": self.provenance,
-            "confidence": self.confidence,
+            "confidence": self.confidence if self.evidence_basis else None,
+            "evidence_basis": self.evidence_basis,
         }
 
     @classmethod
@@ -57,7 +65,8 @@ class TechniqueMapping:
             catalog=data.get("catalog", "attack"),
             tactics=list(data.get("tactics", [])),
             provenance=data.get("provenance", ""),
-            confidence=float(data.get("confidence", 0.0)),
+            confidence=float(data["confidence"]) if data.get("confidence") is not None and data.get("evidence_basis") else None,
+            evidence_basis=data.get("evidence_basis"),
         )
 
 
@@ -177,13 +186,40 @@ class Campaign:
     partition: str
     owner: str
     business_impact: str
-    exploitability: float
-    expected_risk_reduction: float
+    exploitability: float | None
+    expected_risk_reduction: float | None
     path_count: int
     top_path_summary: str
     cross_partition: bool
     evidence: list[str] = field(default_factory=list)
     member_paths: list[str] = field(default_factory=list)
+    priority_score: float | None = None
+    priority_method: str | None = None
+    exploitability_evidence: dict[str, Any] = field(default_factory=dict)
+    expected_risk_reduction_evidence: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in ("exploitability", "expected_risk_reduction"):
+            value = getattr(self, name)
+            evidence = getattr(self, f"{name}_evidence")
+            refs = evidence.get("evidence_refs") if isinstance(evidence, dict) else None
+            supported = (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and value >= 0
+                and isinstance(evidence, dict)
+                and evidence.get("status") == "complete"
+                and evidence.get("basis") in {"observed", "runtime_observed", "inferred", "modeled"}
+                and isinstance(refs, list)
+                and bool(refs)
+                and all(isinstance(ref, str) and ref.strip() for ref in refs)
+            )
+            if not supported:
+                setattr(self, name, None)
+                setattr(
+                    self, f"{name}_evidence", {"status": "unavailable", "evidence_refs": [], "reason_codes": ["assessment_not_recorded"]}
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -200,6 +236,10 @@ class Campaign:
             "cross_partition": self.cross_partition,
             "evidence": self.evidence,
             "member_paths": self.member_paths,
+            "priority_score": self.priority_score,
+            "priority_method": self.priority_method,
+            "exploitability_evidence": self.exploitability_evidence,
+            "expected_risk_reduction_evidence": self.expected_risk_reduction_evidence,
         }
 
     @classmethod
@@ -211,8 +251,12 @@ class Campaign:
             partition=str(data.get("partition", "")),
             owner=str(data.get("owner", "")),
             business_impact=str(data.get("business_impact", "")),
-            exploitability=float(data.get("exploitability", 0.0)),
-            expected_risk_reduction=float(data.get("expected_risk_reduction", 0.0)),
+            exploitability=data.get("exploitability"),
+            expected_risk_reduction=data.get("expected_risk_reduction"),
+            exploitability_evidence=data.get("exploitability_evidence", {}),
+            expected_risk_reduction_evidence=data.get("expected_risk_reduction_evidence", {}),
+            priority_score=data.get("priority_score"),
+            priority_method=data.get("priority_method"),
             path_count=int(data.get("path_count", 0)),
             top_path_summary=str(data.get("top_path_summary", "")),
             cross_partition=bool(data.get("cross_partition", False)),

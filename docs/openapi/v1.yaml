@@ -16021,6 +16021,23 @@ paths:
                           - hops
                           - relationships
                           type: object
+                        hop_evidence:
+                          items:
+                            additionalProperties: true
+                            properties:
+                              correlation_identity_status:
+                                enum:
+                                - current
+                                - recomputation_required
+                                - unavailable
+                                type: string
+                              relationship_provenance:
+                                enum:
+                                - recorded
+                                - unavailable
+                                type: string
+                            type: object
+                          type: array
                         mitre_technique_ids:
                           description: Deduped technique IDs mapped across the path's
                             hops (convenience projection).
@@ -16059,9 +16076,21 @@ paths:
                                 - atlas
                                 type: string
                               confidence:
-                                maximum: 1.0
-                                minimum: 0.0
-                                type: number
+                                anyOf:
+                                - maximum: 1.0
+                                  minimum: 0.0
+                                  type: number
+                                - type: 'null'
+                              evidence_basis:
+                                enum:
+                                - observed
+                                - runtime_observed
+                                - inferred
+                                - modeled
+                                - null
+                                type:
+                                - string
+                                - 'null'
                               hop_index:
                                 description: 0-based position in the kill-chain edge
                                   sequence.
@@ -17776,6 +17805,36 @@ paths:
               schema:
                 additionalProperties: true
                 properties:
+                  attack_campaigns:
+                    items:
+                      additionalProperties: true
+                      properties:
+                        expected_risk_reduction:
+                          type:
+                          - number
+                          - 'null'
+                        expected_risk_reduction_evidence:
+                          additionalProperties: true
+                          type: object
+                        exploitability:
+                          type:
+                          - number
+                          - 'null'
+                        exploitability_evidence:
+                          additionalProperties: true
+                          type: object
+                        priority_method:
+                          description: Versioned structural ranking method; not an
+                            exploitability assessment.
+                          type:
+                          - string
+                          - 'null'
+                        priority_score:
+                          type:
+                          - number
+                          - 'null'
+                      type: object
+                    type: array
                   cards:
                     items:
                       additionalProperties: true
@@ -17790,6 +17849,202 @@ paths:
                             findings:
                               items:
                                 type: string
+                              type: array
+                          type: object
+                        attack_path:
+                          additionalProperties: true
+                          properties:
+                            exposure_path:
+                              description: Investigation-first exposure path shared
+                                by graph views and report exports.
+                              properties:
+                                affectedAgents:
+                                  items:
+                                    type: string
+                                  type: array
+                                affectedServers:
+                                  items:
+                                    type: string
+                                  type: array
+                                dependencyContext:
+                                  additionalProperties: true
+                                  type: object
+                                edgeIds:
+                                  items:
+                                    type: string
+                                  type: array
+                                evidence:
+                                  additionalProperties: true
+                                  type: object
+                                exposedCredentials:
+                                  items:
+                                    type: string
+                                  type: array
+                                findings:
+                                  items:
+                                    type: string
+                                  type: array
+                                hops:
+                                  items:
+                                    additionalProperties: true
+                                    type: object
+                                  type: array
+                                id:
+                                  type: string
+                                label:
+                                  type: string
+                                nodeIds:
+                                  items:
+                                    type: string
+                                  type: array
+                                provenance:
+                                  additionalProperties: true
+                                  type: object
+                                rank:
+                                  minimum: 1
+                                  type: integer
+                                reachability:
+                                  enum:
+                                  - confirmed
+                                  - likely
+                                  - unlikely
+                                  - unknown
+                                  type: string
+                                reachabilityBasis:
+                                  items:
+                                    type: string
+                                  type: array
+                                reachableTools:
+                                  items:
+                                    type: string
+                                  type: array
+                                relationships:
+                                  items:
+                                    additionalProperties: true
+                                    type: object
+                                  type: array
+                                riskScore:
+                                  type: number
+                                severity:
+                                  type: string
+                                source:
+                                  additionalProperties: true
+                                  type: object
+                                summary:
+                                  type: string
+                                target:
+                                  additionalProperties: true
+                                  type: object
+                              required:
+                              - id
+                              - label
+                              - summary
+                              - riskScore
+                              - severity
+                              - source
+                              - target
+                              - hops
+                              - relationships
+                              type: object
+                            hop_evidence:
+                              items:
+                                additionalProperties: true
+                                properties:
+                                  correlation_identity_status:
+                                    enum:
+                                    - current
+                                    - recomputation_required
+                                    - unavailable
+                                    type: string
+                                  relationship_provenance:
+                                    enum:
+                                    - recorded
+                                    - unavailable
+                                    type: string
+                                type: object
+                              type: array
+                            mitre_technique_ids:
+                              description: Deduped technique IDs mapped across the
+                                path's hops (convenience projection).
+                              items:
+                                type: string
+                              type: array
+                            reachability:
+                              description: Evidence strength for whether the path
+                                is executable; structural topology alone is unknown.
+                              enum:
+                              - confirmed
+                              - likely
+                              - unlikely
+                              - unknown
+                              type: string
+                            reachability_basis:
+                              description: Machine-readable evidence that produced
+                                the reachability verdict.
+                              items:
+                                type: string
+                              type: array
+                            technique_mappings:
+                              items:
+                                additionalProperties: false
+                                description: A typed MITRE ATT&CK / ATLAS technique
+                                  mapped to one hop of the attack path, derived from
+                                  the path's observed graph evidence (edge relationship
+                                  + node type). These are potential/mapped techniques
+                                  for the kill-chain sequence, NOT a claim of detected
+                                  attacker activity. Technique and tactic IDs resolve
+                                  against the bundled catalog.
+                                properties:
+                                  catalog:
+                                    enum:
+                                    - attack
+                                    - atlas
+                                    type: string
+                                  confidence:
+                                    anyOf:
+                                    - maximum: 1.0
+                                      minimum: 0.0
+                                      type: number
+                                    - type: 'null'
+                                  evidence_basis:
+                                    enum:
+                                    - observed
+                                    - runtime_observed
+                                    - inferred
+                                    - modeled
+                                    - null
+                                    type:
+                                    - string
+                                    - 'null'
+                                  hop_index:
+                                    description: 0-based position in the kill-chain
+                                      edge sequence.
+                                    minimum: 0
+                                    type: integer
+                                  provenance:
+                                    description: The observed edge evidence that produced
+                                      the mapping.
+                                    type: string
+                                  tactics:
+                                    description: Catalog-resolved tactic phase names
+                                      / IDs.
+                                    items:
+                                      type: string
+                                    type: array
+                                  technique_id:
+                                    description: ATT&CK (e.g. T1078) or ATLAS (e.g.
+                                      AML.T0053) technique ID.
+                                    type: string
+                                  technique_name:
+                                    type: string
+                                required:
+                                - hop_index
+                                - technique_id
+                                - catalog
+                                - tactics
+                                - provenance
+                                - confidence
+                                type: object
                               type: array
                           type: object
                         exposure_path:

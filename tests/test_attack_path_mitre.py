@@ -346,3 +346,13 @@ def test_api_does_not_replay_legacy_mitre_mapping_without_matching_edge(edges):
     }
     assert _serialize_attack_path(path, edges, nodes_by_id=nodes)["technique_mappings"] == []
     assert path.technique_mappings  # Stored source receipts are not rewritten by projection.
+
+
+def test_serialized_technique_provenance_matches_openapi_contract():
+    from jsonschema import validate
+
+    from agent_bom.api.routes.graph import _TECHNIQUE_MAPPING_OPENAPI_SCHEMA
+
+    for basis, confidence in [(None, None), ("modeled", 0.4), ("observed", 0.9)]:
+        mapping = TechniqueMapping(hop_index=0, technique_id="T1078", evidence_basis=basis, confidence=confidence)
+        validate(mapping.to_dict(), _TECHNIQUE_MAPPING_OPENAPI_SCHEMA)

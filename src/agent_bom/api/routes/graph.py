@@ -157,7 +157,8 @@ _TECHNIQUE_MAPPING_OPENAPI_SCHEMA: dict[str, Any] = {
         "catalog": {"type": "string", "enum": ["attack", "atlas"]},
         "tactics": {"type": "array", "items": {"type": "string"}, "description": "Catalog-resolved tactic phase names / IDs."},
         "provenance": {"type": "string", "description": "The observed edge evidence that produced the mapping."},
-        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "confidence": {"anyOf": [{"type": "number", "minimum": 0.0, "maximum": 1.0}, {"type": "null"}]},
+        "evidence_basis": {"type": ["string", "null"], "enum": ["observed", "runtime_observed", "inferred", "modeled", None]},
     },
     "additionalProperties": False,
 }
@@ -175,6 +176,17 @@ _ATTACK_PATH_ITEM_OPENAPI_SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string"},
             "description": "Machine-readable evidence that produced the reachability verdict.",
+        },
+        "hop_evidence": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "relationship_provenance": {"type": "string", "enum": ["recorded", "unavailable"]},
+                    "correlation_identity_status": {"type": "string", "enum": ["current", "recomputation_required", "unavailable"]},
+                },
+                "additionalProperties": True,
+            },
         },
         "technique_mappings": {"type": "array", "items": _TECHNIQUE_MAPPING_OPENAPI_SCHEMA},
         "mitre_technique_ids": {
@@ -228,6 +240,24 @@ _FIX_FIRST_VIEW_OPENAPI_RESPONSE: dict[str, Any] = {
                     "scan_id": {"type": "string"},
                     "tenant_id": {"type": "string"},
                     "created_at": {"type": "string"},
+                    "attack_campaigns": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "priority_score": {"type": ["number", "null"]},
+                                "priority_method": {
+                                    "type": ["string", "null"],
+                                    "description": "Versioned structural ranking method; not an exploitability assessment.",
+                                },
+                                "exploitability": {"type": ["number", "null"]},
+                                "expected_risk_reduction": {"type": ["number", "null"]},
+                                "exploitability_evidence": {"type": "object", "additionalProperties": True},
+                                "expected_risk_reduction_evidence": {"type": "object", "additionalProperties": True},
+                            },
+                            "additionalProperties": True,
+                        },
+                    },
                     "cards": {
                         "type": "array",
                         "items": {
@@ -239,6 +269,7 @@ _FIX_FIRST_VIEW_OPENAPI_RESPONSE: dict[str, Any] = {
                                 "occurrence_path_ids": {"type": "array", "items": {"type": "string"}},
                                 "rank": {"type": "integer", "minimum": 1},
                                 "title": {"type": "string"},
+                                "attack_path": _ATTACK_PATH_ITEM_OPENAPI_SCHEMA,
                                 "exposure_path": _EXPOSURE_PATH_OPENAPI_SCHEMA,
                                 "rank_meta": {
                                     "type": "object",

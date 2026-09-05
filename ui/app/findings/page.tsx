@@ -965,18 +965,18 @@ function FindingsPage() {
           <section
             aria-label={`${lensLabel(lens)} findings summary`}
             data-testid="findings-workspace-summary"
-            className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
+            className="grid gap-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4 sm:grid-cols-2 xl:grid-cols-4"
           >
             {workspaceMetrics.map((metric) => (
               <div
                 key={metric.label}
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2"
+                className="min-w-0"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                  <span className="text-xs font-medium text-[var(--text-secondary)]">
                     {metric.label}
                   </span>
-                  <span className="rounded-full border border-[var(--border-subtle)] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-[var(--text-tertiary)]">
+                  <span className="text-xs text-[var(--text-tertiary)]">
                     {metric.scope === "query" ? "Whole query" : "Current page"}
                   </span>
                 </div>

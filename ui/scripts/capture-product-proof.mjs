@@ -2943,40 +2943,44 @@ async function main() {
       return capturePage;
     };
     const prepareCorrelationReceipts = async (proofPage) => {
-      await proofPage.getByRole("button", { name: /^Evidence scope Current scan/i }).click();
       const workflow = proofPage.getByTestId("graph-correlation-workflow");
       await workflow.waitFor({ state: "visible", timeout: 30_000 });
       await proofPage.getByTestId("graph-correlation-decision").waitFor({ state: "visible", timeout: 30_000 });
-      // Give the viewport enough trailing room to place Evidence scope just
+      // Give the viewport enough trailing room to place the investigation outcome just
       // below the fixed product header. Without this capture-only spacer the
       // browser hits the document's maximum scroll position and leaves the
       // previous path card in the hero frame.
       await proofPage.evaluate(() => {
         document.body.style.paddingBottom = "900px";
       });
-      const mobile = (proofPage.viewportSize()?.width ?? 1440) < 640;
-      const framingTarget = mobile
-        ? proofPage.getByTestId("graph-correlation-decision")
-        : workflow;
-      const workflowTop = await framingTarget.evaluate(
+      const workflowTop = await workflow.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
       await proofPage.evaluate(({ top, offset }) => {
         window.scrollTo({ top: top - offset, behavior: "instant" });
-      }, { top: workflowTop, offset: mobile ? 97 : 88 });
+      }, { top: workflowTop, offset: 108 });
       await proofPage.waitForTimeout(500);
     };
     const prepareCorrelationPath = async (proofPage) => {
       const proof = proofPage.getByTestId("attack-path-correlation-proof");
       await proof.waitFor({ state: "visible", timeout: 30_000 });
       const selectedPath = proofPage.getByTestId("selected-exposure-path");
+      // Verify exact identifiers remain available through the real disclosure,
+      // then close it for the default operator view captured below.
+      const identifier = selectedPath.locator(".ep-identifier").first();
+      await identifier.locator("summary").click();
+      const identifierText = await identifier.locator("code").innerText();
+      if (!identifierText.includes(REFERENCE_LAB.container_digest)) {
+        throw new Error("Exact container digest is unavailable in the identifier disclosure");
+      }
+      await identifier.locator("summary").click();
       await proofPage.evaluate(() => {
         document.body.style.paddingBottom = "900px";
       });
       const pathTop = await selectedPath.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
-      const offset = (proofPage.viewportSize()?.width ?? 1440) < 640 ? 96 : 88;
+      const offset = 108;
       await proofPage.evaluate(({ top, offset: topOffset }) => {
         window.scrollTo({ top: top - topOffset, behavior: "instant" });
       }, { top: pathTop, offset });
@@ -2989,7 +2993,10 @@ async function main() {
         "Fresh evidence",
         "0 conflicts",
         "Analysis complete",
-        "Review prioritized path preview",
+        "Entry point",
+        "Vulnerable package",
+        "Reachable asset",
+        "Open pillow@9.0.0 remediation",
         "Open top path",
         "Inspect source receipts",
       ],
@@ -2998,15 +3005,16 @@ async function main() {
       readySelector: '[data-testid="graph-correlation-decision"]',
       assertNoHorizontalOverflow: true,
       assertCollapsedDetailsWithin: '[data-testid="graph-correlation-workflow"]',
-      hiddenSelectors: ['[data-testid="correlation-primary-action"]'],
+
       viewportSelectors: [
         "#demo-estate-watermark",
         '[data-testid="graph-correlation-decision"]',
         '[data-testid="correlation-open-path"]',
+        '[data-testid="correlation-primary-action"]',
       ],
       nonOverlappingPairs: [[
         "#demo-estate-watermark",
-        '[data-testid="graph-correlation-decision"]',
+        '[data-testid="graph-correlation-workflow"]',
       ]],
       readmeTextContract: {
         selector: '[data-testid="graph-correlation-decision"]',
@@ -3025,7 +3033,7 @@ async function main() {
         /8\.\s*Data asset/i,
         "CVE-2023-4863",
         "pillow@9.0.0",
-        "render_untrusted_image",
+        "Render Untrusted Image",
         "reference-evidence-workload",
         "Modeled customer records",
         "Uses",
@@ -3034,7 +3042,7 @@ async function main() {
         "Exploitable Via",
         "Authenticates As",
         "Has Permission",
-        REFERENCE_LAB.container_digest,
+        `Digest ${REFERENCE_LAB.container_digest.slice(0, 19)}…`,
         "Path verified",
         "Runtime observed",
         "Runtime block verified",
@@ -3057,6 +3065,30 @@ async function main() {
         minFontPx: 12,
       },
     };
+    // Exercise the actual overview-to-detail handoff before capturing either
+    // state. The same snapshot and remediation context must survive navigation.
+    const flowPage = await newCapturePage("dark", { width: 1120, height: 900 });
+    await flowPage.goto(`${BASE_URL}/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`);
+    const openPath = flowPage.getByTestId("correlation-open-path");
+    await openPath.waitFor({ state: "visible" });
+    if (await flowPage.getByTestId("selected-exposure-path").count()) {
+      throw new Error("Correlation overview duplicates the selected path detail");
+    }
+    await openPath.click();
+    await flowPage.waitForURL((url) => url.searchParams.get("path") === "top" && url.searchParams.get("scan") === REFERENCE_CORRELATION_ID);
+    const remediation = flowPage.getByTestId("exposure-path-primary-action");
+    await remediation.waitFor({ state: "visible" });
+    const remediationUrl = new URL(await remediation.getAttribute("href"), BASE_URL);
+    if (remediationUrl.searchParams.get("scan") !== REFERENCE_CORRELATION_ID || remediationUrl.searchParams.get("cve") !== "CVE-2023-4863") {
+      throw new Error("Correlation drilldown lost its remediation context");
+    }
+    await flowPage.goBack();
+    await flowPage.getByTestId("correlation-open-path").waitFor({ state: "visible" });
+    if (await flowPage.getByTestId("selected-exposure-path").count()) {
+      throw new Error("Back navigation did not restore the investigation overview");
+    }
+    await flowPage.close();
+
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
     await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
@@ -3148,11 +3180,11 @@ async function main() {
         .getByTestId("selected-exposure-path")
         .waitFor({ state: "visible", timeout: 30_000 });
     }, {
-      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
-    const correlationPage = await newCapturePage("dark", { width: 1120, height: 820 });
+    const correlationPage = await newCapturePage("dark", { width: 1120, height: 900 });
     await capture(
       correlationPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
@@ -3162,7 +3194,7 @@ async function main() {
     );
     await correlationPage.close();
 
-    await page.setViewportSize({ width: 1120, height: 1640 });
+    await page.setViewportSize({ width: 1120, height: 1320 });
     await capture(
       page,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
@@ -3429,7 +3461,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
-    await lightPage.setViewportSize({ width: 1120, height: 820 });
+    await lightPage.setViewportSize({ width: 1120, height: 900 });
     await capture(
       lightPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
@@ -3437,7 +3469,7 @@ async function main() {
       prepareCorrelationReceipts,
       correlationReceiptAssertions,
     );
-    await lightPage.setViewportSize({ width: 1120, height: 1640 });
+    await lightPage.setViewportSize({ width: 1120, height: 1320 });
     await capture(
       lightPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
@@ -3452,7 +3484,7 @@ async function main() {
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
-      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
@@ -3472,7 +3504,7 @@ async function main() {
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
       "correlation-receipts-mobile-live.png",
       prepareCorrelationReceipts,
-      { ...correlationReceiptAssertions, assertNoHorizontalOverflow: true },
+      { ...correlationReceiptAssertions, viewportSelectors: ["#demo-estate-watermark", '[data-testid="correlation-primary-action"]', '[data-testid="correlation-open-path"]'], readmeTextContract: undefined, assertNoHorizontalOverflow: true },
     );
     await capture(
       mobilePage,
@@ -3493,7 +3525,7 @@ async function main() {
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
-      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="exposure-path-sequence"]',
       rejectedText: [/Loading/i],

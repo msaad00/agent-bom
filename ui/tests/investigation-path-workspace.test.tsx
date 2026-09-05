@@ -49,7 +49,7 @@ function setNarrowViewport(matches: boolean) {
     configurable: true,
     value: vi.fn().mockReturnValue({
       matches,
-      media: "(max-width: 1023px)",
+      media: "(max-width: 1279px)",
       onchange: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
@@ -65,6 +65,19 @@ afterEach(() => {
 });
 
 describe("InvestigationPathWorkspace", () => {
+  it("gives a single path the full workspace and keeps filters available on demand", () => {
+    render(<InvestigationPathWorkspace rows={rows.slice(0, 1)} selectedKey="path-a" onSelect={vi.fn()}
+      title="1 ranked path" subtitle="Selected evidence" filters={<div>Severity filters</div>}
+      detail={<div>Selected path evidence</div>} />);
+    expect(screen.getByRole("region", { name: "Investigation workspace" })).toHaveAttribute("data-layout", "focused-path");
+    expect(screen.getByText("Selected path evidence")).toBeVisible();
+    expect(screen.getByText("Severity filters")).not.toBeVisible();
+    const summary = screen.getByText("1 path selected · change focus or filters");
+    expect(summary.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(summary);
+    expect(screen.getByText("Filters & presets")).toBeVisible();
+  });
+
   it("offers a direct mobile jump to the selected path", () => {
     render(<Harness />);
     expect(screen.getByRole("link", {name: "View selected path"})).toHaveAttribute("href", "#selected-investigation-path");

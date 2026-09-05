@@ -45,12 +45,14 @@ export function correlationOutcomeMatchesOutput(
 
 export function buildCorrelationPathHref(
   pathname: string,
-  _current: URLSearchParams,
+  current: URLSearchParams,
   scanId: string,
 ): string {
   const params = new URLSearchParams();
+  params.set("lens", "attack-path");
   params.set("scan", scanId);
   params.set("path", "top");
+  if (current.get("capture") === "1") params.set("capture", "1");
   return `${pathname}?${params.toString()}#${CORRELATION_PATH_TARGET_ID}`;
 }
 

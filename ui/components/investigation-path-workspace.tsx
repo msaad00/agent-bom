@@ -63,7 +63,7 @@ export function InvestigationPathWorkspace({
     if (row) {
       setAnnouncement(`Focused path ${row.rank}: ${row.cve ? `${row.cve} · ` : ""}${row.title}`);
     }
-    if (window.matchMedia?.("(max-width: 1023px)").matches) {
+    if (window.matchMedia?.("(max-width: 1279px)").matches) {
       window.requestAnimationFrame(() => {
         detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -84,30 +84,33 @@ export function InvestigationPathWorkspace({
   return (
     <section
       aria-label="Investigation workspace"
-      data-layout="responsive-split"
-      className="grid gap-4 lg:grid-cols-[minmax(16rem,18rem)_minmax(0,1fr)] lg:items-start"
+      data-layout={rows.length === 1 ? "focused-path" : "responsive-split"}
+      className={rows.length === 1 ? "grid gap-4" : "grid gap-4 xl:grid-cols-[minmax(14rem,16rem)_minmax(0,1fr)] xl:items-start"}
     >
-      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-        <div>
-          <h2 className="text-base font-semibold text-[color:var(--foreground)]">{title}</h2>
-          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{subtitle}</p>
-        </div>
-
-        <a href={`#${DETAIL_REGION_ID}`} className="mt-3 flex min-h-11 items-center text-sm font-medium text-[color:var(--foreground)] lg:hidden">View selected path</a>
+      <details open={rows.length !== 1} className="investigation-queue rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+        <summary className="cursor-pointer text-sm font-medium text-[color:var(--foreground)]">{rows.length === 1 ? "1 path selected · change focus or filters" : `${rows.length} paths · investigation queue`}</summary>
         <div className="mt-3">
-          <InvestigationFilterDrawer>{filters}</InvestigationFilterDrawer>
-        </div>
+          <div>
+            <h2 className="text-base font-semibold text-[color:var(--foreground)]">{title}</h2>
+            <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{subtitle}</p>
+          </div>
 
-        <RankedPathList
-          rows={rows}
-          selectedKey={selectedKey}
-          onSelect={handleSelect}
-          onKeyDown={handleQueueKeyDown}
-          controlsId={DETAIL_REGION_ID}
-        />
-        {queueFooter}
-        {sideRail ? <div className="mt-4">{sideRail}</div> : null}
-      </div>
+          <a href={`#${DETAIL_REGION_ID}`} className="mt-3 flex min-h-11 items-center text-sm font-medium text-[color:var(--foreground)] xl:hidden">View selected path</a>
+          <div className="mt-3">
+            <InvestigationFilterDrawer>{filters}</InvestigationFilterDrawer>
+          </div>
+
+          <RankedPathList
+            rows={rows}
+            selectedKey={selectedKey}
+            onSelect={handleSelect}
+            onKeyDown={handleQueueKeyDown}
+            controlsId={DETAIL_REGION_ID}
+          />
+          {queueFooter}
+          {sideRail ? <div className="mt-4">{sideRail}</div> : null}
+        </div>
+      </details>
 
       <div
         ref={detailRef}
@@ -115,7 +118,7 @@ export function InvestigationPathWorkspace({
         role="region"
         aria-label="Selected path detail"
         tabIndex={-1}
-        className="min-w-0 scroll-mt-24 lg:sticky lg:top-20"
+        className="min-w-0 scroll-mt-24 xl:sticky xl:top-20"
       >
         {detail}
       </div>

@@ -86,9 +86,8 @@ describe("GraphCorrelationWorkflow", () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} outcome={outcome} onOpenSnapshot={vi.fn()} />);
 
     expect(await screen.findByTestId("graph-correlation-decision")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Review prioritized path preview"));
-    expect(screen.getByText(outcome.title)).toBeInTheDocument();
-    expect(screen.getByText("Risk 9.8")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: outcome.title.replace(` through ${outcome.finding}`, "") })).toBeInTheDocument();
+    expect(screen.getByText("Priority 9.8")).toBeInTheDocument();
     expect(screen.getByText("7 directed hops")).toBeInTheDocument();
     expect(screen.getByText("Runtime observed")).toBeInTheDocument();
     expect(screen.getByText("Runtime block verified")).toBeInTheDocument();
@@ -103,12 +102,14 @@ describe("GraphCorrelationWorkflow", () => {
     expect(screen.getByText("Fresh evidence")).toBeInTheDocument();
   });
 
-  it("keeps the duplicated path preview behind progressive disclosure", async () => {
+  it("shows the investigation outcome and remediation before opening any controls", async () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} outcome={outcome} onOpenSnapshot={vi.fn()} />);
 
     expect(await screen.findByTestId("graph-correlation-decision")).toBeInTheDocument();
-    expect(screen.getByText("Review prioritized path preview")).toBeInTheDocument();
-    expect(screen.getByText(outcome.title)).not.toBeVisible();
+    expect(screen.getByRole("heading", { name: outcome.title.replace(` through ${outcome.finding}`, "") })).toBeVisible();
+    expect(screen.getByRole("link", { name: outcome.action!.title })).toBeVisible();
+    expect(screen.getByText("Entry point")).toBeVisible();
+    expect(screen.getByText("Reachable asset")).toBeVisible();
     expect(screen.getByRole("button", { name: "Open top path" })).toBeVisible();
   });
 

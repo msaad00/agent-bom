@@ -112,7 +112,8 @@ describe("product proof capture contract", () => {
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
     expect(source).toContain('window.scrollTo({ top: top - offset, behavior: "instant" })');
     expect(source).toContain("assertNoHorizontalOverflow: true");
-    expect(source).toContain('hiddenSelectors: [\'[data-testid="correlation-primary-action"]\']');
+    expect(source).toContain('\'[data-testid="correlation-primary-action"]\'');
+    expect(source).not.toContain('hiddenSelectors: [\'[data-testid="correlation-primary-action"]\']');
     expect(source).toContain('getByTestId("selected-exposure-path")');
     expect(source).toContain('readySelector: \'[data-testid="exposure-path-sequence"]\'');
     expect(source).toContain('/hops hidden/i');
@@ -121,7 +122,7 @@ describe("product proof capture contract", () => {
     expect(source).toContain('\'[data-testid="exposure-path-primary-action"]\'');
     expect(source).toContain("targetWidthPx: 920");
     expect(source).toContain("minFontPx: 12");
-    expect(source).toContain("< 640 ? 96 : 88");
+    expect(source).toContain("const offset = 108;");
   });
 
   it("keeps the base graph fixture from swallowing graph subroutes", () => {

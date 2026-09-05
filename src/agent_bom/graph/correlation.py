@@ -233,19 +233,53 @@ def _exact_attribute_identity(
 def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
     """Return ``(entity_type, identity, basis)`` for a source observation.
 
-    Containers are the high-risk special case: ``app:latest`` is a locator,
-    not an immutable identity, so it remains snapshot-scoped until an exact OCI
-    digest is available. Other producers already materialize stable canonical
-    IDs; labels are never consulted here.
+    A container is a runtime occurrence. Image digests identify reusable artifacts
+    and never authorize joins between permission-bearing deployments. Unknown
+    occurrence identity remains snapshot-scoped.
     """
 
     entity_type = _entity_value(node)
     if entity_type == EntityType.CONTAINER.value:
-        digest = _oci_digest(node)
-        if digest:
-            return entity_type, digest, "oci_digest"
+        attrs = node.attributes
+        scope = {
+            key: str(attrs.get(key) or "").strip()
+            for key in (
+                "cloud_provider",
+                "cloud_account_id",
+                "account_id",
+                "tenant_id",
+                "subscription_id",
+                "project_id",
+                "cluster_id",
+                "cluster_arn",
+                "runtime_host_id",
+                "environment",
+            )
+            if str(attrs.get(key) or "").strip()
+        }
+        for key in ("cloud_provider", "environment"):
+            dimension = str(getattr(node.dimensions, key, "") or "").strip()
+            if dimension:
+                scope[f"dimension_{key}"] = dimension
+                scope.setdefault(key, dimension)
+        located = bool(scope.get("cluster_id") or scope.get("cluster_arn") or scope.get("runtime_host_id")) or bool(
+            scope.get("cloud_provider")
+            and any(scope.get(key) for key in ("cloud_account_id", "account_id", "subscription_id", "project_id"))
+        )
+        uid_key = "runtime_uid" if attrs.get("runtime_uid") else "container_id"
+        uid = str(attrs.get(uid_key) or "").strip()
+        if (
+            not uid
+            and attrs.get("kubernetes_uid")
+            and attrs.get("container_name")
+            and (scope.get("cluster_id") or scope.get("cluster_arn"))
+        ):
+            uid_key = "kubernetes_container"
+            uid = f"{attrs['kubernetes_uid']}:{attrs['container_name']}"
+        if uid and located:
+            return entity_type, _digest({"scope": scope, "uid_kind": uid_key, "runtime_uid": uid}), "runtime_occurrence"
         scoped_type, scoped_id, _basis = _snapshot_scoped_identity(node, scan_id=scan_id)
-        return scoped_type, scoped_id, "snapshot_scoped_mutable_ref"
+        return scoped_type, scoped_id, "snapshot_scoped_runtime_occurrence"
 
     if entity_type == EntityType.PACKAGE.value:
         purl = node.attributes.get("purl")
@@ -575,6 +609,7 @@ def _merge_node(observations: Sequence[_NodeObservation]) -> UnifiedNode:
     source_scan_ids = sorted({item.snapshot.scan_id for item in ordered})
     identity_basis = sorted({item.identity_basis for item in ordered})
     attributes[_CORRELATION_ATTR] = {
+        "identity_version": "runtime-occurrence.v2",
         "identity_basis": identity_basis[0] if len(identity_basis) == 1 else identity_basis,
         "observation_count": len(ordered),
         "source_scan_ids": source_scan_ids,
@@ -651,6 +686,16 @@ def _merge_edge(
     if len({bool(item.edge.traversable) for item in ordered}) > 1:
         conflict_fields.append("traversable")
     provenance[_CORRELATION_ATTR] = {
+        "identity_version": (
+            "runtime-occurrence.v2"
+            if all(
+                not item.edge.provenance.get(_CORRELATION_ATTR)
+                or isinstance(item.edge.provenance.get(_CORRELATION_ATTR), dict)
+                and item.edge.provenance[_CORRELATION_ATTR].get("identity_version") == "runtime-occurrence.v2"
+                for item in ordered
+            )
+            else "legacy"
+        ),
         "observation_count": len(ordered),
         "source_scan_ids": source_scan_ids,
         "conflict_fields": conflict_fields,
@@ -747,6 +792,7 @@ def merge_graph_snapshots(
 
     manifest = {
         "schema_version": "agent-bom.graph-correlation.v1",
+        "identity_version": "runtime-occurrence.v2",
         "correlation_id": correlation_id,
         "tenant_id": tenant_id,
         "created_at": output.created_at,

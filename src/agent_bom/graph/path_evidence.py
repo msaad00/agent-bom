@@ -37,6 +37,11 @@ def _source_snapshot_ids(edge: UnifiedEdge, graph: UnifiedGraph) -> list[str]:
     return sorted(set(item for item in values if item))
 
 
+def _correlation_identity_current(edge: UnifiedEdge) -> bool:
+    correlation = _correlation_provenance(edge)
+    return not correlation or correlation.get("identity_version") == "runtime-occurrence.v2"
+
+
 def _has_relationship_provenance(edge: UnifiedEdge) -> bool:
     """Require an edge-level receipt; snapshot membership alone is structural."""
 
@@ -131,6 +136,8 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                     "target_node_id": target,
                     "relationship": relationship,
                     "source_snapshot_ids": [],
+                    "relationship_provenance": "unavailable",
+                    "correlation_identity_status": "unavailable",
                     "evidence_tier": "unknown",
                     "confidence": 0.0,
                     "freshness": "unknown",
@@ -150,6 +157,8 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                 "target_node_id": target,
                 "relationship": _relationship(edge),
                 "source_snapshot_ids": source_ids,
+                "relationship_provenance": "recorded" if _has_relationship_provenance(edge) else "unavailable",
+                "correlation_identity_status": "current" if _correlation_identity_current(edge) else "recomputation_required",
                 "evidence_tier": _evidence_tier(edge),
                 "confidence": float(edge.confidence),
                 "freshness": freshness,
@@ -161,6 +170,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                     and edge.direction == "directed"
                     and source_ids
                     and _has_relationship_provenance(edge)
+                    and _correlation_identity_current(edge)
                     and freshness in {"fresh", "stale_allowed"}
                     and edge.source == source
                     and edge.target == target
@@ -174,6 +184,9 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
     if truncated:
         for receipt in receipts:
             receipt["truncated"] = True
+    if any(receipt.get("correlation_identity_status") == "recomputation_required" for receipt in receipts):
+        if "correlation_recomputation_required" not in path.reachability_basis:
+            path.reachability_basis.append("correlation_recomputation_required")
     path.hop_evidence = receipts
     path.analysis = analysis
 

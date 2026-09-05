@@ -2106,10 +2106,10 @@ async function installRoutes(page) {
     results: graph.nodes.filter((item) => ["agent:developer-copilot", "server:github", "cve:next", "cred:github"].includes(item.id)),
     pagination: { total: 4, offset: 0, limit: 16, has_more: false },
   }));
-  await page.route("**/v1/graph/node/**", async (route) => {
+  await page.route((url) => url.pathname.startsWith("/v1/graph/node/") || url.pathname === "/v1/graph/node-context", async (route) => {
     const url = new URL(route.request().url());
     const parts = url.pathname.split("/");
-    const nodeId = decodeURIComponent(parts[parts.length - 1] ?? "");
+    const nodeId = url.searchParams.get("node_id") ?? decodeURIComponent(parts[parts.length - 1] ?? "");
     const selected = graph.nodes.find((item) => item.id === nodeId) ?? graph.nodes[0];
     await fulfill(route, {
       node: selected,

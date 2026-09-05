@@ -243,3 +243,9 @@ unknown, including when a high-priority asset is present. API and MCP legacy
 `reachability: confirmed` labels are downgraded to unknown when the current
 evidence dimensions cannot support that verdict. Projection qualification does
 not rewrite stored path receipts.
+
+Node IDs containing slashes (filesystem findings and scoped package identifiers)
+use `GET /v1/graph/node-context?node_id=...` and
+`GET /v1/graph/node-neighbors?node_id=...`. These authenticated query aliases
+preserve the complete ID without URL-path decoding ambiguities. Existing
+single-segment node routes remain supported.

@@ -3458,6 +3458,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     }
 
 
+@router.get("/graph/node-context", tags=["graph"])
 @router.get("/graph/node/{node_id}", tags=["graph"])
 async def get_graph_node(
     request: Request,
@@ -3485,6 +3486,7 @@ async def get_graph_node(
     }
 
 
+@router.get("/graph/node-neighbors", tags=["graph"])
 @router.get("/graph/node/{node_id}/neighbors", tags=["graph"])
 async def get_graph_node_neighbors(
     request: Request,

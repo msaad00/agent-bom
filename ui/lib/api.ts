@@ -1270,8 +1270,11 @@ export const api = {
   getGraphNode: (nodeId: string, scanId?: string) => {
     const params = new URLSearchParams();
     if (scanId) params.set("scan_id", scanId);
+    const queryAddressed = nodeId.includes("/");
+    if (queryAddressed) params.set("node_id", nodeId);
     const qs = params.toString();
-    return get<GraphNodeDetailResponse>(`/v1/graph/node/${encodeURIComponent(nodeId)}${qs ? `?${qs}` : ""}`);
+    const route = queryAddressed ? "/v1/graph/node-context" : `/v1/graph/node/${encodeURIComponent(nodeId)}`;
+    return get<GraphNodeDetailResponse>(`${route}${qs ? `?${qs}` : ""}`);
   },
 
   /** Lazily load a bounded set of one node's direct graph neighbors for inline expand */
@@ -1283,10 +1286,11 @@ export const api = {
     if (options?.scanId) params.set("scan_id", options.scanId);
     if (options?.limit != null) params.set("limit", String(options.limit));
     if (options?.direction) params.set("direction", options.direction);
+    const queryAddressed = nodeId.includes("/");
+    if (queryAddressed) params.set("node_id", nodeId);
     const qs = params.toString();
-    return get<GraphNodeNeighborsResponse>(
-      `/v1/graph/node/${encodeURIComponent(nodeId)}/neighbors${qs ? `?${qs}` : ""}`,
-    );
+    const route = queryAddressed ? "/v1/graph/node-neighbors" : `/v1/graph/node/${encodeURIComponent(nodeId)}/neighbors`;
+    return get<GraphNodeNeighborsResponse>(`${route}${qs ? `?${qs}` : ""}`);
   },
 
   /** Compute the blast radius (reverse-BFS impact) of a node */

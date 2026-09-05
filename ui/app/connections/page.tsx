@@ -3821,7 +3821,7 @@ function AddConnectionWizard({
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[130] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="Add cloud account"
@@ -3904,7 +3904,7 @@ function AddConnectionWizard({
                           <span className="block text-sm font-medium text-[var(--foreground)]">{option.label}</span>
                           <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">{option.tagline}</span>
                           {cloudProviderMeta(option.value) ? (
-                            <span className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-purple-300/80">
+                            <span className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-purple-700 dark:text-purple-300/80">
                               Read-only broker
                             </span>
                           ) : null}

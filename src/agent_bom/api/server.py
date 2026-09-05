@@ -847,6 +847,7 @@ _runtime_api_key_seeded = False
 # zero flags. Never persisted; non-loopback binds never set this (the CLI auth
 # gate refuses them first). See cli/_server._should_auto_generate_dev_key.
 _dev_api_key: str | None = None
+_dev_api_role: Role = Role.ADMIN
 
 
 def set_dev_api_key(raw_key: str | None) -> None:
@@ -857,13 +858,26 @@ def set_dev_api_key(raw_key: str | None) -> None:
     cookie so the first-party same-origin UI authenticates automatically on a
     loopback bind. Process-local and never written to disk.
     """
-    global _dev_api_key
-    _dev_api_key = (raw_key or "").strip() or None
+    global _dev_api_key, _dev_api_role
+    value = (raw_key or "").strip() or None
+    role = Role.ADMIN
+    if value:
+        try:
+            role = Role((os.environ.get("AGENT_BOM_NO_AUTH_ROLE") or "admin").strip().lower())
+        except ValueError:
+            raise ValueError("Invalid explicit loopback role") from None
+    _dev_api_key = value
+    _dev_api_role = role
 
 
 def get_dev_api_key() -> str | None:
     """Return the active ephemeral loopback dev API key, if any."""
     return _dev_api_key
+
+
+def get_dev_api_role() -> Role:
+    """Role selected for the active authenticated loopback bootstrap."""
+    return _dev_api_role
 
 
 def _env_truthy(name: str) -> bool:
@@ -918,7 +932,8 @@ def _seed_runtime_api_key(raw_key: str | None) -> bool:
     if _runtime_api_key_seeded:
         return get_key_store().has_keys()
 
-    get_key_store().add(create_api_key_record(value, "runtime:admin", Role.ADMIN))
+    role = get_dev_api_role() if value == get_dev_api_key() else Role.ADMIN
+    get_key_store().add(create_api_key_record(value, f"runtime:{role.value}", role))
     _runtime_api_key_seeded = True
     return True
 
@@ -1504,7 +1519,7 @@ def _maybe_attach_dev_session_cookie(response: Any, request: Request) -> None:
     try:
         token, csrf = create_browser_session_token(
             subject="loopback-dev-key",
-            role="admin",
+            role=get_dev_api_role().value,
             tenant_id="default",
             auth_method="browser_session_dev_key",
             key_id=None,

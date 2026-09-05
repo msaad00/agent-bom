@@ -529,11 +529,11 @@ test("Attack Paths keeps scenario state observed-only", async ({ page }) => {
 async function expectCockpitVisible(page: Page) {
   await expect(page.getByRole("heading", { name: "Investigation" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: /Claude Desktop.*form-data.*CVE-2025-7783/ }),
+    page.getByRole("heading", { name: "Critical package reachable from MCP server" }),
   ).toBeVisible();
   // Progressive disclosure summary — avoid /Evidence/ which also matches "Evidence drawer".
   await expect(page.getByText("Evidence & relationships")).toBeVisible();
-  await expect(page.getByText("Path risk", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Path priority", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Path span", { exact: true }).first()).toBeVisible();
 }
 
@@ -573,7 +573,7 @@ test("requested scan without a graph snapshot never falls back to another scan",
 
   await expect(page.getByText("Snapshot unavailable for requested scan")).toBeVisible();
   await expect(page.getByText(/did not substitute evidence from a different scan/i)).toBeVisible();
-  await expect(page.getByText("Critical package reachable from MCP server")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toHaveCount(0);
 });
 
 test("focused investigation never shows an unrelated global path", async ({ page }) => {
@@ -583,7 +583,7 @@ test("focused investigation never shows an unrelated global path", async ({ page
   await page.waitForLoadState("networkidle");
 
   await expect(page.getByText("No attack paths matched the current focus")).toBeVisible();
-  await expect(page.getByText("Critical package reachable from MCP server")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toHaveCount(0);
 });
 
 test("ranked persisted paths render before slower fix guidance", async ({ page }) => {
@@ -594,7 +594,7 @@ test("ranked persisted paths render before slower fix guidance", async ({ page }
   await expect(page.getByText(/Ranked paths are ready; fix guidance is still loading/)).toBeVisible();
   await expect(page.getByText("agent → server → package → finding")).toBeVisible();
 
-  await expect(page.getByText("Critical package reachable from MCP server")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toBeVisible();
 });
 
 test("ranked path selection focuses the in-place interactive graph and announces the change", async ({ page }) => {
@@ -607,7 +607,7 @@ test("ranked path selection focuses the in-place interactive graph and announces
   const workspace = page.getByRole("region", { name: "Investigation workspace" });
   const queue = workspace.getByLabel("Attack path queue");
   const detail = workspace.getByRole("region", { name: "Selected path detail" });
-  const [queueBox, detailBox] = await Promise.all([queue.boundingBox(), detail.boundingBox()]);
+  const [queueBox, detailBox] = await Promise.all([workspace.locator(".investigation-queue").boundingBox(), detail.boundingBox()]);
   expect(queueBox).not.toBeNull();
   expect(detailBox).not.toBeNull();
   expect(Math.abs(queueBox!.y - detailBox!.y)).toBeLessThan(200);
@@ -928,6 +928,7 @@ test("selected paths 13 and 25 retain hydrated anchors beyond fix-first enrichme
   await page.getByRole("button", { name: "Show 12 more", exact: true }).click();
   await queue.getByRole("button", { name: /#13\b/ }).click();
   const proof = page.getByTestId("attack-path-correlation-proof");
+  await proof.locator("summary").filter({ hasText: /^Exact anchors/ }).click();
   await expect(proof.getByText("runtime-anchor-13", { exact: true })).toBeVisible();
   await expect(proof.getByText("finding-anchor-13", { exact: true })).toBeVisible();
   await expect(proof.getByText(/path nodes unavailable/)).toHaveCount(0);

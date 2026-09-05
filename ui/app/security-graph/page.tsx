@@ -215,7 +215,7 @@ function AttackPathInvestigationContent() {
       setInvestigationFilters(EMPTY_INVESTIGATION_FILTERS);
       setSelectedCampaignId(null);
       setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
-      router.replace(buildCorrelationPathHref(pathname, searchParams, scanId), { scroll: false });
+      router.push(buildCorrelationPathHref(pathname, searchParams, scanId), { scroll: false });
       window.requestAnimationFrame(() => {
         focusCorrelationPathTarget(document);
       });
@@ -651,6 +651,11 @@ function AttackPathInvestigationContent() {
     };
   }, [fixFirstView?.scan_id, graphData?.scan_id, graphNodeById, selectedAttackPath, selectedFixFirstCard, selectedPathActions, selectedScanId]);
 
+  const showCorrelationOverview = latestCorrelationRun?.output_scan_id === selectedScanId
+    && Boolean(correlationOutcome)
+    && requestedPathMode !== "top"
+    && (!hasFocusContext || correlationCaptureMode);
+
   const emptyGraphState = useMemo(() => {
     const analysis = graphData?.stats.analysis_status?.attack_path_fusion;
     const executionCopy = graphAnalysisStatusCopy(analysis);
@@ -833,6 +838,10 @@ function AttackPathInvestigationContent() {
         </div>
       ) : null}
 
+      {showCorrelationOverview ? (
+        <GraphCorrelationWorkflow snapshots={snapshots} initialRun={latestCorrelationRun} outcome={correlationOutcome} onOpenSnapshot={openCorrelationPath} />
+      ) : null}
+
       {loadingGraph ? (
         <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
           <GraphPanelSkeleton
@@ -962,7 +971,7 @@ function AttackPathInvestigationContent() {
             Clear investigation filters
           </button>
         </section>
-      ) : (
+      ) : showCorrelationOverview ? null : (
         <InvestigationPathWorkspace
           rows={rankedRows}
           selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
@@ -1029,6 +1038,7 @@ function AttackPathInvestigationContent() {
           detail={
             selectedExposurePath ? (
               <ExposurePathCommandCenter
+                title={selectedFixFirstCard?.title}
                 path={selectedExposurePath}
                 actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
                 scanId={selectedScanId || undefined}
@@ -1089,7 +1099,7 @@ function AttackPathInvestigationContent() {
         defaultOpen={false}
       >
         <div className="space-y-4">
-          {(!captureMode || correlationCaptureMode) && snapshots.length > 0 ? (
+          {!showCorrelationOverview && (!captureMode || correlationCaptureMode) && snapshots.length > 0 ? (
             <GraphCorrelationWorkflow
               snapshots={snapshots}
               initialRun={latestCorrelationRun}

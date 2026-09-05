@@ -104,11 +104,10 @@ describe("ExposurePathCommandCenter", () => {
     );
 
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
-      "Analyst Agent → Database service → werkzeug → CVE-2026-0002 → Execute Sql → DATABASE URL",
+      "Analyst Agent → CVE-2026-0002",
     );
-    expect(screen.getByTestId("exposure-path-hop-title")).toBeInTheDocument();
-    expect(screen.getByText("Analyst Agent")).toBeInTheDocument();
-    expect(within(screen.getByTestId("exposure-path-hop-title")).getByText("CVE-2026-0002")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2 })).toBeVisible();
+    expect(screen.queryByTestId("exposure-path-hop-title")).not.toBeInTheDocument();
     expect(screen.queryByText("What is exposed")).not.toBeInTheDocument();
     expect(screen.getByText("Evidence & relationships")).toBeInTheDocument();
     expect(screen.queryByText("Evidence drawer")).not.toBeVisible();
@@ -319,3 +318,14 @@ it("retains relationships beyond the eighth receipt", () => {
   render(<ExposurePathCommandCenter path={{...basePath, relationships}} />);
   expect(screen.getByText("relation_12")).toBeInTheDocument();
 });
+
+ it("keeps a long digest compact and exposes its complete value on demand", () => {
+  const digest = `Digest sha256:${"a".repeat(64)}`;
+  const path = {...longPath, hops: longPath.hops.map((hop, index) => index === 2 ? {...hop, subtitle: digest} : hop)};
+  render(<ExposurePathCommandCenter path={path} />);
+  const toggle = screen.getByText("Digest sha256:aaaaaaaaaaaa…");
+  expect(toggle).toBeVisible();
+  expect(screen.getByText(digest, {selector: "code"})).not.toBeVisible();
+  fireEvent.click(toggle);
+  expect(screen.getByText(digest, {selector: "code"})).toBeVisible();
+ });

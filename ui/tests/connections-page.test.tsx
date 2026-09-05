@@ -272,6 +272,7 @@ describe("ConnectionsPage — Connect segment", () => {
     const connectAws = screen.getByRole("button", { name: "Connect Amazon Web Services" });
     expect(addAccount).toBeDisabled();
     expect(connectAws).toBeDisabled();
+    expect(screen.getAllByText(/read-only for this action/i)).toHaveLength(1);
     fireEvent.click(addAccount);
     fireEvent.click(connectAws);
     expect(screen.queryByRole("dialog", { name: "Add cloud account" })).not.toBeInTheDocument();

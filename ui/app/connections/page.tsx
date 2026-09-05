@@ -1705,6 +1705,7 @@ function ConnectSegment({
   return (
     <div className="space-y-6">
       <FirstRunJourney
+        showPermissionNotice={false}
         connectionsCount={connectionsCount}
         verifiedConnectionsCount={verifiedConnectionsCount}
         scannedConnectionsCount={scannedConnectionsCount}

@@ -74,16 +74,17 @@ export function AttackPathCorrelationProof({
           ))}
         </div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5">
-        <span className="text-[15px] font-medium text-[color:var(--text-tertiary)]">Exact anchors</span>
-        {missingNodes.length > 0 && <span role="status">{missingNodes.length} path nodes unavailable</span>}
+      {missingNodes.length > 0 && <p role="status" className="mt-2 text-[15px] text-amber-700 dark:text-amber-300">{missingNodes.length} path nodes unavailable</p>}
+      <details className="mt-3 border-t border-[color:var(--border-subtle)] pt-2">
+        <summary className="cursor-pointer py-1 text-[15px] text-[color:var(--text-secondary)]">Exact anchors · {anchors.length} artifacts · {sourceCount} source snapshots</summary>
+        <div className="mt-2 flex flex-wrap gap-2">
         {anchors.map((node) => (
           <span key={node.id} className="max-w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-1 font-mono text-[15px] text-[color:var(--foreground)] [overflow-wrap:anywhere]">
             {node.label || node.id}
           </span>
         ))}
-        <span className="ml-auto text-[15px] text-[color:var(--text-tertiary)]">{sourceCount} source snapshots</span>
-      </div>
+        </div>
+      </details>
       <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
         <summary className="cursor-pointer list-none px-3 py-2 text-[15px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
           Inspect {receipts.length} hop receipts

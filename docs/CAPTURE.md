@@ -90,7 +90,7 @@ deterministic public screenshot set.
 | `mesh-live.png` | `/mesh?capture=1` | Capture-mode scopes developer-copilot + sre-runbook-agent on shared filesystem MCP with path focus off and labeled edges | README mesh proof must differ from lineage: multi-agent shared server, not the same single CVE chain |
 | `gateway-policies-live.png` | `/runtime?tab=gateway&capture=1` | KPI rollup, enforcement posture, and recent tool-call evidence | Proves runtime gateway observability without a live proxy session during capture |
 | `security-graph-live.png` | `/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1` | Capture a prioritized synthetic attack path with graph evidence export and remediation handoff | Keeps the gallery fixture pinned to its own scan instead of inheriting a newer correlation snapshot |
-| `correlation-receipts-live.png` | `/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&correlation=1&capture=1` | Latest completed correlation selected automatically, leading with affected assets, risk, real advisory, runtime state, and remediation action; receipt details and custom creation stay collapsed | Primary README proof; generated from the reference lab rather than the synthetic graph fixture |
+| `correlation-receipts-live.png` | `/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&correlation=1&capture=1` | Latest completed correlation selected automatically, leading with affected assets, path priority, real advisory, runtime state, and remediation action; receipt details and custom creation stay collapsed | Primary README proof; generated from the reference lab rather than the synthetic graph fixture |
 | `correlation-path-live.png` | `/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&cve=CVE-2023-4863&capture=1` | Confirmed real-advisory path with all eight hops visible, compact exact anchors, freshness, runtime proof, and inspectable per-hop receipts | Primary README path proof; modeled local infrastructure, never customer evidence |
 | `correlation-receipts-light-live.png` | `/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&correlation=1&capture=1` | Same reference-lab outcome-first decision surface in the light theme | Theme readability contract; not a separate evidence run |
 | `correlation-path-light-live.png` | `/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1&cve=CVE-2023-4863&capture=1` | Same confirmed eight-hop reference-lab path in the light theme | Theme readability contract; not a separate evidence run |
@@ -168,6 +168,10 @@ Do not commit replacement correlation hero views unless the lab generator check,
 reference-lab tests, and screenshot metadata checks are green. The separate
 backend demo-estate smoke continues to validate API/storage behavior for the
 synthetic gallery; it is not an alternate source for the correlation hero.
+
+The harness exercises overview → selected path → browser Back, checks remediation
+context, and opens the full container identifier before restoring the default
+disclosure state. Desktop hero captures also enforce readability at README width.
 
 The harness rejects `CAPTURE_BASE_URL` and starts the current local standalone
 production build. It routes the committed reference-lab artifact into the two

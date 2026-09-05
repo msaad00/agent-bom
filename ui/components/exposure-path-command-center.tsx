@@ -24,7 +24,6 @@ import {
   pathDisplayTitle,
   pathFixLabel,
   pathSpanLabel,
-  type ExposureEntityRef,
   type ExposureEntityRole,
   type ExposurePath,
 } from "@/lib/exposure-path";
@@ -109,6 +108,7 @@ const ROLE_META: Record<ExposureEntityRole, { label: string; icon: LucideIcon; t
 
 export function ExposurePathCommandCenter({
   path,
+  title,
   actions = [],
   scanId,
   view: controlledView,
@@ -118,6 +118,7 @@ export function ExposurePathCommandCenter({
   detailsSlot,
 }: {
   path: ExposurePath;
+  title?: string | undefined;
   actions?: ExposurePathCommandAction[] | undefined;
   scanId?: string | undefined;
   /** Controlled active view. When omitted the component owns the state. */
@@ -154,6 +155,9 @@ export function ExposurePathCommandCenter({
     path.summary ||
     "A reachable package or service on this path inherits downstream credential and tool exposure from the agent runtime.";
   const primaryAction = actions[0];
+  const findingSuffix = path.findings[0] ? ` through ${path.findings[0]}` : "";
+  const headline = findingSuffix && title?.endsWith(findingSuffix) ? title.slice(0, -findingSuffix.length) : title;
+  const packageHop = path.hops.find((hop) => hop.role === "package");
   const severityTone =
     path.severity === "critical"
       ? "from-red-500/80 via-red-500/20 to-transparent"
@@ -168,7 +172,7 @@ export function ExposurePathCommandCenter({
         <div className="ep-header">
           <div className="ep-header-copy">
             <div className="ep-badges">
-              <span className="ep-severity">
+              <span className="ep-severity" data-severity={String(path.severity).toLowerCase()}>
                 {String(path.severity)} severity
               </span>
               {evidence?.isKev ? (
@@ -177,13 +181,11 @@ export function ExposurePathCommandCenter({
                 </span>
               ) : null}
             </div>
-            <h2 className="sr-only">{pathDisplayTitle(path)}</h2>
-            <ExposurePathHopTitle hops={path.hops.length > 0 ? path.hops : [path.source, path.target]} />
+            <h2 className="ep-outcome-title">{headline ?? `${formatExposureEntityTitle(path.source.label, path.source.role)} → ${formatExposureEntityTitle(path.target.label, path.target.role)}`}</h2>
             <p
-              title={pathSummary}
               className="ep-summary"
             >
-              {pathSummary}
+              {path.findings[0] ? <>{path.findings[0]}{packageHop ? <> · {packageHop.label}</> : null} · Follow the evidence to the affected asset.</> : "Follow the ordered relationships and inspect their evidence."}
             </p>
           </div>
           <div className="ep-metrics">
@@ -193,6 +195,20 @@ export function ExposurePathCommandCenter({
             {fixLabel ? <MetricPill label="Fix" value={fixLabel} tone="green" /> : null}
           </div>
         </div>
+
+        {primaryAction && (
+          <div className="ep-actions">
+            <Link
+              href={primaryAction.href}
+              data-testid="exposure-path-primary-action"
+              className="ep-primary-action"
+            >
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{primaryAction.title}</span>
+            </Link>
+            <p className="ep-action-detail">{primaryAction.detail}</p>
+          </div>
+        )}
 
         <div className="ep-view-row">
           <div className="ep-view-label">
@@ -226,18 +242,6 @@ export function ExposurePathCommandCenter({
 
         {techniquesSlot}
 
-        {primaryAction && (
-          <div className="ep-actions">
-            <Link
-              href={primaryAction.href}
-              data-testid="exposure-path-primary-action"
-              className="ep-primary-action"
-            >
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              <span>{primaryAction.title}</span>
-            </Link>
-          </div>
-        )}
 
         <details className="ep-details group">
           <summary className="ep-details-summary">
@@ -245,6 +249,7 @@ export function ExposurePathCommandCenter({
             <ChevronDown className="ep-chevron" />
           </summary>
         <div className="ep-details-body">
+          <p className="ep-summary">{pathSummary}</p>
           <section aria-label="Relationship proof">
             <div className="ep-kicker mb-2">
               Relationship proof
@@ -515,7 +520,7 @@ function ExposurePathSequence({
   return (
     <ol
       aria-label={`Selected exposure path ordered steps for ${pathDisplayTitle(path)}`}
-      className={`space-y-0 p-2 ${showDesktop ? "sm:grid sm:grid-cols-2 sm:gap-2 lg:grid-cols-4" : "sm:hidden"}`}
+      className={`ep-sequence ${showDesktop ? "ep-sequence-desktop" : "sm:hidden"}`}
       data-testid="exposure-path-sequence"
     >
       {path.hops.map((hop, index) => {
@@ -540,8 +545,8 @@ function ExposurePathSequence({
                 Entry point
               </div>
             )}
-            <div className={`ep-sequence-card ${meta.tint}`}>
-              <span className="ep-sequence-icon">
+            <div className={`ep-sequence-card ${hop.role === "finding" ? "ep-sequence-finding" : ""}`}>
+              <span className={`ep-sequence-icon ${meta.tint}`}>
                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
               <div className="min-w-0">
@@ -552,9 +557,12 @@ function ExposurePathSequence({
                   {hop.label}
                 </p>
                 {hop.subtitle ? (
-                  <p className="ep-sequence-subtitle" title={hop.subtitle}>
-                    {hop.subtitle}
-                  </p>
+                  /sha256:[a-f0-9]{32,}/i.test(hop.subtitle) ? (
+                    <details className="ep-identifier">
+                      <summary aria-label={`Show full identifier for ${hop.label}`}>{hop.subtitle.replace(/(sha256:[a-f0-9]{12})[a-f0-9]+/i, "$1…")}</summary>
+                      <code>{hop.subtitle}</code>
+                    </details>
+                  ) : <p className="ep-sequence-subtitle">{hop.subtitle}</p>
                 ) : null}
               </div>
             </div>
@@ -565,33 +573,6 @@ function ExposurePathSequence({
   );
 }
 
-function ExposurePathHopTitle({ hops }: { hops: ExposureEntityRef[] }) {
-  /** Single-row scrollable hop chips — never wrap mid-chain. */
-  return (
-    <div
-      className="ep-hop-title"
-      aria-hidden="true"
-      data-testid="exposure-path-hop-title"
-    >
-      {hops.map((hop, index) => {
-        const meta = ROLE_META[hop.role] ?? ROLE_META.unknown;
-        return (
-          <div key={`${hop.id}-${index}`} className="ep-hop">
-            {index > 0 ? (
-              <ChevronRight className="ep-hop-arrow" aria-hidden="true" />
-            ) : null}
-            <span
-              title={hop.label}
-              className={`ep-hop-chip ${meta.tint}`}
-            >
-              {formatExposureEntityTitle(hop.label, hop.role)}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function EvidenceRow({
   label,

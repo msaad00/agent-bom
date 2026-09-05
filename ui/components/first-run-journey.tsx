@@ -35,6 +35,7 @@ export function FirstRunJourney({
   canManage,
   session,
   onConnect,
+  showPermissionNotice = true,
 }: {
   connectionsCount: number;
   verifiedConnectionsCount: number;
@@ -42,6 +43,7 @@ export function FirstRunJourney({
   canManage: boolean;
   session: AuthMeResponse | null;
   onConnect: () => void;
+  showPermissionNotice?: boolean;
 }) {
   const connected = connectionsCount > 0;
   const verified = verifiedConnectionsCount > 0;
@@ -137,12 +139,9 @@ export function FirstRunJourney({
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border-subtle)] pt-3">
         <p className="text-xs text-[var(--text-secondary)]">{currentStep.detail}</p>
-        <JourneyAction
-          step={currentStep.id}
-          canManage={canManage}
-          session={session}
-          onConnect={onConnect}
-        />
+        {canManage || showPermissionNotice ? (
+          <JourneyAction step={currentStep.id} canManage={canManage} session={session} onConnect={onConnect} />
+        ) : null}
       </div>
     </section>
   );

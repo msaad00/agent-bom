@@ -224,6 +224,10 @@ export function GraphCorrelationWorkflow({
   const boundOutcome = run?.output_scan_id && outcome?.scanId === run.output_scan_id
     ? outcome
     : null;
+  const findingSuffix = boundOutcome?.finding ? ` through ${boundOutcome.finding}` : "";
+  const outcomeTitle = findingSuffix && boundOutcome?.title.endsWith(findingSuffix)
+    ? boundOutcome.title.slice(0, -findingSuffix.length)
+    : boundOutcome?.title;
   const resultIsVerified = isComplete && analysisState === "complete" && staleReceiptCount === 0;
   const evidenceState = staleReceiptCount > 0
     ? `${staleReceiptCount} stale source${staleReceiptCount === 1 ? "" : "s"} allowed`
@@ -250,7 +254,7 @@ export function GraphCorrelationWorkflow({
             <Network className="h-4 w-4 text-emerald-500" /> Correlation result
           </p>
           <p className="gc-intro">
-            The latest completed run is selected automatically. Review its outcome first; inspect source receipts and workflow mechanics when needed.
+            Latest completed investigation · evidence and recommended action
           </p>
         </div>
         <span className="gc-bound">
@@ -258,33 +262,6 @@ export function GraphCorrelationWorkflow({
         </span>
       </div>
 
-      <details className="gc-panel group">
-        <summary className="gc-summary">
-          <span>How evidence becomes an action</span>
-          <ChevronDown className="gc-chevron" />
-        </summary>
-      <ol aria-label="Evidence journey" className="gc-journey">
-        {JOURNEY.map((step, index) => {
-          const state = journeyState[index]!;
-          const done = state.done;
-          const StepIcon = step.icon;
-          return (
-            <li key={step.label} className="gc-journey-step">
-              <div className="flex items-center gap-2">
-                <span className={`gc-journey-icon ${done ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300" : "bg-sky-500/10 text-sky-600 dark:text-sky-300"}`}>
-                  <StepIcon className="h-3.5 w-3.5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="gc-step-title">{step.label}</p>
-                  <p className="gc-step-detail">{done ? "Complete" : state.detail || step.detail}</p>
-                </div>
-              </div>
-              {index < JOURNEY.length - 1 ? <ArrowRight className="gc-journey-arrow" aria-hidden="true" /> : null}
-            </li>
-          );
-        })}
-      </ol>
-      </details>
 
       {run ? (
         <div
@@ -300,28 +277,28 @@ export function GraphCorrelationWorkflow({
                   : isFailed ? "Correlation failed" : `Correlation ${run.status}`}
               </p>
               {isComplete && attackPaths > 0 && boundOutcome ? (
-                <details className="gc-preview group">
-                  <summary className="gc-preview-summary">
-                    <span>Review prioritized path preview</span>
-                    <ChevronDown className="gc-chevron-small" />
-                  </summary>
-                  <div className="gc-preview-body">
-                    <h3 className="gc-heading">{boundOutcome.title}</h3>
-                    <p className="gc-preview-summary-copy">{boundOutcome.summary}</p>
-                    <p className="gc-preview-route">{boundOutcome.source} → {boundOutcome.target}</p>
-                    <div className="gc-preview-badges">
-                      <span className="gc-risk">Risk {boundOutcome.risk.toFixed(1)}</span>
-                      <span className="gc-pill">{boundOutcome.hops} directed hops</span>
-                      {boundOutcome.packageName ? <span className="gc-package">{boundOutcome.packageName}</span> : null}
-                      {boundOutcome.finding ? <span className="gc-finding">{boundOutcome.finding}</span> : null}
-                      {boundOutcome.runtimeObserved ? <span className="gc-runtime">Runtime observed</span> : null}
-                      {boundOutcome.runtimeBlocked ? <span className="gc-blocked">Runtime block verified</span> : null}
-                    </div>
-                    {boundOutcome.action ? (
-                      <a data-testid="correlation-primary-action" href={boundOutcome.action.href} className="gc-primary gc-primary-inline">{boundOutcome.action.title}</a>
-                    ) : null}
+                <div className="gc-outcome" aria-label="Prioritized path">
+                  <h3 className="gc-heading">{outcomeTitle}</h3>
+                  <p className="gc-preview-summary-copy">{boundOutcome.summary}</p>
+                  <div className="gc-impact-route">
+                    <div><span className="gc-impact-label">Entry point</span><strong>{boundOutcome.source}</strong></div>
+                    <ArrowRight className="gc-impact-arrow" aria-hidden="true" />
+                    <div><span className="gc-impact-label">Vulnerable package</span><strong>{boundOutcome.packageName ?? "Package unavailable"}</strong>{boundOutcome.finding && <span className="gc-impact-finding">{boundOutcome.finding}</span>}</div>
+                    <ArrowRight className="gc-impact-arrow" aria-hidden="true" />
+                    <div><span className="gc-impact-label">Reachable asset</span><strong>{boundOutcome.target}</strong></div>
                   </div>
-                </details>
+                  <p className="gc-source-coverage">{[...new Set(run.input_manifest.map((receipt) => sourceLabel(receipt.source_kinds, receipt.scan_id)))].join(" · ")}</p>
+                  <div className="gc-preview-badges">
+                    <span className="gc-pill">Priority {boundOutcome.risk.toFixed(1)}</span>
+                    <span className="gc-pill">{boundOutcome.hops} directed hops</span>
+                    {boundOutcome.runtimeObserved ? <span className="gc-runtime">Runtime observed</span> : null}
+                    {boundOutcome.runtimeBlocked ? <span className="gc-blocked">Runtime block verified</span> : null}
+                  </div>
+                  <div className="gc-outcome-actions">
+                    {boundOutcome.action ? <a data-testid="correlation-primary-action" href={boundOutcome.action.href} className="gc-primary gc-primary-inline">{boundOutcome.action.title}<ArrowRight className="h-4 w-4" aria-hidden="true" /></a> : null}
+                    <button data-testid="correlation-open-path" type="button" onClick={() => onOpenSnapshot(run.output_scan_id)} className="gc-open-path">Open top path</button>
+                  </div>
+                </div>
               ) : isComplete && attackPaths === 0 ? (
                 <>
                   <h3 className="gc-heading">
@@ -345,18 +322,18 @@ export function GraphCorrelationWorkflow({
                 <span>{analysisLabel}</span>
               </div>
             </div>
-            <div className="gc-actions">
+            {isComplete && run.output_scan_id && (!boundOutcome || attackPaths === 0) ? <div className="gc-actions">
               {isComplete && attackPaths === 0 && run.output_scan_id ? (
                 <a href={`/security-graph?lens=attack-path&scan=${encodeURIComponent(run.output_scan_id)}`} className="gc-primary">
                   Review exposure candidates
                 </a>
               ) : null}
-              {isComplete && run.output_scan_id ? (
+              {isComplete && run.output_scan_id && !boundOutcome ? (
                 <button data-testid="correlation-open-path" type="button" onClick={() => onOpenSnapshot(run.output_scan_id)} className="gc-open-path">
                   Open top path
                 </button>
               ) : null}
-            </div>
+            </div> : null}
           </div>
           <details className="gc-receipts group">
             <summary className="gc-receipts-summary">
@@ -388,6 +365,34 @@ export function GraphCorrelationWorkflow({
           <ChevronDown className="gc-chevron" />
         </summary>
         <div className="gc-form">
+      <details className="gc-panel group">
+        <summary className="gc-summary">
+          <span>How evidence becomes an action</span>
+          <ChevronDown className="gc-chevron" />
+        </summary>
+      <ol aria-label="Evidence journey" className="gc-journey">
+        {JOURNEY.map((step, index) => {
+          const state = journeyState[index]!;
+          const done = state.done;
+          const StepIcon = step.icon;
+          return (
+            <li key={step.label} className="gc-journey-step">
+              <div className="flex items-center gap-2">
+                <span className={`gc-journey-icon ${done ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300" : "bg-sky-500/10 text-sky-600 dark:text-sky-300"}`}>
+                  <StepIcon className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="gc-step-title">{step.label}</p>
+                  <p className="gc-step-detail">{done ? "Complete" : state.detail || step.detail}</p>
+                </div>
+              </div>
+              {index < JOURNEY.length - 1 ? <ArrowRight className="gc-journey-arrow" aria-hidden="true" /> : null}
+            </li>
+          );
+        })}
+      </ol>
+      </details>
+
           <p className="gc-form-note">Eligible fresh scan snapshots are preselected. Review the explicit policy before creating an immutable run.</p>
       <div className="gc-form-grid">
         <label className="gc-label">

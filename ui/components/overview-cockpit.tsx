@@ -266,7 +266,7 @@ export function OverviewCockpit({
           bare
           title="Command center"
           titleClassName={SECTION_TITLE_CLASS}
-          subtitle="Posture and open issues across every lane — one exec read."
+          subtitle="Current posture and open findings"
           defaultOpen
         >
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
@@ -304,14 +304,6 @@ export function OverviewCockpit({
           {/* 1b — What influences the score: read-only weighted-input breakdown
               so the grade is legible, not opaque (#3940). */}
           <ScoreExplainer breakdown={scoreBreakdown} grade={grade} />
-
-          {/* 2 — Coverage and operations share one compact, collapsible
-              leadership section. Security disciplines and operational plumbing
-              are related context, but remain clearly labeled and non-additive. */}
-          <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />
-
-          {/* 3 — Compliance: one honest strip, coverage after first scan */}
-          <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
         </Collapsible>
       </section>
 
@@ -327,6 +319,11 @@ export function OverviewCockpit({
           agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
         />
       </section>
+      <section className="space-y-2" aria-label="Coverage and compliance context">
+        <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />
+        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
+      </section>
+
     </div>
   );
 }

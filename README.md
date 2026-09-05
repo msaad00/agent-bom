@@ -57,34 +57,50 @@ compliance exports, and runtime enforcement in your own environment.
 
 [Quick start](#quick-start) · [Evidence workflow](docs/HOW_IT_WORKS.md) · [Integration capability matrix](docs/INTEGRATIONS.md) · [Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json) · [Control-plane architecture](docs/ARCHITECTURE.md)
 
-### Product proof: independent evidence, one verifiable path
+### See what needs fixing — and why
 
-The views below come from the committed **Reference evidence lab — modeled
-local infrastructure**. The credential-free run uses the real repository,
-CycloneDX, Kubernetes IaC, and MCP parsers plus the bundled advisory scanner for
-`pillow@9.0.0` / `CVE-2023-4863`, then correlates exact OCI digest, Kubernetes
-UID, MCP tool, workload identity, and live local gateway receipts. It is not
-customer evidence or a live-cloud claim.
+**Prioritize.** Start with the affected service, reachable asset, and recommended
+fix. Open the strongest path to inspect the relationships behind that conclusion.
 
-Investigation loads the latest completed correlation automatically and shows
-the source-to-path journey first. Custom snapshot selection remains available
-as an explicit advanced workflow with the freshness policy visible.
+These captures use the **Reference evidence lab — modeled local infrastructure**.
+They include real parser, scanner, and local gateway results; they are not
+customer evidence or live-cloud validation.
 
 <p align="center">
-  <a href="docs/images/correlation-receipts-live.png"><img src="docs/images/correlation-receipts-live.png" alt="Reference evidence lab correlation outcome showing the affected service and data asset, CVE-2023-4863, runtime evidence, and remediation action" width="920" /></a>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/correlation-receipts-light-live.png">
+    <img src="docs/images/correlation-receipts-live.png" alt="Investigation overview: affected service, vulnerable package, reachable asset, evidence quality, and remediation action" width="920" />
+  </picture>
 </p>
 
-The resulting path is confirmed only because every directed hop is traversable
-and provenance-backed: exposed service → workload → digest-pinned container →
-`pillow@9.0.0` / `CVE-2023-4863` → MCP capability → workload identity →
-modeled sensitive object store. The same lab records an observed gateway call
-and a separate strict opt-in block before the remediation handoff.
+**Investigate and act.** Follow the ordered path from entry point to data asset.
+Switch to Graph or List, inspect a hop’s source evidence, or open the package
+remediation. Exact identifiers and receipts stay one click away. “Path verified”
+requires complete, fresh evidence for every directed, traversable hop; modeled
+infrastructure and runtime observations remain separately labeled.
 
 <p align="center">
-  <a href="docs/images/correlation-path-live.png"><img src="docs/images/correlation-path-live.png" alt="Reference evidence lab Investigation path for CVE-2023-4863 with exact container digest, per-hop source provenance, freshness, runtime observation and strict block proof, and remediation handoff" width="920" /></a>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/correlation-path-light-live.png">
+    <img src="docs/images/correlation-path-live.png" alt="Selected investigation: remediation first, eight readable path nodes, and expandable identity and hop receipts" width="920" />
+  </picture>
 </p>
 
-[Regenerate the reference lab](examples/reference-evidence-lab/README.md) · [Open the full product gallery](docs/GALLERY.md) · [See the capture protocol](docs/CAPTURE.md)
+<details>
+<summary>Reproduce the evidence behind these views</summary>
+
+The credential-free lab runs repository, CycloneDX, Kubernetes IaC, and MCP
+parsers plus the bundled advisory scanner for `pillow@9.0.0` / `CVE-2023-4863`.
+Correlation connects the OCI digest, Kubernetes UID, MCP tool, workload identity,
+and local gateway receipts. An observed call and a separate opt-in block have
+independent receipts; neither is proof of a deployed remediation.
+
+[Run the reference lab](examples/reference-evidence-lab/README.md) ·
+[Capture protocol](docs/CAPTURE.md)
+
+</details>
+
+[Explore the product gallery](docs/GALLERY.md)
 
 ## Value by role
 

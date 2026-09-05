@@ -1,5 +1,5 @@
 {
-  "artifact_sha256": "sha256:f1d6617bae897c2c122f7de91c5edcbb5d22ed0d5db4ac60603280c8462a3712",
+  "artifact_sha256": "sha256:51757ff2099175a7b2061c9abbbdb57a89aebca257b03e8e7cc65aafc9f00ccd",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -195,9 +195,10 @@
           "technique_mappings": [
             {
               "catalog": "attack",
-              "confidence": 0.8,
+              "confidence": null,
+              "evidence_basis": null,
               "hop_index": 3,
-              "provenance": "observed vulnerable_to edge into vulnerability 'vulnerability:mcp:cve-2023-4863'",
+              "provenance": "unclassified vulnerable_to edge into vulnerability 'vulnerability:mcp:cve-2023-4863'",
               "tactics": [
                 "privilege-escalation"
               ],
@@ -206,9 +207,10 @@
             },
             {
               "catalog": "attack",
-              "confidence": 0.8,
+              "confidence": null,
+              "evidence_basis": null,
               "hop_index": 4,
-              "provenance": "observed exploitable_via edge into tool 'tool:runtime:render-untrusted-image'",
+              "provenance": "unclassified exploitable_via edge into tool 'tool:runtime:render-untrusted-image'",
               "tactics": [
                 "privilege-escalation"
               ],
@@ -218,8 +220,9 @@
             {
               "catalog": "attack",
               "confidence": 0.7,
+              "evidence_basis": "modeled",
               "hop_index": 6,
-              "provenance": "observed has_permission edge into data_store 'data-store:reference-customer-records'",
+              "provenance": "modeled has_permission edge into data_store 'data-store:reference-customer-records'",
               "tactics": [
                 "collection"
               ],
@@ -1746,9 +1749,10 @@
     "technique_mappings": [
       {
         "catalog": "attack",
-        "confidence": 0.8,
+        "confidence": null,
+        "evidence_basis": null,
         "hop_index": 3,
-        "provenance": "observed vulnerable_to edge into vulnerability 'vulnerability:mcp:cve-2023-4863'",
+        "provenance": "unclassified vulnerable_to edge into vulnerability 'vulnerability:mcp:cve-2023-4863'",
         "tactics": [
           "privilege-escalation"
         ],
@@ -1757,9 +1761,10 @@
       },
       {
         "catalog": "attack",
-        "confidence": 0.8,
+        "confidence": null,
+        "evidence_basis": null,
         "hop_index": 4,
-        "provenance": "observed exploitable_via edge into tool 'tool:runtime:render-untrusted-image'",
+        "provenance": "unclassified exploitable_via edge into tool 'tool:runtime:render-untrusted-image'",
         "tactics": [
           "privilege-escalation"
         ],
@@ -1769,8 +1774,9 @@
       {
         "catalog": "attack",
         "confidence": 0.7,
+        "evidence_basis": "modeled",
         "hop_index": 6,
-        "provenance": "observed has_permission edge into data_store 'data-store:reference-customer-records'",
+        "provenance": "modeled has_permission edge into data_store 'data-store:reference-customer-records'",
         "tactics": [
           "collection"
         ],

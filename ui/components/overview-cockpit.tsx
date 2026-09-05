@@ -871,16 +871,6 @@ function TopRisksPanel({
   );
 }
 
-const RISK_NODE_META: Record<
-  ExposurePathView["nodes"][number]["type"],
-  { dot: string }
-> = {
-  cve: { dot: "bg-red-500" },
-  package: { dot: "bg-violet-500" },
-  server: { dot: "bg-sky-500" },
-  agent: { dot: "bg-emerald-500" },
-  credential: { dot: "bg-amber-500" },
-};
 const RISK_NODE_ORDER: ExposurePathView["nodes"][number]["type"][] = [
   "cve",
   "package",
@@ -888,13 +878,6 @@ const RISK_NODE_ORDER: ExposurePathView["nodes"][number]["type"][] = [
   "agent",
   "credential",
 ];
-
-function riskScoreTone(score: number): string {
-  if (score >= 9) return "border-red-500/45 bg-red-500/10 text-red-700 dark:text-red-300";
-  if (score >= 7) return "border-orange-500/45 bg-orange-500/10 text-orange-700 dark:text-orange-300";
-  if (score >= 4) return "border-yellow-500/45 bg-yellow-500/10 text-yellow-700 dark:text-yellow-200";
-  return "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-300";
-}
 
 function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) {
   // Order the chain into the readable attack narrative regardless of the raw
@@ -904,56 +887,40 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
   );
   const hasCredential = path.nodes.some((node) => node.type === "credential");
   const hasAgent = path.nodes.some((node) => node.type === "agent");
-  const topReason = `${
-    path.riskScore >= 9 ? "critical path" : path.riskScore >= 7 ? "high-risk path" : "ranked path"
-  }${hasAgent ? " reaches an agent" : ""}${hasCredential ? " and exposes a credential" : ""}`;
+  const topReason = `path${hasAgent ? " reaches an agent" : ""}${hasCredential ? " and exposes a credential" : ""}`;
 
   return (
     <Link
       href={path.href}
-      className="group block rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 transition hover:border-[color:var(--border-strong)]"
+      className="group block rounded-lg border-b border-[color:var(--border-subtle)] px-3 py-3 transition hover:bg-[color:var(--surface-muted)]"
     >
       <div className="flex items-center gap-3">
         <span className="w-4 shrink-0 text-center font-mono text-xs text-[color:var(--text-tertiary)]">
           {rank}
         </span>
-        <span
-          className={`shrink-0 rounded-md border px-2 py-1 font-mono text-xs font-semibold ${riskScoreTone(path.riskScore)}`}
-          title={`Composite risk ${path.riskScore.toFixed(1)}`}
-        >
-          {path.riskScore.toFixed(1)}
-        </span>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-y-1">
           {ordered.map((node, index) => (
-            <span key={`${node.type}-${index}`} className="inline-flex items-center">
+            <span key={`${node.type}-${index}`} className="inline-flex min-w-0 max-w-full items-center">
               {index > 0 ? (
                 <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-[color:var(--text-tertiary)]" />
               ) : null}
-              <span className="inline-flex items-center gap-1 rounded-md bg-[color:var(--surface)] px-1.5 py-0.5 text-[11px]">
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${RISK_NODE_META[node.type].dot}`}
-                  aria-hidden="true"
-                />
-                <span
-                  className="max-w-[18ch] truncate text-[color:var(--text-secondary)]"
-                  title={node.label}
-                >
-                  {node.label}
-                </span>
+              <span
+                className={`px-1 py-0.5 text-sm [overflow-wrap:anywhere] ${node.type === "cve" ? "font-medium text-[color:var(--foreground)]" : "text-[color:var(--text-secondary)]"}`}
+                title={node.label}
+              >
+                {node.label}
               </span>
             </span>
           ))}
         </div>
-        {hasCredential ? (
-          <span className="hidden shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-200 sm:inline">
-            credential
-          </span>
-        ) : null}
+        <span className="shrink-0 text-sm text-[color:var(--text-secondary)]" title={`Path priority ${path.riskScore.toFixed(1)}`}>
+          <span className="hidden sm:inline">Priority </span><strong className="font-medium text-[color:var(--foreground)]">{path.riskScore.toFixed(1)}</strong>
+        </span>
         <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition group-hover:text-[color:var(--foreground)]" />
       </div>
       {rank === 1 ? (
-        <p className="mt-1.5 pl-20 text-[10px] font-medium text-[color:var(--text-secondary)]">
-          Why #1: {topReason}
+        <p className="mt-1.5 pl-7 text-xs font-medium text-[color:var(--text-secondary)]">
+          Highest priority: {topReason}
         </p>
       ) : null}
     </Link>

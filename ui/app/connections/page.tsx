@@ -1438,7 +1438,7 @@ function ConnectionsHub() {
       <PageLaneHeader
         lane="cloud-data"
         title="Connections"
-        subtitle="One place to connect cloud, code, AI, and data — then see every registered source in one dense table."
+        subtitle="Connect cloud, code, AI, and data, then verify access and run a scan."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-700 dark:text-purple-200">
             {deploymentModeLabel(counts?.deployment_mode)} · brokered read-only

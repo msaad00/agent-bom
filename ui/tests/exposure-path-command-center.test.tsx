@@ -213,7 +213,7 @@ describe("ExposurePathCommandCenter", () => {
     expect(within(orderedPath).getByText("11. Environment")).toBeInTheDocument();
     expect(within(orderedPath).queryByText(/hops hidden/)).not.toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Selected exposure path graph for/ })).not.toBeInTheDocument();
-    expect(screen.getByText("All 11 hops shown in order.")).toBeInTheDocument();
+    expect(screen.getByText("All 11 steps shown in order.")).toBeInTheDocument();
   });
 
   it("shows every hop in the eight-hop reference proof without a hidden summary", () => {

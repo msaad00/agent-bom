@@ -72,7 +72,8 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByTestId("overview-activated-services")).not.toBeInTheDocument();
     expect(screen.queryByText(/Trend unavailable/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Current evidence snapshot/i)).toBeInTheDocument();
-    expect(screen.getByText(/Why #1:/i)).toHaveTextContent(/critical path reaches an agent/i);
+    expect(screen.getByText(/Highest priority:/i)).toHaveTextContent(/path reaches an agent/i);
+    expect(screen.queryByText(/critical path/i)).not.toBeInTheDocument();
   });
 
   it("renders a scan-backed posture change when trend history exists", () => {

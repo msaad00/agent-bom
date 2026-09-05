@@ -492,7 +492,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
           <span className="text-[color:var(--text-tertiary)]">
             {expanded
               ? "Full-width diagram — scroll horizontally."
-              : `All ${layout.totalHopCount} hops shown in order.`}
+              : `All ${layout.totalHopCount} steps shown in order.`}
           </span>
         </div>
       ) : null}

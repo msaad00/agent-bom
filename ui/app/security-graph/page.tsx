@@ -605,13 +605,18 @@ function AttackPathInvestigationContent() {
     [graphNodeById, selectedAttackPath, selectedFixFirstCard, selectedScanId],
   );
 
-  const selectedPathActions = useMemo(
-    () =>
-      selectedAttackPath
-        ? recommendedAttackPathActions(selectedAttackPath, graphNodeById, { scanId: selectedScanId || undefined })
-        : [],
-    [graphNodeById, selectedAttackPath, selectedScanId],
-  );
+  const selectedPathActions = useMemo(() => {
+    if (!selectedAttackPath) return [];
+    const actions = selectedFixFirstCard?.next_actions
+      ?? recommendedAttackPathActions(selectedAttackPath, graphNodeById, { scanId: selectedScanId || undefined });
+    const finding = selectedFixFirstCard?.affected.finding_labels?.[0] ?? selectedAttackPath.vuln_ids[0];
+    const packageNode = selectedAttackPath.hops
+      .map((hop) => graphNodeById.get(hop))
+      .find((node) => node?.entity_type === "package");
+    return actions.map((action) => action.href.split("?", 1)[0] === "/remediation"
+      ? { ...action, href: buildCorrelationRemediationHref(action.href, selectedScanId, finding, packageNode?.label) }
+      : action);
+  }, [graphNodeById, selectedAttackPath, selectedFixFirstCard, selectedScanId]);
   const correlationOutcome = useMemo<GraphCorrelationOutcome | null>(() => {
     if (
       !selectedAttackPath ||
@@ -1042,7 +1047,7 @@ function AttackPathInvestigationContent() {
               <ExposurePathCommandCenter
                 title={selectedFixFirstCard?.title}
                 path={selectedExposurePath}
-                actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
+                actions={selectedPathActions}
                 scanId={selectedScanId || undefined}
                 view={pathView}
                 onViewChange={setPathView}

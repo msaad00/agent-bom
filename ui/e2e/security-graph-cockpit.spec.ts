@@ -371,7 +371,7 @@ async function routeCockpit(
               {
                 title: "Upgrade vulnerable package",
                 detail: "Prioritize the package dependency before granting more tool access.",
-                href: "/findings?scan=scan-cockpit-fixture",
+                href: "/remediation",
               },
             ],
             affected: {
@@ -607,6 +607,9 @@ test("top-path deep links settle and keep subsequent queue selection interactive
   await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&path=top`);
   const detail = page.getByTestId("selected-exposure-path");
   await expect(detail.getByRole("heading", { name: "Critical package reachable from MCP server" })).toBeVisible();
+  await expect(detail.getByTestId("exposure-path-primary-action")).toHaveAttribute(
+    "href", `/remediation?scan=${scanId}&cve=CVE-2025-7783&package=form-data%404.0.0`,
+  );
   await page.getByLabel("Attack path queue").getByRole("button", { name: /#2/ }).click();
   await expect(page.getByRole("status")).toContainText("Focused path 2");
   // Let post-selection effects settle before checking that focus stays put.

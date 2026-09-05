@@ -2,12 +2,6 @@ import type { NextConfig } from "next";
 
 import { securityHeaders as buildSecurityHeaders } from "./lib/security-headers.mjs";
 
-const rawApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-// Rewrites always need a real backend origin. An empty env value means
-// "same-origin in the browser" (runtime-config) but must not produce a
-// relative rewrite destination that stalls the dev proxy.
-const API_URL = rawApiUrl || "http://localhost:8422";
-
 // NEXT_EXPORT=1 → static export bundled into the Python package (agent-bom api).
 // Rewrites require a running Node server so they are disabled in export mode.
 const isExport = process.env.NEXT_EXPORT === "1";
@@ -33,32 +27,12 @@ const nextConfig: NextConfig = {
   // The Python package uses static export, while the standalone Docker image
   // needs a Node server bundle for the separate control-plane UI container.
   output: isExport ? "export" : "standalone",
-  // Proxy /v1/* and /health to the FastAPI backend so the dev server works
-  // without CORS issues and without needing a separate nginx/caddy setup.
+  // Server-only runtime routing is owned by server/runtime-api-proxy.ts.
   ...(!isExport && {
     async headers() {
       return [{ source: "/:path*", headers: headersForNextServer }];
     },
-    async rewrites() {
-      return [
-        {
-          source: "/v1/:path*",
-          destination: `${API_URL}/v1/:path*`,
-        },
-        {
-          source: "/health",
-          destination: `${API_URL}/health`,
-        },
-        {
-          source: "/version",
-          destination: `${API_URL}/version`,
-        },
-        {
-          source: "/ws/:path*",
-          destination: `${API_URL}/ws/:path*`,
-        },
-      ];
-    },
+
   }),
 };
 

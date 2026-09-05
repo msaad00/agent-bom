@@ -7,13 +7,14 @@
     "node": "^22.22.2 || >=24.15.0 <25"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build --webpack",
+    "dev": "node scripts/run-next.mjs dev",
+    "build": "node scripts/run-next.mjs build --webpack",
     "start": "next start",
     "bundle:check": "node scripts/assert-install-matches-lockfile.mjs && node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint",
     "lock:normalize": "npm install --package-lock-only --ignore-scripts",
+    "test:runtime-proxy": "node scripts/smoke-runtime-api-proxy.mjs",
     "test:e2e": "node scripts/assert-install-matches-lockfile.mjs && node scripts/assert-build-is-current.mjs && playwright test",
     "verify:toolchain": "node scripts/verify-toolchain.mjs",
     "headers:sync": "node scripts/sync-vercel-headers.mjs",

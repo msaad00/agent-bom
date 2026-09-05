@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-05T00:28:23.384Z",
-  "source_commit": "943b6a228d5e8ee3cec3bce84610c26317542280",
+  "captured_at": "2026-09-05T00:35:30.955Z",
+  "source_commit": "8e9253f4308d8c8241afa67c636becbf237a045f",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:80e9efe7ac270f9f8983d863257b80b44e14b187ceb01e2a3eb0be135261b83e",
+  "capture_inputs_sha256": "sha256:b40eceed1ea4328fdd194de942eea4ba3f94cbdde33c2469b2580b6763bf8dc0",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -166,7 +166,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.103.2",
-      "sha256": "sha256:9c5e824260ec839f174ae6a37e6e81555a42242fdd3595ee45625d2de685ae8e"
+      "sha256": "sha256:541ab7f079d1bdfad403a832c4067adeb8c4171a894b96241ca9962f1f53178e"
     },
     {
       "presentation": "dark mobile",
@@ -198,7 +198,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability",
       "scope": "Focused highest-risk directed path from identity source through agent, MCP, package, and finding",
       "visible_version": "0.103.2",
-      "sha256": "sha256:1244ab09d677f7a4d0975dccc0326b1d042d45fb9ca83280c5df9396be32b70f"
+      "sha256": "sha256:8066445c9030eefa6702edbde44cc516d0aed8c2452081fba8a7a5f1936ebf49"
     },
     {
       "presentation": "dark desktop",

@@ -96,3 +96,15 @@ def test_discovery_provider_contract_api_response_is_operator_readable() -> None
     assert aws["trust_contract"]["scope_control"] == "operator_supplied_scopes"
     assert "aws:read" in aws["capabilities"]["required_scopes"]
     assert all(":" in permission for permission in aws["capabilities"]["permissions_used"])
+
+
+def test_provider_contracts_expose_sdk_prerequisites_without_cloud_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent_bom.cloud_sdk_freshness as freshness
+    from agent_bom.cloud import provider_contracts
+
+    monkeypatch.setattr(freshness, "_installed_version", lambda distribution: "1.40.0" if distribution == "boto3" else None)
+    providers = {item["name"]: item for item in provider_contracts()["providers"]}
+    assert providers["aws"]["sdk_readiness"][0]["status"] == "ok"
+    assert providers["azure"]["sdk_readiness"][0]["status"] == "not_installed"
+    assert providers["azure"]["sdk_readiness"][0]["installed_version"] is None
+    assert providers["ollama"]["sdk_readiness"] == []

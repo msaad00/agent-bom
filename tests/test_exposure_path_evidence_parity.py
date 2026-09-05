@@ -227,3 +227,26 @@ def test_receipts_require_matching_traversable_topology(kind):
     )
     for payload in _serialize_both(path, nodes=[], edges=[] if kind == "missing" else [edge]):
         assert payload["evidenceDimensions"]["reachability"]["verdict"] is None
+
+
+@pytest.mark.parametrize("finding_severity, expected", [("low", "low"), ("none", "none"), ("", "unknown")])
+def test_exposure_severity_uses_known_findings_not_asset_priority(finding_severity, expected):
+    asset = UnifiedNode(id="asset", entity_type=EntityType.CONTAINER, label="asset", severity="critical")
+    finding = UnifiedNode(id="finding", entity_type=EntityType.VULNERABILITY, label="finding", severity=finding_severity)
+    path = AttackPath(source="asset", target="finding", hops=["asset", "finding"], edges=["vulnerable_to"])
+    for payload in _serialize_both(path, nodes=[asset, finding], edges=[]):
+        assert payload["severity"] == expected
+
+
+def test_legacy_confirmed_projection_is_qualified_without_mutating_receipts():
+    from copy import deepcopy
+
+    from agent_bom.api.routes.graph import _serialize_attack_path
+
+    path = AttackPath(source="a", target="b", hops=["a", "b"], edges=["uses"], reachability="confirmed")
+    original = deepcopy(path.to_dict())
+    for payload in _serialize_both(path, nodes=[], edges=[]):
+        assert payload["reachability"] == "unknown"
+        assert payload["reachabilityBasis"]
+    assert _serialize_attack_path(path, [], nodes_by_id={})["reachability"] == "unknown"
+    assert path.to_dict() == original

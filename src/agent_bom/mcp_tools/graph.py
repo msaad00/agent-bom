@@ -9,8 +9,7 @@ import uuid
 from typing import Any
 
 from agent_bom.graph.completeness import graph_completeness
-from agent_bom.graph.path_evidence import exposure_evidence_dimensions
-from agent_bom.graph.severity import severity_rank
+from agent_bom.graph.path_evidence import exposure_evidence_dimensions, finding_severity_for_path, qualify_exposure_reachability
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
     CODE_NOT_FOUND_RESOURCE,
@@ -198,15 +197,7 @@ def _relationship_refs(path: Any, edges: list[Any]) -> list[dict[str, Any]]:
 
 
 def _severity_for_path(path: Any, nodes_by_id: dict[str, Any]) -> str:
-    severity = ""
-    for hop in getattr(path, "hops", []) or []:
-        node = nodes_by_id.get(hop)
-        candidate = str(getattr(node, "severity", "") or "").lower() if node is not None else ""
-        if severity_rank(candidate) > severity_rank(severity):
-            severity = candidate
-    if severity:
-        return severity
-    return "unknown"
+    return finding_severity_for_path(path, nodes_by_id)
 
 
 def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: list[Any], rank: int, scan_id: str) -> dict[str, Any]:
@@ -215,27 +206,29 @@ def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: lis
     target = _node_ref(str(getattr(path, "target", "") or ""), nodes_by_id) if getattr(path, "target", "") else (hops[-1] if hops else {})
     relationships = _relationship_refs(path, edges)
     target_node = nodes_by_id.get(str(getattr(path, "target", "") or ""))
-    return {
-        "id": f"{source.get('id', '')}::{target.get('id', '')}::{'->'.join(getattr(path, 'hops', []) or [])}",
-        "rank": rank,
-        "label": getattr(path, "summary", "") or "Exposure path",
-        "summary": getattr(path, "summary", ""),
-        "riskScore": float(getattr(path, "composite_risk", 0.0) or 0.0),
-        "severity": _severity_for_path(path, nodes_by_id),
-        "source": source,
-        "target": target,
-        "hops": hops,
-        "relationships": relationships,
-        "nodeIds": list(getattr(path, "hops", []) or []),
-        "edgeIds": [relationship["id"] for relationship in relationships if relationship.get("id")],
-        "findings": list(getattr(path, "vuln_ids", []) or []),
-        "reachableTools": list(getattr(path, "tool_exposure", []) or []),
-        "exposedCredentials": list(getattr(path, "credential_exposure", []) or []),
-        "reachability": str(getattr(path, "reachability", "unknown") or "unknown"),
-        "reachabilityBasis": list(getattr(path, "reachability_basis", []) or []),
-        "evidenceDimensions": exposure_evidence_dimensions(path, target_node, relationships=relationships),
-        "provenance": {"source": "mcp_exposure_paths", "scanId": scan_id},
-    }
+    return qualify_exposure_reachability(
+        {
+            "id": f"{source.get('id', '')}::{target.get('id', '')}::{'->'.join(getattr(path, 'hops', []) or [])}",
+            "rank": rank,
+            "label": getattr(path, "summary", "") or "Exposure path",
+            "summary": getattr(path, "summary", ""),
+            "riskScore": float(getattr(path, "composite_risk", 0.0) or 0.0),
+            "severity": _severity_for_path(path, nodes_by_id),
+            "source": source,
+            "target": target,
+            "hops": hops,
+            "relationships": relationships,
+            "nodeIds": list(getattr(path, "hops", []) or []),
+            "edgeIds": [relationship["id"] for relationship in relationships if relationship.get("id")],
+            "findings": list(getattr(path, "vuln_ids", []) or []),
+            "reachableTools": list(getattr(path, "tool_exposure", []) or []),
+            "exposedCredentials": list(getattr(path, "credential_exposure", []) or []),
+            "reachability": str(getattr(path, "reachability", "unknown") or "unknown"),
+            "reachabilityBasis": list(getattr(path, "reachability_basis", []) or []),
+            "evidenceDimensions": exposure_evidence_dimensions(path, target_node, relationships=relationships),
+            "provenance": {"source": "mcp_exposure_paths", "scanId": scan_id},
+        }
+    )
 
 
 def _candidate_matches_path(candidate: str, path: dict[str, Any]) -> bool:

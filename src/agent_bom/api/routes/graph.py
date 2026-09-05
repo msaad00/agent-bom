@@ -1145,14 +1145,9 @@ def _exposure_relationships_for_path(
 
 
 def _severity_for_exposure_path(path: AttackPath, nodes_by_id: dict[str, Any]) -> str:
-    severity = ""
-    for hop in path.hops:
-        node = nodes_by_id.get(hop)
-        if node is not None and SEVERITY_RANK.get(str(getattr(node, "severity", "") or "").lower(), 0) > SEVERITY_RANK.get(severity, 0):
-            severity = str(node.severity).lower()
-    if severity:
-        return severity
-    return "unknown"
+    from agent_bom.graph.path_evidence import finding_severity_for_path
+
+    return finding_severity_for_path(path, nodes_by_id)
 
 
 def _exposure_path_for_attack_path(
@@ -1174,7 +1169,7 @@ def _exposure_path_for_attack_path(
     agents = [hop for hop in hops if hop["role"] == "agent"]
     findings = _finding_ids_for_nodes(nodes_by_id, path.hops, path.vuln_ids)
     label_parts = [findings[0] if findings else target["label"], agents[0]["label"] if agents else source["label"]]
-    from agent_bom.graph.path_evidence import exposure_evidence_dimensions
+    from agent_bom.graph.path_evidence import exposure_evidence_dimensions, qualify_exposure_reachability
 
     finding_node = nodes_by_id.get(path.target)
     exposure: dict[str, Any] = {
@@ -1224,7 +1219,7 @@ def _exposure_path_for_attack_path(
             "impactCategory": attributes.get("impact_category"),
             "source": "graph_attack_path",
         }
-    return exposure
+    return qualify_exposure_reachability(exposure)
 
 
 def _serialize_attack_path(
@@ -1272,6 +1267,9 @@ def _serialize_attack_path(
             scan_id=scan_id,
             edge_lookup=edge_lookup,
         )
+        if data.get("reachability") == "confirmed" and data["exposure_path"]["reachability"] != "confirmed":
+            data["reachability"] = data["exposure_path"]["reachability"]
+            data["reachability_basis"] = list(data["exposure_path"]["reachabilityBasis"])
     return data
 
 

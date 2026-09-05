@@ -236,3 +236,10 @@ Attack-path campaigns expose `priority_score` with
 `*_evidence` status and references. Historical numeric values without supporting
 assessment metadata become unavailable; priority is not a substitute for either
 quantity. Finding severity is displayed separately from path priority.
+
+Exposure-path projections use the maximum known vulnerability/misconfiguration
+severity, independently of asset priority. Missing finding severity remains
+unknown, including when a high-priority asset is present. API and MCP legacy
+`reachability: confirmed` labels are downgraded to unknown when the current
+evidence dimensions cannot support that verdict. Projection qualification does
+not rewrite stored path receipts.

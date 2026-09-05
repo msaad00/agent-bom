@@ -374,4 +374,29 @@ def exposure_evidence_dimensions(
     }
 
 
+def finding_severity_for_path(path: AttackPath, nodes_by_id: Mapping[str, Any]) -> str:
+    """Keep finding severity independent of permission-bearing asset priority."""
+    from agent_bom.graph.severity import severity_rank
+
+    known = []
+    for hop in path.hops:
+        node = nodes_by_id.get(hop)
+        kind = getattr(node, "entity_type", "")
+        kind = getattr(kind, "value", kind)
+        severity = str(getattr(node, "severity", "") or "").lower()
+        if kind in {"vulnerability", "misconfiguration"} and severity in {"critical", "high", "medium", "low", "none"}:
+            known.append(severity)
+    return max(known, key=severity_rank, default="unknown")
+
+
+def qualify_exposure_reachability(payload: dict[str, Any]) -> dict[str, Any]:
+    """Qualify legacy projection labels without rewriting historical receipts."""
+    dimensions = payload["evidenceDimensions"]
+    if payload.get("reachability") == "confirmed" and dimensions["reachability"].get("verdict") != "confirmed":
+        payload["reachability"] = "unknown"
+        reasons = dimensions["completeness"].get("reasonCodes") or ["incomplete_hop_evidence"]
+        payload["reachabilityBasis"] = list(dict.fromkeys([*payload.get("reachabilityBasis", []), *reasons]))
+    return payload
+
+
 __all__ = ["annotate_attack_path_evidence", "exposure_evidence_dimensions"]

@@ -14,7 +14,9 @@ import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
+from threading import RLock
 from typing import TYPE_CHECKING
+from weakref import WeakKeyDictionary
 
 from agent_bom.config import (
     ALLOW_SUPERUSER_DB,
@@ -41,7 +43,8 @@ logger = logging.getLogger(__name__)
 _pool = None
 _idempotency_fence_pool = None
 _maintenance_pool = None
-_rls_role_checked = False
+_validated_role_pools: WeakKeyDictionary[ConnectionPool, bool] = WeakKeyDictionary()
+_pool_lock = RLock()
 _maintenance_roles_checked = False
 _current_tenant: ContextVar[str] = ContextVar("agent_bom_postgres_tenant", default="default")
 _bypass_tenant_rls: ContextVar[bool] = ContextVar("agent_bom_postgres_bypass_rls", default=False)
@@ -365,24 +368,26 @@ def _new_application_pool(*, min_size: int, max_size: int) -> ConnectionPool:
 
 def _get_pool() -> ConnectionPool:
     """Lazy-create the shared application connection pool."""
-    global _pool
-    if _pool is None:
-        min_size = max(1, POSTGRES_POOL_MIN_SIZE)
-        max_size = max(min_size, POSTGRES_POOL_MAX_SIZE)
-        _pool = _new_application_pool(min_size=min_size, max_size=max_size)
-    _guard_rls_capable_role(_pool)
-    return _pool
+    with _pool_lock:
+        global _pool
+        if _pool is None:
+            min_size = max(1, POSTGRES_POOL_MIN_SIZE)
+            max_size = max(min_size, POSTGRES_POOL_MAX_SIZE)
+            _pool = _new_application_pool(min_size=min_size, max_size=max_size)
+        _guard_rls_capable_role(_pool)
+        return _pool
 
 
 def _get_idempotency_fence_pool() -> ConnectionPool:
     """Return a small app-role pool reserved for durable commit row locks."""
 
-    global _idempotency_fence_pool
-    if _idempotency_fence_pool is None:
-        max_size = max(1, min(_IDEMPOTENCY_FENCE_POOL_MAX_SIZE, POSTGRES_POOL_MAX_SIZE))
-        _idempotency_fence_pool = _new_application_pool(min_size=1, max_size=max_size)
-    _guard_rls_capable_role(_idempotency_fence_pool)
-    return _idempotency_fence_pool
+    with _pool_lock:
+        global _idempotency_fence_pool
+        if _idempotency_fence_pool is None:
+            max_size = max(1, min(_IDEMPOTENCY_FENCE_POOL_MAX_SIZE, POSTGRES_POOL_MAX_SIZE))
+            _idempotency_fence_pool = _new_application_pool(min_size=1, max_size=max_size)
+        _guard_rls_capable_role(_idempotency_fence_pool)
+        return _idempotency_fence_pool
 
 
 def _guard_maintenance_role_separation(app_pool: ConnectionPool, maintenance_pool: ConnectionPool) -> None:
@@ -497,35 +502,34 @@ def _guard_rls_capable_role(pool: ConnectionPool) -> None:
     operator has explicitly opted into a single-tenant / dev setup via
     ``AGENT_BOM_ALLOW_SUPERUSER_DB`` (#3665).
     """
-    global _rls_role_checked
-    if _rls_role_checked:
-        return
+    with _pool_lock:
+        accepted_override = _validated_role_pools.get(pool)
+        if accepted_override is not None and (not accepted_override or ALLOW_SUPERUSER_DB):
+            return
+        _inspect_rls_capable_role(pool)
+        _validated_role_pools[pool] = ALLOW_SUPERUSER_DB
+
+
+def _inspect_rls_capable_role(pool: ConnectionPool) -> None:
+    """An unavailable role inspection never authorizes database access."""
     try:
         with pool.connection() as conn:
             cursor = conn.execute("SELECT rolsuper, rolbypassrls, rolname FROM pg_roles WHERE rolname = current_user")
             row = cursor.fetchone() if cursor is not None else None
     except Exception:
-        # Best-effort probe: a transient connect error or a store mock without a
-        # real role table must not mask the primary failure. A genuinely
-        # RLS-bypassing role is still caught on the next successful pool use.
-        logger.debug("Postgres RLS role guard could not inspect role attributes", exc_info=False)
-        return
+        raise RlsRolePrivilegeError("Cannot inspect Postgres role attributes; database access is blocked.") from None
 
-    _rls_role_checked = True
-    if not row:
-        return
-    rolsuper, rolbypassrls = bool(row[0]), bool(row[1])
-    role_name = row[2] if len(row) > 2 and row[2] else "current_user"
+    if not isinstance(row, (tuple, list)) or len(row) < 2 or any(type(value) is not bool for value in row[:2]):
+        raise RlsRolePrivilegeError("Cannot inspect Postgres role attributes; database access is blocked.")
+    rolsuper, rolbypassrls = row[0], row[1]
     if not (rolsuper or rolbypassrls):
         return
 
     attrs = " and ".join(label for label, present in (("SUPERUSER", rolsuper), ("BYPASSRLS", rolbypassrls)) if present)
     message = (
-        f"Postgres role {role_name!r} has {attrs}, which bypasses FORCE ROW LEVEL SECURITY "
-        "and silently disables agent-bom tenant isolation — cross-tenant reads/writes would "
-        "succeed. Connect as a NOSUPERUSER NOBYPASSRLS role (e.g. run "
-        f"'ALTER ROLE {role_name} NOSUPERUSER NOBYPASSRLS;' or point AGENT_BOM_POSTGRES_URL at the "
-        "dedicated agent_bom_app role). For a single-tenant or local dev deployment, set "
+        f"Postgres application role has {attrs}, which bypasses FORCE ROW LEVEL SECURITY "
+        "and disables agent-bom tenant isolation. Connect as a NOSUPERUSER NOBYPASSRLS role "
+        "using AGENT_BOM_POSTGRES_URL. For a single-tenant or local dev deployment, set "
         "AGENT_BOM_ALLOW_SUPERUSER_DB=1 to acknowledge this and downgrade to a warning."
     )
     if ALLOW_SUPERUSER_DB:
@@ -553,19 +557,20 @@ def preflight_rls_capable_role() -> None:
 
 def reset_pool() -> None:
     """Close and reset application, idempotency-fence, and maintenance pools."""
-    global _pool, _idempotency_fence_pool, _maintenance_pool, _rls_role_checked, _maintenance_roles_checked
-    for pool in (_pool, _idempotency_fence_pool, _maintenance_pool):
-        close = getattr(pool, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                logger.debug("Postgres pool close skipped during reset", exc_info=False)
-    _pool = None
-    _idempotency_fence_pool = None
-    _maintenance_pool = None
-    _rls_role_checked = False
-    _maintenance_roles_checked = False
+    with _pool_lock:
+        global _pool, _idempotency_fence_pool, _maintenance_pool, _maintenance_roles_checked
+        for pool in (_pool, _idempotency_fence_pool, _maintenance_pool):
+            close = getattr(pool, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    logger.debug("Postgres pool close skipped during reset", exc_info=False)
+        _pool = None
+        _idempotency_fence_pool = None
+        _maintenance_pool = None
+        _validated_role_pools.clear()
+        _maintenance_roles_checked = False
 
 
 def _apply_tenant_session(conn: Connection) -> None:

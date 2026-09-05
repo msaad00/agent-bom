@@ -3159,7 +3159,7 @@ async function main() {
     );
     await correlationPage.close();
 
-    await page.setViewportSize({ width: 1120, height: 1400 });
+    await page.setViewportSize({ width: 1120, height: 1640 });
     await capture(
       page,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
@@ -3434,7 +3434,7 @@ async function main() {
       prepareCorrelationReceipts,
       correlationReceiptAssertions,
     );
-    await lightPage.setViewportSize({ width: 1120, height: 1400 });
+    await lightPage.setViewportSize({ width: 1120, height: 1640 });
     await capture(
       lightPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,

@@ -1606,6 +1606,7 @@ function ConnectionsHub() {
       {wizardOpen ? (
         <AddConnectionWizard
           initialProvider={wizardProvider}
+          providerContracts={providerContracts}
           managedTrial={managedTrialSession}
           managedTrialEnvelope={managedTrialEnvelope}
           providerConnectionCount={
@@ -3523,6 +3524,7 @@ type WizardStep = 0 | 1 | 2 | 3;
 type VerifyState = "idle" | "running" | "ok" | "error";
 
 function AddConnectionWizard({
+  providerContracts,
   initialProvider,
   managedTrial,
   managedTrialEnvelope,
@@ -3530,6 +3532,7 @@ function AddConnectionWizard({
   onClose,
   onCreated,
 }: {
+  providerContracts: DiscoveryProvidersResponse | null;
   initialProvider?: string | undefined;
   managedTrial: boolean;
   managedTrialEnvelope: ManagedTrialEnvelope | null;
@@ -3818,7 +3821,7 @@ function AddConnectionWizard({
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[130] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="Add cloud account"
@@ -3901,7 +3904,7 @@ function AddConnectionWizard({
                           <span className="block text-sm font-medium text-[var(--foreground)]">{option.label}</span>
                           <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">{option.tagline}</span>
                           {cloudProviderMeta(option.value) ? (
-                            <span className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-purple-300/80">
+                            <span className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-purple-700 dark:text-purple-300/80">
                               Read-only broker
                             </span>
                           ) : null}
@@ -3910,6 +3913,16 @@ function AddConnectionWizard({
                     );
                   })}
                 </div>
+                <section aria-label="Server SDK prerequisites" className="rounded-xl border border-[var(--border-subtle)] p-3 text-sm">
+                  <p className="font-medium">Server SDK prerequisites</p>
+                  {(providerContracts?.providers.find((item) => item.name === form.provider)?.sdk_readiness ?? []).map((sdk) => (
+                    <p key={sdk.distribution}>{sdk.distribution}: {sdk.status === "ok" ? "installed" : sdk.status.replaceAll("_", " ")}{sdk.installed_version ? ` (${sdk.installed_version})` : ""}</p>
+                  ))}
+                  {!providerContracts?.providers.find((item) => item.name === form.provider)?.sdk_readiness?.length && <p>SDK readiness unavailable.</p>}
+                  <p className="mt-2">Install in the control-plane environment before configuring credentials:</p>
+                  <code className="block break-all">{`pip install 'agent-bom[ui,${form.provider}]'`}</code>
+                  <p className="mt-2 text-[var(--text-secondary)]">SDK checks do not verify cloud credentials or collection permissions.</p>
+                </section>
               </fieldset>
             ) : null}
 

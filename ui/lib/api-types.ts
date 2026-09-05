@@ -2304,7 +2304,15 @@ export interface DiscoveryProviderTrustContract {
   supports_scope_zero: boolean;
 }
 
+export interface DiscoverySdkReadiness {
+  distribution: string;
+  installed_version: string | null;
+  recommended_floor: string;
+  status: "ok" | "outdated" | "not_installed" | "unknown";
+}
+
 export interface DiscoveryProviderContract {
+  sdk_readiness?: DiscoverySdkReadiness[];
   name: string;
   module: string;
   source: string;

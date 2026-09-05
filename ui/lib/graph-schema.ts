@@ -385,7 +385,8 @@ export interface TechniqueMapping {
   /** Observed evidence that produced the mapping. */
   provenance: string;
   /** 0..1 signal, never an assertion of activity. */
-  confidence: number;
+  confidence: number | null;
+  evidence_basis?: "observed" | "runtime_observed" | "inferred" | "modeled" | null;
 }
 
 export interface AttackPath {
@@ -409,6 +410,8 @@ export interface AttackPath {
     target_node_id: string;
     relationship: string;
     source_snapshot_ids: string[];
+    relationship_provenance?: "recorded" | "unavailable";
+    correlation_identity_status?: "current" | "recomputation_required" | "unavailable";
     evidence_tier: "static_evidence" | "modeled_infrastructure" | "runtime_observed" | "unknown" | string;
     confidence: number;
     freshness: "fresh" | "stale_allowed" | "unknown" | string;

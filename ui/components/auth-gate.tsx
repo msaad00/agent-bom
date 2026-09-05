@@ -64,7 +64,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!needsAuth || offlineReportMode || pathname === "/login") return;
-    const returnTo = encodeURIComponent(pathname || "/");
+    const returnTo = encodeURIComponent(`${pathname || "/"}${window.location.search}${window.location.hash}`);
     router.replace(`/login?returnTo=${returnTo}`);
   }, [needsAuth, offlineReportMode, pathname, router]);
 

@@ -182,7 +182,7 @@ def test_merge_is_order_independent_and_preserves_observations_and_conflicts() -
     assert node.data_sources == ["image", "repo"]
 
 
-def test_container_images_merge_only_on_exact_oci_digest() -> None:
+def test_container_images_do_not_merge_on_exact_oci_digest() -> None:
     left = _graph("scan-1")
     right = _graph("scan-2")
     for graph, node_id in ((left, "container:app:latest"), (right, "container:registry/app:latest")):
@@ -210,9 +210,10 @@ def test_container_images_merge_only_on_exact_oci_digest() -> None:
         tenant_id="acme",
         snapshots=[CorrelationSnapshot.from_graph(left), CorrelationSnapshot.from_graph(right)],
     )
-    assert len(pinned.graph.nodes) == 1
-    node = next(iter(pinned.graph.nodes.values()))
-    assert node.attributes["correlation"]["identity_basis"] == "oci_digest"
+    assert len(pinned.graph.nodes) == 2
+    assert all(
+        node.attributes["correlation"]["identity_basis"] == "snapshot_scoped_runtime_occurrence" for node in pinned.graph.nodes.values()
+    )
 
 
 def test_packages_without_exact_purl_remain_snapshot_scoped() -> None:

@@ -91,6 +91,14 @@ describe("RemediationPage", () => {
     });
   });
 
+  it("keeps ticket actions reachable while the wide table scrolls", async () => {
+    apiMock.getRemediation.mockResolvedValue([remediationItem("pkg", "high")]);
+    render(<RemediationPage />);
+    const ticket = await screen.findByRole("button", {name: "Ticket"});
+    expect(ticket.closest("td")).toHaveClass("sticky", "right-0");
+    expect(ticket).toHaveClass("min-h-11");
+  });
+
   it("surfaces a top-of-page page-position caption for the package plan", async () => {
     const items = Array.from({ length: 30 }, (_, i) => remediationItem(`pkg${i}`, i < 5 ? "critical" : "high"));
     apiMock.getRemediation.mockResolvedValue(items);

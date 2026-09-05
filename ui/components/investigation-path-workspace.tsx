@@ -93,6 +93,7 @@ export function InvestigationPathWorkspace({
           <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{subtitle}</p>
         </div>
 
+        <a href={`#${DETAIL_REGION_ID}`} className="mt-3 flex min-h-11 items-center text-sm font-medium text-[color:var(--foreground)] lg:hidden">View selected path</a>
         <div className="mt-3">
           <InvestigationFilterDrawer>{filters}</InvestigationFilterDrawer>
         </div>

@@ -371,6 +371,7 @@ class CorrelationMergeWorkspace:
         )
         manifest = {
             "schema_version": "agent-bom.graph-correlation.v1",
+            "identity_version": "runtime-occurrence.v2",
             "correlation_id": self._correlation_id,
             "tenant_id": self._tenant_id,
             "created_at": output.created_at,

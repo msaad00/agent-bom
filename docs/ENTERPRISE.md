@@ -117,6 +117,7 @@ Rate limiting also follows an explicit fail-closed contract for scaled control p
 - single-process / single-replica API: in-memory limiter is allowed
 - multi-replica API or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`: PostgreSQL-backed shared limiter is required
 - if shared rate limiting is required and `AGENT_BOM_POSTGRES_URL` is absent or broken, API startup now fails instead of silently falling back to process-local state
+- WebSocket handshake attempts consume a peer-scoped budget before authentication work begins; an exhausted budget or unavailable limiter closes the connection before the first-message credential wait
 
 API-local filesystem scans follow the same pilot-vs-control-plane split:
 

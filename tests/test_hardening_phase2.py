@@ -12,7 +12,10 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
+import sys
 import textwrap
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -81,7 +84,27 @@ class TestConfigDefaults:
     def test_api_job_ttl_seconds(self):
         from agent_bom.config import API_JOB_TTL_SECONDS
 
-        assert API_JOB_TTL_SECONDS == 3_600
+        assert API_JOB_TTL_SECONDS == 90 * 24 * 60 * 60
+
+    def test_explicit_job_ttl_reaches_all_backend_defaults(self):
+        script = """
+from inspect import signature
+from agent_bom.config import API_JOB_TTL_SECONDS
+from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
+from agent_bom.api.postgres_job_store import PostgresJobStore
+from agent_bom.api.snowflake_store import SnowflakeJobStore
+assert API_JOB_TTL_SECONDS == 3600
+for backend in (InMemoryJobStore, SQLiteJobStore, PostgresJobStore, SnowflakeJobStore):
+    assert signature(backend.cleanup_expired).parameters['ttl_seconds'].default == 3600
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            env={**os.environ, "AGENT_BOM_API_JOB_TTL": "3600", "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
 
     def test_api_max_in_memory_jobs(self):
         from agent_bom.config import API_MAX_IN_MEMORY_JOBS

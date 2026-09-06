@@ -14,15 +14,14 @@ from datetime import datetime, timezone
 from typing import Any, Protocol, cast
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS
 
 from .server import JobStatus, ScanJob
 
-_JOB_TTL_SECONDS = 3600  # 1 hour
-
-# Curated public-demo scan jobs must outlive AGENT_BOM_API_JOB_TTL. Without this
-# exemption the cleanup loop deletes DONE demo jobs ~1h after bootstrap and the
-# hosted demo serves an empty findings spine until the next API restart.
+# Curated public-demo scan jobs have an existing TTL exemption so fixture
+# evidence remains available until an explicit reset or deletion. Ordinary scan
+# jobs follow the configured retention window.
 DEMO_ESTATE_TRIGGERED_BY = "demo-estate-bootstrap"
 
 

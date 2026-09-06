@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -513,6 +514,54 @@ def test_sqlite_cleanup_expired():
         assert store.get("j3", all_tenants=True) is None
     finally:
         Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("ttl_seconds", [None, 3600])
+def test_scan_evidence_retention_is_bounded_and_honors_override(tmp_path, backend, ttl_seconds):
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    store = InMemoryJobStore() if backend == "memory" else SQLiteJobStore(str(tmp_path / "jobs.db"))
+    now = datetime.now(timezone.utc)
+    for job_id, status, age in [
+        ("current", JobStatus.DONE, timedelta(hours=2)),
+        ("old", JobStatus.DONE, timedelta(days=91)),
+        ("failed", JobStatus.FAILED, timedelta(days=91)),
+        ("cancelled", JobStatus.CANCELLED, timedelta(days=91)),
+        ("running", JobStatus.RUNNING, timedelta(days=91)),
+    ]:
+        store.put(
+            _make_job(
+                job_id,
+                status=status,
+                tenant_id="retention-test",
+                completed_at=(now - age).isoformat() if status != JobStatus.RUNNING else None,
+                result={"findings": [{"id": "finding-1", "severity": "high"}]},
+            )
+        )
+
+    removed = store.cleanup_expired() if ttl_seconds is None else store.cleanup_expired(ttl_seconds)
+    assert removed == (3 if ttl_seconds is None else 4)
+    jobs = store.list_all(tenant_id="retention-test")
+    assert {job.job_id for job in jobs} == ({"current", "running"} if ttl_seconds is None else {"running"})
+    current = current_scan_jobs(jobs, since=None, scan_id=None)
+    assert sum(len(job.result["findings"]) for job in current) == (1 if ttl_seconds is None else 0)
+
+
+def test_sqlite_retained_evidence_survives_restart_with_tenant_scoped_deletion(tmp_path):
+    db_path = str(tmp_path / "jobs.db")
+    store = SQLiteJobStore(db_path)
+    completed_at = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    for tenant in ("tenant-a", "tenant-b"):
+        store.put(_make_job(tenant, JobStatus.DONE, tenant_id=tenant, completed_at=completed_at, result={"findings": []}))
+    assert store.cleanup_expired() == 0
+
+    reopened = SQLiteJobStore(db_path)
+    assert reopened.get("tenant-a", tenant_id="tenant-b") is None
+    assert reopened.get("tenant-a", tenant_id="tenant-a") is not None
+    assert not reopened.delete("tenant-a", tenant_id="tenant-b")
+    assert reopened.delete("tenant-a", tenant_id="tenant-a")
+    assert reopened.get("tenant-b", tenant_id="tenant-b") is not None
 
 
 def test_sqlite_cleanup_preserves_demo_estate_jobs():

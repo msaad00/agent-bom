@@ -588,19 +588,20 @@ def test_job_store_list_summary_includes_tenant(mock_pool, mock_maintenance_pool
     assert result[0]["schedule_id"] == "sched-alpha"
 
 
-def test_job_store_cleanup(mock_pool, mock_maintenance_pool):
+@pytest.mark.parametrize("ttl_seconds", [None, 7200])
+def test_job_store_cleanup(mock_pool, mock_maintenance_pool, ttl_seconds):
     from agent_bom.api.postgres_store import PostgresJobStore
     from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
 
     store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
-    count = store.cleanup_expired(ttl_seconds=7200)
+    count = store.cleanup_expired() if ttl_seconds is None else store.cleanup_expired(ttl_seconds=ttl_seconds)
     delete_sql, delete_params = next(
         (sql, params) for sql, params in reversed(mock_pool._conn.executed) if sql.strip().lower().startswith("delete from scan_jobs")
     )
     assert isinstance(count, int)
     assert "INTERVAL '1 second'" in delete_sql
     assert "triggered_by" in delete_sql
-    assert delete_params == (DEMO_ESTATE_TRIGGERED_BY, 7200)
+    assert delete_params == (DEMO_ESTATE_TRIGGERED_BY, 90 * 24 * 60 * 60 if ttl_seconds is None else ttl_seconds)
 
 
 def test_job_store_global_paths_use_scoped_maintenance_connection(mock_pool, mock_maintenance_pool):

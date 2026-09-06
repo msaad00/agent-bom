@@ -236,7 +236,18 @@ export default function Dashboard() {
   }, [detailJobs, apiError, importedReport]);
 
   const effectiveRecentJobs = useMemo<JobListItem[]>(() => {
-    if (!apiError || !importedReport) return jobs;
+    if (!apiError || !importedReport) {
+      const detailsById = new Map(detailJobs.map((job) => [job.job_id, job]));
+      return jobs.map((job) => {
+        const detail = detailsById.get(job.job_id);
+        if (job.status !== "done" || detail?.status !== "done") return job;
+        return {
+          ...job,
+          request: job.request ?? detail.request,
+          summary: job.summary ?? detail.result?.summary,
+        };
+      });
+    }
     const importedGeneratedAt = importedReport.scan_timestamp ?? importedReport.generated_at ?? new Date().toISOString();
     return [{
       job_id: "imported",
@@ -249,7 +260,7 @@ export default function Dashboard() {
       scan_run: importedReport.scan_run,
       pushed: false,
     }];
-  }, [jobs, apiError, importedReport]);
+  }, [jobs, detailJobs, apiError, importedReport]);
 
   const doneJobs = useMemo(
     () => effectiveJobs.filter((j) => j.status === "done" && j.result),
@@ -597,7 +608,6 @@ function JobRow({ job }: { job: JobListItem }) {
   if (job.request?.k8s) tags.push("k8s");
   if (job.request?.sbom) tags.push("sbom");
   if (job.request?.inventory) tags.push("inventory");
-  if (tags.length === 0 && job.status === "done") tags.push("agents");
 
   return (
     <Link

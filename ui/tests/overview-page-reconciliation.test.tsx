@@ -124,6 +124,31 @@ describe("Overview canonical finding counts", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  it("restores recent-scan metadata from bounded hydrated details after a cold API start", async () => {
+    apiMock.listJobs.mockResolvedValue({ jobs: [{ job_id: "cold-sbom", status: "done", created_at: "2026-09-06T22:26:37Z" }] });
+    apiMock.getScan.mockResolvedValue({
+      job_id: "cold-sbom", status: "done", created_at: "2026-09-06T22:26:37Z",
+      request: { sbom: "<path:reference.cdx.json>" }, progress: [],
+      result: { agents: [], blast_radius: [], summary: { total_vulnerabilities: 22, critical_findings: 4 } },
+    });
+    render(<Dashboard />);
+    const row = await screen.findByRole("link", { name: /SBOM scan.*22 vulns/i });
+    expect(row).toHaveTextContent("4 CRIT");
+    expect(row).not.toHaveTextContent("Metrics unavailable");
+    expect(row).not.toHaveTextContent("agents");
+    expect(apiMock.getScan).toHaveBeenCalledTimes(1);
+    expect(apiMock.getScan).toHaveBeenCalledWith("cold-sbom");
+    expect(apiMock.listJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not invent an agents source when recent-scan details are unavailable", async () => {
+    apiMock.listJobs.mockResolvedValue({ jobs: [{ job_id: "unknown-scan", status: "done", created_at: "2026-09-06T22:26:37Z" }] });
+    apiMock.getScan.mockRejectedValue(new Error("unavailable"));
+    render(<Dashboard />);
+    const row = await screen.findByRole("link", { name: /Completed scan.*Metrics unavailable/i });
+    expect(row).not.toHaveTextContent("agents");
+  });
+
   it("uses canonical posture/overview counts instead of recomputing the latest ten scans", async () => {
     render(<Dashboard />);
 

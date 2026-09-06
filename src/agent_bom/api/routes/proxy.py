@@ -70,6 +70,14 @@ _proxy_alerts_total: int = 0
 _proxy_metrics: dict | None = None
 _proxy_metrics_by_tenant: dict[str, dict] = {}
 
+# WebSocket scopes bypass Starlette's BaseHTTPMiddleware stack. Bound handshake
+# attempts separately so unauthenticated clients cannot accumulate an
+# unbounded number of five-second first-message authentication waits.
+WS_HANDSHAKE_RATE_LIMIT_RPM = 600
+_WS_HANDSHAKE_RATE_LIMIT_WINDOW_SECONDS = 60
+_ws_handshake_rate_limit_store: Any | None = None
+_ws_handshake_rate_limit_lock = Lock()
+
 # dedupe inbound proxy alerts by event_id over a 24h
 # window so a hostile or buggy proxy cannot replay credential-leak alerts and
 # inflate detector tallies. Per-(tenant_id, event_id) entries expire after
@@ -123,6 +131,14 @@ def _reset_proxy_runtime_for_tests() -> None:
     _proxy_alerts_total = 0
     _proxy_metrics = None
     _proxy_metrics_by_tenant.clear()
+
+
+def _reset_ws_handshake_rate_limit_for_tests() -> None:
+    """Discard process-global WebSocket limiter state between test cases."""
+
+    global _ws_handshake_rate_limit_store
+    with _ws_handshake_rate_limit_lock:
+        _ws_handshake_rate_limit_store = None
 
 
 def push_proxy_alert(alert: dict) -> None:
@@ -984,6 +1000,45 @@ class _WebSocketAuthContext:
     auth_method: str = "no_auth"
 
 
+def _get_ws_handshake_rate_limit_store() -> Any:
+    """Lazily share the configured rate-limit backend across WebSocket routes."""
+
+    global _ws_handshake_rate_limit_store
+    with _ws_handshake_rate_limit_lock:
+        if _ws_handshake_rate_limit_store is None:
+            from agent_bom.api.middleware import _build_rate_limit_store
+
+            _ws_handshake_rate_limit_store = _build_rate_limit_store(_WS_HANDSHAKE_RATE_LIMIT_WINDOW_SECONDS)
+        return _ws_handshake_rate_limit_store
+
+
+def _consume_ws_handshake_budget(client_ip: str, now: float) -> bool:
+    store = _get_ws_handshake_rate_limit_store()
+    accepted, _count, _reset_at = store.consume_if_below(
+        f"websocket-handshake:{client_ip}",
+        now,
+        WS_HANDSHAKE_RATE_LIMIT_RPM,
+    )
+    return bool(accepted)
+
+
+async def _ws_handshake_within_rate_limit(websocket: WebSocket) -> bool:
+    """Consume one peer-scoped handshake unit, failing closed on store errors."""
+
+    client = getattr(websocket, "client", None)
+    client_ip = str(getattr(client, "host", "unknown") or "unknown")
+    try:
+        accepted = await anyio.to_thread.run_sync(partial(_consume_ws_handshake_budget, client_ip, time.time()))
+    except Exception:  # noqa: BLE001 - limiter failure must reject without exposing backend details
+        _logger.warning("WebSocket handshake rate limiter unavailable; rejecting connection")
+        return False
+    if not accepted:
+        from agent_bom.api.metrics import record_rate_limit_hit
+
+        record_rate_limit_hit("websocket-handshake")
+    return bool(accepted)
+
+
 def _role_allows(actual: str, required: str = "viewer") -> bool:
     from agent_bom.rbac import Role, role_rank
 
@@ -1151,6 +1206,10 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
     Bearer`` or ``Sec-WebSocket-Protocol: agent-bom-token.<token>``.
     """
     import asyncio as _asyncio
+
+    if not await _ws_handshake_within_rate_limit(websocket):
+        await websocket.close(code=4008)
+        return None
 
     auth_required = _ws_auth_required()
     if not auth_required:

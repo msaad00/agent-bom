@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """Validate every shipped Docker Compose file — and what it renders to.
 
-Nothing in CI has ever run ``docker compose config`` against these files. The
-only caller in the tree is ``scripts/deploy/hosted_poc_preflight.py``, and the
-one automated invocation of that (``make secrets``) passes ``--skip-compose``,
-so the parse path never executes. Meanwhile ``docs/DEPLOY_PLATFORM.md`` tells
-operators the stack "passes ``docker compose config``" — a claim no automation
-backed.
+This is the CI contract behind the repository's Compose deployment claims.
 
 Two things are checked, deliberately in this order:
 

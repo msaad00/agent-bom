@@ -733,9 +733,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      # Nothing in CI has ever run `docker compose config` against these files,
-      # while docs/DEPLOY_PLATFORM.md told operators the stack passes it. The
-      # gate also asserts the RENDERED graph, because "exited 0" is not a test.
+      # Validate the rendered graph as well as syntax: every service must resolve
+      # to an image/build, every dependency must exist, and committed read-only
+      # bind mounts must point at real paths.
       - name: Validate every shipped compose file and overlay combination
         shell: bash
         run: |

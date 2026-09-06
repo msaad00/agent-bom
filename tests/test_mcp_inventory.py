@@ -126,7 +126,7 @@ def test_live_mcp_server_exposes_inventory_tools_read_only() -> None:
     pytest.importorskip("mcp", reason="mcp SDK not installed")
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
     for name in ("inventory_summary", "inventory_list", "inventory_asset"):
         assert name in tools, f"{name} missing from live tools/list"

@@ -153,6 +153,12 @@ def build_snapshot() -> dict[str, object]:
         "version": _current_version(),
         "metrics": [
             {
+                "name": "MCP default tools",
+                "value": _count_server_card_entries("_DEFAULT_PROFILE_TOOL_NAMES"),
+                "source": "src/agent_bom/mcp_server_metadata.py",
+                "notes": "Default scan profile. Full catalog remains an explicit compatibility option.",
+            },
+            {
                 "name": "MCP tools",
                 "value": _count_mcp_tools(),
                 "source": "src/agent_bom/mcp_server_metadata.py",

@@ -21,7 +21,7 @@ from agent_bom.mcp_server import create_mcp_server
 
 @pytest.fixture(scope="module")
 def mcp_server():
-    return create_mcp_server()
+    return create_mcp_server(profile="full")
 
 
 def test_every_tool_advertises_additional_properties_false(mcp_server) -> None:  # noqa: ANN001

@@ -1,1599 +1,220 @@
 [
   {
     "name": "scan",
-    "description": "Run a full AI supply chain security scan \u2014 discovers MCP agents, scans all packages for CVEs, maps blast radius, returns findings with EPSS scores and remediation plan.",
+    "description": "Run a full AI supply chain security scan and return an AI-BOM.\n\nPoint it at a target with one of:\n  \u2022 repo_url     \u2014 a public git repo URL (cloned + scanned, no checkout)\n  \u2022 config_path  \u2014 a local project / MCP-config directory\n  \u2022 image        \u2014 a Docker image\n  \u2022 sbom_path    \u2014 an existing CycloneDX/SPDX SBOM\n  \u2022 package      \u2014 a single package or MCP launch command (pair it with\n                   ``ecosystem`` when the spec names no launcher)\nWith none of these, it auto-discovers local MCP clients (Claude Desktop,\nCursor, Windsurf, VS Code Copilot, OpenClaw, etc.).\n\nIt extracts package dependencies, queries OSV.dev for CVEs, assesses\nconfig security (credential exposure, tool access), computes blast\nradius, and returns structured results. Scanning is fully static and\nread-only \u2014 repository and image contents are parsed, never executed.\n\nReturns:\n    JSON with the complete AI-BOM report including agents, packages,\n    vulnerabilities, blast radius, and remediation guidance.\n",
     "arguments": [
       {
-        "name": "project_path",
+        "name": "repo_url",
         "type": "string",
-        "desc": "Directory to scan for MCP agent configs (default: auto-detect)"
+        "desc": "Public git repository URL to clone and scan, e.g. 'https://github.com/org/repo'. Maps the repo's dependencies, project structure, secrets, IaC, and AI/MCP usage into an AI-BOM. Static and read-only: the repository is shallow-cloned into a temporary directory, scanned without ever executing its code, then deleted. The fastest way to point this tool at a target \u2014 no local checkout required."
       },
       {
-        "name": "fail_on_severity",
+        "name": "config_path",
         "type": "string",
-        "desc": "Exit non-zero if findings at this severity or above: critical, high, medium, low"
+        "desc": "Local directory to scan \u2014 a project root or an MCP client config directory. Auto-discovers installed MCP clients if omitted unless no_discover=true. Mutually exclusive with repo_url."
       },
       {
-        "name": "output_format",
+        "name": "no_discover",
+        "type": "boolean",
+        "desc": "Disable ambient host MCP-client discovery. Explicit repo/config, image, SBOM, and package targets are still scanned; use this for deterministic CI."
+      },
+      {
+        "name": "image",
         "type": "string",
-        "desc": "Output format: json, cyclonedx, spdx, sarif, html (default: json)"
+        "desc": "Docker image to scan (e.g. 'nginx:1.25', 'ghcr.io/org/app:v1')."
+      },
+      {
+        "name": "sbom_path",
+        "type": "string",
+        "desc": "Path to existing CycloneDX or SPDX JSON SBOM file to ingest."
+      },
+      {
+        "name": "package",
+        "type": "string",
+        "desc": "Direct package or MCP launch command to scan, e.g. 'npx @modelcontextprotocol/server-filesystem@2025.1.14' or '@modelcontextprotocol/server-filesystem'. A bare 'name@version' spec is assumed to be npm \u2014 pass ``ecosystem`` for anything else."
+      },
+      {
+        "name": "ecosystem",
+        "type": "string",
+        "desc": "Ecosystem of ``package`` when the spec does not name a launcher: 'npm', 'pypi', 'go', 'cargo', 'maven', 'nuget', 'rubygems', 'composer', 'swift', 'pub', 'hex', 'conda', 'deb', 'apk', or 'rpm'. Omitted, the ecosystem is inferred from the spec (PEP 440 specifiers such as 'flask==0.12.2' are PyPI) and any assumption is reported in the result warnings."
+      },
+      {
+        "name": "enrich",
+        "type": "boolean",
+        "desc": "Enable NVD CVSS, EPSS probability, and CISA KEV enrichment."
+      },
+      {
+        "name": "offline",
+        "type": "boolean",
+        "desc": "Use the local vulnerability DB only and skip registry, OSV, GHSA, and NVIDIA network lookups."
+      },
+      {
+        "name": "scorecard",
+        "type": "boolean",
+        "desc": "Enrich packages with OpenSSF Scorecard scores (requires resolvable GitHub repos)."
       },
       {
         "name": "transitive",
         "type": "boolean",
-        "desc": "Resolve transitive dependencies for npm/pypi/go packages"
+        "desc": "Resolve transitive dependencies for npx/uvx packages."
+      },
+      {
+        "name": "verify_integrity",
+        "type": "boolean",
+        "desc": "Verify package SHA-256/SRI hashes and SLSA provenance against registries."
+      },
+      {
+        "name": "fail_severity",
+        "type": "string",
+        "desc": "Return failure status if vulns at this severity or higher: critical, high, medium, low."
+      },
+      {
+        "name": "warn_severity",
+        "type": "string",
+        "desc": "Return warning status (gate_status=warn, exit 0) when vulns at this severity or higher exist. Use with fail_severity for two-tier CI gates, e.g. warn_severity='medium', fail_severity='critical'."
+      },
+      {
+        "name": "auto_update_db",
+        "type": "boolean",
+        "desc": "Explicitly refresh the local vuln DB when older than the daily freshness target before scanning."
+      },
+      {
+        "name": "db_sources",
+        "type": "string",
+        "desc": "Comma-separated DB sources to sync before scanning (e.g. 'nvd,ghsa,osv,epss,kev')."
+      },
+      {
+        "name": "output_format",
+        "type": "string",
+        "desc": "Output format: 'json' (default), 'sarif', 'cyclonedx', 'spdx', 'junit', 'csv', or 'markdown'."
+      },
+      {
+        "name": "policy",
+        "type": "object",
+        "desc": "Policy object to evaluate alongside scan results, e.g. {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\", \"action\": \"fail\"}]}."
       }
     ]
   },
   {
     "name": "check",
-    "description": "Check a specific package for known CVEs before installing \u2014 pre-install gate.",
+    "description": "Check a specific package for known CVEs before installing.\n\nQueries OSV.dev for vulnerabilities in the given package. Use this\nbefore installing an MCP server or dependency to verify it is safe.\n\nArgs:\n    package: Package name with optional version, e.g. \"express@4.18.2\",\n             \"@modelcontextprotocol/server-filesystem@2025.1.14\",\n             or just \"requests\" (resolves @latest).\n    ecosystem: Package ecosystem \u2014 \"npm\", \"pypi\", \"go\", \"cargo\",\n               \"maven\", \"nuget\", \"rubygems\", \"composer\", \"swift\",\n               \"pub\", \"hex\", \"conda\", \"deb\", \"apk\", or \"rpm\".\n               Defaults to \"npm\".\n\nReturns:\n    JSON with package, version, ecosystem, vulnerability count,\n    and vulnerability details (id, severity, cvss, fix version, summary).\n",
     "arguments": [
       {
         "name": "package",
         "type": "string",
-        "desc": "Package name and version, e.g. 'flask@2.0.0' or 'lodash@4.17.20'"
+        "desc": "Package name with optional version, e.g. 'express@4.18.2', '@modelcontextprotocol/server-filesystem@2025.1.14', or 'requests' (resolves @latest)."
       },
       {
         "name": "ecosystem",
         "type": "string",
-        "desc": "Package ecosystem: pypi, npm, cargo, go, maven, nuget, hex, pub, rubygems"
+        "desc": "Package ecosystem: 'npm', 'pypi', 'go', 'cargo', 'maven', 'nuget', 'rubygems', 'composer', 'swift', 'pub', 'hex', 'conda', 'deb', 'apk', or 'rpm'."
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "desc": "Optional package version when omitted from ``package`` (e.g. package='flask', version='0.12.2'). Prefer embedding in ``package`` as 'flask@0.12.2' or 'flask==0.12.2' when possible."
+      },
+      {
+        "name": "offline",
+        "type": "boolean",
+        "desc": "Use only the local advisory database. An explicit version is required; registry resolution and publication checks are disabled."
       }
     ]
   },
   {
     "name": "intel_lookup",
-    "description": "Look up a CVE, GHSA, or OSV advisory in the local threat-intel database.",
+    "description": "Look up one advisory from the local threat-intel database.",
     "arguments": [
       {
         "name": "advisory_id",
         "type": "string",
-        "desc": "Advisory identifier such as CVE-2026-12345 or GHSA-abcd-1234-wxyz"
-      }
-    ]
-  },
-  {
-    "name": "intel_match",
-    "description": "Match package or purl inventory coordinates against local threat-intel advisories.",
-    "arguments": [
-      {
-        "name": "packages",
-        "type": "array",
-        "desc": "Package coordinates with purl or ecosystem/name/version fields"
-      },
-      {
-        "name": "purl",
-        "type": "string",
-        "desc": "Single package URL, e.g. pkg:pypi/requests@2.31.0"
-      },
-      {
-        "name": "ecosystem",
-        "type": "string",
-        "desc": "Package ecosystem for single-package matching"
-      },
-      {
-        "name": "name",
-        "type": "string",
-        "desc": "Package name for single-package matching"
-      },
-      {
-        "name": "version",
-        "type": "string",
-        "desc": "Package version for single-package matching"
-      },
-      {
-        "name": "limit",
-        "type": "integer",
-        "desc": "Maximum package coordinates to match"
-      }
-    ]
-  },
-  {
-    "name": "intel_sources",
-    "description": "List configured threat-intel sources and local feed freshness metadata.",
-    "arguments": []
-  },
-  {
-    "name": "intel_daily_brief",
-    "description": "Return a local analyst threat brief from governed intel sources.",
-    "arguments": [
-      {
-        "name": "packages",
-        "type": "array",
-        "desc": "Optional package coordinates with purl or ecosystem/name/version fields"
-      },
-      {
-        "name": "epss_threshold",
-        "type": "number",
-        "desc": "Minimum EPSS probability for high-EPSS inventory matches"
-      },
-      {
-        "name": "kev_window_hours",
-        "type": "integer",
-        "desc": "Lookback window for recent KEV additions"
-      },
-      {
-        "name": "limit",
-        "type": "integer",
-        "desc": "Maximum advisories to return per section"
-      }
-    ]
-  },
-  {
-    "name": "youcom_search",
-    "description": "Search You.com for current web/news context when YDC_API_KEY is configured.",
-    "arguments": [
-      {
-        "name": "query",
-        "type": "string",
-        "desc": "Free-text query for You.com web/news search"
-      },
-      {
-        "name": "count",
-        "type": "integer",
-        "desc": "Results per section, 1-100 (default 10)"
-      },
-      {
-        "name": "freshness",
-        "type": "string",
-        "desc": "Optional freshness filter: day, week, month, year, or YYYY-MM-DDtoYYYY-MM-DD"
-      },
-      {
-        "name": "country",
-        "type": "string",
-        "desc": "Optional two-letter country code, e.g. US"
-      },
-      {
-        "name": "language",
-        "type": "string",
-        "desc": "Optional BCP 47 language code, e.g. en"
-      },
-      {
-        "name": "safesearch",
-        "type": "string",
-        "desc": "Optional safesearch level: off, moderate, strict"
-      },
-      {
-        "name": "livecrawl",
-        "type": "string",
-        "desc": "Optional livecrawl mode: web, news, or all"
-      },
-      {
-        "name": "crawl_timeout",
-        "type": "integer",
-        "desc": "Optional livecrawl timeout in seconds, 1-60"
-      }
-    ]
-  },
-  {
-    "name": "blast_radius",
-    "description": "Look up the blast radius of a specific CVE \u2014 shows which agents, credentials, and tools are affected.",
-    "arguments": [
-      {
-        "name": "cve_id",
-        "type": "string",
-        "desc": "CVE identifier, e.g. CVE-2023-44270"
+        "desc": "CVE, GHSA, or OSV advisory ID, e.g. CVE-2024-1234 or GHSA-abcd-1234-wxyz."
       }
     ]
   },
   {
     "name": "exposure_paths",
-    "description": "Return ranked ExposurePath JSON from the graph store for headless security agents.",
+    "description": "Return ranked ExposurePath JSON for headless security agents.\n\nThis is the agent-native graph surface: Claude, Cursor, Codex,\nWindsurf, Cortex, and other MCP clients can request the same\ninvestigation objects used by the dashboard without scraping UI state.\n",
     "arguments": [
       {
         "name": "tenant_id",
         "type": "string",
-        "desc": "Tenant ID for the graph snapshot (default: default)"
+        "desc": "Tenant ID for the graph snapshot. Defaults to 'default'."
       },
       {
         "name": "scan_id",
         "type": "string",
-        "desc": "Optional graph scan ID; omit to use latest snapshot"
+        "desc": "Optional graph scan ID. Omit to use the latest snapshot."
       },
       {
         "name": "limit",
         "type": "integer",
-        "desc": "Maximum ranked exposure paths to return (1-100)"
+        "desc": "Maximum number of ranked exposure paths to return."
       },
       {
         "name": "min_risk",
         "type": "number",
-        "desc": "Minimum path risk score to include (0-100)"
-      }
-    ]
-  },
-  {
-    "name": "graph_correlate",
-    "description": "Create a bounded immutable correlation over exact tenant-scoped graph snapshot receipts.",
-    "arguments": [
-      {
-        "name": "name",
-        "type": "string",
-        "desc": "Human-readable correlation run name"
-      },
-      {
-        "name": "scan_ids",
-        "type": "array",
-        "desc": "Two to 32 distinct exact immutable source snapshot ids"
-      },
-      {
-        "name": "max_age_hours",
-        "type": "integer",
-        "desc": "Required source-evidence freshness bound in hours (1-8760)"
-      },
-      {
-        "name": "idempotency_key",
-        "type": "string",
-        "desc": "Caller-stable retry key for this exact correlation request"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Human audit reason for creating the correlation"
-      },
-      {
-        "name": "allow_stale",
-        "type": "boolean",
-        "desc": "Admit stale evidence while preserving its stale label"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Operator role for this write action (audit)"
-      },
-      {
-        "name": "operator_scopes",
-        "type": "string",
-        "desc": "Comma-separated operator scopes (audit)"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope bound by the authenticated MCP server context"
-      }
-    ]
-  },
-  {
-    "name": "graph_correlation_status",
-    "description": "Read correlation state, source receipts, freshness, conflicts, output snapshot, and analysis bounds.",
-    "arguments": [
-      {
-        "name": "correlation_id",
-        "type": "string",
-        "desc": "Correlation id returned by graph_correlate"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope bound by the authenticated MCP server context"
-      }
-    ]
-  },
-  {
-    "name": "should_i_deploy",
-    "description": "Return allow/warn/block deployment guidance from ExposurePath risk.",
-    "arguments": [
-      {
-        "name": "candidate",
-        "type": "string",
-        "desc": "Package, resource, CVE, node ID, or deployment label to evaluate"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant ID for the graph snapshot (default: default)"
-      },
-      {
-        "name": "scan_id",
-        "type": "string",
-        "desc": "Optional graph scan ID; omit to use latest snapshot"
-      },
-      {
-        "name": "limit",
-        "type": "integer",
-        "desc": "Maximum matched exposure paths to return (1-25)"
-      },
-      {
-        "name": "warn_risk",
-        "type": "number",
-        "desc": "Risk score threshold for warn"
-      },
-      {
-        "name": "block_risk",
-        "type": "number",
-        "desc": "Risk score threshold for block"
+        "desc": "Minimum path risk score to include."
       }
     ]
   },
   {
     "name": "policy_check",
-    "description": "Evaluate a security policy against current scan results \u2014 returns pass/fail per rule.",
+    "description": "Evaluate a security policy against current scan results.\n\nRuns a scan, then evaluates the provided policy rules against the\nfindings. Policies can gate on severity thresholds, CISA KEV status,\nAI risk flags, credential exposure, and denied packages.\n\nArgs:\n    policy_json: JSON string containing policy rules. Example:\n        {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\",\n        \"action\": \"fail\"}, {\"id\": \"no-kev\", \"kev\": true, \"action\": \"fail\"}]}\n\nReturns:\n    JSON with passed (bool), violations list, failure_count, and\n    warning_count.\n",
     "arguments": [
       {
-        "name": "policy_file",
+        "name": "policy_json",
         "type": "string",
-        "desc": "Path to policy JSON/YAML file"
-      },
-      {
-        "name": "scan_results",
-        "type": "string",
-        "desc": "Path to scan results JSON (uses last scan if omitted)"
-      }
-    ]
-  },
-  {
-    "name": "registry_lookup",
-    "description": "Query the agent-bom MCP server threat intelligence registry for a server's risk level, credential heuristics, and verification status.",
-    "arguments": [
-      {
-        "name": "server_name",
-        "type": "string",
-        "desc": "MCP server package name or identifier"
+        "desc": "JSON string containing policy rules, e.g. {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\", \"action\": \"fail\"}]}."
       }
     ]
   },
   {
     "name": "generate_sbom",
-    "description": "Generate a Software Bill of Materials (SBOM) for your AI agent setup in CycloneDX or SPDX format.",
+    "description": "Generate a Software Bill of Materials (SBOM) for your AI agent setup.\n\nDiscovers AI agents and MCP servers, extracts all package dependencies,\nand generates a standards-compliant SBOM.\n\nArgs:\n    format: SBOM format \u2014 \"cyclonedx\" (CycloneDX 1.7) or \"spdx\" (SPDX 3.0).\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n\nReturns:\n    JSON string containing the SBOM in the requested format.\n",
     "arguments": [
       {
         "name": "format",
         "type": "string",
-        "desc": "SBOM format: cyclonedx or spdx"
+        "desc": "SBOM format: 'cyclonedx' (CycloneDX 1.7) or 'spdx' (SPDX 3.0)."
       },
       {
-        "name": "output_path",
+        "name": "config_path",
         "type": "string",
-        "desc": "Output file path"
+        "desc": "Path to MCP client config directory. Auto-discovers all if omitted."
       }
     ]
   },
   {
     "name": "compliance",
-    "description": "Get compliance posture for OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF, EU AI Act, SOC 2, ISO 27001, CMMC, FedRAMP, and more.",
+    "description": "Get OWASP LLM Top 10 / OWASP MCP Top 10 / MITRE ATLAS / NIST AI RMF compliance posture.\n\nScans local MCP configurations, maps findings to 47 security controls\nacross four AI security frameworks, and returns per-control\npass/warning/fail status with an overall compliance score.\n\nArgs:\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n    image: Docker image reference to scan (e.g. \"nginx:1.25\").\n\nReturns:\n    JSON with overall_score (0-100), overall_status (pass/warning/fail/no_data),\n    and per-control details for OWASP LLM Top 10 (10 controls),\n    OWASP MCP Top 10 (10 controls), MITRE ATLAS (13 techniques),\n    and NIST AI RMF (14 subcategories). Plus a nist_800_53_catalog line:\n    the vendor-asserted, catalog-backed NIST SP 800-53 Rev 5 score over\n    evaluated controls only (with ISO-27001-by-id attribution), scored\n    independently and NOT folded into overall_score.\n",
     "arguments": [
       {
-        "name": "framework",
+        "name": "config_path",
         "type": "string",
-        "desc": "Framework: owasp_llm, mitre_atlas, nist_ai_rmf, eu_ai_act, soc2, iso_27001, cmmc, fedramp, nist_csf, aisvs"
+        "desc": "Path to MCP client config directory. Auto-discovers all if omitted."
       },
       {
-        "name": "scan_results",
+        "name": "image",
         "type": "string",
-        "desc": "Path to scan results JSON (uses last scan if omitted)"
+        "desc": "Docker image to scan, e.g. 'nginx:1.25'."
       }
     ]
   },
   {
     "name": "remediate",
-    "description": "Generate a remediation plan \u2014 ordered upgrade recommendations that clear the most vulnerabilities per change.",
-    "arguments": [
-      {
-        "name": "scan_results",
-        "type": "string",
-        "desc": "Path to scan results JSON (uses last scan if omitted)"
-      },
-      {
-        "name": "output_path",
-        "type": "string",
-        "desc": "Write plan to this file path (optional)"
-      }
-    ]
-  },
-  {
-    "name": "skill_scan",
-    "description": "Scan instruction files such as CLAUDE.md, AGENTS.md, .cursorrules, and skills/*.md for package refs, MCP servers, trust verdicts, and findings.",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Path to a skill/instruction file or directory to scan"
-      }
-    ]
-  },
-  {
-    "name": "skill_verify",
-    "description": "Verify Sigstore provenance for instruction and skill files.",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Path to a skill/instruction file or directory to verify"
-      }
-    ]
-  },
-  {
-    "name": "skill_trust",
-    "description": "Assess the trust level of a SKILL (AI agent skill/extension) \u2014 checks provenance, permissions, and risk.",
-    "arguments": [
-      {
-        "name": "skill_path",
-        "type": "string",
-        "desc": "Path to SKILL.md or skill directory"
-      }
-    ]
-  },
-  {
-    "name": "verify",
-    "description": "Verify package integrity and SLSA provenance against registries.",
-    "arguments": [
-      {
-        "name": "package",
-        "type": "string",
-        "desc": "Package name@version to verify"
-      },
-      {
-        "name": "ecosystem",
-        "type": "string",
-        "desc": "Package ecosystem"
-      }
-    ]
-  },
-  {
-    "name": "inventory_summary",
-    "description": "Summarize unified tenant-scoped inventory counts by asset type and source group.",
-    "arguments": [
-      {"name": "tenant_id", "type": "string", "desc": "Tenant scope (default: default)"},
-      {"name": "scan_id", "type": "string", "desc": "Optional graph snapshot scan id"}
-    ]
-  },
-  {
-    "name": "inventory_list",
-    "description": "List and filter paginated assets from the unified tenant-scoped inventory.",
-    "arguments": [
-      {"name": "tenant_id", "type": "string", "desc": "Tenant scope (default: default)"},
-      {"name": "type", "type": "string", "desc": "Optional asset type filter"},
-      {"name": "search", "type": "string", "desc": "Optional text search"},
-      {"name": "environment", "type": "string", "desc": "Optional environment filter"},
-      {"name": "provider", "type": "string", "desc": "Optional provider filter"},
-      {"name": "source", "type": "string", "desc": "Optional source filter"},
-      {"name": "min_severity", "type": "string", "desc": "Optional minimum severity filter"},
-      {"name": "scan_id", "type": "string", "desc": "Optional graph snapshot scan id"},
-      {"name": "cursor", "type": "string", "desc": "Optional keyset pagination cursor"},
-      {"name": "offset", "type": "integer", "desc": "Pagination offset (default: 0)"},
-      {"name": "limit", "type": "integer", "desc": "Maximum assets to return (default: 50)"}
-    ]
-  },
-  {
-    "name": "inventory_asset",
-    "description": "Get one asset with relationships, neighbors, sources, and blast-radius impact.",
-    "arguments": [
-      {"name": "asset_id", "type": "string", "desc": "Asset identifier"},
-      {"name": "tenant_id", "type": "string", "desc": "Tenant scope (default: default)"},
-      {"name": "scan_id", "type": "string", "desc": "Optional graph snapshot scan id"}
-    ]
-  },
-  {
-    "name": "where",
-    "description": "Show all MCP discovery paths and which config files exist on this system.",
-    "arguments": []
-  },
-  {
-    "name": "tool_risk_assessment",
-    "description": "Score live-introspected MCP tool capabilities and server risk \u2014 classifies tools as READ/WRITE/EXECUTE/NETWORK/FILE_ACCESS and flags dangerous capability combinations.",
+    "description": "Generate a remediation plan for vulnerabilities in your AI agent setup.\n\nScans for vulnerabilities, then generates actionable fix commands for\neach affected package (npm install, pip install), credential scope\nreduction guidance, and reports on unfixable vulnerabilities.\n\nArgs:\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n    image: Docker image reference to scan (e.g. \"nginx:1.25\").\n\nReturns:\n    JSON with package_fixes (upgrade commands by ecosystem),\n    credential_fixes (scope reduction steps), and unfixable items.\n",
     "arguments": [
       {
         "name": "config_path",
         "type": "string",
-        "desc": "Path to MCP client config directory (default: auto-discover)"
+        "desc": "Path to MCP client config directory. Auto-discovers all if omitted."
       },
       {
-        "name": "timeout",
-        "type": "number",
-        "desc": "Per-server introspection timeout in seconds (default: 10.0)"
+        "name": "image",
+        "type": "string",
+        "desc": "Docker image to scan, e.g. 'nginx:1.25'."
       }
-    ]
-  },
-  {
-    "name": "inventory",
-    "description": "List all discovered MCP configurations and servers without running a CVE scan.",
-    "arguments": [
-      {
-        "name": "project_path",
-        "type": "string",
-        "desc": "Directory to scan (default: auto-detect)"
-      },
-      {
-        "name": "output_format",
-        "type": "string",
-        "desc": "Output format: json, table"
-      }
-    ]
-  },
-  {
-    "name": "diff",
-    "description": "Compare a fresh scan against a baseline to find new and resolved vulnerabilities.",
-    "arguments": [
-      {
-        "name": "baseline_path",
-        "type": "string",
-        "desc": "Path to baseline scan results JSON"
-      },
-      {
-        "name": "current_path",
-        "type": "string",
-        "desc": "Path to current scan results JSON (runs fresh scan if omitted)"
-      }
-    ]
-  },
-  {
-    "name": "marketplace_check",
-    "description": "Pre-install trust check for an MCP server package \u2014 verifies before adding to your agent config.",
-    "arguments": [
-      {
-        "name": "server_name",
-        "type": "string",
-        "desc": "MCP server package name, e.g. '@anthropic/web-search-mcp'"
-      }
-    ]
-  },
-  {
-    "name": "code_scan",
-    "description": "Run SAST (Static Application Security Testing) on source code via Semgrep.",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Directory or file to scan"
-      },
-      {
-        "name": "severity",
-        "type": "string",
-        "desc": "Minimum severity to report: critical, high, medium, low"
-      }
-    ]
-  },
-  {
-    "name": "context_graph",
-    "description": "Build an agent context graph with lateral movement analysis \u2014 visualizes agent-to-agent trust chains.",
-    "arguments": [
-      {
-        "name": "project_path",
-        "type": "string",
-        "desc": "Directory to analyze"
-      },
-      {
-        "name": "output_format",
-        "type": "string",
-        "desc": "Output format: json, dot"
-      }
-    ]
-  },
-  {
-    "name": "graph_export",
-    "description": "Export the agent dependency graph in graph-native formats for visualization or downstream graph analysis.",
-    "arguments": [
-      {
-        "name": "config_path",
-        "type": "string",
-        "desc": "Path to MCP config directory (default: auto-discover)"
-      },
-      {
-        "name": "format",
-        "type": "string",
-        "desc": "Export format: json (default), graphml, cypher, dot, mermaid"
-      }
-    ]
-  },
-  {
-    "name": "analytics_query",
-    "description": "Query vulnerability trends, posture history, and runtime event summaries from Claude Desktop's local analytics.",
-    "arguments": [
-      {
-        "name": "query_type",
-        "type": "string",
-        "desc": "Query type: trends, history, events, summary"
-      }
-    ]
-  },
-  {
-    "name": "cis_benchmark",
-    "description": "Run CIS benchmarks for AWS, Azure, GCP, and Snowflake, or Databricks security best-practices checks.",
-    "arguments": [
-      {
-        "name": "provider",
-        "type": "string",
-        "desc": "Cloud provider: aws, azure, gcp, snowflake, databricks"
-      }
-    ]
-  },
-  {
-    "name": "kspm_cluster_posture",
-    "description": "Evaluate live Kubernetes cluster security posture (KSPM) — read-only inspection of running workloads, RBAC, and NetworkPolicy coverage against the pinned CIS Kubernetes Benchmark, with explicit per-collector execution states so partial runs cannot be laundered into a clean pass. Returns security posture, not a container-image inventory.",
-    "arguments": [
-      {
-        "name": "namespace",
-        "type": "string",
-        "desc": "Kubernetes namespace to inspect (ignored when all_namespaces=True). Defaults to 'default'."
-      },
-      {
-        "name": "all_namespaces",
-        "type": "boolean",
-        "desc": "Inspect every namespace instead of a single one."
-      },
-      {
-        "name": "context",
-        "type": "string",
-        "desc": "kubectl context to use (workstation fallback path only). Omit to use the in-cluster SA token."
-      },
-      {
-        "name": "enable_nodes_configz",
-        "type": "boolean",
-        "desc": "Opt in to per-node kubelet /configz collection (CIS section 4.2). Off by default."
-      }
-    ]
-  },
-  {
-    "name": "fleet_scan",
-    "description": "Batch-scan a list of MCP server names against the security metadata registry.",
-    "arguments": [
-      {
-        "name": "servers",
-        "type": "array",
-        "desc": "List of MCP server package names to scan"
-      }
-    ]
-  },
-  {
-    "name": "runtime_correlate",
-    "description": "Cross-reference vulnerability scan results with proxy runtime audit logs to find exploited CVEs.",
-    "arguments": [
-      {
-        "name": "scan_results",
-        "type": "string",
-        "desc": "Path to scan results JSON"
-      },
-      {
-        "name": "audit_log",
-        "type": "string",
-        "desc": "Path to proxy audit log"
-      }
-    ]
-  },
-  {
-    "name": "runtime_production_index",
-    "description": "Return metadata-only runtime production posture for proxy and gateway traffic.",
-    "arguments": [
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to summarize"
-      }
-    ]
-  },
-  {
-    "name": "runtime_blueprints",
-    "description": "Return canonical runtime role/profile blueprints for agent and MCP governance.",
-    "arguments": [
-      {
-        "name": "blueprint_id",
-        "type": "string",
-        "desc": "Optional blueprint id such as developer or security_analyst"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for the response envelope"
-      }
-    ]
-  },
-  {
-    "name": "runtime_blueprint_drift",
-    "description": "Evaluate live runtime posture against a role/profile blueprint.",
-    "arguments": [
-      {
-        "name": "blueprint_id",
-        "type": "string",
-        "desc": "Blueprint id such as developer or security_analyst"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to summarize"
-      }
-    ]
-  },
-  {
-    "name": "cost_report",
-    "description": "Return LLM spend attribution per agent/model/provider with budget posture, from OTel GenAI token usage.",
-    "arguments": [
-      {
-        "name": "agent",
-        "type": "string",
-        "desc": "Optional agent name to scope spend to a single agent"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope (defaults to the control-plane default tenant)"
-      }
-    ]
-  },
-  {
-    "name": "anomaly_scan",
-    "description": "Detect cost and behavior anomalies (per-agent spend + per-session call-rate z-score outliers).",
-    "arguments": [
-      {
-        "name": "z_threshold",
-        "type": "number",
-        "desc": "Z-score threshold (default 3.0)"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope"
-      }
-    ]
-  },
-  {
-    "name": "drift_incidents",
-    "description": "List open blueprint-drift incidents where observed runtime traffic left the approved role blueprint.",
-    "arguments": [
-      {
-        "name": "include_resolved",
-        "type": "boolean",
-        "desc": "Include resolved incidents (default: open only)"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope (defaults to the control-plane default tenant)"
-      }
-    ]
-  },
-  {
-    "name": "proxy_status",
-    "description": "Return current MCP proxy metrics and runtime alert posture.",
-    "arguments": [
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to summarize"
-      }
-    ]
-  },
-  {
-    "name": "proxy_alerts",
-    "description": "Return recent tenant-scoped runtime proxy alerts with severity and detector filters.",
-    "arguments": [
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to read"
-      },
-      {
-        "name": "severity",
-        "type": "string",
-        "desc": "Optional severity filter"
-      },
-      {
-        "name": "detector",
-        "type": "string",
-        "desc": "Optional detector name filter"
-      },
-      {
-        "name": "limit",
-        "type": "integer",
-        "desc": "Maximum alerts to return"
-      }
-    ]
-  },
-  {
-    "name": "gateway_status",
-    "description": "Return gateway policy and inter-agent firewall runtime statistics.",
-    "arguments": [
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to summarize"
-      }
-    ]
-  },
-  {
-    "name": "shield_status",
-    "description": "Return Shield session status without changing enforcement state.",
-    "arguments": [
-      {
-        "name": "session_id",
-        "type": "string",
-        "desc": "Shield session id to inspect"
-      }
-    ]
-  },
-  {
-    "name": "shield_start",
-    "description": "Start Shield enforcement for a session; requires admin role and an audit reason.",
-    "arguments": [
-      {
-        "name": "session_id",
-        "type": "string",
-        "desc": "Shield session id to enforce"
-      },
-      {
-        "name": "correlation_window",
-        "type": "number",
-        "desc": "Correlation window in seconds"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Caller role; must be admin"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Audit reason for the write action"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for audit logging"
-      }
-    ]
-  },
-  {
-    "name": "shield_unblock",
-    "description": "Unblock Shield enforcement for a session; requires admin role and an audit reason.",
-    "arguments": [
-      {
-        "name": "session_id",
-        "type": "string",
-        "desc": "Shield session id to unblock"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Caller role; must be admin"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Audit reason for the write action"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for audit logging"
-      }
-    ]
-  },
-  {
-    "name": "shield_break_glass",
-    "description": "Emergency Shield override; requires admin role and an audit reason.",
-    "arguments": [
-      {
-        "name": "session_id",
-        "type": "string",
-        "desc": "Shield session id to override"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Caller role; must be admin"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Audit reason for the emergency override"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for audit logging"
-      }
-    ]
-  },
-  {
-    "name": "identity_issue",
-    "description": "Issue a managed agent identity; requires admin role, identity:write scope, and an audit reason. Returns the raw token once.",
-    "arguments": [
-      {
-        "name": "agent_id",
-        "type": "string",
-        "desc": "Agent identifier the issued identity represents"
-      },
-      {
-        "name": "role",
-        "type": "string",
-        "desc": "Identity role label, for example agent or service"
-      },
-      {
-        "name": "blueprint_id",
-        "type": "string",
-        "desc": "Optional runtime blueprint id bound to the identity"
-      },
-      {
-        "name": "ttl_seconds",
-        "type": "number",
-        "desc": "Identity lifetime in seconds"
-      },
-      {
-        "name": "allowed_tools",
-        "type": "string",
-        "desc": "Comma-separated per-tool scope allowlist; empty means any tool"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Caller role; must be admin"
-      },
-      {
-        "name": "operator_scopes",
-        "type": "string",
-        "desc": "Comma-separated operator scopes; must include identity:write"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Audit reason for the write action"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for the identity and audit logging"
-      }
-    ]
-  },
-  {
-    "name": "identity_rotate",
-    "description": "Rotate a managed agent identity with an overlap window; requires admin role, identity:write scope, and an audit reason.",
-    "arguments": [
-      {
-        "name": "identity_id",
-        "type": "string",
-        "desc": "Identity id to rotate"
-      },
-      {
-        "name": "overlap_seconds",
-        "type": "number",
-        "desc": "Seconds the old token stays live during rotation"
-      },
-      {
-        "name": "ttl_seconds",
-        "type": "number",
-        "desc": "Lifetime of the replacement identity in seconds"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Caller role; must be admin"
-      },
-      {
-        "name": "operator_scopes",
-        "type": "string",
-        "desc": "Comma-separated operator scopes; must include identity:write"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Audit reason for the write action"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for audit logging"
-      }
-    ]
-  },
-  {
-    "name": "identity_revoke",
-    "description": "Revoke a managed agent identity immediately; requires admin role, identity:write scope, and an audit reason.",
-    "arguments": [
-      {
-        "name": "identity_id",
-        "type": "string",
-        "desc": "Identity id to revoke"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Caller role; must be admin"
-      },
-      {
-        "name": "operator_scopes",
-        "type": "string",
-        "desc": "Comma-separated operator scopes; must include identity:write"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Audit reason for the write action"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for audit logging"
-      }
-    ]
-  },
-  {
-    "name": "identity_grant_jit",
-    "description": "Grant an identity time-bound JIT access to one tool; requires admin role, identity:write scope, and an audit reason.",
-    "arguments": [
-      {
-        "name": "identity_id",
-        "type": "string",
-        "desc": "Identity id to grant time-bound access to"
-      },
-      {
-        "name": "tool_name",
-        "type": "string",
-        "desc": "Tool the grant authorizes beyond the identity's standing scope"
-      },
-      {
-        "name": "ttl_seconds",
-        "type": "number",
-        "desc": "Grant lifetime in seconds"
-      },
-      {
-        "name": "ticket_id",
-        "type": "string",
-        "desc": "Optional change/incident ticket id"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Caller role; must be admin"
-      },
-      {
-        "name": "operator_scopes",
-        "type": "string",
-        "desc": "Comma-separated operator scopes; must include identity:write"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Audit reason for the write action"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for audit logging"
-      }
-    ]
-  },
-  {
-    "name": "identity_revoke_jit",
-    "description": "Revoke an active JIT access grant immediately; requires admin role, identity:write scope, and an audit reason.",
-    "arguments": [
-      {
-        "name": "grant_id",
-        "type": "string",
-        "desc": "JIT grant id to revoke"
-      },
-      {
-        "name": "operator_role",
-        "type": "string",
-        "desc": "Caller role; must be admin"
-      },
-      {
-        "name": "operator_scopes",
-        "type": "string",
-        "desc": "Comma-separated operator scopes; must include identity:write"
-      },
-      {
-        "name": "reason",
-        "type": "string",
-        "desc": "Audit reason for the write action"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for audit logging"
-      }
-    ]
-  },
-  {
-    "name": "firewall_check",
-    "description": "Dry-run an inter-agent firewall decision without recording control-plane state.",
-    "arguments": [
-      {
-        "name": "source_agent",
-        "type": "string",
-        "desc": "Source agent identity"
-      },
-      {
-        "name": "target_agent",
-        "type": "string",
-        "desc": "Target agent or service identity"
-      },
-      {
-        "name": "source_roles",
-        "type": "string",
-        "desc": "Optional comma-separated source roles"
-      },
-      {
-        "name": "target_roles",
-        "type": "string",
-        "desc": "Optional comma-separated target roles"
-      }
-    ]
-  },
-  {
-    "name": "audit_query",
-    "description": "Read tenant-scoped control-plane audit records with filters.",
-    "arguments": [
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to read"
-      },
-      {
-        "name": "action",
-        "type": "string",
-        "desc": "Optional audit action filter"
-      },
-      {
-        "name": "resource",
-        "type": "string",
-        "desc": "Optional audit resource filter"
-      },
-      {
-        "name": "since",
-        "type": "string",
-        "desc": "Optional ISO timestamp lower bound"
-      },
-      {
-        "name": "limit",
-        "type": "integer",
-        "desc": "Maximum audit records to return"
-      },
-      {
-        "name": "offset",
-        "type": "integer",
-        "desc": "Pagination offset"
-      }
-    ]
-  },
-  {
-    "name": "audit_integrity",
-    "description": "Verify control-plane and runtime audit-chain integrity.",
-    "arguments": [
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to verify"
-      },
-      {
-        "name": "limit",
-        "type": "integer",
-        "desc": "Maximum audit records to verify"
-      },
-      {
-        "name": "include_runtime",
-        "type": "boolean",
-        "desc": "Include configured runtime proxy audit log"
-      }
-    ]
-  },
-  {
-    "name": "vector_db_scan",
-    "description": "Scan for running vector databases and assess their security posture (auth, encryption, exposure).",
-    "arguments": [
-      {
-        "name": "host",
-        "type": "string",
-        "desc": "Host to scan (default: localhost)"
-      }
-    ]
-  },
-  {
-    "name": "aisvs_benchmark",
-    "description": "Run AISVS v1 (AI Security Verification Standard) benchmark against your AI infrastructure.",
-    "arguments": [
-      {
-        "name": "project_path",
-        "type": "string",
-        "desc": "Directory to benchmark"
-      }
-    ]
-  },
-  {
-    "name": "gpu_infra_scan",
-    "description": "Discover GPU/AI compute infrastructure: containers, K8s nodes, and DCGM endpoints.",
-    "arguments": [
-      {
-        "name": "namespace",
-        "type": "string",
-        "desc": "Kubernetes namespace (optional)"
-      }
-    ]
-  },
-  {
-    "name": "registry_sweep_scan",
-    "description": "Sweep a cloud registry (ECR/ACR/GAR): enumerate repos+tags, dedupe by digest, cap, scan each (read-only).",
-    "arguments": [
-      {
-        "name": "provider",
-        "type": "string",
-        "desc": "Container registry to sweep: ecr, acr, or gar"
-      },
-      {
-        "name": "region",
-        "type": "string",
-        "desc": "AWS region (ecr only)"
-      },
-      {
-        "name": "profile",
-        "type": "string",
-        "desc": "AWS credential profile (ecr only)"
-      },
-      {
-        "name": "registry",
-        "type": "string",
-        "desc": "ACR login server, e.g. myacr.azurecr.io (acr only)"
-      },
-      {
-        "name": "project",
-        "type": "string",
-        "desc": "GCP project id (gar only)"
-      },
-      {
-        "name": "location",
-        "type": "string",
-        "desc": "GAR location or multi-region, e.g. us (gar only)"
-      },
-      {
-        "name": "max_images",
-        "type": "integer",
-        "desc": "Cap on images scanned"
-      }
-    ]
-  },
-  {
-    "name": "dataset_card_scan",
-    "description": "Scan a directory for ML dataset card metadata and provenance \u2014 checks for license and sourcing issues.",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Directory containing dataset cards"
-      }
-    ]
-  },
-  {
-    "name": "training_pipeline_scan",
-    "description": "Scan a directory for ML training pipeline lineage and provenance artifacts.",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Directory containing training pipeline files"
-      }
-    ]
-  },
-  {
-    "name": "browser_extension_scan",
-    "description": "Scan installed browser extensions for dangerous permissions and supply chain risk.",
-    "arguments": [
-      {
-        "name": "browser",
-        "type": "string",
-        "desc": "Browser to scan: chrome, firefox, edge (default: all detected)"
-      }
-    ]
-  },
-  {
-    "name": "model_provenance_scan",
-    "description": "Check ML model provenance and supply chain metadata \u2014 verifies model cards and source integrity.",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Directory containing model files or model card"
-      }
-    ]
-  },
-  {
-    "name": "prompt_scan",
-    "description": "Scan prompt template files for injection risks and security issues.",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Directory or file containing prompt templates"
-      }
-    ]
-  },
-  {
-    "name": "model_file_scan",
-    "description": "Scan a directory for ML model files and assess serialization risks (pickle, safetensors, GGUF).",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Directory to scan for model files"
-      }
-    ]
-  },
-  {
-    "name": "ai_inventory_scan",
-    "description": "Scan source code for AI component usage patterns \u2014 identifies LLM calls, embedding models, and vector DB usage.",
-    "arguments": [
-      {
-        "name": "path",
-        "type": "string",
-        "desc": "Source code directory to scan"
-      }
-    ]
-  },
-  {
-    "name": "license_compliance_scan",
-    "description": "Evaluate package licenses against compliance policy \u2014 flags GPL, AGPL, or other restricted licenses.",
-    "arguments": [
-      {
-        "name": "project_path",
-        "type": "string",
-        "desc": "Project directory"
-      },
-      {
-        "name": "policy_file",
-        "type": "string",
-        "desc": "License policy file (optional)"
-      }
-    ]
-  },
-  {
-    "name": "ingest_external_scan",
-    "description": "Ingest external scanner JSON output and return packages with blast radius analysis.",
-    "arguments": [
-      {
-        "name": "scan_file",
-        "type": "string",
-        "desc": "Path to external scanner JSON output file"
-      },
-      {
-        "name": "format",
-        "type": "string",
-        "desc": "Scanner format: trivy, grype, syft (auto-detected if omitted)"
-      }
-    ]
-  },
-  {
-    "name": "runtime_evidence_ingest",
-    "description": "Ingest CWPP runtime/EDR workload signals into the durable evidence store (authenticated source; metadata only; never writes to a customer cloud target).",
-    "arguments": [
-      {
-        "name": "source_id",
-        "type": "string",
-        "desc": "Pre-registered runtime evidence source id"
-      },
-      {
-        "name": "secret",
-        "type": "string",
-        "desc": "Shared secret for the source (never logged)"
-      },
-      {
-        "name": "signals_json",
-        "type": "string",
-        "desc": "JSON string: a list of signal objects, or {\"signals\": [...]} matching the REST ingest body"
-      }
-    ]
-  },
-  {
-    "name": "cost_forecast",
-    "description": "Project LLM spend burn rate and budget runway for the active tenant \u2014 reference-only forecast with projected period spend, days of runway, and exhaustion date.",
-    "arguments": [
-      {
-        "name": "agent",
-        "type": "string",
-        "desc": "Optional agent name to scope the forecast to a single agent"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to forecast (default: default)"
-      }
-    ]
-  },
-  {
-    "name": "cost_allocation",
-    "description": "Chargeback / showback LLM spend rollups by cost-center and allocation tag, with budget posture and forecast. No prompts or responses are read.",
-    "arguments": [
-      {
-        "name": "cost_center",
-        "type": "string",
-        "desc": "Optional cost-center / allocation unit to scope the chargeback report and budget"
-      },
-      {
-        "name": "tag",
-        "type": "string",
-        "desc": "Optional allocation tag to add a showback slice (by_tag rollup)"
-      },
-      {
-        "name": "agent",
-        "type": "string",
-        "desc": "Optional agent name to scope spend to a single agent"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to summarize (default: default)"
-      }
-    ]
-  },
-  {
-    "name": "credential_expiry",
-    "description": "Expiring / overdue credential and rotation posture for control-plane secrets, with an overall verdict. Never returns secret values.",
-    "arguments": []
-  },
-  {
-    "name": "nhi_discover",
-    "description": "Discover non-human identities (Okta service apps / Entra service principals) \u2014 reference-only metadata, never secret material; each provider is gated by its own discovery env flag and token.",
-    "arguments": [
-      {
-        "name": "providers",
-        "type": "string",
-        "desc": "Comma-separated IdP providers to query: okta, entra (default: both)"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for the response envelope (default: default)"
-      }
-    ]
-  },
-  {
-    "name": "cloud_inventory",
-    "description": "Summarize the estate-wide cloud asset inventory (resource + identity counts and node summary). Opt-in per provider via AGENT_BOM_*_INVENTORY; reference-only, never resource secrets.",
-    "arguments": [
-      {
-        "name": "providers",
-        "type": "string",
-        "desc": "Comma-separated cloud providers to summarize: aws, azure, gcp (default: all enabled)"
-      },
-      {
-        "name": "region",
-        "type": "string",
-        "desc": "Optional AWS region for AWS inventory (e.g. us-east-1)"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope for the response envelope (default: default)"
-      }
-    ]
-  },
-  {
-    "name": "access_review",
-    "description": "List or get NHI access-review / recertification campaigns and their status (read-only). Creating a campaign or submitting a decision is a write action and is not exposed here.",
-    "arguments": [
-      {
-        "name": "campaign_id",
-        "type": "string",
-        "desc": "Optional campaign id to fetch one campaign with its review items (default: list campaigns)"
-      },
-      {
-        "name": "tenant_id",
-        "type": "string",
-        "desc": "Tenant scope to read (default: default)"
-      },
-      {
-        "name": "limit",
-        "type": "integer",
-        "desc": "Maximum campaigns to list when campaign_id is omitted (default: 200)"
-      }
-    ]
-  },
-  {
-    "name": "create_ticket",
-    "description": "File an ITSM ticket for a finding through a stored connect-once connection; no per-action credential.",
-    "arguments": [
-      {"name": "finding", "type": "string", "desc": "Finding or issue as a JSON object"},
-      {"name": "project", "type": "string", "desc": "Target ITSM project or queue key"},
-      {"name": "connection_id", "type": "string", "desc": "Stored ticketing connection id"},
-      {"name": "finding_id", "type": "string", "desc": "Stable finding id for idempotency"},
-      {"name": "issue_type", "type": "string", "desc": "ITSM issue type"},
-      {"name": "source_url", "type": "string", "desc": "Optional agent-bom provenance link"},
-      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
-      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
-      {"name": "reason", "type": "string", "desc": "Human audit reason"},
-      {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
-    ]
-  },
-  {
-    "name": "sync_ticket_status",
-    "description": "Refresh a filed ITSM ticket's status through the stored ticketing connection.",
-    "arguments": [
-      {"name": "ticket_id", "type": "string", "desc": "Agent-bom ticket link id"},
-      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
-      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
-      {"name": "reason", "type": "string", "desc": "Human audit reason"},
-      {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
-    ]
-  },
-  {
-    "name": "findings_triage",
-    "description": "Record a tenant-scoped finding triage decision (queue state, VEX decision + justification, assignee) to the exception store; no per-action credential.",
-    "arguments": [
-      {"name": "vulnerability_id", "type": "string", "desc": "Vulnerability/advisory id being triaged"},
-      {"name": "package", "type": "string", "desc": "Affected package name, or '*' for all"},
-      {"name": "server_name", "type": "string", "desc": "Optional MCP server / asset scope"},
-      {"name": "assignee", "type": "string", "desc": "Owner recorded for the triage entry"},
-      {"name": "queue_state", "type": "string", "desc": "open, assigned, reviewing, or decided"},
-      {"name": "decision", "type": "string", "desc": "under_investigation, affected, or not_affected"},
-      {"name": "justification", "type": "string", "desc": "OpenVEX justification (required for not_affected)"},
-      {"name": "decision_reason", "type": "string", "desc": "Free-text rationale for the decision"},
-      {"name": "expires_at", "type": "string", "desc": "Optional ISO-8601 expiry"},
-      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
-      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
-      {"name": "reason", "type": "string", "desc": "Human audit reason"},
-      {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
-    ]
-  },
-  {
-    "name": "list_exceptions",
-    "description": "List tenant-scoped vulnerability exceptions from the canonical lifecycle store.",
-    "arguments": [
-      {"name": "status", "type": "string", "desc": "Optional pending, active, expired, or revoked status filter"},
-      {"name": "limit", "type": "integer", "desc": "Maximum exception records to return"},
-      {"name": "tenant_id", "type": "string", "desc": "Requested tenant; server binding is authoritative"}
-    ]
-  },
-  {
-    "name": "request_exception",
-    "description": "Request a pending tenant-scoped vulnerability exception through the canonical lifecycle store.",
-    "arguments": [
-      {"name": "vulnerability_id", "type": "string", "desc": "Vulnerability or advisory id"},
-      {"name": "package_name", "type": "string", "desc": "Affected package name, or '*' for any package"},
-      {"name": "server_name", "type": "string", "desc": "Optional server or asset scope"},
-      {"name": "exception_reason", "type": "string", "desc": "Human rationale for the exception request"},
-      {"name": "expires_at", "type": "string", "desc": "Optional timezone-aware ISO-8601 expiry"},
-      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
-      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
-      {"name": "reason", "type": "string", "desc": "Human audit reason"},
-      {"name": "tenant_id", "type": "string", "desc": "Requested tenant; server binding is authoritative"}
-    ]
-  },
-  {
-    "name": "approve_exception",
-    "description": "Approve a pending tenant-scoped vulnerability exception through the canonical lifecycle store.",
-    "arguments": [
-      {"name": "exception_id", "type": "string", "desc": "Pending exception id to activate"},
-      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
-      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
-      {"name": "reason", "type": "string", "desc": "Human audit reason"},
-      {"name": "tenant_id", "type": "string", "desc": "Requested tenant; server binding is authoritative"}
-    ]
-  },
-  {
-    "name": "risk_campaign_workflow",
-    "description": "List, assign, ticket, and verify tenant-scoped remediation campaigns through the shared persisted workflow.",
-    "arguments": [
-      {"name": "action", "type": "string", "desc": "list, update, verify, verification_queue, ticket_create, or ticket_sync"},
-      {"name": "campaign_id", "type": "string", "desc": "Campaign id for update, verify, or ticket actions"},
-      {"name": "version", "type": "integer", "desc": "Current optimistic-lock version for update or verify"},
-      {"name": "owner", "type": "string", "desc": "Owner to assign during update"},
-      {"name": "sla_due_at", "type": "string", "desc": "Timezone-aware ISO-8601 SLA deadline"},
-      {"name": "state", "type": "string", "desc": "open, in_progress, blocked, or done"},
-      {"name": "connection_id", "type": "string", "desc": "Stored ticketing connection id for ticket_create"},
-      {"name": "project", "type": "string", "desc": "Optional ticketing project override"},
-      {"name": "issue_type", "type": "string", "desc": "Optional ticketing issue type override"},
-      {"name": "cursor", "type": "string", "desc": "Continuation cursor for bounded queue or ticket actions"},
-      {"name": "limit", "type": "integer", "desc": "Bounded queue or ticket action page size"},
-      {"name": "idempotency_key", "type": "string", "desc": "Retry key for verify"},
-      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
-      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
-      {"name": "tenant_id", "type": "string", "desc": "Requested tenant; server binding is authoritative"}
-    ]
-  },
-  {
-    "name": "cloud_side_scan",
-    "description": "Trigger one agentless Azure/GCP disk side-scan (snapshot + read-only mount, SBOM + CVE + secret metadata) through the shared executor; admin-gated, no per-action credential.",
-    "arguments": [
-      {"name": "provider", "type": "string", "desc": "Cloud provider: 'azure' or 'gcp'"},
-      {"name": "target_id", "type": "string", "desc": "Managed/persistent disk resource id to scan"},
-      {"name": "account_id", "type": "string", "desc": "Azure subscription id / GCP project id"},
-      {"name": "location", "type": "string", "desc": "Azure location / GCP zone of the temp disk"},
-      {"name": "collector_id", "type": "string", "desc": "In-account collector VM/instance id"},
-      {"name": "collector_resource_group", "type": "string", "desc": "Azure only: collector VM resource group"},
-      {"name": "region", "type": "string", "desc": "Optional provider region hint"},
-      {"name": "idempotency_key", "type": "string", "desc": "Retry-safe key; reuses one execution record"},
-      {"name": "scan_secrets_enabled", "type": "boolean", "desc": "Include the redacted secret scan (type + location only)"},
-      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
-      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
-      {"name": "reason", "type": "string", "desc": "Human audit reason"},
-      {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
     ]
   }
 ]

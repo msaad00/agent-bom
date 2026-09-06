@@ -1,5 +1,8 @@
 # MCP Tools Reference
 
+The default scan profile exposes 8 tools. This reference covers the explicit
+`--profile full` catalog; select only the task profile needed for a session.
+
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
@@ -17,7 +20,7 @@ invoke them.
 smaller workflow-oriented context envelope.
 
 <details>
-<summary>Complete current catalog (86 tools)</summary>
+<summary>Explicit full-profile catalog (86 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `graph_correlate`,

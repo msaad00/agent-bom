@@ -491,7 +491,7 @@ def test_live_server_card_exposes_exact_mcp_tool_schemas():
 
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
 
-    server = create_mcp_server(bearer_token="test-token")
+    server = create_mcp_server(bearer_token="test-token", profile="full")
     response = TestClient(server.streamable_http_app()).get("/.well-known/mcp/server-card.json")
 
     assert response.status_code == 200
@@ -507,7 +507,7 @@ def test_root_metadata_fields():
 
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     # Verify the custom routes were registered — check that root and health
     # route functions exist on the server (they're decorators on custom_route)
     assert hasattr(server, "custom_route")
@@ -519,7 +519,7 @@ def test_health_endpoint_fields():
     from agent_bom import __version__
     from agent_bom.mcp_server import _tool_metrics_snapshot, create_mcp_server
 
-    create_mcp_server()
+    create_mcp_server(profile="full")
     # The routes are registered; verify the build_server_card still works
     from agent_bom.mcp_server import build_server_card
 
@@ -1027,20 +1027,18 @@ def test_eks_pilot_doc_matches_chart_secret_and_service_port():
 # ---------------------------------------------------------------------------
 
 
-def test_mcp_server_help_shows_skill_tools():
-    """MCP server help should mention the expanded skill tool surface."""
+def test_mcp_server_help_explains_profile_selection():
+    """Help leads with the small default and explicit compatibility escape hatch."""
     from click.testing import CliRunner
 
     from agent_bom.cli import main
-    from agent_bom.mcp_server import _SERVER_CARD_TOOLS
 
-    runner = CliRunner()
-    result = runner.invoke(main, ["mcp", "server", "--help"])
-    assert f"{len(_SERVER_CARD_TOOLS)} security tools" in result.output
-    assert "skill_scan" in result.output
-    assert "skill_verify" in result.output
-    assert "compliance" in result.output
-    assert "remediate" in result.output
+    result = CliRunner().invoke(main, ["mcp", "server", "--help"])
+    assert result.exit_code == 0
+    assert "Default: 8" in result.output
+    assert "--profile full" in result.output
+    assert "profiles://catalog" in result.output
+    assert "Profiles do not grant authorization" in result.output
 
 
 # ---------------------------------------------------------------------------

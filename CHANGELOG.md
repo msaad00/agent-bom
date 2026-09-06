@@ -9,6 +9,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- MCP server startup now exposes eight scan and remediation tools by default.
+  Select graph, cloud, runtime or audit profiles for specialized work, or use
+  `--profile full` to preserve the complete catalog in existing clients.
+  Prompts, server cards and health counts reflect the active profile;
+  `profiles://catalog` provides discovery without loading every tool schema.
+  Authentication, tenant scope and write authorization remain required.
+
 ## [0.103.2] - 2026-09-01
 
 This patch makes the correlated-evidence journey automatic and easier to read,

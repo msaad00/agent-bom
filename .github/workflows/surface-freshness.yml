@@ -58,7 +58,7 @@ jobs:
           RELEASE_SHA=$(git rev-list -n 1 "refs/tags/${TAG}")
           METRICS_JSON=$(git show "${RELEASE_SHA}:docs/PRODUCT_METRICS.json")
           METRICS_VERSION=$(echo "$METRICS_JSON" | jq -er '.version')
-          TOOL_COUNT=$(echo "$METRICS_JSON" | jq -er 'first(.metrics[] | select(.name == "MCP tools") | .value)')
+          TOOL_COUNT=$(echo "$METRICS_JSON" | jq -er '(first(.metrics[] | select(.name == "MCP default tools") | .value) // first(.metrics[] | select(.name == "MCP tools") | .value))')
           if [ "$METRICS_VERSION" != "$VERSION" ]; then
             echo "::error::Published release metrics version ${METRICS_VERSION} does not match ${VERSION}"
             exit 1

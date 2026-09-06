@@ -596,12 +596,13 @@ def main() -> int:
     tools = len(tool_names)
     resources = len(resource_uris)
     prompts = len(prompt_names)
-    if (tools, resources, prompts) != (86, 6, 8):
+    if (tools, resources, prompts) != (86, 7, 8):
         _fail(f"MCP server card count changed unexpectedly: tools={tools}, resources={resources}, prompts={prompts}")
+    default_tool_names = [str(name) for name in _server_card_list("_DEFAULT_PROFILE_TOOL_NAMES")]
     docker_mcp_tool_names = [str(tool["name"]) for tool in json.loads(DOCKER_MCP_TOOLS.read_text())]
-    if docker_mcp_tool_names != tool_names:
-        missing = sorted(set(tool_names) - set(docker_mcp_tool_names))
-        extra = sorted(set(docker_mcp_tool_names) - set(tool_names))
+    if set(docker_mcp_tool_names) != set(default_tool_names) or len(docker_mcp_tool_names) != len(default_tool_names):
+        missing = sorted(set(default_tool_names) - set(docker_mcp_tool_names))
+        extra = sorted(set(docker_mcp_tool_names) - set(default_tool_names))
         _fail(f"integrations/docker-mcp-registry/tools.json is out of sync with MCP server-card tools: missing={missing}, extra={extra}")
     for path in MCP_COUNT_DOCS:
         text = path.read_text()

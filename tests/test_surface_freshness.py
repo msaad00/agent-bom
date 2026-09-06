@@ -154,17 +154,17 @@ def test_glama_listing_reports_malformed_tool_names_as_stale(monkeypatch, capsys
     assert "tool without a name" in payload["error"]
 
 
-def test_glama_tool_names_are_extracted_inertly_from_the_release_ref(tmp_path):
+def test_glama_tool_names_match_the_current_default_profile(tmp_path):
     script = _load_script("check_glama_listing.py")
     destination = tmp_path / "tool-names.json"
 
-    assert script.main(["--write-tool-names", str(destination), "--git-ref", "HEAD"]) == 0
+    assert script.main(["--write-tool-names", str(destination)]) == 0
     names = json.loads(destination.read_text(encoding="utf-8"))
 
     assert names == sorted(names)
-    assert len(names) == len(set(names)) == 86
-    assert "graph_correlate" in names
-    assert "graph_correlation_status" in names
+    assert len(names) == len(set(names)) == 8
+    assert "scan" in names
+    assert "graph_correlate" not in names
 
 
 def test_glama_listing_rejects_exact_public_schema_when_directory_api_is_stale(monkeypatch, capsys):
@@ -1212,3 +1212,28 @@ def test_smithery_publisher_uses_complete_public_schema_evidence():
         workflow.count("--compare-tool-contract-files /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json")
         == 2
     )
+
+
+@pytest.mark.parametrize("default, expected", [(None, ["check", "scan"]), (["scan"], ["scan"])])
+def test_released_profile_is_read_inertly_with_legacy_fallback(monkeypatch, default, expected):
+    script = _load_script("check_glama_listing.py")
+    source = '_SERVER_CARD_TOOLS = [{"name": "scan"}, {"name": "check"}]\n'
+    if default is not None:
+        source += f"_DEFAULT_PROFILE_TOOL_NAMES = {default!r}\n"
+    source += "raise RuntimeError('must never execute release metadata')"
+
+    def read(relative_path, *, git_ref):
+        assert git_ref == "immutable-release-sha"
+        return source
+
+    monkeypatch.setattr(script, "_read_repo_file", read)
+    assert script._release_tool_names("immutable-release-sha") == expected
+
+
+@pytest.mark.parametrize("default", [[], ["scan", "scan"], ["missing"], [False], None])
+def test_invalid_released_profile_fails_closed(monkeypatch, default):
+    script = _load_script("check_glama_listing.py")
+    source = f'_SERVER_CARD_TOOLS = [{{"name": "scan"}}]\n_DEFAULT_PROFILE_TOOL_NAMES = {default!r}'
+    monkeypatch.setattr(script, "_read_repo_file", lambda *args, **kwargs: source)
+    with pytest.raises(ValueError, match="invalid default MCP profile"):
+        script._release_tool_names("immutable-release-sha")

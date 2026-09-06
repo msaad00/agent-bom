@@ -314,13 +314,17 @@ exposing it.
 | GitHub CI | `uses: msaad00/agent-bom@v0.103.2` | SARIF, PR summary, and a policy exit code |
 | Cloud evidence | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` | Deploy the read-only grant, then connect and scan |
 | Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
-| Agent interface | `agent-bom mcp server` | 86 MCP tools, 6 resources, and 8 workflow prompts |
+| Agent interface | `agent-bom mcp server` | 8 focused tools: scan, check, inspect exposure, and plan fixes |
 | Agent distribution | [Smithery manifest](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |
 
-MCP server mode exposes 86 MCP tools, 6 resources, and 8 workflow prompts, all
-read-first: discovery and analysis never mutate a scanned target.
+MCP server mode starts with 8 tools and 3 workflow prompts. Select `--profile graph`,
+`cloud`, `runtime`, or `audit` for specialized work. Read `profiles://catalog` for
+commands without loading every tool schema. See [MCP workflows](docs/MCP_WORKFLOWS.md).
 
-Set `YDC_API_KEY` to enable the optional `youcom_search` MCP tool for live web
+The explicit `--profile full` compatibility catalog contains 86 MCP tools, 7 resources, and 8 workflow prompts.
+Profiles select capabilities; existing authentication, tenant scope and write authorization still apply.
+
+With `--profile full`, set `YDC_API_KEY` to enable the optional `youcom_search` MCP tool for live web
 and news context alongside the local threat-intel database. It is the only tool
 that sends your query to a third party, it is off unless the key is set, and the
 request is pinned to the You.com origin over TLS — so the key cannot be

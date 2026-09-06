@@ -524,6 +524,11 @@ tenant boundary, persistence behavior, and redaction behavior here.
 
 ### `agent-bom.manifest/v1`
 
+Manifest agent-to-server relationships prefer explicit server membership. A
+legacy observation's agent name creates a relationship only when it identifies
+one agent in the tenant. Repeated names across environments remain unlinked
+until identity evidence disambiguates them; input order never selects an owner.
+
 The Agent BOM manifest answers "what AI agents, MCP servers, tools, credential
 references, owners, and runtime observations are present?" in one portable
 document. It deliberately emits credential **names** such as `API_KEY`, never

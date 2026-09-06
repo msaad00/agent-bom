@@ -385,7 +385,7 @@ _SERVER_CARD_TOOLS = [
             "(authenticated source matching the server tenant; admin + findings:write + "
             "audit reason; metadata only; never writes to a customer cloud target)"
         ),
-        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {
         "name": "cost_forecast",

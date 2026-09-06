@@ -17,8 +17,9 @@ def _server_instructions(version: str, profile: str = "scan") -> str:
         "Use only the listed tools and prompts. Read profiles://catalog to find other task profiles; "
         "switch profiles at server startup and reconnect, or configure separate named client entries. "
         "Treat unavailable, partial and modeled evidence explicitly; do not infer verification. "
-        "Profiles select capabilities, not permissions. Write actions still require an authenticated "
-        "operator, the matching role and scope, and an audit reason."
+        "Profiles select capabilities, not permissions. Scanner and posture tools are read-only; "
+        "Shield and identity write actions require an authenticated operator token, "
+        "admin role, write scope, and an audit reason; operator_role is audit metadata, not authentication."
     )
 
 

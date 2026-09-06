@@ -1,7 +1,8 @@
 # MCP Server — Streamable HTTP transport for remote clients.
 #
-# Exposes agent-bom's 86 MCP tools over streamable HTTP so that Smithery, Claude
+# Exposes agent-bom's 8 MCP tools by default over streamable HTTP so Smithery, Claude
 # Desktop (remote mode), and any other MCP client can connect via public URL.
+# Select --profile full explicitly for the complete 86-tool compatibility catalog.
 #
 # Build:   docker build -f deploy/docker/Dockerfile.sse -t agent-bom-sse .
 # Run:     docker run -p 8423:8423 agent-bom-sse

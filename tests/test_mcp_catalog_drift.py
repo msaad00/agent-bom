@@ -138,3 +138,19 @@ def test_live_tool_risk_assessment_requires_opt_in_and_operator_approval() -> No
     assert tool.annotations.readOnlyHint is False
     assert tool.annotations.destructiveHint is True
     assert properties["allow_command_execution"]["default"] is False
+
+
+@pytest.mark.parametrize("name", ["runtime_evidence_ingest", "ingest_external_scan"])
+def test_ingestion_card_annotations_match_live_write_contract(name: str) -> None:
+    """Registry cards must not soften the live ingestion write annotations."""
+    import asyncio
+
+    from agent_bom.mcp_server import create_mcp_server
+
+    tools = {tool.name: tool for tool in asyncio.run(create_mcp_server(profile="full").list_tools())}
+    card_tools = {tool["name"]: tool for tool in build_server_card(profile="full")["tools"]}
+    live = tools[name].annotations
+    assert live is not None
+    assert live.readOnlyHint is False
+    for field in ("readOnlyHint", "destructiveHint", "idempotentHint"):
+        assert card_tools[name]["annotations"][field] == getattr(live, field)

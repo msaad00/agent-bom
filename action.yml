@@ -160,7 +160,7 @@ outputs:
     description: 'Scan process exit code.'
     value: ${{ steps.scan.outputs.exit_code }}
   scan-status:
-    description: 'High-level scan status (clean, violations, or error).'
+    description: 'High-level scan status: clean, violations, usage_error, stale_data, or error.'
     value: ${{ steps.scan.outputs.scan_status }}
   vulnerability-count:
     description: 'Number of vulnerabilities found, or skill findings when scan-type=skills.'
@@ -681,12 +681,19 @@ runs:
           )
         fi
 
-        SCAN_STATUS="error"
-        if [ "$EXIT_CODE" = "0" ]; then
-          SCAN_STATUS="clean"
-        elif [ "$VULN_COUNT" -gt 0 ]; then
-          SCAN_STATUS="violations"
-        fi
+        case "$EXIT_CODE" in
+          0) SCAN_STATUS="clean" ;;
+          1)
+            if [ "$VULN_COUNT" -gt 0 ]; then
+              SCAN_STATUS="violations"
+            else
+              SCAN_STATUS="error"
+            fi
+            ;;
+          2) SCAN_STATUS="usage_error" ;;
+          3) SCAN_STATUS="stale_data" ;;
+          *) SCAN_STATUS="error" ;;
+        esac
 
         # Generate badge from SARIF results (no second scan)
         BADGE_FILE=""
@@ -799,7 +806,16 @@ runs:
         pr_number = os.environ.get("PR_NUMBER", "")
         repo = os.environ.get("REPO", "")
 
-        status = "✅ Clean — no violations found" if exit_code == "0" else f"⚠️ {vuln_count} vulnerability finding(s)"
+        if exit_code == "0":
+            status = "✅ Clean — no violations found"
+        elif exit_code == "1" and int(vuln_count or "0") > 0:
+            status = f"⚠️ {vuln_count} vulnerability finding(s)"
+        elif exit_code == "2":
+            status = "❌ Invalid or empty scan input"
+        elif exit_code == "3":
+            status = "❌ Vulnerability database freshness gate failed"
+        else:
+            status = f"❌ Scan failed (exit code {exit_code})"
 
         def _sanitize_md(value: str) -> str:
             text = html.escape(value or "", quote=False)

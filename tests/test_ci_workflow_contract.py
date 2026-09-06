@@ -16,6 +16,27 @@ def _ci() -> dict[str, object]:
     return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
 
 
+def test_timeout_policy_uses_the_locked_security_environment() -> None:
+    steps = _ci()["jobs"]["security"]["steps"]
+    install = next(step for step in steps if step.get("name") == "Install dependencies")
+    timeout = next(step for step in steps if step.get("name") == "Workflow job timeout policy")
+    assert steps.index(install) < steps.index(timeout)
+    assert "--frozen" in install["run"]
+    assert "pip install" not in timeout["run"]
+    assert "uv run --no-sync python scripts/check_workflow_timeouts.py" in timeout["run"]
+
+
+def test_cloud_sdk_drift_uses_checkout_lockfile() -> None:
+    path = ROOT / ".github/workflows/cloud-sdk-drift.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["drift"]["steps"]
+    scripts = "\n".join(step.get("run", "") for step in steps)
+    assert any(step.get("uses") == "./.github/actions/setup-python" for step in steps)
+    assert "uv sync --frozen" in scripts
+    assert "pip install" not in scripts
+    assert "uv run --no-sync python scripts/check_cloud_sdk_drift.py" in scripts
+
+
 def test_path_classifier_covers_main_pushes() -> None:
     workflow = _ci()
     on = workflow.get(True, workflow.get("on", {}))

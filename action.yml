@@ -8,7 +8,7 @@ branding:
 
 inputs:
   scan-type:
-    description: 'Scan mode. Default `scan` runs the full agent/MCP discovery pipeline. Focused modes: image, fs, iac, sbom, secrets, code, agents, and skills.'
+    description: 'Scan mode. Default `scan` runs the full agent/MCP discovery pipeline. Focused modes: image, fs, iac, sbom, secrets, code, and skills.'
     required: false
     default: 'scan'
   scan-ref:
@@ -299,7 +299,7 @@ runs:
           exit 1
         }
         # Map scan-type to focused command
-        #   scan  → agent-bom agents (full auto-detect, default)
+        #   scan  → agent-bom scan (full auto-detect, default)
         #   image → agent-bom image <ref>
         #   fs    → agent-bom fs <path>
         #   sbom  → agent-bom sbom <path>
@@ -353,7 +353,8 @@ runs:
             ARGS=(code "${INPUT_SCAN_REF:-.}")
             ;;
           agents)
-            ARGS=(agents)
+            # Accept the legacy input while invoking the canonical command.
+            ARGS=(scan)
             ;;
           skills)
             ARGS=(skills scan "${INPUT_SCAN_REF:-.}")
@@ -362,7 +363,7 @@ runs:
             ARGS=(scan)
             ;;
           *)
-            echo "::error::Unknown scan-type: $INPUT_SCAN_TYPE. Use: scan, image, fs, sbom, iac, secrets, code, agents, skills"
+            echo "::error::Unknown scan-type: $INPUT_SCAN_TYPE. Use: scan, image, fs, sbom, iac, secrets, code, skills"
             exit 1
             ;;
         esac

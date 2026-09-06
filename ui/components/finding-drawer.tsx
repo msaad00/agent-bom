@@ -7,6 +7,7 @@ import { ExternalLink, FileSearch, Loader2 } from "lucide-react";
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
 import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
+import { remediationHref } from "@/lib/page-links";
 import { buildWhyItMatters } from "@/lib/finding-why-matters";
 import { Drawer } from "@/components/drawer";
 import { DetailTabs } from "@/components/detail-tabs";
@@ -86,7 +87,7 @@ export function FindingDrawer({
         ariaLabel="Finding detail views"
       />
 
-      {tab === "overview" ? <OverviewTab vuln={vuln} triage={triage} /> : null}
+      {tab === "overview" ? <OverviewTab vuln={vuln} /> : null}
       {tab === "evidence" ? <EvidenceTab vuln={vuln} /> : null}
       {tab === "triage" ? (
         <TriageTab
@@ -104,169 +105,65 @@ export function FindingDrawer({
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 
-function OverviewTab({ vuln, triage }: { vuln: EnrichedVuln; triage: FindingTriageItem | undefined }) {
+function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
   const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "No advisory summary available.";
-  const cweMatches = [...new Set(summary.match(/CWE-\d+/gi) ?? [])];
-  const whyItMatters = buildWhyItMatters(vuln);
-  const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
   const fixCandidates = vuln.remediation_items.filter((item) => item.fixed_version || item.command || item.verify_command);
-  const version = cvssVersion(vuln.cvss_vector);
-  const cvssDetail = [version ? `v${version}` : null, vuln.cvss_severity].filter(Boolean).join(" · ");
-  const epssDetail = typeof vuln.epss_percentile === "number"
-    ? `${vuln.epss_percentile.toFixed(1)}th percentile`
-    : undefined;
+  const packageLabel = vuln.packages.join(", ") || "Affected asset";
   const fixValue = vuln.current_version && vuln.fixed_version
     ? `${vuln.current_version} → ${vuln.fixed_version}`
-    : vuln.fixed_version
-      ? `Upgrade to ${vuln.fixed_version}`
-      : null;
-  const stats: Array<{ label: string; value: string; detail?: string }> = [
-    typeof vuln.cvss_score === "number" ? {
-      label: "CVSS",
-      value: vuln.cvss_score.toFixed(1),
-      ...(cvssDetail ? { detail: cvssDetail } : {}),
-    } : null,
-    typeof vuln.epss_score === "number" ? {
-      label: "EPSS",
-      value: `${(vuln.epss_score * 100).toFixed(1)}%`,
-      ...(epssDetail ? { detail: epssDetail } : {}),
-    } : null,
-    typeof vuln.is_kev === "boolean" ? {
-      label: "CISA KEV",
-      value: vuln.is_kev ? "Known exploited" : "Not listed",
-      ...(vuln.kev_date_added ? { detail: `Added ${formatDateOnly(vuln.kev_date_added)}` } : {}),
-    } : null,
-    fixValue ? { label: "Affected → fixed", value: fixValue } : null,
-  ].filter((stat): stat is { label: string; value: string; detail?: string } => stat !== null);
-  const workflowFacts = [
-    vuln.first_seen ? { label: "First seen", value: formatFindingTimestamp(vuln.first_seen) } : null,
-    vuln.last_observed || vuln.last_seen
-      ? { label: "Last observed", value: formatFindingTimestamp(vuln.last_observed ?? vuln.last_seen) }
-      : null,
-    vuln.lifecycle_status || triage?.queue_state
-      ? { label: "Status", value: vuln.lifecycle_status ? findingStatusLabel(vuln.lifecycle_status) : triage!.queue_state }
-      : null,
-    typeof vuln.occurrence_count === "number"
-      ? { label: "Occurrences", value: String(vuln.occurrence_count) }
-      : null,
-    vuln.owner || triage?.assignee ? { label: "Owner", value: vuln.owner || triage!.assignee! } : null,
-    vuln.sla_due_at ? { label: "SLA", value: formatFindingTimestamp(vuln.sla_due_at) } : null,
-  ].filter((fact): fact is { label: string; value: string } => fact !== null);
-  const intelligenceFacts = [
-    vuln.cvss_vector ? { label: "CVSS vector", value: vuln.cvss_vector } : null,
-    vuln.severity_source ? { label: "Severity source", value: vuln.severity_source } : null,
-    published ? { label: "Published", value: formatDateOnly(published) } : null,
-    vuln.modified_at ? { label: "Modified", value: formatDateOnly(vuln.modified_at) } : null,
-  ].filter((fact): fact is { label: string; value: string } => fact !== null);
-  const omittedFactCount = (4 - stats.length) + (6 - workflowFacts.length) + (4 - intelligenceFacts.length);
+    : vuln.fixed_version ? `Upgrade to ${vuln.fixed_version}` : null;
+  const impact = [
+    vuln.agents.length ? `${vuln.agents.length} agent${vuln.agents.length === 1 ? "" : "s"}` : null,
+    vuln.affected_servers.length ? `${vuln.affected_servers.length} MCP server${vuln.affected_servers.length === 1 ? "" : "s"}` : null,
+    vuln.exposed_credentials.length ? `${vuln.exposed_credentials.length} credential reference${vuln.exposed_credentials.length === 1 ? "" : "s"}` : null,
+    vuln.reachable_tools.length ? `${vuln.reachable_tools.length} linked tool${vuln.reachable_tools.length === 1 ? "" : "s"}` : null,
+  ].filter(Boolean);
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {stats.map((stat) => (
-          <DetailStat key={stat.label} label={stat.label} value={stat.value} detail={stat.detail} />
-        ))}
+    <div className="space-y-4">
+      <div>
+        <p className="break-words text-base font-semibold text-[color:var(--foreground)]">{packageLabel}</p>
+        <p className="mt-1 text-sm leading-6 text-[color:var(--text-secondary)]">{summary}</p>
       </div>
 
-      {omittedFactCount > 0 ? (
-        <p className="text-xs text-[color:var(--text-tertiary)]">
-          Source did not provide {omittedFactCount} optional intelligence or workflow fields; omitted instead of showing placeholder tiles.
+      <Section title="Next action" accent>
+        <p className="text-sm font-medium text-[color:var(--foreground)]">
+          {fixValue ?? "Review the evidence and determine the appropriate fix."}
         </p>
-      ) : null}
-
-      {workflowFacts.length > 0 ? (
-        <Section title="Observation and workflow">
-          <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
-            {workflowFacts.map((fact) => <KeyVal key={fact.label} label={fact.label} value={fact.value} />)}
-          </div>
-        </Section>
-      ) : null}
-
-      {intelligenceFacts.length > 0 ? (
-        <Section title="Security intelligence">
-          <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
-            {intelligenceFacts.map((fact) => <KeyVal key={fact.label} label={fact.label} value={fact.value} />)}
-          </div>
-        </Section>
-      ) : null}
-
-      <ReachBadges vuln={vuln} />
-
-      <EstateNodeSection vuln={vuln} />
-
-      <Section title="Attack summary">
-        <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{summary}</p>
-        {cweMatches.length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {cweMatches.map((cwe) => (
-              <Chip key={cwe} mono>{cwe}</Chip>
-            ))}
-          </div>
-        ) : null}
+        {fixValue ? <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Apply the fix, then rescan the affected asset to verify the result.</p> : null}
+        <div className="mt-3 flex flex-wrap gap-3">
+          {fixValue || fixCandidates.length ? (
+            <Link href={remediationHref({ q: vuln.id })} className="rounded-lg bg-[color:var(--accent-mint)] px-3 py-2 text-sm font-medium text-black">
+              Review remediation
+            </Link>
+          ) : null}
+          <Link href={buildFindingInvestigationHref(vuln)} data-testid="finding-investigate-estate" className="inline-flex items-center gap-1.5 py-2 text-sm font-medium text-[color:var(--accent-mint)] hover:underline">
+            Open in investigation <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </div>
       </Section>
 
-      {whyItMatters ? (
-        <Section title="Why it matters" accent>
-          <p className="text-sm font-medium text-[color:var(--foreground)]">{whyItMatters.headline}</p>
-          {whyItMatters.paragraphs.length > 0 ? (
-            <div className="mt-1.5 space-y-1.5 text-sm leading-6 text-[color:var(--text-secondary)]">
-              {whyItMatters.paragraphs.map((paragraph) => (
-                <p key={paragraph}>{paragraph}</p>
-              ))}
-            </div>
-          ) : null}
-          {whyItMatters.complianceTags.length > 0 ? (
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] font-medium text-[color:var(--text-tertiary)]">
-                {whyItMatters.complianceTags.length} compliance control{whyItMatters.complianceTags.length === 1 ? "" : "s"}
-              </span>
-              {whyItMatters.complianceTags.slice(0, 3).map((tag) => (
-                <Chip key={tag} mono>{tag}</Chip>
-              ))}
-              {whyItMatters.complianceTags.length > 3 ? (
-                <span className="text-[11px] text-[color:var(--text-tertiary)]">
-                  +{whyItMatters.complianceTags.length - 3} more
-                </span>
-              ) : null}
-              <Link href="/compliance" className="text-xs text-[color:var(--accent-mint)] hover:underline">
-                View evidence
-              </Link>
-            </div>
-          ) : null}
-          {whyItMatters.links.length > 0 ? (
-            <div className="mt-2.5 flex flex-wrap gap-3">
-              {whyItMatters.links.map((link) => (
-                <Link key={link.href} href={link.href} className="text-xs text-[color:var(--accent-mint)] hover:underline">
-                  {link.label}
-                </Link>
-              ))}
-            </div>
-          ) : null}
+      {impact.length ? (
+        <Section title="Affected scope">
+          <p className="text-sm text-[color:var(--text-secondary)]">{impact.join(" · ")}</p>
         </Section>
       ) : null}
 
-      {fixCandidates.length > 0 || vuln.remediation_items[0]?.risk_narrative ? <Section title="Remediation detail">
-        {fixCandidates.length > 0 ? (
-          <div className="divide-y divide-[color:var(--border-subtle)] overflow-hidden rounded-lg border border-[color:var(--border-subtle)]">
-            {fixCandidates.slice(0, 2).map((item) => (
-              <div key={`${item.package}:${item.current_version}`} className="p-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-[color:var(--foreground)]">{item.package}</span>
-                  <span className="font-mono text-[11px] text-[color:var(--accent-mint)]">
-                    {item.current_version} → {item.fixed_version ?? "monitor"}
-                  </span>
-                </div>
-                {item.action ? <p className="mt-1.5 text-xs text-[color:var(--text-tertiary)]">{item.action}</p> : null}
+      {fixCandidates.length > 0 ? (
+        <details className="border-t border-[color:var(--border-subtle)] pt-3">
+          <summary className="cursor-pointer text-sm font-medium text-[color:var(--foreground)]">Apply and verify commands</summary>
+          <div className="mt-3 space-y-4">
+            {fixCandidates.map((item) => (
+              <div key={`${item.package}:${item.current_version}`}>
+                <p className="text-sm font-medium text-[color:var(--foreground)]">{item.package} · {item.current_version} → {item.fixed_version ?? "fix version unavailable"}</p>
+                {item.action ? <p className="mt-1 text-xs text-[color:var(--text-secondary)]">{item.action}</p> : null}
                 {item.command ? <CodeLine label="Apply" value={item.command} /> : null}
                 {item.verify_command ? <CodeLine label="Verify" value={item.verify_command} /> : null}
               </div>
             ))}
           </div>
-        ) : null}
-        {vuln.remediation_items[0]?.risk_narrative ? (
-          <p className="mt-3 text-xs leading-5 text-[color:var(--text-tertiary)]">{vuln.remediation_items[0].risk_narrative}</p>
-        ) : null}
-      </Section> : null}
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -304,9 +201,6 @@ function EstateNodeSection({ vuln }: { vuln: EnrichedVuln }) {
 
   return (
     <Section title="Estate node" accent>
-      <p className="text-sm text-[color:var(--text-secondary)]">
-        Investigate from the typed graph node this finding attaches to — not as a free-floating severity row.
-      </p>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <Chip mono>{entityType}</Chip>
         {vuln.node_id ? <Chip mono>{vuln.node_id}</Chip> : <Chip>{estateLabel}</Chip>}
@@ -332,7 +226,10 @@ function EstateNodeSection({ vuln }: { vuln: EnrichedVuln }) {
 // ── Evidence ──────────────────────────────────────────────────────────────────
 
 function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
-  const references = officialAdvisoryLinks(vuln.references).slice(0, 6);
+  const references = officialAdvisoryLinks(vuln.references);
+  const whyItMatters = buildWhyItMatters(vuln);
+  const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "";
+  const cweMatches = [...new Set(summary.match(/CWE-\d+/gi) ?? [])];
   const investigationSources = uniqueStrings([...vuln.sources, ...vuln.advisory_sources]);
   const complianceControls = uniqueStrings([
     ...(vuln.framework_tags ?? []),
@@ -341,10 +238,25 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
 
   return (
     <div className="space-y-4">
+      <EstateNodeSection vuln={vuln} />
+      <IntelligencePanel vuln={vuln} />
+      <ReachBadges vuln={vuln} />
+      <Panel title="Affected scope">
+        <TagList label="Packages" values={vuln.packages} />
+        <TagList label="Agents" values={vuln.agents} />
+        <TagList label="MCP servers" values={vuln.affected_servers} />
+        <TagList label="Credential references" values={vuln.exposed_credentials} />
+        <TagList label="Linked tools" values={vuln.reachable_tools} />
+        {whyItMatters ? <div className="mt-3 space-y-2 text-xs leading-5 text-[color:var(--text-secondary)]">
+          {whyItMatters.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+          {whyItMatters.links.map((link) => <Link key={link.href} href={link.href} className="mr-3 inline-block text-[color:var(--accent-mint)] hover:underline">{link.label}</Link>)}
+        </div> : null}
+      </Panel>
       <Panel title="Investigation sources">
         <div className="space-y-3">
           <TagList label="Signals" values={investigationSources} />
           <TagList label="Aliases" values={vuln.aliases ?? []} mono />
+          <TagList label="Weaknesses" values={cweMatches} mono />
           {references.length > 0 ? (
             <div className="space-y-2">
               <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">Advisories</div>
@@ -384,17 +296,20 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
 
       {complianceControls.length > 0 ? (
         <Panel title="Compliance controls">
-          <div className="flex flex-wrap gap-1">
-            {complianceControls.slice(0, 24).map((tag) => (
-              <Chip key={tag} mono>{tag}</Chip>
-            ))}
-          </div>
+          <details>
+            <summary className="cursor-pointer text-sm text-[color:var(--text-secondary)]">View {complianceControls.length} mapped controls</summary>
+            <div className="mt-3 flex flex-wrap gap-1">
+              {complianceControls.map((tag) => <Chip key={tag} mono>{tag}</Chip>)}
+            </div>
+          </details>
         </Panel>
       ) : null}
 
-      {vuln.resolved_at || vuln.reopened_at || typeof vuln.occurrence_count === "number" || typeof vuln.scan_count === "number" ? (
+      {vuln.first_seen || vuln.last_observed || vuln.last_seen || vuln.resolved_at || vuln.reopened_at || typeof vuln.occurrence_count === "number" || typeof vuln.scan_count === "number" ? (
         <Panel title="Lifecycle">
           <div className="space-y-2 text-sm text-[color:var(--text-secondary)]">
+            {vuln.first_seen ? <KeyVal label="First seen" value={formatFindingTimestamp(vuln.first_seen)} /> : null}
+            {vuln.last_observed || vuln.last_seen ? <KeyVal label="Last observed" value={formatFindingTimestamp(vuln.last_observed ?? vuln.last_seen)} /> : null}
             {vuln.resolved_at ? <KeyVal label="Resolved" value={formatFindingTimestamp(vuln.resolved_at)} /> : null}
             {vuln.reopened_at ? <KeyVal label="Reopened" value={formatFindingTimestamp(vuln.reopened_at)} /> : null}
             {typeof (vuln.occurrence_count ?? vuln.scan_count) === "number" ? <KeyVal label="Observed occurrences" value={String(vuln.occurrence_count ?? vuln.scan_count)} /> : null}
@@ -402,6 +317,9 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
         </Panel>
       ) : null}
 
+      {vuln.remediation_items.some((item) => item.risk_narrative) ? <Panel title="Remediation context">
+        {vuln.remediation_items.filter((item) => item.risk_narrative).map((item) => <p key={`${item.package}:${item.current_version}`} className="text-sm leading-6 text-[color:var(--text-secondary)]">{item.risk_narrative}</p>)}
+      </Panel> : null}
       <WorkloadRuntimeEvidencePanel evidence={vuln.workload_runtime_evidence} />
     </div>
   );
@@ -483,6 +401,11 @@ function TriageTab({
     <div className="space-y-4">
       <Panel title={findingsTriageTitle(lens)}>
         <p className="text-xs leading-5 text-[color:var(--text-tertiary)]">{findingsTriageDetail(lens)}</p>
+        <div className="mt-3 space-y-1.5 text-xs text-[color:var(--text-secondary)]">
+          {vuln.lifecycle_status ? <KeyVal label="Status" value={findingStatusLabel(vuln.lifecycle_status)} /> : null}
+          {vuln.owner ? <KeyVal label="Owner" value={vuln.owner} /> : null}
+          {vuln.sla_due_at ? <KeyVal label="SLA" value={formatFindingTimestamp(vuln.sla_due_at)} /> : null}
+        </div>
         {triage ? (
           <div className="mt-3 grid gap-2 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
             <KeyVal label="Queue state" value={triage.queue_state} />
@@ -491,7 +414,6 @@ function TriageTab({
             <KeyVal label="Created" value={formatFindingTimestamp(triage.created_at)} />
             <KeyVal label="Reviewed" value={triage.reviewed_at ? formatFindingTimestamp(triage.reviewed_at) : "Unavailable"} />
             <KeyVal label="Expires" value={triage.expires_at ? formatFindingTimestamp(triage.expires_at) : "Unavailable"} />
-            <KeyVal label="SLA" value="Unavailable" />
             {triage.justification ? (
               <div className="sm:col-span-2">
                 <KeyVal label="Justification" value={triage.justification} />
@@ -574,8 +496,8 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 
 function KeyVal({ label, value }: { label: string; value: string }) {
   return (
-    <div aria-label={`${label}: ${value}`}>
-      <span className="text-[color:var(--text-tertiary)]">{label}:</span> {value}
+    <div className="min-w-0 break-words" aria-label={`${label}: ${value}`}>
+      <span className="text-[color:var(--text-tertiary)]">{label}:</span> <span>{value}</span>
     </div>
   );
 }
@@ -647,13 +569,23 @@ function formatProvenance(value: EnrichedVuln["provenance"]): string {
   return uniqueStrings(parts).join(" · ") || "Available in raw evidence";
 }
 
-function DetailStat({ label, value, detail }: { label: string; value: string; detail?: string | undefined }) {
+function IntelligencePanel({ vuln }: { vuln: EnrichedVuln }) {
+  const version = cvssVersion(vuln.cvss_vector);
+  const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
   return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">{label}</div>
-      <div className="mt-1.5 text-sm font-semibold text-[color:var(--foreground)]">{value}</div>
-      {detail ? <div className="mt-1 truncate text-[10px] text-[color:var(--text-tertiary)]" title={detail}>{detail}</div> : null}
-    </div>
+    <Panel title="Security intelligence">
+      <div className="space-y-2 break-words text-xs text-[color:var(--text-secondary)]">
+        {typeof vuln.cvss_score === "number" ? <div><KeyVal label="CVSS" value={vuln.cvss_score.toFixed(1)} /><span>{[version ? `v${version}` : null, vuln.cvss_severity].filter(Boolean).join(" · ")}</span></div> : null}
+        {typeof vuln.epss_score === "number" ? <KeyVal label="EPSS" value={`${(vuln.epss_score * 100).toFixed(1)}%`} /> : null}
+        {typeof vuln.epss_percentile === "number" ? <p>{vuln.epss_percentile.toFixed(1)}th percentile</p> : null}
+        {typeof vuln.is_kev === "boolean" ? <KeyVal label="CISA KEV" value={vuln.is_kev ? "Known exploited" : "Not listed"} /> : null}
+        {vuln.kev_date_added ? <KeyVal label="KEV added" value={formatDateOnly(vuln.kev_date_added)} /> : null}
+        {vuln.cvss_vector ? <KeyVal label="CVSS vector" value={vuln.cvss_vector} /> : null}
+        {vuln.severity_source ? <KeyVal label="Severity source" value={vuln.severity_source} /> : null}
+        {published ? <KeyVal label="Published" value={formatDateOnly(published)} /> : null}
+        {vuln.modified_at ? <KeyVal label="Modified" value={formatDateOnly(vuln.modified_at)} /> : null}
+      </div>
+    </Panel>
   );
 }
 

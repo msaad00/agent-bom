@@ -119,6 +119,9 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
     const findingLabel = finding.cve_id || finding.title || finding.id;
     const sourceLabel = uniqueStrings([finding.source, finding.finding_type, ...(finding.scan_sources ?? [])]);
     const evidence = finding.evidence ?? {};
+    const packageName = finding.package_name?.trim() || finding.package?.trim() || recordString(evidence, "package_name") || assetName;
+    const currentVersion = finding.package_version ?? recordString(evidence, "package_version");
+    const serverAsset = finding.asset?.asset_type === "server" || finding.asset?.asset_type === "mcp_server" || finding.entity_type === "server";
     const references = uniqueStrings([
       ...(finding.references ?? []),
       ...recordStrings(evidence, "references"),
@@ -156,19 +159,17 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       kev_date_added: finding.kev_date_added ?? recordString(evidence, "kev_date_added"),
       kev_due_date: finding.kev_due_date ?? recordString(evidence, "kev_due_date"),
       fixed_version: finding.fixed_version ?? undefined,
-      current_version:
-        finding.package_version ??
-        recordString(evidence, "package_version"),
+      current_version: currentVersion,
       published_at: finding.published_at ?? recordString(evidence, "published_at"),
       modified_at: finding.modified_at ?? recordString(evidence, "modified_at"),
       severity_source: finding.severity_source ?? recordString(evidence, "severity_source"),
       confidence: finding.confidence ?? recordNumber(evidence, "confidence"),
       match_confidence_tier:
         finding.match_confidence_tier ?? recordString(evidence, "match_confidence_tier"),
-      packages: [assetName],
+      packages: [packageName],
       agents: finding.affected_agents ?? [],
       sources: sourceLabel.length > 0 ? sourceLabel : ["finding"],
-      affected_servers: finding.affected_servers ?? [],
+      affected_servers: uniqueStrings([...(finding.affected_servers ?? []), ...(serverAsset && assetName !== "Unavailable" ? [assetName] : [])]),
       exposed_credentials: finding.exposed_credentials ?? [],
       reachable_tools: finding.exposed_tools ?? [],
       phantom_tools: raw.phantom_tools ?? [],
@@ -186,9 +187,9 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       remediation_items: finding.remediation_guidance
         ? [
             {
-              package: assetName,
+              package: packageName,
               ecosystem: finding.asset?.asset_type ?? finding.finding_type ?? "finding",
-              current_version: "",
+              current_version: currentVersion ?? "",
               fixed_version: finding.fixed_version ?? null,
               action: "review",
               command: null,

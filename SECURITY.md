@@ -53,6 +53,7 @@ agent-bom is a **read-only scanner**. It does not modify agent configurations, e
 
 ### API security (when running `agent-bom api`)
 - Defaults to localhost-only binding (`127.0.0.1:8422`)
+- `/docs`, `/redoc`, and `/openapi.json` support local onboarding. Production Compose and Helm profiles set `AGENT_BOM_DISABLE_DOCS=1` to disable those handlers.
 - API key auth via `AGENT_BOM_API_KEY` env var; OIDC/JWT via `AGENT_BOM_OIDC_ISSUER`
 - WebSocket endpoints use the same configured auth posture as HTTP routes. Handshake attempts are limited per transport peer before credential verification or the browser first-message wait; clustered deployments use the required shared PostgreSQL limiter and reject connections if that limiter is unavailable.
 - JWKS public key caching (1h TTL); RS256/RS384/RS512/ES256/ES384/ES512 supported; `alg: none` rejected

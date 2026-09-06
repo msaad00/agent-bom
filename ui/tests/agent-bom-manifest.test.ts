@@ -176,8 +176,8 @@ it("does not assign ambiguous client names to another environment", () => {
   const row=deriveManifestRows({...manifest,agents:ordered,mcp_servers:[{id:"s",agent_name:"assistant"}]})[0];
   expect(row?.environment).toBe("unknown");
   expect(row?.owner).toBe("unknown");
-  const explicit=deriveManifestRows({...manifest,agents:ordered,mcp_servers:[{id:"s",agent_name:"prod"}]})[0];
-  expect(explicit?.environment).toBe("prod");
+  const unmatched=deriveManifestRows({...manifest,agents:ordered,mcp_servers:[{id:"s",agent_name:"prod"}]})[0];
+  expect(unmatched?.environment).toBe("unknown");
  }
 });
 
@@ -189,4 +189,16 @@ it("prefers explicit server membership and leaves shared ownership unresolved", 
   expect(deriveManifestRows({ ...manifest, agents, mcp_servers: [{ id: "s", agent_name: "dev" }] })[0]?.environment).toBe("prod");
   const shared = agents.map((agent) => ({ ...agent, mcp_server_ids: ["s"] }));
   expect(deriveManifestRows({ ...manifest, agents: shared, mcp_servers: [{ id: "s", agent_name: "prod" }] })[0]?.environment).toBe("unknown");
+});
+
+it("does not interpret an observation client name as another agent ID", () => {
+  const agents = [
+    { id: "assistant", name: "different-client", owner: "prod-team", environment: "prod" },
+    { id: "dev-client", name: "assistant", owner: "dev-team", environment: "dev" },
+  ];
+  for (const ordered of [agents, [...agents].reverse()]) {
+    const row = deriveManifestRows({ ...manifest, agents: ordered, mcp_servers: [{ id: "s", agent_name: "assistant" }] })[0];
+    expect(row?.owner).toBe("dev-team");
+    expect(row?.environment).toBe("dev");
+  }
 });

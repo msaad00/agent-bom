@@ -99,7 +99,6 @@ function classifyRuntimeState(observed: Record<string, unknown>): ManifestRow["r
 
 export function deriveManifestRows(manifest: AgentBomManifestResponse, now: Date = new Date()): ManifestRow[] {
   const agentsByName = new Map<string, Record<string, unknown> | null>();
-  const agentsById = new Map<string, Record<string, unknown>>();
   const agentsByServer = new Map<string, Record<string, unknown>[]>();
   for (const agent of manifest.agents) {
     const row = asRecord(agent);
@@ -108,9 +107,6 @@ export function deriveManifestRows(manifest: AgentBomManifestResponse, now: Date
     }
     const name = asString(row.name);
     if (name) agentsByName.set(name, agentsByName.has(name) ? null : row);
-    for (const id of [asString(row.id), asString(row.canonical_id)]) {
-      if (id) agentsById.set(id, row);
-    }
   }
 
   return manifest.mcp_servers.map((server) => {
@@ -121,7 +117,7 @@ export function deriveManifestRows(manifest: AgentBomManifestResponse, now: Date
     const members = agentsByServer.get(asString(serverRow.id)) ?? [];
     const agent = members.length > 0
       ? (members.length === 1 ? members[0] : undefined)
-      : agentsById.get(agentName) ?? agentsByName.get(agentName);
+      : agentsByName.get(agentName);
     const security = asRecord(serverRow.security);
     const runtimeState = classifyRuntimeState(observed);
     const lastSeen = asString(observed.last_seen, "-");

@@ -119,12 +119,12 @@ describe("ExposurePathCommandCenter", () => {
       <ExposurePathCommandCenter
         path={basePath}
         actions={[{ title: "Open remediation", detail: "Review the patch.", href: "/remediation" }]}
-        techniquesSlot={<div>Path verified from seven receipts</div>}
+        techniquesSlot={<div>Path evidence complete from seven receipts</div>}
         detailsSlot={<div>Mapped ATT&amp;CK analysis</div>}
       />,
     );
 
-    expect(screen.getByText("Path verified from seven receipts")).toBeVisible();
+    expect(screen.getByText("Path evidence complete from seven receipts")).toBeVisible();
     expect(screen.getByText("Open remediation")).toBeVisible();
     expect(screen.getByText("Mapped ATT&CK analysis")).not.toBeVisible();
   });

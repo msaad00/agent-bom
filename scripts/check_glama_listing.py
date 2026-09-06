@@ -202,8 +202,8 @@ def _extract_schema_tool_contract(page: str, listing_url: str) -> list[dict[str,
             remaining -= 1
             if remaining < 0 or depth > 64 or type(index) is not int:
                 raise ValueError("schema reference limit exceeded")
-            # React Router's null and undefined sentinels carry no schema data.
-            if index in {-5, -7}:
+            # Turbo Stream encodes JSON null as -5; undefined (-7) is not null.
+            if index == -5:
                 return None
             if index < 0 or index >= len(table) or index in active:
                 raise ValueError("invalid or cyclic schema reference")

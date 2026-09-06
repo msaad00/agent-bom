@@ -752,11 +752,13 @@ def test_ghcr_pagination_still_follows_a_same_origin_next_link(monkeypatch):
     assert result["status"] == "fresh"
 
 
-def _glama_schema_state(tools, *, namespace="msaad00", slug="agent-bom"):
+def _glama_schema_state(tools, *, namespace="msaad00", slug="agent-bom", null_reference=-5):
     """Encode the public schema route's reference-table JSON, without JS execution."""
     values = []
 
     def encode(value):
+        if value is None:
+            return null_reference
         index = len(values)
         values.append(None)
         if isinstance(value, dict):
@@ -871,3 +873,11 @@ def test_glama_schema_reference_tables_fail_closed(table):
     page = "<script>window.__reactRouterContext.streamController.enqueue(" + json.dumps(json.dumps(table)) + ");</script>"
     with pytest.raises(ValueError):
         script._extract_schema_tool_contract(page, script.DEFAULT_URL)
+
+
+def test_glama_schema_does_not_conflate_undefined_with_json_null():
+    script = _load_script("check_glama_listing.py")
+    tools = [{"name": "scan", "inputSchema": {"type": "object", "default": None}}]
+    assert script._extract_schema_tool_contract(_glama_schema_state(tools), script.DEFAULT_URL) == tools
+    with pytest.raises(ValueError):
+        script._extract_schema_tool_contract(_glama_schema_state(tools, null_reference=-7), script.DEFAULT_URL)

@@ -750,3 +750,124 @@ def test_ghcr_pagination_still_follows_a_same_origin_next_link(monkeypatch):
     result = script.probe_docker("0.98.3", "ghcr.io/msaad00/agent-bom", timeout=1, attempts=1, backoff=0)
 
     assert result["status"] == "fresh"
+
+
+def _glama_schema_state(tools, *, namespace="msaad00", slug="agent-bom"):
+    """Encode the public schema route's reference-table JSON, without JS execution."""
+    values = []
+
+    def encode(value):
+        index = len(values)
+        values.append(None)
+        if isinstance(value, dict):
+            values[index] = {f"_{encode(key)}": encode(item) for key, item in value.items()}
+        elif isinstance(value, list):
+            values[index] = [encode(item) for item in value]
+        else:
+            values[index] = value
+        return index
+
+    encode(
+        {
+            "loaderData": {
+                "routes/_public/mcp/servers/~namespace/~slug/_pages/schema/_route": {
+                    "mcpServer": {"namespace": {"slug": namespace}, "slug": slug},
+                    "schema": {"tools": tools},
+                }
+            }
+        }
+    )
+    return "<script>window.__reactRouterContext.streamController.enqueue(" + json.dumps(json.dumps(values)) + ");</script>"
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_glama_checks_public_embedded_schemas_when_api_requires_auth(monkeypatch, capsys, tmp_path, mismatch):
+    script = _load_script("check_glama_listing.py")
+    expected = [{"name": "scan", "inputSchema": {"type": "object", "additionalProperties": False}}]
+    tools = [{"name": "scan", "inputSchema": {"type": "object"}}] if mismatch else expected
+    contract = tmp_path / "contract.json"
+    contract.write_text(json.dumps(expected))
+    schema = '<a href="/mcp/servers/msaad00/agent-bom/tools/scan">scan</a>' + _glama_schema_state(tools)
+    monkeypatch.setattr(
+        script, "_fetch", lambda url, timeout: schema if url.endswith("/schema") else "v0.103.2 MCP server mode exposes 1 MCP tools"
+    )
+    monkeypatch.setattr(
+        script,
+        "_fetch_json",
+        lambda *args: (_ for _ in ()).throw(urllib.error.HTTPError("https://glama.ai/api", 401, "Unauthorized", {}, None)),
+    )
+    result = script.main(
+        ["--expected", "0.103.2", "--expected-tool-count", "1", "--expected-tool-contract-file", str(contract), "--json", "--retries", "1"]
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert result == int(mismatch)
+    assert payload["status"] == ("stale" if mismatch else "fresh")
+    assert payload["exact_input_schemas"] is not mismatch
+    assert payload["inventory_source"] == "schema-state"
+
+
+def test_glama_embedded_schema_parser_rejects_unrelated_or_incomplete_evidence():
+    script = _load_script("check_glama_listing.py")
+    tools = [{"name": "scan", "inputSchema": {"type": "object"}}]
+    assert script._extract_schema_tool_contract(_glama_schema_state(tools), script.DEFAULT_URL) == tools
+    for page in (
+        _glama_schema_state(tools, slug="another-server"),
+        _glama_schema_state([{"name": "scan"}]),
+        '<script>window.__reactRouterContext.streamController.enqueue("[0]");</script>',
+        '<script>window.__reactRouterContext.streamController.enqueue("[{\\"_9\\":9}]");</script>',
+        "x" * (2 * 1024 * 1024 + 1),
+    ):
+        with pytest.raises(ValueError):
+            script._extract_schema_tool_contract(page, script.DEFAULT_URL)
+
+
+def test_glama_requires_exact_schema_proof_when_contract_is_requested(monkeypatch, capsys, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    contract = tmp_path / "contract.json"
+    contract.write_text(json.dumps([{"name": "scan", "inputSchema": {"type": "object"}}]))
+    monkeypatch.setattr(
+        script,
+        "_fetch",
+        lambda url, timeout: (
+            '<a href="/mcp/servers/msaad00/agent-bom/tools/scan">scan</a>'
+            if url.endswith("/schema")
+            else "v0.103.2 MCP server mode exposes 1 MCP tools"
+        ),
+    )
+    monkeypatch.setattr(script, "_fetch_json", lambda *args: (_ for _ in ()).throw(urllib.error.URLError("401")))
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "1",
+                "--expected-tool-contract-file",
+                str(contract),
+                "--json",
+                "--retries",
+                "1",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["exact_input_schemas"] is None
+    assert "could not verify requested input schemas" in payload["error"]
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        [0],
+        [{"_9": 9}],
+        [{"_1": 2, "_3": 4}, "duplicate", 1, "duplicate", 2],
+        [[index + 1] for index in range(70)] + [None],
+        [None] * 50_001,
+    ],
+)
+def test_glama_schema_reference_tables_fail_closed(table):
+    script = _load_script("check_glama_listing.py")
+    page = "<script>window.__reactRouterContext.streamController.enqueue(" + json.dumps(json.dumps(table)) + ");</script>"
+    with pytest.raises(ValueError):
+        script._extract_schema_tool_contract(page, script.DEFAULT_URL)

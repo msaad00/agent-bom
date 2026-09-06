@@ -176,6 +176,82 @@ def _api_inventory_result(
     return actual_tool_count, failures, exact_tool_set, exact_input_schemas
 
 
+def _extract_schema_tool_contract(page: str, listing_url: str) -> list[dict[str, object]]:
+    """Read bounded reference-table JSON from Glama's public schema route.
+
+    This decodes data only. Scripts are never evaluated, and unrelated route
+    data cannot substitute for the requested server's indexed tool inventory.
+    Unsupported encodings stay unavailable rather than weakening validation.
+    """
+    if len(page.encode("utf-8")) > 2 * 1024 * 1024:
+        raise ValueError("Glama schema page exceeds the bounded input size")
+    marker = "window.__reactRouterContext.streamController.enqueue("
+    if page.count(marker) != 1:
+        raise ValueError("Glama schema state is missing or ambiguous")
+    try:
+        encoded, _ = json.JSONDecoder().raw_decode(page.split(marker, 1)[1])
+        table = json.loads(encoded)
+        if not isinstance(table, list) or not table or len(table) > 50_000:
+            raise ValueError("invalid schema reference table")
+        cache: dict[int, object] = {}
+        active: set[int] = set()
+        remaining = 100_000
+
+        def decode(index: int, depth: int = 0) -> object:
+            nonlocal remaining
+            remaining -= 1
+            if remaining < 0 or depth > 64 or type(index) is not int:
+                raise ValueError("schema reference limit exceeded")
+            # React Router's null and undefined sentinels carry no schema data.
+            if index in {-5, -7}:
+                return None
+            if index < 0 or index >= len(table) or index in active:
+                raise ValueError("invalid or cyclic schema reference")
+            if index in cache:
+                return cache[index]
+            active.add(index)
+            value = table[index]
+            result: object
+            if isinstance(value, dict):
+                decoded: dict[str, object] = {}
+                for key, reference in value.items():
+                    if not re.fullmatch(r"_\d+", key):
+                        raise ValueError("invalid schema key reference")
+                    decoded_key = decode(int(key[1:]), depth + 1)
+                    if not isinstance(decoded_key, str) or decoded_key in decoded:
+                        raise ValueError("invalid or duplicate schema key")
+                    decoded[decoded_key] = decode(reference, depth + 1)
+                result = decoded
+            elif isinstance(value, list):
+                result = [decode(reference, depth + 1) for reference in value]
+            else:
+                result = value
+            active.remove(index)
+            cache[index] = result
+            return result
+
+        root = decode(0)
+        if not isinstance(root, dict):
+            raise ValueError("schema state root must be an object")
+        route = root["loaderData"]["routes/_public/mcp/servers/~namespace/~slug/_pages/schema/_route"]
+        server = route["mcpServer"]
+        parts = urllib.parse.urlsplit(listing_url).path.strip("/").split("/")
+        if len(parts) != 4 or parts[:2] != ["mcp", "servers"]:
+            raise ValueError("invalid listing path")
+        if (server["namespace"]["slug"], server["slug"]) != tuple(parts[-2:]):
+            raise ValueError("schema state belongs to another server")
+        tools = route["schema"]["tools"]
+        if (
+            not isinstance(tools, list)
+            or not tools
+            or any(not isinstance(tool, dict) or not isinstance(tool.get("inputSchema"), dict) for tool in tools)
+        ):
+            raise ValueError("schema state has incomplete tool contracts")
+        return tools
+    except (KeyError, IndexError, TypeError, RecursionError, ValueError) as exc:
+        raise ValueError("Glama public schema state is unavailable or malformed") from exc
+
+
 def _release_tool_names(git_ref: str | None) -> list[str]:
     """Parse the release's static server-card tool list without executing it."""
 
@@ -186,6 +262,8 @@ def _release_tool_names(git_ref: str | None) -> list[str]:
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
         if any(isinstance(target, ast.Name) and target.id == "_SERVER_CARD_TOOLS" for target in targets):
+            if node.value is None:
+                raise ValueError("release metadata has no static MCP tool value")
             raw_tools = ast.literal_eval(node.value)
             break
     if not isinstance(raw_tools, list) or not raw_tools:
@@ -193,7 +271,7 @@ def _release_tool_names(git_ref: str | None) -> list[str]:
     names = [tool.get("name") for tool in raw_tools if isinstance(tool, dict)]
     if len(names) != len(raw_tools) or any(not isinstance(name, str) or not name or name != name.strip() for name in names):
         raise ValueError("release metadata contains an invalid MCP tool name")
-    normalized = sorted(names)
+    normalized = sorted(name for name in names if isinstance(name, str))
     if len(set(normalized)) != len(normalized):
         raise ValueError("release metadata contains duplicate MCP tool names")
     return normalized
@@ -418,8 +496,10 @@ def main(argv: list[str] | None = None) -> int:
             listing_version = _extract_listing_version(page)
             failures = _check(page, version, tool_count)
             schema_tools: list[str] = []
+            schema_page = ""
             try:
-                schema_tools = _extract_schema_tool_names(_fetch(args.schema_url, args.timeout), args.url)
+                schema_page = _fetch(args.schema_url, args.timeout)
+                schema_tools = _extract_schema_tool_names(schema_page, args.url)
             except (urllib.error.URLError, TimeoutError):
                 # The directory API remains a valid fallback when the rendered
                 # Schema page cannot be fetched or has not populated yet.
@@ -438,8 +518,22 @@ def main(argv: list[str] | None = None) -> int:
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
                 api_error = exc
 
+            public_schema_result = False
+            if api_result is None and schema_page:
+                try:
+                    indexed_tools = _extract_schema_tool_contract(schema_page, args.url)
+                    api_result = _api_inventory_result(
+                        indexed_tools,
+                        tool_count=tool_count,
+                        expected_tool_names=expected_tool_names,
+                        expected_tool_contract=expected_tool_contract,
+                    )
+                    public_schema_result = True
+                except ValueError:
+                    pass  # Unsupported public data retains the degraded/unavailable status.
+
             if schema_tools:
-                inventory_source = "schema+api" if api_result is not None else "schema"
+                inventory_source = "schema-state" if public_schema_result else "schema+api" if api_result is not None else "schema"
                 actual_tool_count = len(schema_tools)
                 if actual_tool_count != tool_count:
                     failures.append(f"Glama public Schema exposes {actual_tool_count} tools; expected {tool_count}")
@@ -457,13 +551,15 @@ def main(argv: list[str] | None = None) -> int:
                         exact_tool_set = bool(exact_tool_set is not False and api_exact_set)
                     exact_input_schemas = api_exact_schemas
             elif api_result is not None:
-                inventory_source = "api"
+                inventory_source = "schema-state" if public_schema_result else "api"
                 actual_tool_count, api_failures, exact_tool_set, exact_input_schemas = api_result
                 failures.extend(api_failures)
             else:
                 inventory_source = "api"
                 failures.append(f"failed to verify Glama public API tool inventory: {api_error}")
                 last_probe_unreachable = True
+            if expected_tool_contract is not None and exact_input_schemas is None:
+                failures.append("could not verify requested input schemas from Glama indexed evidence")
             if not failures:
                 status = "fresh_degraded" if degraded_reason else "fresh"
                 if args.json:

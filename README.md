@@ -57,6 +57,22 @@ compliance exports, and runtime enforcement in your own environment.
 
 [Quick start](#quick-start) · [Evidence workflow](docs/HOW_IT_WORKS.md) · [Integration capability matrix](docs/INTEGRATIONS.md) · [Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json) · [Control-plane architecture](docs/ARCHITECTURE.md)
 
+The shared security graph connects packages, workloads, agents, tools, identities, and data assets through typed relationships with source evidence and explicit completeness.
+
+### Read the blast radius
+
+```text
+Vulnerable package → advisory finding
+        ↑ depends on
+     MCP server → exposed tools
+        ↑ uses
+       Agent → credential references → permitted resources
+```
+
+This schematic explains the questions to investigate. Actual paths require
+matching directed relationships and source evidence; credential names alone
+do not prove permission or exploitability.
+
 ### See what needs fixing — and why
 
 **Prioritize.** Start with the affected service, reachable asset, and recommended
@@ -112,7 +128,7 @@ neither is proof of a deployed remediation.
 | AppSec / product security | `agent-bom scan . --gha . --offline` | Inventory remote actions and reusable workflows with their refs, source provenance, and CI-hardening findings |
 | Cloud security | Add a read-only connection, then run a scan | Build scoped cloud, identity, and posture inventory with explicit coverage and provenance |
 | Platform / DevOps | `pip install 'agent-bom[ui]' && AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db` | Schedule scans, centralize evidence, assign owners and SLAs, and verify remediation |
-| GRC / audit | `agent-bom report compliance-narrative scan.json` | Export mapped evidence while preserving unavailable, partial, and not-assessed states |
+| GRC / audit | `agent-bom report compliance-narrative scan.json` | Export mapped evidence for OWASP LLM Top 10, MITRE ATLAS, EU AI Act, and NIST AI RMF; preserve unavailable, partial, and not-assessed states |
 | CISO / engineering leader | Open **Architecture** in the self-hosted graph | Compare observed **Current** state with modeled **Proposed** and **Difference** views; proposals remain labeled as not observed or deployed |
 
 Security engineering and GRC remain separate workflows: findings and

@@ -21,6 +21,8 @@ API/UI, MCP tools, and selected runtime controls. For source-by-source
 boundaries, see the
 [AI infrastructure coverage matrix](architecture/ai-infrastructure.md#coverage-matrix).
 
+The shared security graph connects packages, workloads, agents, tools, identities, and data assets through typed relationships with source evidence and explicit completeness.
+
 ## What it does
 
 ```

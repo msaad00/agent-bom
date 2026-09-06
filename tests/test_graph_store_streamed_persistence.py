@@ -73,7 +73,10 @@ def test_snapshot_receipt_is_independent_of_sqlite_query_direction(tmp_path, nod
     from agent_bom.graph.correlation import CorrelationSnapshot
 
     with gs.open_graph_db(tmp_path / "ordered.db") as conn:
-        gs.save_graph(conn, _sample_graph("ordered"))
+        graph = _sample_graph("ordered")
+        graph.attack_paths.append(AttackPath(source="server:s", target="vuln:v", hops=["server:s", "pkg:p", "vuln:v"]))
+        graph.interaction_risks.append(InteractionRisk(pattern="shared-tool", agents=["agent:a"], risk_score=3.0, description="tool"))
+        gs.save_graph(conn, graph)
         forward = gs.load_graph(conn, scan_id="ordered", tenant_id="acme", node_budget=node_budget)
         conn.execute("PRAGMA reverse_unordered_selects = ON")
         reverse = gs.load_graph(conn, scan_id="ordered", tenant_id="acme", node_budget=node_budget)

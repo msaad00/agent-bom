@@ -1380,7 +1380,7 @@ def load_graph(
         )
 
     if not relationship_types:
-        apq = "SELECT * FROM attack_paths WHERE tenant_id = ? AND scan_id = ?"
+        apq = "SELECT * FROM attack_paths WHERE tenant_id = ? AND scan_id = ? ORDER BY rowid"
         apparams: list[Any] = [tenant_id, effective_scan_id]
         for row in conn.execute(apq, apparams):
             graph.attack_paths.append(
@@ -1402,7 +1402,7 @@ def load_graph(
                 )
             )
 
-        irq = "SELECT * FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?"
+        irq = "SELECT * FROM interaction_risks WHERE tenant_id = ? AND scan_id = ? ORDER BY rowid"
         irparams: list[Any] = [tenant_id, effective_scan_id]
         for row in conn.execute(irq, irparams):
             graph.interaction_risks.append(

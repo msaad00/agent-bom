@@ -2,6 +2,10 @@
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -178,3 +182,24 @@ def test_docker_catalog_matches_real_default_argument_names():
     assert {tool["name"] for tool in catalog} == set(live)
     for tool in catalog:
         assert {arg["name"] for arg in tool["arguments"]} == set(live[tool["name"]].inputSchema["properties"])
+
+
+def test_docker_catalog_generator_imports_the_checkout(tmp_path):
+    """A stale installed wheel must not decide the generated public schemas."""
+
+    script = Path(__file__).resolve().parents[1] / "scripts/generate_mcp_profile_catalog.py"
+    hostile_path = tmp_path / "stale-install"
+    package = hostile_path / "agent_bom"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('raise RuntimeError("stale wheel imported")\n')
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--check"],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(hostile_path)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout

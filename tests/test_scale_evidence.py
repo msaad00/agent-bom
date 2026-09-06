@@ -34,6 +34,16 @@ def test_postgres_scale_workflow_migrates_before_workload() -> None:
     assert "AGENT_BOM_ALLOW_SUPERUSER_DB" not in workflow
 
 
+def test_postgres_scale_workflow_uses_frozen_project_lock() -> None:
+    """Published scale evidence must run with the repository's resolved dependencies."""
+    workflow = Path(".github/workflows/postgres-scale-evidence.yml").read_text()
+
+    assert "uses: ./.github/actions/setup-python" in workflow
+    assert "uv sync --frozen --extra postgres --extra api" in workflow
+    assert "pip install -e" not in workflow
+    assert "pip install --upgrade pip" not in workflow
+
+
 def test_postgres_scale_evidence_sets_current_postgres_url(monkeypatch) -> None:
     script = Path("scripts/run_postgres_scale_evidence.py")
     spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)

@@ -298,7 +298,7 @@ exposing it.
 | Target | Start here |
 |---|---|
 | Docker Compose | [Platform compose](deploy/docker-compose.platform.yml) — PostgreSQL, split secrets, migration job |
-| Docker Compose (evaluation) | [Pilot compose](deploy/docker-compose.pilot.yml) — loopback only, SQLite, no auth |
+| Docker Compose (evaluation) | `docker compose up -d` from a repository checkout — loopback only, SQLite, no auth; then open `http://localhost:3000` |
 | Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.103.2` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | Snowflake SPCS / Native App | `scripts/deploy/install.sh snowflake-native` · [install guide](docs/snowflake-native-app/INSTALL.md) |

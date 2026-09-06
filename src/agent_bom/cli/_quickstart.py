@@ -288,7 +288,9 @@ def _verify_persisted_graph(
 
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
-    if graph.scan_id != scan_id or not graph.nodes or not graph.edges or created_at < scan_started_at:
+    # Graph timestamps are persisted at whole-second precision. Compare the
+    # start boundary at that precision so a same-second scan is not stale.
+    if graph.scan_id != scan_id or not graph.nodes or not graph.edges or created_at < scan_started_at.replace(microsecond=0):
         raise click.ClickException("Persisted graph could not be verified in the configured graph database.")
     return {"scan_id": scan_id, "nodes": len(graph.nodes), "edges": len(graph.edges)}
 

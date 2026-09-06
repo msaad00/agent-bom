@@ -1019,13 +1019,10 @@ def configure_api(
 
     validated_rate_limit_rpm = _validated_rate_limit_rpm(rate_limit_rpm)
 
-    if cors_allow_all:
-        if not listener_host or not _is_loopback_listener(listener_host):
-            raise ValueError("Wildcard CORS requires an explicit loopback listener_host")
-        _cors_origins = ["*"]
-    elif cors_origins:
-        _cors_origins = cors_origins
-
+    effective_origins = ["*"] if cors_allow_all else list(cors_origins or _cors_origins)
+    if "*" in effective_origins and (not listener_host or not _is_loopback_listener(listener_host)):
+        raise ValueError("Wildcard CORS requires an explicit loopback listener_host")
+    _cors_origins = effective_origins
     _apply_cors_middleware(_cors_origins)
 
     _api_key = api_key

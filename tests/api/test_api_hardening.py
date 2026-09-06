@@ -47,6 +47,21 @@ def test_health_no_auth():
     assert resp.status_code == 200
 
 
+@pytest.mark.parametrize("origins", [["*"], ["https://trusted.example", "*"]])
+def test_configure_api_rejects_explicit_wildcard_origin_on_public_listener(origins):
+    with pytest.raises(ValueError, match="loopback"):
+        configure_api(cors_origins=origins, listener_host="0.0.0.0")
+
+
+def test_configure_api_cannot_carry_wildcard_to_a_public_listener():
+    configure_api(cors_allow_all=True, listener_host="127.0.0.1")
+    try:
+        with pytest.raises(ValueError, match="loopback"):
+            configure_api(listener_host="0.0.0.0")
+    finally:
+        configure_api(cors_origins=["http://127.0.0.1:3000"], listener_host="127.0.0.1")
+
+
 def test_configure_api_persists_effective_listener_host():
     """Runtime posture must describe the address the API actually listens on."""
     configure_api(api_key=None, allow_unauthenticated=True, listener_host="0.0.0.0")

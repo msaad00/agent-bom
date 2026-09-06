@@ -806,21 +806,27 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
   const severity = finding?.severity?.toLowerCase();
   const knownSeverity = severity && ["critical", "high", "medium", "low"].includes(severity) ? severity : null;
 
+  const severityTone = knownSeverity === "critical"
+    ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+    : knownSeverity === "high"
+      ? "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-300"
+      : "border-outline bg-surface-muted text-ink-secondary";
+
   return (
-    <article className="rounded-lg border border-outline">
+    <article className={`rounded-lg border ${rank === 1 ? "border-outline-strong bg-surface-muted/40" : "border-outline"}`}>
       <Link href={path.href} className="group block rounded-lg p-3 transition hover:bg-surface-muted">
         <div className="flex items-start gap-2">
-          <span className="pt-0.5 font-mono text-xs text-ink-tertiary">{rank}.</span>
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-foreground [overflow-wrap:anywhere]">
+            <p className="text-base font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
               <span>{findingLabel}</span>{pkg ? <> in <span>{pkg.label}</span></> : null}
             </p>
             <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere]">
-              {workload ? workload.label : "Workload not identified"}
+              {workload ? `Affected workload: ${workload.label}` : "Workload not identified"}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-secondary">
-              <span>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
-              <span>Path priority {Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "unavailable"}</span>
+              <span className={`rounded-md border px-2 py-0.5 font-semibold capitalize ${severityTone}`}>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
+              <span>Path priority <strong className="font-semibold tabular-nums text-foreground">{Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "unavailable"}</strong></span>
               <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">Inspect finding <ArrowRight className="h-3 w-3" aria-hidden="true" /></span>
             </div>
           </div>
@@ -970,6 +976,11 @@ function PostureHero({
   const ungraded = grade === "N/A" || grade === "—";
   const graded = typeof score === "number" && !ungraded;
   const scoreDisplay = graded ? formatPostureScore(score, grade, scoreFormat) : null;
+  const scoreTone = graded && ["D", "F"].includes(grade)
+    ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+    : graded && grade === "C"
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+      : "border-outline-strong bg-surface-muted text-foreground";
   const blurb = loading
     ? "Refreshing the current posture and evidence summary."
     : derivePostureBlurb({ summary, critical, high, cves, graded });
@@ -985,14 +996,14 @@ function PostureHero({
             <ScoreFormatToggle value={scoreFormat} onChange={onScoreFormatChange} />
           ) : null}
         </div>
-        <p className="mt-1 flex items-baseline gap-2 text-lg font-semibold text-foreground">
+        <p className={`mt-2 inline-flex flex-wrap items-baseline gap-3 rounded-xl border px-4 py-3 font-semibold ${scoreTone}`} data-testid="overview-posture-score">
           {loading ? (
             "Loading posture…"
           ) : graded ? (
             <>
               {/* Always show BOTH the letter grade and the %/points, whatever the
                   chosen primary format, so the number is never ambiguous. */}
-              <span>{scoreDisplay}</span>
+              <span className="text-4xl leading-none tracking-tight tabular-nums">{scoreDisplay}</span>
               {scoreFormat !== "grade" ? (
                 <span className="text-xs font-medium text-ink-tertiary">Grade {grade}</span>
               ) : typeof score === "number" ? (

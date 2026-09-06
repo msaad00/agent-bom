@@ -822,8 +822,9 @@ app = FastAPI(
     title=f"{PRODUCT_NAME} API",
     description=f"{POSITIONING_META}. {TAGLINE_CHAIN}.",
     version=__version__,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None if APIKeyMiddleware._DOCS_DISABLED else "/docs",
+    redoc_url=None if APIKeyMiddleware._DOCS_DISABLED else "/redoc",
+    openapi_url=None if APIKeyMiddleware._DOCS_DISABLED else "/openapi.json",
     lifespan=_lifespan,
     swagger_ui_parameters={"favicon_url": "/brand/mark.svg"},
 )

@@ -1149,8 +1149,8 @@ function SeverityIssueStrip({
         titleClassName={SECTION_TITLE_CLASS}
         subtitle={scopeLabel ?? "By severity and issue class"}
         defaultOpen
-        actions={
-          <div className="flex flex-wrap items-center gap-1.5">
+      >
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
             {/* Category chips are neutral + iconified: hue is reserved for
                 severity alone, so a category never mimics a severity band
                 (KEV is not amber, Secrets is not red, Compliance is not a
@@ -1187,8 +1187,6 @@ function SeverityIssueStrip({
               />
             ) : null}
           </div>
-        }
-      >
       <div className="mb-3 mt-1 flex h-2.5 overflow-hidden rounded-full bg-[color:var(--surface)]">
         {summaryReady && stackedTotal > 0 ? (
           bands.map((band) =>

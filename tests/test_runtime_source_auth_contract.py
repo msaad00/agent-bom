@@ -84,18 +84,17 @@ def test_api_rejects_unbound_source_scope_before_storage(ingest_client, scopes):
     persist.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"expires_at": None},
-        {"expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()},
-        {"expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()},
-        {"revoked_at": datetime.now(timezone.utc).isoformat()},
-        {"created_at": (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()},
-    ],
-)
-def test_api_rejects_unbounded_expired_revoked_or_future_key(ingest_client, overrides):
+@pytest.mark.parametrize("invalid_state", ["unbounded", "expired", "long_lived", "revoked", "future"])
+def test_api_rejects_unbounded_expired_revoked_or_future_key(ingest_client, invalid_state):
     client, store = ingest_client
+    now = datetime.now(timezone.utc)
+    overrides = {
+        "unbounded": {"expires_at": None},
+        "expired": {"expires_at": (now - timedelta(minutes=1)).isoformat()},
+        "long_lived": {"expires_at": (now + timedelta(days=1)).isoformat()},
+        "revoked": {"revoked_at": now.isoformat()},
+        "future": {"created_at": (now + timedelta(minutes=2)).isoformat()},
+    }[invalid_state]
     with patch.object(store, "put_batch", wraps=store.put_batch) as persist:
         response = client.post("/v1/cloud/runtime-evidence/ingest", headers=runtime_headers(**overrides), json=_payload())
     assert response.status_code == 401

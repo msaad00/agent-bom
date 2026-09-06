@@ -718,6 +718,16 @@ class AgentBomClient:
             params=_strip_query_none({"tenant_id": tenant_id or self.tenant_id}),
         )
 
+    def ingest_runtime_evidence(
+        self, *, source_id: str, signals: Sequence[JsonObject], reason: str = "Runtime evidence ingestion", validate_only: bool = False
+    ) -> JsonObject:
+        """Send metadata with source-scoped transport authentication."""
+        return self._request(
+            "POST",
+            "/v1/cloud/runtime-evidence/ingest",
+            json={"source_id": source_id, "signals": list(signals), "reason": reason, "validate_only": validate_only},
+        )
+
     def ingest_runtime_events(
         self,
         events: Mapping[str, JsonValue] | Sequence[Mapping[str, JsonValue]],

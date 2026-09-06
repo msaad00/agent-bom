@@ -29,10 +29,10 @@ from agent_bom.cloud.runtime_workload_evidence_store import (
 )
 from agent_bom.graph.correlation_service import GraphCorrelationService
 from tests.auth_helpers import PROXY_SECRET
+from tests.runtime_auth_helpers import runtime_headers
 
 TENANT = "tenant-alpha"
 OTHER_TENANT = "tenant-beta"
-RUNTIME_SECRET = "runtime-source-secret-value"
 HEADERS = {
     "X-Agent-Bom-Role": "analyst",
     "X-Agent-Bom-Tenant-ID": TENANT,
@@ -104,7 +104,6 @@ def _create_external_cohort(client: TestClient, *, max_age_hours: int = 24) -> d
             provider="aws",
             account_id="123456789012",
             kind="gateway",
-            secret=RUNTIME_SECRET,
         )
     )
     set_runtime_source_registry(registry)
@@ -137,7 +136,6 @@ def _runtime_payload(cohort: dict[str, Any], *, dedup_key: str = "evt-1") -> dic
     source_id = cohort["source_ids_by_kind"]["runtime"]
     return {
         "source_id": source_id,
-        "secret": RUNTIME_SECRET,
         "correlation_cohort_id": cohort["correlation_cohort_id"],
         "correlation_child_receipt": cohort["receipts"][source_id],
         "signals": [
@@ -162,7 +160,7 @@ def test_external_cohort_receipts_complete_exact_children_and_parent(cohort_clie
     assert pushed.json()["correlation_cohort_id"] == cohort["correlation_cohort_id"]
     runtime = client.post(
         "/v1/cloud/runtime-evidence/ingest",
-        headers=ADMIN_HEADERS,
+        headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]),
         json=_runtime_payload(cohort),
     )
     assert runtime.status_code == 200, runtime.text
@@ -230,13 +228,13 @@ def test_runtime_cohort_distinct_payload_race_has_one_durable_winner(cohort_clie
         first_future = pool.submit(
             client.post,
             "/v1/cloud/runtime-evidence/ingest",
-            headers=ADMIN_HEADERS,
+            headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]),
             json=first_payload,
         )
         assert claimed.wait(timeout=5)
         second = client.post(
             "/v1/cloud/runtime-evidence/ingest",
-            headers=ADMIN_HEADERS,
+            headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]),
             json=second_payload,
         )
         release.set()
@@ -481,7 +479,7 @@ def test_runtime_graph_commit_failure_leaves_no_selectable_cohort_snapshot(cohor
     monkeypatch.setattr(graph_store, "save_graph", _partial_then_fail)
     response = client.post(
         "/v1/cloud/runtime-evidence/ingest",
-        headers=ADMIN_HEADERS,
+        headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]),
         json=_runtime_payload(cohort),
     )
 
@@ -509,7 +507,7 @@ def test_runtime_projection_failure_reconciles_from_committed_child_on_retry(coh
     evidence_store = FailProjectionOnce()
     set_runtime_workload_evidence_store(evidence_store)
     payload = _runtime_payload(cohort, dedup_key="projection-retry")
-    first = client.post("/v1/cloud/runtime-evidence/ingest", headers=ADMIN_HEADERS, json=payload)
+    first = client.post("/v1/cloud/runtime-evidence/ingest", headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]), json=payload)
     child_id = cohort["receipts"][cohort["source_ids_by_kind"]["runtime"]]["child_job_id"]
 
     assert first.status_code == 503
@@ -520,7 +518,9 @@ def test_runtime_projection_failure_reconciles_from_committed_child_on_retry(coh
         "agent_bom.cloud.runtime_workload_evidence._now_iso",
         lambda: (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
     )
-    replay = client.post("/v1/cloud/runtime-evidence/ingest", headers=ADMIN_HEADERS, json=payload)
+    replay = client.post(
+        "/v1/cloud/runtime-evidence/ingest", headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]), json=payload
+    )
     assert replay.status_code == 200
     projected = evidence_store.list_for_tenant(TENANT)
     assert [signal.dedup_key for signal in projected] == ["projection-retry"]
@@ -550,11 +550,13 @@ def test_runtime_same_hash_loser_reconciles_completed_child_before_returning(coh
         owner_future = pool.submit(
             client.post,
             "/v1/cloud/runtime-evidence/ingest",
-            headers=ADMIN_HEADERS,
+            headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]),
             json=payload,
         )
         assert owner_projection_started.wait(timeout=5)
-        replay = client.post("/v1/cloud/runtime-evidence/ingest", headers=ADMIN_HEADERS, json=payload)
+        replay = client.post(
+            "/v1/cloud/runtime-evidence/ingest", headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]), json=payload
+        )
         release_owner.set()
         owner = owner_future.result(timeout=5)
 
@@ -571,14 +573,14 @@ def test_runtime_stale_or_wrong_child_receipt_never_completes_child(cohort_clien
     cohort = _create_external_cohort(client, max_age_hours=1)
     payload = _runtime_payload(cohort)
     payload["signals"][0]["observed_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
-    stale = client.post("/v1/cloud/runtime-evidence/ingest", headers=ADMIN_HEADERS, json=payload)
+    stale = client.post("/v1/cloud/runtime-evidence/ingest", headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]), json=payload)
     assert stale.status_code == 409
     assert stale.json()["detail"] == "Correlation cohort evidence is stale"
 
     payload = _runtime_payload(cohort, dedup_key="wrong-receipt")
     result_source = cohort["source_ids_by_kind"]["result"]
     payload["correlation_child_receipt"] = cohort["receipts"][result_source]
-    wrong = client.post("/v1/cloud/runtime-evidence/ingest", headers=ADMIN_HEADERS, json=payload)
+    wrong = client.post("/v1/cloud/runtime-evidence/ingest", headers=runtime_headers(cohort["source_ids_by_kind"]["runtime"]), json=payload)
     assert wrong.status_code == 409
     assert wrong.json()["detail"] == "Correlation cohort receipt is invalid"
     runtime_source = cohort["source_ids_by_kind"]["runtime"]

@@ -32,18 +32,15 @@ from agent_bom.cloud.runtime_workload_evidence_store import (
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType
+from tests.runtime_auth_helpers import runtime_headers
 
 PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
-SOURCE_SECRET = "s3cr3t-token-value-1234"
+
 TENANT = "tenant-alpha"
 
 
 def _proxy_headers(role: str = "admin", tenant: str = TENANT) -> dict[str, str]:
-    return {
-        "X-Agent-Bom-Role": role,
-        "X-Agent-Bom-Tenant-ID": tenant,
-        "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
-    }
+    return runtime_headers(tenant=tenant, role=role)
 
 
 def setup_module() -> None:
@@ -68,7 +65,6 @@ def _install_source(tenant: str = TENANT, account: str = "123456789012") -> None
             provider="aws",
             account_id=account,
             kind="edr",
-            secret=SOURCE_SECRET,
         )
     )
     set_runtime_source_registry(registry)
@@ -93,7 +89,7 @@ def test_ingest_persists_and_reaches_graph() -> None:
     resp = client.post(
         "/v1/cloud/runtime-evidence/ingest",
         headers=_proxy_headers(),
-        json={"source_id": "edr-1", "secret": SOURCE_SECRET, "signals": [_signal()]},
+        json={"source_id": "edr-1", "signals": [_signal()]},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -130,7 +126,7 @@ def test_ingest_persists_and_reaches_graph() -> None:
 def test_ingest_dedups_on_retry() -> None:
     _install_source()
     client = TestClient(app)
-    payload = {"source_id": "edr-1", "secret": SOURCE_SECRET, "signals": [_signal(dedup_key="evt-dup")]}
+    payload = {"source_id": "edr-1", "signals": [_signal(dedup_key="evt-dup")]}
     first = client.post("/v1/cloud/runtime-evidence/ingest", headers=_proxy_headers(), json=payload)
     second = client.post("/v1/cloud/runtime-evidence/ingest", headers=_proxy_headers(), json=payload)
     assert first.json()["persisted"] == 1
@@ -147,14 +143,14 @@ def test_ingest_requires_observation_timestamp_in_api_contract() -> None:
     response = client.post(
         "/v1/cloud/runtime-evidence/ingest",
         headers=_proxy_headers(),
-        json={"source_id": "edr-1", "secret": SOURCE_SECRET, "signals": [signal]},
+        json={"source_id": "edr-1", "signals": [signal]},
     )
 
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"][-1] == "observed_at"
 
 
-def test_ingest_bad_secret_is_401() -> None:
+def test_ingest_legacy_secret_body_is_rejected() -> None:
     _install_source()
     client = TestClient(app)
     resp = client.post(
@@ -162,7 +158,7 @@ def test_ingest_bad_secret_is_401() -> None:
         headers=_proxy_headers(),
         json={"source_id": "edr-1", "secret": "wrong-secret-value", "signals": [_signal()]},
     )
-    assert resp.status_code == 401
+    assert resp.status_code == 422
 
 
 def test_ingest_unknown_source_is_401_not_enumerable() -> None:
@@ -171,7 +167,7 @@ def test_ingest_unknown_source_is_401_not_enumerable() -> None:
     resp = client.post(
         "/v1/cloud/runtime-evidence/ingest",
         headers=_proxy_headers(),
-        json={"source_id": "does-not-exist", "secret": SOURCE_SECRET, "signals": [_signal()]},
+        json={"source_id": "does-not-exist", "signals": [_signal()]},
     )
     assert resp.status_code == 401
 
@@ -184,7 +180,7 @@ def test_ingest_cross_tenant_source_rejected() -> None:
     resp = client.post(
         "/v1/cloud/runtime-evidence/ingest",
         headers=_proxy_headers(tenant="tenant-beta"),
-        json={"source_id": "edr-1", "secret": SOURCE_SECRET, "signals": [_signal()]},
+        json={"source_id": "edr-1", "signals": [_signal()]},
     )
     assert resp.status_code == 401
 
@@ -197,7 +193,7 @@ def test_ingest_requires_auth() -> None:
         client = TestClient(app)
         resp = client.post(
             "/v1/cloud/runtime-evidence/ingest",
-            json={"source_id": "edr-1", "secret": SOURCE_SECRET, "signals": [_signal()]},
+            json={"source_id": "edr-1", "signals": [_signal()]},
         )
         assert resp.status_code == 401
     finally:
@@ -219,7 +215,6 @@ def test_registry_bootstraps_from_env(monkeypatch) -> None:
                     "provider": "gcp",
                     "account_id": "proj-1",
                     "kind": "edr",
-                    "secret": "env-secret-value-12345",
                 }
             ]
         ),
@@ -229,7 +224,6 @@ def test_registry_bootstraps_from_env(monkeypatch) -> None:
     src = registry.get("env-edr")
     assert src is not None
     assert src.tenant_id == "tenant-x"
-    assert src.authenticate("env-secret-value-12345")
     set_runtime_source_registry(None)
 
 
@@ -246,7 +240,6 @@ def test_registry_env_duplicate_source_id_cannot_rebind_identity(monkeypatch) ->
                     "provider": "aws",
                     "account_id": "111111111111",
                     "kind": "edr",
-                    "secret": "first-secret-value-12345",
                 },
                 {
                     "source_id": "env-edr",
@@ -254,7 +247,6 @@ def test_registry_env_duplicate_source_id_cannot_rebind_identity(monkeypatch) ->
                     "provider": "gcp",
                     "account_id": "project-b",
                     "kind": "edr",
-                    "secret": "second-secret-value-12345",
                 },
             ]
         ),
@@ -268,6 +260,4 @@ def test_registry_env_duplicate_source_id_cannot_rebind_identity(monkeypatch) ->
     assert source.tenant_id == "tenant-a"
     assert source.provider == "aws"
     assert source.account_id == "111111111111"
-    assert source.authenticate("first-secret-value-12345")
-    assert not source.authenticate("second-secret-value-12345")
     set_runtime_source_registry(None)

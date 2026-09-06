@@ -1052,73 +1052,49 @@ cloud_group.add_command(side_scan_capabilities_cmd, "side-scan-capabilities")
 
 @click.command("runtime-evidence-ingest")
 @click.option("--source-id", required=True, help="Pre-registered runtime evidence source id.")
-@click.option(
-    "--secret",
-    required=True,
-    envvar="AGENT_BOM_RUNTIME_EVIDENCE_SOURCE_SECRET",
-    help="Shared secret for the source (or set AGENT_BOM_RUNTIME_EVIDENCE_SOURCE_SECRET).",
-)
-@click.option(
-    "--file",
-    "signals_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=str),
-    required=True,
-    help='JSON file: a list of signals, or {"signals": [...]}.',
-)
-@click.option("--no-persist", is_flag=True, help="Authenticate + validate only; do not write the durable store.")
-def runtime_evidence_ingest_cmd(source_id: str, secret: str, signals_file: str, no_persist: bool) -> None:
-    """Ingest CWPP runtime/EDR workload signals into the local evidence store.
+@click.option("--file", "signals_file", type=click.Path(exists=True, dir_okay=False), required=True, help="JSON signal file.")
+@click.option("--no-persist", is_flag=True, help="Authenticate and validate through the API without persisting evidence.")
+@click.option("--reason", default="Runtime evidence ingestion", help="Audit reason for ingestion.")
+def runtime_evidence_ingest_cmd(source_id: str, signals_file: str, no_persist: bool, reason: str) -> None:
+    """Ingest runtime evidence through the authenticated control-plane API.
 
-    Sources must already be registered via ``AGENT_BOM_RUNTIME_EVIDENCE_SOURCES``
-    (hashed shared secret). Read-only toward customer targets: agent-bom never
-    writes to a cloud workload; only redacted metadata is persisted. Fail-closed
-    authentication — unknown source or bad secret exits non-zero.
+    Configure AGENT_BOM_API_URL and AGENT_BOM_API_KEY or AGENT_BOM_API_TOKEN
+    outside the command. The credential requires an exact source scope and a
+    lifetime of at most one hour. The API owns source/tenant validation and storage.
 
-    \b
-    Examples:
-      agent-bom cloud runtime-evidence-ingest \\
-        --source-id edr-1 --secret \"$SECRET\" --file signals.json
+    Example: agent-bom cloud runtime-evidence-ingest --source-id edr-1 --file signals.json
     """
     import json
     from pathlib import Path
 
     from rich.console import Console
 
-    from agent_bom.cloud.runtime_workload_evidence import (
-        SourceAuthenticationError,
-        ingest_runtime_signals_payload,
-    )
+    from agent_bom.cloud.runtime_evidence_client import push_runtime_evidence
+    from agent_bom.cloud.runtime_source_auth import SourceAuthenticationError
+    from agent_bom.security import sanitize_error
 
     con = Console()
     try:
         payload = json.loads(Path(signals_file).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        con.print(f"\n  [red]invalid signals file:[/red] {exc}\n")
+        summary = push_runtime_evidence(source_id=source_id, payload=payload, reason=reason, validate_only=no_persist)
+    except (OSError, ValueError) as exc:
+        con.print(f"Invalid runtime evidence: {sanitize_error(exc, generic=True)}")
         raise SystemExit(2) from exc
-
-    try:
-        result = ingest_runtime_signals_payload(
-            source_id=source_id,
-            secret=secret,
-            payload=payload,
-            persist=not no_persist,
-        )
-    except SourceAuthenticationError:
-        con.print("\n  [red]runtime evidence source authentication failed[/red]\n")
-        raise SystemExit(1)
-    except ValueError as exc:
-        con.print(f"\n  [red]invalid payload:[/red] {exc}\n")
-        raise SystemExit(2) from exc
-
-    summary = result.to_dict()
-    con.print("\n  [bold]runtime evidence ingest[/bold] [dim]· metadata only · additive[/dim]")
+    except SourceAuthenticationError as exc:
+        con.print("Runtime evidence source authentication failed; configure a source-scoped API credential")
+        raise SystemExit(1) from exc
+    except Exception as exc:
+        con.print(f"Runtime evidence request failed: {sanitize_error(exc, generic=True)}")
+        raise SystemExit(1) from exc
+    con.print("Runtime evidence ingest · metadata only · additive")
     con.print(
-        f"  source={summary['source_id']} tenant={summary['tenant_id']} "
+        f"source={summary['source_id']} tenant={summary['tenant_id']} "
         f"accepted={summary['accepted']} persisted={summary['persisted']} "
-        f"deduped={summary['deduped']} stale={summary['rejected_stale']} "
-        f"incomplete={summary['rejected_incomplete']}"
+        f"deduped={summary['deduped']} stale={summary['rejected_stale']} incomplete={summary['rejected_incomplete']}"
     )
-    con.print()
+    if summary.get("status") == "partial" or summary.get("audit_status") == "unavailable":
+        con.print("Ingestion is partial: evidence counts are shown above; audit recording is unavailable.")
+        raise SystemExit(1)
     if summary["accepted"] == 0 and (summary["rejected_stale"] or summary["rejected_incomplete"]):
         raise SystemExit(2)
 

@@ -1718,6 +1718,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 request.state.api_key_role = effective_role.value
                 request.state.tenant_id = tenant_id
                 request.state.auth_method = "oidc"
+                request.state.verified_oidc_claims = dict(_claims)
                 # Short issuer suffix helps operators recognize which IdP
                 # resolved the token without leaking the full URL to all
                 # request-scoped log fields.

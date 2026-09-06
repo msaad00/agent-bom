@@ -4998,8 +4998,11 @@ components:
             type: string
           - type: 'null'
           title: Correlation Cohort Id
-        secret:
-          title: Secret
+        reason:
+          default: Runtime evidence ingestion
+          maxLength: 1024
+          minLength: 8
+          title: Reason
           type: string
         signals:
           items:
@@ -5010,9 +5013,12 @@ components:
         source_id:
           title: Source Id
           type: string
+        validate_only:
+          default: false
+          title: Validate Only
+          type: boolean
       required:
       - source_id
-      - secret
       title: RuntimeEvidenceIngestRequest
       type: object
     RuntimeEvidenceSignalIn:
@@ -9500,35 +9506,17 @@ paths:
       - cloud-connections
   /v1/cloud/runtime-evidence/ingest:
     post:
-      description: 'Ingest a batch of CWPP runtime/EDR workload signals (#4158 stage
-        3).
+      description: 'Ingest source-scoped metadata using an existing API key or OIDC
+        token.
 
 
-        The authenticated, tenant-scoped door for the runtime workload-evidence store.
+        The verified credential must carry the exact runtime:ingest:<source_id>
 
-        Without this route the store had no caller in a deployed product and could
+        scope and have a lifetime of at most one hour. Source tenant/provider/account
 
-        never be populated. Read-only posture: agent-bom never writes to a customer
+        come from server registration. Credentials are never accepted in this body.
 
-        target and persists allowlisted metadata only (raw content and known
-
-        credential-shaped values are dropped at construction). Each source is
-
-        pre-registered with a hashed shared secret (no per-action credentials);
-
-        ``provider``/``account`` bind to the
-
-        authenticated source, never the payload (confused-deputy guard).
-
-
-        Fail-closed: an unknown source id, a bad secret, or a source owned by a
-
-        different tenant all return the same generic ``401`` so a caller cannot
-
-        enumerate valid source ids or tenants. The ingest runs off the event loop
-        in a
-
-        worker thread under backpressure so a batch can never stall ``/health``.'
+        Unknown, expired, revoked, unscoped or cross-tenant authority fails closed.'
       operationId: cloud_runtime_evidence_ingest_v1_cloud_runtime_evidence_ingest_post
       parameters:
       - in: header

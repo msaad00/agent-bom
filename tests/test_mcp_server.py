@@ -834,27 +834,9 @@ def test_ingest_external_scan_annotation_is_write():
 # ---------------------------------------------------------------------------
 # Tool: runtime_evidence_ingest — durable-write authorization
 #
-# The source shared secret authenticates the evidence producer.  It does not
-# replace the MCP operator token/role/scope/reason required to invoke a durable
-# write through this surface.
+# The API credential authorizes the source. It does not replace the MCP
+# operator token/role/scope/reason required to invoke a durable write.
 # ---------------------------------------------------------------------------
-
-
-def _runtime_source_registry(*, tenant_id: str = "tenant-alpha"):
-    from agent_bom.cloud.runtime_workload_evidence import RuntimeEvidenceSource, RuntimeSourceRegistry
-
-    registry = RuntimeSourceRegistry()
-    registry.add(
-        RuntimeEvidenceSource.register(
-            source_id="edr-1",
-            tenant_id=tenant_id,
-            provider="aws",
-            account_id="123456789012",
-            kind="edr",
-            secret="source-secret",
-        )
-    )
-    return registry
 
 
 def _call_runtime_evidence_impl(**overrides):
@@ -862,7 +844,6 @@ def _call_runtime_evidence_impl(**overrides):
 
     arguments = {
         "source_id": "edr-1",
-        "secret": "source-secret",
         "signals_json": "[]",
         "operator_role": "admin",
         "operator_scopes": "findings:write",
@@ -886,7 +867,7 @@ def test_runtime_evidence_ingest_blocks_stdio_before_handler(mock_ingest):
             result = _call_tool(
                 server,
                 "runtime_evidence_ingest",
-                {"source_id": "edr-1", "secret": "source-secret", "signals_json": "[]"},
+                {"source_id": "edr-1", "signals_json": "[]"},
             )
 
         assert result.get("status") == "blocked", result
@@ -907,7 +888,6 @@ def test_runtime_evidence_ingest_requires_findings_write_scope(mock_ingest):
             "runtime_evidence_ingest",
             {
                 "source_id": "edr-1",
-                "secret": "source-secret",
                 "signals_json": "[]",
                 "operator_role": "admin",
                 "operator_scopes": "findings:write",
@@ -922,7 +902,7 @@ def test_runtime_evidence_ingest_requires_findings_write_scope(mock_ingest):
 
 def test_runtime_evidence_ingest_impl_requires_audit_context():
     """The handler independently rejects a missing audit reason before ingest."""
-    with patch("agent_bom.cloud.runtime_workload_evidence.ingest_runtime_signals_payload") as mock_ingest:
+    with patch("agent_bom.cloud.runtime_evidence_client.push_runtime_evidence") as mock_ingest:
         result = _call_runtime_evidence_impl(reason="")
 
     assert result.get("status") == "blocked", result
@@ -930,99 +910,52 @@ def test_runtime_evidence_ingest_impl_requires_audit_context():
     mock_ingest.assert_not_called()
 
 
-def test_runtime_evidence_ingest_allows_authorized_operator_and_keeps_source_auth(monkeypatch):
-    """Operator authorization and the source secret remain independent gates."""
+def test_runtime_evidence_ingest_allows_authorized_operator_and_delegates_api_auth(monkeypatch):
     from agent_bom import mcp_server
-    from agent_bom.cloud.runtime_workload_evidence import IngestResult, set_runtime_source_registry
     from agent_bom.mcp_server import create_mcp_server
 
     monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
-    registry = _runtime_source_registry()
-    set_runtime_source_registry(registry)
-    args = {
-        "source_id": "edr-1",
-        "secret": "source-secret",
-        "signals_json": "[]",
-        "operator_role": "admin",
-        "operator_scopes": "findings:write",
-        "reason": "ingest approved runtime evidence",
-    }
-    server = create_mcp_server(profile="full")
+    args = dict(
+        source_id="edr-1", signals_json="[]", operator_role="admin", operator_scopes="findings:write", reason="approved runtime evidence"
+    )
+    response = dict(source_id="edr-1", tenant_id="tenant-alpha", accepted=0, persisted=0, rejected_stale=0, rejected_incomplete=0)
     with (
         patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin,findings:write")),
-        patch(
-            "agent_bom.cloud.runtime_workload_evidence.ingest_runtime_signals_payload",
-            return_value=IngestResult(source_id="edr-1", tenant_id="tenant-alpha"),
-        ) as mock_ingest,
+        patch("agent_bom.cloud.runtime_evidence_client.push_runtime_evidence", return_value=response) as push,
     ):
-        result = _call_tool(server, "runtime_evidence_ingest", args)
-
-    assert result.get("status") != "blocked", result
+        result = _call_tool(create_mcp_server(profile="full"), "runtime_evidence_ingest", args)
     assert result["tenant_id"] == "tenant-alpha"
-    assert mock_ingest.call_args.kwargs["registry"] is registry
-
-    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin,findings:write")):
-        denied = _call_tool(server, "runtime_evidence_ingest", {**args, "secret": "wrong-secret"})
-
-    assert denied == {"error": "runtime evidence source authentication failed"}
-    set_runtime_source_registry(None)
+    assert push.call_args.kwargs["tenant_id"] == "tenant-alpha"
+    assert "secret" not in push.call_args.kwargs
 
 
-def test_runtime_evidence_ingest_rejects_cross_tenant_source_before_persistence(monkeypatch):
-    """A valid source secret cannot cross the MCP server's tenant binding."""
-    from agent_bom.cloud.runtime_workload_evidence import set_runtime_source_registry
-
+def test_runtime_evidence_ingest_rejects_mismatched_api_receipt(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
-    set_runtime_source_registry(_runtime_source_registry(tenant_id="tenant-beta"))
-    try:
-        with patch("agent_bom.cloud.runtime_workload_evidence.ingest_runtime_signals_payload") as mock_ingest:
-            result = _call_runtime_evidence_impl()
-
-        assert result == {"error": "runtime evidence source authentication failed"}
-        mock_ingest.assert_not_called()
-    finally:
-        set_runtime_source_registry(None)
+    with patch("agent_bom.cloud.runtime_evidence_client.push_runtime_evidence", return_value={"source_id": "edr-1", "tenant_id": "other"}):
+        result = _call_runtime_evidence_impl()
+    assert result == {"error": "runtime evidence source authentication failed"}
 
 
 def test_runtime_evidence_ingest_unexpected_error_is_generic(caplog, monkeypatch):
-    """Unexpected secret-path errors expose neither raw details nor tracebacks."""
-    from agent_bom.cloud.runtime_workload_evidence import set_runtime_source_registry
-
     monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
-    set_runtime_source_registry(_runtime_source_registry())
-    sensitive = "token=top-secret at /private/customer/runtime.db"
-    try:
-        with patch(
-            "agent_bom.cloud.runtime_workload_evidence.ingest_runtime_signals_payload",
-            side_effect=RuntimeError(sensitive),
-        ):
-            result = _call_runtime_evidence_impl()
-    finally:
-        set_runtime_source_registry(None)
-
+    with patch(
+        "agent_bom.cloud.runtime_evidence_client.push_runtime_evidence",
+        side_effect=RuntimeError("token=top-secret at /private/customer/runtime.db"),
+    ):
+        result = _call_runtime_evidence_impl()
     assert result == {"error": "An internal error occurred. Please contact support."}
     assert "top-secret" not in caplog.text
     assert "/private/customer/runtime.db" not in caplog.text
 
 
 def test_runtime_evidence_ingest_reports_partial_when_postwrite_audit_fails(monkeypatch):
-    """Persisted evidence must not silently imply that its audit event succeeded."""
-    from agent_bom.cloud.runtime_workload_evidence import IngestResult, set_runtime_source_registry
-
     monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
-    set_runtime_source_registry(_runtime_source_registry())
-    try:
-        with (
-            patch(
-                "agent_bom.cloud.runtime_workload_evidence.ingest_runtime_signals_payload",
-                return_value=IngestResult(source_id="edr-1", tenant_id="tenant-alpha", persisted=1),
-            ),
-            patch("agent_bom.api.audit_log.log_action", side_effect=RuntimeError("audit sink unavailable")),
-        ):
-            result = _call_runtime_evidence_impl()
-    finally:
-        set_runtime_source_registry(None)
-
+    response = dict(source_id="edr-1", tenant_id="tenant-alpha", accepted=1, persisted=1, rejected_stale=0, rejected_incomplete=0)
+    with (
+        patch("agent_bom.cloud.runtime_evidence_client.push_runtime_evidence", return_value=response),
+        patch("agent_bom.api.audit_log.log_action", side_effect=RuntimeError("audit sink unavailable")),
+    ):
+        result = _call_runtime_evidence_impl()
     assert result["persisted"] == 1
     assert result["status"] == "partial"
     assert result["audit_status"] == "unavailable"

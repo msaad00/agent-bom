@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from agent_bom.cloud.runtime_source_auth import RuntimeSourcePrincipal
 from agent_bom.cloud.runtime_workload_evidence import (
     DEFAULT_MAX_SIGNAL_AGE_SECONDS,
     RUNTIME_EVIDENCE_SCHEMA_VERSION,
@@ -34,11 +35,12 @@ from agent_bom.cloud.runtime_workload_evidence import (
     ingest_runtime_signals,
     no_runtime_signal_summary,
 )
+from tests.runtime_auth_helpers import runtime_principal
 
 _T0 = "2026-07-18T12:00:00Z"
 
 
-def _source(secret: str = "s3cr3t-token-value") -> tuple[RuntimeSourceRegistry, RuntimeEvidenceSource, str]:
+def _source() -> tuple[RuntimeSourceRegistry, RuntimeEvidenceSource, RuntimeSourcePrincipal]:
     registry = RuntimeSourceRegistry()
     src = RuntimeEvidenceSource.register(
         source_id="edr-1",
@@ -46,10 +48,9 @@ def _source(secret: str = "s3cr3t-token-value") -> tuple[RuntimeSourceRegistry, 
         provider="aws",
         account_id="123456789012",
         kind="edr",
-        secret=secret,
     )
     registry.add(src)
-    return registry, src, secret
+    return registry, src, runtime_principal()
 
 
 def _raw(**over: object) -> dict[str, object]:
@@ -80,35 +81,33 @@ def test_canonical_workload_id_is_deterministic_and_scope_bound():
 
 
 def test_ingest_rejects_unknown_source():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     with pytest.raises(SourceAuthenticationError):
-        ingest_runtime_signals(registry=registry, source_id="ghost", secret=secret, raw_signals=[_raw()])
+        ingest_runtime_signals(registry=registry, source_id="ghost", principal=principal, raw_signals=[_raw()])
 
 
-def test_ingest_rejects_wrong_secret():
-    registry, _src, _secret = _source()
+def test_ingest_rejects_wrong_source_scope():
+    registry, _src, _principal = _source()
     with pytest.raises(SourceAuthenticationError):
-        ingest_runtime_signals(registry=registry, source_id="edr-1", secret="wrong", raw_signals=[_raw()])
+        ingest_runtime_signals(
+            registry=registry, source_id="edr-1", principal=runtime_principal(source_id="different"), raw_signals=[_raw()]
+        )
 
 
-def test_source_authenticate_is_constant_time_hash_not_plaintext():
-    _registry, src, secret = _source()
-    assert src.authenticate(secret) is True
-    assert src.authenticate("nope") is False
-    # the shared secret is never stored in the clear
-    assert secret not in src.secret_hash
-    assert len(src.secret_hash) == 64
+def test_source_registration_contains_identity_only():
+    registry, source, principal = _source()
+    assert registry.authorize("edr-1", principal) == source
+    assert "secret" not in vars(source)
 
 
 def test_source_registry_rejects_conflicting_source_id_rebinding():
-    registry, original, _secret = _source()
+    registry, original, _principal = _source()
     conflicting = RuntimeEvidenceSource.register(
         source_id=original.source_id,
         tenant_id="tenant-b",
         provider="gcp",
         account_id="project-b",
         kind="edr",
-        secret="different-secret-value",
     )
 
     with pytest.raises(ValueError, match="already registered"):
@@ -121,12 +120,12 @@ def test_source_registry_rejects_conflicting_source_id_rebinding():
 
 
 def test_ingest_binds_identity_from_source_not_from_client_claim():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     # a spoofed account/provider on the raw signal must not steer persistence
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(provider="gcp", account_id="000000000000")],
         now=_T0,
     )
@@ -135,11 +134,11 @@ def test_ingest_binds_identity_from_source_not_from_client_claim():
 
 
 def test_ingest_fails_closed_on_missing_workload_ref():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(workload_ref="")],
         now=_T0,
     )
@@ -151,12 +150,12 @@ def test_ingest_fails_closed_on_missing_workload_ref():
 
 
 def test_ingest_rejects_stale_signal():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     now = "2026-07-18T13:30:00Z"  # 90 min after observed_at, window is 60 min
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw()],
         now=now,
         max_age_seconds=DEFAULT_MAX_SIGNAL_AGE_SECONDS,
@@ -166,11 +165,11 @@ def test_ingest_rejects_stale_signal():
 
 
 def test_ingest_rejects_unparseable_timestamp_as_incomplete():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(observed_at="not-a-time")],
         now=_T0,
     )
@@ -179,11 +178,11 @@ def test_ingest_rejects_unparseable_timestamp_as_incomplete():
 
 
 def test_ingest_rejects_missing_observation_timestamp_as_incomplete():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(observed_at="")],
         now=_T0,
     )
@@ -192,11 +191,11 @@ def test_ingest_rejects_missing_observation_timestamp_as_incomplete():
 
 
 def test_ingest_rejects_future_observation_timestamp():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(observed_at="2026-07-18T12:00:01Z")],
         now=_T0,
     )
@@ -205,19 +204,19 @@ def test_ingest_rejects_future_observation_timestamp():
 
 
 def test_ingest_rejects_secret_shaped_or_unbounded_identity_values():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     credential = "gl" + "pat-abcdefghijklmnopqrst"
     secret_result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(dedup_key=credential)],
         now=_T0,
     )
     oversized_result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(dedup_key="e" * 513)],
         now=_T0,
     )
@@ -230,11 +229,11 @@ def test_ingest_rejects_secret_shaped_or_unbounded_identity_values():
 
 
 def test_ingest_normalizes_observation_timestamps_to_utc_before_ordering():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[
             _raw(observed_at="2026-07-18T12:30:00+01:00", dedup_key="older-offset"),
             _raw(observed_at="2026-07-18T12:00:00Z", dedup_key="newer-zulu"),
@@ -255,19 +254,19 @@ def test_ingest_normalizes_observation_timestamps_to_utc_before_ordering():
 
 
 def test_ingest_deduplicates_within_and_across_batches():
-    registry, _src, secret = _source()
-    r1 = ingest_runtime_signals(registry=registry, source_id="edr-1", secret=secret, raw_signals=[_raw(), _raw()], now=_T0)
+    registry, _src, principal = _source()
+    r1 = ingest_runtime_signals(registry=registry, source_id="edr-1", principal=principal, raw_signals=[_raw(), _raw()], now=_T0)
     assert len(r1.accepted) == 1
     assert r1.deduped == 1
     seen = {sig.dedup_scope for sig in r1.accepted}
-    r2 = ingest_runtime_signals(registry=registry, source_id="edr-1", secret=secret, raw_signals=[_raw()], now=_T0, dedup_seen=seen)
+    r2 = ingest_runtime_signals(registry=registry, source_id="edr-1", principal=principal, raw_signals=[_raw()], now=_T0, dedup_seen=seen)
     assert r2.accepted == []
     assert r2.deduped == 1
 
 
 def test_signal_records_provenance_and_freshness():
-    registry, _src, secret = _source()
-    result = ingest_runtime_signals(registry=registry, source_id="edr-1", secret=secret, raw_signals=[_raw()], now=_T0)
+    registry, _src, principal = _source()
+    result = ingest_runtime_signals(registry=registry, source_id="edr-1", principal=principal, raw_signals=[_raw()], now=_T0)
     sig = result.accepted[0]
     assert sig.source_id == "edr-1"
     assert sig.source_kind == "edr"
@@ -284,11 +283,11 @@ def test_signal_records_provenance_and_freshness():
 
 
 def test_signal_redacts_oversized_and_forbidden_evidence():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[
             _raw(
                 evidence={
@@ -311,11 +310,11 @@ def test_signal_redacts_oversized_and_forbidden_evidence():
 
 
 def test_signal_persists_only_allowlisted_non_secret_metadata():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[
             _raw(
                 evidence={
@@ -353,11 +352,11 @@ def test_signal_persists_only_allowlisted_non_secret_metadata():
 
 
 def test_signal_redacts_secret_shaped_title():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(title="Authorization: Bearer credential-in-title")],
         now=_T0,
     )
@@ -386,11 +385,11 @@ def test_signal_redacts_secret_shaped_title():
     ],
 )
 def test_signal_drops_known_credential_shapes_from_allowlisted_values(credential: str):
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(evidence={"indicator_ref": credential})],
         now=_T0,
     )
@@ -402,11 +401,11 @@ def test_signal_drops_known_credential_shapes_from_allowlisted_values(credential
 
 def test_signal_scans_full_oversized_value_before_bounding():
     credential = "A" * 220 + "postgresql://runtime-user:supersecretpassword@example.invalid/db"
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[_raw(evidence={"indicator_ref": credential})],
         now=_T0,
     )
@@ -419,11 +418,11 @@ def test_signal_scans_full_oversized_value_before_bounding():
 
 
 def test_signal_preserves_non_secret_security_taxonomy_labels():
-    registry, _src, secret = _source()
+    registry, _src, principal = _source()
     result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret=secret,
+        principal=principal,
         raw_signals=[
             _raw(
                 evidence={
@@ -485,8 +484,8 @@ def test_finding_without_workload_identity_is_left_untouched():
 
 
 def _signal(**over: object) -> RuntimeWorkloadSignal:
-    registry, _src, secret = _source()
-    result = ingest_runtime_signals(registry=registry, source_id="edr-1", secret=secret, raw_signals=[_raw(**over)], now=_T0)
+    registry, _src, principal = _source()
+    result = ingest_runtime_signals(registry=registry, source_id="edr-1", principal=principal, raw_signals=[_raw(**over)], now=_T0)
     return result.accepted[0]
 
 
@@ -549,9 +548,9 @@ def test_signal_type_enum_is_bounded():
 
 
 def test_ingest_result_summary_is_serializable_and_non_secret():
-    registry, _src, secret = _source()
-    result = ingest_runtime_signals(registry=registry, source_id="edr-1", secret=secret, raw_signals=[_raw()], now=_T0)
+    registry, _src, principal = _source()
+    result = ingest_runtime_signals(registry=registry, source_id="edr-1", principal=principal, raw_signals=[_raw()], now=_T0)
     assert isinstance(result, IngestResult)
     summary = result.to_dict()
     assert summary["accepted"] == 1
-    assert secret not in str(summary)
+    assert "secret" not in str(summary)

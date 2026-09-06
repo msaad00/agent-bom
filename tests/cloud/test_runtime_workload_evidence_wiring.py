@@ -24,6 +24,7 @@ from agent_bom.cloud.runtime_workload_evidence_store import (
     InMemoryRuntimeWorkloadEvidenceStore,
     set_runtime_workload_evidence_store,
 )
+from tests.runtime_auth_helpers import runtime_principal
 
 
 @pytest.fixture
@@ -44,14 +45,13 @@ def _seed_store(tenant: str = "tenant-a") -> InMemoryRuntimeWorkloadEvidenceStor
         provider="aws",
         account_id="123456789012",
         kind="edr",
-        secret="s3cr3t-token-value",
     )
     registry.add(src)
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
-        secret="s3cr3t-token-value",
+        principal=runtime_principal(tenant=tenant),
         raw_signals=[
             {
                 "workload_ref": "i-0abc",

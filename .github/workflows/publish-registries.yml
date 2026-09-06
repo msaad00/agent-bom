@@ -244,7 +244,7 @@ jobs:
           set -euo pipefail
           echo "fresh=false" >> "$GITHUB_OUTPUT"
           if ! curl -fsS --connect-timeout 10 --max-time 30 \
-              "https://api.smithery.ai/servers/agent-bom/agent-bom" \
+              "https://api.smithery.ai/servers/agentbom/agent-bom" \
               -o /tmp/smithery-catalog.json; then
             echo "::error::Smithery catalog is unavailable; refusing to create a potentially duplicate release"
             exit 1
@@ -253,7 +253,7 @@ jobs:
           : > /tmp/smithery-success-releases.jsonl
           for PAGE in $(seq 1 "$MAX_RELEASE_PAGES"); do
             curl -fsS --connect-timeout 10 --max-time 30 \
-              -X GET "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases?page=${PAGE}&pageSize=100" \
+              -X GET "https://api.smithery.ai/servers/agentbom%2Fagent-bom/releases?page=${PAGE}&pageSize=100" \
               -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
               -o /tmp/smithery-latest-releases.json
             jq -e \
@@ -300,7 +300,7 @@ jobs:
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
         run: |
           set -euo pipefail
-          QUALIFIED_NAME="agent-bom%2Fagent-bom"
+          QUALIFIED_NAME="agentbom%2Fagent-bom"
           echo "release_id=" >> "$GITHUB_OUTPUT"
           MAX_RELEASE_PAGES=20
           : > /tmp/smithery-active-releases.jsonl
@@ -358,7 +358,7 @@ jobs:
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          QUALIFIED_NAME="agent-bom%2Fagent-bom"
+          QUALIFIED_NAME="agentbom%2Fagent-bom"
           MCP_URL="${SMITHERY_MCP_URL}"
 
           echo "Publishing agent-bom v${VERSION} to Smithery..."
@@ -409,7 +409,7 @@ jobs:
           AUTHORIZATION_ATTEMPTED=false
           for ATTEMPT in $(seq 1 90); do
             curl -fsS --connect-timeout 10 --max-time 30 \
-              "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases/${RELEASE_ID}" \
+              "https://api.smithery.ai/servers/agentbom%2Fagent-bom/releases/${RELEASE_ID}" \
               -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
               -o /tmp/smithery-release.json
             STATUS=$(jq -er '.status' /tmp/smithery-release.json)
@@ -430,7 +430,7 @@ jobs:
                   --upstream-url "$SMITHERY_MCP_URL"
                 HTTP_STATUS=$(curl -sS --connect-timeout 10 --max-time 30 \
                   -o /tmp/smithery-resume-response.json -w "%{http_code}" \
-                  -X POST "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases/${RELEASE_ID}/resume" \
+                  -X POST "https://api.smithery.ai/servers/agentbom%2Fagent-bom/releases/${RELEASE_ID}/resume" \
                   -H "Authorization: Bearer ${SMITHERY_API_TOKEN}")
                 if [ "$HTTP_STATUS" != "202" ]; then
                   echo "::error::Smithery release could not be resumed after scan authorization (HTTP ${HTTP_STATUS})"
@@ -457,7 +457,7 @@ jobs:
           set -euo pipefail
           for ATTEMPT in $(seq 1 12); do
             if curl -fsS --connect-timeout 10 --max-time 30 \
-                "https://api.smithery.ai/servers/agent-bom/agent-bom" \
+                "https://api.smithery.ai/servers/agentbom/agent-bom" \
                 -o /tmp/smithery-catalog.json; then
               jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
               jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \

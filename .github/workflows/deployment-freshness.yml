@@ -111,7 +111,7 @@ jobs:
           SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
           EXPECTED_TOOL_COUNT: ${{ steps.expected.outputs.tool_count }}
         run: |
-          QUALIFIED_NAME="${SMITHERY_SERVER_QUALIFIED_NAME:-agent-bom/agent-bom}"
+          QUALIFIED_NAME="${SMITHERY_SERVER_QUALIFIED_NAME:-agentbom/agent-bom}"
           RESPONSE=$(EXPECTED_TOOL_COUNT="$EXPECTED_TOOL_COUNT" python3 - <<'PY'
           import json
           import os
@@ -120,7 +120,7 @@ jobs:
           import urllib.parse
           import urllib.request
 
-          name = os.environ.get("SMITHERY_SERVER_QUALIFIED_NAME") or "agent-bom/agent-bom"
+          name = os.environ.get("SMITHERY_SERVER_QUALIFIED_NAME") or "agentbom/agent-bom"
           if "/" not in name:
               print(json.dumps({"error": f"invalid Smithery qualified name: {name!r}"}))
               sys.exit(1)
@@ -253,7 +253,7 @@ jobs:
             const labels = ["supply-chain-drift", "security-preventive", "automated"];
 
             const unmonitored = [
-              "**Smithery / public marketplace** — set repo variable `SMITHERY_SERVER_QUALIFIED_NAME` only if the listing is not `agent-bom/agent-bom`. The monitor checks Smithery's catalog API because Smithery-hosted remotes are OAuth-gated and do not expose agent-bom `/health`.",
+              "**Smithery / public marketplace** — set repo variable `SMITHERY_SERVER_QUALIFIED_NAME` only if the listing is not `agentbom/agent-bom`. The monitor checks Smithery's catalog API because Smithery-hosted remotes are OAuth-gated and do not expose agent-bom `/health`.",
             ];
 
             const body = [

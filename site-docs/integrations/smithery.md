@@ -7,8 +7,8 @@ actually reads.
 
 The manifest and release workflow are ready for Smithery publication. The public
 catalog entry is considered live when Smithery's catalog API lists
-`agent-bom/agent-bom` as a remote server with a deployment URL and non-empty tool
-inventory. Smithery-hosted remotes are OAuth-gated by Smithery, so they do not
+`agentbom/agent-bom` as a remote server with a deployment URL and the exact
+released tool names and input schemas. Smithery-hosted remotes are OAuth-gated by Smithery, so they do not
 expose agent-bom's raw `/health` route.
 
 The external Streamable HTTP release is separate from the managed stdio manifest

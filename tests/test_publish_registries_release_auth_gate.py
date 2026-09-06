@@ -42,7 +42,7 @@ def test_smithery_publication_is_idempotent_and_bounds_authorization_recovery() 
     assert "LATEST_SUCCESS_UPSTREAM" in workflow
     assert 'select(.type == "external_shttp" and .status == "SUCCESS")' in workflow
     assert ": > /tmp/smithery-success-releases.jsonl" in workflow
-    assert 'GET "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases?page=${PAGE}&pageSize=100"' in workflow
+    assert 'GET "https://api.smithery.ai/servers/agentbom%2Fagent-bom/releases?page=${PAGE}&pageSize=100"' in workflow
     assert '"$LATEST_SUCCESS_UPSTREAM" = "$SMITHERY_MCP_URL"' in workflow
     assert "tool catalog matches but the successful release upstream differs" in workflow
     assert "smithery_catalog.outputs.fresh != 'true'" in workflow

@@ -31,16 +31,16 @@ your ingress or platform edge.
 
 The daily deployment-freshness workflow probes this protected Railway `/health`
 surface with the configured bearer token, and probes Smithery through
-`https://api.smithery.ai/servers/agent-bom/agent-bom` for catalog liveness,
-remote deployment metadata, and non-empty tools.
+`https://api.smithery.ai/servers/agentbom/agent-bom` for catalog liveness,
+remote deployment metadata, and the exact released tool inventory.
 
 ### Step 2: Publish to Smithery
 
 **Option A — Web UI**:
 1. Go to https://smithery.ai/servers/new
-2. Namespace: `agent-bom`
+2. Namespace: `agentbom`
 3. Server ID: `agent-bom`
-4. Follow Smithery's managed remote flow for the `agent-bom/agent-bom` listing.
+4. Follow Smithery's managed remote flow for the `agentbom/agent-bom` listing.
 5. Click **Continue**
 
 **Option B — Automated**:
@@ -52,7 +52,9 @@ release-bound server card. If names, schemas, description, and the latest
 successful upstream URL already match, the workflow skips a duplicate
 deployment. If capabilities, listing metadata, or the upstream changed, it
 creates an external release using:
-- `SMITHERY_API_TOKEN`
+- `SMITHERY_API_TOKEN`: a publisher token belonging to the account that owns the
+  `agentbom` namespace. Store it as a GitHub Actions secret; never put it in
+  source files or use the protected MCP deployment bearer token here.
 
 `SMITHERY_MCP_URL` is retained only for the external-upstream publish mode. It
 must never point at Smithery's hosted proxy URL. Freshness monitoring no longer
@@ -74,7 +76,7 @@ provider still requires authorization or the exact catalog does not converge.
 After publishing, check:
 
 ```bash
-curl -fsSL https://api.smithery.ai/servers/agent-bom/agent-bom \
+curl -fsSL https://api.smithery.ai/servers/agentbom/agent-bom \
   | jq '{qualifiedName, remote, deploymentUrl, tool_count: (.tools | length)}'
 ```
 

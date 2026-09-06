@@ -273,10 +273,6 @@ export function OverviewCockpit({
         >
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
 
-          {/* 1 — Posture headline + open issues by severity.
-              Posture track is capped (minmax) so a long summary can't grow it
-              unbounded and squeeze the open-issues severity tiles into an
-              unreadable sliver. */}
           <div className="mt-3 grid gap-4">
             <PostureHero
               loading={loading}
@@ -849,7 +845,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
  * Read-only "what influences this score" panel. Lists the weighted inputs
  * (severity buckets, KEV, exposure, compliance, unrated) with each driver's
  * count × weight = relative pressure, so the grade is legible instead of an
- * opaque number (#3940). Only drivers that actually moved the score are shown.
+ * opaque number (#3940). Only inputs with finite positive pressure are shown.
  * A full weight/threshold editor is a documented follow-up.
  */
 function ScoreExplainer({

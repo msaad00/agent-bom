@@ -317,6 +317,7 @@ def test_server_card_tools_expose_capability_classes():
         "identity_revoke",
         "identity_revoke_jit",
         "ingest_external_scan",
+        "runtime_evidence_ingest",
         "diff",
         "create_ticket",
         "sync_ticket_status",

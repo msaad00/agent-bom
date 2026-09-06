@@ -1,4 +1,4 @@
-import { PageLoadingState } from "@/components/states/page-state";
+import { PageLoadingState } from "@/components/states/page-loading-state";
 
 export default function SecurityGraphLoading() {
   return (

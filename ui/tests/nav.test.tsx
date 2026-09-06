@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 let mockedPathname = '/'
@@ -366,6 +366,30 @@ describe('Nav', () => {
     expect(summary).toHaveFocus()
     fireEvent.keyDown(document, { key: 'Tab' })
     expect(first).toHaveFocus()
+  })
+
+  it('releases mobile keyboard trapping when the desktop breakpoint hides the drawer', async () => {
+    const media = Object.assign(new EventTarget(), { matches: false, media: '(min-width: 1024px)' })
+    vi.stubGlobal('matchMedia', vi.fn(() => media))
+    try {
+      renderNav()
+      const trigger = screen.getByRole('button', { name: /open navigation menu/i })
+      fireEvent.click(trigger)
+      const drawer = screen.getByRole('dialog', { name: 'Mobile navigation' })
+      await waitFor(() => expect(drawer).toContainElement(document.activeElement as HTMLElement))
+      const returnFocus = vi.spyOn(trigger, 'focus')
+      act(() => {
+        media.matches = true
+        media.dispatchEvent(new Event('change'))
+      })
+      expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).not.toBeInTheDocument()
+      expect(returnFocus).not.toHaveBeenCalled()
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+      document.dispatchEvent(tab)
+      expect(tab.defaultPrevented).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('surfaces curated workflow links in the command palette', () => {

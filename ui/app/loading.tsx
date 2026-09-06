@@ -1,11 +1,9 @@
-import { ShieldCheck } from "lucide-react";
-
 export default function Loading() {
   return (
     <div className="min-h-[70vh] animate-pulse" role="status" aria-live="polite" aria-label="Loading dashboard">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-emerald-900/60 bg-emerald-950/30">
-          <ShieldCheck className="h-5 w-5 text-emerald-400" aria-hidden="true" />
+          <span className="h-5 w-5 rounded border border-emerald-400/60" aria-hidden="true" />
         </div>
         <div>
           <div className="h-4 w-36 rounded bg-[var(--surface-elevated)]" />

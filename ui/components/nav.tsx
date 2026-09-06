@@ -313,6 +313,10 @@ export function Nav() {
     if (!mobileOpen) return;
 
     const drawer = mobileDrawerRef.current;
+    const desktopViewport = window.matchMedia?.("(min-width: 1024px)");
+    const closeAtDesktop = () => {
+      if (desktopViewport?.matches) setMobileOpen(false);
+    };
     const returnFocusTarget = mobileMenuButtonRef.current;
     const focusableSelector =
       'a[href], button:not([disabled]), summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -323,11 +327,16 @@ export function Nav() {
           : element.getClientRects().length > 0)
         && window.getComputedStyle(element).visibility !== "hidden");
     const focusTimer = window.setTimeout(() => {
+      if (desktopViewport?.matches) {
+        closeAtDesktop();
+        return;
+      }
       const firstFocusable = focusableElements()[0];
       (firstFocusable ?? drawer)?.focus();
     }, 0);
 
     const handleDrawerKeyDown = (event: KeyboardEvent) => {
+      if (desktopViewport?.matches) return;
       if (event.key === "Escape") {
         event.preventDefault();
         setMobileOpen(false);
@@ -353,10 +362,13 @@ export function Nav() {
     };
 
     document.addEventListener("keydown", handleDrawerKeyDown);
+    desktopViewport?.addEventListener("change", closeAtDesktop);
     return () => {
       window.clearTimeout(focusTimer);
       document.removeEventListener("keydown", handleDrawerKeyDown);
-      returnFocusTarget?.focus();
+      desktopViewport?.removeEventListener("change", closeAtDesktop);
+      // The mobile trigger is hidden on desktop; let the normal tab order resume.
+      if (!desktopViewport?.matches) returnFocusTarget?.focus();
     };
   }, [mobileOpen]);
 

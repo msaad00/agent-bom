@@ -255,7 +255,7 @@ def main() -> int:
             "Test (Python 3.13)",
             # PRs run 3.13 only; pushes to main must still exercise the full
             # advertised interpreter matrix.
-            'python-version: ["3.11", "3.13", "3.14"]',
+            'python-version: ["3.11", "3.12", "3.13", "3.14"]',
         ],
         failures,
     )

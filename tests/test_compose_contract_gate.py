@@ -48,6 +48,7 @@ class TestDiscovery:
         standalone, overlays = gate.discover()
         found = {p.relative_to(ROOT).as_posix() for p in [*standalone, *overlays]}
         expected = {
+            "compose.yaml",
             "deploy/docker-compose.yml",
             "deploy/docker-compose.pilot.yml",
             "deploy/docker-compose.fullstack.yml",
@@ -60,6 +61,11 @@ class TestDiscovery:
             "examples/docker-compose-monitoring.yml",
         }
         assert expected <= found
+
+    def test_root_compose_delegates_to_the_pilot_profile(self):
+        root = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+        assert "deploy/docker-compose.pilot.yml" in root
+        assert "services:" not in root
 
     def test_overlays_are_classified_as_overlays(self):
         _, overlays = gate.discover()

@@ -26,7 +26,7 @@ signed release evidence.
 | API schema | `uv run python scripts/generate_v1_schemas.py --check` | Published v1 schemas match the Pydantic models. |
 | CLI docs | `uv run python scripts/check_cli_reference_alignment.py` | CLI reference and implemented command tree agree. |
 | Security guards | `uv run python scripts/check_exception_sanitization.py` and `uv run python scripts/check_provisioning_readonly.py` | API/gateway/runtime errors are sanitized and cloud provisioning stays read-only. |
-| Backend tests | `uv run pytest -q` | Python 3.11/3.13/3.14 CI must pass; local focused suites should cover changed areas. |
+| Backend tests | `uv run pytest -q` | Python 3.11/3.12/3.13/3.14 CI must pass; local focused suites should cover changed areas. |
 | UI build | `cd ui && npm run typecheck && npm run lint && npm run build && npm run bundle:check && npm run test:run` | The dashboard builds, tests pass, and client JS stays under budget. |
 | Dashboard bundle | `make build-ui` | Runs the export build (`NEXT_EXPORT=1`) and copies it to `src/agent_bom/ui_dist` with CSP hashes. **Required before the package build** — the UI-build row above leaves nothing in `src/agent_bom/ui_dist`, and `ui_dist` is gitignored, so a `uv build` without this step produces a dashboard-less wheel and a dashboard-less image. |
 | Package build | `make release-build` | Builds the dashboard, wheel, and sdist, then rejects any wheel missing the schemas, dashboard index, CSP manifest, or CSP script hashes. |

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -13,6 +14,27 @@ RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 
 def _ci() -> dict[str, object]:
     return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+
+
+def test_timeout_policy_uses_the_locked_security_environment() -> None:
+    steps = _ci()["jobs"]["security"]["steps"]
+    install = next(step for step in steps if step.get("name") == "Install dependencies")
+    timeout = next(step for step in steps if step.get("name") == "Workflow job timeout policy")
+    assert steps.index(install) < steps.index(timeout)
+    assert "--frozen" in install["run"]
+    assert "pip install" not in timeout["run"]
+    assert "uv run --no-sync python scripts/check_workflow_timeouts.py" in timeout["run"]
+
+
+def test_cloud_sdk_drift_uses_checkout_lockfile() -> None:
+    path = ROOT / ".github/workflows/cloud-sdk-drift.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["drift"]["steps"]
+    scripts = "\n".join(step.get("run", "") for step in steps)
+    assert any(step.get("uses") == "./.github/actions/setup-python" for step in steps)
+    assert "uv sync --frozen" in scripts
+    assert "pip install" not in scripts
+    assert "uv run --no-sync python scripts/check_cloud_sdk_drift.py" in scripts
 
 
 def test_path_classifier_covers_main_pushes() -> None:
@@ -165,6 +187,25 @@ def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     headroom for the coverage-only lane.
     """
     assert _ci()["jobs"]["test-main"]["timeout-minutes"] == 45
+
+
+def test_full_correctness_matrix_covers_every_supported_python_minor() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    supported = {
+        classifier.rsplit(" :: ", 1)[-1]
+        for classifier in project["classifiers"]
+        if classifier.startswith("Programming Language :: Python :: 3.")
+    }
+    matrix = set(_ci()["jobs"]["test-main"]["strategy"]["matrix"]["python-version"])
+
+    assert matrix == supported
+
+
+def test_local_test_target_enforces_the_ci_coverage_floor() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    test_target = makefile.split("test:  ## Run unit tests", 1)[1].split("\n\n", 1)[0]
+
+    assert "--cov-fail-under=75" in test_target
 
 
 def test_version_alignment_fails_fast_when_uv_lock_is_stale() -> None:

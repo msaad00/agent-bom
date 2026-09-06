@@ -59,6 +59,20 @@ def test_action_exposes_documented_exit_code_output() -> None:
     assert "| `exit-code`" in doc
 
 
+def test_action_preserves_usage_and_stale_data_exit_meaning() -> None:
+    action = ACTION_YML.read_text(encoding="utf-8")
+    doc = EXIT_CODES_DOC.read_text(encoding="utf-8")
+
+    assert '2) SCAN_STATUS="usage_error"' in action
+    assert '3) SCAN_STATUS="stale_data"' in action
+    assert 'exit_code == "2"' in action
+    assert 'exit_code == "3"' in action
+    assert "Invalid or empty scan input" in action
+    assert "Vulnerability database freshness gate failed" in action
+    assert "`usage_error` (exit `2`)" in doc
+    assert "`stale_data` (exit `3`)" in doc
+
+
 def test_first_run_guide_covers_the_exit_codes_and_ci_use_readme_promises() -> None:
     """A reader must reach the exit-code contract from the README and from the guide.
 

@@ -1,0 +1,5 @@
+# Profile: PILOT
+# Default checked-out repository entry point. The owning pilot manifest stays
+# in deploy/ so version bumps and deployment validation have one source.
+include:
+  - path: deploy/docker-compose.pilot.yml

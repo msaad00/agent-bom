@@ -36,6 +36,14 @@ def test_runtime_images_probe_the_expected_running_process() -> None:
         assert "agent-bom --version" not in healthcheck
 
 
+def test_generic_cli_image_disables_process_health_inheritance() -> None:
+    """The root image runs one-shot commands, so it cannot claim service health."""
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text()
+    assert "HEALTHCHECK NONE" in dockerfile
+    assert "HEALTHCHECK" not in dockerfile.split("HEALTHCHECK NONE", 1)[1]
+    assert "agent-bom --version || exit 1" not in dockerfile
+
+
 def test_airgap_profile_disables_cdn_backed_interactive_docs() -> None:
     values = yaml.safe_load((HELM_DIR / "examples" / "airgap-vuln-db-values.yaml").read_text())
     env = {entry["name"]: entry["value"] for entry in values["controlPlane"]["api"]["env"]}
@@ -1443,3 +1451,11 @@ def test_pilot_compose_optional_connections_scheduler_env():
     text = (DEPLOY_DIR / "docker-compose.pilot.yml").read_text()
     assert "AGENT_BOM_CONNECTIONS_SCHEDULER" in text
     assert "${AGENT_BOM_CONNECTIONS_SCHEDULER:-0}" in text
+
+
+def test_pilot_ui_uses_server_runtime_api_destination():
+    """The immutable standalone UI must resolve its API destination at runtime."""
+    data = yaml.safe_load((DEPLOY_DIR / "docker-compose.pilot.yml").read_text())
+    env = data["services"]["ui"]["environment"]
+    assert env["AGENT_BOM_API_URL"] == "http://api:8422"
+    assert "NEXT_PUBLIC_API_URL" not in env

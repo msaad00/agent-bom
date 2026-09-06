@@ -129,7 +129,7 @@ without re-parsing logs.
 |---|---|---|---|
 | `sarif-file` | string | computed | Path to the SARIF report when `format: sarif` was selected. |
 | `exit-code` | string | propagated CLI exit code | Same value documented in [CLI exit-code contract](#cli-exit-code-contract). |
-| `scan-status` | string | parsed from exit code + findings | `clean`, `violations`, or `error`. |
+| `scan-status` | string | parsed from exit code + findings | `clean`, `violations`, `usage_error` (exit `2`), `stale_data` (exit `3`), or `error`. |
 | `vulnerability-count` | string | parsed from SARIF or skills JSON | Number of vulnerability findings, or skill findings for `scan-type: skills`. |
 | `badge-file` | string | computed | Path to generated shields.io badge JSON when `badge` is set. |
 | `graph-export-path` | string | computed | Path to generated `mermaid`, `svg`, `graph`, or `graph-html` artifact. |

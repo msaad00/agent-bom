@@ -26,7 +26,7 @@ _dev-ui:
 	@cd ui && npm run dev 2>&1
 
 test:  ## Run unit tests
-	pytest tests/ -v --cov=agent_bom
+	pytest tests/ -v --cov=agent_bom --cov-fail-under=75
 
 # Every Python directory that ships or gates a release. `scripts/` was outside
 # this set, so a dead local in `generate_doc_architecture_svgs.py` sat on main

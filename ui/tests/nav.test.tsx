@@ -344,6 +344,30 @@ describe('Nav', () => {
     expect(trigger).toHaveFocus()
   })
 
+  it('wraps mobile focus through visible disclosure controls, excluding hidden links', async () => {
+    renderNav()
+    fireEvent.click(screen.getByRole('button', { name: /open navigation menu/i }))
+    const drawer = screen.getByRole('dialog', { name: 'Mobile navigation' })
+    await waitFor(() => expect(drawer).toContainElement(document.activeElement as HTMLElement))
+    const first = within(drawer).getByRole('button', { name: /search pages/i })
+    const details = document.createElement('details')
+    const summary = document.createElement('summary')
+    summary.textContent = 'More navigation'
+    const hiddenLink = document.createElement('a')
+    hiddenLink.href = '/jobs'
+    hiddenLink.hidden = true
+    details.append(summary, hiddenLink)
+    drawer.append(details)
+    for (const element of drawer.querySelectorAll<HTMLElement>('a,button,summary')) {
+      if (!element.hidden) Object.defineProperty(element, 'getClientRects', { value: () => [new DOMRect(0, 0, 10, 10)] })
+    }
+    first.focus()
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    expect(summary).toHaveFocus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(first).toHaveFocus()
+  })
+
   it('surfaces curated workflow links in the command palette', () => {
     renderNav()
     fireEvent.keyDown(window, { key: 'k', metaKey: true })

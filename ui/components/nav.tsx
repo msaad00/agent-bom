@@ -315,9 +315,15 @@ export function Nav() {
     const drawer = mobileDrawerRef.current;
     const returnFocusTarget = mobileMenuButtonRef.current;
     const focusableSelector =
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      'a[href], button:not([disabled]), summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusableElements = () => Array.from(drawer?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])
+      .filter((element) => element.getAttribute("tabindex") !== "-1"
+        && (typeof element.checkVisibility === "function"
+          ? element.checkVisibility()
+          : element.getClientRects().length > 0)
+        && window.getComputedStyle(element).visibility !== "hidden");
     const focusTimer = window.setTimeout(() => {
-      const firstFocusable = drawer?.querySelector<HTMLElement>(focusableSelector);
+      const firstFocusable = focusableElements()[0];
       (firstFocusable ?? drawer)?.focus();
     }, 0);
 
@@ -329,7 +335,7 @@ export function Nav() {
       }
       if (event.key !== "Tab" || !drawer) return;
 
-      const focusable = Array.from(drawer.querySelectorAll<HTMLElement>(focusableSelector));
+      const focusable = focusableElements();
       if (focusable.length === 0) {
         event.preventDefault();
         drawer.focus();

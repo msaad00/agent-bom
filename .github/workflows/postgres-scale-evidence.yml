@@ -77,20 +77,18 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: ./.github/actions/setup-python
         with:
           python-version: "3.11"
 
-      - name: Install agent-bom with postgres extra
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[postgres,api]"
+      - name: Install locked Postgres evidence environment
+        run: uv sync --frozen --extra postgres --extra api
 
       - name: Migrate ephemeral Postgres schema
         env:
           ALEMBIC_DATABASE_URL: postgresql+psycopg://agent_bom:agent_bom@localhost:5432/agent_bom
         run: |
-          python - <<'PY'
+          uv run python - <<'PY'
           import os
 
           import psycopg
@@ -99,10 +97,10 @@ jobs:
               connection.execute("ALTER DATABASE agent_bom SET init.app_password = 'benchmark_app'")
               connection.execute("ALTER DATABASE agent_bom SET init.maintenance_password = 'benchmark_maintenance'")
           PY
-          alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+          uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 
       - name: Smoke-test the harness
-        run: scripts/run_postgres_scale_evidence.py --dry-run --output /tmp/dry.json
+        run: uv run python scripts/run_postgres_scale_evidence.py --dry-run --output /tmp/dry.json
 
       - name: Run clustered Postgres scale evidence
         run: |
@@ -112,7 +110,7 @@ jobs:
           KINDS="${{ inputs.kinds || 'audit,job_put,job_get' }}"
           OUTPUT="docs/perf/results/postgres-scale-evidence-$(date -u +%Y-%m-%d).json"
           mkdir -p docs/perf/results
-          scripts/run_postgres_scale_evidence.py \
+          uv run python scripts/run_postgres_scale_evidence.py \
             --sizes "$SIZES" \
             --replicas "$REPLICAS" \
             --kinds "$KINDS" \

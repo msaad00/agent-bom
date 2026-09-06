@@ -67,6 +67,21 @@ def _snapshot_rows(conn, scan_id: str, tenant_id: str) -> dict[str, list]:
     }
 
 
+@pytest.mark.parametrize("node_budget", [None, 4])
+def test_snapshot_receipt_is_independent_of_sqlite_query_direction(tmp_path, node_budget) -> None:
+    """Planner changes must not change receipts for the same stored evidence."""
+    from agent_bom.graph.correlation import CorrelationSnapshot
+
+    with gs.open_graph_db(tmp_path / "ordered.db") as conn:
+        gs.save_graph(conn, _sample_graph("ordered"))
+        forward = gs.load_graph(conn, scan_id="ordered", tenant_id="acme", node_budget=node_budget)
+        conn.execute("PRAGMA reverse_unordered_selects = ON")
+        reverse = gs.load_graph(conn, scan_id="ordered", tenant_id="acme", node_budget=node_budget)
+
+    assert CorrelationSnapshot.from_graph(forward).digest == CorrelationSnapshot.from_graph(reverse).digest
+    assert forward.to_dict() == reverse.to_dict()
+
+
 def test_streaming_persist_matches_save_graph(tmp_path) -> None:
     """save_graph_streaming writes byte-identical rows to save_graph."""
     baseline = _sample_graph("s1")

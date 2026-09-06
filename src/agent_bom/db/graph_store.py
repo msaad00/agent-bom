@@ -1281,6 +1281,10 @@ def load_graph(
         total_nodes = int(count_row[0]) if count_row else 0
         query += " ORDER BY risk_score DESC, id LIMIT ?"
         params.append(budget)
+    else:
+        # Preserve persisted node order independently of the planner's index
+        # choice. Correlation receipts hash the ordered snapshot serialization.
+        query += " ORDER BY rowid"
 
     node_ids: set[str] = set()
     for row in conn.execute(query, params):
@@ -1347,6 +1351,10 @@ def load_graph(
         placeholders = ",".join("?" * len(relationship_types))
         eq += f" AND edge.relationship IN ({placeholders})" if sql_scoped_edges else f" AND relationship IN ({placeholders})"
         eparams.extend(sorted(relationship_types))
+    # A snapshot's evidence must serialize identically across SQLite versions
+    # and query plans. Keep the established source/target/relationship order.
+    edge_prefix = "edge." if sql_scoped_edges else ""
+    eq += f" ORDER BY {edge_prefix}source_id, {edge_prefix}target_id, {edge_prefix}relationship"
     for row in conn.execute(eq, eparams):
         if row["source_id"] not in node_ids or row["target_id"] not in node_ids:
             continue

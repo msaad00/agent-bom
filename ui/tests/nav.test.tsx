@@ -87,7 +87,8 @@ function renderNav() {
 
 function renderExpandedNav() {
   renderNav()
-  fireEvent.click(screen.getByRole('button', { name: /expand sidebar/i }))
+  const expand = screen.queryByRole('button', { name: /expand sidebar/i })
+  if (expand) fireEvent.click(expand)
 }
 
 describe('Nav', () => {
@@ -131,10 +132,10 @@ describe('Nav', () => {
 
   it('uses the full wordmark only while desktop navigation is expanded', () => {
     const { container } = renderNav()
-    expect(container.querySelector('img[alt="agent-bom"]')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /expand sidebar/i }))
     expect(container.querySelector('img[alt="agent-bom"]')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /collapse sidebar/i }))
+    expect(container.querySelector('img[alt="agent-bom"]')).not.toBeInTheDocument()
   })
 
   it('contains link to Overview (/)', () => {
@@ -156,6 +157,7 @@ describe('Nav', () => {
 
   it('uses Overview as the collapsed Posture section trigger destination', () => {
     renderNav()
+    fireEvent.click(screen.getByRole('button', { name: /collapse sidebar/i }))
 
     const postureTrigger = screen.getByRole('link', { name: /posture.*overview/i })
     expect(postureTrigger).toHaveAttribute('href', '/')
@@ -315,24 +317,31 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/security-graph')).toBe(true)
   })
 
-  it('defaults to a collapsed sidebar rail with expand control', () => {
+  it('defaults to an expanded sidebar so primary workflows are discoverable', () => {
     renderNav()
-    expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeInTheDocument()
-    expect(screen.queryByText('Proof path')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /collapse sidebar/i })).toBeInTheDocument()
+    expect(screen.getByText('Posture')).toBeInTheDocument()
   })
 
-  it('opens the mobile drawer with usable expanded navigation links', () => {
+  it('opens the mobile drawer as a modal and returns focus after Escape', async () => {
     renderNav()
 
-    fireEvent.click(screen.getByRole('button', { name: /open navigation menu/i }))
+    const trigger = screen.getByRole('button', { name: /open navigation menu/i })
+    fireEvent.click(trigger)
 
-    const drawer = screen.getByLabelText('Mobile navigation')
+    const drawer = screen.getByRole('dialog', { name: 'Mobile navigation' })
+    expect(drawer).toHaveAttribute('aria-modal', 'true')
     expect(within(drawer).getByText('Posture')).toBeInTheDocument()
     expect(within(drawer).getByRole('link', { name: /findings/i })).toHaveAttribute(
       'href',
       '/findings'
     )
     expect(within(drawer).queryByRole('button', { name: /expand sidebar/i })).not.toBeInTheDocument()
+    await waitFor(() => expect(drawer).toContainElement(document.activeElement as HTMLElement))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 
   it('surfaces curated workflow links in the command palette', () => {

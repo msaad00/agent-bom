@@ -19,7 +19,7 @@ const SidebarLayoutContext = createContext<SidebarLayoutValue | null>(null);
 
 /** Owns sidebar width so main content padding stays in sync (no overlay). */
 export function SidebarLayoutProvider({ children }: { children: ReactNode }) {
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const value = useMemo(() => ({ collapsed, setCollapsed }), [collapsed]);
   return (
     <SidebarLayoutContext.Provider value={value}>{children}</SidebarLayoutContext.Provider>

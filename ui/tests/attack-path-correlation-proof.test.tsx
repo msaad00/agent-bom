@@ -75,7 +75,8 @@ describe("AttackPathCorrelationProof", () => {
 
     render(<AttackPathCorrelationProof path={path} nodes={nodes} />);
 
-    expect(screen.getByText("Path verified")).toBeInTheDocument();
+    expect(screen.getByText("Path evidence complete")).toBeInTheDocument();
+    expect(screen.queryByText("Path verified")).not.toBeInTheDocument();
     expect(screen.getByText("3/3 directed traversable hops evidenced")).toBeInTheDocument();
     expect(screen.getByText(`reference-api@${digest}`)).toBeInTheDocument();
     expect(screen.getByText("pillow@9.0.0")).toBeInTheDocument();

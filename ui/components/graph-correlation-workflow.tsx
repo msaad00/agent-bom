@@ -228,7 +228,8 @@ export function GraphCorrelationWorkflow({
   const outcomeTitle = findingSuffix && boundOutcome?.title.endsWith(findingSuffix)
     ? boundOutcome.title.slice(0, -findingSuffix.length)
     : boundOutcome?.title;
-  const resultIsVerified = isComplete && analysisState === "complete" && staleReceiptCount === 0;
+  const runIsCompleteAndFresh = isComplete && analysisState === "complete" && staleReceiptCount === 0;
+  const selectedPathEvidenceComplete = runIsCompleteAndFresh && Boolean(boundOutcome);
   const evidenceState = staleReceiptCount > 0
     ? `${staleReceiptCount} stale source${staleReceiptCount === 1 ? "" : "s"} allowed`
     : "Fresh evidence";
@@ -273,7 +274,9 @@ export function GraphCorrelationWorkflow({
               <p className="gc-decision-state">
                 {isComplete ? <CheckCircle2 className="h-4 w-4" /> : isFailed ? <AlertTriangle className="h-4 w-4 text-red-500" /> : <Loader2 className="h-4 w-4 animate-spin text-sky-500" />}
                 {isComplete
-                  ? `${attackPaths} ${resultIsVerified ? "confirmed" : "retained"} path${attackPaths === 1 ? "" : "s"} across ${receiptCount} sources`
+                  ? selectedPathEvidenceComplete
+                    ? `Evidence-complete path across ${receiptCount} sources`
+                    : `${attackPaths} retained path${attackPaths === 1 ? "" : "s"} across ${receiptCount} sources`
                   : isFailed ? "Correlation failed" : `Correlation ${run.status}`}
               </p>
               {isComplete && attackPaths > 0 && boundOutcome ? (
@@ -293,17 +296,23 @@ export function GraphCorrelationWorkflow({
                   </div>
                   <p className="gc-source-coverage">{[...new Set(run.input_manifest.map((receipt) => sourceLabel(receipt.source_kinds, receipt.scan_id)))].join(" · ")}</p>
                   <div className="gc-preview-badges">
-                    <span className="gc-pill">Priority {boundOutcome.risk.toFixed(1)}</span>
+                    <span className="gc-pill">Path priority {boundOutcome.risk.toFixed(1)}</span>
                     <span className="gc-pill">{boundOutcome.hops} directed hops</span>
-                    {boundOutcome.runtimeObserved ? <span className="gc-runtime">Runtime observed</span> : null}
-                    {boundOutcome.runtimeBlocked ? <span className="gc-blocked">Runtime block verified</span> : null}
                   </div>
+                  {boundOutcome.runtimeObserved ? (
+                    <p className="gc-runtime-summary">
+                      Runtime observed{boundOutcome.runtimeBlocked ? "; a gateway call was blocked" : ""}.
+                      {boundOutcome.runtimeBlocked
+                        ? " Exposure remains until the vulnerable package and access path are remediated."
+                        : " This observation does not by itself prove exploitation."}
+                    </p>
+                  ) : null}
 
                 </div>
               ) : isComplete && attackPaths === 0 ? (
                 <>
                   <h3 className="gc-heading">
-                    {resultIsVerified
+                    {runIsCompleteAndFresh
                       ? "No confirmed attack path in this correlation"
                       : `0 retained paths; ${zeroPathQualification}`}
                   </h3>

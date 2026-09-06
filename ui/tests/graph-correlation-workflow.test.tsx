@@ -25,7 +25,7 @@ const snapshots: GraphSnapshot[] = [
 const outcome: GraphCorrelationOutcome = {
   scanId: "corr-1",
   title: "Public API reaches customer records through CVE-2023-4863",
-  summary: "The confirmed path crosses the public service, workload, vulnerable package, MCP tool, and data asset.",
+  summary: "The evidence-complete path crosses the public service, workload, vulnerable package, MCP tool, and data asset.",
   source: "Public API service",
   target: "Modeled customer records",
   finding: "CVE-2023-4863",
@@ -87,16 +87,16 @@ describe("GraphCorrelationWorkflow", () => {
 
     expect(await screen.findByTestId("graph-correlation-decision")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: outcome.title.replace(` through ${outcome.finding}`, "") })).toBeInTheDocument();
-    expect(screen.getByText("Priority 9.8")).toBeInTheDocument();
+    expect(screen.getByText("Path priority 9.8")).toBeInTheDocument();
     expect(screen.getByText("7 directed hops")).toBeInTheDocument();
-    expect(screen.getByText("Runtime observed")).toBeInTheDocument();
-    expect(screen.getByText("Runtime block verified")).toBeInTheDocument();
+    expect(screen.getByText(/Runtime observed; a gateway call was blocked/)).toBeInTheDocument();
+    expect(screen.getByText(/Exposure remains until the vulnerable package and access path are remediated/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open pillow@9.0.0 remediation" })).toHaveAttribute(
       "href",
       "/remediation?scan=corr-1&cve=CVE-2023-4863&package=pillow%409.0.0",
     );
     expect(screen.queryByText("Connect")).not.toBeVisible();
-    expect(screen.getByText("2 confirmed paths across 2 sources")).toBeInTheDocument();
+    expect(screen.getByText("Evidence-complete path across 2 sources")).toBeInTheDocument();
     expect(screen.queryByLabelText("Correlation name")).not.toBeVisible();
     expect(apiMock.createGraphCorrelation).not.toHaveBeenCalled();
     expect(screen.getByText("Fresh evidence")).toBeInTheDocument();
@@ -151,7 +151,8 @@ describe("GraphCorrelationWorkflow", () => {
       max_age_hours: 168,
       allow_stale: false,
     }));
-    expect(await screen.findByText("2 confirmed paths across 2 sources")).toBeInTheDocument();
+    expect(await screen.findByText("2 retained paths across 2 sources")).toBeInTheDocument();
+    expect(screen.queryByText(/evidence-complete path/i)).not.toBeInTheDocument();
     expect(screen.getByText("1 conflict")).toBeInTheDocument();
     expect(screen.getByText("Inspect source receipts · 2 sources · 1 conflict")).toBeInTheDocument();
     expect(screen.queryByText("Image + SBOM")).not.toBeVisible();
@@ -253,7 +254,7 @@ describe("GraphCorrelationWorkflow", () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={staleRun} outcome={outcome} onOpenSnapshot={vi.fn()} />);
 
     expect(screen.getByText(/stale source allowed/i)).toBeInTheDocument();
-    expect(screen.queryByText(/confirmed paths across/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/evidence-complete path across/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Fresh evidence")).not.toBeInTheDocument();
   });
 

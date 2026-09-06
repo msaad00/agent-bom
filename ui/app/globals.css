@@ -428,8 +428,7 @@ body {
 .gc-pill { @apply rounded-full border border-[color:var(--border-subtle)] px-2.5 py-1; }
 .gc-package { @apply rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200; }
 .gc-finding { @apply rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-orange-700 dark:text-orange-200; }
-.gc-runtime { @apply rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-200; }
-.gc-blocked { @apply rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-red-700 dark:text-red-200; }
+.gc-runtime-summary { @apply mt-3 max-w-3xl text-[15px] leading-6 text-[color:var(--text-secondary)]; }
 .gc-primary { @apply rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-500; }
 .gc-primary-inline { @apply mt-5 inline-flex min-h-11 items-center gap-3; }
 .gc-open-path { @apply rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 font-semibold text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300; }

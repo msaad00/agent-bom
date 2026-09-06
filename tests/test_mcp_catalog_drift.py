@@ -34,7 +34,7 @@ def test_live_mcp_server_lists_same_tool_names_as_server_card() -> None:
     pytest.importorskip("mcp", reason="mcp SDK not installed")
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     live_names = {tool.name for tool in asyncio.run(server.list_tools())}
     assert live_names == server_card_tool_names()
 
@@ -51,7 +51,7 @@ def test_live_mcp_server_lists_same_resource_uris_as_server_card() -> None:
     from agent_bom.mcp_server import create_mcp_server
     from agent_bom.mcp_server_metadata import _SERVER_CARD_RESOURCES
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     live = {str(resource.uri) for resource in asyncio.run(server.list_resources())}
     assert live == {str(resource["uri"]) for resource in _SERVER_CARD_RESOURCES}
 
@@ -62,7 +62,7 @@ def test_live_mcp_server_lists_same_prompt_names_as_server_card() -> None:
     from agent_bom.mcp_server import create_mcp_server
     from agent_bom.mcp_server_metadata import _SERVER_CARD_PROMPTS
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     live = {prompt.name for prompt in asyncio.run(server.list_prompts())}
     assert live == {str(prompt["name"]) for prompt in _SERVER_CARD_PROMPTS}
 
@@ -107,7 +107,7 @@ def test_live_access_review_and_diff_annotations_are_not_read_only() -> None:
     pytest.importorskip("mcp", reason="mcp SDK not installed")
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
     for name in ("access_review", "diff"):
         annotations = getattr(tools[name], "annotations", None)
@@ -131,10 +131,26 @@ def test_live_tool_risk_assessment_requires_opt_in_and_operator_approval() -> No
     pytest.importorskip("mcp", reason="mcp SDK not installed")
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     tool = {item.name: item for item in asyncio.run(server.list_tools())}["tool_risk_assessment"]
     properties = tool.inputSchema["properties"]
 
     assert tool.annotations.readOnlyHint is False
     assert tool.annotations.destructiveHint is True
     assert properties["allow_command_execution"]["default"] is False
+
+
+@pytest.mark.parametrize("name", ["runtime_evidence_ingest", "ingest_external_scan"])
+def test_ingestion_card_annotations_match_live_write_contract(name: str) -> None:
+    """Registry cards must not soften the live ingestion write annotations."""
+    import asyncio
+
+    from agent_bom.mcp_server import create_mcp_server
+
+    tools = {tool.name: tool for tool in asyncio.run(create_mcp_server(profile="full").list_tools())}
+    card_tools = {tool["name"]: tool for tool in build_server_card(profile="full")["tools"]}
+    live = tools[name].annotations
+    assert live is not None
+    assert live.readOnlyHint is False
+    for field in ("readOnlyHint", "destructiveHint", "idempotentHint"):
+        assert card_tools[name]["annotations"][field] == getattr(live, field)

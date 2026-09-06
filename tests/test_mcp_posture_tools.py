@@ -223,7 +223,7 @@ def test_access_review_get_existing_campaign(monkeypatch):
 def test_new_tools_registered_read_only_strict(tool_name):
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     tool = server._tool_manager._tools.get(tool_name)
     assert tool is not None, f"{tool_name} not registered"
     params = tool.parameters or {}
@@ -237,7 +237,7 @@ def test_access_review_registered_as_idempotent_write():
     be labeled a (non-destructive, idempotent) write, not readOnlyHint=True."""
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     tool = server._tool_manager._tools.get("access_review")
     assert tool is not None, "access_review not registered"
     params = tool.parameters or {}

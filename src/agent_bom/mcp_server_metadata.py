@@ -7,6 +7,18 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+# Immutable release metadata: older releases without this field expose the full catalog.
+_DEFAULT_PROFILE_TOOL_NAMES = [
+    "scan",
+    "check",
+    "intel_lookup",
+    "exposure_paths",
+    "compliance",
+    "remediate",
+    "generate_sbom",
+    "policy_check",
+]
+
 _SERVER_CARD_TOOLS = [
     {"name": "scan", "description": "Full discovery → scan → output pipeline", "annotations": {"readOnlyHint": True}},
     {"name": "check", "description": "Check a specific package for CVEs before installing", "annotations": {"readOnlyHint": True}},
@@ -373,7 +385,7 @@ _SERVER_CARD_TOOLS = [
             "(authenticated source matching the server tenant; admin + findings:write + "
             "audit reason; metadata only; never writes to a customer cloud target)"
         ),
-        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {
         "name": "cost_forecast",
@@ -577,6 +589,7 @@ _SERVER_CARD_PROMPTS = [
 ]
 
 _SERVER_CARD_RESOURCES = [
+    {"uri": "profiles://catalog", "description": "Task profiles and startup commands without tool schemas"},
     {"uri": "registry://servers", "description": "MCP server security metadata registry"},
     {"uri": "policy://template", "description": "Default security policy-as-code template"},
     {"uri": "metrics://tools", "description": "Bounded MCP tool execution metrics"},
@@ -586,7 +599,7 @@ _SERVER_CARD_RESOURCES = [
 ]
 
 
-def build_server_card(*, auth_required: bool = False) -> dict[str, Any]:
+def build_server_card(*, auth_required: bool = False, profile: str = "full") -> dict[str, Any]:
     from agent_bom import __version__
     from agent_bom.mcp_server_helpers import get_registry_data
 
@@ -602,7 +615,7 @@ def build_server_card(*, auth_required: bool = False) -> dict[str, Any]:
         except Exception:
             registry_servers = 0
 
-    card = {
+    card: dict[str, Any] = {
         "name": "agent-bom",
         "version": __version__,
         "description": ("Security scanner and graph for AI supply chain and infrastructure — agents, MCP, runtime, and blast radius."),
@@ -635,6 +648,19 @@ def build_server_card(*, auth_required: bool = False) -> dict[str, Any]:
         "pypi": "agent-bom",
         "install": "pip install agent-bom[mcp-server]",
     }
+    from agent_bom.mcp_tools.profiles import PROFILE_VERSION, get_profile
+
+    selected = get_profile(profile)
+    card["profile"] = profile
+    card["profile_version"] = PROFILE_VERSION
+    for field, key, allowed in (
+        ("tools", "name", selected.tools),
+        ("prompts", "name", selected.prompts),
+        ("resources", "uri", selected.resources),
+    ):
+        if allowed is not None:
+            card[field] = [entry for entry in card[field] if entry[key] in allowed]
+    card["capabilities"]["read_only"] = all(tool.get("annotations", {}).get("readOnlyHint") is True for tool in card["tools"])
     # SEP-1649 shape consumed by Smithery and other MCP marketplaces. Retain
     # the established top-level fields above for existing agent-bom clients.
     card["serverInfo"] = {"name": card["name"], "version": card["version"]}
@@ -684,12 +710,13 @@ def attach_metadata_routes(
     *,
     auth_required: bool,
     tool_metrics_snapshot: Callable[[], dict[str, Any]],
+    profile: str = "full",
 ) -> None:
     @mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
     async def server_card_route(request):
         from starlette.responses import JSONResponse
 
-        card = build_server_card(auth_required=auth_required)
+        card = build_server_card(auth_required=auth_required, profile=profile)
         # The static metadata catalog owns descriptions and capability classes;
         # the live FastMCP registry owns exact JSON input/output schemas. Serve
         # the latter here so marketplaces never index a hand-maintained schema.
@@ -703,17 +730,22 @@ def attach_metadata_routes(
                 payload["capability_classes"] = list(metadata["capability_classes"])
             rendered_tools.append(payload)
         card["tools"] = rendered_tools
+        card["prompts"] = [prompt.model_dump(by_alias=True, exclude_none=True) for prompt in await mcp.list_prompts()]
+        card["resources"] = [resource.model_dump(mode="json", by_alias=True, exclude_none=True) for resource in await mcp.list_resources()]
+        card["capabilities"]["read_only"] = all(tool.get("annotations", {}).get("readOnlyHint") is True for tool in rendered_tools)
         return JSONResponse(card)
 
     @mcp.custom_route("/", methods=["GET"])
     async def root_metadata_route(request):
         from starlette.responses import JSONResponse
 
-        return JSONResponse(build_root_metadata(auth_required=auth_required))
+        return JSONResponse({**build_root_metadata(auth_required=auth_required), "profile": profile})
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health_route(request):
         from starlette.responses import JSONResponse
 
         metrics = tool_metrics_snapshot()["summary"]
-        return JSONResponse(build_health_payload(auth_required=auth_required, tool_metrics_summary=metrics))
+        payload = build_health_payload(auth_required=auth_required, tool_metrics_summary=metrics)
+        payload.update(profile=profile, tool_count=len(await mcp.list_tools()))
+        return JSONResponse(payload)

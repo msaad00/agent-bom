@@ -7,15 +7,14 @@ from agent_bom.mcp_server import create_mcp_server
 
 @pytest.fixture
 def mcp():
-    return create_mcp_server()
+    return create_mcp_server(profile="full")
 
 
 def test_marketplace_tool_registered(mcp):
     """marketplace_check should be registered as a tool."""
-    # The tool is registered via @mcp.tool — verify import works
-    from agent_bom.mcp_server import create_mcp_server as _
+    import asyncio
 
-    assert callable(_)
+    assert "marketplace_check" in {tool.name for tool in asyncio.run(mcp.list_tools())}
 
 
 def test_trust_signals_no_cves():

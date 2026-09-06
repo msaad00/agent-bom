@@ -1,14 +1,44 @@
 # MCP Workflow Bundles
 
-agent-bom exposes many tools, but agents should not have to guess the order.
-The MCP server card advertises eight workflow prompts that map common jobs to
-safe tool sequences, expected evidence, and clear stop conditions.
+Start with `agent-bom mcp server`. The default `scan` profile exposes eight tools:
+`scan`, `check`, `intel_lookup`, `exposure_paths`, `compliance`, `remediate`,
+`generate_sbom` and `policy_check`. Ask for `quick-audit` to get findings, inspect
+exposure and identify a next action; use `remediation-plan` to draft a fix without
+changing files. A package check is not proof that a deployment is safe.
+
+Choose one profile for the task. In an MCP client configuration, append
+`"--profile", "graph"` to the `args` array to select graph work, for example.
+Reconnect the client after changing profiles. Separate named client entries can
+expose different profiles; connect only the entries needed for the task.
+
+| Profile | Tools | Use it for | Workflow prompts |
+|---|---:|---|---|
+| `scan` (default) | 8 | Package/project scan, exposure and fix planning | quick-audit, pre-install-check, remediation-plan |
+| `graph` | 8 | Inventory rollup, asset drill-down and scoped correlation | Use inventory_summary → inventory_list → inventory_asset, then inspect paths |
+| `cloud` | 5 | Inventory, connection scope and CIS posture | cloud-connection-review |
+| `runtime` | 7 | Gateway policy, alerts and incident evidence | incident-triage, gateway-fleet-live-demo |
+| `audit` | 4 | Scan, framework mapping, policy and audit integrity | compliance-report |
+
+Read the `profiles://catalog` resource to discover profile names, tool names and
+startup commands without loading every input schema. Selection is fixed for the
+server instance; it does not silently expand during a session. Excluded tools
+cannot be invoked. Profiles are not permissions: graph writes still require the
+existing authenticated role, tenant scope and audit reason.
+
+Existing clients that require the complete catalog can explicitly use
+`agent-bom mcp server --profile full`. It retains all 86 tools. The previous
+25-tool `--profile guided` option remains available for compatibility with all
+eight workflow prompts. Neither is the recommended first-run configuration.
+Third-party tool plugins remain separately opt-in and are exposed only by `full`.
+
+The complete workflow catalog is below. Only compatible prompts appear in each
+focused profile's `prompts/list` and server card.
 
 | Workflow prompt | Primary user | Tool sequence | Evidence produced |
 |---|---|---|---|
 | `quick-audit` | Developer or security reviewer | `scan` -> `exposure_paths` -> `compliance` | Findings, blast radius, framework mapping |
-| `pre-install-check` | Developer / CI assistant | `check` -> `registry_lookup` -> `should_i_deploy` | Install allow/warn/block decision |
-| `compliance-report` | Security / audit | `compliance` -> `audit_integrity` -> report export | Framework summary, evidence IDs, audit status |
+| `pre-install-check` | Developer / CI assistant | `check` -> `intel_lookup` as needed | Package findings and evidence-qualified install recommendation |
+| `compliance-report` | Security / audit | `scan` -> `compliance` -> `audit_integrity` | Framework summary, evidence IDs, audit status |
 | `fleet-audit` | Endpoint / platform owner | `fleet_scan` -> `context_graph` -> `policy_check` | Agent inventory, graph-ready findings |
 | `incident-triage` | SOC / appsec | `intel_lookup` -> `exposure_paths` -> `runtime_correlate` | KEV/EPSS/RCE context, affected agents/tools |
 | `remediation-plan` | App owner | `remediate` -> `generate_sbom` -> `policy_check` | Fix plan, validation commands, rollback notes |

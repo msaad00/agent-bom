@@ -1,7 +1,13 @@
 {
-  "generated_on": "2026-09-04",
+  "generated_on": "2026-09-05",
   "version": "0.103.2",
   "metrics": [
+    {
+      "name": "MCP default tools",
+      "value": 8,
+      "source": "src/agent_bom/mcp_server_metadata.py",
+      "notes": "Default scan profile. Full catalog remains an explicit compatibility option."
+    },
     {
       "name": "MCP tools",
       "value": 86,
@@ -10,7 +16,7 @@
     },
     {
       "name": "MCP resources",
-      "value": 6,
+      "value": 7,
       "source": "src/agent_bom/mcp_server_metadata.py",
       "notes": "Counted from the advertised server-card resources."
     },
@@ -40,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 890,
+      "value": 891,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

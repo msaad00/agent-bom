@@ -5,18 +5,19 @@
 This appendix is the canonical home for volatile product counts.
 Keep counts out of public positioning copy and update this file from the repo instead of hand-editing numbers.
 
-- Generated on: `2026-09-04`
+- Generated on: `2026-09-05`
 - Version: `0.103.2`
 
 | Metric | Value | Source | Notes |
 | --- | ---: | --- | --- |
+| MCP default tools | 8 | `src/agent_bom/mcp_server_metadata.py` | Default scan profile. Full catalog remains an explicit compatibility option. |
 | MCP tools | 86 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card tools. |
-| MCP resources | 6 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card resources. |
+| MCP resources | 7 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card resources. |
 | MCP prompts | 8 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card workflow prompts. |
 | GitHub workflow files | 39 | `.github/workflows` | Counts .yml and .yaml workflow definitions. |
 | API route modules | 50 | `src/agent_bom/api/routes` | Counts Python files in the routes package, including __init__.py. |
 | UI app pages | 43 | `ui/app` | Counts page.tsx and page.jsx files recursively. |
-| Python modules | 890 | `src/agent_bom` | Counts all Python files recursively. |
+| Python modules | 891 | `src/agent_bom` | Counts all Python files recursively. |
 | Supported package ecosystems | 15 | `src/agent_bom/ecosystems.py` | Counted from SUPPORTED_PACKAGE_ECOSYSTEMS. |
 | Compliance surfaces | 16 | `src/agent_bom/compliance_coverage.py` | 15 tag-mapped frameworks plus the OWASP AISVS benchmark surface. |
 | Proxy inline detectors | 7 | `src/agent_bom/proxy.py` | Inline detector chain used by the MCP proxy path. |

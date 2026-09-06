@@ -5,7 +5,9 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (86):
+Default: 8 focused tools; select a task profile with --profile.
+
+Full profile Tools (86):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     intel_lookup        — Look up a CVE, GHSA, or OSV advisory from local threat intel
@@ -153,6 +155,7 @@ from agent_bom.mcp_server_metadata import (
 from agent_bom.mcp_server_runtime_catalog import (
     register_runtime_catalog_tools as _register_runtime_catalog_tools,
 )
+from agent_bom.mcp_tools.profiles import _GUIDED_TOOL_NAMES as _GUIDED_TOOL_NAMES
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -162,57 +165,6 @@ _ToolReturn = TypeVar("_ToolReturn")
 # read metadata directly from `agent_bom.mcp_server`.
 _SERVER_CARD_PROMPTS = _METADATA_SERVER_CARD_PROMPTS
 _SERVER_CARD_TOOLS = _METADATA_SERVER_CARD_TOOLS
-
-# The guided profile is an explicit context-saving option. It contains every
-# tool referenced by the eight shipped workflow prompts plus the three asset
-# inventory drill-downs. CLI and programmatic callers default to the full
-# catalog so registry and local clients see the advertised surface unless they
-# deliberately request a smaller prompt-oriented profile.
-_GUIDED_TOOL_NAMES = frozenset(
-    {
-        "audit_integrity",
-        "check",
-        "cis_benchmark",
-        "cloud_inventory",
-        "compliance",
-        "context_graph",
-        "exposure_paths",
-        "firewall_check",
-        "fleet_scan",
-        "gateway_status",
-        "generate_sbom",
-        "graph_export",
-        "graph_correlate",
-        "graph_correlation_status",
-        "intel_lookup",
-        "inventory_asset",
-        "inventory_list",
-        "inventory_summary",
-        "policy_check",
-        "proxy_alerts",
-        "registry_lookup",
-        "remediate",
-        "runtime_correlate",
-        "scan",
-        "should_i_deploy",
-    }
-)
-_MCP_TOOL_PROFILES = {"guided": _GUIDED_TOOL_NAMES, "full": frozenset(str(tool["name"]) for tool in _SERVER_CARD_TOOLS)}
-
-
-def _apply_mcp_tool_profile(mcp: Any, profile: str) -> None:
-    """Limit the live FastMCP registry to one documented tool profile."""
-    selected = _MCP_TOOL_PROFILES.get(profile)
-    if selected is None:
-        choices = ", ".join(sorted(_MCP_TOOL_PROFILES))
-        raise ValueError(f"Unknown MCP tool profile {profile!r}; expected one of: {choices}")
-    if profile == "full":
-        return
-    registered = mcp._tool_manager._tools
-    for name in tuple(registered):
-        if name not in selected:
-            del registered[name]
-
 
 build_server_card = _metadata_build_server_card
 
@@ -602,15 +554,17 @@ def create_mcp_server(
     host: str = "127.0.0.1",
     port: int = 8000,
     bearer_token: str | None = None,
-    profile: str = "full",
+    profile: str = "scan",
 ):
-    """Create and configure the agent-bom MCP server with all tools.
+    """Create an MCP server exposing the selected bounded tool profile.
 
     When the smithery SDK is installed, the server is automatically enhanced
     with session-config and CORS middleware for Smithery.ai hosted deployment.
     """
     from agent_bom.logging_config import setup_logging
+    from agent_bom.mcp_tools.profiles import configure_registration, get_profile
 
+    get_profile(profile)  # Reject unknown profiles before constructing the server.
     setup_logging(level="INFO")
     _check_mcp_sdk()
 
@@ -621,6 +575,7 @@ def create_mcp_server(
         port=port,
         bearer_token=bearer_token,
         version=__version__,
+        profile=profile,
         token_verifier_factory=lambda token: _StaticBearerTokenVerifier(
             token,
             os.environ.get("AGENT_BOM_MCP_OPERATOR_TOKEN"),
@@ -628,6 +583,8 @@ def create_mcp_server(
             operator_token_expires_at=os.environ.get("AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT"),
         ),
     )
+
+    configure_registration(mcp, profile)
 
     # Import tool implementations
     from agent_bom.mcp_server_specialized import register_specialized_ai_tools
@@ -1446,6 +1403,7 @@ def create_mcp_server(
         sanitize_error_fn=sanitize_error,
         logger=logger,
         tool_metrics_snapshot=_tool_metrics_snapshot,
+        profile=profile,
     )
 
     register_specialized_ai_tools(
@@ -1461,6 +1419,7 @@ def create_mcp_server(
         mcp,
         auth_required=bool(bearer_token),
         tool_metrics_snapshot=_tool_metrics_snapshot,
+        profile=profile,
     )
 
     # Strict-arg contract on every registered tool (#2197 audit P1).
@@ -1476,12 +1435,10 @@ def create_mcp_server(
     # AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS and AGENT_BOM_ACTIVATE_MCP_TOOL_PLUGINS.
     from agent_bom.plugin_activation import activate_mcp_tool_plugins
 
-    activated = activate_mcp_tool_plugins(mcp)
+    activated = activate_mcp_tool_plugins(mcp) if profile == "full" else []
     if activated:
         logger.info("Activated %d third-party MCP tool plugin(s): %s", len(activated), ", ".join(sorted(activated)))
         harden_tool_arguments(mcp)
-
-    _apply_mcp_tool_profile(mcp, profile)
 
     return mcp
 

@@ -15,6 +15,7 @@ from importlib.metadata import version
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from jsonschema import Draft202012Validator
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.session import SUPPORTED_PROTOCOL_VERSIONS
@@ -203,9 +204,10 @@ def test_surface_and_role_gaps_are_explicit() -> None:
     assert _manifest()["official_conformance_suite"]["status"] == "not_run"
 
 
-def test_locked_sdk_streamable_http_wire_contract(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize("profile", ["scan", "full"])
+def test_locked_sdk_streamable_http_wire_contract(monkeypatch, tmp_path, profile) -> None:
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path / "state"))
-    server = create_mcp_server()
+    server = create_mcp_server(profile=profile)
     headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
     initialize = {
         "jsonrpc": "2.0",
@@ -231,9 +233,9 @@ def test_locked_sdk_streamable_http_wire_contract(monkeypatch, tmp_path) -> None
         ready = client.post("/mcp", headers=session_headers, json={"jsonrpc": "2.0", "method": "notifications/initialized"})
         assert ready.status_code in {200, 202}
         for request_id, method, result_key, expected_count in (
-            (2, "tools/list", "tools", 86),
-            (3, "resources/list", "resources", 6),
-            (4, "prompts/list", "prompts", 8),
+            (2, "tools/list", "tools", 8 if profile == "scan" else 86),
+            (3, "resources/list", "resources", 4 if profile == "scan" else 7),
+            (4, "prompts/list", "prompts", 3 if profile == "scan" else 8),
         ):
             response = client.post(
                 "/mcp",
@@ -265,7 +267,7 @@ def test_locked_sdk_stdio_wire_contract(tmp_path) -> None:
         env["PYTHONPATH"] = str(REPO_ROOT / "src")
         params = StdioServerParameters(
             command=sys.executable,
-            args=["-c", "from agent_bom.cli import cli_main; cli_main()", "mcp", "server"],
+            args=["-c", "from agent_bom.cli import cli_main; cli_main()", "mcp", "server", "--profile", "full"],
             env=env,
         )
         async with stdio_client(params) as (read, write):
@@ -273,7 +275,7 @@ def test_locked_sdk_stdio_wire_contract(tmp_path) -> None:
                 initialized = await session.initialize()
                 assert initialized.protocolVersion == LOCKED_PROTOCOL
                 assert len((await session.list_tools()).tools) == 86
-                assert len((await session.list_resources()).resources) == 6
+                assert len((await session.list_resources()).resources) == 7
                 assert len((await session.list_prompts()).prompts) == 8
 
     asyncio.run(asyncio.wait_for(probe(), timeout=30))
@@ -281,7 +283,7 @@ def test_locked_sdk_stdio_wire_contract(tmp_path) -> None:
 
 def test_2026_server_discover_is_rejected_by_session_era_server(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path / "state"))
-    server = create_mcp_server()
+    server = create_mcp_server(profile="full")
     with TestClient(server.streamable_http_app(), base_url="http://localhost:8000") as client:
         response = client.post(
             "/mcp",

@@ -5,7 +5,7 @@ Submission files for listing agent-bom in the Docker Desktop MCP Toolkit catalog
 ## Files
 
 - `server.yaml` — server metadata, image, allowed hosts, optional secrets
-- `tools.json` — all 86 MCP tools with descriptions and parameters
+- `tools.json` — 8 default-profile MCP tools with descriptions and parameters, generated from live schemas
 - `readme.md` — Docker MCP Toolkit detail page content
 
 ## How to submit

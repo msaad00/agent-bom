@@ -73,13 +73,7 @@ def _load_version() -> str:
 
 
 def _load_readme_tool_count() -> str:
-    text = README.read_text(encoding="utf-8")
-    # Prefer the current README phrasing ("exposes"); keep "advertises" as a
-    # fallback so older release tags still parse during surface-freshness probes.
-    match = re.search(r"MCP server mode (?:exposes|advertises)\s+(\d+)\s+MCP tools", text)
-    if not match:
-        raise SystemExit("README.md MCP tool count sentence not found")
-    return match.group(1)
+    return str(len(_release_tool_names(None)))
 
 
 def _load_expected_tool_names(path: Path) -> list[str]:
@@ -274,6 +268,18 @@ def _release_tool_names(git_ref: str | None) -> list[str]:
     normalized = sorted(name for name in names if isinstance(name, str))
     if len(set(normalized)) != len(normalized):
         raise ValueError("release metadata contains duplicate MCP tool names")
+    # Read only literal, version-bound metadata; never import a release checkout.
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_DEFAULT_PROFILE_TOOL_NAMES" for t in node.targets):
+            selected = ast.literal_eval(node.value)
+            if (
+                not isinstance(selected, list)
+                or not selected
+                or any(not isinstance(name, str) or name not in normalized for name in selected)
+                or len(set(selected)) != len(selected)
+            ):
+                raise ValueError("release metadata contains an invalid default MCP profile")
+            return sorted(selected)
     return normalized
 
 

@@ -1,6 +1,7 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 86 MCP tools as an MCP server. Clients that negotiate the
+agent-bom starts with 8 focused MCP tools. Select a task profile for graph, cloud, runtime or audit work;
+`--profile full` explicitly exposes the complete compatibility catalog of 86 MCP tools. Clients that negotiate the
 locked MCP SDK's session-era `2025-11-25` handshake can connect over stdio or
 Streamable HTTP and use vulnerability scanning, blast radius analysis,
 compliance checks, runtime posture, and supply-chain verification. SSE remains
@@ -65,7 +66,7 @@ Add to `~/.snowflake/cortex/mcp.json`:
 }
 ```
 
-CoCo can then call the same 86 `agent-bom` tools over MCP.
+CoCo starts with the same 8 scan-profile tools. Add `--profile full` only for the complete compatibility catalog.
 
 agent-bom also discovers Cortex auxiliary security files alongside `mcp.json`:
 
@@ -174,6 +175,9 @@ agent-bom proxy-bootstrap \
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
 ## Tool Categories (86 tools)
+
+These categories describe `--profile full`, not the default startup catalog.
+The [profile guide](MCP_WORKFLOWS.md) lists the smaller task surfaces.
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|

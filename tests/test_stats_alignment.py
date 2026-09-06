@@ -283,7 +283,7 @@ class TestRegistryCountFreshness:
         from agent_bom.mcp_server import create_mcp_server
         from agent_bom.registry import registry_server_count
 
-        server = create_mcp_server()
+        server = create_mcp_server(profile="full")
         resource = server._resource_manager._resources["registry://servers"]
         description = resource.description or ""
         assert f"{registry_server_count()} servers" in description, description
@@ -302,14 +302,14 @@ class TestIntegrationStats:
         if not path.exists():
             pytest.skip("Docker MCP tools.json not found")
         data = json.loads(path.read_text())
-        assert len(data) == ACTUAL_MCP_TOOLS
+        assert len(data) == LIVE_DEFAULT_MCP_TOOLS
 
     def test_docker_mcp_submission_tool_count_matches_code(self):
         path = ROOT / "integrations" / "docker-mcp-registry" / "SUBMISSION.md"
         if not path.exists():
             pytest.skip("Docker MCP submission docs not found")
         text = path.read_text()
-        assert f"all {ACTUAL_MCP_TOOLS} MCP tools" in text
+        assert f"{LIVE_DEFAULT_MCP_TOOLS} default-profile MCP tools" in text
         assert "all 41 MCP tools" not in text
 
     def test_docker_mcp_readme_client_count_matches_code(self):
@@ -384,15 +384,16 @@ class TestDashboardStats:
 # ---------------------------------------------------------------------------
 
 
-def _live_mcp_tool_count() -> int:
+def _live_mcp_tool_count(profile: str) -> int:
     """Number of tools the MCP server actually registers at runtime."""
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    server = create_mcp_server(profile=profile)
     return len(server._tool_manager._tools)
 
 
-LIVE_MCP_TOOLS = _live_mcp_tool_count()
+LIVE_FULL_MCP_TOOLS = _live_mcp_tool_count("full")
+LIVE_DEFAULT_MCP_TOOLS = _live_mcp_tool_count("scan")
 
 
 class TestToolCountFreshness:
@@ -400,22 +401,30 @@ class TestToolCountFreshness:
 
     def test_live_count_matches_decorator_count(self):
         # The @mcp.tool decorator scan and the live registration must agree.
-        assert LIVE_MCP_TOOLS == ACTUAL_MCP_TOOLS, f"live tool count ({LIVE_MCP_TOOLS}) != @mcp.tool decorator count ({ACTUAL_MCP_TOOLS})"
+        assert LIVE_FULL_MCP_TOOLS == ACTUAL_MCP_TOOLS, (
+            f"live tool count ({LIVE_FULL_MCP_TOOLS}) != @mcp.tool decorator count ({ACTUAL_MCP_TOOLS})"
+        )
 
     def test_live_count_matches_server_card(self):
-        assert LIVE_MCP_TOOLS == ACTUAL_CARD_TOOLS, f"live tool count ({LIVE_MCP_TOOLS}) != _SERVER_CARD_TOOLS count ({ACTUAL_CARD_TOOLS})"
+        assert LIVE_FULL_MCP_TOOLS == ACTUAL_CARD_TOOLS, (
+            f"live tool count ({LIVE_FULL_MCP_TOOLS}) != _SERVER_CARD_TOOLS count ({ACTUAL_CARD_TOOLS})"
+        )
 
     def test_mcp_server_docstring_count_matches_live(self):
         text = (SRC / "mcp_server.py").read_text()
-        match = re.search(r"^Tools \((\d+)\):", text, re.MULTILINE)
+        match = re.search(r"^Full profile Tools \((\d+)\):", text, re.MULTILINE)
         assert match, "mcp_server.py module docstring missing 'Tools (N):'"
-        assert int(match.group(1)) == LIVE_MCP_TOOLS, f"mcp_server.py docstring advertises {match.group(1)} tools, live is {LIVE_MCP_TOOLS}"
+        assert int(match.group(1)) == LIVE_FULL_MCP_TOOLS, (
+            f"mcp_server.py docstring advertises {match.group(1)} tools, live is {LIVE_FULL_MCP_TOOLS}"
+        )
 
     def test_cli_help_count_matches_live(self):
         text = (SRC / "cli" / "_server.py").read_text()
-        match = re.search(r"Exposes (\d+) security tools via MCP protocol", text)
-        assert match, "cli/_server.py missing 'Exposes N security tools via MCP protocol'"
-        assert int(match.group(1)) == LIVE_MCP_TOOLS, f"cli/_server.py advertises {match.group(1)} tools, live is {LIVE_MCP_TOOLS}"
+        match = re.search(r"Default: (\d+) scan, package-check", text)
+        assert match, "cli/_server.py missing 'Default: N scan, package-check'"
+        assert int(match.group(1)) == LIVE_DEFAULT_MCP_TOOLS, (
+            f"cli/_server.py advertises {match.group(1)} tools, live is {LIVE_DEFAULT_MCP_TOOLS}"
+        )
 
     def test_dockerfile_sse_count_matches_live(self):
         path = ROOT / "deploy" / "docker" / "Dockerfile.sse"
@@ -424,20 +433,22 @@ class TestToolCountFreshness:
         text = path.read_text()
         match = re.search(r"(\d+) MCP tools", text)
         assert match, "Dockerfile.sse missing 'N MCP tools'"
-        assert int(match.group(1)) == LIVE_MCP_TOOLS, f"Dockerfile.sse advertises {match.group(1)} MCP tools, live is {LIVE_MCP_TOOLS}"
+        assert int(match.group(1)) == LIVE_DEFAULT_MCP_TOOLS, (
+            f"Dockerfile.sse advertises {match.group(1)} MCP tools, live is {LIVE_DEFAULT_MCP_TOOLS}"
+        )
 
     def test_docker_mcp_tools_json_count_matches_live(self):
         path = ROOT / "integrations" / "docker-mcp-registry" / "tools.json"
         if not path.exists():
             pytest.skip("Docker MCP tools.json not found")
         data = json.loads(path.read_text())
-        assert len(data) == LIVE_MCP_TOOLS, f"docker tools.json lists {len(data)} tools, live is {LIVE_MCP_TOOLS}"
+        assert len(data) == LIVE_DEFAULT_MCP_TOOLS, f"docker tools.json lists {len(data)} tools, live is {LIVE_DEFAULT_MCP_TOOLS}"
 
     def test_hardening_strict_args_surface_matches_live(self):
         from agent_bom.mcp_hardening import strict_args_tool_count
 
-        assert strict_args_tool_count() == LIVE_MCP_TOOLS, (
-            f"mcp_hardening strict-args surface counts {strict_args_tool_count()}, live is {LIVE_MCP_TOOLS}"
+        assert strict_args_tool_count() == LIVE_FULL_MCP_TOOLS, (
+            f"mcp_hardening strict-args surface counts {strict_args_tool_count()}, live is {LIVE_FULL_MCP_TOOLS}"
         )
 
 
@@ -456,7 +467,8 @@ def test_print_actual_counts(capsys):
     """Print actual counts for reference (always passes)."""
     print("\n--- Actual Code Counts ---")
     print(f"MCP tools (@mcp.tool):    {ACTUAL_MCP_TOOLS}")
-    print(f"MCP tools (live):         {LIVE_MCP_TOOLS}")
+    print(f"MCP tools (live full):    {LIVE_FULL_MCP_TOOLS}")
+    print(f"MCP tools (live default): {LIVE_DEFAULT_MCP_TOOLS}")
     print(f"_SERVER_CARD_TOOLS:       {ACTUAL_CARD_TOOLS}")
     print(f"CONFIG_LOCATIONS:         {ACTUAL_CONFIG_LOCATIONS}")
     print(f"Runtime detectors:        {ACTUAL_DETECTORS}")

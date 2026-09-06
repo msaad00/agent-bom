@@ -28,6 +28,7 @@ import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -54,6 +55,14 @@ def isolated_mcp_environment(tmp_path_factory: pytest.TempPathFactory) -> Iterat
         path.mkdir(parents=True, exist_ok=True)
 
     patcher = pytest.MonkeyPatch()
+
+    # This contract checks result shapes, not external package-registry availability.
+    async def pinned_package(pkg, client):
+        pkg.version = "2.31.0"
+        return pkg
+
+    patcher.setattr("agent_bom.resolver.resolve_package_version", pinned_package)
+    patcher.setattr("agent_bom.mcp_tools.scanning._version_published", AsyncMock(return_value=True))
     patcher.setenv("HOME", str(home))
     patcher.setenv("USERPROFILE", str(home))
     patcher.setenv("XDG_CONFIG_HOME", str(config))
@@ -83,7 +92,7 @@ def mcp_server(isolated_mcp_environment: dict[str, Path]) -> Any:
     from agent_bom.mcp_server import create_mcp_server
 
     assert Path.home().resolve() == isolated_mcp_environment["home"].resolve()
-    return create_mcp_server()
+    return create_mcp_server(profile="full")
 
 
 @pytest.fixture(scope="module")

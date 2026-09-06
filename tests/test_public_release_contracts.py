@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 
 from agent_bom.discovery.coverage import supported_clients
-from agent_bom.mcp_server_metadata import _SERVER_CARD_PROMPTS, _SERVER_CARD_TOOLS
+from agent_bom.mcp_server_metadata import _DEFAULT_PROFILE_TOOL_NAMES, _SERVER_CARD_PROMPTS, _SERVER_CARD_TOOLS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,29 +37,32 @@ def test_mcp_dependency_is_bounded_to_the_supported_major() -> None:
 
 
 def test_public_mcp_counts_match_server_card() -> None:
-    count = len(_SERVER_CARD_TOOLS)
+    default_count = len(_DEFAULT_PROFILE_TOOL_NAMES)
+    full_count = len(_SERVER_CARD_TOOLS)
     expected = {
-        "glama.json": f"Exposes {count} read-first MCP tools",
-        "integrations/smithery.yaml": f"Exposes {count} MCP tools",
-        "site-docs/index.md": f"| **MCP tools** | AI agents and coding assistants | {count} tools",
-        "site-docs/getting-started/mcp-server.md": f"exposing {count} MCP tools",
-        "docs/CLAUDE_INTEGRATION.md": f"exposes {count} MCP tools",
-        "docs/PRODUCT_BRIEF.md": f"| Agent interface | {count} MCP tools",
-    }
-    for relative, phrase in expected.items():
-        assert phrase in _read(relative), f"{relative} is missing current MCP count"
-
-    developer_docs = {
-        "docs/START_HERE.md": (
-            f"stdio MCP server: {count} tools",
-            f"Tool catalog ({count} tools",
+        "glama.json": (f"Starts with {default_count} focused MCP tools",),
+        "integrations/glama/server.json": (f"Starts with {default_count} focused MCP tools",),
+        "integrations/smithery.yaml": (f"Starts with {default_count} focused MCP tools",),
+        "site-docs/index.md": (f"{default_count} default tools; explicit full catalog of {full_count} tools",),
+        "site-docs/getting-started/mcp-server.md": (
+            f"starts with {default_count} scan-profile tools",
+            f"`--profile full` catalog exposes {full_count} tools",
         ),
-        "docs/README.md": (f"run the MCP server, {count} tools",),
+        "docs/CLAUDE_INTEGRATION.md": (
+            f"starts with {default_count} focused tools",
+            f"`--profile full` compatibility catalog contains {full_count} MCP tools",
+        ),
+        "docs/PRODUCT_BRIEF.md": (f"{default_count} default tools; explicit full catalog of {full_count} MCP tools",),
+        "docs/START_HERE.md": (
+            f"stdio MCP server: {default_count} tools",
+            f"`--profile full` catalog ({full_count} tools",
+        ),
+        "docs/README.md": (f"run the MCP server with {default_count} default tools",),
     }
-    for relative, phrases in developer_docs.items():
+    for relative, phrases in expected.items():
         text = _read(relative)
         for phrase in phrases:
-            assert phrase in text, f"{relative} is missing current MCP count"
+            assert phrase in text, f"{relative} is missing current MCP profile count: {phrase}"
 
 
 def test_public_registry_and_client_counts_match_code() -> None:

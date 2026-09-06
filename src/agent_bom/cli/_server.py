@@ -1077,10 +1077,10 @@ def api_cmd(
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host for HTTP/SSE transport.")
 @click.option(
     "--profile",
-    type=click.Choice(["guided", "full"]),
-    default="full",
+    type=click.Choice(["scan", "graph", "cloud", "runtime", "audit", "guided", "full"]),
+    default="scan",
     show_default=True,
-    help="Tool catalog: full 86-tool catalog, or guided workflow tools for concise agent context.",
+    help="Task profile. Scan exposes 8 tools; full explicitly enables the complete compatibility catalog.",
 )
 @click.option(
     "--bearer-token",
@@ -1113,26 +1113,15 @@ def mcp_server_cmd(
     The MCP SDK is included in the standard agent-bom install.
 
     \b
-    Workflow prompts first:
-      quick-audit              scan -> exposure_paths -> compliance
-      pre-install-check        check -> registry_lookup -> should_i_deploy
-      compliance-report        compliance -> audit_integrity -> report export
-      fleet-audit              fleet_scan -> context_graph -> policy_check
-      incident-triage          intel_lookup -> exposure_paths -> runtime_correlate
-      remediation-plan         remediate -> generate_sbom -> policy_check
-      cloud-connection-review  connection evidence -> cis_benchmark -> graph_export
-      gateway-fleet-live-demo  gateway_status -> proxy_alerts -> fleet_scan -> firewall_check
+    Default: 8 scan, package-check, exposure, compliance and remediation tools.
+    Start with quick-audit, pre-install-check or remediation-plan prompts.
+    Read profiles://catalog for task profiles without loading all tool schemas.
 
     \b
-    The default is the full tool catalog.
-    Exposes 86 security tools via MCP protocol, including
-    advanced direct tools such as skill_scan, skill_verify, compliance, and
-    remediate. See:
-      docs/MCP_WORKFLOWS.md
-
-    \b
-    The guided profile is organized behind 8 workflow prompts. Use
-    --profile guided when a client needs that concise workflow-oriented catalog.
+    Select graph, cloud, runtime or audit for specialized work. Reconnect after
+    changing profiles. Use --profile full for existing workflows needing the
+    complete catalog, or --profile guided for the earlier workflow bundle.
+    Profiles do not grant authorization. See docs/MCP_WORKFLOWS.md.
 
     \b
     Usage:

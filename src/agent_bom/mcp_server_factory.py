@@ -8,15 +8,17 @@ from pydantic import AnyHttpUrl, TypeAdapter
 _HTTP_URL_ADAPTER = TypeAdapter(AnyHttpUrl)
 
 
-def _server_instructions(version: str) -> str:
+def _server_instructions(version: str, profile: str = "scan") -> str:
+    from agent_bom.mcp_tools.profiles import get_profile
+
+    spec = get_profile(profile)
     return (
-        f"agent-bom v{version} — AI infrastructure security scanner with MCP security tools. "
-        "Scans packages and images for CVEs (OSV, NVD, EPSS, CISA KEV), maps blast radius "
-        "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
-        "checks security policies, and maps to 14 compliance frameworks"
-        "(OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2). "
-        "Discovers 29 first-class MCP client types plus dynamic/project surfaces. "
-        "Scanner and posture tools are read-only; Shield and identity write actions require an authenticated operator token, "
+        f"agent-bom v{version}. Active profile: {profile}. {spec.description} "
+        "Use only the listed tools and prompts. Read profiles://catalog to find other task profiles; "
+        "switch profiles at server startup and reconnect, or configure separate named client entries. "
+        "Treat unavailable, partial and modeled evidence explicitly; do not infer verification. "
+        "Profiles select capabilities, not permissions. Scanner and posture tools are read-only; "
+        "Shield and identity write actions require an authenticated operator token, "
         "admin role, write scope, and an audit reason; operator_role is audit metadata, not authentication."
     )
 
@@ -151,6 +153,7 @@ def create_fastmcp_server(
     bearer_token: str | None,
     version: str,
     token_verifier_factory: Callable[[str], Any],
+    profile: str = "scan",
 ):
     """Create the FastMCP server with optional static bearer auth."""
     from mcp.server.auth.settings import AuthSettings
@@ -179,7 +182,7 @@ def create_fastmcp_server(
         port=port,
         auth=auth_settings,
         token_verifier=token_verifier,
-        instructions=_server_instructions(version),
+        instructions=_server_instructions(version, profile),
     )
     if auth_settings is not None:
         # The issuer is taken from AuthSettings AFTER pydantic has normalized

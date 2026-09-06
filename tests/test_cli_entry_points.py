@@ -117,12 +117,14 @@ class TestAgentBom:
 
         r = CliRunner().invoke(main, ["mcp", "server", "--help"])
         assert r.exit_code == 0
-        assert "Workflow prompts first" in r.output
+        assert "Default: 8" in r.output
         assert "quick-audit" in r.output
-        assert "gateway-fleet-live-demo" in r.output
-        assert "full tool catalog" in r.output
-        assert "Exposes 86 security tools via MCP protocol" in r.output
-        assert "organized behind 8 workflow" in r.output
+        assert "pre-install-check" in r.output
+        assert "remediation-plan" in r.output
+        assert "profiles://catalog" in r.output
+        assert "--profile full" in r.output
+        assert "[default: scan]" in r.output
+        assert "Exposes 86 security tools via MCP protocol" not in r.output
 
     def test_secrets_help_has_common_output_flags(self):
         from agent_bom.cli import main

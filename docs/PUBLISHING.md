@@ -266,6 +266,11 @@ For dependency-heavy or security-driven releases, also verify:
 
 Both freshness monitors compare marketplace input schemas with the public server
 card after validating its version and tool names against the published release.
+New releases bind the expected names to the immutable default-profile metadata
+and the `MCP default tools` metric. Older releases without that metadata retain
+their full-catalog contract. A smaller next-release default must not make the
+currently published full catalog appear stale. Custom full-profile deployments
+and the default marketplace endpoint have distinct expected catalogs.
 Smithery's catalog API omits some root schema fields. The checker verifies those
 constraints from the complete schemas embedded in Smithery's public page, while
 requiring its server identity, tool names, and shared schema fields to agree with

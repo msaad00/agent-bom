@@ -153,8 +153,9 @@ export function ExposurePathCommandCenter({
   const evidence = path.evidence;
   const pathSummary =
     path.summary ||
-    "A reachable package or service on this path inherits downstream credential and tool exposure from the agent runtime.";
+    "Review the ordered relationships and their source evidence for this path.";
   const primaryAction = actions[0];
+  const findingLabel = path.findings[0] && !/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(path.findings[0]) ? path.findings[0] : undefined;
   const findingSuffix = path.findings[0] ? ` through ${path.findings[0]}` : "";
   const headline = findingSuffix && title?.endsWith(findingSuffix) ? title.slice(0, -findingSuffix.length) : title;
   const packageHop = path.hops.find((hop) => hop.role === "package");
@@ -185,7 +186,7 @@ export function ExposurePathCommandCenter({
             <p
               className="ep-summary"
             >
-              {path.findings[0] ? <>{path.findings[0]}{packageHop ? <> · {packageHop.label}</> : null} · Follow the evidence to the affected asset.</> : "Follow the ordered relationships and inspect their evidence."}
+              {findingLabel ? <>{findingLabel}{packageHop ? <> · {packageHop.label}</> : null} · Follow the evidence to the affected asset.</> : "Follow the ordered relationships and inspect their evidence."}
             </p>
           </div>
           <div className="ep-metrics">
@@ -557,9 +558,9 @@ function ExposurePathSequence({
                   {hop.label}
                 </p>
                 {hop.subtitle ? (
-                  /sha256:[a-f0-9]{32,}/i.test(hop.subtitle) ? (
+                  /(?:sha256:[a-f0-9]{32,}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i.test(hop.subtitle) ? (
                     <details className="ep-identifier">
-                      <summary aria-label={`Show full identifier for ${hop.label}`}>{hop.subtitle.replace(/(sha256:[a-f0-9]{12})[a-f0-9]+/i, "$1…")}</summary>
+                      <summary aria-label={`Show full identifier for ${hop.label}`}>{/sha256:/i.test(hop.subtitle) ? hop.subtitle.replace(/(sha256:[a-f0-9]{12})[a-f0-9]+/i, "$1…") : "Identifier"}</summary>
                       <code>{hop.subtitle}</code>
                     </details>
                   ) : <p className="ep-sequence-subtitle">{hop.subtitle}</p>

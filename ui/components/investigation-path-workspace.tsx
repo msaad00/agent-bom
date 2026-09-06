@@ -85,7 +85,7 @@ export function InvestigationPathWorkspace({
     <section
       aria-label="Investigation workspace"
       data-layout={rows.length === 1 ? "focused-path" : "responsive-split"}
-      className={rows.length === 1 ? "grid gap-4" : "grid gap-4 xl:grid-cols-[minmax(14rem,16rem)_minmax(0,1fr)] xl:items-start"}
+      className={rows.length === 1 ? "grid gap-4" : "grid gap-4 xl:grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)] xl:items-start"}
     >
       <details open={rows.length !== 1} className="investigation-queue rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
         <summary className="cursor-pointer text-sm font-medium text-[color:var(--foreground)]">{rows.length === 1 ? "1 path selected · change focus or filters" : `${rows.length} paths · investigation queue`}</summary>

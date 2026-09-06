@@ -76,10 +76,11 @@ describe("RankedPathList", () => {
 
     expect(screen.getByTestId("ranked-path-advisory")).toHaveTextContent("CVE-2026-0002");
     const title = screen.getByText("Agent → Database → werkzeug");
-    expect(title).toHaveClass("line-clamp-2", "break-normal");
-    expect(title).not.toHaveClass("break-words");
+    expect(title).toHaveClass("line-clamp-3", "break-words");
+    expect(screen.getAllByText("Path priority")).toHaveLength(2);
+    expect(screen.queryByText("Path risk")).not.toBeInTheDocument();
     expect(title).toHaveAttribute("title", "CVE-2026-0002 · Agent → Database → werkzeug");
-    expect(title.closest("button")).toHaveClass("grid");
+    expect(title.closest("button")).toHaveClass("flex-col");
   });
 
   it("does not repeat a CVE prefix already present in the path title", () => {

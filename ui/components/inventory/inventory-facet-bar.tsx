@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search } from "lucide-react";
 
 import { ICON_SIZE } from "@/lib/icon-sizes";
 import { useInventory, type InventoryFilterKey } from "@/lib/inventory-context";
@@ -66,26 +66,8 @@ export function InventoryFacetBar({
   return (
     <section
       aria-label="Inventory filters"
-      className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3"
+      className="space-y-2"
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]">
-          <SlidersHorizontal className={ICON_SIZE.sm} aria-hidden="true" />
-          Whole-inventory filters
-        </p>
-        {hasActive ? (
-          <button
-            type="button"
-            onClick={() => {
-              clearFilters();
-              onSeverityFilterChange?.("all");
-            }}
-            className="text-xs text-[color:var(--text-secondary)] underline"
-          >
-            Clear
-          </button>
-        ) : null}
-      </div>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-[14rem] flex-[2] flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
           Search
@@ -100,14 +82,21 @@ export function InventoryFacetBar({
           </span>
         </label>
         {select("type", "Type", typeBuckets)}
-        {select("source", "Source", facets?.source.buckets ?? [])}
-        {select("provider", "Provider", facets?.provider.buckets ?? [])}
-        {select("environment", "Environment", facets?.environment.buckets ?? [])}
         {select("severity", "Finding severity", facets?.severity.buckets ?? [])}
+        {hasActive ? <button type="button" onClick={() => { clearFilters(); onSeverityFilterChange?.("all"); }}
+          className="h-9 px-2 text-xs text-[color:var(--text-secondary)] underline">Clear</button> : null}
       </div>
-      <p className="mt-2 text-[11px] text-[color:var(--text-tertiary)]">
-        Counts are exact over the selected snapshot and calculated before pagination. Missing facet values remain explicit in API metadata.
-      </p>
+      <details>
+        <summary className="cursor-pointer text-xs text-[color:var(--text-secondary)]">
+          Advanced filters{[filters.source, filters.provider, filters.environment].filter(Boolean).length > 0
+            ? ` · ${[filters.source, filters.provider, filters.environment].filter(Boolean).length} active` : ""}
+        </summary>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {select("source", "Source", facets?.source.buckets ?? [])}
+          {select("provider", "Provider", facets?.provider.buckets ?? [])}
+          {select("environment", "Environment", facets?.environment.buckets ?? [])}
+        </div>
+      </details>
     </section>
   );
 }

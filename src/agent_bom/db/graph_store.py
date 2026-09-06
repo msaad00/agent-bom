@@ -1281,6 +1281,10 @@ def load_graph(
         total_nodes = int(count_row[0]) if count_row else 0
         query += " ORDER BY risk_score DESC, id LIMIT ?"
         params.append(budget)
+    else:
+        # Preserve persisted node order independently of the planner's index
+        # choice. Correlation receipts hash the ordered snapshot serialization.
+        query += " ORDER BY rowid"
 
     node_ids: set[str] = set()
     for row in conn.execute(query, params):
@@ -1347,6 +1351,10 @@ def load_graph(
         placeholders = ",".join("?" * len(relationship_types))
         eq += f" AND edge.relationship IN ({placeholders})" if sql_scoped_edges else f" AND relationship IN ({placeholders})"
         eparams.extend(sorted(relationship_types))
+    # A snapshot's evidence must serialize identically across SQLite versions
+    # and query plans. Keep the established source/target/relationship order.
+    edge_prefix = "edge." if sql_scoped_edges else ""
+    eq += f" ORDER BY {edge_prefix}source_id, {edge_prefix}target_id, {edge_prefix}relationship"
     for row in conn.execute(eq, eparams):
         if row["source_id"] not in node_ids or row["target_id"] not in node_ids:
             continue
@@ -1372,7 +1380,7 @@ def load_graph(
         )
 
     if not relationship_types:
-        apq = "SELECT * FROM attack_paths WHERE tenant_id = ? AND scan_id = ?"
+        apq = "SELECT * FROM attack_paths WHERE tenant_id = ? AND scan_id = ? ORDER BY rowid"
         apparams: list[Any] = [tenant_id, effective_scan_id]
         for row in conn.execute(apq, apparams):
             graph.attack_paths.append(
@@ -1394,7 +1402,7 @@ def load_graph(
                 )
             )
 
-        irq = "SELECT * FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?"
+        irq = "SELECT * FROM interaction_risks WHERE tenant_id = ? AND scan_id = ? ORDER BY rowid"
         irparams: list[Any] = [tenant_id, effective_scan_id]
         for row in conn.execute(irq, irparams):
             graph.interaction_risks.append(

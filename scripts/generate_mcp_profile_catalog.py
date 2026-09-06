@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -26,7 +27,7 @@ def render() -> str:
             arguments.append(
                 {"name": name, "type": schema.get("type") or next((t for t in types if t), "object"), "desc": schema.get("description", "")}
             )
-        rows.append({"name": tool.name, "description": tool.description or "", "arguments": arguments})
+        rows.append({"name": tool.name, "description": inspect.cleandoc(tool.description or ""), "arguments": arguments})
     return json.dumps(rows, indent=2) + "\n"
 
 

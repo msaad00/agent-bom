@@ -113,9 +113,16 @@ def test_release_manifest_rejects_a_future_visible_version(
     assert "newer than the release" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("different_owner", [False, True])
 def test_release_manifest_rejects_capture_input_hash_mismatch(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], different_owner: bool
 ) -> None:
+    if different_owner:
+        # Container runners can mount a checkout owned by the host user while
+        # tests isolate HOME. Trust only this read-only guard's known checkout.
+        monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "empty-git-config"))
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     manifest = json.loads((ROOT / "docs/images/product-screenshots.json").read_text(encoding="utf-8"))
     manifest["capture_inputs_sha256"] = f"sha256:{'0' * 64}"
     candidate = tmp_path / "product-screenshots.json"

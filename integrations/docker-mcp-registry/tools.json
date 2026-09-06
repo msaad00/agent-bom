@@ -1,7 +1,7 @@
 [
   {
     "name": "scan",
-    "description": "Run a full AI supply chain security scan and return an AI-BOM.\n\nPoint it at a target with one of:\n  \u2022 repo_url     \u2014 a public git repo URL (cloned + scanned, no checkout)\n  \u2022 config_path  \u2014 a local project / MCP-config directory\n  \u2022 image        \u2014 a Docker image\n  \u2022 sbom_path    \u2014 an existing CycloneDX/SPDX SBOM\n  \u2022 package      \u2014 a single package or MCP launch command (pair it with\n                   ``ecosystem`` when the spec names no launcher)\nWith none of these, it auto-discovers local MCP clients (Claude Desktop,\nCursor, Windsurf, VS Code Copilot, OpenClaw, etc.).\n\nIt extracts package dependencies, queries OSV.dev for CVEs, assesses\nconfig security (credential exposure, tool access), computes blast\nradius, and returns structured results. Scanning is fully static and\nread-only \u2014 repository and image contents are parsed, never executed.\n\nReturns:\n    JSON with the complete AI-BOM report including agents, packages,\n    vulnerabilities, blast radius, and remediation guidance.\n",
+    "description": "Run a full AI supply chain security scan and return an AI-BOM.\n\nPoint it at a target with one of:\n  \u2022 repo_url     \u2014 a public git repo URL (cloned + scanned, no checkout)\n  \u2022 config_path  \u2014 a local project / MCP-config directory\n  \u2022 image        \u2014 a Docker image\n  \u2022 sbom_path    \u2014 an existing CycloneDX/SPDX SBOM\n  \u2022 package      \u2014 a single package or MCP launch command (pair it with\n                   ``ecosystem`` when the spec names no launcher)\nWith none of these, it auto-discovers local MCP clients (Claude Desktop,\nCursor, Windsurf, VS Code Copilot, OpenClaw, etc.).\n\nIt extracts package dependencies, queries OSV.dev for CVEs, assesses\nconfig security (credential exposure, tool access), computes blast\nradius, and returns structured results. Scanning is fully static and\nread-only \u2014 repository and image contents are parsed, never executed.\n\nReturns:\n    JSON with the complete AI-BOM report including agents, packages,\n    vulnerabilities, blast radius, and remediation guidance.",
     "arguments": [
       {
         "name": "repo_url",
@@ -97,7 +97,7 @@
   },
   {
     "name": "check",
-    "description": "Check a specific package for known CVEs before installing.\n\nQueries OSV.dev for vulnerabilities in the given package. Use this\nbefore installing an MCP server or dependency to verify it is safe.\n\nArgs:\n    package: Package name with optional version, e.g. \"express@4.18.2\",\n             \"@modelcontextprotocol/server-filesystem@2025.1.14\",\n             or just \"requests\" (resolves @latest).\n    ecosystem: Package ecosystem \u2014 \"npm\", \"pypi\", \"go\", \"cargo\",\n               \"maven\", \"nuget\", \"rubygems\", \"composer\", \"swift\",\n               \"pub\", \"hex\", \"conda\", \"deb\", \"apk\", or \"rpm\".\n               Defaults to \"npm\".\n\nReturns:\n    JSON with package, version, ecosystem, vulnerability count,\n    and vulnerability details (id, severity, cvss, fix version, summary).\n",
+    "description": "Check a specific package for known CVEs before installing.\n\nQueries OSV.dev for vulnerabilities in the given package. Use this\nbefore installing an MCP server or dependency to verify it is safe.\n\nArgs:\n    package: Package name with optional version, e.g. \"express@4.18.2\",\n             \"@modelcontextprotocol/server-filesystem@2025.1.14\",\n             or just \"requests\" (resolves @latest).\n    ecosystem: Package ecosystem \u2014 \"npm\", \"pypi\", \"go\", \"cargo\",\n               \"maven\", \"nuget\", \"rubygems\", \"composer\", \"swift\",\n               \"pub\", \"hex\", \"conda\", \"deb\", \"apk\", or \"rpm\".\n               Defaults to \"npm\".\n\nReturns:\n    JSON with package, version, ecosystem, vulnerability count,\n    and vulnerability details (id, severity, cvss, fix version, summary).",
     "arguments": [
       {
         "name": "package",
@@ -134,7 +134,7 @@
   },
   {
     "name": "exposure_paths",
-    "description": "Return ranked ExposurePath JSON for headless security agents.\n\nThis is the agent-native graph surface: Claude, Cursor, Codex,\nWindsurf, Cortex, and other MCP clients can request the same\ninvestigation objects used by the dashboard without scraping UI state.\n",
+    "description": "Return ranked ExposurePath JSON for headless security agents.\n\nThis is the agent-native graph surface: Claude, Cursor, Codex,\nWindsurf, Cortex, and other MCP clients can request the same\ninvestigation objects used by the dashboard without scraping UI state.",
     "arguments": [
       {
         "name": "tenant_id",
@@ -160,7 +160,7 @@
   },
   {
     "name": "policy_check",
-    "description": "Evaluate a security policy against current scan results.\n\nRuns a scan, then evaluates the provided policy rules against the\nfindings. Policies can gate on severity thresholds, CISA KEV status,\nAI risk flags, credential exposure, and denied packages.\n\nArgs:\n    policy_json: JSON string containing policy rules. Example:\n        {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\",\n        \"action\": \"fail\"}, {\"id\": \"no-kev\", \"kev\": true, \"action\": \"fail\"}]}\n\nReturns:\n    JSON with passed (bool), violations list, failure_count, and\n    warning_count.\n",
+    "description": "Evaluate a security policy against current scan results.\n\nRuns a scan, then evaluates the provided policy rules against the\nfindings. Policies can gate on severity thresholds, CISA KEV status,\nAI risk flags, credential exposure, and denied packages.\n\nArgs:\n    policy_json: JSON string containing policy rules. Example:\n        {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\",\n        \"action\": \"fail\"}, {\"id\": \"no-kev\", \"kev\": true, \"action\": \"fail\"}]}\n\nReturns:\n    JSON with passed (bool), violations list, failure_count, and\n    warning_count.",
     "arguments": [
       {
         "name": "policy_json",
@@ -171,7 +171,7 @@
   },
   {
     "name": "generate_sbom",
-    "description": "Generate a Software Bill of Materials (SBOM) for your AI agent setup.\n\nDiscovers AI agents and MCP servers, extracts all package dependencies,\nand generates a standards-compliant SBOM.\n\nArgs:\n    format: SBOM format \u2014 \"cyclonedx\" (CycloneDX 1.7) or \"spdx\" (SPDX 3.0).\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n\nReturns:\n    JSON string containing the SBOM in the requested format.\n",
+    "description": "Generate a Software Bill of Materials (SBOM) for your AI agent setup.\n\nDiscovers AI agents and MCP servers, extracts all package dependencies,\nand generates a standards-compliant SBOM.\n\nArgs:\n    format: SBOM format \u2014 \"cyclonedx\" (CycloneDX 1.7) or \"spdx\" (SPDX 3.0).\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n\nReturns:\n    JSON string containing the SBOM in the requested format.",
     "arguments": [
       {
         "name": "format",
@@ -187,7 +187,7 @@
   },
   {
     "name": "compliance",
-    "description": "Get OWASP LLM Top 10 / OWASP MCP Top 10 / MITRE ATLAS / NIST AI RMF compliance posture.\n\nScans local MCP configurations, maps findings to 47 security controls\nacross four AI security frameworks, and returns per-control\npass/warning/fail status with an overall compliance score.\n\nArgs:\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n    image: Docker image reference to scan (e.g. \"nginx:1.25\").\n\nReturns:\n    JSON with overall_score (0-100), overall_status (pass/warning/fail/no_data),\n    and per-control details for OWASP LLM Top 10 (10 controls),\n    OWASP MCP Top 10 (10 controls), MITRE ATLAS (13 techniques),\n    and NIST AI RMF (14 subcategories). Plus a nist_800_53_catalog line:\n    the vendor-asserted, catalog-backed NIST SP 800-53 Rev 5 score over\n    evaluated controls only (with ISO-27001-by-id attribution), scored\n    independently and NOT folded into overall_score.\n",
+    "description": "Get OWASP LLM Top 10 / OWASP MCP Top 10 / MITRE ATLAS / NIST AI RMF compliance posture.\n\nScans local MCP configurations, maps findings to 47 security controls\nacross four AI security frameworks, and returns per-control\npass/warning/fail status with an overall compliance score.\n\nArgs:\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n    image: Docker image reference to scan (e.g. \"nginx:1.25\").\n\nReturns:\n    JSON with overall_score (0-100), overall_status (pass/warning/fail/no_data),\n    and per-control details for OWASP LLM Top 10 (10 controls),\n    OWASP MCP Top 10 (10 controls), MITRE ATLAS (13 techniques),\n    and NIST AI RMF (14 subcategories). Plus a nist_800_53_catalog line:\n    the vendor-asserted, catalog-backed NIST SP 800-53 Rev 5 score over\n    evaluated controls only (with ISO-27001-by-id attribution), scored\n    independently and NOT folded into overall_score.",
     "arguments": [
       {
         "name": "config_path",
@@ -203,7 +203,7 @@
   },
   {
     "name": "remediate",
-    "description": "Generate a remediation plan for vulnerabilities in your AI agent setup.\n\nScans for vulnerabilities, then generates actionable fix commands for\neach affected package (npm install, pip install), credential scope\nreduction guidance, and reports on unfixable vulnerabilities.\n\nArgs:\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n    image: Docker image reference to scan (e.g. \"nginx:1.25\").\n\nReturns:\n    JSON with package_fixes (upgrade commands by ecosystem),\n    credential_fixes (scope reduction steps), and unfixable items.\n",
+    "description": "Generate a remediation plan for vulnerabilities in your AI agent setup.\n\nScans for vulnerabilities, then generates actionable fix commands for\neach affected package (npm install, pip install), credential scope\nreduction guidance, and reports on unfixable vulnerabilities.\n\nArgs:\n    config_path: Path to a specific MCP config directory.\n                 If not provided, auto-discovers all local agent configs.\n    image: Docker image reference to scan (e.g. \"nginx:1.25\").\n\nReturns:\n    JSON with package_fixes (upgrade commands by ecosystem),\n    credential_fixes (scope reduction steps), and unfixable items.",
     "arguments": [
       {
         "name": "config_path",

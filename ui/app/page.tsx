@@ -389,8 +389,10 @@ export default function Dashboard() {
     setScoreFormatOverride(format);
     api.updateScoreConfig({ display_format: format }).catch(() => {});
   };
-  const latestScanShort =
-    summaryReady && effectiveRecentJobs[0]
+  const overviewSnapshot = overview?.finding_counts && !importedReport ? overview : null;
+  const latestScanShort = overviewSnapshot
+    ? (overviewSnapshot.headline.latest_scan_at ? formatShortScanTime(overviewSnapshot.headline.latest_scan_at) : null)
+    : summaryReady && effectiveRecentJobs[0]
       ? formatShortScanTime(
           effectiveRecentJobs[0].scan_timestamp ??
             effectiveRecentJobs[0].generated_at ??
@@ -468,8 +470,8 @@ export default function Dashboard() {
         credentials={summaryReady ? displayedCredentialExposure : null}
         agents={displayedAgentCount}
         cves={summaryReady ? displayedUniqueCVEs : null}
-        scans={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
-        latestScan={jobsLoading ? null : latestScanShort}
+        scans={overviewSnapshot ? overviewSnapshot.headline.scans : summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
+        latestScan={overviewSnapshot || !jobsLoading ? latestScanShort : null}
         mode={deploymentModeLabel(counts?.deployment_mode)}
         summaryReady={Boolean(importedReport || counts || overview)}
         findingsScopeLabel="Current findings · configured window"

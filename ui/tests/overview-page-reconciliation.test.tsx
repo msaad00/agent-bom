@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Dashboard from "@/app/page";
+import type { OverviewResponse } from "@/lib/api";
 
 const { apiMock, deploymentCounts } = vi.hoisted(() => ({
   apiMock: {
@@ -40,7 +41,7 @@ vi.mock("@/hooks/use-deployment-context", () => ({
 vi.mock("@/lib/use-capture-mode", () => ({ useCaptureMode: () => false }));
 vi.mock("@/components/activity-feed", () => ({ ActivityFeed: () => <div>Activity fixture</div> }));
 
-function overviewFixture() {
+function overviewFixture(): OverviewResponse {
   const domain = (label: string, metric: number, metricLabel: string, href: string) => ({
     label,
     href,
@@ -191,16 +192,36 @@ describe("Overview canonical finding counts", () => {
     await act(async () => resolveRefresh({
       ...initial,
       posture: { ...initial.posture, grade: "A", score: 100 },
+      headline: { ...initial.headline, scans: 0, latest_scan_at: null },
       finding_counts: { ...initial.finding_counts, critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: 0, kev: 0 },
       top_risks: [],
     }));
     expect(screen.getByRole("link", { name: /^Critical 0/i })).toBeInTheDocument();
     expect(screen.getByText("100%")).toBeVisible();
+    expect(screen.getByText("Run a scan to establish freshness.")).toBeVisible();
     expect(screen.queryByText(/scan-0-abcdefgh-stale/)).not.toBeInTheDocument();
     expect(screen.queryByText(/CVE-2025-1234/)).not.toBeInTheDocument();
     view.unmount();
     await act(async () => { vi.advanceTimersByTime(120_000); });
     expect(apiMock.getOverview).toHaveBeenCalledTimes(initialCalls + 1);
+  });
+
+  it("updates nonzero counts, KEV and score from the next overview snapshot", async () => {
+    vi.useFakeTimers();
+    const initial = { ...overviewFixture(), finding_counts: { ...deploymentCounts } };
+    apiMock.getOverview.mockResolvedValueOnce(initial).mockResolvedValueOnce({
+      ...initial,
+      posture: { ...initial.posture, score: 75, grade: "C" },
+      finding_counts: { critical: 2, high: 3, medium: 4, low: 1, unrated: 0, total: 10, kev: 1 },
+    });
+    render(<Dashboard />);
+    await act(async () => {});
+    expect(screen.getByRole("link", { name: /^Critical 7/i })).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(screen.getByRole("link", { name: /^Critical 2/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^High 3/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /KEV 1/i })).toBeInTheDocument();
+    expect(screen.getByText("75%")).toBeVisible();
   });
 
   it("retains the last coherent snapshot and discloses an unavailable refresh", async () => {

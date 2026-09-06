@@ -81,6 +81,7 @@ def test_proxy_route_reset_targets_exist() -> None:
         "_audit_dedupe",
         "_audit_dedupe_lock",
         "_reset_audit_dedupe_for_tests",
+        "_reset_ws_handshake_rate_limit_for_tests",
     ):
         assert hasattr(proxy_routes, attr), (
             f"agent_bom.api.routes.proxy.{attr} is gone but _reset_proxy_route_state "

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -165,6 +166,25 @@ def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     headroom for the coverage-only lane.
     """
     assert _ci()["jobs"]["test-main"]["timeout-minutes"] == 45
+
+
+def test_full_correctness_matrix_covers_every_supported_python_minor() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    supported = {
+        classifier.rsplit(" :: ", 1)[-1]
+        for classifier in project["classifiers"]
+        if classifier.startswith("Programming Language :: Python :: 3.")
+    }
+    matrix = set(_ci()["jobs"]["test-main"]["strategy"]["matrix"]["python-version"])
+
+    assert matrix == supported
+
+
+def test_local_test_target_enforces_the_ci_coverage_floor() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    test_target = makefile.split("test:  ## Run unit tests", 1)[1].split("\n\n", 1)[0]
+
+    assert "--cov-fail-under=75" in test_target
 
 
 def test_version_alignment_fails_fast_when_uv_lock_is_stale() -> None:

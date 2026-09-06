@@ -145,10 +145,13 @@ def test_readme_distinguishes_graph_relationship_provenance() -> None:
     normalized = " ".join(readme.lower().split())
 
     assert "Graph views use observed nodes and relationships" not in readme
-    assert "shared oci digests are metadata, not runtime identity" in normalized
-    assert "scoped runtime identities" in normalized
-    assert "per-hop source provenance" in normalized
-    assert "runtime observation and strict block proof" in normalized
+    assert "matching labels alone never prove a path" in normalized
+    assert "observed or modeled entities" in normalized
+    assert "source receipt" in normalized
+    assert "a gateway block can contain one tool call" in normalized
+    assert "deployed remediation and live-cloud validation are not claimed" in normalized
+    workflow = " ".join((ROOT / "docs/HOW_IT_WORKS.md").read_text().lower().split())
+    assert "they do not merge permission-bearing runtime occurrences" in workflow
     assert "observed graph evidence" not in readme
 
 
@@ -235,10 +238,10 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert commands == ["pip install agent-bom", "agent-bom scan ."]
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
-    for image in ("correlation-receipts-live.png", "correlation-path-live.png"):
-        assert readme.count(image) == 1  # one full-width screenshot per stage
-        assert image.replace("-live.png", "-light-live.png") in readme
-    assert "[Explore the product gallery](docs/GALLERY.md)" in readme
+    assert readme.count("correlation-receipts-live.png") == 1
+    assert "correlation-receipts-light-live.png" in readme
+    assert "correlation-path-live.png" not in readme  # drilldown belongs in the scenario guide
+    assert "[Explore reproducible product scenarios](docs/GALLERY.md)" in readme
     assert "gateway-policies-live.png" not in readme
 
     # Persona surfaces keep security engineering and GRC as separate lanes
@@ -255,7 +258,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "workflow-dark.svg" in readme
     assert "architecture-dark.svg" not in readme
     assert "persona-value-dark.svg" not in readme
-    assert readme.count("-live.png") == 4
+    assert readme.count("-live.png") == 2
     assert 'width="920"' in readme
     assert "blast-radius-dark.svg" not in readme
 

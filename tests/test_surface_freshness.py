@@ -887,3 +887,205 @@ def test_default_smithery_listing_uses_product_namespace():
     script = _load_script("check_surface_freshness.py")
     assert script.DEFAULT_SMITHERY_SERVER == "agentbom/agent-bom"
     assert script._smithery_catalog_url(script.DEFAULT_SMITHERY_SERVER) == "https://api.smithery.ai/servers/agentbom/agent-bom"
+
+
+def _strict_marketplace_tool():
+    return {
+        "name": "check",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"package": {"type": "string"}},
+            "required": ["package"],
+            "additionalProperties": False,
+        },
+    }
+
+
+@pytest.mark.parametrize("missing", ["required", "additionalProperties"])
+def test_smithery_rejects_schema_constraint_loss(monkeypatch, missing):
+    script = _load_script("check_surface_freshness.py")
+    expected = [_strict_marketplace_tool()]
+    actual = json.loads(json.dumps(expected))
+    actual[0]["inputSchema"].pop(missing)
+    monkeypatch.setattr(
+        script,
+        "_http_json",
+        lambda *_a, **_kw: {
+            "qualifiedName": "agentbom/agent-bom",
+            "remote": True,
+            "deploymentUrl": "https://agent-bom--agentbom.run.tools",
+            "tools": actual,
+        },
+    )
+    result = script.probe_smithery(
+        "0.103.2", "agentbom/agent-bom", expected_tool_count=1, expected_tool_names=["check"], expected_tool_contract=expected
+    )
+    assert result["status"] == "stale"
+    assert result["exact_input_schemas"] is False
+
+
+def test_smithery_accepts_exact_schemas(monkeypatch):
+    script = _load_script("check_surface_freshness.py")
+    tools = [_strict_marketplace_tool()]
+    monkeypatch.setattr(
+        script,
+        "_http_json",
+        lambda *_a, **_kw: {
+            "qualifiedName": "agentbom/agent-bom",
+            "remote": True,
+            "deploymentUrl": "https://agent-bom--agentbom.run.tools",
+            "tools": tools,
+        },
+    )
+    result = script.probe_smithery(
+        "0.103.2", "agentbom/agent-bom", expected_tool_count=1, expected_tool_names=["check"], expected_tool_contract=tools
+    )
+    assert result["status"] == "fresh"
+    assert result["exact_input_schemas"] is True
+
+
+@pytest.mark.parametrize("fault", ["version", "names", "duplicate", "schema"])
+def test_monitor_rejects_unbound_server_card(monkeypatch, tmp_path, fault):
+    script = _load_script("check_surface_freshness.py")
+    card = {"serverInfo": {"version": "0.103.2"}, "tools": [_strict_marketplace_tool()]}
+    if fault == "version":
+        card["serverInfo"]["version"] = "0.1.0"
+    elif fault == "names":
+        card["tools"][0]["name"] = "wrong"
+    elif fault == "duplicate":
+        card["tools"].append(_strict_marketplace_tool())
+    else:
+        card["tools"][0]["inputSchema"] = None
+    monkeypatch.setattr(script, "_http_json", lambda *_a, **_kw: card)
+    names = tmp_path / "names.json"
+    names.write_text('["check"]')
+    dest = tmp_path / "contract.json"
+    with pytest.raises(SystemExit):
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "1",
+                "--expected-tool-names-file",
+                str(names),
+                "--server-card-url",
+                "https://example.com/.well-known/mcp/server-card.json",
+                "--write-tool-contract",
+                str(dest),
+            ]
+        )
+    assert not dest.exists()
+
+
+def test_smithery_schema_drift_keeps_consolidated_issue_open(monkeypatch, tmp_path, capsys):
+    script = _load_script("check_surface_freshness.py")
+    tools = [_strict_marketplace_tool()]
+    contract = tmp_path / "contract.json"
+    contract.write_text(json.dumps(tools))
+    actual = json.loads(json.dumps(tools))
+    actual[0]["inputSchema"].pop("required")
+    monkeypatch.setattr(
+        script,
+        "_http_json",
+        lambda *_a, **_kw: {
+            "qualifiedName": "agentbom/agent-bom",
+            "remote": True,
+            "deploymentUrl": "https://agent-bom--agentbom.run.tools",
+            "tools": actual,
+        },
+    )
+    assert (
+        script.main(
+            [
+                "--surface",
+                "smithery",
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "1",
+                "--expected-tool-contract-file",
+                str(contract),
+                "--fail-on-stale",
+            ]
+        )
+        == 1
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["all_fresh"] is False
+    assert result["surfaces"][0]["exact_input_schemas"] is False
+
+
+def test_both_daily_monitors_require_exact_schema_evidence():
+    for name in ("surface-freshness.yml", "deployment-freshness.yml"):
+        workflow = (ROOT / ".github/workflows" / name).read_text()
+        assert "--write-tool-contract" in workflow
+        assert "--expected-tool-contract-file" in workflow
+        assert "--expected-tool-names-file" in workflow
+
+
+def test_monitor_writes_only_validated_release_schemas(monkeypatch, tmp_path):
+    script = _load_script("check_surface_freshness.py")
+    tools = [_strict_marketplace_tool()]
+    monkeypatch.setattr(script, "_http_json", lambda *_a, **_kw: {"serverInfo": {"version": "0.103.2"}, "tools": tools})
+    names = tmp_path / "names.json"
+    names.write_text('["check"]')
+    dest = tmp_path / "contract.json"
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "1",
+                "--expected-tool-names-file",
+                str(names),
+                "--server-card-url",
+                "https://example.com/.well-known/mcp/server-card.json",
+                "--write-tool-contract",
+                str(dest),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(dest.read_text()) == tools
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://example.com/card", "https://user:secret@example.com/card", "https://example.com/card?token=x", "https://example.com/card#x"],
+)
+def test_release_schema_source_rejects_unsafe_urls(monkeypatch, url):
+    script = _load_script("check_surface_freshness.py")
+    monkeypatch.setattr(script, "_http_json", lambda *_a, **_kw: pytest.fail("must reject URL before network access"))
+    with pytest.raises(ValueError):
+        script._released_server_card(url, "0.103.2", ["check"])
+
+
+def test_monitor_does_not_ignore_missing_requested_contract(tmp_path):
+    script = _load_script("check_surface_freshness.py")
+    with pytest.raises(SystemExit, match="could not load expected schema contract"):
+        script.main(["--expected-tool-count", "1", "--expected-tool-contract-file", str(tmp_path / "missing.json")])
+
+
+def test_glama_monitor_forwards_required_schema_contract(monkeypatch, tmp_path):
+    script = _load_script("check_surface_freshness.py")
+    contract = tmp_path / "contract.json"
+    seen = []
+
+    def run(command, **_kw):
+        seen.extend(command)
+        return subprocess.CompletedProcess(command, 1, stdout=json.dumps({"status": "stale", "exact_input_schemas": False}))
+
+    monkeypatch.setattr(script.subprocess, "run", run)
+    result = script.probe_glama("0.103.2", expected_tool_contract_file=contract)
+    assert seen[seen.index("--expected-tool-contract-file") + 1] == str(contract)
+    assert result["status"] == "stale"
+    assert result["exact_input_schemas"] is False
+
+
+def test_deployment_issue_closure_requires_explicit_verified_success():
+    workflow = (ROOT / ".github/workflows/deployment-freshness.yml").read_text()
+    close_step = workflow.split("- name: Close supply-chain drift issue when deployment is fresh", 1)[1]
+    assert "steps.public.outputs.public_version == 'fresh'" in close_step
+    assert "steps.public.outputs.probe_failed == 'false'" in close_step

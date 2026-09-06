@@ -78,18 +78,29 @@ jobs:
         id: probe
         env:
           EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
           SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
           GLAMA_LISTING_URL: ${{ vars.GLAMA_LISTING_URL }}
           GLAMA_API_URL: ${{ vars.GLAMA_API_URL }}
           DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
         run: |
+          set -euo pipefail
           python3 scripts/check_glama_listing.py \
             --write-tool-names /tmp/surface-expected-tool-names.json \
             --git-ref "${{ steps.expected.outputs.release_sha }}"
+          SERVER_CARD_URL="${SMITHERY_MCP_URL:-https://agent-bom-mcp.up.railway.app/mcp}"
+          SERVER_CARD_URL=$(python3 -c 'import sys; from urllib.parse import urlsplit, urlunsplit; p=urlsplit(sys.argv[1]); print(urlunsplit((p.scheme,p.netloc,"/.well-known/mcp/server-card.json","","")))' "$SERVER_CARD_URL")
+          python3 scripts/check_surface_freshness.py \
+            --expected "$EXPECTED_VERSION" \
+            --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
+            --expected-tool-names-file /tmp/surface-expected-tool-names.json \
+            --server-card-url "$SERVER_CARD_URL" \
+            --write-tool-contract /tmp/surface-expected-tool-contract.json
           PYTHONPATH=src python3 scripts/check_surface_freshness.py \
             --expected "$EXPECTED_VERSION" \
             --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
             --expected-tool-names-file /tmp/surface-expected-tool-names.json \
+            --expected-tool-contract-file /tmp/surface-expected-tool-contract.json \
             --out surface-freshness.json
           {
             echo "report<<EOF"

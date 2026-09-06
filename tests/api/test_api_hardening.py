@@ -589,7 +589,7 @@ def test_trust_headers_present():
 
 def test_configure_api_refreshes_cors_policy():
     """configure_api() should update the live CORS middleware, not just a module variable."""
-    configure_api(cors_allow_all=True)
+    configure_api(cors_allow_all=True, listener_host="127.0.0.1")
     client = TestClient(app)
     resp = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
     assert resp.status_code == 200
@@ -600,6 +600,12 @@ def test_configure_api_refreshes_cors_policy():
     resp = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
     assert resp.status_code == 200
     assert resp.headers.get("access-control-allow-origin") is None
+
+
+@pytest.mark.parametrize("listener_host", [None, "0.0.0.0", "::", "api.example.com"])
+def test_configure_api_rejects_wildcard_cors_without_loopback_listener(listener_host: str | None):
+    with pytest.raises(ValueError, match="loopback listener_host"):
+        configure_api(cors_allow_all=True, listener_host=listener_host)
 
 
 def test_configure_api_defaults_to_release_safe_rate_limit():

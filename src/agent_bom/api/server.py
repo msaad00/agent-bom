@@ -11,6 +11,7 @@ dashboard mounting. All domain routes live in api/routes/ sub-modules.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
 import re
@@ -970,6 +971,16 @@ def _validated_rate_limit_rpm(value: int) -> int:
     return rpm
 
 
+def _is_loopback_listener(host: str) -> bool:
+    cleaned = host.strip().lower()
+    if cleaned == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(cleaned).is_loopback
+    except ValueError:
+        return False
+
+
 # CORS: defaults to localhost; configure via configure_api() before startup
 _apply_cors_middleware(_cors_origins)
 
@@ -998,6 +1009,7 @@ def configure_api(
     api_key: str | None = None,
     rate_limit_rpm: int = DEFAULT_RATE_LIMIT_RPM,
     allow_unauthenticated: bool | None = None,
+    listener_host: str | None = None,
 ) -> None:
     """Configure API hardening before server startup.
 
@@ -1008,6 +1020,8 @@ def configure_api(
     validated_rate_limit_rpm = _validated_rate_limit_rpm(rate_limit_rpm)
 
     if cors_allow_all:
+        if not listener_host or not _is_loopback_listener(listener_host):
+            raise ValueError("Wildcard CORS requires an explicit loopback listener_host")
         _cors_origins = ["*"]
     elif cors_origins:
         _cors_origins = cors_origins

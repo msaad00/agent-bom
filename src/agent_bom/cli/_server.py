@@ -47,6 +47,14 @@ def _is_loopback_host(host: str) -> bool:
         return False
 
 
+def _enforce_cors_posture(host: str, cors_allow_all: bool) -> None:
+    """Keep wildcard browser access confined to a loopback development listener."""
+    if cors_allow_all and not _is_loopback_host(host):
+        raise click.ClickException(
+            "Refusing wildcard CORS on a non-loopback listener. Configure explicit CORS origins for every trusted UI."
+        )
+
+
 def _oidc_enabled() -> bool:
     """Return True when OIDC auth is configured via environment."""
     from agent_bom.api.oidc import oidc_enabled_from_env
@@ -699,6 +707,7 @@ def serve_cmd(
         analytics_max_queue=analytics_max_queue,
     )
 
+    _enforce_cors_posture(host, cors_allow_all)
     _enforce_auth_defaults("serve", host, api_key, allow_insecure_no_auth)
     _enforce_control_plane_listener_posture(host)
     _enforce_database_role_posture("serve")
@@ -724,6 +733,7 @@ def serve_cmd(
         cors_allow_all=cors_allow_all,
         api_key=api_key or dev_api_key,
         allow_unauthenticated=allow_insecure_no_auth,
+        listener_host=host,
     )
     if persist_path:
         # Do not rely only on the server module's first-import environment
@@ -987,6 +997,7 @@ def api_cmd(
     from agent_bom import __version__ as _ver
     from agent_bom.api.server import configure_api, set_job_store
 
+    _enforce_cors_posture(host, cors_allow_all)
     _enforce_auth_defaults("api", host, api_key, allow_insecure_no_auth)
     _enforce_control_plane_listener_posture(host)
     _enforce_database_role_posture("api")
@@ -1002,6 +1013,7 @@ def api_cmd(
         api_key=api_key,
         rate_limit_rpm=rate_limit_rpm,
         allow_unauthenticated=allow_insecure_no_auth,
+        listener_host=host,
     )
 
     pg_url = _os.environ.get("AGENT_BOM_POSTGRES_URL")

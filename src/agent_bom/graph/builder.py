@@ -99,6 +99,16 @@ def build_unified_graph_from_report(
         agent_node_key = agent_id.removeprefix("agent:")
         agent_type = agent_dict.get("type", agent_dict.get("agent_type", ""))
         provider_name = str(agent_dict.get("source") or "local").strip() or "local"
+        servers = agent_dict.get("mcp_servers", [])
+        # Import wrappers share the legacy Agent/MCPServer serialization shape.
+        # An SBOM documents packages; it does not establish a running agent.
+        sbom_import = (
+            bool(servers)
+            and all(srv.get("surface") == "sbom" for srv in servers)
+            and (provider_name == "sbom" or agent_name.startswith("sbom:"))
+        )
+        if sbom_import:
+            provider_name = "sbom"
         provider_id = f"provider:{provider_name}"
         agent_metadata = agent_dict.get("metadata", {})
         if not isinstance(agent_metadata, dict):
@@ -122,13 +132,14 @@ def build_unified_graph_from_report(
         graph.add_node(
             UnifiedNode(
                 id=agent_id,
-                entity_type=EntityType.AGENT,
-                label=agent_name,
+                entity_type=EntityType.SOURCE_FILE if sbom_import else EntityType.AGENT,
+                label=agent_name.removeprefix("sbom:") if sbom_import else agent_name,
                 first_seen=str(agent_dict.get("discovered_at") or ""),
                 last_seen=str(agent_dict.get("last_seen") or agent_dict.get("discovered_at") or ""),
                 attributes={
                     "agent_type": agent_type,
-                    "canonical_id": agent_dict.get("canonical_id")
+                    "canonical_id": (canonical_graph_node_id(EntityType.SOURCE_FILE.value, agent_id) if sbom_import else None)
+                    or agent_dict.get("canonical_id")
                     or (
                         canonical_agent_id(agent_type, agent_name, source_id=agent_scope)
                         if agent_scope
@@ -154,7 +165,11 @@ def build_unified_graph_from_report(
                     "cloud_scope": agent_metadata.get("cloud_scope"),
                     "cloud_principal": agent_metadata.get("cloud_principal"),
                 },
-                dimensions=NodeDimensions(agent_type=agent_type, environment=agent_env),
+                dimensions=NodeDimensions(
+                    agent_type="" if sbom_import else agent_type,
+                    surface="sbom" if sbom_import else "",
+                    environment=agent_env,
+                ),
                 data_sources=[data_source_tag],
             )
         )
@@ -166,7 +181,7 @@ def build_unified_graph_from_report(
             UnifiedEdge(
                 source=provider_id,
                 target=agent_id,
-                relationship=RelationshipType.HOSTS,
+                relationship=RelationshipType.CONTAINS if sbom_import else RelationshipType.HOSTS,
             )
         )
         _add_agent_cloud_lineage(
@@ -179,51 +194,53 @@ def build_unified_graph_from_report(
 
         for srv_dict in agent_dict.get("mcp_servers", []):
             srv_name = srv_dict.get("name", "unknown")
-            srv_id = f"server:{agent_node_key}:{srv_name}"
+            srv_id = agent_id if sbom_import else f"server:{agent_node_key}:{srv_name}"
             surface = srv_dict.get("surface", "mcp-server")
 
-            graph.add_node(
-                UnifiedNode(
-                    id=srv_id,
-                    entity_type=EntityType.SERVER,
-                    label=srv_name,
-                    attributes={
-                        "command": sanitize_text(srv_dict.get("command", "")),
-                        "transport": srv_dict.get("transport", ""),
-                        "url": sanitize_url(str(srv_dict.get("url") or "")) or "",
-                        "auth_mode": srv_dict.get("auth_mode", ""),
-                        "mcp_version": srv_dict.get("mcp_version", ""),
-                        "has_credentials": srv_dict.get("has_credentials", False),
-                        "security_blocked": srv_dict.get("security_blocked", False),
-                        "security_warnings": sanitize_security_warnings(list(srv_dict.get("security_warnings", []) or [])),
-                        "security_intelligence": [
-                            sanitize_security_intelligence_entry(item)
-                            for item in (srv_dict.get("security_intelligence", []) or [])
-                            if isinstance(item, dict)
-                        ],
-                        "security_intelligence_count": len(srv_dict.get("security_intelligence", []) or []),
-                        "agent": agent_name,
-                        "environment": agent_env,
-                        "canonical_id": srv_dict.get("canonical_id")
-                        or srv_dict.get("stable_id")
-                        or canonical_graph_node_id(EntityType.SERVER.value, srv_id),
-                        "source_ids": source_ids(stable_id=srv_dict.get("stable_id"), registry_id=srv_dict.get("registry_id")),
-                        "stable_id": srv_dict.get("stable_id", ""),
-                        "fingerprint": srv_dict.get("fingerprint", ""),
-                    },
-                    dimensions=NodeDimensions(surface=surface, environment=agent_env),
-                    data_sources=[data_source_tag],
+            if not sbom_import:
+                graph.add_node(
+                    UnifiedNode(
+                        id=srv_id,
+                        entity_type=EntityType.SERVER,
+                        label=srv_name,
+                        attributes={
+                            "command": sanitize_text(srv_dict.get("command", "")),
+                            "transport": srv_dict.get("transport", ""),
+                            "url": sanitize_url(str(srv_dict.get("url") or "")) or "",
+                            "auth_mode": srv_dict.get("auth_mode", ""),
+                            "mcp_version": srv_dict.get("mcp_version", ""),
+                            "has_credentials": srv_dict.get("has_credentials", False),
+                            "security_blocked": srv_dict.get("security_blocked", False),
+                            "security_warnings": sanitize_security_warnings(list(srv_dict.get("security_warnings", []) or [])),
+                            "security_intelligence": [
+                                sanitize_security_intelligence_entry(item)
+                                for item in (srv_dict.get("security_intelligence", []) or [])
+                                if isinstance(item, dict)
+                            ],
+                            "security_intelligence_count": len(srv_dict.get("security_intelligence", []) or []),
+                            "agent": agent_name,
+                            "environment": agent_env,
+                            "canonical_id": srv_dict.get("canonical_id")
+                            or srv_dict.get("stable_id")
+                            or canonical_graph_node_id(EntityType.SERVER.value, srv_id),
+                            "source_ids": source_ids(stable_id=srv_dict.get("stable_id"), registry_id=srv_dict.get("registry_id")),
+                            "stable_id": srv_dict.get("stable_id", ""),
+                            "fingerprint": srv_dict.get("fingerprint", ""),
+                        },
+                        dimensions=NodeDimensions(surface=surface, environment=agent_env),
+                        data_sources=[data_source_tag],
+                    )
                 )
-            )
             server_name_to_ids[srv_name].append(srv_id)
-            graph.add_edge(
-                UnifiedEdge(
-                    source=agent_id,
-                    target=srv_id,
-                    relationship=RelationshipType.USES,
+            if not sbom_import:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=agent_id,
+                        target=srv_id,
+                        relationship=RelationshipType.USES,
+                    )
                 )
-            )
-            server_to_agents[srv_name].append(agent_id)
+                server_to_agents[srv_name].append(agent_id)
             server_name_to_agent_servers[srv_name][agent_id] = srv_id
             agent_to_server_ids[agent_name].add(srv_id)
             if agent_scope:
@@ -276,7 +293,7 @@ def build_unified_graph_from_report(
                     UnifiedEdge(
                         source=srv_id,
                         target=pkg_id,
-                        relationship=RelationshipType.DEPENDS_ON,
+                        relationship=RelationshipType.CONTAINS if sbom_import else RelationshipType.DEPENDS_ON,
                         evidence=package_evidence,
                     )
                 )
@@ -297,6 +314,10 @@ def build_unified_graph_from_report(
                                 str(vuln_dict.get("severity", "") or "").lower(),
                             )
                         )
+
+            if sbom_import:
+                # Runtime capability/credential assertions require runtime sources.
+                continue
 
             # ── Tools ──
             tool_ids: list[str] = []

@@ -369,6 +369,7 @@ def _reset_proxy_route_state() -> None:
         proxy_routes._proxy_metrics = None
         proxy_routes._proxy_metrics_by_tenant.clear()
         proxy_routes._reset_audit_dedupe_for_tests()
+        proxy_routes._reset_ws_handshake_rate_limit_for_tests()
     except Exception:
         pass
 

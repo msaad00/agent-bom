@@ -42,7 +42,7 @@ def test_required_ci_contexts_use_docs_only_fast_paths_without_disappearing() ->
     workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
     assert "scripts/classify_ci_changes.py" in workflow_text
     assert "Documentation-only safety checks" in workflow_text
-    assert "Documentation-only test skip" in workflow_text
+    assert "Documentation-only test skip" not in workflow_text
     assert "Documentation-only package skip" in workflow_text
 
 
@@ -235,6 +235,18 @@ def test_python_smoke_gate_combines_changed_domain_and_cross_surface_contracts()
     assert "tests/test_cli_entry_points.py" in run
     assert "tests/test_product_surface_contract.py" in run
     assert "tests/api/test_api_scan_findings_wiring.py" in run
+
+
+def test_readme_contracts_run_for_ui_and_documentation_only_changes() -> None:
+    """Public presentation edits must fail PR CI before the full main suite."""
+    smoke = _ci()["jobs"]["test-smoke"]
+    steps = smoke["steps"]
+    for step in steps:
+        if "uses" in step or step.get("name") in {"Install dependencies", "Run changed-domain and cross-surface smoke"}:
+            assert step.get("if") is None
+    run = next(step["run"] for step in steps if step.get("name") == "Run changed-domain and cross-surface smoke")
+    for contract in ("test_doc_architecture_svgs.py", "test_public_frontdoor_contract.py", "test_public_docs_cli_alignment.py"):
+        assert f"tests/{contract}" in run
 
 
 def test_package_build_waits_for_smoke_not_long_correctness_shards() -> None:

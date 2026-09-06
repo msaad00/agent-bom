@@ -105,7 +105,7 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     assert all(image in journey for image in images)
     assert [journey.index(image) for image in images] == sorted(journey.index(image) for image in images)
     assert 'width="920"' in journey
-    assert "[Open the full product gallery](docs/GALLERY.md)" in journey
+    assert "[Explore the product gallery](docs/GALLERY.md)" in journey
     assert "reference evidence lab — modeled local infrastructure" in normalized
     assert "CVE-2023-4863" in journey
     assert "DEMO-VULN" not in journey

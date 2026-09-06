@@ -535,7 +535,7 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
     assert "RAILWAY_MCP_BEARER_TOKEN" in workflow
     assert "SMITHERY_SERVER_QUALIFIED_NAME" in workflow
-    assert "api.smithery.ai/servers" in workflow
+    assert "--surface smithery" in workflow
     assert "python3 -m agent_bom.deployment_probe" in workflow
     assert "tool_count" in workflow
     assert "smithery-oauth" in workflow
@@ -562,10 +562,10 @@ def test_deployment_freshness_marks_smithery_tool_count_drift() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
 
     assert "EXPECTED_TOOL_COUNT: ${{ steps.expected.outputs.tool_count }}" in workflow
-    assert 'EXPECTED_TOOL_COUNT="$EXPECTED_TOOL_COUNT"' in workflow
-    assert "int(data.get('tool_count') or 0) != int(os.environ['EXPECTED_TOOL_COUNT'])" in workflow
+    assert '--expected-tool-count "$EXPECTED_TOOL_COUNT"' in workflow
+    assert "--expected-tool-contract-file" in workflow
     assert 'echo "stale=true" >> "$GITHUB_OUTPUT"' in workflow
-    assert "Smithery catalog tool inventory differs from the published release contract" in workflow
+    assert "Smithery catalog differs from the published tool-name and input-schema contract" in workflow
 
 
 def test_publishing_guide_does_not_pin_a_stale_mcp_tool_count() -> None:

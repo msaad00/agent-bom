@@ -86,6 +86,41 @@ def _load_expected_tool_names(path: Path) -> list[str]:
     return sorted(payload)
 
 
+def _load_tool_contract(path: Path) -> list[dict[str, Any]]:
+    if path.stat().st_size > 2 * 1024 * 1024:
+        raise ValueError("tool contract exceeds bounded input size")
+    return _validate_tool_contract(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _validate_tool_contract(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("tool contract must be a non-empty list")
+    tools = []
+    for tool in payload:
+        if not isinstance(tool, dict):
+            raise ValueError("tool contract contains a malformed tool")
+        name = tool.get("name")
+        if not isinstance(name, str) or not name or name != name.strip() or not isinstance(tool.get("inputSchema"), dict):
+            raise ValueError("tool contract contains an invalid name or schema")
+        tools.append({"name": name, "inputSchema": tool["inputSchema"]})
+    if len({tool["name"] for tool in tools}) != len(tools):
+        raise ValueError("tool contract contains duplicate names")
+    return sorted(tools, key=lambda tool: tool["name"])
+
+
+def _released_server_card(url: str, expected: str, names: list[str], **kw: Any) -> list[dict[str, Any]]:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("server-card URL must be HTTPS without credentials, query, or fragment")
+    data = _http_json(url, **kw)
+    if not isinstance(data, dict) or not isinstance(data.get("serverInfo"), dict) or data["serverInfo"].get("version") != expected:
+        raise ValueError("server-card version does not match the released version")
+    tools = _validate_tool_contract(data.get("tools"))
+    if [tool["name"] for tool in tools] != names:
+        raise ValueError("server-card tool names do not match the immutable release contract")
+    return tools
+
+
 def _env_or(name: str, default: str) -> str:
     """Return env var if non-blank; otherwise ``default``.
 
@@ -269,6 +304,7 @@ def probe_glama(
     *,
     expected_tool_count: int | None = None,
     expected_tool_names_file: Path | None = None,
+    expected_tool_contract_file: Path | None = None,
     **kw: Any,
 ) -> dict[str, Any]:
     """Delegate to check_glama_listing.py so the probe logic stays in one place."""
@@ -277,6 +313,8 @@ def probe_glama(
         command.extend(["--expected-tool-count", str(expected_tool_count)])
     if expected_tool_names_file is not None:
         command.extend(["--expected-tool-names-file", str(expected_tool_names_file)])
+    if expected_tool_contract_file is not None:
+        command.extend(["--expected-tool-contract-file", str(expected_tool_contract_file)])
     proc = subprocess.run(
         command,
         capture_output=True,
@@ -312,6 +350,7 @@ def probe_smithery(
     *,
     expected_tool_count: int | None = None,
     expected_tool_names: list[str] | None = None,
+    expected_tool_contract: list[dict[str, Any]] | None = None,
     **kw: Any,
 ) -> dict[str, Any]:
     """Probe Smithery's public catalog listing.
@@ -319,7 +358,9 @@ def probe_smithery(
     Smithery-hosted remote servers are OAuth-gated and do not expose agent-bom's
     raw `/health` route. Freshness for this surface is therefore the catalog
     contract: the listing exists, is remote, has a deployment URL, and advertises
-    the full shipped tool inventory. Version freshness is covered by PyPI/Docker
+    the full shipped tool inventory. When supplied, the release-bound input-schema
+    contract must match exactly, including required fields and unknown-argument
+    rejection. Version freshness is covered by PyPI/Docker
     plus the protected Railway health check.
 
     The tool count is part of that contract. A listing that advertises a strict
@@ -347,7 +388,7 @@ def probe_smithery(
             "deployment_url": deployment_url,
             "tool_count": len(tools),
         }
-        actual_tool_names = sorted(tool.get("name") for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str))
+        actual_tool_names = sorted(str(tool["name"]) for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str))
         if expected_tool_count is not None:
             result["expected_tool_count"] = expected_tool_count
             if len(tools) != expected_tool_count:
@@ -364,6 +405,18 @@ def probe_smithery(
                     "catalog tool-name set differs from the immutable release contract"
                     f"; missing={missing or 'none'}; unexpected={unexpected or 'none'}"
                 )
+        result["exact_input_schemas"] = None
+        if expected_tool_contract is not None:
+            try:
+                actual_contract = _validate_tool_contract(tools)
+            except ValueError:
+                actual_contract = []
+            result["exact_input_schemas"] = json.dumps(actual_contract, sort_keys=True) == json.dumps(
+                expected_tool_contract, sort_keys=True
+            )
+            if not result["exact_input_schemas"]:
+                result["status"] = "stale"
+                result["error"] = "catalog input schemas differ from the release-bound server-card contract"
         return result
     except (RuntimeError, ValueError) as exc:
         return _classify("Smithery", None, expected, error=str(exc))
@@ -381,6 +434,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="JSON list of immutable released MCP tool names required from marketplace inventories.",
     )
+    parser.add_argument("--expected-tool-contract-file", type=Path, help="Release-bound tool names and input schemas.")
+    parser.add_argument("--server-card-url", help="Public HTTPS server card used to extract a release-bound schema contract.")
+    parser.add_argument(
+        "--write-tool-contract", type=Path, help="Validate the server card against released names/version, write schemas, and exit."
+    )
+    parser.add_argument("--surface", choices=["all", "smithery"], default="all")
     parser.add_argument("--docker-image", default=_env_or("DOCKER_IMAGE", DEFAULT_DOCKER_IMAGE))
     parser.add_argument("--smithery-server", default=_env_or("SMITHERY_SERVER_QUALIFIED_NAME", DEFAULT_SMITHERY_SERVER))
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
@@ -409,23 +468,50 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("expected tool-name contract and tool count do not match")
     kw = {"timeout": args.timeout, "attempts": args.attempts, "backoff": args.backoff_seconds}
 
-    surfaces = [
-        probe_pypi(expected, **kw),
-        probe_docker(expected, args.docker_image, **kw),
-        probe_glama(
-            expected,
-            expected_tool_count=tool_count,
-            expected_tool_names_file=args.expected_tool_names_file,
-            **kw,
-        ),
+    if args.write_tool_contract:
+        if not args.server_card_url or expected_tool_names is None:
+            raise SystemExit("schema extraction requires a server-card URL and immutable released tool names")
+        try:
+            extracted_contract = _released_server_card(args.server_card_url, expected, expected_tool_names, **kw)
+        except (RuntimeError, ValueError) as exc:
+            raise SystemExit(f"could not establish released schema contract: {exc}") from exc
+        args.write_tool_contract.write_text(json.dumps(extracted_contract, indent=2) + "\n", encoding="utf-8")
+        return 0
+    try:
+        contract = _load_tool_contract(args.expected_tool_contract_file) if args.expected_tool_contract_file else None
+    except (OSError, ValueError) as exc:
+        raise SystemExit("could not load expected schema contract") from exc
+    if contract is not None:
+        contract_names = [tool["name"] for tool in contract]
+        if len(contract_names) != tool_count or (expected_tool_names is not None and contract_names != expected_tool_names):
+            raise SystemExit("schema contract differs from expected tool names or count")
+        expected_tool_names = contract_names
+
+    surfaces = []
+    if args.surface == "all":
+        surfaces.extend(
+            [
+                probe_pypi(expected, **kw),
+                probe_docker(expected, args.docker_image, **kw),
+                probe_glama(
+                    expected,
+                    expected_tool_count=tool_count,
+                    expected_tool_names_file=args.expected_tool_names_file,
+                    expected_tool_contract_file=args.expected_tool_contract_file,
+                    **kw,
+                ),
+            ]
+        )
+    surfaces.append(
         probe_smithery(
             expected,
             args.smithery_server,
             expected_tool_count=tool_count,
             expected_tool_names=expected_tool_names,
+            expected_tool_contract=contract,
             **kw,
-        ),
-    ]
+        )
+    )
 
     drift = [s for s in surfaces if s["status"] not in OK_STATUSES]
     report = {

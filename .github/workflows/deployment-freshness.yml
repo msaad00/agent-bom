@@ -2,7 +2,7 @@ name: Deployment Freshness
 
 # Checks that the protected Railway surface serves the exact latest release
 # version and MCP tool-schema inventory, and that
-# the Smithery catalog listing is live with a non-empty tool inventory. Runs
+# the Smithery catalog matches released tool names and input schemas. Runs
 # daily and on-demand. Opens an issue if stale or misconfigured.
 #
 # No hosted-demo probe here. The public demo IS ours (Cloud Run, see
@@ -109,77 +109,42 @@ jobs:
         continue-on-error: true
         env:
           SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
           EXPECTED_TOOL_COUNT: ${{ steps.expected.outputs.tool_count }}
         run: |
-          QUALIFIED_NAME="${SMITHERY_SERVER_QUALIFIED_NAME:-agentbom/agent-bom}"
-          RESPONSE=$(EXPECTED_TOOL_COUNT="$EXPECTED_TOOL_COUNT" python3 - <<'PY'
-          import json
-          import os
-          import sys
-          import urllib.error
-          import urllib.parse
-          import urllib.request
-
-          name = os.environ.get("SMITHERY_SERVER_QUALIFIED_NAME") or "agentbom/agent-bom"
-          if "/" not in name:
-              print(json.dumps({"error": f"invalid Smithery qualified name: {name!r}"}))
-              sys.exit(1)
-          namespace, server = name.split("/", 1)
-          url = "https://api.smithery.ai/servers/" + urllib.parse.quote(namespace, safe="") + "/" + urllib.parse.quote(server, safe="")
-          req = urllib.request.Request(
-              url,
-              headers={"Accept": "application/json", "User-Agent": "agent-bom-deployment-freshness"},
-          )
-          try:
-              with urllib.request.urlopen(req, timeout=15) as response:
-                  data = json.loads(response.read().decode("utf-8", errors="replace"))
-          except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
-              print(json.dumps({"error": str(exc), "url": url}))
-              sys.exit(1)
-          tools = data.get("tools") if isinstance(data.get("tools"), list) else []
-          print(json.dumps({
-              "qualified_name": data.get("qualifiedName"),
-              "remote": bool(data.get("remote")),
-              "deployment_url": data.get("deploymentUrl") or "",
-              "tool_count": len(tools),
-          }, separators=(",", ":")))
-          PY
-          ) || {
-            {
-              echo "public_version=unreachable"
-              echo "tool_count=unknown"
-              echo "auth_required=smithery-oauth"
-              echo "probe_failed=true"
-            } >> "$GITHUB_OUTPUT"
-            echo "::warning::Could not verify Smithery catalog listing"
-            exit 0
-          }
-          STATE=$(echo "$RESPONSE" | EXPECTED_QUALIFIED_NAME="$QUALIFIED_NAME" EXPECTED_TOOL_COUNT="$EXPECTED_TOOL_COUNT" python3 -c "
-          import json, os, sys
-          data = json.load(sys.stdin)
-          if data.get('qualified_name') != os.environ['EXPECTED_QUALIFIED_NAME'] or not data.get('remote') or not data.get('deployment_url') or int(data.get('tool_count') or 0) < 1:
-              print('invalid')
-          elif int(data.get('tool_count') or 0) != int(os.environ['EXPECTED_TOOL_COUNT']):
-              print('tool_count_drift')
-          else:
-              print('catalog_live')
-          ")
-          TOOL_COUNT=$(echo "$RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin).get('tool_count', 'unknown'))")
-          DEPLOY_URL=$(echo "$RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin).get('deployment_url', 'unknown'))")
+          set -euo pipefail
+          # Stay fail-closed if contract extraction or probing exits early.
+          echo "probe_failed=true" >> "$GITHUB_OUTPUT"
+          python3 scripts/check_glama_listing.py \
+            --write-tool-names /tmp/deployment-expected-tool-names.json \
+            --git-ref "${{ steps.expected.outputs.release_sha }}"
+          SERVER_CARD_URL="${SMITHERY_MCP_URL:-https://agent-bom-mcp.up.railway.app/mcp}"
+          SERVER_CARD_URL=$(python3 -c 'import sys; from urllib.parse import urlsplit, urlunsplit; p=urlsplit(sys.argv[1]); print(urlunsplit((p.scheme,p.netloc,"/.well-known/mcp/server-card.json","","")))' "$SERVER_CARD_URL")
+          python3 scripts/check_surface_freshness.py \
+            --expected "${{ steps.expected.outputs.version }}" \
+            --expected-tool-count "$EXPECTED_TOOL_COUNT" \
+            --expected-tool-names-file /tmp/deployment-expected-tool-names.json \
+            --server-card-url "$SERVER_CARD_URL" \
+            --write-tool-contract /tmp/deployment-expected-tool-contract.json
+          python3 scripts/check_surface_freshness.py \
+            --surface smithery \
+            --expected "${{ steps.expected.outputs.version }}" \
+            --expected-tool-count "$EXPECTED_TOOL_COUNT" \
+            --expected-tool-names-file /tmp/deployment-expected-tool-names.json \
+            --expected-tool-contract-file /tmp/deployment-expected-tool-contract.json \
+            --out /tmp/deployment-smithery-report.json
+          STATE=$(jq -er '.surfaces[0].status' /tmp/deployment-smithery-report.json)
+          TOOL_COUNT=$(jq -r '.surfaces[0].tool_count // "unknown"' /tmp/deployment-smithery-report.json)
           {
             echo "public_version=$STATE"
             echo "tool_count=$TOOL_COUNT"
             echo "auth_required=smithery-oauth"
           } >> "$GITHUB_OUTPUT"
-          echo "Smithery catalog state: $STATE"
-          echo "Smithery deployment URL: $DEPLOY_URL"
-          echo "Smithery tool count: $TOOL_COUNT"
-          if [ "$STATE" = "tool_count_drift" ]; then
+          if [ "$STATE" = "fresh" ]; then
+            echo "probe_failed=false" >> "$GITHUB_OUTPUT"
+          else
             echo "stale=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Smithery catalog tool inventory differs from the published release contract (${TOOL_COUNT}/${EXPECTED_TOOL_COUNT})"
-          elif [ "$STATE" != "catalog_live" ]; then
-            echo "probe_failed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Smithery catalog listing is missing remote deployment metadata or tools"
+            echo "::warning::Smithery catalog differs from the published tool-name and input-schema contract"
           fi
 
       - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
@@ -217,7 +182,7 @@ jobs:
           | Railway (protected) | $RAILWAY | $EXPECTED | true | $RAILWAY_TOOLS |
           | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
 
-          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API lists a remote deployment with tools, then re-run this workflow.
+          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API matches the released tool names and input schemas, then re-run this workflow.
 
           This issue was auto-updated by the deployment-freshness workflow.
           EOF
@@ -236,7 +201,7 @@ jobs:
           | Railway (protected) | $RAILWAY | $EXPECTED | true | $RAILWAY_TOOLS |
           | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
 
-          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API lists a remote deployment with tools, then re-run this workflow.
+          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API matches the released tool names and input schemas, then re-run this workflow.
 
           This issue was auto-created by the deployment-freshness workflow.
           EOF
@@ -292,7 +257,7 @@ jobs:
           fi
 
       - name: Close supply-chain drift issue when deployment is fresh
-        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true' && steps.public.outputs.not_configured != 'true' && steps.public.outputs.stale != 'true' && steps.public.outputs.probe_failed != 'true' && steps.public.outputs.auth_gate != 'true'
+        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true' && steps.public.outputs.public_version == 'fresh' && steps.public.outputs.probe_failed == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

@@ -261,3 +261,12 @@ For dependency-heavy or security-driven releases, also verify:
 | **ClawHub** | curated `integrations/openclaw/*/SKILL.md` set | publish-registries.yml | workflow_run |
 | **MCP Registry** | `integrations/mcp-registry/server.json` | publish-mcp-registry.yml | workflow_run |
 | **Railway** | `deploy/docker/Dockerfile.sse` | deploy-mcp-sse.yml | release workflow_call / workflow_dispatch |
+
+### Daily schema verification
+
+Both freshness monitors compare marketplace input schemas with the public server
+card after validating its version and tool names against the published release.
+Missing required-argument lists or unknown-argument constraints count as drift,
+even when all tool names match. If the server card is unavailable or cannot be
+bound to the release, the monitors do not close the drift issue. This is catalog
+evidence; it does not replace an authenticated MCP protocol check.

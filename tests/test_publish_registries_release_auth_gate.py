@@ -35,7 +35,7 @@ def test_smithery_publication_is_idempotent_and_bounds_authorization_recovery() 
     assert "cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-server-card-tool-names.json" in workflow
     assert "smithery-expected-tool-contract.json" in workflow
     assert "smithery-actual-tool-contract.json" in workflow
-    assert "cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json" in workflow
+    assert "--compare-tool-contract-files /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json" in workflow
     assert "smithery-expected-listing-metadata.json" in workflow
     assert "smithery-actual-listing-metadata.json" in workflow
     assert "cmp -s /tmp/smithery-expected-listing-metadata.json /tmp/smithery-actual-listing-metadata.json" in workflow

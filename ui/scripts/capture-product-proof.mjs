@@ -3401,7 +3401,7 @@ async function main() {
       });
       await scrollTo(inventoryPage, 0);
     }, {
-      expectedText: ["Asset inventory", "Packages", "MCP servers", "AI agents", "Cloud resources", "Coverage reflects only what has actually been scanned or connected"],
+      expectedText: ["Asset inventory", "Packages", "MCP servers", "AI agents", "Cloud resources", "Coverage reflects scanned and connected sources"],
       expectedApiPaths: ["/v1/inventory/summary", "/v1/inventory/assets"],
     });
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {

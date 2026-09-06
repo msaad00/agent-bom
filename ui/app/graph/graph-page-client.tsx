@@ -2730,7 +2730,7 @@ function GraphPageInner() {
   const graphTruncated = graphResponseIsTruncated(graphData);
   if (loadingSnapshots) {
     return (
-      <div className="flex items-center justify-center h-[80vh] text-[var(--text-secondary)]">
+      <div className="flex items-center justify-center h-[80vh] text-ink-secondary">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
         Loading persisted graph snapshots...
       </div>
@@ -2739,12 +2739,12 @@ function GraphPageInner() {
 
   if (error && snapshots.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-[var(--text-secondary)] gap-3">
+      <div className="flex flex-col items-center justify-center h-[80vh] text-ink-secondary gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
         {rateLimited ? (
           <>
             <p className="text-sm">Graph temporarily rate-limited</p>
-            <p className="text-xs text-[var(--text-tertiary)]">
+            <p className="text-xs text-ink-tertiary">
               The API is shedding load (HTTP 429). Wait a moment and retry — your
               snapshots are still there.
             </p>
@@ -2752,7 +2752,7 @@ function GraphPageInner() {
         ) : (
           <>
             <p className="text-sm">Could not load the unified graph</p>
-            <p className="text-xs text-[var(--text-tertiary)]">
+            <p className="text-xs text-ink-tertiary">
               Run a scan first so the API can persist graph snapshots.
             </p>
           </>
@@ -2763,10 +2763,10 @@ function GraphPageInner() {
 
   if (snapshots.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-[var(--text-secondary)] gap-3">
-        <ShieldAlert className="w-8 h-8 text-[var(--text-tertiary)]" />
+      <div className="flex flex-col items-center justify-center h-[80vh] text-ink-secondary gap-3">
+        <ShieldAlert className="w-8 h-8 text-ink-tertiary" />
         <p className="text-sm">No graph snapshots found</p>
-        <p className="text-xs text-[var(--text-tertiary)]">
+        <p className="text-xs text-ink-tertiary">
           Run a scan to persist the unified inventory and security graph.
         </p>
       </div>
@@ -2837,10 +2837,10 @@ function GraphPageInner() {
             <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
               Unified graph
             </p>
-            <h1 className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+            <h1 className="mt-1 text-lg font-semibold text-foreground">
               {canvasLens === "estate" ? "Investigation Canvas" : "Lineage Graph"}
             </h1>
-            <p className="text-xs text-[var(--text-tertiary)]">
+            <p className="text-xs text-ink-tertiary">
               {canvasLens === "estate"
                 ? "Review priority findings, then follow their connections and evidence."
                 : "Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings."}
@@ -2855,7 +2855,7 @@ function GraphPageInner() {
             {flow.summary && (
               <div
                 data-testid="graph-headline-metrics"
-                className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-xs text-[var(--text-secondary)]"
+                className="rounded-xl border border-outline bg-surface/80 px-3 py-1.5 text-xs text-ink-secondary"
               >
                 <span className="font-mono text-red-700 dark:text-red-200">
                   {flow.summary.critical.toLocaleString()}
@@ -2872,7 +2872,7 @@ function GraphPageInner() {
                 {flow.summary.costUsd30d > 0 && (
                   <>
                     {" · "}
-                    <span className="font-mono text-[var(--foreground)]">
+                    <span className="font-mono text-foreground">
                       {flow.summary.costUsd30d.toLocaleString(undefined, {
                         style: "currency",
                         currency: "USD",
@@ -2955,8 +2955,8 @@ function GraphPageInner() {
           </form>
 
           {searchResults.length > 0 && (
-            <div className="mt-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/90 p-2">
-              <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+            <div className="mt-2 rounded-2xl border border-outline bg-background/90 p-2">
+              <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
                 Search respects current entity scope
                 {filters.severity ? ` and ${filters.severity}+ severity` : ""}
               </div>
@@ -2969,13 +2969,13 @@ function GraphPageInner() {
                     onClick={() => void focusSearchResult(result)}
                     className="graph-page-result"
                   >
-                    <p className="truncate text-sm font-medium text-[var(--foreground)]">
+                    <p className="truncate text-sm font-medium text-foreground">
                       {result.label}
                     </p>
-                    <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                    <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
                       {String(result.entity_type)}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-[var(--text-tertiary)]">
+                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-ink-tertiary">
                       {result.severity && <span>{result.severity}</span>}
                       <span>
                         risk{" "}
@@ -3037,14 +3037,14 @@ function GraphPageInner() {
 
           <details
             data-testid="graph-evidence-controls"
-            className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 group"
+            className="mt-3 rounded-2xl border border-outline bg-background/70 group"
           >
             <summary className="graph-drawer-summary">
               <div>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
                   Filters and evidence
                 </span>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                <p className="mt-1 text-xs text-ink-secondary">
                   {graphScopeLabelForFilters(filters)} ·{" "}
                   {activeSnapshot
                     ? `${activeSnapshot.node_count.toLocaleString()} nodes · ${activeSnapshot.edge_count.toLocaleString()} edges`
@@ -3055,14 +3055,14 @@ function GraphPageInner() {
                     : ""}
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
+              <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:hidden">
                 show
               </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:inline">
                 hide
               </span>
             </summary>
-            <div className="space-y-3 border-t border-[var(--border-subtle)]/80 p-3">
+            <div className="space-y-3 border-t border-outline/80 p-3">
               <GraphLensSwitcher variant="compact" legendItems={legendItems} />
               <div className="flex flex-wrap items-center gap-2">
                 <GraphScenarioSelector
@@ -3142,7 +3142,7 @@ function GraphPageInner() {
 
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-[var(--text-tertiary)]">
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-ink-tertiary">
           {activeSnapshot && (
             <>
               {!rollupCanvasOwnsPresentation && (
@@ -3191,31 +3191,31 @@ function GraphPageInner() {
 
         {/* One collapsed drawer keeps secondary controls off the default path.
             Its content uses flat sections rather than nested control drawers. */}
-        <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 group">
+        <details className="mt-3 rounded-2xl border border-outline bg-background/70 group">
           <summary className="graph-drawer-summary">
             <div>
-              <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+              <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
                 Advanced controls
               </span>
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              <p className="mt-1 text-xs text-ink-secondary">
                 Scope, evidence overlays, snapshot diff, and the ranked path queue.
               </p>
             </div>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:hidden">
               show
             </span>
-            <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
+            <span className="hidden text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:inline">
               hide
             </span>
           </summary>
-          <div className="space-y-3 border-t border-[var(--border-subtle)]/80 p-3">
-          <section aria-labelledby="graph-view-controls" className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
+          <div className="space-y-3 border-t border-outline/80 p-3">
+          <section aria-labelledby="graph-view-controls" className="rounded-xl border border-outline bg-background/70 p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 id="graph-view-controls" className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                <h3 id="graph-view-controls" className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
                   View controls
                 </h3>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                <p className="mt-1 text-xs text-ink-secondary">
                   Change scope, layers, severity, traversal, and page size
                   without changing the persisted graph.
                 </p>
@@ -3323,11 +3323,11 @@ function GraphPageInner() {
             </div>
           </section>
 
-        <section aria-labelledby="graph-operator-tools" className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70">
-          <h3 id="graph-operator-tools" className="px-3 py-2 text-xs font-medium text-[var(--text-secondary)]">
+        <section aria-labelledby="graph-operator-tools" className="rounded-xl border border-outline bg-background/70">
+          <h3 id="graph-operator-tools" className="px-3 py-2 text-xs font-medium text-ink-secondary">
             Evidence, drift, and operator tools
           </h3>
-          <div className="space-y-3 border-t border-[var(--border-subtle)]/80 px-3 py-3">
+          <div className="space-y-3 border-t border-outline/80 px-3 py-3">
         {/* Snapshot diff + how-to-read default-collapsed so the canvas owns the
             viewport. The four redundant SnapshotMetaCards (Snapshot/Topology/
             Scope/Window) were removed — the inline summary above already
@@ -3342,7 +3342,7 @@ function GraphPageInner() {
                 <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
                   Snapshot diff
                 </span>
-                <span className="text-xs text-[var(--text-tertiary)]">
+                <span className="text-xs text-ink-tertiary">
                   {graphDiff
                     ? `+${graphDiff.nodes_added.length} −${graphDiff.nodes_removed.length} nodes · +${graphDiff.edges_added.length} −${graphDiff.edges_removed.length} edges`
                     : previousSnapshot
@@ -3357,10 +3357,10 @@ function GraphPageInner() {
                     loading
                   </span>
                 )}
-                <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:hidden">
                   show
                 </span>
-                <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] hidden group-open:inline">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary hidden group-open:inline">
                   hide
                 </span>
               </div>
@@ -3420,8 +3420,8 @@ function GraphPageInner() {
         )}
 
         {graphDiff && (
-          <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
-            <summary className="cursor-pointer list-none text-xs font-medium text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+          <details className="rounded-2xl border border-outline bg-background/70 p-3">
+            <summary className="cursor-pointer list-none text-xs font-medium text-ink-secondary [&::-webkit-details-marker]:hidden">
               Snapshot drift lens · {drift.critical} critical changes
             </summary>
             <div className="mt-3">
@@ -3451,8 +3451,8 @@ function GraphPageInner() {
           />
         ) : null}
 
-        <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
-          <summary className="cursor-pointer list-none text-xs font-medium text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+        <details className="rounded-2xl border border-outline bg-background/70 p-3">
+          <summary className="cursor-pointer list-none text-xs font-medium text-ink-secondary [&::-webkit-details-marker]:hidden">
             Evidence lens · {evidenceCounts.all} nodes
           </summary>
           <div className="mt-3">
@@ -3469,15 +3469,15 @@ function GraphPageInner() {
           </div>
         </details>
 
-        <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3 text-xs text-[var(--text-secondary)] group">
+        <details className="rounded-2xl border border-outline bg-background/70 p-3 text-xs text-ink-secondary group">
           <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-            <span className="font-medium text-[var(--foreground)]">
+            <span className="font-medium text-foreground">
               How to read this graph
             </span>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:hidden">
               show
             </span>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] hidden group-open:inline">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary hidden group-open:inline">
               hide
             </span>
           </summary>
@@ -3520,28 +3520,28 @@ function GraphPageInner() {
         </section>
 
         {attackPaths.length > 0 && (
-          <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/60 p-3 group">
+          <details className="mt-3 rounded-2xl border border-outline bg-background/60 p-3 group">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.24em] text-orange-400">
                   Attack paths
                 </p>
-                <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                <p className="mt-1 text-xs text-ink-tertiary">
                   {attackPaths.length} ranked path
                   {attackPaths.length === 1 ? "" : "s"} available for focused
                   investigation.
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
+              <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:hidden">
                 show queue
               </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:inline">
                 hide queue
               </span>
             </summary>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="mt-3 text-xs text-[var(--text-tertiary)]">
+                <p className="mt-3 text-xs text-ink-tertiary">
                   Focus the current graph on a precomputed exploit chain in this
                   filtered snapshot page.
                 </p>
@@ -3682,10 +3682,10 @@ function GraphPageInner() {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-300">
                     Focused attack path
                   </p>
-                  <h2 className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+                  <h2 className="mt-1 text-lg font-semibold text-foreground">
                     {selectedPathDecision.sourceLabel} → {selectedPathDecision.targetLabel}
                   </h2>
-                  <p className="mt-1 max-w-3xl text-sm text-[var(--text-secondary)]">
+                  <p className="mt-1 max-w-3xl text-sm text-ink-secondary">
                     {selectedAttackPath.summary || `${selectedPathDecision.findingLabel} is reachable across the selected directed path.`}
                   </p>
                 </div>
@@ -3701,13 +3701,13 @@ function GraphPageInner() {
                   </a>
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--text-secondary)]">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-secondary">
                 <span>{selectedEvidenceHopCount} evidence hops</span>
                 <span>{selectedPathDecision.hasHopReceipts
                   ? `${selectedPathDecision.directedTraversable === null ? "Unavailable" : `${selectedPathDecision.directedTraversable}/${selectedEvidenceHopCount}`} directed traversable relationships evidenced`
                   : "Directed hop verification not recorded"}</span>
                 <span>Snapshot freshness: {activeSnapshot ? new Date(activeSnapshot.created_at).toLocaleString() : "unavailable"}</span>
-                <span className="font-medium text-[var(--foreground)]">Next: {selectedPathDecision.nextAction}</span>
+                <span className="font-medium text-foreground">Next: {selectedPathDecision.nextAction}</span>
                 {captureMode ? <span>Demo data — sample environment</span> : null}
                 <button
                   type="button"
@@ -3722,7 +3722,7 @@ function GraphPageInner() {
               </div>
             </section>
           )}
-          <div className="relative min-h-0 flex-1 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+          <div className="relative min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
               title="Loading graph window"
@@ -3844,7 +3844,7 @@ function GraphPageInner() {
           {loadingGraph && graphData && <GraphRefreshOverlay />}
 
           {graphTruncated && (
-            <div className="mt-2 border-t border-[var(--border-subtle)]/80 px-1 pt-2">
+            <div className="mt-2 border-t border-outline/80 px-1 pt-2">
               <GraphCompletenessBanner
                 completeness={
                   graphData?.completeness ?? {
@@ -3973,12 +3973,12 @@ function ReachabilityDrillInPanel({
 
       {summary && (
         <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <div className="rounded-xl border border-rose-400/20 bg-[var(--background)]/45 p-2">
+          <div className="rounded-xl border border-rose-400/20 bg-background/45 p-2">
             <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">
               Affected by type
             </p>
             {Object.keys(summary.countsByType).length === 0 ? (
-              <p className="mt-2 text-[var(--text-secondary)]">
+              <p className="mt-2 text-ink-secondary">
                 No downstream nodes returned for this root.
               </p>
             ) : (
@@ -3997,12 +3997,12 @@ function ReachabilityDrillInPanel({
             )}
           </div>
 
-          <div className="rounded-xl border border-rose-400/20 bg-[var(--background)]/45 p-2">
+          <div className="rounded-xl border border-rose-400/20 bg-background/45 p-2">
             <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">
               Bounded paths
             </p>
             {summary.pathPreviews.length === 0 ? (
-              <p className="mt-2 text-[var(--text-secondary)]">
+              <p className="mt-2 text-ink-secondary">
                 No path preview is available for this root.
               </p>
             ) : (
@@ -4010,18 +4010,18 @@ function ReachabilityDrillInPanel({
                 {summary.pathPreviews.map((path) => (
                   <div
                     key={`${path.targetId}:${path.hops.join(">")}`}
-                    className="rounded-lg bg-[var(--background)]/70 px-2 py-1.5"
+                    className="rounded-lg bg-background/70 px-2 py-1.5"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium text-rose-50">
                         {path.targetLabel}
                       </span>
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-ink-tertiary">
                         {prettifyReachabilityType(path.targetType)} ·{" "}
                         {path.depth} hop{path.depth === 1 ? "" : "s"}
                       </span>
                     </div>
-                    <p className="mt-1 truncate font-mono text-[10px] text-[var(--text-secondary)]">
+                    <p className="mt-1 truncate font-mono text-[10px] text-ink-secondary">
                       {path.labels.join(" -> ")}
                     </p>
                   </div>
@@ -4087,7 +4087,7 @@ function BlastRadiusPanel({
       </div>
 
       {summary && Object.keys(summary.countsByType).length > 0 && (
-        <div className="mt-3 rounded-xl border border-violet-400/20 bg-[var(--background)]/45 p-2">
+        <div className="mt-3 rounded-xl border border-violet-400/20 bg-background/45 p-2">
           <p className="text-[10px] uppercase tracking-[0.2em] text-violet-300">
             Impacted by type
           </p>
@@ -4107,7 +4107,7 @@ function BlastRadiusPanel({
       )}
 
       {summary && summary.affectedCount === 0 && (
-        <p className="mt-2 text-[var(--text-secondary)]">
+        <p className="mt-2 text-ink-secondary">
           Nothing downstream depends on this node in the current snapshot.
         </p>
       )}
@@ -4232,7 +4232,7 @@ function RollupNavigationPanel({
 function scopeButtonClass(active: boolean): string {
   return active
     ? "rounded-lg border border-sky-500/40 bg-sky-500/15 px-2.5 py-1 text-sky-100 transition hover:border-sky-400/70"
-    : "rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1 text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]";
+    : "rounded-lg border border-outline bg-surface/80 px-2.5 py-1 text-ink-secondary transition hover:border-outline-strong hover:text-foreground";
 }
 
 function PathStat({
@@ -4251,14 +4251,14 @@ function PathStat({
         ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-200"
         : tone === "blue"
           ? "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200"
-          : "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]";
+          : "border-outline bg-surface/80 text-ink-secondary";
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
-      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
         {label}
       </p>
-      <p className="mt-1 font-mono text-sm text-[var(--foreground)]">{value}</p>
+      <p className="mt-1 font-mono text-sm text-foreground">{value}</p>
     </div>
   );
 }
@@ -4274,9 +4274,9 @@ function PathTagList({
 }) {
   return (
     <div
-      className={`rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 p-3 ${wide ? "lg:col-span-4" : ""}`}
+      className={`rounded-xl border border-outline bg-surface/70 p-3 ${wide ? "lg:col-span-4" : ""}`}
     >
-      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
         {label}
       </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -4311,10 +4311,10 @@ function DiffMetric({
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
-      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
         {label}
       </p>
-      <p className="mt-1 font-mono text-lg text-[var(--foreground)]">{value}</p>
+      <p className="mt-1 font-mono text-lg text-foreground">{value}</p>
     </div>
   );
 }
@@ -4334,12 +4334,12 @@ function DiffLoadingGrid() {
       ].map((label) => (
         <div
           key={label}
-          className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-3 py-2"
+          className="rounded-xl border border-outline bg-surface/70 px-3 py-2"
         >
-          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
             {label}
           </p>
-          <div className="mt-2 h-6 w-12 animate-pulse rounded-full bg-[var(--surface-elevated)]" />
+          <div className="mt-2 h-6 w-12 animate-pulse rounded-full bg-surface-elevated" />
         </div>
       ))}
     </div>
@@ -4366,12 +4366,12 @@ export function DiffPreview({
 }) {
   const visible = items.slice(0, 5);
   return (
-    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 p-3">
+    <div className="rounded-xl border border-outline bg-surface/70 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
           {label}
         </p>
-        <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
+        <span className="font-mono text-[11px] text-ink-tertiary">
           {items.length}
         </span>
       </div>
@@ -4379,13 +4379,13 @@ export function DiffPreview({
         {visible.map((item) => (
           <p
             key={`${label}-${diffItemKey(item)}`}
-            className="truncate font-mono text-[11px] text-[var(--text-secondary)]"
+            className="truncate font-mono text-[11px] text-ink-secondary"
           >
             {diffItemLabel(item)}
           </p>
         ))}
         {items.length > visible.length && (
-          <p className="text-[11px] text-[var(--text-tertiary)]">
+          <p className="text-[11px] text-ink-tertiary">
             +{items.length - visible.length} more
           </p>
         )}

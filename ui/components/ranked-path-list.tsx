@@ -74,7 +74,7 @@ export function RankedPathList({
             className={`flex w-full flex-col items-stretch gap-2 rounded-xl border px-3 py-3 text-left transition ${
               active
                 ? "border-orange-400/70 bg-orange-500/10 ring-1 ring-orange-400/60"
-                : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] hover:border-[color:var(--border-strong)]"
+                : "border-outline bg-surface-elevated hover:border-outline-strong"
             }`}
           >
             <span className="flex flex-wrap items-center justify-between gap-2">
@@ -82,16 +82,16 @@ export function RankedPathList({
                 className={`mb-1 inline-flex rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
                   row.rank === 1
                     ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
-                    : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
+                    : "bg-surface text-ink-tertiary"
                 }`}
               >
                 {row.rank === 1 ? "#1 fix first" : `#${row.rank}`}
               </span>
-            <span className="flex items-baseline gap-1.5 text-[color:var(--text-secondary)]">
+            <span className="flex items-baseline gap-1.5 text-ink-secondary">
               <span className="text-[10px]">
                 Path priority
               </span>
-              <span className="font-mono text-xs font-semibold text-[color:var(--foreground)]">
+              <span className="font-mono text-xs font-semibold text-foreground">
                 {row.riskScore.toFixed(1)}
               </span>
             </span>
@@ -106,17 +106,17 @@ export function RankedPathList({
                 </span>
               ) : null}
               <span
-                className="line-clamp-3 break-words text-sm font-medium leading-snug text-[color:var(--foreground)]"
+                className="line-clamp-3 break-words text-sm font-medium leading-snug text-foreground"
                 title={advisory ? `${advisory} · ${displayTitle}` : displayTitle}
               >
                 {displayTitle}
               </span>
-              <span className="mt-0.5 block text-[11px] text-[color:var(--text-tertiary)]">
+              <span className="mt-0.5 block text-[11px] text-ink-tertiary">
                 {pathSpanLabel(row.nodeCount)} · {row.agents} agent{row.agents === 1 ? "" : "s"}
               </span>
               {row.roleChain ? (
                 <span
-                  className="mt-0.5 block truncate font-mono text-[10px] text-[color:var(--text-secondary)]"
+                  className="mt-0.5 block truncate font-mono text-[10px] text-ink-secondary"
                   title={row.roleChain}
                 >
                   {row.roleChain}

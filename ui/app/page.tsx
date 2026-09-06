@@ -398,21 +398,21 @@ export default function Dashboard() {
             </Link>
             <Link
               href="/security-graph"
-              className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+              className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-sm font-medium text-foreground hover:border-outline-strong"
             >
               Investigation <GitBranch className="h-4 w-4" />
             </Link>
             {(displayedAgentCount ?? 0) > 0 ? (
               <Link
                 href="/agents/topology"
-                className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+                className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-sm font-medium text-foreground hover:border-outline-strong"
               >
                 Agent mesh <Network className="h-4 w-4" />
               </Link>
             ) : (
               <Link
                 href="/findings"
-                className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+                className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-sm font-medium text-foreground hover:border-outline-strong"
               >
                 Findings
               </Link>
@@ -460,7 +460,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <section className="lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-[color:var(--foreground)]">Recent scans</h2>
+            <h2 className="text-sm font-medium text-foreground">Recent scans</h2>
             {effectiveRecentJobs.length > 8 && (
               <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
                 View all <ArrowRight className="w-3 h-3" />
@@ -468,7 +468,7 @@ export default function Dashboard() {
             )}
           </div>
           {jobsLoading && !importedReport ? (
-            <div className="text-sm text-[color:var(--text-secondary)]">Loading…</div>
+            <div className="text-sm text-ink-secondary">Loading…</div>
           ) : effectiveRecentJobs.length === 0 ? (
             <EmptyState />
           ) : (
@@ -481,7 +481,7 @@ export default function Dashboard() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-[color:var(--foreground)]">Activity</h2>
+          <h2 className="mb-3 text-sm font-medium text-foreground">Activity</h2>
           <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
         </section>
       </div>
@@ -552,8 +552,8 @@ function JobRow({ job }: { job: JobListItem }) {
     done: "bg-emerald-500",
     failed: "bg-red-500",
     running: "bg-yellow-500 animate-pulse",
-    pending: "bg-[color:var(--text-tertiary)]",
-    cancelled: "bg-[color:var(--text-tertiary)]",
+    pending: "bg-ink-tertiary",
+    cancelled: "bg-ink-tertiary",
   };
   const vulnCount = job.summary?.total_vulnerabilities;
   const critCount = job.summary?.critical_findings;
@@ -570,17 +570,17 @@ function JobRow({ job }: { job: JobListItem }) {
     <Link
       href={`/scan?id=${job.job_id}`}
       title={`Scan ${job.job_id}`}
-      className="flex items-center gap-4 bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] hover:border-[color:var(--border-strong)] rounded-xl p-4 transition-colors group"
+      className="flex items-center gap-4 bg-surface-muted border border-outline hover:border-outline-strong rounded-xl p-4 transition-colors group"
     >
-      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColors[job.status] ?? "bg-[color:var(--text-tertiary)]"}`} />
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColors[job.status] ?? "bg-ink-tertiary"}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[color:var(--foreground)]">{scanLabel(job)}</span>
+          <span className="text-sm font-medium text-foreground">{scanLabel(job)}</span>
           {tags?.map((t) => (
-            <span key={t} className="text-xs bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded px-1.5 py-0.5 text-[color:var(--text-tertiary)]">{t}</span>
+            <span key={t} className="text-xs bg-surface-elevated border border-outline rounded px-1.5 py-0.5 text-ink-tertiary">{t}</span>
           ))}
         </div>
-        <div className="text-xs text-[color:var(--text-tertiary)] flex items-center gap-1 mt-0.5">
+        <div className="text-xs text-ink-tertiary flex items-center gap-1 mt-0.5">
           <Clock className="w-3 h-3" />
           {formatDate(job.created_at)}
           <span aria-hidden="true">· {job.job_id.slice(0, 8)}…</span>
@@ -594,9 +594,9 @@ function JobRow({ job }: { job: JobListItem }) {
               <span className="text-red-400 font-mono font-semibold">{critCount} CRIT</span>
             )}
             {vulnCount != null ? (
-              <span className="text-[color:var(--text-secondary)]">{vulnCount} vuln{vulnCount !== 1 ? "s" : ""}</span>
+              <span className="text-ink-secondary">{vulnCount} vuln{vulnCount !== 1 ? "s" : ""}</span>
             ) : (
-              <span className="text-[color:var(--text-tertiary)]">Metrics unavailable</span>
+              <span className="text-ink-tertiary">Metrics unavailable</span>
             )}
           </>
         )}
@@ -609,16 +609,16 @@ function JobRow({ job }: { job: JobListItem }) {
           <span className="text-yellow-400">Running…</span>
         )}
       </div>
-      <ArrowRight className="w-3.5 h-3.5 text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)] transition-colors flex-shrink-0" />
+      <ArrowRight className="w-3.5 h-3.5 text-ink-tertiary group-hover:text-ink-secondary transition-colors flex-shrink-0" />
     </Link>
   );
 }
 
 function EmptyState() {
   return (
-    <div className="text-center py-16 border border-dashed border-[color:var(--border-subtle)] rounded-xl">
-      <ShieldAlert className="w-8 h-8 text-[color:var(--text-tertiary)] mx-auto mb-3" />
-      <p className="text-[color:var(--text-tertiary)] text-sm">No scans yet.</p>
+    <div className="text-center py-16 border border-dashed border-outline rounded-xl">
+      <ShieldAlert className="w-8 h-8 text-ink-tertiary mx-auto mb-3" />
+      <p className="text-ink-tertiary text-sm">No scans yet.</p>
       <Link
         href="/scan"
         className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"

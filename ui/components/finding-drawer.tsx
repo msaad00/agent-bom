@@ -72,7 +72,7 @@ export function FindingDrawer({
       title={<span className="break-all font-mono">{vuln.id}</span>}
       subtitle={findingsDrawerSubtitle(lens)}
       headerAside={
-        <span className={`rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-xs font-medium uppercase tracking-wide ${severityColor(vuln.severity)}`}>
+        <span className={`rounded-full border border-outline bg-surface-muted px-2.5 py-1 text-xs font-medium uppercase tracking-wide ${severityColor(vuln.severity)}`}>
           {vuln.severity}
         </span>
       }
@@ -122,22 +122,22 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="break-words text-base font-semibold text-[color:var(--foreground)]">{packageLabel}</p>
-        <p className="mt-1 text-sm leading-6 text-[color:var(--text-secondary)]">{summary}</p>
+        <p className="break-words text-base font-semibold text-foreground">{packageLabel}</p>
+        <p className="mt-1 text-sm leading-6 text-ink-secondary">{summary}</p>
       </div>
 
       <Section title="Next action" accent>
-        <p className="text-sm font-medium text-[color:var(--foreground)]">
+        <p className="text-sm font-medium text-foreground">
           {fixValue ?? "Review the evidence and determine the appropriate fix."}
         </p>
-        {fixValue ? <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Apply the fix, then rescan the affected asset to verify the result.</p> : null}
+        {fixValue ? <p className="mt-1 text-xs text-ink-secondary">Apply the fix, then rescan the affected asset to verify the result.</p> : null}
         <div className="mt-3 flex flex-wrap gap-3">
           {fixValue || fixCandidates.length ? (
-            <Link href={remediationHref({ q: vuln.id })} className="rounded-lg bg-[color:var(--accent-mint)] px-3 py-2 text-sm font-medium text-black">
+            <Link href={remediationHref({ q: vuln.id })} className="rounded-lg bg-accent-mint px-3 py-2 text-sm font-medium text-black">
               Review remediation
             </Link>
           ) : null}
-          <Link href={buildFindingInvestigationHref(vuln)} data-testid="finding-investigate-estate" className="inline-flex items-center gap-1.5 py-2 text-sm font-medium text-[color:var(--accent-mint)] hover:underline">
+          <Link href={buildFindingInvestigationHref(vuln)} data-testid="finding-investigate-estate" className="inline-flex items-center gap-1.5 py-2 text-sm font-medium text-accent-mint hover:underline">
             Open in investigation <ExternalLink className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -145,18 +145,18 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
 
       {impact.length ? (
         <Section title="Affected scope">
-          <p className="text-sm text-[color:var(--text-secondary)]">{impact.join(" · ")}</p>
+          <p className="text-sm text-ink-secondary">{impact.join(" · ")}</p>
         </Section>
       ) : null}
 
       {fixCandidates.length > 0 ? (
-        <details className="border-t border-[color:var(--border-subtle)] pt-3">
-          <summary className="cursor-pointer text-sm font-medium text-[color:var(--foreground)]">Apply and verify commands</summary>
+        <details className="border-t border-outline pt-3">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">Apply and verify commands</summary>
           <div className="mt-3 space-y-4">
             {fixCandidates.map((item) => (
               <div key={`${item.package}:${item.current_version}`}>
-                <p className="text-sm font-medium text-[color:var(--foreground)]">{item.package} · {item.current_version} → {item.fixed_version ?? "fix version unavailable"}</p>
-                {item.action ? <p className="mt-1 text-xs text-[color:var(--text-secondary)]">{item.action}</p> : null}
+                <p className="text-sm font-medium text-foreground">{item.package} · {item.current_version} → {item.fixed_version ?? "fix version unavailable"}</p>
+                {item.action ? <p className="mt-1 text-xs text-ink-secondary">{item.action}</p> : null}
                 {item.command ? <CodeLine label="Apply" value={item.command} /> : null}
                 {item.verify_command ? <CodeLine label="Verify" value={item.verify_command} /> : null}
               </div>
@@ -182,11 +182,11 @@ function Section({
 }) {
   return (
     <section
-      className={`border-t border-[color:var(--border-subtle)] pt-3 ${
+      className={`border-t border-outline pt-3 ${
         accent ? "border-l-2 border-l-[color:var(--accent-mint)] pl-3" : ""
       }`}
     >
-      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">{title}</h4>
+      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">{title}</h4>
       <div className="mt-2">{children}</div>
     </section>
   );
@@ -206,13 +206,13 @@ function EstateNodeSection({ vuln }: { vuln: EnrichedVuln }) {
         {vuln.node_id ? <Chip mono>{vuln.node_id}</Chip> : <Chip>{estateLabel}</Chip>}
         {findingNode ? <Chip mono>{findingNode}</Chip> : null}
         {vuln.finding_id ? (
-          <span className="font-mono text-[10px] text-[color:var(--text-tertiary)]">finding {vuln.finding_id}</span>
+          <span className="font-mono text-[10px] text-ink-tertiary">finding {vuln.finding_id}</span>
         ) : null}
       </div>
       <div className="mt-3">
         <Link
           href={href}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--accent-mint)] hover:underline"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-accent-mint hover:underline"
           data-testid="finding-investigate-estate"
         >
           Open in investigation
@@ -247,9 +247,9 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
         <TagList label="MCP servers" values={vuln.affected_servers} />
         <TagList label="Credential references" values={vuln.exposed_credentials} />
         <TagList label="Linked tools" values={vuln.reachable_tools} />
-        {whyItMatters ? <div className="mt-3 space-y-2 text-xs leading-5 text-[color:var(--text-secondary)]">
+        {whyItMatters ? <div className="mt-3 space-y-2 text-xs leading-5 text-ink-secondary">
           {whyItMatters.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
-          {whyItMatters.links.map((link) => <Link key={link.href} href={link.href} className="mr-3 inline-block text-[color:var(--accent-mint)] hover:underline">{link.label}</Link>)}
+          {whyItMatters.links.map((link) => <Link key={link.href} href={link.href} className="mr-3 inline-block text-accent-mint hover:underline">{link.label}</Link>)}
         </div> : null}
       </Panel>
       <Panel title="Investigation sources">
@@ -259,7 +259,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
           <TagList label="Weaknesses" values={cweMatches} mono />
           {references.length > 0 ? (
             <div className="space-y-2">
-              <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">Advisories</div>
+              <div className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">Advisories</div>
               <div className="flex flex-col gap-2">
                 {references.map((ref) => (
                   <a
@@ -267,11 +267,11 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
                     href={ref.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                    className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-2 text-xs text-ink-secondary transition-colors hover:border-outline-strong hover:text-foreground"
                   >
-                    <FileSearch className="h-3.5 w-3.5 text-[color:var(--text-tertiary)]" />
-                    <span className="font-medium text-[color:var(--foreground)]">{ref.label}</span>
-                    <span className="truncate text-[color:var(--text-tertiary)]">{ref.href}</span>
+                    <FileSearch className="h-3.5 w-3.5 text-ink-tertiary" />
+                    <span className="font-medium text-foreground">{ref.label}</span>
+                    <span className="truncate text-ink-tertiary">{ref.href}</span>
                     <ExternalLink className="ml-auto h-3 w-3 shrink-0" />
                   </a>
                 ))}
@@ -282,7 +282,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
       </Panel>
 
       <Panel title="Provenance">
-        <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
+        <div className="grid gap-x-5 gap-y-1.5 text-xs text-ink-secondary sm:grid-cols-2">
           <KeyVal label="Finding sources" value={investigationSources.join(", ") || "Unavailable"} />
           <KeyVal label="Scan" value={vuln.scan_id ?? "Unavailable"} />
           <KeyVal label="Evidence provenance" value={formatProvenance(vuln.provenance)} />
@@ -297,7 +297,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
       {complianceControls.length > 0 ? (
         <Panel title="Compliance controls">
           <details>
-            <summary className="cursor-pointer text-sm text-[color:var(--text-secondary)]">View {complianceControls.length} mapped controls</summary>
+            <summary className="cursor-pointer text-sm text-ink-secondary">View {complianceControls.length} mapped controls</summary>
             <div className="mt-3 flex flex-wrap gap-1">
               {complianceControls.map((tag) => <Chip key={tag} mono>{tag}</Chip>)}
             </div>
@@ -307,7 +307,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
 
       {vuln.first_seen || vuln.last_observed || vuln.last_seen || vuln.resolved_at || vuln.reopened_at || typeof vuln.occurrence_count === "number" || typeof vuln.scan_count === "number" ? (
         <Panel title="Lifecycle">
-          <div className="space-y-2 text-sm text-[color:var(--text-secondary)]">
+          <div className="space-y-2 text-sm text-ink-secondary">
             {vuln.first_seen ? <KeyVal label="First seen" value={formatFindingTimestamp(vuln.first_seen)} /> : null}
             {vuln.last_observed || vuln.last_seen ? <KeyVal label="Last observed" value={formatFindingTimestamp(vuln.last_observed ?? vuln.last_seen)} /> : null}
             {vuln.resolved_at ? <KeyVal label="Resolved" value={formatFindingTimestamp(vuln.resolved_at)} /> : null}
@@ -318,7 +318,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
       ) : null}
 
       {vuln.remediation_items.some((item) => item.risk_narrative) ? <Panel title="Remediation context">
-        {vuln.remediation_items.filter((item) => item.risk_narrative).map((item) => <p key={`${item.package}:${item.current_version}`} className="text-sm leading-6 text-[color:var(--text-secondary)]">{item.risk_narrative}</p>)}
+        {vuln.remediation_items.filter((item) => item.risk_narrative).map((item) => <p key={`${item.package}:${item.current_version}`} className="text-sm leading-6 text-ink-secondary">{item.risk_narrative}</p>)}
       </Panel> : null}
       <WorkloadRuntimeEvidencePanel evidence={vuln.workload_runtime_evidence} />
     </div>
@@ -349,24 +349,24 @@ function WorkloadRuntimeEvidencePanel({
         ? "border-amber-500/30 dark:border-amber-800/60 bg-amber-500/10 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
         : state === "runtime_activity_observed"
           ? "border-sky-500/30 dark:border-sky-800/60 bg-sky-500/10 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300"
-          : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-secondary)]";
+          : "border-outline bg-surface text-ink-secondary";
   const sourceKinds = Array.isArray(evidence.source_kinds) ? evidence.source_kinds.filter(Boolean) : [];
   return (
     <Panel title="Workload runtime evidence">
-      <div className="space-y-3 text-sm text-[color:var(--text-secondary)]">
+      <div className="space-y-3 text-sm text-ink-secondary">
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${tone}`}>
             {label}
           </span>
           {typeof evidence.signal_count === "number" ? (
-            <span className="text-xs text-[color:var(--text-tertiary)]">{evidence.signal_count} signal{evidence.signal_count === 1 ? "" : "s"}</span>
+            <span className="text-xs text-ink-tertiary">{evidence.signal_count} signal{evidence.signal_count === 1 ? "" : "s"}</span>
           ) : null}
         </div>
         {evidence.latest_observed_at ? (
           <KeyVal label="Latest observed" value={formatFindingTimestamp(evidence.latest_observed_at)} />
         ) : null}
         {sourceKinds.length > 0 ? <TagList label="Sources" values={sourceKinds} /> : null}
-        <p className="text-xs leading-5 text-[color:var(--text-tertiary)]">
+        <p className="text-xs leading-5 text-ink-tertiary">
           Additive CWPP/EDR metadata only — absence of a signal is not a clean-workload assertion
           {evidence.clean_workload_assertion === false ? " (clean_workload_assertion: false)" : ""}.
           Distinct from proxy/gateway runtime evidence on the Overview reach badges.
@@ -400,14 +400,14 @@ function TriageTab({
   return (
     <div className="space-y-4">
       <Panel title={findingsTriageTitle(lens)}>
-        <p className="text-xs leading-5 text-[color:var(--text-tertiary)]">{findingsTriageDetail(lens)}</p>
-        <div className="mt-3 space-y-1.5 text-xs text-[color:var(--text-secondary)]">
+        <p className="text-xs leading-5 text-ink-tertiary">{findingsTriageDetail(lens)}</p>
+        <div className="mt-3 space-y-1.5 text-xs text-ink-secondary">
           {vuln.lifecycle_status ? <KeyVal label="Status" value={findingStatusLabel(vuln.lifecycle_status)} /> : null}
           {vuln.owner ? <KeyVal label="Owner" value={vuln.owner} /> : null}
           {vuln.sla_due_at ? <KeyVal label="SLA" value={formatFindingTimestamp(vuln.sla_due_at)} /> : null}
         </div>
         {triage ? (
-          <div className="mt-3 grid gap-2 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
+          <div className="mt-3 grid gap-2 text-xs text-ink-secondary sm:grid-cols-2">
             <KeyVal label="Queue state" value={triage.queue_state} />
             <KeyVal label="Decision" value={triage.decision} />
             <KeyVal label="Assignee" value={triage.assignee || "unassigned"} />
@@ -426,7 +426,7 @@ function TriageTab({
             ) : null}
           </div>
         ) : (
-          <p className="mt-3 text-xs text-[color:var(--text-tertiary)]">No triage item recorded for this finding/package pair.</p>
+          <p className="mt-3 text-xs text-ink-tertiary">No triage item recorded for this finding/package pair.</p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
           <TriageButton label="Investigate" busy={triageBusy} disabled={!canTriage || Boolean(triage)} onClick={() => onTriageDecision(vuln, "under_investigation")} />
@@ -434,7 +434,7 @@ function TriageTab({
           <TriageButton label="Not affected" busy={triageBusy} disabled={!canTriage} tone="green" onClick={() => onTriageDecision(vuln, "not_affected", "vulnerable_code_not_in_execute_path")} />
         </div>
         {!canTriage ? (
-          <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">Contributor role required to update triage.</p>
+          <p className="mt-2 text-xs text-ink-tertiary">Contributor role required to update triage.</p>
         ) : null}
       </Panel>
 
@@ -487,8 +487,8 @@ function ReachBadges({ vuln }: { vuln: EnrichedVuln }) {
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
-      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">{title}</h4>
+    <div className="rounded-xl border border-outline bg-surface-muted p-4">
+      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">{title}</h4>
       <div className="mt-2.5">{children}</div>
     </div>
   );
@@ -497,14 +497,14 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 function KeyVal({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 break-words" aria-label={`${label}: ${value}`}>
-      <span className="text-[color:var(--text-tertiary)]">{label}:</span> <span>{value}</span>
+      <span className="text-ink-tertiary">{label}:</span> <span>{value}</span>
     </div>
   );
 }
 
 function Chip({ children, mono = false }: { children: ReactNode; mono?: boolean }) {
   return (
-    <span className={`rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)] ${mono ? "font-mono" : ""}`}>
+    <span className={`rounded border border-outline bg-surface px-2 py-0.5 text-[11px] text-ink-secondary ${mono ? "font-mono" : ""}`}>
       {children}
     </span>
   );
@@ -526,7 +526,7 @@ function TriageButton({
   const classes =
     tone === "green"
       ? "border-emerald-500/30 dark:border-emerald-800 bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 dark:hover:bg-emerald-950/70"
-      : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]";
+      : "border-outline bg-surface text-ink-secondary hover:border-outline-strong hover:text-foreground";
   return (
     <button
       type="button"
@@ -574,7 +574,7 @@ function IntelligencePanel({ vuln }: { vuln: EnrichedVuln }) {
   const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
   return (
     <Panel title="Security intelligence">
-      <div className="space-y-2 break-words text-xs text-[color:var(--text-secondary)]">
+      <div className="space-y-2 break-words text-xs text-ink-secondary">
         {typeof vuln.cvss_score === "number" ? <div><KeyVal label="CVSS" value={vuln.cvss_score.toFixed(1)} /><span>{[version ? `v${version}` : null, vuln.cvss_severity].filter(Boolean).join(" · ")}</span></div> : null}
         {typeof vuln.epss_score === "number" ? <KeyVal label="EPSS" value={`${(vuln.epss_score * 100).toFixed(1)}%`} /> : null}
         {typeof vuln.epss_percentile === "number" ? <p>{vuln.epss_percentile.toFixed(1)}th percentile</p> : null}
@@ -593,7 +593,7 @@ function TagList({ label, values, mono = false }: { label: string; values: strin
   if (values.length === 0) return null;
   return (
     <div className="space-y-2">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">{label}</div>
+      <div className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {values.map((value) => (
           <Chip key={`${label}:${value}`} mono={mono}>{value}</Chip>
@@ -606,8 +606,8 @@ function TagList({ label, values, mono = false }: { label: string; values: strin
 function CodeLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="mt-2">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">{label}</div>
-      <code className="mt-1 block overflow-x-auto rounded bg-[color:var(--surface)] px-2 py-1.5 text-[11px] text-[color:var(--foreground)]">{value}</code>
+      <div className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">{label}</div>
+      <code className="mt-1 block overflow-x-auto rounded bg-surface px-2 py-1.5 text-[11px] text-foreground">{value}</code>
     </div>
   );
 }

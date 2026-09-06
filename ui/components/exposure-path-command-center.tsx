@@ -82,7 +82,7 @@ function PathViewToggle({
             className={`ep-view-option ${
               active
                 ? "bg-emerald-600 text-white"
-                : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
+                : "text-ink-secondary hover:text-foreground"
             }`}
           >
             <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -309,10 +309,10 @@ function MetricPill({
 }) {
   const toneClass =
     tone === "red"
-      ? "border-red-500/30 bg-red-500/10 text-[color:var(--foreground)]"
+      ? "border-red-500/30 bg-red-500/10 text-foreground"
       : tone === "green"
-        ? "border-emerald-500/30 bg-emerald-500/10 text-[color:var(--foreground)]"
-        : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--foreground)]";
+        ? "border-emerald-500/30 bg-emerald-500/10 text-foreground"
+        : "border-outline bg-surface text-foreground";
 
   return (
     <div className={`ep-metric ${toneClass}`}>
@@ -490,7 +490,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
           >
             {expanded ? "Return to ordered path" : "Open full-width diagram"}
           </button>
-          <span className="text-[color:var(--text-tertiary)]">
+          <span className="text-ink-tertiary">
             {expanded
               ? "Full-width diagram — scroll horizontally."
               : `All ${layout.totalHopCount} steps shown in order.`}

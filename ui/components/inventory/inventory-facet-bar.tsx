@@ -41,7 +41,7 @@ export function InventoryFacetBar({
     title: string,
     buckets: { value: string | null; count: number }[],
   ) => (
-    <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--text-tertiary)] sm:max-w-[14rem]">
+    <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-tertiary sm:max-w-[14rem]">
       {title}
       <select
         aria-label={`Filter by ${title.toLowerCase()}`}
@@ -51,7 +51,7 @@ export function InventoryFacetBar({
           setFilter(key, value);
           if (key === "severity") onSeverityFilterChange?.(value || "all");
         }}
-        className="h-9 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 text-xs font-normal normal-case tracking-normal text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+        className="h-9 rounded-lg border border-outline bg-surface px-2.5 text-xs font-normal normal-case tracking-normal text-foreground focus:border-outline-strong focus:outline-none"
       >
         <option value="">All {title.toLowerCase()}</option>
         {buckets.filter((bucket) => bucket.value).map((bucket) => (
@@ -69,25 +69,25 @@ export function InventoryFacetBar({
       className="space-y-2"
     >
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex min-w-[14rem] flex-[2] flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
+        <label className="flex min-w-[14rem] flex-[2] flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-tertiary">
           Search
           <span className="relative">
-            <Search className={`${ICON_SIZE.sm} absolute left-2.5 top-2.5 text-[color:var(--text-tertiary)]`} aria-hidden="true" />
+            <Search className={`${ICON_SIZE.sm} absolute left-2.5 top-2.5 text-ink-tertiary`} aria-hidden="true" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Name, id, type, source…"
-              className="h-9 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] pl-8 pr-3 text-xs font-normal normal-case tracking-normal text-[color:var(--foreground)] placeholder:text-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+              className="h-9 w-full rounded-lg border border-outline bg-surface pl-8 pr-3 text-xs font-normal normal-case tracking-normal text-foreground placeholder:text-ink-tertiary focus:border-outline-strong focus:outline-none"
             />
           </span>
         </label>
         {select("type", "Type", typeBuckets)}
         {select("severity", "Finding severity", facets?.severity.buckets ?? [])}
         {hasActive ? <button type="button" onClick={() => { clearFilters(); onSeverityFilterChange?.("all"); }}
-          className="h-9 px-2 text-xs text-[color:var(--text-secondary)] underline">Clear</button> : null}
+          className="h-9 px-2 text-xs text-ink-secondary underline">Clear</button> : null}
       </div>
       <details>
-        <summary className="cursor-pointer text-xs text-[color:var(--text-secondary)]">
+        <summary className="cursor-pointer text-xs text-ink-secondary">
           Advanced filters{[filters.source, filters.provider, filters.environment].filter(Boolean).length > 0
             ? ` · ${[filters.source, filters.provider, filters.environment].filter(Boolean).length} active` : ""}
         </summary>

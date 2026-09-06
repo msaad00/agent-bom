@@ -22,7 +22,7 @@ export function DetailTabs<T extends string>({
   const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
   return (
     <div
-      className="mb-4 flex flex-wrap gap-1 border-b border-[color:var(--border-subtle)]"
+      className="mb-4 flex flex-wrap gap-1 border-b border-outline"
       role="tablist"
       aria-label={ariaLabel}
     >
@@ -51,13 +51,13 @@ export function DetailTabs<T extends string>({
             }}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
               active
-                ? "border-emerald-500 text-[color:var(--foreground)]"
-                : "border-transparent text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
+                ? "border-emerald-500 text-foreground"
+                : "border-transparent text-ink-tertiary hover:text-ink-secondary"
             }`}
           >
             {entry.label}
             {entry.badge ? (
-              <span className="ml-1.5 rounded-full bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)]">
+              <span className="ml-1.5 rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] text-ink-secondary">
                 {entry.badge}
               </span>
             ) : null}

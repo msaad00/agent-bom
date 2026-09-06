@@ -9,20 +9,20 @@ const DETAIL_REGION_ID = "selected-investigation-path";
 
 export function InvestigationFilterDrawer({ children }: { children: React.ReactNode }) {
   return (
-    <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
+    <details className="group rounded-xl border border-outline bg-surface-elevated/70">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-medium text-foreground [&::-webkit-details-marker]:hidden">
         <span className="inline-flex items-center gap-2">
-          <SlidersHorizontal className="h-3.5 w-3.5 text-[color:var(--text-tertiary)]" aria-hidden="true" />
+          <SlidersHorizontal className="h-3.5 w-3.5 text-ink-tertiary" aria-hidden="true" />
           Filters &amp; presets
         </span>
-        <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)] group-open:hidden">
+        <span className="text-[10px] uppercase tracking-[0.14em] text-ink-tertiary group-open:hidden">
           Show
         </span>
-        <span className="hidden text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)] group-open:inline">
+        <span className="hidden text-[10px] uppercase tracking-[0.14em] text-ink-tertiary group-open:inline">
           Hide
         </span>
       </summary>
-      <div className="space-y-3 border-t border-[color:var(--border-subtle)] p-3">{children}</div>
+      <div className="space-y-3 border-t border-outline p-3">{children}</div>
     </details>
   );
 }
@@ -87,15 +87,15 @@ export function InvestigationPathWorkspace({
       data-layout={rows.length === 1 ? "focused-path" : "responsive-split"}
       className={rows.length === 1 ? "grid gap-4" : "grid gap-4 xl:grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)] xl:items-start"}
     >
-      <details open={rows.length !== 1} className="investigation-queue rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-        <summary className="cursor-pointer text-sm font-medium text-[color:var(--foreground)]">{rows.length === 1 ? "1 path selected · change focus or filters" : `${rows.length} paths · investigation queue`}</summary>
+      <details open={rows.length !== 1} className="investigation-queue rounded-xl border border-outline bg-surface p-4">
+        <summary className="cursor-pointer text-sm font-medium text-foreground">{rows.length === 1 ? "1 path selected · change focus or filters" : `${rows.length} paths · investigation queue`}</summary>
         <div className="mt-3">
           <div>
-            <h2 className="text-base font-semibold text-[color:var(--foreground)]">{title}</h2>
-            <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{subtitle}</p>
+            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+            <p className="mt-1 text-xs text-ink-tertiary">{subtitle}</p>
           </div>
 
-          <a href={`#${DETAIL_REGION_ID}`} className="mt-3 flex min-h-11 items-center text-sm font-medium text-[color:var(--foreground)] xl:hidden">View selected path</a>
+          <a href={`#${DETAIL_REGION_ID}`} className="mt-3 flex min-h-11 items-center text-sm font-medium text-foreground xl:hidden">View selected path</a>
           <div className="mt-3">
             <InvestigationFilterDrawer>{filters}</InvestigationFilterDrawer>
           </div>

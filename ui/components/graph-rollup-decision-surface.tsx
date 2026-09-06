@@ -50,7 +50,7 @@ function severityTone(severity: string): string {
     case "medium":
       return "border-amber-500/35 bg-amber-500/10 text-amber-800 dark:text-amber-200";
     default:
-      return "border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-secondary)]";
+      return "border-outline bg-surface-muted text-ink-secondary";
   }
 }
 
@@ -127,20 +127,20 @@ export function GraphRollupDecisionSurface({
     <section
       data-testid="graph-rollup-decision-surface"
       data-layout={compactLayout ? "compact" : "paged"}
-      className="flex min-h-0 flex-col overflow-hidden rounded-2xl bg-[var(--surface)]"
+      className="flex min-h-0 flex-col overflow-hidden rounded-2xl bg-surface"
       aria-label="Risk-prioritized estate scopes"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline px-4 py-3">
         <div>
-          <p className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+          <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Layers className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
             Prioritized findings and scopes
           </p>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">
+          <p className="mt-1 text-xs text-ink-secondary">
             {nodeScopeLabel} in this snapshot. Inspect the highest-severity nodes or expand their contained assets.
           </p>
           <p
-            className="mt-1 text-[11px] text-[var(--text-tertiary)]"
+            className="mt-1 text-[11px] text-ink-tertiary"
             data-testid="graph-rollup-relationship-completeness"
             title={edgeCountMetadata?.reason ? edgeCountMetadata.reason.replaceAll("_", " ") : undefined}
           >
@@ -149,7 +149,7 @@ export function GraphRollupDecisionSurface({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5 text-xs">
+      <div className="flex flex-wrap items-center gap-2 border-b border-outline px-4 py-2.5 text-xs">
         {(
           [
             ["priority", `Priority ${priorityCount}`],
@@ -165,13 +165,13 @@ export function GraphRollupDecisionSurface({
             className={
               (filter === "priority" && priorityCount === 0 ? "all" : filter) === value
                 ? "graph-chip-emerald"
-                : "graph-chip-neutral hover:border-[var(--border-strong)]"
+                : "graph-chip-neutral hover:border-outline-strong"
             }
           >
             {label}
           </button>
         ))}
-        <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">
+        <span className="ml-auto text-[11px] text-ink-tertiary">
           Page {page + 1} of {pages}
         </span>
       </div>
@@ -188,14 +188,14 @@ export function GraphRollupDecisionSurface({
           return (
             <article
               key={item.id}
-              className="grid items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] p-3 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]"
+              className="grid items-center gap-3 rounded-xl border border-outline bg-background p-3 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="break-words text-sm font-semibold text-[var(--foreground)]" title={item.label}>
+                  <p className="break-words text-sm font-semibold text-foreground" title={item.label}>
                     {item.label}
                   </p>
-                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
                     {item.entity_type.replaceAll("_", " ")}
                   </p>
                 </div>
@@ -206,16 +206,16 @@ export function GraphRollupDecisionSurface({
 
               <div className="flex flex-wrap items-center gap-4 text-xs">
                 {item.has_children && <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Contains</p>
-                  <p className="mt-0.5 font-semibold tabular-nums text-[var(--foreground)]">{item.aggregate.descendant_count} nodes</p>
+                  <p className="text-[10px] uppercase tracking-wide text-ink-tertiary">Contains</p>
+                  <p className="mt-0.5 font-semibold tabular-nums text-foreground">{item.aggregate.descendant_count} nodes</p>
                 </div>}
                 {item.has_children && <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Contained critical / high</p>
-                  <p className="mt-0.5 font-semibold tabular-nums text-[var(--foreground)]">{critical} / {high}</p>
+                  <p className="text-[10px] uppercase tracking-wide text-ink-tertiary">Contained critical / high</p>
+                  <p className="mt-0.5 font-semibold tabular-nums text-foreground">{critical} / {high}</p>
                 </div>}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Relations</p>
-                  <p className="mt-0.5 font-semibold tabular-nums text-[var(--foreground)]" title={`${relation.relationships} aggregated relationship evidence records`}>
+                  <p className="text-[10px] uppercase tracking-wide text-ink-tertiary">Relations</p>
+                  <p className="mt-0.5 font-semibold tabular-nums text-foreground" title={`${relation.relationships} aggregated relationship evidence records`}>
                     {relation.containers} connected nodes
                   </p>
                 </div>
@@ -249,8 +249,8 @@ export function GraphRollupDecisionSurface({
         })}
       </div>
 
-      <div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-2.5">
-        <p className="text-[11px] text-[var(--text-tertiary)]">
+      <div className="flex items-center justify-between border-t border-outline px-4 py-2.5">
+        <p className="text-[11px] text-ink-tertiary">
           Showing {visible.length} of {filtered.length} matching nodes and scopes
         </p>
         <div className="flex gap-2">

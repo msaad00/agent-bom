@@ -100,18 +100,18 @@ export function InventoryIndex() {
     <div className="space-y-6">
       {header}
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[color:var(--text-secondary)]" aria-label="Snapshot summary">
-        <span><strong className="text-[color:var(--foreground)]">{totals.assets.toLocaleString()}</strong> snapshot assets</span>
-        <span><strong className="text-[color:var(--foreground)]">{totals.findings.toLocaleString()}</strong> snapshot findings</span>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-secondary" aria-label="Snapshot summary">
+        <span><strong className="text-foreground">{totals.assets.toLocaleString()}</strong> snapshot assets</span>
+        <span><strong className="text-foreground">{totals.findings.toLocaleString()}</strong> snapshot findings</span>
         <span>{totals.sources.toLocaleString()} evidence sources</span>
       </div>
 
       <nav aria-label="Asset types" className="flex flex-wrap gap-2">
         {cards.map(({ kind, total }) => {
           const Icon = kind.icon;
-          return <Link key={kind.id} href={`/inventory/${kind.id}`} className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-xs text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)]">
+          return <Link key={kind.id} href={`/inventory/${kind.id}`} className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-xs text-ink-secondary hover:bg-surface-muted">
             <Icon className={ICON_SIZE.sm} aria-hidden="true" />
-            <span>{kind.label}</span>{" "}<strong className="tabular-nums text-[color:var(--foreground)]">{total.toLocaleString()}</strong>
+            <span>{kind.label}</span>{" "}<strong className="tabular-nums text-foreground">{total.toLocaleString()}</strong>
           </Link>;
         })}
       </nav>
@@ -121,9 +121,9 @@ export function InventoryIndex() {
       {model?.completeness && !model.completeness.complete ? (
         <div
           data-testid="inventory-coverage"
-          className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]"
+          className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs leading-5 text-ink-secondary"
         >
-          <span className="font-medium text-[color:var(--foreground)]">Evidence coverage:</span>{" "}
+          <span className="font-medium text-foreground">Evidence coverage:</span>{" "}
           {model.completeness.status}. More assets may be available beyond the rows shown.
         </div>
       ) : null}
@@ -136,10 +136,10 @@ export function InventoryIndex() {
       ) : null}
 
       {model && model.matchingTotal > 0 ? <>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[color:var(--text-secondary)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-secondary">
           <span>Showing {rows.length.toLocaleString()} of {totals.matching.toLocaleString()} matching assets</span>
           {hasMore ? <button type="button" disabled={loadingMore} onClick={() => { void loadMore(); }}
-            className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-[color:var(--foreground)] disabled:opacity-50">
+            className="rounded-lg border border-outline px-3 py-2 text-foreground disabled:opacity-50">
             {loadingMore ? "Loading…" : "Load more"}
           </button> : null}
         </div>
@@ -158,8 +158,8 @@ export function InventoryIndex() {
 
 const columns: DataTableColumn<AssetRow>[] = [
   { key: "asset", header: "Asset", cell: row => <div className="min-w-0 [overflow-wrap:anywhere]">
-    <p className="font-medium text-[color:var(--foreground)]">{row.label}</p>
-    <p className="text-xs text-[color:var(--text-tertiary)]">{[row.entityType, row.version].filter(Boolean).join(" · ")}</p>
+    <p className="font-medium text-foreground">{row.label}</p>
+    <p className="text-xs text-ink-tertiary">{[row.entityType, row.version].filter(Boolean).join(" · ")}</p>
   </div> },
   { key: "severity", header: "Finding severity", cell: row => <SeverityBadge severity={row.topFindingSeverity} /> },
   { key: "findings", header: "Findings", align: "right", cell: row => row.findingCount.toLocaleString() },

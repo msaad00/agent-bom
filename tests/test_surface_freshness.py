@@ -904,6 +904,12 @@ def _strict_marketplace_tool():
 @pytest.mark.parametrize("missing", ["required", "additionalProperties"])
 def test_smithery_rejects_schema_constraint_loss(monkeypatch, missing):
     script = _load_script("check_surface_freshness.py")
+
+    def unavailable(*_a, **_kw):
+        raise ValueError("public evidence unavailable")
+
+    monkeypatch.setattr(script, "_smithery_public_contract", unavailable)
+
     expected = [_strict_marketplace_tool()]
     actual = json.loads(json.dumps(expected))
     actual[0]["inputSchema"].pop(missing)
@@ -980,6 +986,12 @@ def test_monitor_rejects_unbound_server_card(monkeypatch, tmp_path, fault):
 
 def test_smithery_schema_drift_keeps_consolidated_issue_open(monkeypatch, tmp_path, capsys):
     script = _load_script("check_surface_freshness.py")
+
+    def unavailable(*_a, **_kw):
+        raise ValueError("public evidence unavailable")
+
+    monkeypatch.setattr(script, "_smithery_public_contract", unavailable)
+
     tools = [_strict_marketplace_tool()]
     contract = tmp_path / "contract.json"
     contract.write_text(json.dumps(tools))
@@ -1089,3 +1101,114 @@ def test_deployment_issue_closure_requires_explicit_verified_success():
     close_step = workflow.split("- name: Close supply-chain drift issue when deployment is fresh", 1)[1]
     assert "steps.public.outputs.public_version == 'fresh'" in close_step
     assert "steps.public.outputs.probe_failed == 'false'" in close_step
+
+
+def _smithery_public_page(tools, *, qualified_name="agentbom/agent-bom", prefix=""):
+    namespace, slug = qualified_name.split("/")
+    server = {"qualifiedName": qualified_name, "namespace": namespace, "slug": slug, "remote": True, "tools": tools}
+    flight = prefix + "1:" + json.dumps({"server": server}) + "\n"
+    return "<script>self.__next_f.push(" + json.dumps([1, flight]) + ")</script>"
+
+
+def test_smithery_public_schema_preserves_exact_constraints():
+    script = _load_script("check_surface_freshness.py")
+    tools = [_strict_marketplace_tool()]
+    assert script._extract_smithery_public_contract(_smithery_public_page(tools), "agentbom/agent-bom") == tools
+
+
+@pytest.mark.parametrize(
+    "fault", ["wrong_server", "duplicate_record", "truncated", "oversized", "duplicate_tool", "deep", "malformed_schema"]
+)
+def test_smithery_public_schema_fails_closed(fault):
+    script = _load_script("check_surface_freshness.py")
+    tools = [_strict_marketplace_tool()]
+    page = _smithery_public_page(tools)
+    if fault == "wrong_server":
+        page = _smithery_public_page(tools, qualified_name="other/server")
+    elif fault == "duplicate_record":
+        page += page
+    elif fault == "truncated":
+        page = '<script>self.__next_f.push([1,"2:Tff,short"])</script>'
+    elif fault == "oversized":
+        page += " " * (2 * 1024 * 1024)
+    elif fault == "duplicate_tool":
+        page = _smithery_public_page(tools + tools)
+    elif fault == "malformed_schema":
+        page = _smithery_public_page([{"name": "check", "inputSchema": None}])
+    else:
+        value = "end"
+        for _ in range(70):
+            value = [value]
+        tools[0]["inputSchema"]["default"] = value
+        page = _smithery_public_page(tools)
+    with pytest.raises((ValueError, RecursionError)):
+        script._extract_smithery_public_contract(page, "agentbom/agent-bom")
+
+
+def test_smithery_public_text_records_cannot_inject_schema_candidates():
+    script = _load_script("check_surface_freshness.py")
+    fake = "1:" + json.dumps({"qualifiedName": "agentbom/agent-bom", "tools": []}) + "\n"
+    prefix = "0:T" + format(len(fake.encode()), "x") + "," + fake
+    tools = [_strict_marketplace_tool()]
+    assert script._extract_smithery_public_contract(_smithery_public_page(tools, prefix=prefix), "agentbom/agent-bom") == tools
+
+
+def test_smithery_complete_public_evidence_resolves_catalog_projection(monkeypatch):
+    script = _load_script("check_surface_freshness.py")
+    tools = [_strict_marketplace_tool()]
+    reduced = json.loads(json.dumps(tools))
+    reduced[0]["inputSchema"].pop("required")
+    reduced[0]["inputSchema"].pop("additionalProperties")
+    monkeypatch.setattr(
+        script,
+        "_http_json",
+        lambda *_a, **_kw: {
+            "qualifiedName": "agentbom/agent-bom",
+            "remote": True,
+            "deploymentUrl": "https://agent-bom--agentbom.run.tools",
+            "tools": reduced,
+        },
+    )
+    monkeypatch.setattr(script, "_smithery_public_contract", lambda *_a, **_kw: tools)
+    result = script.probe_smithery(
+        "0.103.2", "agentbom/agent-bom", expected_tool_count=1, expected_tool_names=["check"], expected_tool_contract=tools
+    )
+    assert result["status"] == "fresh"
+    assert result["exact_input_schemas"] is True
+    assert result["catalog_exact_input_schemas"] is False
+    assert result["inventory_source"] == "public-page"
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_smithery_public_schemas_must_agree_with_catalog_values(monkeypatch, mismatch):
+    import io
+
+    script = _load_script("check_surface_freshness.py")
+    tools = [_strict_marketplace_tool()]
+    reduced = json.loads(json.dumps(tools))
+    reduced[0]["inputSchema"].pop("required")
+    if mismatch:
+        reduced[0]["inputSchema"]["properties"]["package"]["type"] = "integer"
+    monkeypatch.setattr(script.urllib.request, "urlopen", lambda *_a, **_kw: io.BytesIO(_smithery_public_page(tools).encode()))
+    if mismatch:
+        with pytest.raises(ValueError, match="schema values disagree"):
+            script._smithery_public_contract("agentbom/agent-bom", reduced)
+    else:
+        assert script._smithery_public_contract("agentbom/agent-bom", reduced) == tools
+
+
+def test_smithery_contract_comparison_preserves_types_and_numeric_values():
+    script = _load_script("check_surface_freshness.py")
+    assert script._contract_json({"default": 3.0}) == script._contract_json({"default": 3})
+    assert script._contract_json({"default": 0.5}) != script._contract_json({"default": 0})
+    assert script._contract_json({"additionalProperties": False}) != script._contract_json({"additionalProperties": 0})
+    assert script._contract_json({"type": "integer"}) != script._contract_json({"type": "number"})
+
+
+def test_smithery_publisher_uses_complete_public_schema_evidence():
+    workflow = (ROOT / ".github/workflows/publish-registries.yml").read_text()
+    assert workflow.count("--write-smithery-tool-contract /tmp/smithery-actual-tool-contract.json") == 2
+    assert (
+        workflow.count("--compare-tool-contract-files /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json")
+        == 2
+    )

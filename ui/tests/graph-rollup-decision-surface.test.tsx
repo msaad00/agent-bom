@@ -39,6 +39,8 @@ describe("GraphRollupDecisionSurface", () => {
     expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Back to summary" }));
     expect(onSummary).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    expect(onGraph).toHaveBeenCalledOnce();
   });
   it("prioritizes a rated leaf without fabricating contained assets or findings", () => {
     const leaf = item("vulnerable", {
@@ -47,7 +49,7 @@ describe("GraphRollupDecisionSurface", () => {
       aggregate: { ...item("base").aggregate, descendant_count: 0 },
     });
     render(<GraphRollupDecisionSurface items={[item("quiet"), leaf]} edges={[]}
-      onDrill={vi.fn()} onInvestigate={vi.fn()} onShowMap={vi.fn()} />);
+      onDrill={vi.fn()} onInvestigate={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Priority 1" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("critical")).toBeInTheDocument();
     expect(screen.queryByText("Scope quiet")).not.toBeInTheDocument();
@@ -62,7 +64,7 @@ describe("GraphRollupDecisionSurface", () => {
         edges={[]}
         onDrill={vi.fn()}
         onInvestigate={vi.fn()}
-        onShowMap={vi.fn()}
+
       />,
     );
 
@@ -93,7 +95,6 @@ describe("GraphRollupDecisionSurface", () => {
     const items = [critical, ...Array.from({ length: 24 }, (_, index) => item(`quiet-${index}`))];
     const onDrill = vi.fn();
     const onInvestigate = vi.fn();
-    const onShowMap = vi.fn();
 
     render(
       <GraphRollupDecisionSurface
@@ -101,7 +102,6 @@ describe("GraphRollupDecisionSurface", () => {
         edges={[{ source: "critical", target: "quiet-0", count: 7, relationships: ["accesses"] }]}
         onDrill={onDrill}
         onInvestigate={onInvestigate}
-        onShowMap={onShowMap}
       />,
     );
 
@@ -115,8 +115,6 @@ describe("GraphRollupDecisionSurface", () => {
     expect(onDrill).toHaveBeenCalledWith(critical);
     fireEvent.click(screen.getByRole("button", { name: /Traverse/i }));
     expect(onInvestigate).toHaveBeenCalledWith(critical);
-    fireEvent.click(screen.getByRole("button", { name: /Relationship map/i }));
-    expect(onShowMap).toHaveBeenCalledTimes(1);
   });
 
   it("paginates the all-scopes view without growing a long vertical page", () => {
@@ -127,7 +125,7 @@ describe("GraphRollupDecisionSurface", () => {
         edges={[]}
         onDrill={vi.fn()}
         onInvestigate={vi.fn()}
-        onShowMap={vi.fn()}
+
       />,
     );
 
@@ -162,7 +160,7 @@ describe("GraphRollupDecisionSurface", () => {
         }}
         onDrill={vi.fn()}
         onInvestigate={vi.fn()}
-        onShowMap={vi.fn()}
+
       />,
     );
 
@@ -180,7 +178,7 @@ describe("GraphRollupDecisionSurface", () => {
         edges={[]}
         onDrill={vi.fn()}
         onInvestigate={vi.fn()}
-        onShowMap={vi.fn()}
+
       />,
     );
 

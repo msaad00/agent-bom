@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, GitBranch, Layers, Network, ShieldAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, GitBranch, Layers, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type {
@@ -79,7 +79,6 @@ export function GraphRollupDecisionSurface({
   edgeCountMetadata,
   onDrill,
   onInvestigate,
-  onShowMap,
 }: {
   items: GraphRollupContainer[];
   edges: GraphRollupEdge[];
@@ -87,7 +86,6 @@ export function GraphRollupDecisionSurface({
   edgeCountMetadata?: GraphRollupEdgeCountMetadata | undefined;
   onDrill: (item: GraphRollupContainer) => void;
   onInvestigate: (item: GraphRollupContainer) => void;
-  onShowMap: () => void;
 }) {
   const [filter, setFilter] = useState<RiskFilter>("priority");
   const [page, setPage] = useState(0);
@@ -149,9 +147,6 @@ export function GraphRollupDecisionSurface({
             {edgeScopeLabel}
           </p>
         </div>
-        <button type="button" onClick={onShowMap} className="graph-page-action">
-          <Network className="h-3.5 w-3.5" /> Relationship map
-        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5 text-xs">

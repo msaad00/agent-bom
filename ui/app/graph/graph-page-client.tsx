@@ -2650,6 +2650,8 @@ function GraphPageInner() {
     rollupPreferenceRef.current = "force";
     requestedAttackPathKeyRef.current = null;
     requestedInvestigationRef.current = null;
+    setSearchQuery("");
+    setSearchResults([]);
     clearInvestigationMode();
     setSelectedNode(null);
     setSelectedNodeId(null);
@@ -2771,6 +2773,54 @@ function GraphPageInner() {
     );
   }
 
+  const scenarioComparisonPanel = (
+    <GraphScenarioComparisonPanel
+            scenario={selectedScenario}
+            comparison={scenarioComparison}
+            state={scenarioState}
+            loading={loadingScenarioComparison}
+            error={scenarioError}
+            attackPathLens={attackPathLens}
+            baseSnapshotAvailable={Boolean(
+              selectedScenario &&
+                snapshots.some(
+                  (snapshot) => snapshot.scan_id === selectedScenario.base_scan_id,
+                ),
+            )}
+            onStateChange={setScenarioState}
+            onSwitchBase={() => {
+              if (selectedScenario) {
+                setSelectedScanId(selectedScenario.base_scan_id);
+              }
+            }}
+            authoring={
+              <GraphScenarioAuthoring
+                scanId={selectedScanId}
+                scenario={selectedScenario}
+                session={session}
+                canWrite={
+                  roleCanConnect(
+                    session?.role_summary?.role ?? session?.role,
+                  ) &&
+                  !session?.managed_trial_mode &&
+                  session?.auth_method !== "managed_trial_oidc"
+                }
+                onSaved={(savedScenario) => {
+                  setScenarios((current) => [
+                    savedScenario,
+                    ...current.filter(
+                      (item) => item.scenario_id !== savedScenario.scenario_id,
+                    ),
+                  ]);
+                  setSelectedScenarioId(savedScenario.scenario_id);
+                  setScenarioState("proposed");
+                  setScenarioRefreshKey((current) => current + 1);
+                }}
+              />
+            }
+          />
+  );
+
   return (
     // min-h instead of h so the page can grow taller than the viewport
     // when the snapshot diff cards / how-to-read prose / findings
@@ -2792,7 +2842,7 @@ function GraphPageInner() {
             </h1>
             <p className="text-xs text-[var(--text-tertiary)]">
               {canvasLens === "estate"
-                ? "Current evidence rolled up by estate scope; drill into the same persisted graph without changing snapshot truth."
+                ? "Review priority findings, then follow their connections and evidence."
                 : "Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings."}
             </p>
           </div>
@@ -2858,8 +2908,8 @@ function GraphPageInner() {
               ))}
             </select>
 
-            <FullscreenButton />
-            {presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <details>
+            {!rollupDecisionActive && <FullscreenButton />}
+            {!rollupDecisionActive && presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <details>
               <summary className="graph-page-action cursor-pointer">Layout</summary>
               <GraphInteractionToolbar
               editing={presentation.editing}
@@ -2893,6 +2943,7 @@ function GraphPageInner() {
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search nodes, tags, severities, or attributes"
               className="graph-page-search"
+              style={{ minWidth: 0 }}
             />
             <button
               type="submit"
@@ -2938,6 +2989,50 @@ function GraphPageInner() {
                 ))}
               </div>
             </div>
+          )}
+
+          {selectedScenario && scenarioComparisonPanel}
+
+          {investigationMode && (
+            <div className="graph-callout-sky">
+              <span>
+                Focused on:{" "}
+                <span className="font-mono">{investigationMode.rootLabel || investigationMode.rootId}</span>
+                {investigationMode.truncated
+                  ? " · traversal budget reached"
+                  : ""}
+              </span>
+              <button
+                type="button"
+                onClick={clearInvestigationMode}
+                className="rounded-lg border border-sky-400/30 bg-sky-950/60 px-2.5 py-1 text-sky-100 transition hover:border-sky-300"
+              >
+                Clear focus
+              </button>
+            </div>
+          )}
+
+          {(reachabilitySummary ||
+            loadingReachability ||
+            reachabilityError) && (
+            <ReachabilityDrillInPanel
+              summary={reachabilitySummary}
+              loading={loadingReachability}
+              error={reachabilityError}
+              onClear={() => {
+                setReachabilitySummary(null);
+                setReachabilityError(null);
+              }}
+            />
+          )}
+
+          {(blastRadius || loadingBlast || blastError) && (
+            <BlastRadiusPanel
+              summary={blastRadius}
+              loading={loadingBlast}
+              error={blastError}
+              onClear={clearBlastRadius}
+            />
           )}
 
           <details
@@ -2991,51 +3086,7 @@ function GraphPageInner() {
                 />
               </div>
 
-          <GraphScenarioComparisonPanel
-            scenario={selectedScenario}
-            comparison={scenarioComparison}
-            state={scenarioState}
-            loading={loadingScenarioComparison}
-            error={scenarioError}
-            attackPathLens={attackPathLens}
-            baseSnapshotAvailable={Boolean(
-              selectedScenario &&
-                snapshots.some(
-                  (snapshot) => snapshot.scan_id === selectedScenario.base_scan_id,
-                ),
-            )}
-            onStateChange={setScenarioState}
-            onSwitchBase={() => {
-              if (selectedScenario) {
-                setSelectedScanId(selectedScenario.base_scan_id);
-              }
-            }}
-            authoring={
-              <GraphScenarioAuthoring
-                scanId={selectedScanId}
-                scenario={selectedScenario}
-                session={session}
-                canWrite={
-                  roleCanConnect(
-                    session?.role_summary?.role ?? session?.role,
-                  ) &&
-                  !session?.managed_trial_mode &&
-                  session?.auth_method !== "managed_trial_oidc"
-                }
-                onSaved={(savedScenario) => {
-                  setScenarios((current) => [
-                    savedScenario,
-                    ...current.filter(
-                      (item) => item.scenario_id !== savedScenario.scenario_id,
-                    ),
-                  ]);
-                  setSelectedScenarioId(savedScenario.scenario_id);
-                  setScenarioState("proposed");
-                  setScenarioRefreshKey((current) => current + 1);
-                }}
-              />
-            }
-          />
+          {!selectedScenario && scenarioComparisonPanel}
 
           {activeScopePreset === "assetDrift" && (
             <div className="mt-3 space-y-3">
@@ -3068,48 +3119,6 @@ function GraphPageInner() {
                 }}
               />
             </div>
-          )}
-
-          {investigationMode && (
-            <div className="graph-callout-sky">
-              <span>
-                Root-centered investigation:{" "}
-                <span className="font-mono">{investigationMode.rootId}</span>
-                {investigationMode.truncated
-                  ? " · traversal budget reached"
-                  : ""}
-              </span>
-              <button
-                type="button"
-                onClick={clearInvestigationMode}
-                className="rounded-lg border border-sky-400/30 bg-sky-950/60 px-2.5 py-1 text-sky-100 transition hover:border-sky-300"
-              >
-                Return to full graph
-              </button>
-            </div>
-          )}
-
-          {(reachabilitySummary ||
-            loadingReachability ||
-            reachabilityError) && (
-            <ReachabilityDrillInPanel
-              summary={reachabilitySummary}
-              loading={loadingReachability}
-              error={reachabilityError}
-              onClear={() => {
-                setReachabilitySummary(null);
-                setReachabilityError(null);
-              }}
-            />
-          )}
-
-          {(blastRadius || loadingBlast || blastError) && (
-            <BlastRadiusPanel
-              summary={blastRadius}
-              loading={loadingBlast}
-              error={blastError}
-              onClear={clearBlastRadius}
-            />
           )}
 
           {(rollupEligible || loadingRollup || rollupError) &&
@@ -3738,7 +3747,6 @@ function GraphPageInner() {
               edgeCountMetadata={rollupView?.edge_count_metadata}
               onDrill={drillIntoRollup}
               onInvestigate={investigateRollup}
-              onShowMap={() => setRollupMapExpanded(true)}
             />
           ) : displayNodes.length === 0 ? (
             <GraphEmptyState

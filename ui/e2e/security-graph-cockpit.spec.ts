@@ -498,6 +498,7 @@ for (const proof of [
     await expect(page.getByRole("status")).toContainText(
       "Proposed scenario — not observed or deployed",
     );
+    await expect(page.getByRole("group", { name: "Investigation view" })).toBeHidden();
     await expect(page.getByText("Current · observed")).toBeVisible();
     await expect(page.getByText("Proposed · modeled")).toBeVisible();
     await page.getByRole("tab", { name: "Difference" }).click();

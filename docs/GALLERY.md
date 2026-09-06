@@ -1,58 +1,69 @@
-# Product gallery
+# Product scenarios
 
-The two correlation views use the committed, hash-pinned **Reference evidence
-lab — modeled local infrastructure** artifact and a real bundled advisory.
-Other gallery screens use deterministic synthetic fixtures that are visibly
-labeled. None are customer or live-cloud evidence.
+Start with a question, run the workflow, and inspect its evidence. The image
+below uses the **Reference evidence lab — modeled local infrastructure**:
+real parser and local gateway execution, a published advisory, and explicit
+modeled infrastructure. It is not a customer incident or live-cloud proof.
 
-## Correlated evidence proof
+## Scan a repository before shipping
 
-Start with the affected service, vulnerable package, and reachable asset. Open
-the selected path or its remediation; source receipts remain available on demand.
+From the repository you want to inspect:
 
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/correlation-receipts-live.png" alt="Reference evidence lab investigation overview with impact and remediation" width="900" />
+```bash
+agent-bom scan . -f json -o scan.json
+agent-bom report compliance-narrative scan.json
+```
 
-The confirmed `CVE-2023-4863` path retains exact identifiers, per-hop evidence,
-freshness, runtime observation and strict-block proof, and a remediation handoff.
+The first command produces inventory, findings, and coverage for the selected
+project. The second turns that saved evidence into a compliance narrative.
+Review incomplete collectors before treating an absence of findings as a clean
+result. Use the [first-run guide](FIRST_RUN.md) for SARIF and CI gates.
 
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/correlation-path-live.png" alt="Reference evidence lab confirmed CVE-2023-4863 path" width="900" />
+## Follow an image-processing exposure
 
-## Overview
+An AppSec engineer receives an advisory affecting an image-processing service.
+The actionable question is whether the affected package belongs to a workload
+with a route to a sensitive asset.
 
-Posture and top risks lead; coverage and operations provide supporting context.
+The [reference lab](../examples/reference-evidence-lab/README.md) follows
+`CVE-2023-4863` through a pinned Pillow dependency, image SBOM, Kubernetes
+manifest, MCP configuration, and modeled identity. The ordered path shows the
+relationship and evidence behind every step. Open a hop to inspect its source;
+use Graph or List to investigate the same selected path.
 
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview with posture, finding, coverage, and operations summaries" width="900" />
+<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/correlation-path-live.png" alt="Pillow advisory investigation with eight ordered entities, remediation action, and per-hop evidence" width="900" />
 
-## Findings
+This is a structural exposure supported by the lab inputs, not execution of an
+exploit. The lab observes an allowed local gateway call, then checks that graph
+enforcement blocks another call before the upstream tool runs. That proves the
+local enforcement decision, not removal of the vulnerable deployment.
 
-The finding queue preserves severity, evidence, and the next action.
+The upstream [Pillow 10.0.1 release notes](https://pillow.readthedocs.io/en/stable/releasenotes/10.0.1.html)
+document updated wheels containing libwebp 1.3.2 for this advisory. The lab
+matches package versions; it does not inspect a running service's libwebp binary.
 
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, evidence, and next actions" width="900" />
+## Verify the package change
 
-## Investigation
+From a repository checkout, run the offline before/after replay:
 
-The broader synthetic gallery retains a visibly labeled path-first UI fixture
-for layout and interaction regression coverage.
+```bash
+uv run python scripts/replay_package_remediation.py --output /tmp/package-replay.json
+```
 
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Path-first investigation with provenance-aware sample graph evidence" width="900" />
+The real dependency parser and scanner read two isolated manifests. Pillow
+9.0.0 matches the pinned advisory; 10.0.1 crosses that advisory's fixed-version
+boundary. Neither package is installed or executed. The JSON receipt records
+both results and the limited advisory coverage. This historical version pair
+is a reproducible test case, not a current upgrade recommendation.
 
-## Remediation
+In an actual environment, rebuild and redeploy using a supported version,
+collect a fresh SBOM and runtime identity, and re-run correlation. Close the
+exposure only when the new evidence supports that decision. Retain the prior
+scan and receipts for the audit trail.
 
-Campaigns connect priority, ownership, SLA, remediation, and verification.
+[Run the complete lab](../examples/reference-evidence-lab/README.md) ·
+[Start a self-hosted control plane](../DOCKER_HUB_UI_README.md) ·
+[Evidence and graph contract](graph/CONTRACT.md)
 
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Prioritized remediation workflow with ownership and verification" width="900" />
-
-## Cloud and environment lineage
-
-Scoped lineage supports environment drill-down without leading with an
-unbounded raw topology.
-
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Scoped environment lineage with interactive graph controls" width="900" />
-
-## Agent mesh
-
-Agent and MCP server relationships retain named nodes and labeled edges.
-
-<img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent and MCP server relationships with labeled edges" width="900" />
-
-Next: follow the [capture protocol](CAPTURE.md) when refreshing these assets.
+Synthetic layout fixtures remain in the [capture protocol](CAPTURE.md) for UI
+regression coverage. They are separate from these reproducible scenario claims.

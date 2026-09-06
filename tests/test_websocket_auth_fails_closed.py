@@ -30,6 +30,9 @@ whose excerpts carry the matched secret material.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
 from agent_bom.api.routes import proxy as proxy_routes
@@ -145,6 +148,67 @@ def test_a_posture_derivation_error_fails_closed(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(mw, "get_auth_posture", _boom)
     assert proxy_routes._ws_auth_required() is True
+
+
+@pytest.mark.asyncio
+async def test_handshake_rate_limit_rejects_before_auth_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rejected peer must not enter the five-second credential wait."""
+
+    class _Socket:
+        def __init__(self) -> None:
+            self.close_code: int | None = None
+
+        async def close(self, *, code: int) -> None:
+            self.close_code = code
+
+    socket = _Socket()
+    limit = AsyncMock(return_value=False)
+    monkeypatch.setattr(proxy_routes, "_ws_handshake_within_rate_limit", limit, raising=False)
+
+    def _auth_must_not_run() -> bool:
+        raise AssertionError("authentication work ran after the handshake budget was exhausted")
+
+    monkeypatch.setattr(proxy_routes, "_ws_auth_required", _auth_must_not_run)
+
+    context = await proxy_routes._ws_accept_and_check_auth(socket)  # type: ignore[arg-type]
+
+    assert context is None
+    assert socket.close_code == 4008
+    limit.assert_awaited_once_with(socket)
+
+
+@pytest.mark.asyncio
+async def test_handshake_rate_limit_uses_transport_peer_and_atomic_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, float, int]] = []
+
+    class _Store:
+        def consume_if_below(self, key: str, now: float, limit: int) -> tuple[bool, int, int]:
+            calls.append((key, now, limit))
+            accepted = len(calls) == 1
+            return accepted, 1, int(now) + 60
+
+    class _Socket:
+        client = SimpleNamespace(host="203.0.113.8")
+
+    monkeypatch.setattr(proxy_routes, "_get_ws_handshake_rate_limit_store", lambda: _Store())
+
+    assert await proxy_routes._ws_handshake_within_rate_limit(_Socket()) is True  # type: ignore[arg-type]
+    assert await proxy_routes._ws_handshake_within_rate_limit(_Socket()) is False  # type: ignore[arg-type]
+    assert len(calls) == 2
+    assert calls[0][0] == "websocket-handshake:203.0.113.8"
+    assert calls[0][2] == proxy_routes.WS_HANDSHAKE_RATE_LIMIT_RPM
+
+
+@pytest.mark.asyncio
+async def test_handshake_rate_limit_store_failure_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Socket:
+        client = SimpleNamespace(host="203.0.113.9")
+
+    def _unavailable() -> object:
+        raise RuntimeError("database connection contains private details")
+
+    monkeypatch.setattr(proxy_routes, "_get_ws_handshake_rate_limit_store", _unavailable)
+    assert await proxy_routes._ws_handshake_within_rate_limit(_Socket()) is False  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

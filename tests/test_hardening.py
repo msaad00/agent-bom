@@ -256,6 +256,53 @@ def test_jobs_concurrent_access():
     assert errors == [], f"Concurrent access errors: {errors}"
 
 
+def test_stuck_job_persistence_does_not_hold_the_global_jobs_lock():
+    """A slow durable store must not block unrelated in-memory job access."""
+    from datetime import datetime, timezone
+
+    from agent_bom.api.server import (
+        JobStatus,
+        ScanJob,
+        ScanRequest,
+        _fail_stuck_running_jobs,
+        _jobs_lock,
+        _jobs_pop,
+        _jobs_put,
+    )
+
+    persistence_started = threading.Event()
+    release_persistence = threading.Event()
+
+    class BlockingStore:
+        def put(self, job: ScanJob) -> None:
+            persistence_started.set()
+            release_persistence.wait(timeout=2)
+
+    job = ScanJob(job_id="stuck-lock", created_at="2020-01-01T00:00:00Z", request=ScanRequest())
+    job.status = JobStatus.RUNNING
+    _jobs_put(job.job_id, job)
+    worker = threading.Thread(
+        target=_fail_stuck_running_jobs,
+        args=(BlockingStore(), datetime(2026, 1, 1, tzinfo=timezone.utc)),
+    )
+
+    lock_available = False
+    try:
+        worker.start()
+        assert persistence_started.wait(timeout=1)
+        lock_available = _jobs_lock.acquire(timeout=0.2)
+        if lock_available:
+            _jobs_lock.release()
+    finally:
+        release_persistence.set()
+        worker.join(timeout=2)
+        _jobs_pop(job.job_id)
+
+    assert lock_available, "durable persistence held the global in-memory jobs lock"
+    assert not worker.is_alive()
+    assert job.status == JobStatus.FAILED
+
+
 # ── Store locking ───────────────────────────────────────────────────────────
 
 

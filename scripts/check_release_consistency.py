@@ -306,7 +306,9 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
     if not isinstance(source_commit, str) or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
         _fail("docs/images/product-screenshots.json source_commit must be a full lowercase Git SHA")
     tracked = subprocess.run(
-        ["git", "ls-files", "-z", "--", *PRODUCT_SCREENSHOT_INPUTS],
+        # A container may mount the checkout with a different host UID. Trust
+        # only this guard's known root for this read, never global Git config.
+        ["git", "-c", f"safe.directory={ROOT}", "ls-files", "-z", "--", *PRODUCT_SCREENSHOT_INPUTS],
         cwd=ROOT,
         check=False,
         capture_output=True,

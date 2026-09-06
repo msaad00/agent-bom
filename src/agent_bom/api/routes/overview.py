@@ -16,15 +16,13 @@ function that another route already exposes:
 
 The exec headline severity counts and risk grade use the exact default-window,
 parent-job exclusion, and cross-job replacement semantics of ``/v1/findings``.
-The five coverage lanes remain historical scan summaries. This separation is
-intentional: compact summaries can describe prior scan coverage, but cannot
-create executive severity counts whose underlying finding rows no longer exist
-for drill-down. The shared current-state fold includes non-CVE findings and
-canonicalized ``blast_radius`` evidence, so re-scans replace rather than inflate
-the executive count (#3961/#4106).
+The five coverage lanes use the same current, open findings and
+preserve overlapping discipline membership. Hub lane aggregation is bounded;
+partial counts are explicit lower bounds, never a claim of absent evidence.
+Canonicalized blast-radius evidence is included in current scan findings.
 
 Domain tiles (cloud / vuln / code / runtime / ...) remain scan-scoped by
-design; only the top-level posture + headline aggregate scan + ingested
+design; the posture, headline and security-discipline lanes aggregate scan + ingested
 evidence.
 
 Endpoints:
@@ -105,6 +103,7 @@ class _HubOverviewSnapshot:
     kev: int
     top_risks: list[dict[str, Any]]
     revision: int | None
+    coverage: tuple[dict[str, dict[str, int]], str] | None = None
 
 
 _overview_inflight: dict[str, _OverviewFlight] = {}
@@ -1099,8 +1098,8 @@ def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]
     }
 
 
-def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
-    """Authoritative executed-scan histogram for executive posture surfaces."""
+def _current_open_scan_findings(jobs: list[Any]) -> list[dict[str, Any]]:
+    """The same executed scan, time window and lifecycle basis as the drill."""
     from agent_bom.api import time_window
     from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.api.findings_current import current_scan_findings
@@ -1114,15 +1113,105 @@ def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
         iter_findings=_iter_scan_findings,
         require_authoritative_evidence=True,
     )
+    return [row for row in findings if status_matches(row, "open")]
+
+
+def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
+    """Authoritative executed-scan histogram for executive posture surfaces."""
     severity = _empty_severity()
-    for row in findings:
-        # Default OPEN basis, matching ``/v1/findings`` and the hub snapshot so
-        # the exec headline derives from live findings only. Scan findings carry
-        # no lifecycle status, so they count as open by construction.
-        if not status_matches(row, "open"):
-            continue
+    for row in _current_open_scan_findings(jobs):
         severity[_bucket(str(row.get("severity") or ""), severity)] += 1
     return severity
+
+
+def _fold_current_coverage(lanes: dict[str, dict[str, int]], row: dict[str, Any]) -> None:
+    from agent_bom.finding_scope import lenses_for_row
+
+    # Match the domain drill exactly; an unclassified row is not invented as a CVE.
+    for domain in lenses_for_row(row):
+        if domain in lanes:
+            bands = lanes[domain]
+            bands[_bucket(str(row.get("severity") or ""), bands)] += 1
+
+
+def _hub_coverage_snapshot(
+    request: Request,
+    hub_store: Any,
+    revision: int | None,
+) -> tuple[dict[str, dict[str, int]], str]:
+    """One bounded keyset pass for all lanes, cached at the durable revision.
+
+    Exact persisted domain aggregates are not available. Row/deadline exhaustion
+    retains known counts and marks every lane partial, including zero-count lanes.
+    """
+    from agent_bom.api import hub_overview_cache, time_window
+    from agent_bom.api.compliance_hub_store import scope_filter_deadline_seconds, scope_filter_scan_budget
+
+    tenant_id = _tenant_id(request)
+    if revision is not None:
+        cached = hub_overview_cache.get_cached_coverage(tenant_id, revision)
+        if cached is not None:
+            return cached
+    lanes = {domain: _empty_severity() for domain in _COVERAGE_DOMAINS}
+    pager = getattr(hub_store, "list_current_page", None)
+    if not callable(pager):
+        return lanes, "unavailable"
+    remaining = scope_filter_scan_budget()
+    deadline = time.monotonic() + scope_filter_deadline_seconds()
+    cursor: str | None = None
+    status = "partial"
+    since = time_window.window_since_iso(time_window.normalize_window_days(None))
+    try:
+        while remaining > 0 and time.monotonic() < deadline:
+            page, _total, next_cursor = pager(
+                tenant_id,
+                limit=min(200, remaining),
+                sort="ordinal",
+                origin="bulk_ingest",
+                status="open",
+                since=since,
+                include_total=False,
+                cursor=cursor,
+            )
+            for row in page:
+                _fold_current_coverage(lanes, row)
+            remaining -= len(page)
+            if not next_cursor:
+                status = "complete"
+                break
+            if next_cursor == cursor or not page:
+                break
+            cursor = next_cursor
+    except Exception:
+        # Counts accumulated before a failed read remain lower bounds. Do not
+        # leak backend errors or describe the unread portion as an empty estate.
+        status = "unavailable"
+        _logger.debug("hub discipline coverage read unavailable", exc_info=False)
+    if revision is not None and status != "unavailable":
+        hub_overview_cache.set_cached_coverage(tenant_id, revision, lanes, status)
+    return lanes, status
+
+
+def _current_coverage(
+    jobs: list[Any],
+    hub_coverage: tuple[dict[str, dict[str, int]], str],
+) -> list[dict[str, Any]]:
+    hub_lanes, status = hub_coverage
+    lanes = {domain: dict(hub_lanes[domain]) for domain in _COVERAGE_DOMAINS}
+    for row in _current_open_scan_findings(jobs):
+        _fold_current_coverage(lanes, row)
+    return [
+        {
+            "domain": domain,
+            "label": _COVERAGE_LABELS[domain],
+            "href": f"/findings?domain={domain}",
+            "count": sum(lanes[domain].values()),
+            "severity": lanes[domain],
+            "evidence_status": status,
+            "count_exact": status == "complete",
+        }
+        for domain in _COVERAGE_DOMAINS
+    ]
 
 
 def _exec_estate(estate: dict[str, Any], jobs: list[Any]) -> dict[str, Any]:
@@ -1277,6 +1366,7 @@ def _capture_hub_overview_snapshot(
             kev=_hub_kev_snapshot(request),
             top_risks=(_hub_top_risks(request) if include_details else []),
             revision=None,
+            coverage=(_hub_coverage_snapshot(request, hub_store, None) if include_details else None),
         )
 
     def _read_revision() -> int:
@@ -1296,6 +1386,7 @@ def _capture_hub_overview_snapshot(
             kev=_hub_kev_snapshot(request, revision=revision, strict=True),
             top_risks=(_hub_top_risks(request, strict=True) if include_details else []),
             revision=revision,
+            coverage=(_hub_coverage_snapshot(request, hub_store, revision) if include_details else None),
         )
         if _read_revision() == revision:
             return snapshot
@@ -1360,6 +1451,7 @@ def _build_overview(request: Request) -> dict[str, Any]:
             hub_evidence_version,
             hub_kev=hub_snapshot.kev,
             hub_top_risks=hub_snapshot.top_risks,
+            hub_coverage=hub_snapshot.coverage,
         )
         _overview_cache_put(tenant_id, fingerprint, payload)
         return payload
@@ -1374,6 +1466,7 @@ def _build_overview(request: Request) -> dict[str, Any]:
             hub_evidence_version,
             hub_kev=hub_snapshot.kev,
             hub_top_risks=hub_snapshot.top_risks,
+            hub_coverage=hub_snapshot.coverage,
         )
         _overview_cache_put(tenant_id, fingerprint, payload)
         flight.payload = payload
@@ -1395,11 +1488,16 @@ def _compose_overview(
     *,
     hub_kev: int | None = None,
     hub_top_risks: list[dict[str, Any]] | None = None,
+    hub_coverage: tuple[dict[str, dict[str, int]], str] | None = None,
 ) -> dict[str, Any]:
     """Fold the estate into the overview payload (the O(estate) hot path)."""
     estate = _estate_rollup(jobs)
     exec_estate = _exec_estate(estate, jobs)
-    coverage = estate["coverage"]
+    if hub_coverage is None:
+        from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+        hub_coverage = _hub_coverage_snapshot(request, get_compliance_hub_store(), hub_evidence_revision)
+    coverage = _current_coverage(jobs, hub_coverage)
     if hub_kev is None:
         hub_kev = _hub_kev_snapshot(request, revision=hub_evidence_revision)
     posture = _exec_posture(

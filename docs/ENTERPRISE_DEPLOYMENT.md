@@ -317,6 +317,30 @@ For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated
 
 For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `agent-bom` now fails closed when `AGENT_BOM_CONTROL_PLANE_REPLICAS > 1` (or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`) and no PostgreSQL-backed limiter is configured via `AGENT_BOM_POSTGRES_URL`.
 
+#### Security-discipline counts
+
+`GET /v1/overview` reports open findings per discipline over the same default
+read window and current scan selection as `/v1/findings`. AISPM counts classified
+AI-posture findings, not inventoried agents, models, or evaluated controls.
+Disciplines overlap; their counts must not be added together.
+
+Current bulk-ingested findings are folded into all five lanes in one bounded
+keyset pass (at most 200 rows per page), cached at the tenant evidence revision.
+The pass uses `AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET` (default 20,000 rows) and
+`AGENT_BOM_SCOPE_FILTER_DEADLINE_SECONDS` (default 1.5 seconds). The deadline is
+checked between page reads; it does not interrupt a database query in progress.
+Each lane carries `evidence_status` (`complete`, `partial`, or `unavailable`) and
+`count_exact`. When the read is incomplete, count and severity are lower bounds;
+the dashboard labels them accordingly. A complete zero means no open findings in
+that discipline, not that the estate has been assessed or is secure. Existing
+clients that consume only `count` must also read `count_exact` before treating it
+as a total. Missing metadata on older servers means completeness is unknown.
+
+The headline retains its independent current-state severity aggregate when lane
+aggregation is partial. Exact domain totals at larger cardinalities require
+persisted discipline aggregates; increasing the read budget trades latency for
+completeness and does not establish a tested scale guarantee.
+
 #### Postgres sizing for typical estates
 
 The numbers below are derived from the synthetic graph cardinalities published

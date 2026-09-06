@@ -61,6 +61,31 @@ describe("OverviewCockpit", () => {
     expect(screen.getAllByText("Grade C")).toHaveLength(1);
   });
 
+  it.each([
+    "sbom:/private/tmp/reference/model.cdx.json",
+    "sbom:C:\\reference\\model.cdx.json",
+  ])("labels %s as an SBOM source and preserves its full technical value", async (source) => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} topPath={{
+      ...baseProps.topPath,
+      nodes: [{ type: "cve", label: "CVE-2020-14343" }, { type: "agent", label: source }],
+    }} />);
+    expect(screen.getByText("SBOM source: model.cdx.json")).toBeVisible();
+    expect(screen.queryByText(/Affected workload:/)).not.toBeInTheDocument();
+    expect(screen.getByText(source)).not.toBeVisible();
+    await user.click(screen.getByText("Technical details"));
+    expect(screen.getByText(source)).toBeVisible();
+  });
+
+  it.each(["agent", "server"] as const)("preserves the affected workload label for a normal %s", (type) => {
+    render(<OverviewCockpit {...baseProps} topPath={{
+      ...baseProps.topPath,
+      nodes: [{ type: "cve", label: "CVE-2020-14343" }, { type, label: "api-worker" }],
+    }} />);
+    expect(screen.getByText("Affected workload: api-worker")).toBeVisible();
+    expect(screen.queryByText(/SBOM source:/)).not.toBeInTheDocument();
+  });
+
   it("keeps exact technical identifiers behind a separate disclosure", async () => {
     const user = userEvent.setup();
     const findingId = "fdf2bafa-4d62-505a-b16c-4c74d646437f";

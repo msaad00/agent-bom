@@ -21,6 +21,8 @@ import {
 import {
   type EnrichedVuln,
   uniqueStrings,
+  findingWorkloadScope,
+  sbomSourceName,
   formatFindingTimestamp,
   findingStatusLabel,
   cvssVersion,
@@ -106,6 +108,7 @@ export function FindingDrawer({
 // ── Overview ──────────────────────────────────────────────────────────────────
 
 function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
+  const scope = findingWorkloadScope(vuln);
   const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "No advisory summary available.";
   const fixCandidates = vuln.remediation_items.filter((item) => item.fixed_version || item.command || item.verify_command);
   const packageLabel = vuln.packages.join(", ") || "Affected asset";
@@ -113,8 +116,8 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
     ? `${vuln.current_version} → ${vuln.fixed_version}`
     : vuln.fixed_version ? `Upgrade to ${vuln.fixed_version}` : null;
   const impact = [
-    vuln.agents.length ? `${vuln.agents.length} agent${vuln.agents.length === 1 ? "" : "s"}` : null,
-    vuln.affected_servers.length ? `${vuln.affected_servers.length} MCP server${vuln.affected_servers.length === 1 ? "" : "s"}` : null,
+    scope.agents.length ? `${scope.agents.length} agent${scope.agents.length === 1 ? "" : "s"}` : null,
+    scope.servers.length ? `${scope.servers.length} MCP server${scope.servers.length === 1 ? "" : "s"}` : null,
     vuln.exposed_credentials.length ? `${vuln.exposed_credentials.length} credential reference${vuln.exposed_credentials.length === 1 ? "" : "s"}` : null,
     vuln.reachable_tools.length ? `${vuln.reachable_tools.length} linked tool${vuln.reachable_tools.length === 1 ? "" : "s"}` : null,
   ].filter(Boolean);
@@ -143,9 +146,11 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
         </div>
       </Section>
 
-      {impact.length ? (
+      {impact.length || scope.sbomSources.length ? (
         <Section title="Affected scope">
-          <p className="text-sm text-ink-secondary">{impact.join(" · ")}</p>
+          {scope.sbomSources.length > 0 && scope.agents.length === 0 && scope.servers.length === 0 ? <p className="text-sm text-ink-secondary">SBOM evidence; workload not identified</p> : null}
+          {impact.length ? <p className="text-sm text-ink-secondary">{impact.join(" · ")}</p> : null}
+          {scope.sbomSources.map((source) => <p key={source} className="mt-1 break-words text-xs text-ink-secondary">SBOM source: {sbomSourceName(source)}</p>)}
         </Section>
       ) : null}
 
@@ -226,6 +231,7 @@ function EstateNodeSection({ vuln }: { vuln: EnrichedVuln }) {
 // ── Evidence ──────────────────────────────────────────────────────────────────
 
 function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
+  const scope = findingWorkloadScope(vuln);
   const references = officialAdvisoryLinks(vuln.references);
   const whyItMatters = buildWhyItMatters(vuln);
   const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "";
@@ -243,8 +249,9 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
       <ReachBadges vuln={vuln} />
       <Panel title="Affected scope">
         <TagList label="Packages" values={vuln.packages} />
-        <TagList label="Agents" values={vuln.agents} />
-        <TagList label="MCP servers" values={vuln.affected_servers} />
+        <TagList label="Agents" values={scope.agents} />
+        <TagList label="MCP servers" values={scope.servers} />
+        <TagList label="SBOM sources" values={scope.sbomSources} />
         <TagList label="Credential references" values={vuln.exposed_credentials} />
         <TagList label="Linked tools" values={vuln.reachable_tools} />
         {whyItMatters ? <div className="mt-3 space-y-2 text-xs leading-5 text-ink-secondary">

@@ -1,5 +1,5 @@
 import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
-import type { EnrichedVuln } from "@/lib/findings-view";
+import { findingWorkloadScope, type EnrichedVuln } from "@/lib/findings-view";
 
 export interface WhyItMattersLink {
   href: string;
@@ -48,9 +48,13 @@ function runtimeSentence(vuln: EnrichedVuln): string | null {
 }
 
 function exposureSentence(vuln: EnrichedVuln): string | null {
+  const scope = findingWorkloadScope(vuln);
   const parts: string[] = [];
-  if (vuln.agents.length > 0) {
-    parts.push(`${vuln.agents.length} agent surface${vuln.agents.length === 1 ? "" : "s"}`);
+  if (scope.agents.length > 0) {
+    parts.push(`${scope.agents.length} agent surface${scope.agents.length === 1 ? "" : "s"}`);
+  }
+  if (scope.sbomSources.length > 0) {
+    parts.push(`${scope.sbomSources.length} SBOM source${scope.sbomSources.length === 1 ? "" : "s"}`);
   }
   if (vuln.exposed_credentials.length > 0) {
     parts.push(`${vuln.exposed_credentials.length} credential reference${vuln.exposed_credentials.length === 1 ? "" : "s"}`);

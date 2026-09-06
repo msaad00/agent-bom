@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import type { OverviewResponse } from "@/lib/api";
+import { sbomSourceName } from "@/lib/findings-view";
 import type {
   ExecScoreDriver,
   OverviewCoverageLane,
@@ -802,6 +803,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
   const finding = path.nodes.find((node) => node.type === "cve");
   const pkg = path.nodes.find((node) => node.type === "package");
   const workload = path.nodes.find((node) => node.type === "agent") ?? path.nodes.find((node) => node.type === "server");
+  const sbomSource = workload ? sbomSourceName(workload.label) : null;
   const findingLabel = finding && /^(CVE-\d{4}-\d+|GHSA-[\w-]+)$/i.test(finding.label) ? finding.label : "Finding";
   const severity = finding?.severity?.toLowerCase();
   const knownSeverity = severity && ["critical", "high", "medium", "low"].includes(severity) ? severity : null;
@@ -822,7 +824,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
               <span>{findingLabel}</span>{pkg ? <> in <span>{pkg.label}</span></> : null}
             </p>
             <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere]">
-              {workload ? `Affected workload: ${workload.label}` : "Workload not identified"}
+              {sbomSource ? `SBOM source: ${sbomSource}` : workload ? `Affected workload: ${workload.label}` : "Workload not identified"}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-secondary">
               <span className={`rounded-md border px-2 py-0.5 font-semibold capitalize ${severityTone}`}>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
@@ -837,7 +839,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
         <dl className="mt-2 space-y-2">
           {path.nodes.map((node, index) => (
             <div key={`${node.type}-${index}`} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
-              <dt className="capitalize text-ink-tertiary">{node.type === "cve" ? "Finding" : node.type}</dt>
+              <dt className="capitalize text-ink-tertiary">{node.type === "cve" ? "Finding" : (node.type === "agent" || node.type === "server") && sbomSourceName(node.label) !== null ? "SBOM source" : node.type}</dt>
               <dd className="text-ink-secondary [overflow-wrap:anywhere]">{node.label}</dd>
             </div>
           ))}

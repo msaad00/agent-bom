@@ -236,6 +236,20 @@ export function uniqueStrings(items: Array<string | null | undefined>) {
   return [...new Set(items.filter((item): item is string => Boolean(item && item.trim())).map((item) => item.trim()))];
 }
 
+/** The scanner's sbom: wrapper identifies an input artifact, not a workload. */
+export function sbomSourceName(value: string): string | null {
+  if (!value.startsWith("sbom:")) return null;
+  return value.slice(5).split(/[\\/]/).filter(Boolean).at(-1) || "Unnamed SBOM";
+}
+
+export function findingWorkloadScope(vuln: Pick<EnrichedVuln, "agents" | "affected_servers">) {
+  return {
+    agents: vuln.agents.filter((value) => sbomSourceName(value) === null),
+    servers: vuln.affected_servers.filter((value) => sbomSourceName(value) === null),
+    sbomSources: uniqueStrings([...vuln.agents, ...vuln.affected_servers].filter((value) => sbomSourceName(value) !== null)),
+  };
+}
+
 export interface OfficialAdvisoryLink {
   label: "OSV" | "GitHub Advisory" | "NVD" | "CISA KEV";
   href: string;

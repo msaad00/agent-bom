@@ -221,7 +221,7 @@ def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     assert "### See what needs fixing — and why" in workflow
     assert "Reference evidence lab — modeled local infrastructure" in normalized_workflow
     assert "correlation-receipts-live.png" in workflow
-    assert "correlation-path-live.png" in workflow
+    assert "docs/GALLERY.md#follow-an-image-processing-exposure" in workflow
     assert "CVE-2023-4863" in workflow
 
 

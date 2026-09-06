@@ -75,50 +75,41 @@ do not prove permission or exploitability.
 
 ### See what needs fixing — and why
 
-**Prioritize.** Start with the affected service, reachable asset, and recommended
-fix. Open the strongest path to inspect the relationships behind that conclusion.
+**Discover the estate.** Scan a repository or image, or collect a connected
+account. The inventory shows which packages, workloads, agents, tools, and
+identities were actually covered. Start with `agent-bom scan .`; save the
+result as JSON or SARIF before expanding the scope.
 
-These captures use the **Reference evidence lab — modeled local infrastructure**.
-They include real parser, scanner, and local gateway results; they are not
-customer evidence or live-cloud validation.
+**Find the consequential exposure.** In the reference scenario, an image
+processing service uses `pillow@9.0.0`, matched to `CVE-2023-4863`. Correlation
+connects its package evidence to a modeled workload, MCP tool, identity, and
+data asset. The question becomes: which service needs attention, and why?
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/images/correlation-receipts-light-live.png">
-    <img src="docs/images/correlation-receipts-live.png" alt="Investigation overview: affected service, vulnerable package, reachable asset, evidence quality, and remediation action" width="920" />
+    <img src="docs/images/correlation-receipts-live.png" alt="Image processing investigation: service, Pillow advisory, reachable modeled asset, evidence quality, and remediation action" width="920" />
   </picture>
 </p>
 
-**Investigate and act.** Follow the ordered path from entry point to data asset.
-Switch to Graph or List, inspect a hop’s source evidence, or open the package
-remediation. Exact identifiers and receipts stay one click away. “Path evidence
-complete” requires complete, fresh evidence for every directed, traversable hop;
-modeled infrastructure, runtime observations, and gateway blocks remain
-separately labeled. A blocked call does not remove the underlying exposure.
+**Inspect the evidence.** Open the ordered path to inspect each relationship
+and its source receipt. The graph connects observed or modeled entities with
+named, directed relationships; matching labels alone never prove a path.
+[Inspect this scenario's path](docs/GALLERY.md#follow-an-image-processing-exposure).
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/images/correlation-path-light-live.png">
-    <img src="docs/images/correlation-path-live.png" alt="Selected investigation: remediation first, eight readable path nodes, and expandable identity and hop receipts" width="920" />
-  </picture>
-</p>
+**Remediate and verify.** Assign the package fix to its owner, rebuild the
+image, and re-scan the deployed workload. Compare fresh evidence before closing
+the finding. A gateway block can contain one tool call while the underlying
+exposure remains.
 
-<details>
-<summary>Reproduce the evidence behind these views</summary>
-
-The credential-free lab runs repository, CycloneDX, Kubernetes IaC, and MCP
-parsers plus the bundled advisory scanner for `pillow@9.0.0` / `CVE-2023-4863`.
-Correlation connects scoped runtime identities, MCP tools, and gateway receipts
-with per-hop source provenance. Shared OCI digests are metadata, not runtime
-identity. Runtime observation and strict block proof have independent receipts;
-neither is proof of a deployed remediation.
+The **Reference evidence lab — modeled local infrastructure** runs real
+parsers, a pinned advisory scanner, and authenticated local gateway calls.
+Its package replay demonstrates the advisory match disappearing after a
+manifest change. Infrastructure and access relationships remain modeled;
+deployed remediation and live-cloud validation are not claimed.
 
 [Run the reference lab](examples/reference-evidence-lab/README.md) ·
-[Capture protocol](docs/CAPTURE.md)
-
-</details>
-
-[Explore the product gallery](docs/GALLERY.md)
+[Explore reproducible product scenarios](docs/GALLERY.md)
 
 ## Value by role
 

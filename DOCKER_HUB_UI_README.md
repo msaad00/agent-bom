@@ -1,54 +1,54 @@
 # agent-bom-ui
 
-Dashboard image for the self-hosted `agent-bom` control plane.
+Explore scan coverage, investigate exposures, and track remediation in the
+self-hosted agent-bom control plane. The dashboard connects to the companion
+`agentbom/agent-bom` API image; scan and evidence state stay in your deployment.
+This companion image is not a separate product.
 
-`agent-bom` is one product with two deployable images:
-
-- `agentbom/agent-bom` runs the scanner, API, jobs, gateway, proxy, and other non-browser runtimes
-- `agentbom/agent-bom-ui` runs the browser dashboard
-
-This image is not a separate product and it is not meant to be the first thing a
-pilot user reasons about. Use the packaged pilot or Helm chart so both images are
-pulled for you.
-
-Use the UI when you are in the **send evidence to a control plane** lane:
-endpoint fleet sync, REST API jobs, Helm/EKS, scheduled discovery, graph state,
-findings, compliance, and governance all converge here. Local-only CLI/Docker
-scans and runtime proxy enforcement can run without the browser image.
-
-## Run This First
-
-Pilot on one workstation:
+## Start on one workstation
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
 docker compose -f docker-compose.pilot.yml up -d
-# Dashboard -> http://localhost:3000
+docker compose -f docker-compose.pilot.yml ps
 ```
 
-Production in your own cluster from a checked-out repo:
+Open **http://localhost:3000** once both services are healthy. The pilot binds
+to loopback, uses the local analyst role without login, and persists evidence
+in the `agent-bom-pilot-data` Docker volume. It is for single-workstation
+evaluation; use configured authentication for a shared deployment.
 
-```bash
-helm upgrade --install agent-bom deploy/helm/agent-bom \
-  --namespace agent-bom --create-namespace \
-  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
-```
+**First result:** open **New Scan** and select a public repository, or open
+**Connections**, verify a read-only source grant, and run its first scan. A
+scan creates the inventory and findings; starting the dashboard alone does not
+collect an estate. Inspect coverage, open a finding, then follow its evidence
+and remediation action.
 
-## Image Role
+Stop with `docker compose -f docker-compose.pilot.yml down`. The named data
+volume remains available for the next run.
 
-- `agentbom/agent-bom` = runtime image for scanner, API, jobs, gateway, proxy
-- `agentbom/agent-bom-ui` = dashboard image for the same self-hosted control plane
+## Configure the runtime API
 
-## Control-Plane Contract
+Set `AGENT_BOM_API_URL` on the UI server to the API's HTTP(S) origin, for
+example `http://api:8422` inside a Compose network. Browser requests remain
+same-origin through the UI proxy. `NEXT_PUBLIC_API_URL` is accepted as a legacy
+fallback. See the [deployment guide](https://github.com/msaad00/agent-bom/blob/main/docs/DEPLOYMENT.md)
+for authentication, proxy, and production settings.
 
-The UI consumes the API control-plane contract. Auth posture comes from
-`/v1/auth/policy`, tenant quota state from `/v1/auth/quota`, scalable graph
-agent selection from `/v1/graph/agents`, and fleet inventory from `/v1/fleet`.
-The dashboard should display those API facts and role capabilities; it should
-not create a separate role, tenant, gateway, or secret lifecycle model.
+For Kubernetes, check out the repository and configure the
+[Helm chart](https://github.com/msaad00/agent-bom/tree/main/deploy/helm/agent-bom)
+and the identity, database, and ingress settings for your environment.
 
-## Links
+[Product scenarios](https://github.com/msaad00/agent-bom/blob/main/docs/GALLERY.md) ·
+[Documentation](https://msaad00.github.io/agent-bom/) ·
+[API and scanner image](https://hub.docker.com/r/agentbom/agent-bom)
 
-- GitHub: https://github.com/msaad00/agent-bom
-- Docs: https://msaad00.github.io/agent-bom/
-- Helm chart: `deploy/helm/agent-bom`
+<details>
+<summary>Control-Plane Contract</summary>
+
+The API owns authentication (`/v1/auth/policy`), tenant quotas
+(`/v1/auth/quota`), paginated graph agents (`/v1/graph/agents`), and fleet state
+(`/v1/fleet`). The UI reflects those facts and role capabilities; it does not
+create a separate role, tenant, gateway, or secret lifecycle.
+
+</details>

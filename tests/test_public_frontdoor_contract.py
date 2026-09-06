@@ -99,13 +99,13 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
 
     journey = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
     stages = ["read-only connection", "collect", "inventory", "findings", "graph", "owner", "re-scan", "verify"]
-    images = ["workflow-dark.svg", "correlation-receipts-live.png", "correlation-path-live.png"]
+    images = ["workflow-dark.svg", "correlation-receipts-live.png"]
     normalized = " ".join(journey.lower().split())
     assert all(stage in normalized for stage in stages)
     assert all(image in journey for image in images)
     assert [journey.index(image) for image in images] == sorted(journey.index(image) for image in images)
     assert 'width="920"' in journey
-    assert "[Explore the product gallery](docs/GALLERY.md)" in journey
+    assert "[Explore reproducible product scenarios](docs/GALLERY.md)" in journey
     assert "reference evidence lab — modeled local infrastructure" in normalized
     assert "CVE-2023-4863" in journey
     assert "DEMO-VULN" not in journey
@@ -154,21 +154,33 @@ def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
     assert "agent-bom cloud databricks" not in matrix
 
 
-def test_gallery_retains_full_size_product_screens() -> None:
+def test_scenarios_separate_reproducible_proof_from_synthetic_layout_fixtures() -> None:
     gallery = (ROOT / "docs" / "GALLERY.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    for image in (
-        "dashboard-live.png",
-        "dependency-map-live.png",
-        "correlation-receipts-live.png",
-        "correlation-path-live.png",
-        "security-graph-live.png",
-        "remediation-live.png",
-        "lineage-graph-live.png",
-        "mesh-live.png",
-    ):
-        assert image in gallery
+    assert gallery.count("<img ") == 1
+    assert "correlation-path-live.png" in gallery
+    assert "correlation-path-live.png" not in readme
+    assert "correlation-receipts-live.png" not in gallery
     assert 'width="900"' in gallery
+    assert "scripts/replay_package_remediation.py" in gallery
+    assert "CVE-2023-4863" in gallery
+    assert "DEMO-VULN" not in gallery
+    assert "not a current upgrade recommendation" in gallery
+    for synthetic in ("mesh-live.png", "security-graph-live.png", "lineage-graph-live.png"):
+        assert synthetic not in gallery
+
+
+def test_docker_ui_first_run_has_a_result_and_preserves_local_auth_boundary() -> None:
+    guide = (ROOT / "DOCKER_HUB_UI_README.md").read_text(encoding="utf-8")
+    assert "docker compose -f docker-compose.pilot.yml up -d" in guide
+    assert "**New Scan**" in guide
+    assert "**Connections**" in guide
+    assert "inventory and findings" in guide
+    assert "loopback" in guide
+    assert "configured authentication" in guide
+    assert "AGENT_BOM_API_URL" in guide
+    assert "NEXT_PUBLIC_API_URL" in guide
 
 
 def test_persona_routes_start_with_their_actual_work() -> None:

@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import type { UnifiedFinding } from "../lib/api-types";
 
 const COUNTS = {
   critical: 7,
@@ -93,16 +94,18 @@ function staleScan(index: number) {
   };
 }
 
-function finding(index: number) {
+function finding(index: number): UnifiedFinding & { effective_reach_score: number } {
   const occurrenceCount = index === 0 ? 3 : 1;
   return {
     id: `finding-${index}`,
+    finding_class: "vulnerability",
     cve_id: `CVE-2026-${String(8000 + index)}`,
     title: `Production exposure ${index}`,
     severity: "high",
     status: "open",
-    asset: { name: `prod-workload-${index}`, type: "workload" },
-    package: { name: `runtime-lib-${index}`, version: "1.0.0" },
+    asset: { name: `prod-workload-${index}`, asset_type: "workload" },
+    package: `runtime-lib-${index}`,
+    package_version: "1.0.0",
     effective_reach_score: 8.2,
     last_seen: "2026-07-17T16:00:00Z",
     occurrence_count: occurrenceCount,

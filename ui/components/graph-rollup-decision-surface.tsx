@@ -13,11 +13,29 @@ import type {
 export const ROLLUP_DECISION_THRESHOLD = 24;
 const PAGE_SIZE = 12;
 
+export function InvestigationViewSwitch({ summary, onSummary, onGraph }: {
+  summary: boolean; onSummary: () => void; onGraph: () => void;
+}) {
+  return <div role="group" aria-label="Investigation view" className="flex flex-wrap items-center gap-2">
+    <button type="button" aria-pressed={summary} onClick={onSummary} className={summary ? "graph-chip-emerald" : "graph-chip-neutral"}>Summary</button>
+    <button type="button" aria-pressed={!summary} onClick={onGraph} className={!summary ? "graph-chip-emerald" : "graph-chip-neutral"}>Graph</button>
+    {!summary && <button type="button" onClick={onSummary} className="graph-page-action">Back to summary</button>}
+  </div>;
+}
+
 type RiskFilter = "priority" | "exposed" | "all";
+
+const SEVERITY_RANK: Record<string, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
+
+function effectiveSeverity(item: GraphRollupContainer): string {
+  const own = (item.severity || "none").toLowerCase();
+  const contained = (item.aggregate.worst_severity || "none").toLowerCase();
+  return (SEVERITY_RANK[own] ?? 0) > (SEVERITY_RANK[contained] ?? 0) ? own : contained;
+}
 
 function isPriority(item: GraphRollupContainer): boolean {
   return (
-    item.aggregate.worst_severity_rank >= 4 ||
+    (SEVERITY_RANK[effectiveSeverity(item)] ?? 0) >= 4 ||
     item.aggregate.internet_exposed ||
     item.aggregate.toxic_combo
   );
@@ -79,26 +97,22 @@ export function GraphRollupDecisionSurface({
     [items],
   );
   const filtered = useMemo(() => {
-    if (filter === "all") return items;
+    const ranked = [...items].sort((a, b) =>
+      (SEVERITY_RANK[effectiveSeverity(b)] ?? 0) - (SEVERITY_RANK[effectiveSeverity(a)] ?? 0));
+    if (filter === "all") return ranked;
     if (filter === "exposed") {
-      return items.filter((item) => item.aggregate.internet_exposed);
+      return ranked.filter((item) => item.aggregate.internet_exposed);
     }
-    const priority = items.filter(isPriority);
-    return priority.length > 0 ? priority : items;
+    const priority = ranked.filter(isPriority);
+    return priority.length > 0 ? priority : ranked;
   }, [filter, items]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const compactLayout = visible.length <= 3;
-  const cardGridClass = compactLayout
-    ? visible.length === 1
-      ? "grid-cols-1"
-      : visible.length === 2
-        ? "grid-cols-1 md:grid-cols-2"
-        : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
-    : "grid-cols-1 flex-1 auto-rows-fr md:grid-cols-2 xl:grid-cols-3";
+  const cardGridClass = "grid-cols-1 content-start";
   const nodeScopeLabel = completeness?.truncated
     ? `${items.length.toLocaleString()} returned from a bounded node scope`
-    : `${items.length.toLocaleString()} containers`;
+    : `${items.length.toLocaleString()} nodes and scopes`;
   const edgeScopeLabel = edgeCountMetadata
     ? edgeCountMetadata.source_truncated
       ? `${edgeCountMetadata.returned.toLocaleString()}${edgeCountMetadata.returned < edgeCountMetadata.source_total ? ` of ${edgeCountMetadata.source_total.toLocaleString()}` : ""} aggregated relationship rows returned from a bounded source graph · estate total unavailable`
@@ -115,17 +129,17 @@ export function GraphRollupDecisionSurface({
     <section
       data-testid="graph-rollup-decision-surface"
       data-layout={compactLayout ? "compact" : "paged"}
-      className={`flex flex-col overflow-hidden rounded-2xl bg-[var(--surface)] ${compactLayout ? "min-h-0" : "h-full min-h-[32rem]"}`}
+      className="flex min-h-0 flex-col overflow-hidden rounded-2xl bg-[var(--surface)]"
       aria-label="Risk-prioritized estate scopes"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
             <Layers className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
-            Risk-prioritized scopes
+            Prioritized findings and scopes
           </p>
           <p className="mt-1 text-xs text-[var(--text-secondary)]">
-            {nodeScopeLabel} collapsed from the current evidence snapshot. Drill into a scope or isolate its traversal.
+            {nodeScopeLabel} in this snapshot. Inspect the highest-severity nodes or expand their contained assets.
           </p>
           <p
             className="mt-1 text-[11px] text-[var(--text-tertiary)]"
@@ -151,10 +165,10 @@ export function GraphRollupDecisionSurface({
           <button
             key={value}
             type="button"
-            aria-pressed={filter === value}
+            aria-pressed={(filter === "priority" && priorityCount === 0 ? "all" : filter) === value}
             onClick={() => setFilter(value)}
             className={
-              filter === value
+              (filter === "priority" && priorityCount === 0 ? "all" : filter) === value
                 ? "graph-chip-emerald"
                 : "graph-chip-neutral hover:border-[var(--border-strong)]"
             }
@@ -173,17 +187,17 @@ export function GraphRollupDecisionSurface({
       >
         {visible.map((item) => {
           const relation = relationEvidence(item.id, edges);
-          const severity = item.aggregate.worst_severity || item.severity || "none";
+          const severity = effectiveSeverity(item);
           const critical = item.aggregate.severity_counts.critical ?? 0;
           const high = item.aggregate.severity_counts.high ?? 0;
           return (
             <article
               key={item.id}
-              className="flex min-h-[10.5rem] flex-col rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] p-3 shadow-sm transition hover:border-emerald-500/40"
+              className="grid items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] p-3 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[var(--foreground)]" title={item.label}>
+                  <p className="break-words text-sm font-semibold text-[var(--foreground)]" title={item.label}>
                     {item.label}
                   </p>
                   <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
@@ -191,40 +205,40 @@ export function GraphRollupDecisionSurface({
                   </p>
                 </div>
                 <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold uppercase ${severityTone(severity)}`}>
-                  {severity === "none" ? "No severity" : severity}
+                  {severity === "none" ? "Not rated" : severity}
                 </span>
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Assets</p>
-                  <p className="mt-0.5 font-semibold tabular-nums text-[var(--foreground)]">{item.aggregate.descendant_count}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Critical / high</p>
+              <div className="flex flex-wrap items-center gap-4 text-xs">
+                {item.has_children && <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Contains</p>
+                  <p className="mt-0.5 font-semibold tabular-nums text-[var(--foreground)]">{item.aggregate.descendant_count} nodes</p>
+                </div>}
+                {item.has_children && <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Contained critical / high</p>
                   <p className="mt-0.5 font-semibold tabular-nums text-[var(--foreground)]">{critical} / {high}</p>
-                </div>
+                </div>}
                 <div>
                   <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Relations</p>
                   <p className="mt-0.5 font-semibold tabular-nums text-[var(--foreground)]" title={`${relation.relationships} aggregated relationship evidence records`}>
-                    {relation.containers} scopes
+                    {relation.containers} connected nodes
                   </p>
                 </div>
               </div>
 
-              <div className="mt-3 flex min-h-6 flex-wrap gap-1.5 text-[10px]">
+              {(item.aggregate.toxic_combo || item.aggregate.internet_exposed) && <div className="flex flex-wrap gap-1.5 text-[10px] md:col-span-3">
                 {item.aggregate.toxic_combo ? (
                   <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-red-700 dark:text-red-200">Toxic combination</span>
                 ) : null}
                 {item.aggregate.internet_exposed ? (
                   <span className="rounded border border-orange-500/30 bg-orange-500/10 px-1.5 py-0.5 text-orange-700 dark:text-orange-200">Internet exposed</span>
                 ) : null}
-              </div>
+              </div>}
 
-              <div className="mt-auto flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-2.5">
-                <button type="button" onClick={() => onInvestigate(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-600 dark:text-sky-300">
+              <div className="flex items-center justify-end gap-3">
+                {item.has_children && <button type="button" onClick={() => onInvestigate(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-600 dark:text-sky-300">
                   <GitBranch className="h-3.5 w-3.5" /> Traverse
-                </button>
+                </button>}
                 {item.has_children ? (
                   <button type="button" onClick={() => onDrill(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-600 dark:text-emerald-300">
                     Drill in <ChevronRight className="h-3.5 w-3.5" />
@@ -242,7 +256,7 @@ export function GraphRollupDecisionSurface({
 
       <div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-2.5">
         <p className="text-[11px] text-[var(--text-tertiary)]">
-          Showing {visible.length} of {filtered.length} matching scopes
+          Showing {visible.length} of {filtered.length} matching nodes and scopes
         </p>
         <div className="flex gap-2">
           <button type="button" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))} className="graph-page-action disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous scope page">

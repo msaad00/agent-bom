@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { GraphRollupDecisionSurface } from "@/components/graph-rollup-decision-surface";
+import { GraphRollupDecisionSurface, InvestigationViewSwitch } from "@/components/graph-rollup-decision-surface";
 import type { GraphRollupContainer } from "@/lib/api-types";
 
 function item(
@@ -32,6 +32,29 @@ function item(
 }
 
 describe("GraphRollupDecisionSurface", () => {
+  it("keeps an explicit return to summary available from the graph", () => {
+    const onSummary = vi.fn();
+    const onGraph = vi.fn();
+    render(<InvestigationViewSwitch summary={false} onSummary={onSummary} onGraph={onGraph} />);
+    expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Back to summary" }));
+    expect(onSummary).toHaveBeenCalledOnce();
+  });
+  it("prioritizes a rated leaf without fabricating contained assets or findings", () => {
+    const leaf = item("vulnerable", {
+      label: "Affected package", entity_type: "package", severity: "critical",
+      has_children: false, is_container: false, direct_child_count: 0,
+      aggregate: { ...item("base").aggregate, descendant_count: 0 },
+    });
+    render(<GraphRollupDecisionSurface items={[item("quiet"), leaf]} edges={[]}
+      onDrill={vi.fn()} onInvestigate={vi.fn()} onShowMap={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Priority 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("critical")).toBeInTheDocument();
+    expect(screen.queryByText("Scope quiet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Contains")).not.toBeInTheDocument();
+    expect(screen.queryByText("0 / 0")).not.toBeInTheDocument();
+  });
+
   it("uses a compact full-width layout when one scope matches", () => {
     render(
       <GraphRollupDecisionSurface
@@ -82,10 +105,10 @@ describe("GraphRollupDecisionSurface", () => {
       />,
     );
 
-    expect(screen.getByText("Risk-prioritized scopes")).toBeInTheDocument();
+    expect(screen.getByText("Prioritized findings and scopes")).toBeInTheDocument();
     expect(screen.getByText("Toxic combination")).toBeInTheDocument();
     expect(screen.getByText("Internet exposed")).toBeInTheDocument();
-    expect(screen.getByText("1 scopes")).toBeInTheDocument();
+    expect(screen.getByText("1 connected nodes")).toBeInTheDocument();
     expect(screen.queryByText("Scope quiet-23")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Drill in" }));
@@ -110,7 +133,7 @@ describe("GraphRollupDecisionSurface", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "All 25" }));
     expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
-    expect(screen.getByText("Showing 12 of 25 matching scopes")).toBeInTheDocument();
+    expect(screen.getByText("Showing 12 of 25 matching nodes and scopes")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Next scope page" }));
     expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
   });

@@ -41,6 +41,7 @@ import {
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import {
   GraphRollupDecisionSurface,
+  InvestigationViewSwitch,
   ROLLUP_DECISION_THRESHOLD,
 } from "@/components/graph-rollup-decision-surface";
 import {
@@ -856,6 +857,7 @@ function GraphPageInner() {
   const [rollupError, setRollupError] = useState<string | null>(null);
   const [rollupUnavailable, setRollupUnavailable] = useState(false);
   const [rollupMapExpanded, setRollupMapExpanded] = useState(false);
+  const [rollupSummaryRequested, setRollupSummaryRequested] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
@@ -1416,7 +1418,7 @@ function GraphPageInner() {
     [rollupView],
   );
   const rollupDecisionAvailable =
-    rollupNavigationActive && rollupItems.length > ROLLUP_DECISION_THRESHOLD;
+    rollupNavigationActive && (rollupItems.length > ROLLUP_DECISION_THRESHOLD || rollupSummaryRequested);
   const rollupDecisionActive = rollupDecisionAvailable && !rollupMapExpanded;
 
   useEffect(() => {
@@ -2641,9 +2643,21 @@ function GraphPageInner() {
 
   const dismissRollup = useCallback(() => {
     setRollupDismissed(true);
-    setRollupStack([]);
     setRollupError(null);
   }, []);
+
+  const returnToSummary = useCallback(() => {
+    rollupPreferenceRef.current = "force";
+    requestedAttackPathKeyRef.current = null;
+    requestedInvestigationRef.current = null;
+    clearInvestigationMode();
+    setSelectedNode(null);
+    setSelectedNodeId(null);
+    setRollupDismissed(false);
+    setRollupMapExpanded(false);
+    setRollupSummaryRequested(true);
+    setRollupError(null);
+  }, [clearInvestigationMode]);
 
   const navigateRollupBreadcrumb = useCallback((index: number) => {
     setRollupStack((current) => current.slice(0, index + 1));
@@ -2845,7 +2859,9 @@ function GraphPageInner() {
             </select>
 
             <FullscreenButton />
-            {presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <GraphInteractionToolbar
+            {presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <details>
+              <summary className="graph-page-action cursor-pointer">Layout</summary>
+              <GraphInteractionToolbar
               editing={presentation.editing}
               hasSelection={Boolean(selectedNodeId)}
               onFitVisible={fitVisible}
@@ -2853,11 +2869,18 @@ function GraphPageInner() {
               onAutoLayout={autoLayout}
               onReset={resetLayout}
               onToggleEditing={presentation.toggleEditing}
-            />}
+            /></details>}
           </div>
         </div>
 
         <div className="mt-3">
+          {scenarioState === "current" && !rollupUnavailable && (rollupView || investigationMode || selectedAttackPath) && <div className="mb-3">
+            <InvestigationViewSwitch summary={rollupDecisionActive} onSummary={returnToSummary} onGraph={() => setRollupMapExpanded(true)} />
+            {rollupStack.length > 0 && <nav aria-label="Investigation scope" className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <button type="button" onClick={resetRollupToRoot} className="graph-page-action">All scopes</button>
+              {rollupStack.map((crumb, index) => <button key={crumb.id} type="button" onClick={() => navigateRollupBreadcrumb(index)} className="graph-chip-neutral">{crumb.label}</button>)}
+            </nav>}
+          </div>}
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -2919,23 +2942,12 @@ function GraphPageInner() {
 
           <details
             data-testid="graph-evidence-controls"
-            open={Boolean(
-              selectedScenario ||
-                activeScopePreset === "assetDrift" ||
-                investigationMode ||
-                reachabilitySummary ||
-                loadingReachability ||
-                reachabilityError ||
-                blastRadius ||
-                loadingBlast ||
-                blastError,
-            )}
             className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 group"
           >
             <summary className="graph-drawer-summary">
               <div>
                 <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
-                  Evidence & controls
+                  Filters and evidence
                 </span>
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   {graphScopeLabelForFilters(filters)} ·{" "}
@@ -4140,7 +4152,7 @@ function RollupNavigationPanel({
             </p>
             <p className="mt-1 text-sm font-medium text-emerald-950 dark:text-emerald-50">
               {active
-                ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot · collapsed by containment · real relationships, aggregated`
+                ? `${visibleCount} nodes and scopes at this level · ${estateNodeCount} nodes in snapshot`
                 : unavailable
                   ? `Roll-up unavailable · ${estateNodeCount} nodes in snapshot`
                 : `Loading CONTAINS roll-up · ${estateNodeCount} nodes in snapshot`}

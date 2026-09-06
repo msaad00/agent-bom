@@ -960,3 +960,17 @@ test("selected paths 13 and 25 retain hydrated anchors beyond fix-first enrichme
   await expect(proof.getByText("finding-anchor-25", { exact: true })).toBeVisible();
   await expect(proof.getByText(/path nodes unavailable/)).toHaveCount(0);
 });
+
+
+test("URL-selected path returns to summary without reopening the path", async ({ page }) => {
+  await routeCockpit(page, 200, { rollupItemCount: 30 });
+  await page.goto(`/security-graph?lens=estate&scan=${scanId}&path=top`);
+  const views = page.getByRole("group", { name: "Investigation view" });
+  await views.getByRole("button", { name: "Back to summary", exact: true }).click();
+  await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]path=/);
+  await views.getByRole("button", { name: "Graph", exact: true }).click();
+  await views.getByRole("button", { name: "Back to summary", exact: true }).click();
+  await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]path=/);
+});

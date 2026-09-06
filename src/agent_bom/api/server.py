@@ -1410,6 +1410,7 @@ def _fail_stuck_running_jobs(store: Any, now: _datetime.datetime) -> None:
     """
     from datetime import datetime
 
+    stuck_jobs: list[Any] = []
     with _jobs_lock:
         for job in list(_jobs.values()):
             if job.status == JobStatus.RUNNING and job.created_at:
@@ -1421,7 +1422,12 @@ def _fail_stuck_running_jobs(store: Any, now: _datetime.datetime) -> None:
                     job.status = JobStatus.FAILED
                     job.error = "Timed out (stuck in RUNNING state)"
                     job.completed_at = now.isoformat()
-                    store.put(job)
+                    stuck_jobs.append(job)
+
+    # Durable stores may block on database I/O. Persist after releasing the
+    # process-wide cache lock so unrelated job reads and writes keep flowing.
+    for job in stuck_jobs:
+        store.put(job)
 
 
 # ─── Meta Routes ─────────────────────────────────────────────────────────────

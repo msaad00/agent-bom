@@ -6,6 +6,8 @@
 non-human identity, runtime, and skill evidence into one reachability-backed AI
 BOM, then tells humans and AI agents which multi-hop exposure path to fix first.
 
+The shared security graph connects packages, workloads, agents, tools, identities, and data assets through typed relationships with source evidence and explicit completeness.
+
 Blast radius is the core idea:
 
 ```text

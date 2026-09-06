@@ -24,14 +24,35 @@ stay local. Shared surfaces receive normalized evidence and explicit
 completeness. A permission denial, unsupported collector, or partial scan stays
 partial or unavailable; it is never shown as observed or clean.
 
+## What the graph represents
+
+An entity is a package, workload, repository, agent, tool, identity, or other
+resource. A directed relationship records how two entities connect, such as
+"depends on", "runs as", or "has permission". A path is an ordered sequence of
+those relationships. Each relationship retains its source and whether it was
+observed, inferred, or modeled; a drawn connection alone is not exploit proof.
+Inventory is the list of entities. The graph adds the relationships needed to
+explain which findings can affect which systems.
+
+`UnifiedGraph` is the canonical graph contract for normalized entities,
+relationships, scope, and analysis completeness. `ContextGraph` is the local
+agent/MCP context builder that can project into that contract; it is not a
+separate source of observed cloud truth. **Mesh** focuses on shared agent and
+MCP relationships. **Evidence** refers to the receipts supporting a relationship;
+**Current**, **Proposed**, and **Difference** describe the comparison views.
+Proposed state remains modeled until independently observed. See the
+[graph contract](graph/CONTRACT.md) for the complete vocabulary and guarantees.
+
 ## How independent scans become path proof
 
 Retained same-tenant graph snapshots can be correlated with
 `agent-bom graph-correlate create`. The run requires an explicit freshness
-bound and merges only exact canonical identities: PURLs, OCI digests,
-repository commit/path identities, Kubernetes UIDs, provider resource and
-identity IDs, and stable runtime IDs. Labels, similar names, and mutable image
-tags never create a cross-source join.
+bound and joins compatible, scoped canonical identities: package PURLs,
+repository commit/path identities, Kubernetes UIDs, and provider resource or
+runtime IDs with their tenant and account/cluster scope. Shared OCI digests
+bind image artifacts; they do not merge permission-bearing runtime occurrences.
+Missing runtime identity stays snapshot-scoped. Labels, similar names, and
+mutable image tags never create a cross-source join.
 
 The output is one immutable correlation snapshot with a hash-bound manifest of
 every input receipt, its source kinds, timestamp, digest, counts, and freshness.

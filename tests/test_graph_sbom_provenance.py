@@ -40,6 +40,8 @@ def test_sbom_inventory_is_one_source_artifact_not_runtime_topology():
     assert EntityType.SERVER not in types
     assert EntityType.APPLICATION not in types
     assert EntityType.CODE_MODULE not in types
+    assert EntityType.PROVIDER not in types
+    assert all(n.data_sources == ["sbom"] for n in graph.nodes.values())
     artifacts = [n for n in graph.nodes.values() if n.entity_type == EntityType.SOURCE_FILE]
     assert len(artifacts) == 1
     assert artifacts[0].dimensions.surface == "sbom"
@@ -106,3 +108,26 @@ def test_sbom_graph_persistence_preserves_artifact_type_and_tenant(tmp_path):
     assert len(restored.nodes) == len(graph.nodes)
     assert len(restored.edges) == len(graph.edges)
     assert other is None or not other.nodes
+
+
+def test_same_label_runtime_and_sbom_keep_distinct_identities_in_both_orders():
+    import copy
+
+    report = _report()
+    artifact = report["agents"][0]
+    runtime = copy.deepcopy(artifact)
+    runtime["source"] = "local"
+    runtime["mcp_servers"][0]["surface"] = "mcp-server"
+    runtime["mcp_servers"][0]["tools"] = [{"name": "read_file"}]
+    identities = []
+    for entries in ([artifact, runtime], [runtime, artifact]):
+        report["agents"] = entries
+        graph = build_unified_graph_from_report(report)
+        sources = [n for n in graph.nodes.values() if n.entity_type == EntityType.SOURCE_FILE]
+        agents = [n for n in graph.nodes.values() if n.entity_type == EntityType.AGENT]
+        assert len(sources) == len(agents) == 1
+        assert sources[0].id != agents[0].id
+        assert not any(e.source == sources[0].id and e.relationship == RelationshipType.USES for e in graph.edges)
+        assert any(e.source == agents[0].id and e.relationship == RelationshipType.USES for e in graph.edges)
+        identities.append({n.id: n.entity_type for n in graph.nodes.values()})
+    assert identities[0] == identities[1]

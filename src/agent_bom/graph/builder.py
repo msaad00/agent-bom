@@ -40,6 +40,15 @@ _GRAPH_TRACER = get_tracer("agent_bom.graph")
 _logger = logging.getLogger(__name__)
 
 
+def _is_sbom_import(agent: Mapping[str, Any]) -> bool:
+    servers = agent.get("mcp_servers", [])
+    return (
+        bool(servers)
+        and all(srv.get("surface") == "sbom" for srv in servers)
+        and (agent.get("source") == "sbom" or str(agent.get("name") or "").startswith("sbom:"))
+    )
+
+
 def build_unified_graph_from_report(
     report_json: dict[str, Any],
     *,
@@ -75,7 +84,8 @@ def build_unified_graph_from_report(
     agents_data = report_json.get("agents", [])
     blast_data = report_json.get("blast_radius", report_json.get("blast_radii", []))
     scan_sources = report_json.get("scan_sources", [])
-    data_source_tag = scan_sources[0] if scan_sources else "mcp-scan"
+    inferred_source = "sbom" if agents_data and all(_is_sbom_import(agent) for agent in agents_data) else "mcp-scan"
+    data_source_tag = scan_sources[0] if scan_sources else inferred_source
 
     # Track shared resources for lateral movement edges
     server_to_agents: dict[str, list[str]] = defaultdict(list)
@@ -95,18 +105,15 @@ def build_unified_graph_from_report(
     for agent_dict in agents_data:
         agent_name = agent_dict.get("name", "unknown")
         agent_scope = _agent_identity_scope(agent_dict)
+        sbom_import = _is_sbom_import(agent_dict)
         agent_id = _agent_node_id(agent_name, agent_scope)
+        if sbom_import:
+            agent_id = f"source_file:sbom:{agent_id.removeprefix('agent:')}"
         agent_node_key = agent_id.removeprefix("agent:")
         agent_type = agent_dict.get("type", agent_dict.get("agent_type", ""))
         provider_name = str(agent_dict.get("source") or "local").strip() or "local"
-        servers = agent_dict.get("mcp_servers", [])
         # Import wrappers share the legacy Agent/MCPServer serialization shape.
         # An SBOM documents packages; it does not establish a running agent.
-        sbom_import = (
-            bool(servers)
-            and all(srv.get("surface") == "sbom" for srv in servers)
-            and (provider_name == "sbom" or agent_name.startswith("sbom:"))
-        )
         if sbom_import:
             provider_name = "sbom"
         provider_id = f"provider:{provider_name}"
@@ -115,18 +122,19 @@ def build_unified_graph_from_report(
             agent_metadata = {}
         agent_discovery_provenance = sanitize_discovery_provenance(agent_dict.get("discovery_provenance"))
 
-        graph.add_node(
-            UnifiedNode(
-                id=provider_id,
-                entity_type=EntityType.PROVIDER,
-                label=provider_name,
-                attributes={
-                    "provider": provider_name,
-                    "canonical_id": canonical_graph_node_id(EntityType.PROVIDER.value, provider_id),
-                },
-                data_sources=[data_source_tag],
+        if not sbom_import:
+            graph.add_node(
+                UnifiedNode(
+                    id=provider_id,
+                    entity_type=EntityType.PROVIDER,
+                    label=provider_name,
+                    attributes={
+                        "provider": provider_name,
+                        "canonical_id": canonical_graph_node_id(EntityType.PROVIDER.value, provider_id),
+                    },
+                    data_sources=[data_source_tag],
+                )
             )
-        )
 
         agent_env = _normalized_environment(agent_dict.get("environment"))
         graph.add_node(
@@ -177,13 +185,14 @@ def build_unified_graph_from_report(
         config_path = str(agent_dict.get("config_path", "") or "").strip()
         if config_path:
             agent_config_path_to_id[config_path] = agent_id
-        graph.add_edge(
-            UnifiedEdge(
-                source=provider_id,
-                target=agent_id,
-                relationship=RelationshipType.CONTAINS if sbom_import else RelationshipType.HOSTS,
+        if not sbom_import:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=provider_id,
+                    target=agent_id,
+                    relationship=RelationshipType.HOSTS,
+                )
             )
-        )
         _add_agent_cloud_lineage(
             graph,
             agent_id=agent_id,

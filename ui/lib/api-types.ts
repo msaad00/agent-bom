@@ -3296,6 +3296,8 @@ export interface ScoreConfigUpdate {
 }
 
 export interface OverviewResponse {
+  /** Counts from the same evidence snapshot as posture and top_risks. */
+  finding_counts?: Pick<PostureCountsResponse, "critical" | "high" | "medium" | "low" | "unrated" | "total" | "kev">;
   schema_version: string;
   tenant_id: string;
   posture: OverviewPosture;

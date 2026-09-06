@@ -821,8 +821,11 @@ def test_posture_counts_reconcile_with_overview_headline() -> None:
     _get_store().put(job)
 
     client = TestClient(app)
-    headline = client.get("/v1/overview", headers=_AUTH_HEADERS).json()["headline"]
+    overview = client.get("/v1/overview", headers=_AUTH_HEADERS).json()
+    headline = overview["headline"]
     counts = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+    for bucket in ("critical", "high", "medium", "low", "unrated", "total", "kev"):
+        assert overview["finding_counts"][bucket] == counts[bucket]
 
     assert counts["critical"] == headline["critical"] == 1, (counts, headline)
     assert counts["high"] == headline["high"] == 1, (counts, headline)

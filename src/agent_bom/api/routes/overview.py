@@ -1532,6 +1532,7 @@ def _compose_overview(
         "schema_version": "overview.v1",
         "tenant_id": tenant_id,
         "posture": posture,
+        "finding_counts": {key: exec_counts[key] for key in ("critical", "high", "medium", "low", "unrated", "total", "kev")},
         "headline": {
             "critical": headline_critical,
             "high": headline_high,

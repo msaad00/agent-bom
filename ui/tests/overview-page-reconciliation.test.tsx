@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Dashboard from "@/app/page";
 
@@ -103,6 +103,7 @@ function staleScan(jobId: string) {
 describe("Overview canonical finding counts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.assign(deploymentCounts, { critical: 7, high: 11, medium: 13, low: 17, unrated: 19, total: 67, kev: 5 });
     apiMock.getPosture.mockResolvedValue({ grade: "D", score: 49 });
     apiMock.getOverview.mockResolvedValue(overviewFixture());
     apiMock.getTrends.mockResolvedValue({ tenant_id: "tenant-ui", count: 0, points: [] });
@@ -119,6 +120,8 @@ describe("Overview canonical finding counts", () => {
     });
     apiMock.getScan.mockImplementation(async (jobId: string) => staleScan(jobId));
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it("uses canonical posture/overview counts instead of recomputing the latest ten scans", async () => {
     render(<Dashboard />);
@@ -153,5 +156,62 @@ describe("Overview canonical finding counts", () => {
     const scanLink = await screen.findByRole("link", { name: /Repository scan/i });
     expect(scanLink).toHaveAttribute("href", "/scan?id=scan-0-abcdefgh");
     expect(scanLink).toHaveAttribute("title", "Scan scan-0-abcdefgh");
+  });
+
+
+  it("keeps overview counts stable when deployment counts update independently", async () => {
+    apiMock.getOverview.mockResolvedValue({ ...overviewFixture(), finding_counts: { ...deploymentCounts, critical: 3, kev: 2 } });
+    const view = render(<Dashboard />);
+    await screen.findByRole("link", { name: /^Critical 3/i });
+    deploymentCounts.critical = 0;
+    deploymentCounts.kev = 0;
+    view.rerender(<Dashboard />);
+    expect(screen.getByRole("link", { name: /^Critical 3/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /KEV 2/i })).toBeInTheDocument();
+  });
+
+  it("refreshes score, counts and risks together without overlapping requests", async () => {
+    vi.useFakeTimers();
+    const initial = { ...overviewFixture(), finding_counts: { ...deploymentCounts, critical: 3 }, top_risks: [{
+      vulnerability_id: "CVE-2025-1234", package: "canonical-package", severity: "critical", risk_score: 9,
+      is_kev: true, cvss_score: 9, epss_score: null, affected_agents: [],
+    }] };
+    apiMock.getOverview.mockResolvedValueOnce(initial);
+    let resolveRefresh!: (value: typeof initial) => void;
+    apiMock.getOverview.mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
+    const view = render(<Dashboard />);
+    await act(async () => {});
+    expect(screen.getByRole("link", { name: /^Critical 3/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/CVE-2025-1234/).length).toBeGreaterThan(0);
+    const initialCalls = apiMock.getOverview.mock.calls.length;
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(screen.getByText("Refreshing overview…")).toHaveAttribute("role", "status");
+    await act(async () => { vi.advanceTimersByTime(120_000); });
+    expect(apiMock.getOverview).toHaveBeenCalledTimes(initialCalls + 1);
+    await act(async () => resolveRefresh({
+      ...initial,
+      posture: { ...initial.posture, grade: "A", score: 100 },
+      finding_counts: { ...initial.finding_counts, critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: 0, kev: 0 },
+      top_risks: [],
+    }));
+    expect(screen.getByRole("link", { name: /^Critical 0/i })).toBeInTheDocument();
+    expect(screen.getByText("100%")).toBeVisible();
+    expect(screen.queryByText(/scan-0-abcdefgh-stale/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/CVE-2025-1234/)).not.toBeInTheDocument();
+    view.unmount();
+    await act(async () => { vi.advanceTimersByTime(120_000); });
+    expect(apiMock.getOverview).toHaveBeenCalledTimes(initialCalls + 1);
+  });
+
+  it("retains the last coherent snapshot and discloses an unavailable refresh", async () => {
+    vi.useFakeTimers();
+    apiMock.getOverview.mockResolvedValueOnce({ ...overviewFixture(), finding_counts: { ...deploymentCounts, critical: 3 } })
+      .mockRejectedValueOnce(new Error("private upstream details"));
+    render(<Dashboard />);
+    await act(async () => {});
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(screen.getByText("Overview refresh unavailable. Showing the last loaded snapshot.")).toHaveAttribute("role", "status");
+    expect(screen.getByRole("link", { name: /^Critical 3/i })).toBeInTheDocument();
+    expect(screen.queryByText("private upstream details")).not.toBeInTheDocument();
   });
 });

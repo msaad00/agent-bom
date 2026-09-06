@@ -63,6 +63,8 @@ export default function Dashboard() {
   const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [overviewRefreshing, setOverviewRefreshing] = useState(false);
+  const [overviewUnavailable, setOverviewUnavailable] = useState(false);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
   const [trends, setTrends] = useState<TrendsResponse | null>(null);
   const [postureOverviewLoading, setPostureOverviewLoading] = useState(true);
@@ -76,14 +78,33 @@ export default function Dashboard() {
   // Fetch posture grade + cross-domain overview (folded into the header scorecard)
   useEffect(() => {
     let cancelled = false;
-    void Promise.allSettled([api.getPosture(), api.getOverview()]).then(
-      ([postureResult, overviewResult]) => {
-        if (cancelled) return;
-        if (postureResult.status === "fulfilled") setPosture(postureResult.value);
-        if (overviewResult.status === "fulfilled") setOverview(overviewResult.value);
-        setPostureOverviewLoading(false);
-      },
-    );
+    let inFlight = false;
+    async function refreshOverview() {
+      if (inFlight) return;
+      inFlight = true;
+      setOverviewRefreshing(true);
+      try {
+        const next = await api.getOverview();
+        if (!cancelled) {
+          setOverview(next);
+          setOverviewUnavailable(false);
+        }
+      } catch {
+        if (!cancelled) setOverviewUnavailable(true);
+      } finally {
+        inFlight = false;
+        if (!cancelled) {
+          setOverviewRefreshing(false);
+          setPostureOverviewLoading(false);
+        }
+      }
+    }
+    void refreshOverview();
+    // Match deployment-context refresh cadence, but publish the overview atomically.
+    const interval = window.setInterval(() => void refreshOverview(), 60_000);
+    void api.getPosture().then((value) => {
+      if (!cancelled) setPosture(value);
+    }, () => {});
     void api.getCompliance().then(
       (value) => {
         if (!cancelled) setCompliance(value);
@@ -98,6 +119,7 @@ export default function Dashboard() {
     );
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, []);
 
@@ -257,6 +279,7 @@ export default function Dashboard() {
   const importedSeverity = useMemo(() => aggregateSeverity(allBlast), [allBlast]);
   const canonicalSeverity = useMemo(() => {
     if (importedReport) return importedSeverity;
+    if (overview?.finding_counts) return overview.finding_counts;
     if (counts) {
       return {
         critical: counts.critical,
@@ -293,12 +316,12 @@ export default function Dashboard() {
     return buildExposurePathView(topRisk, topRisk.scanId);
   }, [topRisk]);
 
-  // The exec top-risk strip merges the scan-derived blast_radius chain with the
-  // server-reconciled overview.top_risks so it stays populated AND honest for
-  // hub/bulk-ingested estates that never create scan jobs (#4063).
+  // Current overview responses own both counts and ranked risks. Historical job
+  // details must not repopulate a fresh empty snapshot. Keep the earlier merge
+  // only for older servers, and imported reports within their local evidence.
   const exposurePaths = useMemo<ExposurePathView[]>(
-    () => buildExecExposurePaths(allBlast, overview?.top_risks),
-    [allBlast, overview],
+    () => buildExecExposurePaths(overview?.finding_counts && !importedReport ? [] : allBlast, importedReport ? undefined : overview?.top_risks),
+    [allBlast, overview, importedReport],
   );
 
   // Total packages scanned across all jobs
@@ -336,7 +359,7 @@ export default function Dashboard() {
     : (overview?.domains.vuln.metric ?? 0);
   const displayedKevCount = importedReport
     ? kevCount
-    : (counts?.kev ?? overview?.headline.kev ?? 0);
+    : (overview?.finding_counts?.kev ?? counts?.kev ?? overview?.headline.kev ?? 0);
   const displayedCredentialExposure = importedReport
     ? credentialExposureCount
     : (overview?.headline.credential_exposed ?? 0);
@@ -421,6 +444,14 @@ export default function Dashboard() {
         }
       />
 
+      {!importedReport && (overviewUnavailable || (overviewRefreshing && overview)) && (
+        <p role="status" className="text-sm text-ink-secondary">
+          {overviewUnavailable
+            ? (overview ? "Overview refresh unavailable. Showing the last loaded snapshot." : "Overview unavailable.")
+            : "Refreshing overview…"}
+        </p>
+      )}
+
       <OverviewCockpit
         loading={postureOverviewLoading}
         grade={postureGrade}
@@ -445,7 +476,7 @@ export default function Dashboard() {
         severity={canonicalSeverity}
         domains={overview?.domains ?? null}
         coverage={overview?.coverage ?? null}
-        topPath={topExposurePath}
+        topPath={overview?.finding_counts && !importedReport ? null : topExposurePath}
         exposurePaths={exposurePaths}
         signals={{
           tools: summaryReady ? displayedReachableTools : null,

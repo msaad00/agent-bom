@@ -497,6 +497,8 @@ def scan(
                 Two gates also fail closed with no flag set: a known-malicious
                 package (typosquat / dependency confusion) and a scan that did
                 not complete. This is why `scan --demo` exits 1.
+      2  Usage error — an option or input is invalid.
+      3  Stale vulnerability database while --require-fresh-db is enabled.
     \b
     Full contract: https://msaad00.github.io/agent-bom/reference/exit-codes/
     """

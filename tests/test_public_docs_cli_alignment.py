@@ -40,12 +40,15 @@ def test_public_docs_do_not_teach_removed_cli_surfaces() -> None:
         assert command not in combined
 
 
-def test_readme_promotes_offline_demo_before_repository_scan() -> None:
+def test_readme_promotes_repository_scan_before_the_failing_demo() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     quick_start = readme.split("## Quick start", 1)[1].split("## Self-host", 1)[0]
 
-    assert quick_start.index("agent-bom scan --demo --offline") < quick_start.index("agent-bom scan .")
-    assert "exit status `1` is expected" in quick_start
+    repository_scan = quick_start.index("agent-bom scan .")
+    demo_warning = quick_start.index("status `1` is the expected security verdict")
+    demo_scan = quick_start.index("agent-bom scan --demo --offline")
+
+    assert repository_scan < demo_warning < demo_scan
 
 
 def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
@@ -229,7 +232,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     primary_block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
     assert primary_block is not None
     commands = [line for line in primary_block.group(1).splitlines() if line.strip()]
-    assert commands == ["pip install agent-bom", "agent-bom scan --demo --offline"]
+    assert commands == ["pip install agent-bom", "agent-bom scan ."]
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
     for image in ("correlation-receipts-live.png", "correlation-path-live.png"):

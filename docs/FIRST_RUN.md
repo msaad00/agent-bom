@@ -11,12 +11,12 @@ paths with read-only cloud connect.
 
 ```bash
 pip install agent-bom
-agent-bom scan -p .
+agent-bom scan .
 ```
 
-`agent-bom scan -p .` prints a rich console panel — posture grade, blast radius,
+`agent-bom scan .` prints a rich console panel — posture grade, blast radius,
 and fix-first findings inline — with nothing to open. This is the recommended
-first command (`agents` is a supported alias of `scan`). When you need a file,
+first command. When you need a file,
 add `-f html -o agent-bom-report.html` (or `-f json`, `-f sarif`); run
 `agent-bom db update --source osv` first for offline package scans. The OSV
 all-ecosystems archive can exceed 1 GB, may take several minutes, and shows
@@ -30,22 +30,23 @@ database fails closed with status `1`. When an output path is requested, the
 artifact is still written with `scan_run.outcome: partial` and the unavailable
 coverage named; it must not be interpreted as a clean zero-finding result.
 
-## 1. Run the Release-Pinned Demo
+## 1. Run the release-pinned demo
+
+The sample deliberately contains blocking findings, so status `1` is expected.
+It is not a scanner crash; the printed report is complete and the status is the security verdict.
 
 ```bash
 agent-bom scan --demo --offline
 ```
 
-The command's status `1` is expected: the curated sample deliberately contains
-blocking findings, so the CLI behaves like the same security gate used in CI.
-The printed report is still valid; this status is not a scanner crash. Offline
-mode also limits enrichment to bundled demo evidence. After reviewing the
-sample, run `agent-bom scan -p .` against your own repository.
+The CLI behaves like the same security gate used in CI. Offline mode also limits
+enrichment to bundled demo evidence.
+After reviewing the sample, run `agent-bom scan .` against your own repository.
 
 Use this when you need reproducible output — for example a screenshot or a bug
 report. The package versions and advisory-backed ranges are curated in code and
 guarded by tests, so it does not depend on fabricated CVEs or a machine-specific
-local DB. Everyday scans should use `agent-bom scan -p .` (section 0) instead.
+local DB. Everyday scans should use `agent-bom scan .` (section 0) instead.
 
 ### Annotated demo output
 
@@ -188,7 +189,7 @@ agent-bom scan \
 After the sample makes sense, scan your own project:
 
 ```bash
-agent-bom scan -p .
+agent-bom scan .
 ```
 
 Add `--inventory <file>` when you already have agent/server inventory from a
@@ -204,11 +205,11 @@ no flag set.
 Adjust the severity threshold or choose an explicit reporting-only scan:
 
 ```bash
-agent-bom scan -p . --fail-on-severity high -f sarif -o findings.sarif
-agent-bom scan -p . --fail-on-kev            # any CISA KEV finding fails the build
-agent-bom scan -p . --fail-on-malicious      # any known-malicious package fails the build
-agent-bom scan -p . --warn-on medium --fail-on-severity critical   # two-tier gate
-agent-bom scan -p . --exit-zero --warn-on medium  # vulnerability report only; incomplete/malicious still fail
+agent-bom scan . --fail-on-severity high -f sarif -o findings.sarif
+agent-bom scan . --fail-on-kev            # any CISA KEV finding fails the build
+agent-bom scan . --fail-on-malicious      # any known-malicious package fails the build
+agent-bom scan . --warn-on medium --fail-on-severity critical   # two-tier gate
+agent-bom scan . --exit-zero --warn-on medium  # vulnerability report only; incomplete/malicious still fail
 ```
 
 `--warn-on` reports findings below the active failure threshold. Pair it with

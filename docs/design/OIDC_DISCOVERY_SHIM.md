@@ -10,13 +10,14 @@ agent-bom already ships:
 
 - **Control-plane OIDC login** — JWT verification for the API and dashboard
   (`AGENT_BOM_OIDC_ISSUER`, tenant-bound providers).
-- **Gateway OAuth AS** — broker-native OAuth 2.1 for MCP clients that front
-  agent-bom-issued tokens (`AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS`).
+- **Gateway authentication** — configured bearer/API-key credentials and
+  external OIDC/JWKS identity verification. Embedded OAuth token issuance is
+  unavailable until trusted client authorization is implemented.
 
-The **OIDC discovery shim** is a third, narrowly scoped interop path: a
+The **OIDC discovery shim** is a narrowly scoped interop path: a
 read-only metadata surface that tells MCP clients where the **buyer's existing
 IdP** lives. It does not mint tokens, register clients dynamically against
-legacy IdPs, or replace `oauth_as`.
+legacy IdPs, or grant access to gateway tools.
 
 ## When to use it
 
@@ -24,7 +25,7 @@ legacy IdPs, or replace `oauth_as`.
 |---|---|---|
 | MCP client needs `/.well-known/openid-configuration` at your gateway hostname | Yes | — |
 | IdP publishes discovery but on a different issuer host | Yes (shim issuer = gateway) | Re-point MCP client if possible |
-| You want agent-bom to issue MCP access tokens | No | Gateway OAuth AS |
+| You need MCP access tokens | No | Provision credentials through your trusted identity system |
 | Browser dashboard login via reverse-proxy OIDC | No | `AGENT_BOM_OIDC_ISSUER` + `/login` |
 
 ## Architecture
@@ -114,8 +115,8 @@ The shim document must include at minimum:
 - **Read-only metadata** — no secrets, no token minting, no outbound IdP calls.
 - **Fail closed on bad config** — invalid JSON or missing required keys prevent
   gateway startup when the env var is set.
-- **Not a broker** — for agent-bom-native OAuth, use the gateway AS documented
-  in [`MULTI_MCP_GATEWAY.md`](MULTI_MCP_GATEWAY.md).
+- **Not a broker** — embedded gateway token issuance is unavailable. The shim
+  only publishes metadata for an independently configured trusted IdP.
 
 ## Related
 

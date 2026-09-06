@@ -1,16 +1,4 @@
-"""A 401 must point clients at a URL they can actually reach.
-
-`AuthSettings` is advertised, not internal: an unauthenticated request answers
-with `WWW-Authenticate: Bearer ... resource_metadata="<issuer>/.well-known/
-oauth-protected-resource"`, and an OAuth client follows that URL to learn how to
-authenticate.
-
-It was derived from the socket the process binds. Behind any proxy that is
-`http://0.0.0.0:8080` — an address no client can route to — so discovery hung
-instead of failing fast. The hosted server reported `AUTH TIMED OUT` after five
-minutes rather than a clean rejection, and the registry listing stayed frozen on
-a months-old build.
-"""
+"""Public URL normalization remains internal to static MCP bearer settings."""
 
 from __future__ import annotations
 
@@ -56,7 +44,7 @@ def test_blank_env_falls_back_rather_than_advertising_nothing(monkeypatch: pytes
 
 
 def test_auth_settings_carry_the_public_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    """End-to-end: the value reaches the settings a client is told to follow."""
+    """Retain the configured URL internally without advertising an OAuth issuer."""
     monkeypatch.setenv(_ENV, "https://mcp.example.test")
 
     server = __import__("agent_bom.mcp_server_factory", fromlist=["create_fastmcp_server"]).create_fastmcp_server(
@@ -69,5 +57,5 @@ def test_auth_settings_carry_the_public_url(monkeypatch: pytest.MonkeyPatch) -> 
 
     settings = server.settings.auth
     assert settings is not None
-    assert str(settings.resource_server_url).rstrip("/") == "https://mcp.example.test"
+    assert settings.resource_server_url is None
     assert str(settings.issuer_url).rstrip("/") == "https://mcp.example.test"

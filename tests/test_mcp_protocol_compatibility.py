@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import copy
-import hashlib
 import json
 import os
-import secrets
 import sys
 import tomllib
 from importlib.metadata import version
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -24,7 +20,6 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 from starlette.testclient import TestClient
 
 from agent_bom.mcp_server import create_mcp_server
-from agent_bom.mcp_server_factory import build_mcp_authorization_server
 
 REPO_ROOT = Path(__file__).parents[1]
 MANIFEST_PATH = REPO_ROOT / "src" / "agent_bom" / "data" / "mcp_protocol_compatibility.json"
@@ -35,7 +30,7 @@ EXECUTABLE_EVIDENCE_IDS = {
     "tests/test_mcp_protocol_compatibility.py::test_locked_sdk_stdio_wire_contract",
     "tests/test_mcp_protocol_compatibility.py::test_locked_sdk_streamable_http_wire_contract",
     "tests/test_mcp_protocol_compatibility.py::test_2026_server_discover_is_rejected_by_session_era_server",
-    "tests/test_mcp_protocol_compatibility.py::test_oauth_2025_resource_binding_gap_is_recorded_as_nonconformant",
+    "tests/test_mcp_protocol_compatibility.py::test_embedded_oauth_is_disabled_until_trusted_authorization_exists",
 }
 EVIDENCE_KIND_BASIS = {
     "executable_test": "executable_contract",
@@ -302,40 +297,13 @@ def test_2026_server_discover_is_rejected_by_session_era_server(monkeypatch, tmp
     assert _features()["server.2026.server_discover"]["conformance_state"] == "nonconformant"
 
 
-def test_oauth_2025_resource_binding_gap_is_recorded_as_nonconformant() -> None:
-    server = build_mcp_authorization_server("https://agent-bom.example/")
-    client = server.register_client({"redirect_uris": ["https://client.example/cb"]})
-    verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    resource = "https://agent-bom.example/mcp"
-    location = server.authorize(
-        {
-            "response_type": "code",
-            "client_id": client["client_id"],
-            "redirect_uri": "https://client.example/cb",
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-            "resource": resource,
-        }
-    )
-    token = server.token(
-        {
-            "grant_type": "authorization_code",
-            "code": parse_qs(urlparse(location).query)["code"][0],
-            "redirect_uri": "https://client.example/cb",
-            "client_id": client["client_id"],
-            "code_verifier": verifier,
-            "resource": resource,
-        }
-    )["access_token"]
-    encoded_payload = token.split(".")[1]
-    claims = json.loads(base64.urlsafe_b64decode(encoded_payload + "=" * (-len(encoded_payload) % 4)))
-
-    assert claims["aud"] != resource
+def test_embedded_oauth_is_disabled_until_trusted_authorization_exists() -> None:
+    server = create_mcp_server(bearer_token="test-read-token")
+    assert server.settings.auth.resource_server_url is None
+    assert not any(getattr(route, "path", "").startswith("/oauth/") for route in server.streamable_http_app().routes)
     oauth = _features()["server.oauth.authorization_server.2025"]
-    assert oauth["implementation_state"] == "partial"
-    assert oauth["conformance_state"] == "nonconformant"
-    assert oauth["assessment_status"] == "partial"
+    assert oauth["implementation_state"] == "not_implemented"
+    assert "embedded_mcp_authorization_server_disabled" in oauth["reason_codes"]
 
 
 def test_docs_bound_client_compatibility_to_the_verified_handshake_era() -> None:

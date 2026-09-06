@@ -377,20 +377,13 @@ def init_policy_cmd(template_name: str, output_path: Path, mode: str, output_for
     is_flag=True,
     envvar="AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS",
     default=False,
-    help=(
-        "Mount an OAuth 2.1 Authorization Server (RFC 8414 metadata, RFC 7591 dynamic "
-        "registration, PKCE authorize+token, JWKS) so standard MCP clients can auto-authenticate. "
-        "Set AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM for a stable signing key."
-    ),
+    help=("Unavailable: fails startup until trusted client authorization is implemented. Use configured bearer or API-key authentication."),
 )
 @click.option(
     "--oauth-as-issuer",
     envvar="AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER",
     default=None,
-    help=(
-        "Public issuer base URL for the OAuth AS. Required for non-loopback listeners; "
-        "loopback development may derive it from the request URL."
-    ),
+    help=("Compatibility option only; embedded OAuth AS activation is unavailable."),
 )
 @click.option(
     "--a2a-mutual-auth-enforcement",
@@ -495,6 +488,12 @@ def serve_cmd(
     nothing.
     """
     logging.basicConfig(level=log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
+    if enable_oauth_as:
+        raise click.ClickException(
+            "Embedded OAuth AS is unavailable until trusted client authorization is implemented. "
+            "Remove --enable-oauth-as / AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS and configure bearer or API-key authentication."
+        )
 
     if upstreams_path is None and control_plane_url is None:
         click.echo(
@@ -621,27 +620,7 @@ def serve_cmd(
         control_plane_policies = [p for p in bundle_list if isinstance(p, dict)]
         click.echo(f"loaded {len(control_plane_policies)} control-plane policy/policies from {policy_bundle_path}")
 
-    # OAuth 2.1 broker AS (opt-in). Built once at startup; reuses an env-supplied
-    # signing key when present so issued tokens survive a restart.
     oauth_as = None
-    if enable_oauth_as:
-        from agent_bom.api.oauth_as import OAuthAuthorizationServer
-
-        host_is_loopback = _is_loopback_host(host)
-        if not oauth_as_issuer and not host_is_loopback:
-            # Deriving the issuer from the client Host header on a non-loopback
-            # listener lets the first caller poison token `iss` and RFC 8414
-            # metadata (Host-header TOFU). Require an explicit issuer instead.
-            raise click.ClickException(
-                f"OAuth 2.1 AS on non-loopback host {host!r} requires an explicit issuer. "
-                "Set --oauth-as-issuer / AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER to the public base URL "
-                "(e.g. https://gateway.example.com). Deriving it from the request Host header is unsafe."
-            )
-        oauth_as = OAuthAuthorizationServer(
-            issuer=oauth_as_issuer,
-            allow_host_derived_issuer=host_is_loopback,
-        )
-        click.echo(f"OAuth 2.1 AS enabled (issuer={oauth_as_issuer or '<derived from loopback request>'})")
 
     oidc_discovery_shim = None
     try:

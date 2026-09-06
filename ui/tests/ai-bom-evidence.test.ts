@@ -84,11 +84,11 @@ describe("ai-bom-evidence", () => {
       agents: 0,
       mcpServers: 9,
       models: 1,
-      frameworks: 0,
+      frameworks: null,
       packages: 1,
       credentials: 3,
-      cloudAssets: 0,
-      findings: 0,
+      cloudAssets: null,
+      findings: null,
     });
   });
 
@@ -115,4 +115,17 @@ describe("ai-bom-evidence", () => {
     expect(sources.find((source) => source.id === "cloud")?.active).toBe(true);
     expect(sources.find((source) => source.id === "control-plane")?.active).toBe(true);
   });
+});
+
+ it("does not mark locked or merely configured cloud accounts as observed", () => {
+ const base = { services: { cloud_accounts: {state: "locked", count: 0} } };
+ expect(deriveAiBomEvidenceSources(base as never, null).find(s => s.id === "cloud")?.active).toBe(false);
+ expect(deriveAiBomEvidenceSources({services:{cloud_accounts:{state:"connected",count:1}}} as never,null).find(s=>s.id==="cloud")?.status).toBe("Configured");
+ });
+ it("keeps missing manifest counts unavailable", () => {
+ expect(Object.values(summarizeAiBomEntities(null)).every(value=>value===null)).toBe(true);
+ });
+
+it("does not treat a gateway policy as runtime observation", () => {
+ expect(deriveAiBomEvidenceSources({has_gateway:true} as never,null).find(s=>s.id==="runtime")?.status).toBe("Configured");
 });

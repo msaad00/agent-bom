@@ -188,10 +188,11 @@ def test_persona_routes_start_with_their_actual_work() -> None:
     personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
 
     assert "| Developer / AI engineer | `agent-bom scan .`" in personas
-    assert "| AppSec / product security | `agent-bom scan . --gha . --offline`" in personas
+    assert "| AppSec / product security | Open **Overview**, then inspect a prioritized finding" in personas
     assert "| Cloud security | Add a read-only connection, then run a scan" in personas
     assert f"| Platform / DevOps | `pip install 'agent-bom[ui]' && {LOCAL_ANALYST_CONTROL_PLANE}`" in personas
-    assert "| CISO / engineering leader | Open **Architecture** in the self-hosted graph" in personas
+    assert "| CISO / engineering leader | Open **Overview** in the self-hosted control plane" in personas
+    assert "| AI assistant / automation | `agent-bom mcp server`" in personas
     assert "owners and slas" in personas.lower()
 
 

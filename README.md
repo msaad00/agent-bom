@@ -116,11 +116,12 @@ deployed remediation and live-cloud validation are not claimed.
 | Role | Start here | Primary outcome |
 |---|---|---|
 | Developer / AI engineer | `agent-bom scan .` | See dependencies, secrets, IaC, agents, MCP, and whether Click, Flask, or FastAPI entry points can reach vulnerable packages before shipping |
-| AppSec / product security | `agent-bom scan . --gha . --offline` | Inventory remote actions and reusable workflows with their refs, source provenance, and CI-hardening findings |
+| AppSec / product security | Open **Overview**, then inspect a prioritized finding | Identify the affected workload, follow its exposure path, and assess the supporting evidence before assigning a fix |
 | Cloud security | Add a read-only connection, then run a scan | Build scoped cloud, identity, and posture inventory with explicit coverage and provenance |
 | Platform / DevOps | `pip install 'agent-bom[ui]' && AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db` | Schedule scans, centralize evidence, assign owners and SLAs, and verify remediation |
 | GRC / audit | `agent-bom report compliance-narrative scan.json` | Export mapped evidence for OWASP LLM Top 10, MITRE ATLAS, EU AI Act, and NIST AI RMF; preserve unavailable, partial, and not-assessed states |
-| CISO / engineering leader | Open **Architecture** in the self-hosted graph | Compare observed **Current** state with modeled **Proposed** and **Difference** views; proposals remain labeled as not observed or deployed |
+| CISO / engineering leader | Open **Overview** in the self-hosted control plane | Review priorities and evidence coverage; drill into the findings behind the posture to guide remediation |
+| AI assistant / automation | `agent-bom mcp server` | Start with eight focused tools to scan, inspect evidence, and plan fixes; select a graph, cloud, runtime, or audit profile when the task needs it |
 
 Security engineering and GRC remain separate workflows: findings and
 reachability are not presented as audit certification. See

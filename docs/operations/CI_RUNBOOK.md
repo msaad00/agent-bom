@@ -196,7 +196,7 @@ auth path. The Settings UI is the only supported toggle today.
 2. Edit the rule for `main`
 3. Check ✅ **Require merge queue**
 4. Set merge method to **Squash** and pin the same required status checks
-   used today (Lint and Type Check, Test (Python 3.11/3.13/3.14), Build
+   used today (Lint and Type Check, Test (Python 3.11/3.12/3.13/3.14), Build
    Package, Security Scan, CodeQL)
 5. Save
 

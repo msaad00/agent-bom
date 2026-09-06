@@ -11,7 +11,10 @@ name: Cloud SDK Pin Drift
 on:
   pull_request:
     paths:
+      - ".github/workflows/cloud-sdk-drift.yml"
+      - ".github/actions/setup-python/**"
       - "pyproject.toml"
+      - "uv.lock"
       - "src/agent_bom/data/cloud_sdk_reference.json"
       - "src/agent_bom/cloud_sdk_freshness.py"
       - "scripts/check_cloud_sdk_drift.py"
@@ -33,12 +36,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+        uses: ./.github/actions/setup-python
         with:
           python-version: "3.12"
 
-      - name: Install check dependency
-        run: python3 -m pip install "packaging>=24.0"
+      - name: Install locked dependencies
+        run: uv sync --frozen
 
       - name: Cloud-SDK pin-drift gate
-        run: python3 scripts/check_cloud_sdk_drift.py
+        run: uv run --no-sync python scripts/check_cloud_sdk_drift.py

@@ -235,18 +235,6 @@ jobs:
         # marker for at most one dependabot cycle (~24h).
         run: python scripts/check_docker_base_policy.py
 
-      - name: Workflow job timeout policy
-        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
-        # Closes the audit-4 P1 finding that #1995 only swept release.yml
-        # + post-merge-self-scan + container-rescan; the rest of
-        # .github/workflows/ still had jobs that could run unbounded and
-        # hold scarce runners. Every workflow job must declare
-        # timeout-minutes; reusable-workflow callers (`uses:`) inherit
-        # the timeout from the called workflow.
-        run: |
-          python -m pip install --quiet pyyaml
-          python scripts/check_workflow_timeouts.py
-
       - name: Comment hygiene — no chat/POC/task-id noise in source
         # Source: scripts/check_comment_hygiene.py
         # Conversational comments, LLM self-references, and internal task/audit
@@ -315,6 +303,11 @@ jobs:
       - name: Install dependencies
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv sync --frozen --extra dev
+
+      - name: Workflow job timeout policy
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
+        # Every job declares a timeout; reusable workflows inherit theirs.
+        run: uv run --no-sync python scripts/check_workflow_timeouts.py
 
       - name: Bandit (Static Security Analysis)
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
@@ -733,9 +726,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      # Nothing in CI has ever run `docker compose config` against these files,
-      # while docs/DEPLOY_PLATFORM.md told operators the stack passes it. The
-      # gate also asserts the RENDERED graph, because "exited 0" is not a test.
+      # Validate the rendered graph as well as syntax: every service must resolve
+      # to an image/build, every dependency must exist, and committed read-only
+      # bind mounts must point at real paths.
       - name: Validate every shipped compose file and overlay combination
         shell: bash
         run: |
@@ -1041,7 +1034,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

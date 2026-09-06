@@ -117,8 +117,10 @@ ENV REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE}
 ENV CURL_CA_BUNDLE=${CURL_CA_BUNDLE}
 ENV PIP_CERT=${PIP_CERT}
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD agent-bom --version || exit 1
+# This is a generic CLI image whose default command exits. Long-lived API,
+# gateway, proxy, and MCP deployments define process-aware probes in their
+# Compose, Helm, or dedicated runtime-image contracts.
+HEALTHCHECK NONE
 
 ENTRYPOINT ["agent-bom"]
 CMD ["--help"]

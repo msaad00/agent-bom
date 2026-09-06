@@ -589,6 +589,9 @@ describe("FindingsPage", () => {
     expect(within(summary).queryByText("Current page")).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Reach / exploit" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Owner / SLA" })).toBeInTheDocument();
+    expect(screen.getByText("Engineering findings and remediation priority")).toHaveClass("sr-only");
+    expect(screen.getByRole("columnheader", { name: "Finding" })).toHaveAttribute("aria-sort", "none");
+    expect(screen.getByRole("columnheader", { name: "Priority" })).toHaveAttribute("aria-sort", "descending");
     expect(screen.queryByRole("columnheader", { name: "Control mapping" })).not.toBeInTheDocument();
   });
 
@@ -761,6 +764,8 @@ describe("FindingsPage", () => {
     expect(screen.getByRole("columnheader", { name: "Evidence freshness" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Disposition / attestation" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Affected scope" })).toBeInTheDocument();
+    expect(screen.getByText("Compliance findings and evidence status")).toHaveClass("sr-only");
+    expect(screen.getByRole("columnheader", { name: "Finding" })).toHaveAttribute("scope", "col");
     expect(screen.queryByRole("columnheader", { name: "Reach / exploit" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Review evidence" }));

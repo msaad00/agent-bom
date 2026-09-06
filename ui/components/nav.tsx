@@ -293,16 +293,84 @@ export function Nav() {
   const [collapsedFlyoutGroup, setCollapsedFlyoutGroup] = useState<string | null>(null);
   const [collapsedFlyoutTop, setCollapsedFlyoutTop] = useState(96);
   const collapsedFlyoutTimer = useRef<number | null>(null);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileDrawerRef = useRef<HTMLElement | null>(null);
+  const previousPathRef = useRef(path);
   const { counts } = useDeploymentContext();
   const { session, loading: authLoading, hasCapability } = useAuthState();
 
   // Close mobile on route change
   useEffect(() => {
+    if (previousPathRef.current === path) return;
+    previousPathRef.current = path;
     const timer = window.setTimeout(() => {
       setMobileOpen(false);
     }, 0);
     return () => window.clearTimeout(timer);
   }, [path]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const drawer = mobileDrawerRef.current;
+    const desktopViewport = window.matchMedia?.("(min-width: 1024px)");
+    const closeAtDesktop = () => {
+      if (desktopViewport?.matches) setMobileOpen(false);
+    };
+    const returnFocusTarget = mobileMenuButtonRef.current;
+    const focusableSelector =
+      'a[href], button:not([disabled]), summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusableElements = () => Array.from(drawer?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])
+      .filter((element) => element.getAttribute("tabindex") !== "-1"
+        && (typeof element.checkVisibility === "function"
+          ? element.checkVisibility()
+          : element.getClientRects().length > 0)
+        && window.getComputedStyle(element).visibility !== "hidden");
+    const focusTimer = window.setTimeout(() => {
+      if (desktopViewport?.matches) {
+        closeAtDesktop();
+        return;
+      }
+      const firstFocusable = focusableElements()[0];
+      (firstFocusable ?? drawer)?.focus();
+    }, 0);
+
+    const handleDrawerKeyDown = (event: KeyboardEvent) => {
+      if (desktopViewport?.matches) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !drawer) return;
+
+      const focusable = focusableElements();
+      if (focusable.length === 0) {
+        event.preventDefault();
+        drawer.focus();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleDrawerKeyDown);
+    desktopViewport?.addEventListener("change", closeAtDesktop);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleDrawerKeyDown);
+      desktopViewport?.removeEventListener("change", closeAtDesktop);
+      // The mobile trigger is hidden on desktop; let the normal tab order resume.
+      if (!desktopViewport?.matches) returnFocusTarget?.focus();
+    };
+  }, [mobileOpen]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -806,9 +874,12 @@ export function Nav() {
           <ThemeToggle compact />
           <ApiStatus collapsed={false} />
           <button
+            ref={mobileMenuButtonRef}
             onClick={() => setMobileOpen(!mobileOpen)}
             className="rounded-lg p-2 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)] lg:hidden"
             aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-navigation-dialog"
           >
             {mobileOpen ? (
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -835,8 +906,16 @@ export function Nav() {
       {/* Mobile Drawer Overlay */}
       {mobileOpen && (
         <>
-          <div className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside aria-label="Mobile navigation" className="lg:hidden fixed left-0 top-16 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
+          <div aria-hidden="true" className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <aside
+            id="mobile-navigation-dialog"
+            ref={mobileDrawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mobile navigation"
+            tabIndex={-1}
+            className="lg:hidden fixed left-0 top-16 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in"
+          >
             {renderSidebarContent(false, false)}
           </aside>
         </>

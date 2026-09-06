@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Dashboard from "@/app/page";
@@ -130,6 +130,21 @@ describe("Overview canonical finding counts", () => {
     expect(high).toHaveTextContent("11");
     expect(screen.getByText("Current findings · configured window")).toBeInTheDocument();
     expect(critical).toHaveAttribute("href", "/findings?scope=all&severity=critical");
+  });
+
+  it("passes the canonical scan floor into the score explanation", async () => {
+    const overview = overviewFixture();
+    apiMock.getOverview.mockResolvedValue({ ...overview, posture: {
+      ...overview.posture, score: 37, grade: "F", floored: true, penalty_total: 60.7,
+      breakdown: [{ driver: "high", label: "High findings", count: 103, weight: 2, contribution: 206 }],
+    } });
+    render(<Dashboard />);
+    const explanation = await screen.findByRole("button", { name: /What influences this score/ });
+    fireEvent.click(explanation);
+    expect(screen.getByText("Total weighted pressure: 206.0")).toBeVisible();
+    expect(screen.getByText(/worse recorded scan posture/)).toBeVisible();
+    expect(screen.getByText("37%")).toBeVisible();
+    expect(screen.queryByText(/60.7/)).not.toBeInTheDocument();
   });
 
   it("labels recent scans by their target and retains the exact job id", async () => {

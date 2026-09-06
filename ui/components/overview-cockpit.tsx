@@ -5,7 +5,6 @@ import type { ElementType } from "react";
 import {
   ArrowRight,
   Bug,
-  ChevronRight,
   Fingerprint,
   UserRound,
   Flame,
@@ -178,6 +177,7 @@ export interface OverviewCockpitProps {
   scoreFormat?: PostureScoreFormat | undefined;
   /** Weighted inputs behind the score, for the "what influences this" panel. */
   scoreBreakdown?: ExecScoreDriver[] | null | undefined;
+  scoreFloored?: boolean | undefined;
   /** Called when the user picks a display format; parent persists it (#3940). */
   onScoreFormatChange?: ((format: PostureScoreFormat) => void) | undefined;
   postureSummary?: string | undefined;
@@ -224,6 +224,7 @@ export function OverviewCockpit({
   score,
   scoreFormat = "percent",
   scoreBreakdown = null,
+  scoreFloored,
   onScoreFormatChange,
   postureSummary,
   postureTrend = null,
@@ -261,7 +262,8 @@ export function OverviewCockpit({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 lg:p-5">
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+      <section className="min-w-0 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 lg:p-5">
         <Collapsible
           bare
           title="Command center"
@@ -275,7 +277,7 @@ export function OverviewCockpit({
               Posture track is capped (minmax) so a long summary can't grow it
               unbounded and squeeze the open-issues severity tiles into an
               unreadable sliver. */}
-          <div className="mt-1 grid gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
+          <div className="mt-3 grid gap-4">
             <PostureHero
               loading={loading}
               grade={grade}
@@ -303,22 +305,19 @@ export function OverviewCockpit({
 
           {/* 1b — What influences the score: read-only weighted-input breakdown
               so the grade is legible, not opaque (#3940). */}
-          <ScoreExplainer breakdown={scoreBreakdown} grade={grade} />
+          <ScoreExplainer breakdown={scoreBreakdown} grade={grade} floored={scoreFloored} />
         </Collapsible>
       </section>
 
       {/* 4 — Top risks: the hero exposure path */}
-      <section className="min-h-0">
+      <section className="min-h-0 min-w-0">
         <TopRisksPanel
           topPath={topPath}
           exposurePaths={exposurePaths}
-          critical={critical}
-          high={high}
-          credentials={credentials}
-          summaryReady={summaryReady}
           agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
         />
       </section>
+      </div>
       <section className="space-y-2" aria-label="Coverage and compliance context">
         <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />
         <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
@@ -349,7 +348,7 @@ function FreshnessStatus({
     <div
       data-testid="overview-freshness"
       role="status"
-      className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2"
+      className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1"
     >
       <div className="flex items-center gap-2">
         <span
@@ -748,7 +747,7 @@ function ComplianceSnapshotPanel({
                           : "border border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
                   }`}
                 >
-                  {tone === "applicability" ? "observed" : tone === "not_applicable" ? "none" : tone === "not_evaluated" ? "n/a" : tone}
+                  {tone === "applicability" ? "Risks mapped" : tone === "not_applicable" ? "none" : tone === "not_evaluated" ? "n/a" : tone}
                 </span>
               </Link>
             );
@@ -768,185 +767,106 @@ function ComplianceSnapshotPanel({
 function TopRisksPanel({
   topPath,
   exposurePaths,
-  critical,
-  high,
-  credentials,
-  summaryReady,
   agentMeshHref = null,
 }: {
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
-  critical: number;
-  high: number;
-  credentials: number | null;
-  summaryReady: boolean;
   agentMeshHref?: string | null;
 }) {
-  const headline =
-    summaryReady && critical > 0
-      ? `${critical} critical finding${critical === 1 ? "" : "s"} need attention`
-      : summaryReady && high > 0
-        ? `${high} high-severity finding${high === 1 ? "" : "s"} in the latest scan`
-        : "No prioritized risk themes yet";
-
-  // Rank the correlated exposure paths by composite risk so the exec view leads
-  // with the worst chain. Each row shows the whole path in one glance:
-  // CVE → package → MCP/runtime → agent → credential. Fall back to the single
-  // top path when the full list hasn't been computed yet.
   const allPaths = exposurePaths.length > 0 ? exposurePaths : topPath ? [topPath] : [];
   const ranked = [...allPaths].sort((a, b) => b.riskScore - a.riskScore);
-  const MAX_ROWS = 5;
-  const shown = ranked.slice(0, MAX_ROWS);
+  const shown = ranked.slice(0, 3);
   const moreCount = ranked.length - shown.length;
-  const metaBits = [
-    summaryReady && critical > 0 ? `${critical} critical` : null,
-    summaryReady && high > 0 ? `${high} high` : null,
-    summaryReady && credentials != null && credentials > 0
-      ? `${credentials} touch secrets`
-      : null,
-  ].filter(Boolean);
 
   return (
-    <Collapsible
-      title="Top risks"
-      subtitle="Highest-risk exposure paths — correlated CVE → package → agent → credential"
-      count={ranked.length || undefined}
-      defaultOpen
-      scrollMaxHeight="28rem"
-      actions={
-        <div className="flex flex-wrap items-center gap-3">
-          {agentMeshHref ? (
-            <Link href={agentMeshHref} className="text-xs text-emerald-500 hover:text-emerald-400">
-              Agent mesh
-            </Link>
-          ) : null}
-          <Link href="/security-graph" className="text-xs text-emerald-500 hover:text-emerald-400">
-            Security graph
-          </Link>
-        </div>
-      }
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="text-sm font-semibold text-[color:var(--foreground)]">{headline}</p>
-        {metaBits.length > 0 ? (
-          <p className="text-[11px] text-[color:var(--text-tertiary)]">{metaBits.join(" · ")}</p>
-        ) : null}
-      </div>
-
+    <Collapsible title="Top risks" subtitle="Prioritized findings and affected workloads"
+      count={ranked.length || undefined} defaultOpen>
       {shown.length > 0 ? (
-        <div className="mt-3 space-y-2">
-          {shown.map((path, index) => (
-            <RiskChainRow key={path.key} path={path} rank={index + 1} />
-          ))}
+        <div className="space-y-2">
+          {shown.map((path, index) => <RiskChainRow key={path.key} path={path} rank={index + 1} />)}
         </div>
       ) : (
-        <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
+        <p className="text-sm text-[color:var(--text-secondary)]">
           Run a scan to correlate CVEs, packages, agents, and credentials into ranked exposure paths.
         </p>
       )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {moreCount > 0 ? (
-          <Link
-            href="/security-graph"
-            className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-          >
-            +{moreCount} more risk path{moreCount === 1 ? "" : "s"} <ArrowRight className="h-3 w-3" />
-          </Link>
-        ) : null}
-        <Link
-          href="/findings?scope=all&severity=critical"
-          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
-        >
-          Critical findings
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <Link href="/security-graph" className="text-emerald-600 dark:text-emerald-400">
+          {moreCount > 0 ? `Security graph · ${moreCount} more risk paths` : "Security graph"}
         </Link>
-        <Link
-          href="/compliance"
-          className="rounded-lg border border-emerald-700/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200"
-        >
-          Compliance evidence
-        </Link>
+        {agentMeshHref ? <Link href={agentMeshHref} className="text-emerald-600 dark:text-emerald-400">Agent mesh</Link> : null}
+        <Link href="/findings?scope=all&severity=critical" className="text-[color:var(--text-secondary)]">Critical findings</Link>
+        <Link href="/compliance" className="text-[color:var(--text-secondary)]">Compliance evidence</Link>
       </div>
     </Collapsible>
   );
 }
 
-const RISK_NODE_ORDER: ExposurePathView["nodes"][number]["type"][] = [
-  "cve",
-  "package",
-  "server",
-  "agent",
-  "credential",
-];
-
 function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) {
-  // Order the chain into the readable attack narrative regardless of the raw
-  // node order: CVE → package → MCP/runtime → agent → credential.
-  const ordered = RISK_NODE_ORDER.flatMap((type) =>
-    path.nodes.filter((node) => node.type === type),
-  );
-  const hasCredential = path.nodes.some((node) => node.type === "credential");
-  const hasAgent = path.nodes.some((node) => node.type === "agent");
-  const topReason = `path${hasAgent ? " reaches an agent" : ""}${hasCredential ? " and exposes a credential" : ""}`;
+  const finding = path.nodes.find((node) => node.type === "cve");
+  const pkg = path.nodes.find((node) => node.type === "package");
+  const workload = path.nodes.find((node) => node.type === "agent") ?? path.nodes.find((node) => node.type === "server");
+  const findingLabel = finding && /^(CVE-\d{4}-\d+|GHSA-[\w-]+)$/i.test(finding.label) ? finding.label : "Finding";
+  const severity = finding?.severity?.toLowerCase();
+  const knownSeverity = severity && ["critical", "high", "medium", "low"].includes(severity) ? severity : null;
 
   return (
-    <Link
-      href={path.href}
-      className="group block rounded-lg border-b border-[color:var(--border-subtle)] px-3 py-3 transition hover:bg-[color:var(--surface-muted)]"
-    >
-      <div className="flex items-center gap-3">
-        <span className="w-4 shrink-0 text-center font-mono text-xs text-[color:var(--text-tertiary)]">
-          {rank}
-        </span>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-y-1">
-          {ordered.map((node, index) => (
-            <span key={`${node.type}-${index}`} className="inline-flex min-w-0 max-w-full items-center">
-              {index > 0 ? (
-                <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-[color:var(--text-tertiary)]" />
-              ) : null}
-              <span
-                className={`px-1 py-0.5 text-sm [overflow-wrap:anywhere] ${node.type === "cve" ? "font-medium text-[color:var(--foreground)]" : "text-[color:var(--text-secondary)]"}`}
-                title={node.label}
-              >
-                {node.label}
-              </span>
-            </span>
-          ))}
+    <article className="rounded-lg border border-[color:var(--border-subtle)]">
+      <Link href={path.href} className="group block rounded-lg p-3 transition hover:bg-[color:var(--surface-muted)]">
+        <div className="flex items-start gap-2">
+          <span className="pt-0.5 font-mono text-xs text-[color:var(--text-tertiary)]">{rank}.</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+              <span>{findingLabel}</span>{pkg ? <> in <span>{pkg.label}</span></> : null}
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--text-secondary)] [overflow-wrap:anywhere]">
+              {workload ? workload.label : "Workload not identified"}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[color:var(--text-secondary)]">
+              <span>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
+              <span>Path priority {Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "unavailable"}</span>
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">Inspect finding <ArrowRight className="h-3 w-3" aria-hidden="true" /></span>
+            </div>
+          </div>
         </div>
-        <span className="shrink-0 text-sm text-[color:var(--text-secondary)]" title={`Path priority ${path.riskScore.toFixed(1)}`}>
-          <span className="hidden sm:inline">Priority </span><strong className="font-medium text-[color:var(--foreground)]">{path.riskScore.toFixed(1)}</strong>
-        </span>
-        <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition group-hover:text-[color:var(--foreground)]" />
-      </div>
-      {rank === 1 ? (
-        <p className="mt-1.5 pl-7 text-xs font-medium text-[color:var(--text-secondary)]">
-          Highest priority: {topReason}
-        </p>
-      ) : null}
-    </Link>
+      </Link>
+      <details className="border-t border-[color:var(--border-subtle)] px-3 py-2 text-xs">
+        <summary className="cursor-pointer text-[color:var(--text-tertiary)]">Technical details</summary>
+        <dl className="mt-2 space-y-2">
+          {path.nodes.map((node, index) => (
+            <div key={`${node.type}-${index}`} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+              <dt className="capitalize text-[color:var(--text-tertiary)]">{node.type === "cve" ? "Finding" : node.type}</dt>
+              <dd className="text-[color:var(--text-secondary)] [overflow-wrap:anywhere]">{node.label}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    </article>
   );
 }
 
 /**
  * Read-only "what influences this score" panel. Lists the weighted inputs
  * (severity buckets, KEV, exposure, compliance, unrated) with each driver's
- * count × weight = penalty contribution, so the grade is legible instead of an
+ * count × weight = relative pressure, so the grade is legible instead of an
  * opaque number (#3940). Only drivers that actually moved the score are shown.
  * A full weight/threshold editor is a documented follow-up.
  */
 function ScoreExplainer({
   breakdown,
   grade,
+  floored,
 }: {
+  floored?: boolean | undefined;
   breakdown?: ExecScoreDriver[] | null | undefined;
   grade: string;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
   const rows = (breakdown ?? [])
-    .filter((row) => row.count > 0 || row.contribution > 0)
+    .filter((row) => Number.isFinite(row.contribution) && row.contribution > 0 && Number.isFinite(row.count) && Number.isFinite(row.weight))
     .sort((a, b) => b.contribution - a.contribution);
   if (ungraded || rows.length === 0) return null;
-  const totalPenalty = rows.reduce((sum, row) => sum + row.contribution, 0);
+  const totalPressure = rows.reduce((sum, row) => sum + row.contribution, 0);
 
   return (
     <Collapsible
@@ -954,37 +874,33 @@ function ScoreExplainer({
       className="mt-4 border-t border-[color:var(--border-subtle)]"
       title="What influences this score"
       titleClassName={SECTION_TITLE_CLASS}
-      subtitle="Weighted risk inputs behind the grade · each shown as count × weight = points off 100"
+      subtitle="Relative weighted inputs and scoring method"
       defaultOpen={false}
       data-testid="overview-score-explainer"
     >
       <div className="mt-2 space-y-1.5">
         {rows.map((row) => {
-          const share = totalPenalty > 0 ? (row.contribution / totalPenalty) * 100 : 0;
           return (
-            <div key={row.driver} className="flex items-center gap-3" data-testid={`score-driver-${row.driver}`}>
-              <span className="w-40 shrink-0 truncate text-[11px] text-[color:var(--text-secondary)]" title={row.label}>
+            <div key={row.driver} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3" data-testid={`score-driver-${row.driver}`}>
+              <span className="text-[11px] text-[color:var(--text-secondary)]" title={row.label}>
                 {row.label}
               </span>
-              <span className="w-24 shrink-0 text-right font-mono text-[11px] tabular-nums text-[color:var(--text-tertiary)]">
+              <span className="text-right font-mono text-[11px] tabular-nums text-[color:var(--text-tertiary)]">
                 {row.count} × {row.weight}
               </span>
-              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
-                <span
-                  className="block h-full rounded-full bg-[color:var(--severity-high)]"
-                  style={{ width: `${Math.min(100, share)}%` }}
-                />
-              </div>
               <span className="w-14 shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums text-[color:var(--foreground)]">
-                −{row.contribution.toFixed(1)}
+                {row.contribution.toFixed(1)}
               </span>
             </div>
           );
         })}
       </div>
-      <p className="mt-2 text-[10px] leading-tight text-[color:var(--text-tertiary)]">
-        Score = 100 − total points off (capped at 100). Weights, grade thresholds, and the display format are
-        configurable per tenant via the score-config API. A full in-UI weight editor is a follow-up.
+      <p className="mt-3 text-xs font-medium text-[color:var(--text-secondary)]">Total weighted pressure: {totalPressure.toFixed(1)}</p>
+      <p className="mt-2 text-xs leading-relaxed text-[color:var(--text-tertiary)]">
+        Each input is count × weight. The server converts combined pressure to a score using a nonlinear curve;
+        these values are not points deducted from 100.
+        {floored === true ? " The worse recorded scan posture limits the displayed score." : ""}
+        {floored === undefined ? " Whether a recorded scan limits this score is unavailable." : ""}
       </p>
     </Collapsible>
   );
@@ -1056,13 +972,6 @@ function PostureHero({
   cves: number | null;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
-  const badgeTone = ungraded
-    ? "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]"
-    : grade === "A" || grade === "B"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
-      : grade === "C" || grade === "D"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
-        : "border-red-500/40 bg-red-500/10 text-red-400";
   const graded = typeof score === "number" && !ungraded;
   const scoreDisplay = graded ? formatPostureScore(score, grade, scoreFormat) : null;
   const blurb = loading
@@ -1071,23 +980,8 @@ function PostureHero({
 
   return (
     <div className="flex items-center gap-4">
-      <div
-        className={`flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl border ${badgeTone}`}
-        title={
-          loading
-            ? "Loading posture"
-            : graded
-              ? `Grade ${grade}${scoreDisplay ? ` · ${scoreDisplay}` : ""}`
-              : "Awaiting scan"
-        }
-      >
-        <span className="text-3xl font-bold leading-none">{grade}</span>
-        {graded && scoreFormat !== "grade" && scoreDisplay ? (
-          <span className="mt-0.5 text-[10px] font-semibold leading-none opacity-80">{scoreDisplay}</span>
-        ) : null}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
             Risk posture
           </p>
@@ -1130,7 +1024,7 @@ function PostureHero({
             </p>
           )
         ) : null}
-        <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">{blurb}</p>
+        <p className="mt-1 text-xs text-[color:var(--text-secondary)]">{blurb}</p>
       </div>
     </div>
   );

@@ -427,6 +427,7 @@ export default function Dashboard() {
         score={postureScore}
         scoreFormat={scoreFormat}
         scoreBreakdown={scoreBreakdown}
+        scoreFloored={overview?.posture.floored}
         onScoreFormatChange={handleScoreFormatChange}
         postureSummary={overview?.posture.summary ?? posture?.summary}
         postureTrend={postureTrend}

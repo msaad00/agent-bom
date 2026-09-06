@@ -31,8 +31,8 @@ export function AttackPathCorrelationProof({
     });
   const expectedHopCount = Math.max(path.hops.length - 1, 0);
   const completeHopCount = completeDirectedHopCount(path);
-  const pathVerified = path.reachability === "confirmed" && completeHopCount !== null;
-  const proofLabel = pathVerified ? "Path verified" : "Path evidence incomplete";
+  const pathEvidenceComplete = path.reachability === "confirmed" && completeHopCount !== null;
+  const proofLabel = pathEvidenceComplete ? "Path evidence complete" : "Path evidence incomplete";
   const missingNodes = path.hops.filter((id) => !nodeById.has(id));
   const sourceCount = new Set(receipts.flatMap((receipt) =>
     Array.isArray(receipt?.source_snapshot_ids) ? receipt.source_snapshot_ids.filter(Boolean) : [],
@@ -47,7 +47,7 @@ export function AttackPathCorrelationProof({
     if (receipt.freshness === "stale_allowed") kinds.set("stale_allowed", "Stale allowed");
   }
   if (riskReasons.some((reason) => reason.kind === "runtime_blocked")) {
-    kinds.set("runtime_blocked", "Runtime block verified");
+    kinds.set("runtime_blocked", "Gateway block observed");
   }
   if (path.analysis?.status && path.analysis.status !== "complete") {
     kinds.set("bounded_analysis", "Bounded analysis");

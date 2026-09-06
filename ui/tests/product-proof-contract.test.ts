@@ -95,7 +95,7 @@ describe("product proof capture contract", () => {
     expect(source).not.toContain('"/security-graph?capture=1"');
   });
 
-  it("captures the reference-lab receipt DAG and confirmed path from one pinned artifact", () => {
+  it("captures the reference-lab receipt DAG and evidence-complete path from one pinned artifact", () => {
     expect(source).toContain('path: "correlation-receipts-live.png"');
     expect(source).toContain('path: "correlation-path-live.png"');
     expect(source).toContain('path: "correlation-receipts-light-live.png"');
@@ -108,7 +108,8 @@ describe("product proof capture contract", () => {
     expect(source).toContain('getByTestId("attack-path-correlation-proof")');
     expect(source).toContain("referenceLabActualDigest");
     expect(source).toContain("correlation_manifest_sha256");
-    expect(source).toContain("Runtime block verified");
+    expect(source).toContain("capturePage.clock.setFixedTime(REFERENCE_CAPTURE_NOW)");
+    expect(source).toContain("Gateway block observed");
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
     expect(source).toContain('window.scrollTo({ top: top - offset, behavior: "instant" })');
     expect(source).toContain("assertNoHorizontalOverflow: true");

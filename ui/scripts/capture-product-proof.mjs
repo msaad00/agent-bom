@@ -47,6 +47,9 @@ if (referenceLabActualDigest !== referenceLabExpectedDigest) {
   throw new Error("Reference evidence lab proof is stale: regenerate the hash-pinned correlation artifact");
 }
 const REFERENCE_LAB = JSON.parse(referenceLabProofBytes.toString("utf8"));
+const REFERENCE_CAPTURE_NOW = new Date(
+  Date.parse(REFERENCE_LAB.correlation.completed_at) + 60_000,
+).toISOString();
 if (
   REFERENCE_LAB.label !== "Reference evidence lab — modeled local infrastructure"
   || REFERENCE_LAB.correlation?.status !== "complete"
@@ -2767,7 +2770,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-path-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
-      scope: "Reference evidence lab confirmed path with exact OCI digest, advisory, hop provenance, freshness, runtime observation, strict block proof, and remediation handoff",
+      scope: "Reference evidence lab evidence-complete path with exact OCI digest, advisory, hop provenance, freshness, runtime observation, strict block proof, and remediation handoff",
       presentation: `${CAPTURE_THEME} desktop`,
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2785,7 +2788,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-path-light-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
-      scope: "Reference evidence lab confirmed path and hop receipts in the light theme",
+      scope: "Reference evidence lab evidence-complete path and hop receipts in the light theme",
       presentation: "light desktop",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2803,7 +2806,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-path-mobile-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
-      scope: "Reference evidence lab confirmed path and hop receipts at a 390 by 844 viewport",
+      scope: "Reference evidence lab evidence-complete path and hop receipts at a 390 by 844 viewport",
       presentation: "dark mobile",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2936,6 +2939,7 @@ async function main() {
     browser = await chromium.launch();
     const newCapturePage = async (theme, viewport) => {
       const capturePage = await browser.newPage({ viewport, deviceScaleFactor: 1 });
+      await capturePage.clock.setFixedTime(REFERENCE_CAPTURE_NOW);
       await installRoutes(capturePage);
       await capturePage.addInitScript((selectedTheme) => {
         window.localStorage.setItem("agent-bom-theme", selectedTheme);
@@ -2989,7 +2993,7 @@ async function main() {
     const correlationReceiptAssertions = {
       expectedText: [
         "Correlation result",
-        /1 confirmed path across 6 sources/i,
+        /evidence-complete path across 6 sources/i,
         "Fresh evidence",
         "0 conflicts",
         "Analysis complete",
@@ -3043,9 +3047,9 @@ async function main() {
         "Authenticates As",
         "Has Permission",
         `Digest ${REFERENCE_LAB.container_digest.slice(0, 19)}…`,
-        "Path verified",
+        "Path evidence complete",
         "Runtime observed",
-        "Runtime block verified",
+        "Gateway block observed",
         "Open pillow@9.0.0 remediation",
       ],
       rejectedText: [/hops hidden/i, "3. Server", "3. MCP server"],

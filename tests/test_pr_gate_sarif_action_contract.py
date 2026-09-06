@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -14,6 +16,22 @@ from agent_bom.models import AIBOMReport
 from agent_bom.output.sarif import to_sarif
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_action_legacy_agents_input_dispatches_canonical_scan() -> None:
+    action = yaml.safe_load((ROOT / "action.yml").read_text(encoding="utf-8"))
+    step = next(step for step in action["runs"]["steps"] if step.get("id") == "scan")
+    dispatch = step["run"].split("# Map scan-type to focused command", 1)[1]
+    dispatch = dispatch.split('if [ "$INPUT_SCAN_TYPE" = "skills" ]', 1)[0]
+    result = subprocess.run(
+        ["bash", "-c", dispatch + '\nprintf "%s\\n" "${ARGS[@]}"'],
+        env={**os.environ, "INPUT_SCAN_TYPE": "agents"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.strip() == "scan"
+    assert "code, agents" not in action["inputs"]["scan-type"]["description"]
 
 
 def test_pr_security_gate_uses_real_self_scan_sarif_not_fixture() -> None:

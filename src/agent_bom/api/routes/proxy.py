@@ -1036,7 +1036,7 @@ async def _ws_handshake_within_rate_limit(websocket: WebSocket) -> bool:
         from agent_bom.api.metrics import record_rate_limit_hit
 
         record_rate_limit_hit("websocket-handshake")
-    return accepted
+    return bool(accepted)
 
 
 def _role_allows(actual: str, required: str = "viewer") -> bool:

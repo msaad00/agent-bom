@@ -75,9 +75,10 @@ customer evidence or live-cloud validation.
 
 **Investigate and act.** Follow the ordered path from entry point to data asset.
 Switch to Graph or List, inspect a hop’s source evidence, or open the package
-remediation. Exact identifiers and receipts stay one click away. “Path verified”
-requires complete, fresh evidence for every directed, traversable hop; modeled
-infrastructure and runtime observations remain separately labeled.
+remediation. Exact identifiers and receipts stay one click away. “Path evidence
+complete” requires complete, fresh evidence for every directed, traversable hop;
+modeled infrastructure, runtime observations, and gateway blocks remain
+separately labeled. A blocked call does not remove the underlying exposure.
 
 <p align="center">
   <picture>

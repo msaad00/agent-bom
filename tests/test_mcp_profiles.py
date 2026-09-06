@@ -3,9 +3,12 @@
 import asyncio
 import json
 import os
+import runpy
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -203,3 +206,31 @@ def test_docker_catalog_generator_imports_the_checkout(tmp_path):
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Inspect a package.\n\n        Returns:\n            Package evidence.\n        ",
+        "Inspect a package.\n\nReturns:\n    Package evidence.\n",
+    ],
+)
+def test_docker_catalog_normalizes_python_docstring_indentation(monkeypatch, description):
+    """Python versions must emit identical descriptions without changing arguments."""
+    script = Path(__file__).resolve().parents[1] / "scripts/generate_mcp_profile_catalog.py"
+    render = runpy.run_path(str(script))["render"]
+    tool = SimpleNamespace(
+        name="check",
+        description=description,
+        inputSchema={"properties": {"package": {"type": "string", "description": "Package name.\n  Keep this spacing."}}},
+    )
+    server = SimpleNamespace(list_tools=AsyncMock(return_value=[tool]))
+    monkeypatch.setattr("agent_bom.mcp_server.create_mcp_server", lambda: server)
+
+    assert json.loads(render()) == [
+        {
+            "name": "check",
+            "description": "Inspect a package.\n\nReturns:\n    Package evidence.",
+            "arguments": [{"name": "package", "type": "string", "desc": "Package name.\n  Keep this spacing."}],
+        }
+    ]

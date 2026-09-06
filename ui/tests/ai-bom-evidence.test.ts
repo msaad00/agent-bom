@@ -129,3 +129,8 @@ describe("ai-bom-evidence", () => {
 it("does not treat a gateway policy as runtime observation", () => {
  expect(deriveAiBomEvidenceSources({has_gateway:true} as never,null).find(s=>s.id==="runtime")?.status).toBe("Configured");
 });
+
+it("keeps cluster configuration distinct from a collected cluster scan", () => {
+  expect(deriveAiBomEvidenceSources({ has_cluster_scan: true } as never, null).find((source) => source.id === "cluster")?.status).toBe("Configured");
+  expect(deriveAiBomEvidenceSources({ has_cluster_scan: true, scan_sources: ["k8s"] } as never, null).find((source) => source.id === "cluster")?.status).toBe("Collected");
+});

@@ -42,6 +42,7 @@ export function deriveAiBomEvidenceSources(
   );
 
   const cloudState = counts?.services?.cloud_accounts?.state;
+  const hasClusterCollection = scanSources.has("k8s") || scanSources.has("gpu_infra");
   return [
     {
       id: "workstation",
@@ -61,8 +62,8 @@ export function deriveAiBomEvidenceSources(
     },
     {
       id: "cloud",
-      label: "Cloud AI services",
-      detail: "Connected accounts for models, endpoints, and managed AI",
+      label: "Cloud accounts",
+      detail: "Cloud scans and configured provider connections",
       active: hasCloudScan || cloudState === "live" || cloudState === "connected",
       status: hasCloudScan ? "Collected" : cloudState === "connected" || cloudState === "live" ? "Configured" : counts ? "Not collected" : "Unavailable",
       href: "/connections",
@@ -72,7 +73,7 @@ export function deriveAiBomEvidenceSources(
       label: "Kubernetes",
       detail: "Cluster scans for pods, images, and runtime AI workloads",
       active: Boolean(counts?.has_cluster_scan),
-      status: counts?.has_cluster_scan ? "Collected" : counts ? "Not collected" : "Unavailable",
+      status: hasClusterCollection ? "Collected" : counts?.has_cluster_scan ? "Configured" : counts ? "Not collected" : "Unavailable",
       href: "/scan",
     },
     {

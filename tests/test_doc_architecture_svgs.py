@@ -218,7 +218,7 @@ def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     workflow = readme[workflow_heading:persona_heading]
     normalized_workflow = " ".join(workflow.split())
     assert "runtime enforcement in your own environment" in normalized_workflow
-    assert "### Product proof: independent evidence, one verifiable path" in workflow
+    assert "### See what needs fixing — and why" in workflow
     assert "Reference evidence lab — modeled local infrastructure" in normalized_workflow
     assert "correlation-receipts-live.png" in workflow
     assert "correlation-path-live.png" in workflow

@@ -91,9 +91,10 @@ infrastructure and runtime observations remain separately labeled.
 
 The credential-free lab runs repository, CycloneDX, Kubernetes IaC, and MCP
 parsers plus the bundled advisory scanner for `pillow@9.0.0` / `CVE-2023-4863`.
-Correlation connects the OCI digest, Kubernetes UID, MCP tool, workload identity,
-and local gateway receipts. An observed call and a separate opt-in block have
-independent receipts; neither is proof of a deployed remediation.
+Correlation connects scoped runtime identities, MCP tools, and gateway receipts
+with per-hop source provenance. Shared OCI digests are metadata, not runtime
+identity. Runtime observation and strict block proof have independent receipts;
+neither is proof of a deployed remediation.
 
 [Run the reference lab](examples/reference-evidence-lab/README.md) ·
 [Capture protocol](docs/CAPTURE.md)

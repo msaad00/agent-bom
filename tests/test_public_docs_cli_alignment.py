@@ -142,7 +142,8 @@ def test_readme_distinguishes_graph_relationship_provenance() -> None:
     normalized = " ".join(readme.lower().split())
 
     assert "Graph views use observed nodes and relationships" not in readme
-    assert "correlates exact oci digest" in normalized
+    assert "shared oci digests are metadata, not runtime identity" in normalized
+    assert "scoped runtime identities" in normalized
     assert "per-hop source provenance" in normalized
     assert "runtime observation and strict block proof" in normalized
     assert "observed graph evidence" not in readme
@@ -222,7 +223,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "Add a read-only connection" in normalized_intro
     assert "Inventory is always the output" in normalized_intro
     assert "workflow-dark.svg" in intro
-    assert "### Product proof: independent evidence, one verifiable path" in intro
+    assert "### See what needs fixing — and why" in intro
 
     quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]
     primary_block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
@@ -232,8 +233,9 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
     for image in ("correlation-receipts-live.png", "correlation-path-live.png"):
-        assert readme.count(image) == 2  # linked thumbnail: href plus src
-    assert "[Open the full product gallery](docs/GALLERY.md)" in readme
+        assert readme.count(image) == 1  # one full-width screenshot per stage
+        assert image.replace("-live.png", "-light-live.png") in readme
+    assert "[Explore the product gallery](docs/GALLERY.md)" in readme
     assert "gateway-policies-live.png" not in readme
 
     # Persona surfaces keep security engineering and GRC as separate lanes

@@ -905,6 +905,7 @@ jobs:
           ./scripts/build-msi.ps1 -BundleDir $env:BUNDLE_DIR -OutputPath (Join-Path $env:RUNNER_TEMP "agent-bom-endpoint.msi") -Version $version -DryRun
 
   # 3. Python correctness
+  # Public-doc contracts run even for UI-only, docs-only, and mixed changes.
   # Fast changed-domain/product-boundary feedback starts package proof while
   # the exhaustive PR shards continue in parallel. The core aggregator below
   # requires every applicable shard plus measured graph evidence. The existing
@@ -919,34 +920,18 @@ jobs:
     needs: changes
     if: ${{ !cancelled() }}
     steps:
-      - name: Documentation-only test skip
-        if: needs.changes.result == 'success' && needs.changes.outputs.python != 'true'
-        run: echo "No Python test input changed; smoke is not required."
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: >-
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.python == 'true'
         with:
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-python
-        if: >-
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.python == 'true'
         with:
           python-version: "3.13"
 
       - name: Install dependencies
-        if: >-
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.python == 'true'
         run: uv sync --frozen --extra dev --extra api --extra mcp-server
 
       - name: Run changed-domain and cross-surface smoke
-        if: >-
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.python == 'true'
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -959,6 +944,9 @@ jobs:
           mapfile -t TARGETED < <(uv run python scripts/pytest_ci_plan.py targeted --root . "${CHANGED[@]}")
           SMOKE=(
             tests/test_ci_workflow_contract.py
+            tests/test_doc_architecture_svgs.py
+            tests/test_public_frontdoor_contract.py
+            tests/test_public_docs_cli_alignment.py
             tests/test_cli_entry_points.py
             tests/test_product_surface_contract.py
             tests/api/test_api_scan_findings_wiring.py

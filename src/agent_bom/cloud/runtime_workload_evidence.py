@@ -12,8 +12,8 @@ attack-path campaigns.
 
 Non-negotiable properties (issue #4158, honesty constraints):
 
-* **Authenticated ingest.** Every source is registered with a hashed shared
-  secret; a signal batch is accepted only after a constant-time secret check.
+* **Authenticated ingest.** Every source requires an exact source scope on a
+  verified, tenant-bound credential with a lifetime of at most one hour.
 * **Identity binding is source-authoritative.** Tenant / provider / account come
   from the authenticated source, never from the client payload — a spoofed
   provider/account on a raw signal is rejected (confused-deputy guard). A signal
@@ -37,8 +37,6 @@ Durable persistence lives in
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import logging
 import os
@@ -50,6 +48,7 @@ from enum import Enum
 from typing import Any, Iterable, Mapping
 
 from agent_bom.canonical_ids import canonical_id
+from agent_bom.cloud.runtime_source_auth import RuntimeSourcePrincipal, SourceAuthenticationError
 from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -134,10 +133,6 @@ def _sanitize_runtime_text(value: Any, *, redacted_value: str = "") -> str:
     if _contains_runtime_credential(value_text):
         return redacted_value
     return sanitize_text(value_text, max_len=_MAX_EVIDENCE_VALUE_LEN)
-
-
-class SourceAuthenticationError(RuntimeError):
-    """Raised when a runtime evidence source cannot be authenticated."""
 
 
 class IncompleteIdentityBindingError(ValueError):
@@ -229,45 +224,18 @@ class RuntimeEvidenceSource:
     provider: str
     account_id: str
     kind: str
-    secret_hash: str
 
     def __post_init__(self) -> None:
-        required = (self.source_id, self.tenant_id, self.provider, self.account_id, self.kind, self.secret_hash)
+        required = (self.source_id, self.tenant_id, self.provider, self.account_id, self.kind)
         if not all(str(part).strip() for part in required):
             raise ValueError("runtime evidence source requires all identity fields")
         if self.provider not in _VALID_PROVIDERS:
             raise ValueError(f"unsupported runtime source provider: {self.provider}")
-        if len(self.secret_hash) != 64 or any(ch not in "0123456789abcdef" for ch in self.secret_hash):
-            raise ValueError("secret_hash must be a 64-character lowercase sha256 hex digest")
 
     @classmethod
-    def register(
-        cls,
-        *,
-        source_id: str,
-        tenant_id: str,
-        provider: str,
-        account_id: str,
-        kind: str,
-        secret: str,
-    ) -> "RuntimeEvidenceSource":
-        """Register a source, storing only the sha256 of the shared secret."""
-        if not secret or len(secret) < 8:
-            raise ValueError("runtime source secret must be at least 8 characters")
-        digest = hashlib.sha256(secret.encode("utf-8")).hexdigest()
-        return cls(
-            source_id=source_id.strip(),
-            tenant_id=tenant_id.strip(),
-            provider=provider.strip().lower(),
-            account_id=account_id.strip(),
-            kind=kind.strip().lower(),
-            secret_hash=digest,
-        )
-
-    def authenticate(self, secret: str) -> bool:
-        """Constant-time comparison of a presented secret against the stored hash."""
-        presented = hashlib.sha256((secret or "").encode("utf-8")).hexdigest()
-        return hmac.compare_digest(presented, self.secret_hash)
+    def register(cls, *, source_id: str, tenant_id: str, provider: str, account_id: str, kind: str) -> "RuntimeEvidenceSource":
+        """Register authoritative source identity; credentials live in API auth."""
+        return cls(source_id.strip(), tenant_id.strip(), provider.strip().lower(), account_id.strip(), kind.strip().lower())
 
 
 class RuntimeSourceRegistry:
@@ -287,12 +255,12 @@ class RuntimeSourceRegistry:
     def get(self, source_id: str) -> RuntimeEvidenceSource | None:
         return self._sources.get(source_id)
 
-    def authenticate(self, source_id: str, secret: str) -> RuntimeEvidenceSource:
-        """Return the source only when it exists and the secret matches; else raise."""
+    def authorize(self, source_id: str, principal: RuntimeSourcePrincipal) -> RuntimeEvidenceSource:
+        """Return only the source explicitly granted to the verified principal."""
         source = self._sources.get(source_id)
-        if source is None or not source.authenticate(secret):
-            # One error for both cases so a caller cannot enumerate valid source ids.
+        if source is None:
             raise SourceAuthenticationError("runtime evidence source authentication failed")
+        principal.authorize(source_id, source.tenant_id)
         return source
 
 
@@ -505,7 +473,7 @@ def ingest_runtime_signals(
     *,
     registry: RuntimeSourceRegistry,
     source_id: str,
-    secret: str,
+    principal: RuntimeSourcePrincipal,
     raw_signals: Iterable[Mapping[str, Any]],
     now: str | None = None,
     max_age_seconds: int = DEFAULT_MAX_SIGNAL_AGE_SECONDS,
@@ -521,7 +489,7 @@ def ingest_runtime_signals(
     (within the batch, against ``dedup_seen``, or already persisted) in
     ``deduped``. Accepted signals are persisted through ``store`` when supplied.
     """
-    source = registry.authenticate(source_id, secret)
+    source = registry.authorize(source_id, principal)
     reference_now = now or _now_iso()
     result = IngestResult(source_id=source.source_id, tenant_id=source.tenant_id)
 
@@ -554,7 +522,7 @@ def ingest_runtime_signals(
 def ingest_runtime_signals_payload(
     *,
     source_id: str,
-    secret: str,
+    principal: RuntimeSourcePrincipal,
     payload: Any,
     persist: bool = True,
     now: str | None = None,
@@ -583,7 +551,7 @@ def ingest_runtime_signals_payload(
     return ingest_runtime_signals(
         registry=active_registry,
         source_id=source_id,
-        secret=secret,
+        principal=principal,
         raw_signals=cleaned,
         now=now,
         max_age_seconds=max_age_seconds,
@@ -876,31 +844,17 @@ _registry_lock = threading.Lock()
 
 
 def _source_from_entry(entry: Mapping[str, Any]) -> RuntimeEvidenceSource | None:
-    """Build one source from a config entry, preferring a pre-hashed secret.
-
-    ``secret_hash`` (a 64-char sha256 hex digest) is preferred so the plaintext
-    secret never has to sit in the environment; ``secret`` is accepted as a
-    convenience and hashed on load. A malformed entry is skipped (fail closed),
-    never raised — one bad entry must not sink the whole registry.
-    """
-    secret_hash = str(entry.get("secret_hash") or "").strip().lower()
+    """Provision identity only; obsolete credential-bearing entries fail closed."""
+    if "secret" in entry or "secret_hash" in entry:
+        logger.warning("runtime evidence source config contains retired credential fields; migrate to source-scoped API authentication")
+        return None
     try:
-        if secret_hash:
-            return RuntimeEvidenceSource(
-                source_id=str(entry.get("source_id") or "").strip(),
-                tenant_id=str(entry.get("tenant_id") or "").strip(),
-                provider=str(entry.get("provider") or "").strip().lower(),
-                account_id=str(entry.get("account_id") or "").strip(),
-                kind=str(entry.get("kind") or "").strip().lower(),
-                secret_hash=secret_hash,
-            )
         return RuntimeEvidenceSource.register(
             source_id=str(entry.get("source_id") or ""),
             tenant_id=str(entry.get("tenant_id") or ""),
             provider=str(entry.get("provider") or ""),
             account_id=str(entry.get("account_id") or ""),
             kind=str(entry.get("kind") or ""),
-            secret=str(entry.get("secret") or ""),
         )
     except ValueError:
         logger.warning("skipping malformed runtime evidence source entry")

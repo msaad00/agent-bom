@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Any
 
+from agent_bom.cloud.runtime_source_auth import SourceAuthenticationError
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,6 @@ def _write_denial(
 async def runtime_evidence_ingest_impl(
     *,
     source_id: str,
-    secret: str,
     signals_json: str,
     operator_role: str = "viewer",
     operator_scopes: str = "",
@@ -62,7 +62,7 @@ async def runtime_evidence_ingest_impl(
     _authenticated_actor: str = "",
     _truncate_response: Any,
 ) -> str:
-    """Authenticate a registered source and ingest a JSON array of signals."""
+    """Delegate source authentication to the configured control-plane API."""
     denial = _write_denial(
         operator_role=operator_role,
         operator_scopes=operator_scopes,
@@ -72,42 +72,34 @@ async def runtime_evidence_ingest_impl(
     if denial is not None:
         return json.dumps(denial)
     try:
-        from agent_bom.cloud.runtime_workload_evidence import (
-            SourceAuthenticationError,
-            get_runtime_source_registry,
-            ingest_runtime_signals_payload,
-        )
+        import anyio
+
+        from agent_bom.cloud.runtime_evidence_client import push_runtime_evidence
         from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 
-        registry = get_runtime_source_registry()
-        source = registry.authenticate(source_id, secret)
-        if source.tenant_id != resolve_mcp_tool_tenant_id():
-            return json.dumps({"error": "runtime evidence source authentication failed"})
         payload = json.loads(signals_json)
-        result = ingest_runtime_signals_payload(
-            source_id=source_id,
-            secret=secret,
-            payload=payload,
-            persist=True,
-            registry=registry,
+        tenant_id = resolve_mcp_tool_tenant_id()
+        payload = await anyio.to_thread.run_sync(
+            lambda: push_runtime_evidence(source_id=source_id, payload=payload, reason=reason.strip(), tenant_id=tenant_id)
         )
-        payload = result.to_dict()
+        if payload.get("source_id") != source_id or payload.get("tenant_id") != tenant_id:
+            raise SourceAuthenticationError("runtime evidence source authentication failed")
         try:
             from agent_bom.api.audit_log import log_action
 
             log_action(
                 "runtime_evidence.ingest",
                 actor=_authenticated_actor.strip(),
-                resource=f"runtime-evidence/source/{result.source_id}",
-                tenant_id=result.tenant_id,
+                resource=f"runtime-evidence/source/{source_id}",
+                tenant_id=tenant_id,
                 reason=reason.strip(),
                 accepted=payload["accepted"],
                 persisted=payload["persisted"],
                 rejected_stale=payload["rejected_stale"],
                 rejected_incomplete=payload["rejected_incomplete"],
             )
-            payload["status"] = "ok"
-            payload["audit_status"] = "recorded"
+            payload.setdefault("status", "ok")
+            payload.setdefault("audit_status", "recorded")
         except Exception as exc:  # noqa: BLE001 - evidence ingest succeeds independently of audit sink availability
             logger.warning("MCP runtime evidence audit logging failed: %s", sanitize_error(exc, generic=True))
             payload["status"] = "partial"

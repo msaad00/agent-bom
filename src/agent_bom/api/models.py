@@ -1063,7 +1063,8 @@ class RuntimeEvidenceIngestRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     source_id: str
-    secret: str
+    validate_only: bool = False
+    reason: str = Field(default="Runtime evidence ingestion", min_length=8, max_length=1024)
     signals: list[RuntimeEvidenceSignalIn] = Field(default_factory=list, max_length=1000)
     correlation_cohort_id: str | None = Field(default=None, min_length=36, max_length=36)
     correlation_child_receipt: CorrelationCohortChildReceipt | None = None

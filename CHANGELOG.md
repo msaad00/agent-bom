@@ -11,6 +11,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Runtime evidence ingestion now requires an expiring, source-scoped API key
+  or verified OIDC credential. API bodies, MCP arguments and CLI flags no longer
+  accept source secrets. CLI/MCP producers use the configured control-plane API;
+  legacy shared-secret source registrations fail closed. See the runtime
+  producer migration guide in `docs/CLOUD_CONNECT.md`.
+
 - MCP server startup now exposes eight scan and remediation tools by default.
   Select graph, cloud, runtime or audit profiles for specialized work, or use
   `--profile full` to preserve the complete catalog in existing clients.

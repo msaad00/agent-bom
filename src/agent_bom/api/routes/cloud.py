@@ -924,21 +924,12 @@ async def cloud_runtime_evidence_ingest(
     body: RuntimeEvidenceIngestRequest,
     _role: Any = _SCAN_DEP,
 ) -> dict[str, Any]:
-    """Ingest a batch of CWPP runtime/EDR workload signals (#4158 stage 3).
+    """Ingest source-scoped metadata using an existing API key or OIDC token.
 
-    The authenticated, tenant-scoped door for the runtime workload-evidence store.
-    Without this route the store had no caller in a deployed product and could
-    never be populated. Read-only posture: agent-bom never writes to a customer
-    target and persists allowlisted metadata only (raw content and known
-    credential-shaped values are dropped at construction). Each source is
-    pre-registered with a hashed shared secret (no per-action credentials);
-    ``provider``/``account`` bind to the
-    authenticated source, never the payload (confused-deputy guard).
-
-    Fail-closed: an unknown source id, a bad secret, or a source owned by a
-    different tenant all return the same generic ``401`` so a caller cannot
-    enumerate valid source ids or tenants. The ingest runs off the event loop in a
-    worker thread under backpressure so a batch can never stall ``/health``.
+    The verified credential must carry the exact runtime:ingest:<source_id>
+    scope and have a lifetime of at most one hour. Source tenant/provider/account
+    come from server registration. Credentials are never accepted in this body.
+    Unknown, expired, revoked, unscoped or cross-tenant authority fails closed.
     """
     tenant_id = _tenant(request)
 
@@ -948,16 +939,19 @@ async def cloud_runtime_evidence_ingest(
         # Tenant binding: the authenticated request tenant must own the source.
         # Fold "wrong tenant" into the same auth failure so a caller cannot probe
         # which source ids exist in another tenant.
-        if source is None or source.tenant_id != tenant_id:
+        requested_tenant = request.headers.get("X-Agent-Bom-Tenant-ID")
+        if source is None or source.tenant_id != tenant_id or (requested_tenant is not None and requested_tenant != tenant_id):
             raise SourceAuthenticationError("runtime evidence source authentication failed")
-        # Authenticate before checking cohort membership so a signed assignment
-        # never replaces the runtime source's existing secret boundary.
-        registry.authenticate(body.source_id, body.secret)
+        # A cohort receipt does not grant authority over its named source.
+        registry.authorize(body.source_id, principal)
+        if body.validate_only and (body.correlation_cohort_id or body.correlation_child_receipt):
+            raise CorrelationCohortIngestError("incomplete_receipt")
         cohort_id = (body.correlation_cohort_id or "").strip()
         cohort_receipt = body.correlation_child_receipt
         if bool(cohort_id) != bool(cohort_receipt):
             raise CorrelationCohortIngestError("incomplete_receipt")
         if cohort_id and cohort_receipt is not None:
+            cohort_max_age_seconds = cohort_receipt.max_age_hours * 3600
             context = validate_correlation_cohort_child(
                 tenant_id=tenant_id,
                 source_id=body.source_id,
@@ -979,10 +973,10 @@ async def cloud_runtime_evidence_ingest(
                     projection = ingest_runtime_signals(
                         registry=registry,
                         source_id=body.source_id,
-                        secret=body.secret,
+                        principal=principal,
                         raw_signals=[signal.model_dump(exclude_none=True) for signal in body.signals],
                         now=completed_child.completed_at if completed_child is not None else None,
-                        max_age_seconds=cohort_receipt.max_age_hours * 3600,
+                        max_age_seconds=cohort_max_age_seconds,
                         store=get_runtime_workload_evidence_store(),
                     )
                 except Exception as exc:  # noqa: BLE001 - safe stable projection error below
@@ -1040,9 +1034,9 @@ async def cloud_runtime_evidence_ingest(
                 result = ingest_runtime_signals(
                     registry=registry,
                     source_id=body.source_id,
-                    secret=body.secret,
+                    principal=principal,
                     raw_signals=[signal.model_dump(exclude_none=True) for signal in body.signals],
-                    max_age_seconds=cohort_receipt.max_age_hours * 3600,
+                    max_age_seconds=cohort_max_age_seconds,
                     store=None,
                 )
                 if not result.accepted or result.rejected_stale or result.rejected_incomplete:
@@ -1093,17 +1087,39 @@ async def cloud_runtime_evidence_ingest(
         result = ingest_runtime_signals(
             registry=registry,
             source_id=body.source_id,
-            secret=body.secret,
+            principal=principal,
             raw_signals=[s.model_dump(exclude_none=True) for s in body.signals],
-            store=get_runtime_workload_evidence_store(),
+            store=None if body.validate_only else get_runtime_workload_evidence_store(),
         )
         return result.to_dict()
 
     try:
+        from agent_bom.api.runtime_source_auth import runtime_source_principal
+
+        principal = await anyio.to_thread.run_sync(runtime_source_principal, request)
         async with adaptive_backpressure("runtime_evidence_ingest"):
-            return await anyio.to_thread.run_sync(_ingest)
+            response = await anyio.to_thread.run_sync(_ingest)
+        try:
+            from agent_bom.api.audit_log import log_action
+
+            await anyio.to_thread.run_sync(
+                lambda: log_action(
+                    "runtime_evidence.validate" if body.validate_only else "runtime_evidence.ingest",
+                    actor=principal.subject,
+                    tenant_id=tenant_id,
+                    resource=f"runtime-evidence/source/{body.source_id}",
+                    reason=body.reason,
+                    persisted=response.get("persisted"),
+                )
+            )
+            response["audit_status"] = "recorded"
+        except Exception:
+            _logger.warning("Runtime evidence audit event unavailable")
+            response["status"] = "partial"
+            response["audit_status"] = "unavailable"
+        return response
     except SourceAuthenticationError as exc:
-        # Generic 401 — never reveal whether the source id or the secret was wrong.
+        # Never reveal whether the source exists or which credential check failed.
         raise HTTPException(status_code=401, detail="Runtime evidence source authentication failed") from exc
     except CorrelationCohortIngestError as exc:
         if exc.code == "incomplete_receipt":

@@ -658,8 +658,10 @@ evidence never replaces disk evidence.
 
 Ingest is hardened and fails closed (`runtime_workload_evidence.py`):
 
-- **Authenticated source.** Each source registers with a hashed shared secret;
-  a batch is accepted only after a constant-time secret check. Tenant, provider,
+- **Authenticated source.** Sources register identity metadata only. Batches require a
+  verified API key or OIDC bearer credential with the exact
+  `runtime:ingest:<source-id>` scope and a lifetime of at most one hour.
+  Expired, revoked, unscoped and non-expiring keys fail closed. Tenant, provider,
   and account are taken from the authenticated source — a payload that claims a
   different provider/account is rejected (confused-deputy guard).
 - **Freshness + provenance.** Every accepted signal must provide `observed_at`;
@@ -700,6 +702,47 @@ findings Evidence drawer shows a dedicated Workload runtime evidence panel
 `agent-bom cloud side-scan-capabilities` prints the honest provider surface;
 `agent-bom cloud side-scan --provider azure|gcp` runs the shipped executor
 (opt-in via `AGENT_BOM_SIDESCAN`).
+
+### Runtime producer authentication
+
+Register source metadata on the control plane through
+`AGENT_BOM_RUNTIME_EVIDENCE_SOURCES`, for example:
+
+```json
+[{"source_id":"edr-1","tenant_id":"tenant-alpha","provider":"aws","account_id":"123456789012","kind":"edr"}]
+```
+
+Use the existing authenticated `POST /v1/auth/keys` endpoint to provision a
+producer key with the exact scope `runtime:ingest:edr-1`, its tenant, an admin role, and an explicit `expires_at` no more than one hour after issuance.
+Alternatively, configure the existing OIDC verifier and use a verified bearer
+JWT with the same exact scope, tenant binding, `iat` and `exp`. Source identifiers
+in scopes are percent-encoded (for example, `edr/1` becomes `edr%2F1`). Wildcard
+scopes do not grant source authority. Rotate credentials before expiry; API key
+revocation is checked on each ingestion request.
+
+For CLI and MCP, configure `AGENT_BOM_API_URL` and exactly one of
+`AGENT_BOM_API_KEY` or `AGENT_BOM_API_TOKEN` in the process environment through
+external credential provisioning. Use an HTTPS origin; HTTP is accepted only
+for a loopback host. Set `AGENT_BOM_TENANT_ID` to the intended
+tenant. Credentials are transmitted in authentication headers, never evidence
+JSON or model-visible tool arguments. The MCP caller must independently pass
+its existing authenticated write-authorization gate.
+
+```bash
+agent-bom cloud runtime-evidence-ingest --source-id edr-1 --file signals.json \
+  --reason "Import approved runtime observations"
+```
+
+The command reports accepted, rejected and persisted counts. Inspect the
+corresponding finding's workload runtime evidence next. `--no-persist` validates
+through the same authenticated API without storing signals. It still requires a
+configured control plane. Successful writes include audit status; an audit sink
+failure after persistence is reported as partial, not as a successful audit.
+
+**Migration:** remove `secret` and `secret_hash` from source registrations;
+legacy registrations fail closed. Remove `secret` from API/MCP payloads and
+`--secret` / `AGENT_BOM_RUNTIME_EVIDENCE_SOURCE_SECRET` from producers. There is
+no shared-secret fallback. Evidence storage and existing receipts are unchanged.
 
 The Azure/GCP disk side-scan is now surface-aligned across CLI
 (`agent-bom cloud side-scan`), REST (`POST /v1/cloud/side-scan`), MCP

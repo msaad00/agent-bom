@@ -28,6 +28,7 @@ from agent_bom.models import AIBOMReport
 from agent_bom.output.html.document import to_html
 from agent_bom.output.json_fmt import to_json
 from agent_bom.output.sarif import to_sarif
+from tests.runtime_auth_helpers import runtime_principal
 
 
 def _workload_finding(*, with_ioc_summary: bool = False) -> Finding:
@@ -136,14 +137,13 @@ def test_export_enrichment_from_store_marks_no_signal_honestly(monkeypatch) -> N
                 provider="aws",
                 account_id="123456789012",
                 kind="edr",
-                secret="s3cr3t-token-value-1234",
             )
         )
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         ingest_runtime_signals(
             registry=registry,
             source_id="edr-1",
-            secret="s3cr3t-token-value-1234",
+            principal=runtime_principal(tenant="tenant-export"),
             raw_signals=[
                 {
                     "workload_ref": "i-other",

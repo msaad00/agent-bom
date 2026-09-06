@@ -305,10 +305,6 @@ def register_specialized_ai_tools(
     @mcp.tool(annotations=write_action, title="Ingest CWPP Runtime Evidence")
     async def runtime_evidence_ingest(
         source_id: Annotated[str, Field(description="Pre-registered runtime evidence source id.")],
-        secret: Annotated[
-            str,
-            Field(description="Shared secret for the source (never logged)."),
-        ],
         signals_json: Annotated[
             str,
             Field(
@@ -333,8 +329,8 @@ def register_specialized_ai_tools(
     ) -> str:
         """Ingest CWPP runtime/EDR workload signals into the local evidence store.
 
-        Mutates the durable runtime-evidence store for the authenticated source's
-        tenant. Sources are provisioned via ``AGENT_BOM_RUNTIME_EVIDENCE_SOURCES``.
+        Uses the configured control-plane API with a short-lived source-scoped
+        credential from the server environment. No credential is a tool argument.
         Fail-closed on auth; never writes to a customer cloud target.
         """
         return await execute_tool_async(
@@ -343,7 +339,6 @@ def register_specialized_ai_tools(
             destructive=True,
             required_scope="findings:write",
             source_id=source_id,
-            secret=secret,
             signals_json=signals_json,
             operator_role=operator_role,
             operator_scopes=operator_scopes,

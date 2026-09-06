@@ -296,3 +296,12 @@ outputs, and demo script behind each workflow.
 - `fleet-audit` — Inventory and fleet scan playbook
 - `incident-triage` — Finding triage with blast radius and runtime context
 - `remediation-plan` — Human-reviewed remediation plan without file writes
+
+### Runtime ingestion credentials
+
+`runtime_evidence_ingest` sends metadata to the configured control-plane API.
+It accepts no credential arguments. Provision a source-bound, expiring API key
+or OIDC bearer credential in the server environment; the API verifies its exact
+source scope, tenant and lifetime (at most one hour). MCP write authorization
+remains independently required. See [runtime producer authentication](CLOUD_CONNECT.md#runtime-producer-authentication)
+for source registration, rotation and migration from shared-secret producers.

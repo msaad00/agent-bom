@@ -193,8 +193,11 @@
       "default": null,
       "title": "Correlation Cohort Id"
     },
-    "secret": {
-      "title": "Secret",
+    "reason": {
+      "default": "Runtime evidence ingestion",
+      "maxLength": 1024,
+      "minLength": 8,
+      "title": "Reason",
       "type": "string"
     },
     "signals": {
@@ -208,11 +211,15 @@
     "source_id": {
       "title": "Source Id",
       "type": "string"
+    },
+    "validate_only": {
+      "default": false,
+      "title": "Validate Only",
+      "type": "boolean"
     }
   },
   "required": [
-    "source_id",
-    "secret"
+    "source_id"
   ],
   "title": "RuntimeEvidenceIngestRequest",
   "type": "object"

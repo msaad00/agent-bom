@@ -271,12 +271,13 @@ jobs:
           done
           LATEST_SUCCESS_UPSTREAM=$(jq -sr 'first | .upstreamUrl // empty' /tmp/smithery-success-releases.jsonl)
           jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
-          jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
-            /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-contract.json
+          python3 scripts/check_surface_freshness.py \
+            --smithery-server agentbom/agent-bom \
+            --write-smithery-tool-contract /tmp/smithery-actual-tool-contract.json
           jq -S '{description}' \
             /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json
           if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \
-            cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
+            python3 scripts/check_surface_freshness.py --compare-tool-contract-files /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
             cmp -s /tmp/smithery-expected-listing-metadata.json /tmp/smithery-actual-listing-metadata.json && \
             [ "$LATEST_SUCCESS_UPSTREAM" = "$SMITHERY_MCP_URL" ]; then
             TOOL_COUNT=$(jq -r '.tools | length' /tmp/smithery-catalog.json)
@@ -460,8 +461,9 @@ jobs:
                 "https://api.smithery.ai/servers/agentbom/agent-bom" \
                 -o /tmp/smithery-catalog.json; then
               jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
-              jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
-                /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-contract.json
+              python3 scripts/check_surface_freshness.py \
+                --smithery-server agentbom/agent-bom \
+                --write-smithery-tool-contract /tmp/smithery-actual-tool-contract.json
               jq -S '{description}' \
                 /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json
               ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
@@ -470,7 +472,7 @@ jobs:
             fi
             if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ] && \
               cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \
-              cmp -s /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
+              python3 scripts/check_surface_freshness.py --compare-tool-contract-files /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-tool-contract.json && \
               cmp -s /tmp/smithery-expected-listing-metadata.json /tmp/smithery-actual-listing-metadata.json; then
               echo "Smithery catalog exposes the released tool, schema, and listing contract for v${VERSION} (${ACTUAL} tools)"
               exit 0

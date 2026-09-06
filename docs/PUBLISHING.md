@@ -266,7 +266,10 @@ For dependency-heavy or security-driven releases, also verify:
 
 Both freshness monitors compare marketplace input schemas with the public server
 card after validating its version and tool names against the published release.
-Missing required-argument lists or unknown-argument constraints count as drift,
-even when all tool names match. If the server card is unavailable or cannot be
+Smithery's catalog API omits some root schema fields. The checker verifies those
+constraints from the complete schemas embedded in Smithery's public page, while
+requiring its server identity, tool names, and shared schema fields to agree with
+the catalog. Missing or inconsistent complete evidence counts as drift even when
+all tool names match. If the server card is unavailable or cannot be
 bound to the release, the monitors do not close the drift issue. This is catalog
 evidence; it does not replace an authenticated MCP protocol check.

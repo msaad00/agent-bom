@@ -121,6 +121,113 @@ def _released_server_card(url: str, expected: str, names: list[str], **kw: Any) 
     return tools
 
 
+def _contract_json(value: Any) -> str:
+    """Canonical JSON comparison: preserve types, equate JSON numeric spellings."""
+
+    def normalize(item: Any) -> Any:
+        if isinstance(item, float) and item.is_integer():
+            return int(item)
+        if isinstance(item, dict):
+            return {key: normalize(child) for key, child in item.items()}
+        if isinstance(item, list):
+            return [normalize(child) for child in item]
+        return item
+
+    return json.dumps(normalize(value), sort_keys=True, allow_nan=False)
+
+
+def _extract_smithery_public_contract(page: str, qualified_name: str) -> list[dict[str, Any]]:
+    """Read complete schemas from Smithery's public RSC data, without execution."""
+    if len(page.encode("utf-8")) > 2 * 1024 * 1024:
+        raise ValueError("Smithery public page exceeds bounded input size")
+    decoder = json.JSONDecoder()
+    chunks = []
+    for match in re.finditer(r"self\.__next_f\.push\(", page):
+        payload, _ = decoder.raw_decode(page, match.end())
+        if isinstance(payload, list) and len(payload) == 2 and payload[0] == 1 and isinstance(payload[1], str):
+            chunks.append(payload[1])
+    stream = "".join(chunks).encode("utf-8")
+    pos = 0
+    records = []
+    seen_ids: set[str] = set()
+    while pos < len(stream):
+        record_match = re.match(rb"([0-9a-f]*):", stream[pos:])
+        if record_match is None:
+            raise ValueError("invalid Smithery public data record")
+        ident = record_match[1].decode()
+        pos += record_match.end()
+        if ident:
+            if ident in seen_ids:
+                raise ValueError("duplicate Smithery public data record")
+            seen_ids.add(ident)
+        if len(seen_ids) > 10000:
+            raise ValueError("Smithery public data has too many records")
+        if stream[pos : pos + 1] == b"T":
+            end = stream.find(b",", pos)
+            if end < 0 or not re.fullmatch(rb"[0-9a-f]+", stream[pos + 1 : end]):
+                raise ValueError("invalid Smithery text record")
+            pos = end + 1 + int(stream[pos + 1 : end], 16)
+            if pos > len(stream):
+                raise ValueError("truncated Smithery text record")
+            continue
+        end = stream.find(b"\n", pos)
+        if end < 0:
+            raise ValueError("truncated Smithery public data record")
+        raw = stream[pos:end]
+        pos = end + 1
+        if raw[:1] in (b"{", b"["):
+            records.append(json.loads(raw))
+    candidates = []
+    visited = 0
+
+    def visit(value: Any, depth: int = 0) -> None:
+        nonlocal visited
+        visited += 1
+        if visited > 100000 or depth > 64:
+            raise ValueError("Smithery public data exceeds traversal bounds")
+        if isinstance(value, dict):
+            if value.get("qualifiedName") == qualified_name and isinstance(value.get("tools"), list):
+                namespace, slug = qualified_name.split("/", 1)
+                if value.get("namespace") != namespace or value.get("slug") != slug or value.get("remote") is not True:
+                    raise ValueError("Smithery public data has inconsistent server identity")
+                candidates.append(_validate_tool_contract(value["tools"]))
+            for child in value.values():
+                visit(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child, depth + 1)
+
+    for record in records:
+        visit(record)
+    if len(candidates) != 1:
+        raise ValueError("Smithery public data lacks one unambiguous server contract")
+    return candidates[0]
+
+
+def _smithery_public_contract(qualified_name: str, catalog_tools: Any, **kw: Any) -> list[dict[str, Any]]:
+    namespace, slug = qualified_name.split("/", 1)
+    url = "https://smithery.ai/servers/" + urllib.parse.quote(namespace, safe="") + "/" + urllib.parse.quote(slug, safe="")
+    req = urllib.request.Request(url, headers={"Accept": "text/html", "User-Agent": "agent-bom-freshness-probe"})
+    with urllib.request.urlopen(req, timeout=kw.get("timeout", DEFAULT_TIMEOUT)) as response:
+        payload = response.read(2 * 1024 * 1024 + 1)
+    if len(payload) > 2 * 1024 * 1024:
+        raise ValueError("Smithery public page exceeds bounded input size")
+    full = _extract_smithery_public_contract(payload.decode("utf-8"), qualified_name)
+    catalog = _validate_tool_contract(catalog_tools)
+    if [tool["name"] for tool in catalog] != [tool["name"] for tool in full]:
+        raise ValueError("Smithery public page and catalog tool names disagree")
+    # The catalog API projects root schemas to type/properties. Only its known
+    # omitted fields may differ; never mask a changed type/property/constraint.
+    for reduced, complete in zip(catalog, full):
+        schema = complete["inputSchema"].copy()
+        for key in ("title", "required", "additionalProperties"):
+            if key not in reduced["inputSchema"]:
+                schema.pop(key, None)
+        if _contract_json(schema) != _contract_json(reduced["inputSchema"]):
+            raise ValueError("Smithery public page and catalog schema values disagree")
+    return full
+
+
 def _env_or(name: str, default: str) -> str:
     """Return env var if non-blank; otherwise ``default``.
 
@@ -411,9 +518,15 @@ def probe_smithery(
                 actual_contract = _validate_tool_contract(tools)
             except ValueError:
                 actual_contract = []
-            result["exact_input_schemas"] = json.dumps(actual_contract, sort_keys=True) == json.dumps(
-                expected_tool_contract, sort_keys=True
-            )
+            result["inventory_source"] = "catalog-api"
+            result["catalog_exact_input_schemas"] = _contract_json(actual_contract) == _contract_json(expected_tool_contract)
+            if not result["catalog_exact_input_schemas"]:
+                try:
+                    actual_contract = _smithery_public_contract(qualified_name, tools, **kw)
+                    result["inventory_source"] = "public-page"
+                except (OSError, ValueError, RecursionError):
+                    result["schema_evidence_error"] = "complete Smithery schema evidence is unavailable or inconsistent"
+            result["exact_input_schemas"] = _contract_json(actual_contract) == _contract_json(expected_tool_contract)
             if not result["exact_input_schemas"]:
                 result["status"] = "stale"
                 result["error"] = "catalog input schemas differ from the release-bound server-card contract"
@@ -439,6 +552,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--write-tool-contract", type=Path, help="Validate the server card against released names/version, write schemas, and exit."
     )
+    parser.add_argument(
+        "--write-smithery-tool-contract", type=Path, help="Write complete public schemas after checking catalog consistency."
+    )
+    parser.add_argument("--compare-tool-contract-files", type=Path, nargs=2, metavar=("EXPECTED", "ACTUAL"))
     parser.add_argument("--surface", choices=["all", "smithery"], default="all")
     parser.add_argument("--docker-image", default=_env_or("DOCKER_IMAGE", DEFAULT_DOCKER_IMAGE))
     parser.add_argument("--smithery-server", default=_env_or("SMITHERY_SERVER_QUALIFIED_NAME", DEFAULT_SMITHERY_SERVER))
@@ -457,6 +574,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.compare_tool_contract_files:
+        try:
+            left, right = (_load_tool_contract(path) for path in args.compare_tool_contract_files)
+            return 0 if _contract_json(left) == _contract_json(right) else 1
+        except (OSError, ValueError, RecursionError) as exc:
+            raise SystemExit("could not compare complete tool contracts") from exc
+
     expected = (args.expected or _expected_version()).lstrip("v").strip()
     # Default it rather than leaving it None. An unset expectation used to turn
     # the tool-count assertion off for Smithery entirely, so a bare local run
@@ -467,6 +591,19 @@ def main(argv: list[str] | None = None) -> int:
     if expected_tool_names is not None and len(expected_tool_names) != tool_count:
         raise SystemExit("expected tool-name contract and tool count do not match")
     kw = {"timeout": args.timeout, "attempts": args.attempts, "backoff": args.backoff_seconds}
+
+    if args.write_smithery_tool_contract:
+        try:
+            data = _http_json(_smithery_catalog_url(args.smithery_server), **kw)
+            if data.get("qualifiedName") != args.smithery_server or data.get("remote") is not True or not data.get("deploymentUrl"):
+                raise ValueError("Smithery catalog identity or remote metadata is invalid")
+            observed = _smithery_public_contract(args.smithery_server, data.get("tools"), **kw)
+        except (OSError, RuntimeError, ValueError, RecursionError) as exc:
+            raise SystemExit("complete Smithery schema evidence is unavailable or inconsistent") from exc
+        args.write_smithery_tool_contract.write_text(
+            json.dumps(observed, sort_keys=True, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        return 0
 
     if args.write_tool_contract:
         if not args.server_card_url or expected_tool_names is None:

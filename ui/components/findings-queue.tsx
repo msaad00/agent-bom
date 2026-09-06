@@ -85,6 +85,11 @@ function SortButton({
   );
 }
 
+function ariaSort(field: SortKey, current: SortKey, dir: "asc" | "desc"): "ascending" | "descending" | "none" {
+  if (field !== current) return "none";
+  return dir === "asc" ? "ascending" : "descending";
+}
+
 function renderScoreValue(value: number | undefined, missingLabel: string) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value.toFixed(1);
@@ -175,10 +180,13 @@ export function FindingsQueueTable({
       ) : (
       <div className="overflow-x-auto">
       <table className="w-full text-sm">
+        <caption className="sr-only">
+          {lens === "trust" ? "Compliance findings and evidence status" : "Engineering findings and remediation priority"}
+        </caption>
         <thead className="bg-[var(--surface)] border-b border-[var(--border-subtle)]">
           {lens === "trust" ? (
             <tr>
-              <th className="text-left px-4 py-3">
+              <th scope="col" aria-sort={ariaSort("id", sortKey, sortDir)} className="text-left px-4 py-3">
                 <SortButton label="Finding" field="id" current={sortKey} dir={sortDir} onClick={handleSort} />
               </th>
               <ColumnHeader>Control mapping</ColumnHeader>
@@ -189,10 +197,10 @@ export function FindingsQueueTable({
             </tr>
           ) : (
             <tr>
-              <th className="text-left px-4 py-3">
+              <th scope="col" aria-sort={ariaSort("id", sortKey, sortDir)} className="text-left px-4 py-3">
                 <SortButton label="Finding" field="id" current={sortKey} dir={sortDir} onClick={handleSort} />
               </th>
-              <th className="text-left px-4 py-3">
+              <th scope="col" aria-sort={ariaSort("severity", sortKey, sortDir)} className="text-left px-4 py-3">
                 <SortButton label="Priority" field="severity" current={sortKey} dir={sortDir} onClick={handleSort} />
               </th>
               <ColumnHeader>Reach / exploit</ColumnHeader>
@@ -432,7 +440,7 @@ function MobileDetail({ label, value }: { label: string; value: string }) {
 
 function ColumnHeader({ children }: { children: React.ReactNode }) {
   return (
-    <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+    <th scope="col" className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
       {children}
     </th>
   );

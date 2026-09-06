@@ -207,10 +207,10 @@ export default function Dashboard() {
       job_id: "imported",
       status: "done",
       created_at: importedGeneratedAt,
-      request: {} as ScanJob["request"],
+      request: {},
       progress: [],
-      result: importedReport as unknown as Record<string, unknown>,
-    } as unknown as ScanJob];
+      result: importedReport,
+    }];
   }, [detailJobs, apiError, importedReport]);
 
   const effectiveRecentJobs = useMemo<JobListItem[]>(() => {
@@ -506,6 +506,20 @@ function countActiveServices(services: PostureCountsResponse["services"]): numbe
   return Object.values(services).filter((entry) => entry.state === "live" || entry.state === "connected").length;
 }
 
+function scanLabel(job: JobListItem): string {
+  const request = job.request;
+  if (request?.repo_url) return "Repository scan";
+  if (request?.images?.length) return request.images.length === 1 ? "Container image scan" : "Container images scan";
+  if (request?.k8s) return "Kubernetes scan";
+  if (request?.sbom) return "SBOM scan";
+  if (request?.inventory) return "Inventory scan";
+  if (request?.agent_projects?.length) return "Project scan";
+  if (job.status === "running" || job.status === "pending") return "Scan in progress";
+  if (job.status === "failed") return "Failed scan";
+  if (job.status === "cancelled") return "Cancelled scan";
+  return "Completed scan";
+}
+
 function buildComplianceSnapshot(
   compliance: ComplianceResponse | null,
 ): OverviewComplianceSnapshot | null {
@@ -554,12 +568,13 @@ function JobRow({ job }: { job: JobListItem }) {
   return (
     <Link
       href={`/scan?id=${job.job_id}`}
+      title={`Scan ${job.job_id}`}
       className="flex items-center gap-4 bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] hover:border-[color:var(--border-strong)] rounded-xl p-4 transition-colors group"
     >
       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColors[job.status] ?? "bg-[color:var(--text-tertiary)]"}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs text-[color:var(--text-secondary)]">{job.job_id.slice(0, 8)}…</span>
+          <span className="text-sm font-medium text-[color:var(--foreground)]">{scanLabel(job)}</span>
           {tags?.map((t) => (
             <span key={t} className="text-xs bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded px-1.5 py-0.5 text-[color:var(--text-tertiary)]">{t}</span>
           ))}
@@ -567,6 +582,8 @@ function JobRow({ job }: { job: JobListItem }) {
         <div className="text-xs text-[color:var(--text-tertiary)] flex items-center gap-1 mt-0.5">
           <Clock className="w-3 h-3" />
           {formatDate(job.created_at)}
+          <span aria-hidden="true">· {job.job_id.slice(0, 8)}…</span>
+          <span className="sr-only">· Scan ID {job.job_id}</span>
         </div>
       </div>
       <div className="flex items-center gap-3 text-xs">

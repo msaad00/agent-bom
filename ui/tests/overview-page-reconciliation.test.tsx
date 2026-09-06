@@ -111,10 +111,10 @@ describe("Overview canonical finding counts", () => {
     apiMock.updateScoreConfig.mockResolvedValue({});
     apiMock.listJobs.mockResolvedValue({
       jobs: Array.from({ length: 12 }, (_, index) => ({
-        job_id: `scan-${index}`,
+        job_id: `scan-${index}-abcdefgh`,
         status: "done",
         created_at: `2026-07-17T${String(23 - index).padStart(2, "0")}:00:00Z`,
-        request: {},
+        request: index === 0 ? { repo_url: "https://github.com/acme/payments" } : {},
       })),
     });
     apiMock.getScan.mockImplementation(async (jobId: string) => staleScan(jobId));
@@ -130,5 +130,13 @@ describe("Overview canonical finding counts", () => {
     expect(high).toHaveTextContent("11");
     expect(screen.getByText("Current findings · configured window")).toBeInTheDocument();
     expect(critical).toHaveAttribute("href", "/findings?scope=all&severity=critical");
+  });
+
+  it("labels recent scans by their target and retains the exact job id", async () => {
+    render(<Dashboard />);
+
+    const scanLink = await screen.findByRole("link", { name: /Repository scan/i });
+    expect(scanLink).toHaveAttribute("href", "/scan?id=scan-0-abcdefgh");
+    expect(scanLink).toHaveAttribute("title", "Scan scan-0-abcdefgh");
   });
 });

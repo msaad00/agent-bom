@@ -379,7 +379,7 @@ export default function Dashboard() {
   // exec grade — it derives from the honest estate counts and the tenant's score
   // model. Fall back to /v1/posture only until the overview payload lands.
   const postureGrade = overview?.posture.grade ?? posture?.grade ?? "—";
-  const postureScore = overview?.posture.score ?? posture?.score;
+  const postureScore = overview ? (overview.posture.score ?? undefined) : posture?.score;
   const scoreFormat: PostureScoreFormat =
     scoreFormatOverride ?? overview?.posture.display_format ?? "percent";
   const scoreBreakdown = overview?.posture.breakdown ?? null;

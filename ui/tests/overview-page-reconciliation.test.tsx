@@ -224,6 +224,16 @@ describe("Overview canonical finding counts", () => {
     expect(screen.getByText("75%")).toBeVisible();
   });
 
+  it("does not substitute an older posture score when the current score is null", async () => {
+    const snapshot = overviewFixture();
+    apiMock.getOverview.mockResolvedValue({ ...snapshot, finding_counts: { ...deploymentCounts },
+      posture: { ...snapshot.posture, score: null },
+    });
+    render(<Dashboard />);
+    await screen.findByRole("link", { name: /^Critical 7/i });
+    expect(screen.queryByText("49%")).not.toBeInTheDocument();
+  });
+
   it("retains the last coherent snapshot and discloses an unavailable refresh", async () => {
     vi.useFakeTimers();
     apiMock.getOverview.mockResolvedValueOnce({ ...overviewFixture(), finding_counts: { ...deploymentCounts, critical: 3 } })

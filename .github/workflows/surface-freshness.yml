@@ -8,7 +8,7 @@ name: Surface Freshness
 # three months without an alert.
 #
 # Optional repo variables (Settings -> Secrets and variables -> Actions -> Variables):
-#   SMITHERY_SERVER_QUALIFIED_NAME — override Smithery listing name; defaults to agent-bom/agent-bom
+#   SMITHERY_SERVER_QUALIFIED_NAME — override Smithery listing name; defaults to agentbom/agent-bom
 #   GLAMA_LISTING_URL  — override Glama listing URL (default: glama.ai/.../msaad00/agent-bom)
 #   GLAMA_API_URL      — override Glama public inventory API URL
 #   DOCKER_IMAGE       — override default ghcr.io/msaad00/agent-bom
@@ -134,7 +134,7 @@ jobs:
               "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
               "- `partial evidence` — the visible listing matches, but exact machine-readable verification is unavailable; the issue remains open.",
               "",
-              "Optional overrides (blank/unset repo vars fall back to defaults): `DOCKER_IMAGE` (`ghcr.io/msaad00/agent-bom`), `GLAMA_LISTING_URL`, `GLAMA_API_URL`, `SMITHERY_SERVER_QUALIFIED_NAME` (`agent-bom/agent-bom`).",
+              "Optional overrides (blank/unset repo vars fall back to defaults): `DOCKER_IMAGE` (`ghcr.io/msaad00/agent-bom`), `GLAMA_LISTING_URL`, `GLAMA_API_URL`, `SMITHERY_SERVER_QUALIFIED_NAME` (`agentbom/agent-bom`).",
               "",
               "_Maintained automatically by the surface-freshness workflow. Self-closes when every surface is fresh and monitored._",
             ].join("\n");

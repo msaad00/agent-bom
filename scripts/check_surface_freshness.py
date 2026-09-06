@@ -45,7 +45,7 @@ GLAMA_SCRIPT = ROOT / "scripts" / "check_glama_listing.py"
 
 PYPI_PACKAGE = "agent-bom"
 DEFAULT_DOCKER_IMAGE = "ghcr.io/msaad00/agent-bom"
-DEFAULT_SMITHERY_SERVER = "agent-bom/agent-bom"
+DEFAULT_SMITHERY_SERVER = "agentbom/agent-bom"
 # Requests to this origin carry an anonymous-pull bearer token, so pagination
 # links must never move off it.
 GHCR_ORIGIN = "https://ghcr.io"

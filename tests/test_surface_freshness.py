@@ -374,9 +374,9 @@ def test_surface_freshness_reads_smithery_catalog_listing(monkeypatch):
     script = _load_script("check_surface_freshness.py")
 
     def fake_http_json(url, **_kwargs):
-        assert url == "https://api.smithery.ai/servers/agent-bom/agent-bom"
+        assert url == "https://api.smithery.ai/servers/agentbom/agent-bom"
         return {
-            "qualifiedName": "agent-bom/agent-bom",
+            "qualifiedName": "agentbom/agent-bom",
             "remote": True,
             "deploymentUrl": "https://agent-bom--agent-bom.run.tools",
             "tools": [{"name": "scan"}, {"name": "check"}],
@@ -384,7 +384,7 @@ def test_surface_freshness_reads_smithery_catalog_listing(monkeypatch):
 
     monkeypatch.setattr(script, "_http_json", fake_http_json)
 
-    result = script.probe_smithery("0.89.2", "agent-bom/agent-bom", timeout=1, attempts=1, backoff=0)
+    result = script.probe_smithery("0.89.2", "agentbom/agent-bom", timeout=1, attempts=1, backoff=0)
 
     assert result["surface"] == "Smithery"
     assert result["status"] == "fresh"
@@ -396,7 +396,7 @@ def test_surface_freshness_reads_smithery_catalog_listing(monkeypatch):
 def _smithery_listing_with(tool_count):
     def fake_http_json(_url, **_kwargs):
         return {
-            "qualifiedName": "agent-bom/agent-bom",
+            "qualifiedName": "agentbom/agent-bom",
             "remote": True,
             "deploymentUrl": "https://agent-bom--agent-bom.run.tools",
             "tools": [{"name": f"tool_{index}"} for index in range(tool_count)],
@@ -417,7 +417,7 @@ def test_smithery_listing_advertising_fewer_tools_than_shipped_is_stale(monkeypa
     script = _load_script("check_surface_freshness.py")
     monkeypatch.setattr(script, "_http_json", _smithery_listing_with(36))
 
-    result = script.probe_smithery("0.98.3", "agent-bom/agent-bom", expected_tool_count=77, timeout=1, attempts=1, backoff=0)
+    result = script.probe_smithery("0.98.3", "agentbom/agent-bom", expected_tool_count=77, timeout=1, attempts=1, backoff=0)
 
     assert result["status"] == "stale"
     assert result["tool_count"] == 36
@@ -429,7 +429,7 @@ def test_smithery_listing_matching_the_shipped_tool_count_is_fresh(monkeypatch):
     script = _load_script("check_surface_freshness.py")
     monkeypatch.setattr(script, "_http_json", _smithery_listing_with(77))
 
-    result = script.probe_smithery("0.98.3", "agent-bom/agent-bom", expected_tool_count=77, timeout=1, attempts=1, backoff=0)
+    result = script.probe_smithery("0.98.3", "agentbom/agent-bom", expected_tool_count=77, timeout=1, attempts=1, backoff=0)
 
     assert result["status"] == "fresh"
     assert result["tool_count"] == 77
@@ -442,7 +442,7 @@ def test_smithery_listing_rejects_count_collision_with_wrong_tool_names(monkeypa
 
     result = script.probe_smithery(
         "0.103.2",
-        "agent-bom/agent-bom",
+        "agentbom/agent-bom",
         expected_tool_count=2,
         expected_tool_names=["graph_correlate", "scan"],
         timeout=1,
@@ -544,7 +544,7 @@ def test_smithery_tool_count_is_not_gated_when_no_expectation_is_supplied(monkey
     script = _load_script("check_surface_freshness.py")
     monkeypatch.setattr(script, "_http_json", _smithery_listing_with(36))
 
-    result = script.probe_smithery("0.98.3", "agent-bom/agent-bom", timeout=1, attempts=1, backoff=0)
+    result = script.probe_smithery("0.98.3", "agentbom/agent-bom", timeout=1, attempts=1, backoff=0)
 
     assert result["status"] == "fresh"
 
@@ -881,3 +881,9 @@ def test_glama_schema_does_not_conflate_undefined_with_json_null():
     assert script._extract_schema_tool_contract(_glama_schema_state(tools), script.DEFAULT_URL) == tools
     with pytest.raises(ValueError):
         script._extract_schema_tool_contract(_glama_schema_state(tools, null_reference=-7), script.DEFAULT_URL)
+
+
+def test_default_smithery_listing_uses_product_namespace():
+    script = _load_script("check_surface_freshness.py")
+    assert script.DEFAULT_SMITHERY_SERVER == "agentbom/agent-bom"
+    assert script._smithery_catalog_url(script.DEFAULT_SMITHERY_SERVER) == "https://api.smithery.ai/servers/agentbom/agent-bom"

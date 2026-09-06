@@ -692,10 +692,14 @@ def test_cli_scan_empty_dir_exits_0():
 
 def test_cli_help_shows_exit_codes():
     runner = CliRunner()
-    result = runner.invoke(main, ["agents", "--help"])
+    result = runner.invoke(main, ["scan", "--help"])
     assert "Exit codes" in result.output
-    assert "0" in result.output
-    assert "1" in result.output
+    assert "0  Clean" in result.output
+    assert "1  Fail" in result.output
+    assert "2  Usage error" in result.output
+    assert "3  Stale vulnerability database" in result.output
+    normalized = " ".join(result.output.lower().split())
+    assert "complete demo report intentionally exits 1" in normalized
 
 
 # ─── History / Diff Tests ─────────────────────────────────────────────────────

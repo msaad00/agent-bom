@@ -20,16 +20,16 @@
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
+Security teams rarely lack scanners. They lack one trustworthy view of what was
+scanned, what was discovered, which findings are actually connected to critical
+systems, who owns the fix, and whether the fix held.
+
 <p align="center">
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
 ## From evidence source to verified action
-
-Security teams rarely lack scanners. They lack one trustworthy view of what was
-scanned, what was discovered, which findings are actually connected to critical
-systems, who owns the fix, and whether the fix held.
 
 `agent-bom` closes that loop with two honest entry paths:
 
@@ -109,7 +109,7 @@ neither is proof of a deployed remediation.
 | Role | Start here | Primary outcome |
 |---|---|---|
 | Developer / AI engineer | `agent-bom scan .` | See dependencies, secrets, IaC, agents, MCP, and whether Click, Flask, or FastAPI entry points can reach vulnerable packages before shipping |
-| AppSec / product security | `agent-bom agents --gha . --offline` | Inventory remote actions and reusable workflows with their refs, source provenance, and CI-hardening findings |
+| AppSec / product security | `agent-bom scan . --gha . --offline` | Inventory remote actions and reusable workflows with their refs, source provenance, and CI-hardening findings |
 | Cloud security | Add a read-only connection, then run a scan | Build scoped cloud, identity, and posture inventory with explicit coverage and provenance |
 | Platform / DevOps | `pip install 'agent-bom[ui]' && AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db` | Schedule scans, centralize evidence, assign owners and SLAs, and verify remediation |
 | GRC / audit | `agent-bom report compliance-narrative scan.json` | Export mapped evidence while preserving unavailable, partial, and not-assessed states |
@@ -128,22 +128,26 @@ required for repository, image, SBOM, workstation, or MCP configuration scans.
 
 ### Path A — scan now, no connection
 
-The offline sample completes without downloading an advisory database and shows
-the inventory, finding, reachable path, and remediation output shape.
+Scan the current repository first. The console shows inventory, findings,
+reachable impact, evidence coverage, and the next remediation step.
 
 ```bash
 pip install agent-bom
-agent-bom scan --demo --offline
-```
-
-The sample intentionally contains a known-malicious package, so exit status `1` is expected
-and the printed report is complete. Scan a repository next:
-
-```bash
 agent-bom scan .
 ```
 
-The repository scan shows inventory, findings, and reachable impact.
+Save the same result for CI with
+`agent-bom scan . -f sarif -o findings.sarif`. If the first scan cannot start,
+run `agent-bom doctor` for dependency, database, and environment checks.
+
+To inspect a deterministic sample, use the bundled offline demo. It deliberately
+contains blocking findings, so status `1` is the expected security verdict; the
+printed report is complete.
+
+```bash
+agent-bom scan --demo --offline
+```
+
 `agent-bom scan .` and `agent-bom scan -p .` are the same command; `PATH` is an
 alias for `--project`.
 

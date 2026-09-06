@@ -155,7 +155,13 @@ def input_options(fn):
                 help="Scan agent-bom's own installed dependencies for vulnerabilities.",
             ),
             click.option(
-                "--demo", is_flag=True, default=False, help="Run a demo scan with bundled inventory containing known-vulnerable packages."
+                "--demo",
+                is_flag=True,
+                default=False,
+                help=(
+                    "Run a deterministic bundled scan with blocking findings. "
+                    "The complete demo report intentionally exits 1 as a security verdict."
+                ),
             ),
             click.option(
                 "--external-scan",

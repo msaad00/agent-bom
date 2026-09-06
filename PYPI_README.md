@@ -4,9 +4,9 @@
 
 **Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.**
 
-Start with the demo, then choose the entrypoint that matches your first job:
-repo scan, image scan, cloud posture, fix plan, dashboard, MCP tools, or
-runtime review.
+Start with the repository in front of you, then choose the entrypoint that
+matches your next job: image scan, cloud posture, fix plan, dashboard, MCP
+tools, or runtime review.
 
 ```text
 better-sqlite3@9.0.0  (npm package)
@@ -23,13 +23,24 @@ Blast radius is the core idea: `package -> vulnerability finding -> MCP server (
 
 Scan local agent configs, MCP servers, instruction files, lockfiles, containers, cloud estate, AI models/datasets, non-human identities, LLM cost, GPU surfaces, and runtime evidence.
 
-Try the built-in demo first:
+```bash
+pip install agent-bom
+agent-bom scan .
+```
+
+The scan prints inventory, findings, reachable impact, evidence coverage, and
+the next remediation step. Run `agent-bom doctor` if the first scan cannot
+start.
+
+For a deterministic sample, use the built-in offline demo. It deliberately
+contains blocking findings, so status `1` is the expected security verdict;
+the printed report is complete.
 
 ```bash
 agent-bom scan --demo --offline
 ```
 
-The demo uses a curated sample so the output stays reproducible across releases. For real scans, run `agent-bom scan`, or add `-p .` to fold project manifests and lockfiles into the same result.
+The demo uses a curated sample so the output stays reproducible across releases.
 
 If you want an inspectable sample before scanning your own repo:
 
@@ -54,12 +65,12 @@ prompt file. See `docs/FIRST_RUN.md` in the repository for the guided flow.
 ```bash
 pip install agent-bom
 
-agent-bom quickstart --dry-run --offline          # Scan, sample-data, and API/UI next steps
-agent-bom scan -p .                            # Repo + MCP + package blast radius
+agent-bom scan .                                 # Repo + MCP + package blast radius
+agent-bom quickstart --dry-run --offline          # Sample-data and API/UI next steps
 agent-bom samples first-run                      # Inspectable sample AI stack
 agent-bom check flask@2.2.0 --ecosystem pypi     # Pre-install package verdict
 agent-bom image nginx:latest                     # Container image scan
-agent-bom scan -p . --remediate remediation.md # Fix-first remediation plan
+agent-bom scan . --remediate remediation.md       # Fix-first remediation plan
 pip install 'agent-bom[ui]'                      # once, if you want the dashboard
 agent-bom serve --persist ~/.agent-bom/control-plane.db  # restart-safe local control plane
 ```

@@ -176,11 +176,22 @@ def test_persona_routes_start_with_their_actual_work() -> None:
     personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
 
     assert "| Developer / AI engineer | `agent-bom scan .`" in personas
-    assert "| AppSec / product security | `agent-bom agents --gha . --offline`" in personas
+    assert "| AppSec / product security | `agent-bom scan . --gha . --offline`" in personas
     assert "| Cloud security | Add a read-only connection, then run a scan" in personas
     assert f"| Platform / DevOps | `pip install 'agent-bom[ui]' && {LOCAL_ANALYST_CONTROL_PLANE}`" in personas
     assert "| CISO / engineering leader | Open **Architecture** in the self-hosted graph" in personas
     assert "owners and slas" in personas.lower()
+
+
+def test_public_first_run_surfaces_share_one_primary_command() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    pypi = (ROOT / "PYPI_README.md").read_text(encoding="utf-8")
+    guide = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
+
+    assert "pip install agent-bom\nagent-bom scan ." in readme
+    assert "pip install agent-bom\nagent-bom scan ." in pypi
+    assert "pip install agent-bom\nagent-bom scan ." in guide
+    assert "agent-bom scan -p ." not in guide
 
 
 def test_primary_local_control_plane_first_runs_use_one_durable_sqlite_path() -> None:

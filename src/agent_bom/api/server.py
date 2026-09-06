@@ -1054,6 +1054,7 @@ def configure_api(
     posture = derive_auth_posture(
         api_key_configured=api_key_configured,
         allow_unauthenticated=allow_unauthenticated,
+        listener_host=listener_host,
     )
     apply_auth_posture(posture)
     # The control-plane auth-posture warning is emitted once at serving start

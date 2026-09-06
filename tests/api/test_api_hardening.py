@@ -20,7 +20,7 @@ from agent_bom.api.browser_session import (
     create_browser_session_token,
     revoke_browser_session_token,
 )
-from agent_bom.api.middleware import InMemoryRateLimitStore
+from agent_bom.api.middleware import InMemoryRateLimitStore, get_auth_posture
 from agent_bom.api.oidc import OIDCConfig
 from agent_bom.api.server import (
     DEFAULT_RATE_LIMIT_RPM,
@@ -45,6 +45,17 @@ def test_health_no_auth():
     client = TestClient(app)
     resp = client.get("/health")
     assert resp.status_code == 200
+
+
+def test_configure_api_persists_effective_listener_host():
+    """Runtime posture must describe the address the API actually listens on."""
+    configure_api(api_key=None, allow_unauthenticated=True, listener_host="0.0.0.0")
+    try:
+        posture = get_auth_posture()
+        assert posture.listener_host == "0.0.0.0"
+        assert posture.listener_loopback is False
+    finally:
+        configure_api(api_key=None, allow_unauthenticated=True, listener_host="127.0.0.1")
 
 
 def test_kubernetes_probe_aliases_no_auth():

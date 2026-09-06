@@ -32,15 +32,15 @@ coverage named; it must not be interpreted as a clean zero-finding result.
 
 ## 1. Run the release-pinned demo
 
-The sample deliberately contains blocking findings, so status `1` is the
-expected security verdict; the printed report is complete.
+The sample deliberately contains blocking findings, so status `1` is expected.
+It is not a scanner crash; the printed report is complete and the status is the security verdict.
 
 ```bash
 agent-bom scan --demo --offline
 ```
 
-The CLI behaves like the same security gate used in CI. This status is not a
-scanner crash. Offline mode also limits enrichment to bundled demo evidence.
+The CLI behaves like the same security gate used in CI. Offline mode also limits
+enrichment to bundled demo evidence.
 After reviewing the sample, run `agent-bom scan .` against your own repository.
 
 Use this when you need reproducible output — for example a screenshot or a bug

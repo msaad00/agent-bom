@@ -1580,6 +1580,8 @@ export interface WorkloadRuntimeEvidence {
 
 export interface BlastRadius {
   vulnerability_id: string;
+  canonical_id?: string | undefined;
+  asset?: { canonical_id?: string; stable_id?: string } | undefined;
   severity: string;
   package?: string | undefined;
   ecosystem?: string | undefined;
@@ -3219,6 +3221,9 @@ export interface OverviewCoverageLane {
 
 export interface OverviewTopRisk {
   vulnerability_id: string;
+  canonical_id?: string | null | undefined;
+  asset_id?: string | null | undefined;
+  affected_servers?: string[] | undefined;
   package: string | null;
   severity: string;
   risk_score: number;

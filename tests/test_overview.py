@@ -1261,3 +1261,52 @@ def test_overview_is_read_only() -> None:
     client = TestClient(app)
     assert client.post("/v1/overview", headers=_AUTH_HEADERS).status_code in (403, 405)
     assert client.delete("/v1/overview", headers=_AUTH_HEADERS).status_code in (403, 405)
+
+
+def test_top_risk_projects_package_evidence_not_server_asset() -> None:
+    from agent_bom.api.routes.overview import _finding_top_risk
+
+    row = {
+        "canonical_id": "finding-runtime-a",
+        "cve_id": "CVE-2020-14343",
+        "asset": {"name": "shell-runner-server", "asset_type": "mcp_server", "stable_id": "runtime-a"},
+        "evidence": {"package_name": "pyyaml", "package_version": "5.3"},
+        "affected_agents": ["cursor"],
+    }
+    projected = _finding_top_risk(row)
+    assert projected["package"] == "pyyaml@5.3"
+    assert projected["canonical_id"] == "finding-runtime-a"
+    assert projected["asset_id"] == "runtime-a"
+    assert projected["affected_servers"] == ["shell-runner-server"]
+    row["package"] = "pyyaml"
+    assert _finding_top_risk(row)["package"] == "pyyaml@5.3"
+    row["package"] = "pyyaml@5.2"
+    assert _finding_top_risk(row)["package"] == "pyyaml@5.2"
+    row["package"] = None
+    row["evidence"] = {}
+    assert _finding_top_risk(row)["package"] is None
+
+
+def test_top_risk_merge_preserves_occurrences_and_unknown_identity() -> None:
+    from agent_bom.api.routes.overview import _merge_top_risks
+
+    base = {
+        "vulnerability_id": "CVE-2020-14343",
+        "canonical_id": "finding-a",
+        "asset_id": "runtime-a",
+        "package": "pyyaml@5.3",
+        "affected_agents": ["cursor"],
+        "risk_score": 9.0,
+    }
+    distinct = [
+        dict(base, asset_id="runtime-b"),
+        dict(base, package="pyyaml@5.2"),
+        dict(base, affected_agents=["other-agent"]),
+        dict(base, canonical_id="finding-b"),
+    ]
+    unknown = {"vulnerability_id": "CVE-2020-14343", "risk_score": 8.0}
+    merged = _merge_top_risks([base, dict(base, risk_score=9.5), *distinct, unknown, dict(unknown)])
+    assert len(merged) == 7
+    assert merged[0]["risk_score"] == 9.5
+    malformed = dict(base, asset_id=["not-an-identity"])
+    assert len(_merge_top_risks([malformed, dict(malformed)])) == 2

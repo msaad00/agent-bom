@@ -3217,6 +3217,10 @@ export interface OverviewCoverageLane {
   href: string;
   count: number;
   severity: CoverageSeverity;
+  /** Counts describe current open findings, not assessment coverage. */
+  evidence_status?: "complete" | "partial" | "unavailable";
+  /** False means count/severity are lower bounds from a bounded read. */
+  count_exact?: boolean;
 }
 
 export interface OverviewTopRisk {

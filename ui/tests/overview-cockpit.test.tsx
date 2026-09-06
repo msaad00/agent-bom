@@ -182,7 +182,7 @@ describe("OverviewCockpit", () => {
       { domain: "aspm" as const, label: "ASPM", href: "/findings?domain=aspm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
       { domain: "dspm" as const, label: "DSPM", href: "/findings?domain=dspm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
       { domain: "aispm" as const, label: "AISPM", href: "/findings?domain=aispm", count: 1, severity: { critical: 0, high: 0, medium: 1, low: 0, unrated: 0 } },
-    ];
+    ].map((lane) => ({ ...lane, evidence_status: "complete" as const, count_exact: true }));
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} coverage={coverage} />);
 
     await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
@@ -203,8 +203,34 @@ describe("OverviewCockpit", () => {
     // Empty lanes still render (DSPM at zero), but never present missing evidence
     // as a factual zero.
     expect(screen.getByTestId("coverage-lane-dspm")).toBeInTheDocument();
-    expect(within(screen.getByTestId("coverage-lane-dspm")).getByText("No evidence")).toBeInTheDocument();
+    expect(within(screen.getByTestId("coverage-lane-dspm")).getByText("No open findings")).toBeInTheDocument();
     expect(within(screen.getByTestId("coverage-lane-dspm")).queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("does not present legacy discipline values as exact current counts", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} coverage={[
+      { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 17, severity: { critical: 17, high: 0, medium: 0, low: 0, unrated: 0 } },
+    ]} />);
+    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
+    const lane = within(screen.getByTestId("coverage-lane-aispm"));
+    expect(lane.getByText("Count unavailable")).toBeInTheDocument();
+    expect(lane.queryByText("17")).not.toBeInTheDocument();
+    expect(lane.queryByText("Critical 17")).not.toBeInTheDocument();
+  });
+
+  it.each(["partial", "unavailable"] as const)("discloses %s discipline counts without claiming no evidence", async (evidenceStatus) => {
+    const user = userEvent.setup();
+    const severity = { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 };
+    render(<OverviewCockpit {...baseProps} coverage={[
+      { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 0, severity, evidence_status: evidenceStatus, count_exact: false },
+      { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 2, severity: { ...severity, high: 2 }, evidence_status: evidenceStatus, count_exact: false },
+    ]} />);
+    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
+    expect(screen.queryByText("No evidence")).not.toBeInTheDocument();
+    expect(screen.queryByText("No open findings")).not.toBeInTheDocument();
+    expect(screen.getByText("≥2")).toBeInTheDocument();
+    expect(within(screen.getByTestId("coverage-lane-aispm")).getByText(evidenceStatus === "partial" ? "Partial count" : "Count unavailable")).toBeInTheDocument();
   });
 
   it("keeps connected data sources out of leadership lanes and links to connections", async () => {

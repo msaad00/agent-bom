@@ -447,10 +447,13 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
     <div className="pt-1" data-testid="overview-security-coverage">
       <h3 className="mb-1 text-xs font-semibold text-foreground">Security disciplines</h3>
       <p className="mb-2 text-[11px] leading-4 text-ink-tertiary">
-        Open findings per posture discipline — not assets or accounts. Lenses overlap, so one repo CVE counts under both Vuln mgmt and ASPM; lanes are not additive and will not sum to the total.
+        Open findings per posture discipline — not assets or accounts. Lenses overlap, so one repo CVE counts under both Vuln mgmt and ASPM; lanes are not additive and will not sum to the total. Zero open findings does not establish assessment coverage.
       </p>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         {coverage.map((lane) => {
+          const known = lane.evidence_status !== undefined;
+          const exact = lane.evidence_status === "complete" && lane.count_exact !== false;
+          const statusLabel = lane.evidence_status === "partial" ? "Partial count" : "Count unavailable";
           const total = COVERAGE_SEVERITY_BANDS.reduce((sum, band) => sum + (lane.severity[band.key] || 0), 0);
           const bands = COVERAGE_SEVERITY_BANDS.filter((band) => (lane.severity[band.key] || 0) > 0);
           return (
@@ -469,18 +472,21 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                     severity chips below sum to. */}
                 <span className="flex items-baseline gap-1">
                   <span className="text-lg font-bold tabular-nums text-foreground">
-                    {total > 0 ? lane.count.toLocaleString() : "—"}
+                    {known && total > 0 ? `${exact ? "" : "≥"}${lane.count.toLocaleString()}` : "—"}
                   </span>
-                  {total > 0 ? (
+                  {known && total > 0 ? (
                     <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
                       {lane.count === 1 ? "finding" : "findings"}
                     </span>
                   ) : null}
                 </span>
               </div>
+              {!exact && known && total > 0 ? (
+                <span className="text-[11px] text-ink-tertiary">{statusLabel} · at least this many</span>
+              ) : null}
               {/* Stacked severity strip — widths reflect share of the lane count. */}
               <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
-                {total > 0 &&
+                {known && total > 0 &&
                   bands.map((band) => (
                     <span
                       key={band.key}
@@ -493,8 +499,8 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                   ))}
               </div>
               <div className="flex flex-wrap gap-1">
-                {total === 0 ? (
-                  <span className="text-[11px] text-ink-tertiary">No evidence</span>
+                {!known || total === 0 ? (
+                  <span className="text-[11px] text-ink-tertiary">{exact ? "No open findings" : statusLabel}</span>
                 ) : (
                   bands.map((band) => (
                     <span

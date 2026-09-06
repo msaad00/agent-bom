@@ -1167,14 +1167,15 @@ function overviewResponse() {
   const vulnSeverity = { critical: 3, high: 9, medium: 3, low: 0, unrated: 0 };
   const zeroSeverity = { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 };
   // Coverage lanes are overlapping posture lenses, not a partition: the demo's
-  // Fifteen unique reachable CVEs appear in both the vulnerability and AI-posture lenses.
+  // These fifteen CVEs are vulnerability findings; an MCP context alone does not
+  // classify a CVE as an assessed AI-posture finding.
   const coverage = [
     { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 0, severity: { ...zeroSeverity } },
     { domain: "vuln", label: "Vuln mgmt", href: "/findings?domain=vuln", count: 15, severity: { ...vulnSeverity } },
     { domain: "aspm", label: "AppSec / ASPM", href: "/findings?domain=aspm", count: 0, severity: { ...zeroSeverity } },
     { domain: "dspm", label: "DSPM", href: "/findings?domain=dspm", count: 0, severity: { ...zeroSeverity } },
-    { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 15, severity: { ...vulnSeverity } },
-  ];
+    { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 0, severity: { ...zeroSeverity } },
+  ].map((lane) => ({ ...lane, evidence_status: "complete", count_exact: true }));
   return {
     schema_version: "overview.v1",
     tenant_id: "default",

@@ -1330,7 +1330,7 @@ async def get_overview(request: Request) -> dict[str, Any]:
     """
     try:
         async with adaptive_backpressure("overview"):
-            return await anyio.to_thread.run_sync(_build_overview, request)
+            return cast(dict[str, Any], await anyio.to_thread.run_sync(_build_overview, request))
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,

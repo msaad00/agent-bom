@@ -202,3 +202,11 @@ it("does not interpret an observation client name as another agent ID", () => {
     expect(row?.environment).toBe("dev");
   }
 });
+
+it("does not resolve a missing client name using its display placeholder", () => {
+  const agents = [{ id: "prod", name: "local discovery", owner: "prod-team", environment: "prod" }];
+  const row = deriveManifestRows({ ...manifest, agents, mcp_servers: [{ id: "s" }] })[0];
+  expect(row?.agentName).toBe("local discovery");
+  expect(row?.owner).toBe("unknown");
+  expect(row?.environment).toBe("unknown");
+});

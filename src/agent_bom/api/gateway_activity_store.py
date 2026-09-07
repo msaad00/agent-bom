@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
+from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance, ProducerAssurance
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.runtime.gateway_events import (
     GATEWAY_ALLOWED_EVENT_TYPES,
@@ -233,10 +234,33 @@ class GatewayActivityRecord:
     ingest_ordinal: int = 0
     raw_payload_stored: bool = False
     record_schema_version: str = "gateway.activity.record.v1"
+    submission_provenance: GatewaySubmissionProvenance | None = None
+
+    def __post_init__(self) -> None:
+        if self.record_schema_version == "gateway.activity.record.v1":
+            if self.submission_provenance is not None:
+                raise ValueError("legacy gateway activity cannot carry new provenance")
+        elif self.record_schema_version == "gateway.activity.record.v2":
+            provenance = self.submission_provenance
+            if not isinstance(provenance, GatewaySubmissionProvenance):
+                raise ValueError("gateway activity v2 requires typed submission provenance")
+            if provenance.submission_source_id != self.source_id or provenance.submission_session_id != self.session_id:
+                raise ValueError("gateway activity submission context does not match provenance")
+        else:
+            raise ValueError("unsupported gateway activity record schema")
+
+    @property
+    def producer_assurance(self) -> ProducerAssurance:
+        return self.submission_provenance.producer_assurance if self.submission_provenance else "unknown"
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["policy_ids"] = list(self.policy_ids)
+        if self.submission_provenance is None:
+            # Preserve historical v1 serialization and event digests exactly.
+            payload.pop("submission_provenance", None)
+        else:
+            payload["submission_provenance"] = self.submission_provenance.model_dump()
         return payload
 
     def to_json(self) -> str:
@@ -439,6 +463,7 @@ def gateway_activity_record_from_event(
     source_id: str,
     session_id: str,
     received_at: datetime | None = None,
+    submission_provenance: GatewaySubmissionProvenance | None = None,
 ) -> GatewayActivityRecord:
     """Validate one exact typed event and bind it to server-owned context."""
 
@@ -461,6 +486,8 @@ def gateway_activity_record_from_event(
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("gateway activity received_at must include a timezone")
     record = GatewayActivityRecord(
+        record_schema_version="gateway.activity.record.v2" if submission_provenance is not None else "gateway.activity.record.v1",
+        submission_provenance=submission_provenance,
         tenant_id=_required_text(tenant_id, "tenant_id"),
         event_id=event_id,
         decision_id=decision_id,
@@ -940,7 +967,9 @@ class SQLiteGatewayActivityStore:
 
 def _record_from_json(raw: str) -> GatewayActivityRecord:
     payload = json.loads(raw)
+    raw_provenance = payload.get("submission_provenance")
     return GatewayActivityRecord(
+        submission_provenance=GatewaySubmissionProvenance.model_validate(raw_provenance) if raw_provenance is not None else None,
         tenant_id=str(payload["tenant_id"]),
         event_id=str(payload["event_id"]),
         decision_id=str(payload["decision_id"]),

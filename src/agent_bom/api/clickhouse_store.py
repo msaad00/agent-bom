@@ -383,7 +383,13 @@ class ClickHouseAnalyticsStore:
                 tool_name,
                 message,
             )
+        from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance
+
+        provenance = event.get("submission_provenance")
+        typed_metadata = provenance if isinstance(provenance, GatewaySubmissionProvenance) else None
         return {
+            "producer_assurance": typed_metadata.producer_assurance if typed_metadata else "unknown",
+            "submission_provenance": typed_metadata.model_dump_json() if typed_metadata else "{}",
             "event_id": event_id,
             "event_timestamp": event_timestamp,
             "updated_at": _insert_timestamp(),

@@ -133,6 +133,19 @@ describe("OverviewCockpit", () => {
     expect(screen.getByRole("region", { name: "Command center" })).toBeVisible();
   });
 
+  it("keeps operational details closed until requested without hiding their summary", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+    const toggle = screen.getByRole("button", { name: /Operational signals.*3 of 4 active/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Runtime")).not.toBeVisible();
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("Runtime")).toBeVisible();
+    expect(screen.getByRole("link", { name: /Connections/ })).toHaveAttribute("href", "/connections");
+    expect(toggle).toHaveFocus();
+  });
+
   it("shows one grade and one numeric score in the posture summary", () => {
     render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
     expect(screen.getAllByText("62%")).toHaveLength(1);
@@ -237,7 +250,7 @@ describe("OverviewCockpit", () => {
     expect(within(strip).getByText("Ops")).toBeInTheDocument();
     // 3 of 4 active — cost is idle, so it de-emphasizes into a Connect prompt
     // instead of a loud zero tile.
-    expect(within(strip).getByText(/3 of 4 active/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 4 active/i)).toBeInTheDocument();
     expect(within(strip).getByText("LLM Cost")).toBeInTheDocument();
     expect(within(strip).getByText("Connect")).toBeInTheDocument();
   });

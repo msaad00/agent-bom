@@ -417,14 +417,15 @@ function CoverageOperationsSection({
   return (
     <div className="mt-3" data-testid="overview-coverage-operations">
       <SecurityCoverageLanes coverage={coverage} />
-      <div className={coverage?.length ? "mt-3 border-t border-outline pt-3" : undefined}>
+      <Collapsible bare title="Operational signals"
+        subtitle={operationalTiles.length ? `${operationalTiles.filter(opsLaneActive).length} of ${operationalTiles.length} active` : undefined}
+        defaultOpen={false} className={coverage?.length ? "mt-3 border-t border-outline" : undefined}>
         <EstateOpsStrip tiles={operationalTiles} />
-      </div>
       <Link href="/connections" className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
         {dataSourceCount > 0 ? `${dataSourceCount} connected · ` : ""}
         Connections <ArrowRight className="h-3 w-3" />
       </Link>
-
+      </Collapsible>
     </div>
   );
 }
@@ -595,16 +596,8 @@ function EstateOpsStrip({
 }) {
   if (tiles.length === 0) return null;
 
-  const active = tiles.filter(opsLaneActive).length;
-
   return (
     <div data-testid="overview-estate-ops">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-xs font-semibold text-foreground">Operational signals</h3>
-        <span className="text-[11px] text-ink-tertiary">
-          {active} of {tiles.length} active
-        </span>
-      </div>
       <div className="mt-1 grid gap-2 sm:grid-cols-2">
         {tiles.map((tile) => (
           <OpsTileCard key={tile.key} tile={tile} />

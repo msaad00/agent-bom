@@ -273,6 +273,7 @@ for (const theme of ["light", "dark"] as const) {
       },
     } }));
     await page.goto("/");
+    await page.getByRole("button", { name: /Operational signals/ }).click();
     const metrics = page.getByTestId("overview-estate-ops").locator("span.font-mono");
     await expect(metrics).toHaveCount(4);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
@@ -331,6 +332,11 @@ for (const theme of ["light", "dark"] as const) {
         summary: { cis_pass: 1, nist_800_53_pass: 1, pci_dss_pass: 1, fedramp_pass: 1, cis_foundations_pass: 1, cis_foundations_evaluated: 1, aisvs_pass: 1 },
       } }));
       await page.goto("/");
+      const operations = page.getByRole("button", { name: /Operational signals/ });
+      await expect(operations).toHaveAttribute("aria-expanded", "false");
+      if (width === 1440) {
+        expect((await page.getByRole("region", { name: "Top risks" }).boundingBox())!.y).toBeLessThan(850);
+      }
       const unavailableLane = page.getByTestId("coverage-lane-cspm");
       await expect(unavailableLane.getByText("Count unavailable")).toBeVisible();
       expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(56);

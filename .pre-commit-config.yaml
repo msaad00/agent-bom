@@ -31,12 +31,21 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
+    rev: v2.3.1
     hooks:
       - id: mypy
         args: [--ignore-missing-imports, --no-error-summary, --disable-error-code, import-untyped]
         files: ^src/
-        additional_dependencies: ["pydantic>=2.0", types-PyYAML]
+        # The isolated hook must resolve typed imports like the locked CI env.
+        # Keep these pins aligned with uv.lock; the toolchain contract checks it.
+        additional_dependencies:
+          - pydantic==2.13.5
+          - types-pyyaml==6.0.12.20260906
+          - anyio==4.15.1
+          - cryptography==50.0.1
+          - pyjwt==2.13.0
+          - fastapi==0.141.1
+          - starlette==1.6.0
         pass_filenames: true
 
   - repo: https://github.com/PyCQA/bandit

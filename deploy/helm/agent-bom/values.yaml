@@ -381,6 +381,7 @@ gateway:
   #
   # Where `agent-bom-gateway-auth` contains:
   #   AGENT_BOM_GATEWAY_BEARER_TOKEN=<token for incoming gateway clients>
+  #   AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT=<absolute ISO-8601 UTC expiry within one hour>
   #   AGENT_BOM_CONTROL_PLANE_TOKEN=<token for gateway control-plane discovery>
   env: []
   envFrom: []

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -37,7 +38,7 @@ import threading
 import time
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping
 
@@ -196,6 +197,8 @@ class GatewaySettings:
     audit_sink: AuditSink | None = None
     upstream_caller: UpstreamCaller | None = None  # injectable for tests
     bearer_token: str | None = None
+    bearer_token_expires_at: str | None = None
+    _bearer_token_deadline: datetime | None = field(default=None, init=False, repr=False)
     # Visual-leak detection on image tool responses (closes the screenshot
     # channel that CredentialLeakDetector can't see — #1568). Opt-in
     # because OCR is CPU-heavy; see docs/ENTERPRISE_SECURITY_PLAYBOOK.md §2.2.
@@ -985,11 +988,29 @@ def _rate_limit_bucket_component(value: str) -> str:
     return component.replace(":", "_")[:160]
 
 
+def _parse_gateway_token_expiry(value: str | None) -> datetime:
+    """Require a bounded absolute deadline; process restarts cannot renew it."""
+    requirement = "AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT must be a timezone-aware ISO-8601 expiry in the next hour"
+    if not value or not value.strip():
+        raise ValueError(requirement)
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError(requirement)
+        parsed = parsed.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        raise ValueError(requirement) from None
+    now = datetime.now(timezone.utc)
+    if not now < parsed <= now + timedelta(hours=1):
+        raise ValueError(requirement)
+    return parsed
+
+
 def _request_has_expected_token(request: Request, expected_token: str) -> bool:
     auth = request.headers.get("authorization", "")
     if auth.startswith("Bearer "):
-        return auth[len("Bearer ") :].strip() == expected_token
-    return request.headers.get("x-api-key", "").strip() == expected_token
+        return hmac.compare_digest(auth[len("Bearer ") :].strip().encode(), expected_token.encode())
+    return hmac.compare_digest(request.headers.get("x-api-key", "").strip().encode(), expected_token.encode())
 
 
 def _extract_request_token(request: Request) -> str:
@@ -1111,7 +1132,12 @@ def _configured_gateway_tenant_id() -> str:
 def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -> tuple[str, str]:
     raw_token = _extract_request_token(request)
     if settings.bearer_token:
-        if not raw_token or not _request_has_expected_token(request, settings.bearer_token):
+        if (
+            settings._bearer_token_deadline is None
+            or datetime.now(timezone.utc) >= settings._bearer_token_deadline
+            or not raw_token
+            or not _request_has_expected_token(request, settings.bearer_token)
+        ):
             raise HTTPException(status_code=401, detail="gateway authentication required")
         return _configured_gateway_tenant_id(), "static_gateway_token"
 
@@ -1990,6 +2016,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             "Embedded OAuth AS is unavailable until trusted client authorization is implemented; "
             "use configured bearer or API-key authentication"
         )
+    if settings.bearer_token:
+        settings._bearer_token_deadline = _parse_gateway_token_expiry(settings.bearer_token_expires_at)
     if settings.audit_sink is None:
         try:
             settings.audit_sink = build_local_gateway_audit_sink()

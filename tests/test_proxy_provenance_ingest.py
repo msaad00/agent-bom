@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from agent_bom.api.auth import KeyStore, Role, create_api_key, set_key_store
 from agent_bom.api.gateway_activity_store import SQLiteGatewayActivityStore, set_gateway_activity_store
-from agent_bom.api.middleware import APIKeyMiddleware
+from agent_bom.api.middleware import APIKeyMiddleware, TrustHeadersMiddleware
 from agent_bom.api.routes import proxy
 from agent_bom.api.stores import set_analytics_store
 
@@ -36,6 +36,7 @@ def boundary(tmp_path):
     app = FastAPI()
     app.include_router(proxy.router, prefix="/v1")
     app.add_middleware(APIKeyMiddleware, api_key="", allow_unauthenticated=False)
+    app.add_middleware(TrustHeadersMiddleware)
     with TestClient(app) as client:
         yield client, ledger, events, tokens
     proxy._reset_proxy_runtime_for_tests()
@@ -317,3 +318,37 @@ def test_metrics_websocket_does_not_copy_another_tenants_assurance(boundary, mon
     assert snapshot["producer_assurance"] == "unknown"
     assert snapshot["health"]["state"] == "unavailable"
     assert snapshot["health"]["heartbeat_at"] is None
+
+
+@pytest.mark.parametrize("producer_trace", [None, "producer-trace"])
+def test_request_trace_is_receipt_metadata_not_event_identity(boundary, producer_trace):
+    import json
+
+    payload = body("trace-retry")
+    payload["alerts"][0]["receipt_trace_id"] = "forged-receipt"
+    if producer_trace is not None:
+        payload["alerts"][0]["trace_id"] = producer_trace
+    first = post(boundary, payload)
+    assert first.status_code == 200
+    ledger = boundary[1]
+    original = ledger.list_activity("tenant-a").events[0]
+    original_json = json.dumps(original, sort_keys=True)
+    second = post(boundary, payload)
+    assert second.json()["durable_duplicate_count"] == 1
+    assert second.json()["durable_conflict_count"] == 0
+    assert original["trace_id"] == (producer_trace or "trace-retry")
+    assert original["receipt_trace_id"] == first.headers["X-Trace-ID"]
+    assert second.headers["X-Trace-ID"] != first.headers["X-Trace-ID"]
+    assert original["receipt_trace_id"] != original["trace_id"]
+    assert json.dumps(ledger.list_activity("tenant-a").events[0], sort_keys=True) == original_json
+    reopened = SQLiteGatewayActivityStore(ledger.db_path)
+    assert json.dumps(reopened.list_activity("tenant-a").events[0], sort_keys=True) == original_json
+    payload["alerts"][0]["trace_id"] = "changed-producer-trace"
+    assert post(boundary, payload).json()["durable_conflict_count"] == 1
+    if producer_trace is None:
+        payload["alerts"][0].pop("trace_id")
+    else:
+        payload["alerts"][0]["trace_id"] = producer_trace
+    payload["alerts"][0]["tool"] = "different_tool"
+    assert post(boundary, payload).json()["durable_conflict_count"] == 1
+    assert json.dumps(ledger.list_activity("tenant-a").events[0], sort_keys=True) == original_json

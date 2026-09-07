@@ -115,6 +115,16 @@ record integrity. They do not prove the reported decision happened at an
 authenticated producer. Consumer posture/health assessments must be read with
 that evidence boundary; receipt freshness is not producer attestation.
 
+Producer-supplied `trace_id` remains part of canonical event identity. When it
+is absent, the API uses the stable `event_id` as the correlation fallback. The
+first request's trace is retained separately as `receipt_trace_id`; like receipt
+time, it is excluded from event-digest comparison and is not rewritten by a
+retry. Request/audit correlation remains available without turning a new HTTP
+request trace into a changed producer event. Historical records without this
+receipt field retain their original serialization. A pre-upgrade event whose
+trace was filled from an HTTP request can still conflict when retried without
+that original trace; stored history is not silently rewritten.
+
 Existing v1 records retain their bytes, digest and unknown producer assurance.
 An exact canonical retry can be deduplicated without upgrading that history.
 A new differing reported origin cannot be compared with v1, which did not

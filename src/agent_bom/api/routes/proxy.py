@@ -254,7 +254,7 @@ def _gateway_activity_record_from_alert(
         "tool": str(alert.get("tool") or alert.get("tool_name") or "unknown"),
         "decision": str(alert.get("decision") or expected_decision),
         "policy_source": str(alert.get("policy_source") or "legacy_proxy"),
-        "trace_id": str(alert.get("trace_id") or request_trace_id or event_id),
+        "trace_id": str(alert.get("trace_id") or event_id),
     }
     for field in (
         "identity_id",
@@ -280,6 +280,7 @@ def _gateway_activity_record_from_alert(
     return gateway_activity_record_from_event(
         canonical,
         submission_provenance=submission_provenance,
+        receipt_trace_id=request_trace_id,
         tenant_id=tenant_id,
         source_id=source_id,
         session_id=session_id,
@@ -371,7 +372,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
             raise HTTPException(status_code=422, detail="Invalid proxy submission context") from exc
         submission_metadata[id(enriched)] = provenance
         enriched.setdefault("request_id", request_id)
-        enriched.setdefault("trace_id", trace_id)
+        enriched["receipt_trace_id"] = trace_id
         # Receipt time is transport metadata owned by this API process. Never
         # accept a caller-supplied future value into degraded feed ordering.
         enriched["received_at"] = received_at.isoformat()
@@ -390,6 +391,9 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Invalid canonical gateway activity event") from exc
+        # Request correlation is receipt metadata, not producer event identity.
+        # Keep it on the ring/audit view after constructing the stable event.
+        enriched.setdefault("trace_id", trace_id)
         if record is not None:
             activity_records.append(record)
     activity_candidate_ids = {record.event_id for record in activity_records}

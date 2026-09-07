@@ -235,6 +235,7 @@ class GatewayActivityRecord:
     raw_payload_stored: bool = False
     record_schema_version: str = "gateway.activity.record.v1"
     submission_provenance: GatewaySubmissionProvenance | None = None
+    receipt_trace_id: str = ""
 
     def __post_init__(self) -> None:
         if self.record_schema_version == "gateway.activity.record.v1":
@@ -258,6 +259,8 @@ class GatewayActivityRecord:
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["policy_ids"] = list(self.policy_ids)
+        if not self.receipt_trace_id:
+            payload.pop("receipt_trace_id", None)
         if self.submission_provenance is None:
             # Preserve historical v1 serialization and event digests exactly.
             payload.pop("submission_provenance", None)
@@ -466,6 +469,7 @@ def _digest_payload(record: GatewayActivityRecord) -> str:
     payload.pop("event_digest", None)
     payload.pop("ingest_ordinal", None)
     payload.pop("ingested_at", None)
+    payload.pop("receipt_trace_id", None)
     encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -502,6 +506,7 @@ def gateway_activity_record_from_event(
     session_id: str,
     received_at: datetime | None = None,
     submission_provenance: GatewaySubmissionProvenance | None = None,
+    receipt_trace_id: str = "",
 ) -> GatewayActivityRecord:
     """Validate one exact typed event and bind it to server-owned context."""
 
@@ -526,6 +531,7 @@ def gateway_activity_record_from_event(
     record = GatewayActivityRecord(
         record_schema_version="gateway.activity.record.v2" if submission_provenance is not None else "gateway.activity.record.v1",
         submission_provenance=submission_provenance,
+        receipt_trace_id=_optional_text(receipt_trace_id, "receipt_trace_id"),
         tenant_id=_required_text(tenant_id, "tenant_id"),
         event_id=event_id,
         decision_id=decision_id,
@@ -1033,6 +1039,7 @@ def _record_from_json(raw: str) -> GatewayActivityRecord:
         policy_source=str(payload["policy_source"]),
         reason_code=str(payload.get("reason_code") or ""),
         trace_id=str(payload["trace_id"]),
+        receipt_trace_id=str(payload.get("receipt_trace_id") or ""),
         data_action=str(payload.get("data_action") or ""),
         policy_id=str(payload.get("policy_id") or ""),
         evidence_id=str(payload.get("evidence_id") or ""),

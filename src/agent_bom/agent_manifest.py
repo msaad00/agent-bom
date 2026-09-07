@@ -153,6 +153,8 @@ def _fleet_agent(agent: FleetAgent) -> dict[str, object]:
 def _observed_server(observation: MCPObservation) -> dict[str, object]:
     return {
         "id": observation.server_stable_id,
+        "observation_id": observation.observation_id,
+        "updated_at": observation.updated_at,
         "canonical_id": observation.server_canonical_id,
         "fingerprint": observation.server_fingerprint,
         "name": sanitize_text(observation.server_name, max_len=160),
@@ -357,11 +359,16 @@ def _graph(agents: list[dict[str, object]], servers: list[dict[str, object]]) ->
                 provenance="agent_manifest",
             )
 
-    agent_by_name = {
-        str(agent.get("name")): str(agent.get("id") or agent.get("canonical_id") or agent.get("name"))
-        for agent in agents
-        if agent.get("name")
-    }
+    agents_by_name: dict[str, set[str]] = {}
+    agents_by_server: dict[str, set[str]] = {}
+    for agent in agents:
+        agent_id = str(agent.get("id") or agent.get("canonical_id") or agent.get("name"))
+        if name := agent.get("name"):
+            agents_by_name.setdefault(str(name), set()).add(agent_id)
+        server_ids = agent.get("mcp_server_ids")
+        if isinstance(server_ids, list):
+            for server_id in server_ids:
+                agents_by_server.setdefault(str(server_id), set()).add(agent_id)
 
     for server in servers:
         server_id = str(server.get("id") or server.get("canonical_id") or server.get("name"))
@@ -375,15 +382,20 @@ def _graph(agents: list[dict[str, object]], servers: list[dict[str, object]]) ->
             auth_mode=server.get("auth_mode"),
         )
 
-        agent_name = str(server.get("agent_name") or "")
-        linked_agent_ids: list[str] = []
-        if agent_name and agent_name in agent_by_name:
-            linked_agent_ids.append(agent_by_name[agent_name])
-        for agent in agents:
-            server_ids = agent.get("mcp_server_ids")
-            if isinstance(server_ids, list) and server_id in {str(item) for item in server_ids}:
-                linked_agent_ids.append(str(agent.get("id") or agent.get("canonical_id") or agent.get("name")))
-        for agent_id in sorted(set(linked_agent_ids)):
+        agent_names = _string_list(server.get("agent_names"))
+        if not agent_names and server.get("agent_name"):
+            agent_names = [str(server["agent_name"])]
+        linked_agent_ids = agents_by_server.get(server_id, set())
+        # Explicit membership is authoritative. Legacy observation names are
+        # only a fallback when they identify one agent in this tenant; repeated
+        # names across environments must not invent a traversal edge.
+        if not linked_agent_ids and server.get("identity_basis") != "observation":
+            linked_agent_ids = set()
+            for agent_name in agent_names:
+                candidates = agents_by_name.get(agent_name, set())
+                if len(candidates) == 1:
+                    linked_agent_ids.update(candidates)
+        for agent_id in sorted(linked_agent_ids):
             edges[f"{agent_id}:uses:{server_id}"] = _edge(f"{agent_id}:uses:{server_id}", agent_id, server_id, "uses")
 
         tools = server.get("tools")
@@ -535,14 +547,65 @@ def build_local_agent_manifest(
     return _manifest(source, agent_rows, server_rows, tenant_id)
 
 
+def _observed_server_entities(observations: Iterable[MCPObservation]) -> list[dict[str, object]]:
+    """Group observations of the same identified server without losing origins."""
+    groups: dict[tuple[str, str, str], list[dict[str, object]]] = {}
+    for observation in observations:
+        row = _observed_server(observation)
+        identity = observation.server_stable_id
+        key = ("server", identity, observation.server_canonical_id) if identity else ("observation", observation.observation_id, "")
+        groups.setdefault(key, []).append(row)
+    aliases: dict[str, set[str]] = {}
+    for kind, identity, canonical in groups:
+        if kind == "server":
+            aliases.setdefault(identity, set()).add(canonical)
+    entities: list[dict[str, object]] = []
+    for key, rows in sorted(groups.items()):
+        rows.sort(key=lambda row: (str(row.get("updated_at") or ""), str(row["observation_id"])))
+        entity = dict(rows[-1])
+        entity["observations"] = rows
+        entity["observation_ids"] = sorted(str(row["observation_id"]) for row in rows)
+        names = sorted({str(row["agent_name"]) for row in rows if row.get("agent_name")})
+        entity["agent_names"] = names
+        entity["agent_name"] = names[0] if len(names) == 1 else ""
+        refs: list[dict[str, object]] = []
+        for row in rows:
+            refs = _union_named_rows(refs, row.get("credential_refs"))
+        entity["credential_refs"] = sorted(refs, key=lambda ref: str(ref.get("name")))
+        observed_rows = [value for row in rows if isinstance(value := row.get("observed"), dict)]
+        observed: dict[str, object] = {}
+        for flag in ("configured_locally", "fleet_present", "gateway_registered", "runtime_observed"):
+            observed[flag] = any(bool(row.get(flag)) for row in observed_rows)
+        for field in ("via", "scopes"):
+            observed[field] = sorted({value for row in observed_rows for value in _string_list(row.get(field))})
+        for field in ("first_seen", "last_seen", "last_synced"):
+            values = [str(row[field]) for row in observed_rows if row.get(field)]
+            observed[field] = (min(values) if field == "first_seen" else max(values)) if values else None
+        entity["observed"] = observed
+        security_rows = [value for row in rows if isinstance(value := row.get("security"), dict)]
+        entity["security"] = {
+            "blocked": any(bool(row.get("blocked")) for row in security_rows),
+            "warnings": sorted({value for row in security_rows for value in _string_list(row.get("warnings"))}),
+        }
+        entity["server_stable_id"] = str(entity.get("id") or "")
+        entity["identity_basis"] = "server_identity"
+        if key[0] == "observation" or len(aliases.get(key[1], set())) > 1:
+            # Conflicting aliases cannot establish one runtime entity. Keep
+            # each observation group addressable without fabricating a merge.
+            entity["id"] = f"observation:{min(str(row['observation_id']) for row in rows)}"
+            entity["identity_basis"] = "observation"
+        entities.append(entity)
+    return entities
+
+
 def build_control_plane_agent_manifest(
     fleet_agents: Iterable[FleetAgent],
     observations: Iterable[MCPObservation],
     *,
     tenant_id: str,
 ) -> dict[str, object]:
-    agent_rows = [_fleet_agent(agent) for agent in fleet_agents]
-    server_rows = [_observed_server(observation) for observation in observations]
+    agent_rows = sorted((_fleet_agent(agent) for agent in fleet_agents), key=lambda row: (str(row["name"]).casefold(), str(row["id"])))
+    server_rows = _observed_server_entities(observations)
     return _manifest("control-plane", agent_rows, server_rows, tenant_id)
 
 

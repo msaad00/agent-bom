@@ -213,6 +213,108 @@
         "title": "AdoptionEventRequest",
         "type": "object"
       },
+      "AgentBomManifestResponse": {
+        "additionalProperties": true,
+        "description": "Typed identity/count boundary; other manifest sections remain additive.",
+        "properties": {
+          "agents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "mcp_servers": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBomManifestServerResponse"
+            },
+            "title": "Mcp Servers",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "agent-bom.manifest/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema_version",
+          "agents",
+          "mcp_servers",
+          "summary"
+        ],
+        "title": "AgentBomManifestResponse",
+        "type": "object"
+      },
+      "AgentBomManifestServerResponse": {
+        "additionalProperties": true,
+        "description": "Identified server entity with preserved observation membership.",
+        "properties": {
+          "agent_name": {
+            "default": "",
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "agent_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Agent Names",
+            "type": "array"
+          },
+          "canonical_id": {
+            "title": "Canonical Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "identity_basis": {
+            "default": "observation",
+            "enum": [
+              "server_identity",
+              "observation"
+            ],
+            "title": "Identity Basis",
+            "type": "string"
+          },
+          "observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Observation Ids",
+            "type": "array"
+          },
+          "observations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "server_stable_id": {
+            "default": "",
+            "title": "Server Stable Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_id"
+        ],
+        "title": "AgentBomManifestServerResponse",
+        "type": "object"
+      },
       "AnalyticsHealth": {
         "properties": {
           "backend": {
@@ -5681,6 +5783,164 @@
         "title": "IntelPackageMatchRequest",
         "type": "object"
       },
+      "InventoryPackageResponse": {
+        "description": "One package occurrence in the scanned estate; empty IDs are unknown.",
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "agent_id": {
+            "default": "",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "ecosystem": {
+            "title": "Ecosystem",
+            "type": "string"
+          },
+          "environment": {
+            "default": "",
+            "title": "Environment",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "server": {
+            "title": "Server",
+            "type": "string"
+          },
+          "server_id": {
+            "default": "",
+            "title": "Server Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "ecosystem",
+          "agent",
+          "server"
+        ],
+        "title": "InventoryPackageResponse",
+        "type": "object"
+      },
+      "InventoryResponse": {
+        "properties": {
+          "agents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "job_count": {
+            "minimum": 0.0,
+            "title": "Job Count",
+            "type": "integer"
+          },
+          "job_total": {
+            "minimum": 0.0,
+            "title": "Job Total",
+            "type": "integer"
+          },
+          "jobs": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "limit": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "package_count": {
+            "minimum": 0.0,
+            "title": "Package Count",
+            "type": "integer"
+          },
+          "package_total": {
+            "minimum": 0.0,
+            "title": "Package Total",
+            "type": "integer"
+          },
+          "packages": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryPackageResponse"
+            },
+            "title": "Packages",
+            "type": "array"
+          },
+          "scope": {
+            "const": "scanned_estate",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scope",
+          "source",
+          "agents",
+          "packages",
+          "jobs",
+          "count",
+          "total",
+          "package_count",
+          "package_total",
+          "job_count",
+          "job_total",
+          "limit",
+          "offset",
+          "has_more",
+          "warnings"
+        ],
+        "title": "InventoryResponse",
+        "type": "object"
+      },
       "InvitationRequest": {
         "additionalProperties": false,
         "description": "Body for POST /v1/auth/invitations \u2014 admin provisions a NEW tenant.\n\nDeliberately never accepts a provider secret / credential: the endpoint\nMINTS a key, it does not take one (connect-once model, \u00a711). ``extra`` is\nforbidden so a stray secret field is rejected with 422 rather than ignored.",
@@ -10214,9 +10474,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Agent Bom Manifest V1 Agent Bom Manifest Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AgentBomManifestResponse"
                 }
               }
             },
@@ -29520,9 +29778,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Inventory V1 Inventory Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/InventoryResponse"
                 }
               }
             },

@@ -12,6 +12,16 @@
       "schema": "AIProvenance.json"
     },
     {
+      "doc": "Typed identity/count boundary; other manifest sections remain additive.",
+      "name": "AgentBomManifestResponse",
+      "schema": "AgentBomManifestResponse.json"
+    },
+    {
+      "doc": "Identified server entity with preserved observation membership.",
+      "name": "AgentBomManifestServerResponse",
+      "schema": "AgentBomManifestServerResponse.json"
+    },
+    {
       "doc": "",
       "name": "AnalyticsHealth",
       "schema": "AnalyticsHealth.json"
@@ -155,6 +165,16 @@
       "doc": "Public shape for evidence-backed cross-provider identity/resource joins.",
       "name": "IdentityResourceJoinContract",
       "schema": "IdentityResourceJoinContract.json"
+    },
+    {
+      "doc": "One package occurrence in the scanned estate; empty IDs are unknown.",
+      "name": "InventoryPackageResponse",
+      "schema": "InventoryPackageResponse.json"
+    },
+    {
+      "doc": "",
+      "name": "InventoryResponse",
+      "schema": "InventoryResponse.json"
     },
     {
       "doc": "Body for POST /v1/auth/invitations \u2014 admin provisions a NEW tenant.",

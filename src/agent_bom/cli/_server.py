@@ -507,11 +507,31 @@ def _api_auth_summary(
 
 def _storage_summary(*, persist: str | None) -> str:
     """Describe the active API job storage mode."""
-    pg_url = os.environ.get("AGENT_BOM_POSTGRES_URL")
-    if pg_url and not persist:
-        return "PostgreSQL"
     if persist:
         return f"SQLite ({persist})"
+
+    from agent_bom.api import stores
+    from agent_bom.api.server import _backend_name
+
+    # Lifespan preserves an injected store; the legacy api command also selects
+    # its Postgres job store before printing this table. Never create a store
+    # merely to describe it, or print a configured connection string.
+    if stores._store is not None:
+        backend = _backend_name(stores._store)
+        return {"inmemory": "In-memory (ephemeral)", "sqlite": "SQLite", "postgres": "PostgreSQL", "snowflake": "Snowflake"}.get(
+            backend, f"Custom ({backend})"
+        )
+
+    # Mirror the pending job-store selection in server._lifespan. Neptune's
+    # graph-only branch currently leaves the lazy job store in memory.
+    if os.environ.get("SNOWFLAKE_ACCOUNT"):
+        return "Snowflake"
+    if os.environ.get("AGENT_BOM_GRAPH_BACKEND", "").strip().lower() == "neptune":
+        return "In-memory (ephemeral)"
+    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        return "PostgreSQL"
+    if os.environ.get("AGENT_BOM_DB"):
+        return "SQLite"
     return "In-memory (ephemeral)"
 
 

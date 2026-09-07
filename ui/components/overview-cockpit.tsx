@@ -986,7 +986,7 @@ function PostureHero({
   cves: number | null;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
-  const graded = typeof score === "number" && !ungraded;
+  const graded = !loading && typeof score === "number" && !ungraded;
   const scoreDisplay = graded ? formatPostureScore(score, grade, scoreFormat) : null;
   const scoreTone = graded && ["D", "F"].includes(grade)
     ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"

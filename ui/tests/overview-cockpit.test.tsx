@@ -408,6 +408,16 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText("Last successful scan unavailable")).not.toBeInTheDocument();
   });
 
+  it("keeps pending posture neutral even when a prior adverse score is present", () => {
+    render(<OverviewCockpit {...baseProps} grade="F" score={42} loading />);
+
+    const score = screen.getByTestId("overview-posture-score");
+    expect(score).toHaveTextContent("Loading posture…");
+    expect(score).toHaveClass("bg-surface-muted", "text-foreground");
+    expect(score).not.toHaveClass("bg-red-500/10", "text-red-700");
+    expect(screen.queryByTestId("score-format-toggle")).not.toBeInTheDocument();
+  });
+
   it("never asserts 'no vulnerabilities' while open CVEs are present", () => {
     // Backend posture summary is derived from only the latest single scan, so it
     // can read "No vulnerabilities found" even when the estate rollup shows open

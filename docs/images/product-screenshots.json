@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-07T18:47:03.105Z",
-  "source_commit": "80eee5286c9919025fde16bb1f31fab964d62f47",
+  "captured_at": "2026-09-07T18:45:14.386Z",
+  "source_commit": "8d8ec779b94b8cd78352b8744a91458097d3ef92",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:b1ca27ad26ddfd212605eb192542d9090b7201ddea993e1f3b61e30af5ca9159",
+  "capture_inputs_sha256": "sha256:b795a52e3efa12f2633a2b2f45963628033505f34d719195f5d05ace1e576314",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -76,7 +76,7 @@
       "page": "/graph?lens=mesh&capture=1",
       "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
       "visible_version": "0.103.2",
-      "sha256": "sha256:59cfb9a0e74f56cca4ba4e601f79fd5864e46beef8fdd46f6cf00b5b696e3ea3"
+      "sha256": "sha256:b6a492b85738dbc803909af957a592c790aaf210e67345a0cb98b810f104c8eb"
     },
     {
       "presentation": "dark desktop",
@@ -158,7 +158,7 @@
       "evidence_sha256": "sha256:b7f7b30b5939a4efe71c9af5de5e2302d9f27eca4ca010a00d669bb5fc8a0652",
       "correlation_manifest_sha256": "sha256:cc9f3fe5ed5e792bcd69e96a35c120b90aaf3d34ead006b130e1db2a7a8135ff",
       "visible_version": "0.103.2",
-      "sha256": "sha256:54d73c14b9d3bb3d2bfc7c600dce6369eba5edb1f307e455c71ae4f06047a8ee"
+      "sha256": "sha256:974b6477bcfe0eb5304e48a7b0d363c24bbefc6f7a2ca0006cd82c9dc47a58c9"
     },
     {
       "presentation": "light desktop",
@@ -182,7 +182,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&capture=1",
       "scope": "Modeled current-state Investigation Canvas at 1512 by 811",
       "visible_version": "0.103.2",
-      "sha256": "sha256:bb5a89ec5bda48cc02dd48dd788a2c2e982c86798e75a6b59f5b0849f2ee283e"
+      "sha256": "sha256:8c4e6cb67a8142efa1a50503ef5366af3b21440b810ecc55792d39901c6517a9"
     },
     {
       "presentation": "light desktop 1568x780",
@@ -190,7 +190,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.103.2",
-      "sha256": "sha256:b402986770d7870dcb88abd5e0881324e79ff1140bbe15352a63ab85972d13a0"
+      "sha256": "sha256:36ea3537fc5b6e1b2765e9a3072b0290a508f19aaf7e3f4a26c6090ea6f10ff2"
     },
     {
       "presentation": "dark desktop",
@@ -198,7 +198,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability",
       "scope": "Focused highest-risk directed path from identity source through agent, MCP, package, and finding",
       "visible_version": "0.103.2",
-      "sha256": "sha256:65ea3283580223c69da115f11f25e8f434a8d545a4fad1504642d1531af4fbf6"
+      "sha256": "sha256:236d2112d5249cb3142e7189d7709d433bb50b2e4a055c6c108bcae1c763ce48"
     },
     {
       "presentation": "dark desktop",
@@ -206,7 +206,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
       "visible_version": "0.103.2",
-      "sha256": "sha256:2c9084126f13c291b40503643a146377b38bd4635d6b43a7e98683cff2416a3d"
+      "sha256": "sha256:f33007330636d8d5283ddcbf249c78c5210b79862fa74db69637300665ecd5f6"
     },
     {
       "presentation": "dark desktop",

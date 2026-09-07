@@ -175,6 +175,20 @@ describe("Overview canonical finding counts", () => {
     expect(screen.queryByText("Loading control evaluation…")).not.toBeInTheDocument();
     expect(screen.queryByText("private control source")).not.toBeInTheDocument();
   });
+  it("does not infer estate improvement from unqualified independent scan scores", async () => {
+    apiMock.getTrends.mockResolvedValue({
+      count: 2,
+      data_points: [
+        { scan_id: "public-docs-repo", timestamp: "2026-07-17T12:00:00Z", posture_score: 90, posture_grade: "A", total_vulns: 1, critical: 0, high: 0, medium: 1, low: 0 },
+        { scan_id: "payments-production", timestamp: "2026-07-17T11:00:00Z", posture_score: 10, posture_grade: "F", total_vulns: 20, critical: 10, high: 10, medium: 0, low: 0 },
+      ],
+    });
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText("49%")).toBeVisible());
+    // No server evidence binds these independent scan scores to a comparable estate baseline.
+    expect(screen.queryByTestId("overview-posture-trend")).not.toBeInTheDocument();
+  });
+
 
   it("restores recent-scan metadata from bounded hydrated details after a cold API start", async () => {
     apiMock.listJobs.mockResolvedValue({ jobs: [{ job_id: "cold-sbom", status: "done", created_at: "2026-09-06T22:26:37Z" }] });

@@ -12,7 +12,6 @@ import {
   formatDate,
   type PostureCountsResponse,
   type ComplianceResponse,
-  type TrendsResponse,
 } from "@/lib/api";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
@@ -67,7 +66,6 @@ export default function Dashboard() {
   const [overviewUnavailable, setOverviewUnavailable] = useState(false);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
   const [complianceLoading, setComplianceLoading] = useState(true);
-  const [trends, setTrends] = useState<TrendsResponse | null>(null);
   const [postureOverviewLoading, setPostureOverviewLoading] = useState(true);
   // Local display-format override; falls back to the persisted per-tenant
   // config carried on the overview posture. Toggling persists via the API (#3940).
@@ -114,30 +112,14 @@ export default function Dashboard() {
     ).finally(() => {
       if (!cancelled) setComplianceLoading(false);
     });
-    void api.getTrends(2).then(
-      (value) => {
-        if (!cancelled) setTrends(value);
-      },
-      () => {},
-    );
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
   }, []);
 
-  const postureTrend = useMemo(() => {
-    const current = trends?.data_points?.[0];
-    const previous = trends?.data_points?.[1];
-    if (!current || !previous) return null;
-    const delta = current.posture_score - previous.posture_score;
-    return {
-      direction: delta > 0 ? "improved" as const : delta < 0 ? "worsened" as const : "unchanged" as const,
-      delta,
-      previousScore: previous.posture_score,
-      points: trends?.count ?? trends.data_points.length,
-    };
-  }, [trends]);
+  // Per-scan trend points do not establish comparable scope or scoring for
+  // the aggregate overview. Promote no delta until that contract exists.
 
   useEffect(() => {
     let cancelled = false;
@@ -480,7 +462,6 @@ export default function Dashboard() {
         scoreFloored={overview?.posture.floored}
         onScoreFormatChange={handleScoreFormatChange}
         postureSummary={overview?.posture.summary ?? posture?.summary}
-        postureTrend={postureTrend}
         critical={criticalCount}
         high={highCount}
         kev={summaryReady ? displayedKevCount : null}

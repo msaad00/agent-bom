@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "AgentBomManifestServerResponse": {
+      "additionalProperties": true,
+      "description": "Identified server entity with preserved observation membership.",
+      "properties": {
+        "agent_name": {
+          "default": "",
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "agent_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Agent Names",
+          "type": "array"
+        },
+        "canonical_id": {
+          "title": "Canonical Id",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "identity_basis": {
+          "default": "observation",
+          "enum": [
+            "server_identity",
+            "observation"
+          ],
+          "title": "Identity Basis",
+          "type": "string"
+        },
+        "observation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Observation Ids",
+          "type": "array"
+        },
+        "observations": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "server_stable_id": {
+          "default": "",
+          "title": "Server Stable Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "canonical_id"
+      ],
+      "title": "AgentBomManifestServerResponse",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "Typed identity/count boundary; other manifest sections remain additive.",
+  "properties": {
+    "agents": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Agents",
+      "type": "array"
+    },
+    "mcp_servers": {
+      "items": {
+        "$ref": "#/$defs/AgentBomManifestServerResponse"
+      },
+      "title": "Mcp Servers",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "agent-bom.manifest/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Summary",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "agents",
+    "mcp_servers",
+    "summary"
+  ],
+  "title": "AgentBomManifestResponse",
+  "type": "object"
+}

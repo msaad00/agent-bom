@@ -79,6 +79,20 @@ python examples/python_sdk/control_plane_smoke.py
 | `agent_bom.sdk.inventory(...)` | `InventoryResult` | Parses JSON, CSV, or NDJSON inventory using the canonical inventory loader. Kept under `agent_bom.sdk` to avoid shadowing the existing `agent_bom.inventory` module. |
 | `diff(...)` | `DiffResult` | Diffs two agent-bom reports or SBOM documents using the history diff engine. |
 
+## Inventory identity
+
+`GET /v1/inventory` returns package occurrences with `agent_id`, `server_id`,
+and `environment`. Equal display names do not merge different occurrences;
+missing identity stays empty and distinct records remain separate. Its existing
+`limit` and `offset` apply to each returned collection, with separate totals.
+
+`GET /v1/agent-bom/manifest` counts identified MCP servers once and retains
+their `agent_names`, `observation_ids`, and sanitized `observations`. Multiple
+reported agents do not imply one shared owner or environment. Conflicting
+server identities stay observation-scoped and do not acquire graph membership
+through a display-name fallback. The manifest remains a complete tenant-scoped
+export, rather than a paginated collection.
+
 ## Client Methods
 
 | Method | Endpoint | Use |

@@ -5,9 +5,11 @@ import sqlite3
 import subprocess
 import sys
 import tomllib
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from click import ClickException
 from click.testing import CliRunner
 
 from agent_bom.cli import main
@@ -184,6 +186,46 @@ def test_quickstart_run_offline_succeeds_with_empty_vulnerability_db(tmp_path, m
     with sqlite3.connect(graph_db) as connection:
         assert connection.execute("SELECT COUNT(*) FROM graph_nodes").fetchone()[0] > 0
         assert connection.execute("SELECT COUNT(*) FROM graph_edges").fetchone()[0] > 0
+
+
+@pytest.mark.parametrize("case", ["same_second", "earlier_second", "wrong_scan", "wrong_tenant", "no_nodes", "no_edges", "incomplete"])
+def test_quickstart_receipt_respects_timestamp_precision_and_identity(tmp_path, monkeypatch, case):
+    from agent_bom.cli._quickstart import _verify_persisted_graph
+    from agent_bom.db.graph_store import open_graph_db, save_graph
+    from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+
+    monkeypatch.setenv("AGENT_BOM_TENANT_ID", "quickstart-test")
+    started = datetime.now(timezone.utc).replace(microsecond=500_000)
+    created = started - timedelta(seconds=1) if case == "earlier_second" else started
+    graph = UnifiedGraph(
+        scan_id="fresh-scan",
+        tenant_id="other-tenant" if case == "wrong_tenant" else "quickstart-test",
+        created_at=created.isoformat(timespec="seconds"),
+    )
+    if case != "no_nodes":
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent"))
+        graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server"))
+        if case != "no_edges":
+            graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+    graph_db = tmp_path / "graph.db"
+    with open_graph_db(graph_db) as connection:
+        save_graph(connection, graph)
+    report_path = tmp_path / "report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "scan_id": "different-scan" if case == "wrong_scan" else graph.scan_id,
+                "scan_run": {"outcome": "partial" if case == "incomplete" else "complete"},
+            }
+        )
+    )
+
+    if case == "same_second":
+        receipt = _verify_persisted_graph(report_path=report_path, graph_db=graph_db, scan_started_at=started)
+        assert receipt == {"scan_id": "fresh-scan", "nodes": 2, "edges": 1}
+    else:
+        with pytest.raises(ClickException, match="Persisted graph could not be verified"):
+            _verify_persisted_graph(report_path=report_path, graph_db=graph_db, scan_started_at=started)
 
 
 def test_quickstart_run_no_gateway_policy_skips_file(tmp_path, _fake_scan):

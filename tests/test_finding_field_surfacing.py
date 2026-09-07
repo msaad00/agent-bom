@@ -49,6 +49,8 @@ _NEW_JSON_FINDING_KEYS = {
     # snapshot comparison, same as the other additive keys.
     "owner",
     "sla_due_at",
+    "sla_due_at_source",
+    "kev_due_date",
     "first_seen",
     "status",
     "lifecycle_status",

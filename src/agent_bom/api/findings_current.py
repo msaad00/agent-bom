@@ -260,9 +260,10 @@ def current_scan_findings(
     selected job's rows verbatim. Callers asserting that a scan operated may
     require executed evidence, excluding skipped/dry-run/failed outcomes.
     """
-    deduped: dict[str, tuple[tuple[str, str, str], dict[str, Any]]] = {}
+    retained_jobs = list(jobs)
+    deduped: dict[str, tuple[tuple[str, str, str], dict[str, Any], _ScanJobLike]] = {}
     for job in current_scan_jobs(
-        jobs,
+        retained_jobs,
         since=since,
         scan_id=scan_id,
         require_authoritative_evidence=require_authoritative_evidence,
@@ -272,8 +273,82 @@ def current_scan_findings(
             identity = finding_identity(row)
             existing = deduped.get(identity)
             if existing is None or authority > existing[0]:
-                deduped[identity] = (authority, row)
-    return [deduped[key][1] for key in sorted(deduped)]
+                deduped[identity] = (authority, row, job)
+    if scan_id:
+        return [deduped[key][1] for key in sorted(deduped)]
+
+    # Membership is already settled by the latest snapshots, including empty
+    # snapshots. History can supply dates only for those surviving identities.
+    selected = [deduped[key] for key in sorted(deduped)]
+    wanted = {key for _, row, job in selected if (key := _retained_finding_key(job, row)) is not None}
+    history = _retained_finding_history(retained_jobs, wanted, require_authoritative_evidence=require_authoritative_evidence)
+    from agent_bom.graph.sla import merge_finding_sla
+
+    rows = []
+    for _, row, job in selected:
+        key = _retained_finding_key(job, row)
+        previous = history.get(key) if key is not None else None
+        if previous:
+            dates = [value for value in (_normalized_evidence_timestamp(row.get("first_seen")), previous.get("first_seen")) if value]
+            first_seen = min(dates) if dates else None
+            row = merge_finding_sla(row, previous, first_seen=first_seen or "")
+            row["first_seen"] = first_seen
+        rows.append(row)
+    return rows
+
+
+def _retained_finding_key(job: _ScanJobLike, row: dict[str, Any], *, scope: str | None = None) -> tuple[str, str, str, str] | None:
+    """Bind history to an explicit canonical occurrence, never a display fallback."""
+    identity = row.get("canonical_id")
+    if not isinstance(identity, str) or not identity.strip():
+        return None
+    asset = row.get("asset")
+    environment = row.get("environment") or (asset.get("environment") if isinstance(asset, dict) else None) or ""
+    return str(getattr(job, "tenant_id", "default")), scope if scope is not None else scan_scope_key(job), identity, str(environment)
+
+
+def _retained_finding_history(
+    jobs: list[_ScanJobLike],
+    wanted: set[tuple[str, str, str, str]],
+    *,
+    require_authoritative_evidence: bool,
+) -> dict[tuple[str, str, str, str], dict[str, Any]]:
+    """Fold metadata from the already loaded tenant history, without enrichment.
+
+    Retention/deletion limits the earliest supported observation. The query's
+    display window does not restart it. Legacy projections without an explicit
+    canonical finding identity cannot establish this association.
+    """
+    from agent_bom.graph.sla import merge_finding_sla
+
+    history: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    if not wanted:
+        return history
+    scopes = {(key[0], key[1]) for key in wanted}
+    for job in sorted(jobs, key=scan_evidence_authority_key):
+        scope = scan_scope_key(job)
+        if (
+            getattr(job, "status", None) != JobStatus.DONE
+            or getattr(job, "child_job_ids", None)
+            or not isinstance(job.result, dict)
+            or (str(getattr(job, "tenant_id", "default")), scope) not in scopes
+            or (require_authoritative_evidence and not job_has_authoritative_scan_evidence(job))
+        ):
+            continue
+        for row in job.result.get("findings", []) or []:
+            if not isinstance(row, dict):
+                continue
+            key = _retained_finding_key(job, row, scope=scope)
+            if key is None or key not in wanted:
+                continue
+            previous = history.get(key, {})
+            dates = [value for value in (_normalized_evidence_timestamp(row.get("first_seen")), previous.get("first_seen")) if value]
+            first_seen = min(dates) if dates else None
+            # A recorded assignment is useful even when its observation date
+            # is unavailable; missing dates must not discard manual policy.
+            history[key] = merge_finding_sla(row, previous, first_seen=first_seen or "")
+            history[key]["first_seen"] = first_seen
+    return history
 
 
 def latest_current_scan_job(
@@ -288,7 +363,7 @@ def latest_current_scan_job(
         scan_id=None,
         require_authoritative_evidence=require_authoritative_evidence,
     )
-    return max(current, key=scan_evidence_authority_key, default=None)
+    return max(current, key=scan_evidence_authority_key) if current else None
 
 
 __all__ = [

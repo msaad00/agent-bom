@@ -766,3 +766,47 @@ agent-bom protects its own supply chain:
 | AppSec / security engineering | GitHub Action with SARIF | Fleet API + policy-as-code gates |
 | Platform / DevOps | Docker image gate + IaC scan | Air-gapped DB sync + runtime proxy |
 | Enterprise security | Central `agent-bom serve` | Postgres/Snowflake/ClickHouse + webhook integrations |
+
+
+### Finding deadlines across rescans
+
+Finding responses and structured exports carry `sla_due_at_source` with the
+existing `sla_due_at` value. For findings retained in the compliance hub current
+state, `severity-kev/v1` identifies the built-in severity
+window (critical 7 days, high 30, medium 90, low 180), anchored to the persisted canonical
+finding's earliest observation within its tenant. The built-in policy retains
+a known earlier KEV target. Rescanning a hub finding does not restart that window; severity changes
+recalculate it from the same earliest observation. Without a usable first
+observation or KEV deadline, the date is null and the source is `unavailable`.
+
+The current scan-job findings view selects the latest successful snapshot for
+each scan target scope, including an empty snapshot that retires absent rows.
+For each remaining finding, it uses the earliest valid first observation in
+retained jobs with the exact tenant, scan scope, canonical finding ID and
+environment. Changing the display window does not restart that retained
+observation or its derived deadline. An explicit `scan_id` request preserves
+that individual snapshot's dates. Missing dates or canonical identities are
+not reconstructed from job completion times, display names or unrelated assets.
+
+This read reuses the existing tenant job history; it does not persist an
+independent lifetime record. The default 90-day job TTL, 200-job in-memory
+limit, configured tenant quota and explicit deletion can remove older
+observations. The resulting first observation is therefore limited to retained
+evidence. Increasing retention cannot restore deleted history. Use durable
+storage and an evidence retention policy appropriate to the required SLA
+history; the compliance hub retains its own current-state lifecycle separately.
+
+An explicitly supplied `Finding.sla_due_at` is marked `explicit`; this identifies
+the input origin, not evidence of human approval. Rescans retain
+it until another explicitly marked assignment is supplied. This is a model and
+integration input, not an individual-finding deadline editor in the dashboard.
+Campaign deadlines remain independently editable through **Remediation → Edit
+owner and SLA**, the campaign workflow API, CLI, and MCP update command. These
+assignments do not rewrite individual finding policy.
+
+Historical non-null dates without recognized provenance remain `unknown` and
+are retained. The store copies extant unknown assignments forward before
+replacing their ledger payload; it never infers a source by comparing dates or
+reconstructs assignments already overwritten before this change. Unknown source
+values are not proof that an operator approved a deadline. Existing JSON payload
+storage carries this additive metadata without a database-column migration.

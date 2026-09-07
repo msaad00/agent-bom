@@ -71,6 +71,7 @@ _COLUMNS = [
     "workflow_status",
     "symbol_reachability_reason",
     "runtime_dependency_chain",
+    "sla_due_at_source",
 ]
 
 
@@ -134,6 +135,7 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
             "provenance_status": _verdict_cell(finding, "package_provenance_status"),
             "owner": finding.owner or "",
             "sla_due_at": finding.to_dict().get("sla_due_at") or "",
+            "sla_due_at_source": finding.to_dict()["sla_due_at_source"],
             "workflow_status": workflow_status(finding),
             "symbol_reachability_reason": evidence(finding, "symbol_reachability_reason", ""),
             "runtime_dependency_chain": ";".join(evidence(finding, "runtime_dependency_chain", []) or []),

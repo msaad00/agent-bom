@@ -4026,6 +4026,7 @@ def _finding_occurrence_summary(row: dict[str, Any]) -> dict[str, Any]:
             "status",
             "owner",
             "sla_due_at",
+            "sla_due_at_source",
             "last_seen",
             "last_observed",
             "graph_reachable",

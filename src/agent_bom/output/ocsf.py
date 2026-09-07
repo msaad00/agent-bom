@@ -194,6 +194,7 @@ def finding_to_ocsf(finding: "Finding", product_version: str = "") -> dict[str, 
     sla_due = finding.to_dict().get("sla_due_at")
     if sla_due:
         unmapped["sla_due_at"] = sla_due
+        unmapped["sla_due_at_source"] = finding.to_dict()["sla_due_at_source"]
     from agent_bom.output.finding_views import workflow_status
 
     status_value = workflow_status(finding)

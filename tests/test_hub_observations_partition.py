@@ -32,10 +32,10 @@ def test_partitioned_parent_ddl_includes_partition_key_in_pk() -> None:
 def test_create_partition_ddl_monthly_bounds() -> None:
     ddl = create_observation_partition_ddl(2026, 7)
     assert "hub_findings_current_observations_y2026m07" in ddl
-    assert "FROM ('2026-07-01') TO ('2026-08-01')" in ddl
+    assert "FROM ('2026-07-01T00:00:00+00:00') TO ('2026-08-01T00:00:00+00:00')" in ddl
 
     dec_ddl = create_observation_partition_ddl(2026, 12)
-    assert "FROM ('2026-12-01') TO ('2027-01-01')" in dec_ddl
+    assert "FROM ('2026-12-01T00:00:00+00:00') TO ('2027-01-01T00:00:00+00:00')" in dec_ddl
 
 
 def test_month_range_bounds_half_open() -> None:

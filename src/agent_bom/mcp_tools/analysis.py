@@ -151,6 +151,7 @@ def _finding_blast_radius(row: dict[str, Any], fallback_cve: str) -> dict[str, A
         "graph_min_hop_distance": row.get("graph_min_hop_distance"),
         "owner": row.get("owner"),
         "sla_due_at": row.get("sla_due_at"),
+        "sla_due_at_source": row.get("sla_due_at_source"),
     }
 
 

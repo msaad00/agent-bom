@@ -397,6 +397,8 @@ def _vulnerability_annotations(
     sla_due = explicit_sla or _compute_sla_due_at(_severity_value, observed_at, kev_due_date=vuln.kev_due_date)
     if sla_due is not None:
         statements.append(f"agent-bom:sla-due-at={sla_due}")
+        source = workflow_data.get("sla_due_at_source", "unknown") if explicit_sla else "severity-kev/v1"
+        statements.append(f"agent-bom:sla-due-at-source={source}")
     if workflow_data.get("owner"):
         statements.append(f"agent-bom:owner={workflow_data['owner']}")
     if workflow_data.get("workflow_status"):
@@ -462,6 +464,7 @@ def _finding_workflow_metadata(report: AIBOMReport) -> dict[tuple[str, str, str 
         sla_due = finding.to_dict().get("sla_due_at")
         if sla_due:
             metadata["sla_due_at"] = str(sla_due)
+            metadata["sla_due_at_source"] = str(finding.to_dict()["sla_due_at_source"])
         status = workflow_status(finding)
         if status:
             metadata["workflow_status"] = status

@@ -219,3 +219,36 @@ It is intentionally the `agent-bom` contract:
 
 If your platform team already provisions Postgres another way, keep that and
 just satisfy the same runtime contract.
+
+## Observation partition timezones
+
+New monthly `hub_findings_current_observations` partitions use explicit UTC
+bounds. Observation admission converts offset timestamps to UTC before choosing
+the month, so an observation at `2026-07-31T20:00:00-04:00` belongs to August.
+The database session timezone does not change these new bounds.
+
+Existing partition bounds are not rewritten during an upgrade. If a previous
+migration created date-only bounds under a non-UTC session, changing the session
+timezone afterward does not repair them. An adjacent UTC partition can overlap
+such an existing partition; PostgreSQL rejects that DDL instead of changing or
+dropping the historical rows.
+
+Before extending a legacy partition set, inspect its actual bounds in a UTC
+migration session:
+
+```sql
+SET TIME ZONE 'UTC';
+SELECT child.oid::regclass AS partition,
+       pg_get_expr(child.relpartbound, child.oid) AS bounds
+FROM pg_inherits inheritance
+JOIN pg_class child ON child.oid = inheritance.inhrelid
+WHERE inheritance.inhparent = 'public.hub_findings_current_observations'::regclass
+ORDER BY child.relname;
+```
+
+Bounds should begin and end at UTC midnight on the first of each month.
+Misaligned existing partitions require a database-owner maintenance plan with a
+backup and verified row preservation before UTC partitions are provisioned.
+There is no automatic detach, data relocation, or partition-bound migration in
+this change. Runtime application roles remain DML-only and cannot repair missing
+or conflicting migration-owned partitions.

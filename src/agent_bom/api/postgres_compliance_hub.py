@@ -220,15 +220,19 @@ def _fetch_ledger_payloads_postgres(
     conn: Any,
     tenant_id: str,
     finding_ids: Sequence[str],
+    *,
+    for_update: bool = False,
 ) -> dict[str, dict[str, Any]]:
     if not finding_ids:
         return {}
+    lock_clause = " FOR UPDATE" if for_update else ""
     rows = conn.execute(
-        """
+        f"""
         SELECT finding_id, payload
         FROM compliance_hub_findings
         WHERE tenant_id = %s AND finding_id = ANY(%s)
-        """,
+        ORDER BY finding_id{lock_clause}
+        """,  # nosec B608 — fixed internal lock clause; identifiers remain bound
         (tenant_id, list(finding_ids)),
     ).fetchall()
     if not rows:
@@ -677,6 +681,11 @@ class PostgresComplianceHubStore:
         self._bootstrap_ingest_stats(conn, tenant_id)
         if not findings:
             return 0
+        from agent_bom.graph.sla import carry_finding_sla
+
+        previous_payloads = _fetch_ledger_payloads_postgres(
+            conn, tenant_id, [str(row["id"]) for row in findings if isinstance(row, dict) and row.get("id")], for_update=True
+        )
         now = _now_utc_iso()
         rows_to_insert: list[tuple[str, str, dict[str, Any]]] = []
         for original in findings:
@@ -686,6 +695,8 @@ class PostgresComplianceHubStore:
             slim = persist_finding_references_postgres(conn, tenant_id, original, ensure_tables=False)
             payload = _redact_finding(slim)
             finding_id = str(payload.get("id") or f"hub-{now}-{id(original)}")
+            payload = carry_finding_sla(payload, previous_payloads.get(finding_id, {}))
+            previous_payloads[finding_id] = payload
             rows_to_insert.append((finding_id, frameworks_csv, payload))
         existing_ids = self._existing_finding_ids(conn, tenant_id, [row[0] for row in rows_to_insert])
         # Count DISTINCT ids: ``ON CONFLICT … DO UPDATE`` collapses ids repeated
@@ -716,6 +727,8 @@ class PostgresComplianceHubStore:
             )
             for finding_id, frameworks_csv, payload in rows_to_insert
         ]
+        # Existing-row locks cannot cover concurrent first inserts. The conflict
+        # expression repeats the bounded assignment carry at the atomic write.
         if insert_params:
             with conn.cursor() as cur:
                 cur.executemany(
@@ -728,7 +741,19 @@ class PostgresComplianceHubStore:
                         ingested_at = EXCLUDED.ingested_at,
                         source = EXCLUDED.source,
                         applicable_frameworks_csv = EXCLUDED.applicable_frameworks_csv,
-                        payload = EXCLUDED.payload,
+                        payload = EXCLUDED.payload || CASE
+                            WHEN compliance_hub_findings.payload->>'sla_due_at' IS NOT NULL
+                             AND COALESCE(compliance_hub_findings.payload->>'sla_due_at_source', 'unknown') != 'severity-kev/v1'
+                             AND COALESCE(EXCLUDED.payload->>'sla_due_at_source', 'unknown') != 'explicit'
+                            THEN jsonb_build_object(
+                                'sla_due_at', compliance_hub_findings.payload->'sla_due_at',
+                                'sla_due_at_source', CASE
+                                    WHEN compliance_hub_findings.payload->>'sla_due_at_source' = 'explicit' THEN 'explicit'
+                                    ELSE 'unknown'
+                                END
+                            )
+                            ELSE '{}'::jsonb
+                        END,
                         effective_reach_score = EXCLUDED.effective_reach_score,
                         origin = EXCLUDED.origin,
                         severity = EXCLUDED.severity,
@@ -1222,6 +1247,7 @@ class PostgresComplianceHubStore:
                 payload=payload,
                 updated_at=now,
             )
+            overlay = current_state_overlay(merged["payload"]) if ledger_finding_id else merged["payload"]
             origin_val = str(payload.get("origin") or "")
             # Canonical ``batch_id or scan_id`` scan filter key (#3926).
             scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")

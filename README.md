@@ -69,13 +69,15 @@ scan access to the local operator; shared listeners require configured authentic
 
 Need a disconnected scan? `agent-bom db update --osv-ecosystem PyPI` seeds
 advisories for Python. It covers only the selected ecosystem; add other ecosystems
-or use `agent-bom db update --source osv` for the full archive.
+or use `agent-bom db update --source osv` for the full archive, which can exceed 1 GB;
+the command shows live progress.
 Then run `agent-bom scan . --offline`.
 
 **A non-zero exit** can indicate a security gate or incomplete assessment;
 inspect the report and its coverage. Missing advisory data is not a clean scan.
 
-Use `uvx agent-bom scan .` without a global install.
+Use `uvx agent-bom scan .` without a global install, or
+`uvx agent-bom check requests@2.33.0 --ecosystem pypi` before adding a package.
 For package checks and automatic dependency/secret gates, see
 [pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook).
 
@@ -87,6 +89,9 @@ Start with a repository, image, SBOM or MCP config — no connection required.
 Or **add a read-only connection** for AWS, Azure, GCP or Snowflake and collect a
 scoped snapshot. Inventory is the output of a scan.
 
+The shared security graph connects packages, workloads, agents, tools, identities,
+and data assets through typed relationships with source evidence and explicit completeness.
+
 | Scan | Centralize | Enforce |
 |---|---|---|
 | Inventory, findings and exportable evidence from CLI or CI | Correlate services, agents, identities and data in your self-hosted control plane | Apply runtime policy to MCP tool calls through the proxy or gateway |
@@ -96,6 +101,8 @@ scoped snapshot. Inventory is the output of a scan.
 Follow `pillow@9.0.0` and `CVE-2023-4863` from a finding to the affected image
 processing service, then inspect its graph to assess reachable risk. Each
 relationship needs a source receipt; matching labels alone never prove a path.
+Vulnerable package → advisory finding → affected asset is an investigation path;
+credential names alone do not prove permission or exploitability.
 
 <p align="center">
   <picture>
@@ -133,7 +140,7 @@ it does not prove the underlying package was fixed.
 | AppSec / product security | Open **Overview**, then inspect a prioritized finding | Trace affected workloads and assign a fix |
 | Cloud security | Add a read-only connection, then run a scan | Collect scoped cloud and identity evidence |
 | Platform / DevOps | `pip install 'agent-bom[ui]' && AGENT_BOM_NO_AUTH_ROLE=analyst agent-bom serve --persist ~/.agent-bom/control-plane.db` | Centralize scans, owners and SLAs |
-| GRC / audit | `agent-bom report compliance-narrative scan.json` | Export mapped evidence with assessment gaps |
+| GRC / audit | `agent-bom report compliance-narrative scan.json` | Export OWASP LLM Top 10, MITRE ATLAS, EU AI Act and NIST AI RMF mappings; retain unavailable, partial, and not-assessed evidence |
 | CISO / engineering leader | Open **Overview** in the self-hosted control plane | Review priorities and evidence coverage |
 | AI assistant / automation | `agent-bom mcp server` | Scan, inspect evidence and plan fixes |
 
@@ -173,7 +180,7 @@ when needed. The full compatibility catalog has 86 MCP tools, 7 resources, and 8
 ## Trust
 
 Read-only discovery by default. Missing evidence stays unavailable or partial.
-Findings and framework mappings are not audit certification.
+Mapped findings and reachability are not presented as audit certification.
 
 [Product boundaries](docs/PRODUCT_BOUNDARIES.md) · [Permissions](docs/PERMISSIONS.md) ·
 [Threat model](docs/THREAT_MODEL.md) · [Security policy](SECURITY.md) ·

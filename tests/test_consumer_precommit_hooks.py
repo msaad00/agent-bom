@@ -33,6 +33,8 @@ def test_readme_exposes_zero_install_and_daily_developer_gates() -> None:
 
     assert "uvx agent-bom scan ." in readme
     assert "uvx agent-bom check requests@2.33.0 --ecosystem pypi" in readme
-    assert f"rev: v{version_match.group(1)}" in readme
-    assert "- id: agent-bom-secrets" in readme
-    assert "- id: agent-bom-scan" in readme
+    assert "[pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook)" in readme
+    guide = (ROOT / "docs/DEPLOYMENT.md").read_text(encoding="utf-8")
+    assert f"rev: v{version_match.group(1)}" in guide
+    assert "- id: agent-bom-secrets" in guide
+    assert "- id: agent-bom-scan" in guide

@@ -78,7 +78,8 @@ def test_public_accuracy_claim_matches_the_reproducible_baseline() -> None:
     negatives = baseline["true_negative"]
 
     readme = README.read_text(encoding="utf-8")
-    assert "[Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json)" in readme
+    assert "[Measured matcher proof](site-docs/features/scanning.md#reproducible-matching-evidence)" in readme
+    assert "docs/CVE_MATCHING_ACCURACY.json" in SCANNING_DOC.read_text(encoding="utf-8")
 
     scanning_doc = " ".join(SCANNING_DOC.read_text(encoding="utf-8").split())
     assert f"{evaluated:,} comparable OSV advisories" in scanning_doc

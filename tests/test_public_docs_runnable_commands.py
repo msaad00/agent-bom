@@ -170,5 +170,10 @@ def test_readme_gateway_lane_starts_from_control_plane_discovery() -> None:
     """
     readme = README.read_text(encoding="utf-8")
 
-    assert "gateway serve --from-control-plane" in readme
+    assert "[Proxy and gateway](site-docs/deployment/proxy-vs-gateway-vs-fleet.md)" in readme
+    guide = (ROOT / "site-docs/deployment/proxy-vs-gateway-vs-fleet.md").read_text()
+    gateway = guide.split("### Gateway", 1)[1].split("What `gateway` gives", 1)[0]
+    assert "agent-bom gateway serve" in gateway
+    assert "--from-control-plane" in gateway
+    assert "--upstreams" not in gateway
     assert "gateway serve --upstreams" not in readme

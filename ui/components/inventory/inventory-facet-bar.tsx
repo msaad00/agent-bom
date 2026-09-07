@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search } from "lucide-react";
 
 import { ICON_SIZE } from "@/lib/icon-sizes";
 import { useInventory, type InventoryFilterKey } from "@/lib/inventory-context";
@@ -41,7 +41,7 @@ export function InventoryFacetBar({
     title: string,
     buckets: { value: string | null; count: number }[],
   ) => (
-    <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--text-tertiary)] sm:max-w-[14rem]">
+    <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-tertiary sm:max-w-[14rem]">
       {title}
       <select
         aria-label={`Filter by ${title.toLowerCase()}`}
@@ -51,7 +51,7 @@ export function InventoryFacetBar({
           setFilter(key, value);
           if (key === "severity") onSeverityFilterChange?.(value || "all");
         }}
-        className="h-9 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 text-xs font-normal normal-case tracking-normal text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+        className="h-9 rounded-lg border border-outline bg-surface px-2.5 text-xs font-normal normal-case tracking-normal text-foreground focus:border-outline-strong focus:outline-none"
       >
         <option value="">All {title.toLowerCase()}</option>
         {buckets.filter((bucket) => bucket.value).map((bucket) => (
@@ -66,48 +66,37 @@ export function InventoryFacetBar({
   return (
     <section
       aria-label="Inventory filters"
-      className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3"
+      className="space-y-2"
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]">
-          <SlidersHorizontal className={ICON_SIZE.sm} aria-hidden="true" />
-          Whole-inventory filters
-        </p>
-        {hasActive ? (
-          <button
-            type="button"
-            onClick={() => {
-              clearFilters();
-              onSeverityFilterChange?.("all");
-            }}
-            className="text-xs text-[color:var(--text-secondary)] underline"
-          >
-            Clear
-          </button>
-        ) : null}
-      </div>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex min-w-[14rem] flex-[2] flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
+        <label className="flex min-w-[14rem] flex-[2] flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-tertiary">
           Search
           <span className="relative">
-            <Search className={`${ICON_SIZE.sm} absolute left-2.5 top-2.5 text-[color:var(--text-tertiary)]`} aria-hidden="true" />
+            <Search className={`${ICON_SIZE.sm} absolute left-2.5 top-2.5 text-ink-tertiary`} aria-hidden="true" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Name, id, type, source…"
-              className="h-9 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] pl-8 pr-3 text-xs font-normal normal-case tracking-normal text-[color:var(--foreground)] placeholder:text-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+              className="h-9 w-full rounded-lg border border-outline bg-surface pl-8 pr-3 text-xs font-normal normal-case tracking-normal text-foreground placeholder:text-ink-tertiary focus:border-outline-strong focus:outline-none"
             />
           </span>
         </label>
         {select("type", "Type", typeBuckets)}
-        {select("source", "Source", facets?.source.buckets ?? [])}
-        {select("provider", "Provider", facets?.provider.buckets ?? [])}
-        {select("environment", "Environment", facets?.environment.buckets ?? [])}
         {select("severity", "Finding severity", facets?.severity.buckets ?? [])}
+        {hasActive ? <button type="button" onClick={() => { clearFilters(); onSeverityFilterChange?.("all"); }}
+          className="h-9 px-2 text-xs text-ink-secondary underline">Clear</button> : null}
       </div>
-      <p className="mt-2 text-[11px] text-[color:var(--text-tertiary)]">
-        Counts are exact over the selected snapshot and calculated before pagination. Missing facet values remain explicit in API metadata.
-      </p>
+      <details>
+        <summary className="cursor-pointer text-xs text-ink-secondary">
+          Advanced filters{[filters.source, filters.provider, filters.environment].filter(Boolean).length > 0
+            ? ` · ${[filters.source, filters.provider, filters.environment].filter(Boolean).length} active` : ""}
+        </summary>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {select("source", "Source", facets?.source.buckets ?? [])}
+          {select("provider", "Provider", facets?.provider.buckets ?? [])}
+          {select("environment", "Environment", facets?.environment.buckets ?? [])}
+        </div>
+      </details>
     </section>
   );
 }

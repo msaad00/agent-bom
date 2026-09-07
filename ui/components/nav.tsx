@@ -264,8 +264,8 @@ function navLinkIconClass(href: string, active: boolean, hoverGroup = "group"): 
     return active ? tone : `${tone} opacity-80 ${hoverGroup}-hover:opacity-100`;
   }
   return active
-    ? "text-[color:var(--foreground)]"
-    : `text-[color:var(--text-tertiary)] ${hoverGroup}-hover:text-[color:var(--text-secondary)]`;
+    ? "text-foreground"
+    : `text-ink-tertiary ${hoverGroup}-hover:text-ink-secondary`;
 }
 
 function navGroupIconClass(label: string, hasActiveChild: boolean): string {
@@ -273,7 +273,7 @@ function navGroupIconClass(label: string, hasActiveChild: boolean): string {
   if (tone) {
     return hasActiveChild ? tone : `${tone} opacity-75`;
   }
-  return hasActiveChild ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]";
+  return hasActiveChild ? "text-foreground" : "text-ink-tertiary";
 }
 
 // ─── Risk counts for badges ─────────────────────────────────────────────────
@@ -561,20 +561,20 @@ export function Nav() {
     <>
       {/* Sidebar controls */}
       <div
-        className={`border-b border-[color:var(--border-subtle)] ${
+        className={`border-b border-outline ${
           isCollapsed
             ? "flex h-11 items-center justify-center px-2"
             : "flex h-11 items-center justify-between px-3"
         }`}
       >
         {!isCollapsed && (
-          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-tertiary">
             Navigate
           </span>
         )}
         {allowCollapse && <button
           onClick={() => setCollapsed((value) => !value)}
-          className="hidden rounded-md p-1.5 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)] lg:flex"
+          className="hidden rounded-md p-1.5 text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-foreground lg:flex"
           title={isCollapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -587,11 +587,11 @@ export function Nav() {
         <div className="px-3 py-3">
           <button
             onClick={() => setSearchOpen(true)}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] text-xs hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-muted border border-outline text-ink-secondary text-xs hover:border-outline-strong hover:text-foreground transition-colors"
           >
             <Search className="w-3.5 h-3.5" />
             <span>Search pages...</span>
-            <kbd className="ml-auto text-[10px] font-mono bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded px-1.5 py-0.5 text-[color:var(--text-secondary)]">⌘K</kbd>
+            <kbd className="ml-auto text-[10px] font-mono bg-surface-elevated border border-outline rounded px-1.5 py-0.5 text-ink-secondary">⌘K</kbd>
           </button>
         </div>
       )}
@@ -599,7 +599,7 @@ export function Nav() {
         <div className="px-2 py-3 flex justify-center">
           <button
             onClick={() => { setCollapsed(false); setSearchOpen(true); }}
-            className="p-2 rounded-lg text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-elevated)] transition-colors"
+            className="p-2 rounded-lg text-ink-secondary hover:text-foreground hover:bg-surface-elevated transition-colors"
             title="Search (⌘K)"
           >
             <Search className="w-4 h-4" />
@@ -620,8 +620,8 @@ export function Nav() {
             isCollapsed ? "justify-center px-0 py-2" : ""
           } ${
             hasActiveChild
-              ? "border-[color:var(--border-strong)] text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
-              : "border-transparent text-[color:var(--text-secondary)] hover:border-[color:var(--border-subtle)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
+              ? "border-outline-strong text-foreground bg-surface-elevated"
+              : "border-transparent text-ink-secondary hover:border-outline hover:text-foreground hover:bg-surface-muted"
           }`;
           const groupHeaderContent = (
             <>
@@ -635,13 +635,13 @@ export function Nav() {
                       {group.label}
                     </span>
                   </div>
-                  <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 text-[9px] font-mono text-[color:var(--text-tertiary)]">
+                  <span className="rounded-full border border-outline bg-surface-elevated px-1.5 py-0.5 text-[9px] font-mono text-ink-tertiary">
                     {group.visibleLinks.length}
                   </span>
                   {isExpanded ? (
-                    <ChevronDown className="w-3 h-3 text-[color:var(--text-tertiary)]" />
+                    <ChevronDown className="w-3 h-3 text-ink-tertiary" />
                   ) : (
-                    <ChevronRight className="w-3 h-3 text-[color:var(--text-tertiary)]" />
+                    <ChevronRight className="w-3 h-3 text-ink-tertiary" />
                   )}
                 </>
               )}
@@ -651,7 +651,7 @@ export function Nav() {
           return (
             <div
               key={group.label}
-              className={`rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] ${
+              className={`rounded-xl border border-outline bg-surface-muted ${
                 isCollapsed ? "group/navlane relative" : ""
               }`}
             >
@@ -685,7 +685,7 @@ export function Nav() {
 
               {/* Group Links */}
               {isExpanded && !isCollapsed && (
-                <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-[color:var(--border-subtle)] pl-2">
+                <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-outline pl-2">
                   {group.visibleLinks.map(({ href, label, icon: Icon, desc }) => {
                     const hrefPath = href.split("?")[0] ?? href;
                     const active = isNavLinkActive(href, path);
@@ -701,8 +701,8 @@ export function Nav() {
                         title={desc}
                         className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all group relative ${
                           active
-                            ? "border-l-2 border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)] ml-0 pl-2.5"
-                            : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
+                            ? "border-l-2 border-outline-strong bg-surface-elevated text-foreground ml-0 pl-2.5"
+                            : "text-ink-secondary hover:text-foreground hover:bg-surface-muted"
                         }`}
                       >
                         <Icon className={`w-3.5 h-3.5 shrink-0 ${navLinkIconClass(hrefPath, active)}`} />
@@ -710,7 +710,7 @@ export function Nav() {
 
                         {/* Capable-but-unconnected hint */}
                         {needsSetup && (
-                          <span className="ml-auto rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0 text-[9px] font-medium uppercase tracking-[0.12em] leading-4 text-[color:var(--text-tertiary)]">
+                          <span className="ml-auto rounded-full border border-outline bg-surface-elevated px-1.5 py-0 text-[9px] font-medium uppercase tracking-[0.12em] leading-4 text-ink-tertiary">
                             Set up
                           </span>
                         )}
@@ -746,8 +746,8 @@ export function Nav() {
                     );
                   })}
                   {group.hiddenLinks.length > 0 && (
-                    <details className="mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2">
-                      <summary className="cursor-pointer list-none text-[11px] font-medium uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
+                    <details className="mt-2 rounded-lg border border-outline bg-surface px-3 py-2">
+                      <summary className="cursor-pointer list-none text-[11px] font-medium uppercase tracking-[0.2em] text-ink-tertiary">
                         Unused in {deploymentModeLabel(counts?.deployment_mode)} ({group.hiddenLinks.length})
                       </summary>
                       <div className="mt-2 space-y-0.5">
@@ -755,7 +755,7 @@ export function Nav() {
                           <Link
                             key={href}
                             href={href}
-                            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12px] text-[color:var(--text-tertiary)] transition-colors hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
+                            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12px] text-ink-tertiary transition-colors hover:bg-surface-muted hover:text-ink-secondary"
                             title="Hidden until this deployment mode is detected"
                           >
                             <Icon className={`h-3.5 w-3.5 shrink-0 opacity-60 ${NAV_LINK_ICON_CLASS[href] ?? ""}`} />
@@ -777,13 +777,13 @@ export function Nav() {
                   onFocus={cancelCollapsedFlyoutClose}
                   onBlur={scheduleCollapsedFlyoutClose}
                 >
-                  <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5 shadow-2xl shadow-black/45">
+                  <div className="rounded-xl border border-outline bg-surface p-2.5 shadow-2xl shadow-black/45">
                     <div className="mb-2 flex items-center gap-2.5">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-outline bg-surface-muted">
                         <GroupIcon className={`h-[18px] w-[18px] ${navGroupIconClass(group.label, hasActiveChild)}`} />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--foreground)]">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-foreground">
                           {group.label}
                         </p>
                       </div>
@@ -800,8 +800,8 @@ export function Nav() {
                             title={desc}
                             className={`group/link flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 transition-colors ${
                               active
-                                ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                                : "text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--foreground)]"
+                                ? "bg-surface-elevated text-foreground"
+                                : "text-ink-secondary hover:bg-surface-muted hover:text-foreground"
                             }`}
                             onClick={() => setCollapsedFlyoutGroup(null)}
                           >
@@ -816,7 +816,7 @@ export function Nav() {
                       })}
                     </div>
                     {group.hiddenLinks.length > 0 && (
-                      <p className="mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5 text-[11px] text-[color:var(--text-tertiary)]">
+                      <p className="mt-2 rounded-lg border border-outline bg-surface-muted px-2.5 py-1.5 text-[11px] text-ink-tertiary">
                         {group.hiddenLinks.length} page{group.hiddenLinks.length === 1 ? "" : "s"} hidden for{" "}
                         {deploymentModeLabel(counts?.deployment_mode)} mode.
                       </p>
@@ -842,7 +842,7 @@ export function Nav() {
   return (
     <>
       {/* Product chrome — Snowflake-style top bar with canonical agent-bom lockup */}
-      <header className="fixed inset-x-0 top-0 z-[60] flex h-16 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
+      <header className="fixed inset-x-0 top-0 z-[60] flex h-16 items-center gap-3 border-b border-outline bg-surface/95 px-4 backdrop-blur-sm">
         <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
           <BrandLogo
             showWordmark={!collapsed}
@@ -853,7 +853,7 @@ export function Nav() {
         </Link>
         {counts?.deployment_mode && (
           <span
-            className="hidden rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] sm:inline-flex"
+            className="hidden rounded-full border border-outline bg-surface-elevated px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-ink-tertiary sm:inline-flex"
             title={`${deploymentModeLabel(counts.deployment_mode)} deployment — evidence scope for this control plane`}
           >
             {deploymentModeLabel(counts.deployment_mode)}
@@ -862,12 +862,12 @@ export function Nav() {
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => setSearchOpen(true)}
-            className="hidden items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] lg:flex"
+            className="hidden items-center gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-1.5 text-xs text-ink-secondary transition-colors hover:border-outline-strong hover:text-foreground lg:flex"
             title="Search pages (⌘K)"
           >
             <Search className="h-3.5 w-3.5" />
             <span>Search</span>
-            <kbd className="ml-1 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]">
+            <kbd className="ml-1 rounded border border-outline bg-surface-elevated px-1.5 py-0.5 font-mono text-[10px] text-ink-secondary">
               ⌘K
             </kbd>
           </button>
@@ -876,7 +876,7 @@ export function Nav() {
           <button
             ref={mobileMenuButtonRef}
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="rounded-lg p-2 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)] lg:hidden"
+            className="rounded-lg p-2 text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-foreground lg:hidden"
             aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={mobileOpen}
             aria-controls="mobile-navigation-dialog"
@@ -896,7 +896,7 @@ export function Nav() {
 
       {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:flex flex-col fixed left-0 top-16 bottom-0 z-40 bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] transition-[width] duration-200 ${
+        className={`hidden lg:flex flex-col fixed left-0 top-16 bottom-0 z-40 bg-surface border-r border-outline transition-[width] duration-200 ${
           collapsed ? "w-[52px]" : "w-[240px]"
         }`}
       >
@@ -914,7 +914,7 @@ export function Nav() {
             aria-modal="true"
             aria-label="Mobile navigation"
             tabIndex={-1}
-            className="lg:hidden fixed left-0 top-16 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in"
+            className="lg:hidden fixed left-0 top-16 bottom-0 z-50 w-[260px] bg-surface border-r border-outline flex flex-col animate-slide-in"
           >
             {renderSidebarContent(false, false)}
           </aside>
@@ -949,7 +949,7 @@ function SidebarFooter({
   const feedbackLink = (
     <Link
       href={`/help?from=${encodeURIComponent(path ?? "/")}`}
-      className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] ${collapsed ? "justify-center px-2" : ""}`}
+      className={`flex items-center gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-2 text-[12px] text-ink-secondary transition-colors hover:border-outline-strong hover:text-foreground ${collapsed ? "justify-center px-2" : ""}`}
       title="Share feedback or report a bug"
     >
       <MessageSquareQuote className="h-4 w-4 shrink-0" />
@@ -959,7 +959,7 @@ function SidebarFooter({
 
   if (collapsed) {
     return (
-      <div className="border-t border-[color:var(--border-subtle)] px-2 py-3">
+      <div className="border-t border-outline px-2 py-3">
         <div className="space-y-2">
           <SessionStatus collapsed loading={authLoading} session={session} />
           <DemoNavSignIn collapsed />
@@ -976,11 +976,11 @@ function SidebarFooter({
       : "Sign-in required";
 
   return (
-    <div className="border-t border-[color:var(--border-subtle)] px-3 py-3">
+    <div className="border-t border-outline px-3 py-3">
       <details className="group/footer">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[11px] text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-2 text-[11px] text-ink-secondary [&::-webkit-details-marker]:hidden">
           <span className="truncate">{footerHint}</span>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open/footer:rotate-90" />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-tertiary transition-transform group-open/footer:rotate-90" />
         </summary>
         <div className="mt-2 space-y-2">
           <SessionStatus collapsed={false} loading={authLoading} session={session} embedded />
@@ -1005,7 +1005,7 @@ function SessionStatus({
 }) {
   if (collapsed) {
     if (loading) {
-      return <div className="mx-auto h-2 w-2 rounded-full bg-[color:var(--text-tertiary)] animate-pulse" title="Checking session" />;
+      return <div className="mx-auto h-2 w-2 rounded-full bg-ink-tertiary animate-pulse" title="Checking session" />;
     }
     if (session?.authenticated) {
       return (
@@ -1020,7 +1020,7 @@ function SessionStatus({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)]">
+      <div className="rounded-lg border border-outline bg-surface-muted px-3 py-2 text-[12px] text-ink-secondary">
         Checking session…
       </div>
     );
@@ -1031,17 +1031,17 @@ function SessionStatus({
       return null;
     }
     return (
-      <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)]">
+      <div className="rounded-lg border border-outline bg-surface-muted px-3 py-2 text-[12px] text-ink-secondary">
         Sign-in required for protected control-plane actions
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Signed in</p>
-      <p className="mt-1 truncate text-[12px] font-medium text-[color:var(--foreground)]">{session.subject ?? "Authenticated user"}</p>
-      <p className="mt-1 text-[11px] text-[color:var(--text-secondary)]">
+    <div className="rounded-lg border border-outline bg-surface-muted px-3 py-2">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">Signed in</p>
+      <p className="mt-1 truncate text-[12px] font-medium text-foreground">{session.subject ?? "Authenticated user"}</p>
+      <p className="mt-1 text-[11px] text-ink-secondary">
         {session.role_summary?.display_name ?? session.role ?? "Unknown"} · tenant {session.tenant_id}
       </p>
     </div>
@@ -1082,7 +1082,7 @@ function ApiStatus({ collapsed }: { collapsed: boolean }) {
       ? "bg-emerald-500"
       : status === "offline"
       ? "bg-red-500"
-      : "bg-[color:var(--text-tertiary)] animate-pulse";
+      : "bg-ink-tertiary animate-pulse";
 
   if (collapsed) {
     return (
@@ -1093,7 +1093,7 @@ function ApiStatus({ collapsed }: { collapsed: boolean }) {
   }
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-[color:var(--text-secondary)]">
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-ink-secondary">
       <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
       <span className="truncate">
         {status === "online" ? `Control plane · v${version}` : status === "offline" ? "Control plane offline" : "Connecting…"}

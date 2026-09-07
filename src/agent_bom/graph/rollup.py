@@ -564,7 +564,13 @@ def rollup_view(
         )
 
     top_level = containers + orphans
-    top_level.sort(key=lambda c: (-c.aggregate.worst_severity_rank, -c.aggregate.descendant_count, c.id))
+    top_level.sort(
+        key=lambda c: (
+            -max(c.aggregate.worst_severity_rank, SEVERITY_RANK.get(c.severity.lower(), 0)),
+            -c.aggregate.descendant_count,
+            c.id,
+        )
+    )
 
     # Node-level aggregate over every orphan (matching nodes only), plus a
     # bounded per-item sample of the truncated tail for drill-in.

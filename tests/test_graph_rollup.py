@@ -23,6 +23,16 @@ from agent_bom.graph.types import EntityType, RelationshipType
 # ── Synthetic graph builders ─────────────────────────────────────────────
 
 
+def test_flat_rollup_prioritizes_node_severity_without_inventing_descendants() -> None:
+    graph = UnifiedGraph(scan_id="flat-risk", tenant_id="default")
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent"))
+    graph.add_node(UnifiedNode(id="vuln:z", entity_type=EntityType.PACKAGE, label="Affected package", severity="critical"))
+    result = rollup_view(graph)
+    assert result["top_level"][0]["id"] == "vuln:z"
+    assert result["top_level"][0]["severity"] == "critical"
+    assert result["top_level"][0]["aggregate"]["descendant_count"] == 0
+
+
 def _contains(graph: UnifiedGraph, parent: str, child: str) -> None:
     graph.add_edge(UnifiedEdge(source=parent, target=child, relationship=RelationshipType.CONTAINS))
 

@@ -433,14 +433,18 @@ class TestSnowflakeJobStore:
         with pytest.raises(ValueError, match="requires a tenant_id"):
             store.count_active()
 
+    @pytest.mark.parametrize("ttl_seconds", [None, 60])
     @patch("agent_bom.api.snowflake_store._sf_connect")
-    def test_cleanup_expired(self, mock_connect):
+    def test_cleanup_expired(self, mock_connect, ttl_seconds):
         cur = _mock_cursor(rowcount=3)
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        count = store.cleanup_expired(ttl_seconds=60)
+        count = store.cleanup_expired() if ttl_seconds is None else store.cleanup_expired(ttl_seconds=ttl_seconds)
         assert count == 3
+        delete_sql, params = cur.execute.call_args.args
+        assert "DELETE FROM scan_jobs" in delete_sql
+        assert params[1] == (90 * 24 * 60 * 60 if ttl_seconds is None else ttl_seconds)
 
 
 # ─── SnowflakeFleetStore ─────────────────────────────────────────────────────

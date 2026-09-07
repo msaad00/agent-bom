@@ -82,7 +82,7 @@ function PathViewToggle({
             className={`ep-view-option ${
               active
                 ? "bg-emerald-600 text-white"
-                : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
+                : "text-ink-secondary hover:text-foreground"
             }`}
           >
             <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -153,8 +153,9 @@ export function ExposurePathCommandCenter({
   const evidence = path.evidence;
   const pathSummary =
     path.summary ||
-    "A reachable package or service on this path inherits downstream credential and tool exposure from the agent runtime.";
+    "Review the ordered relationships and their source evidence for this path.";
   const primaryAction = actions[0];
+  const findingLabel = path.findings[0] && !/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(path.findings[0]) ? path.findings[0] : undefined;
   const findingSuffix = path.findings[0] ? ` through ${path.findings[0]}` : "";
   const headline = findingSuffix && title?.endsWith(findingSuffix) ? title.slice(0, -findingSuffix.length) : title;
   const packageHop = path.hops.find((hop) => hop.role === "package");
@@ -185,7 +186,7 @@ export function ExposurePathCommandCenter({
             <p
               className="ep-summary"
             >
-              {path.findings[0] ? <>{path.findings[0]}{packageHop ? <> · {packageHop.label}</> : null} · Follow the evidence to the affected asset.</> : "Follow the ordered relationships and inspect their evidence."}
+              {findingLabel ? <>{findingLabel}{packageHop ? <> · {packageHop.label}</> : null} · Follow the evidence to the affected asset.</> : "Follow the ordered relationships and inspect their evidence."}
             </p>
           </div>
           <div className="ep-metrics">
@@ -308,10 +309,10 @@ function MetricPill({
 }) {
   const toneClass =
     tone === "red"
-      ? "border-red-500/30 bg-red-500/10 text-[color:var(--foreground)]"
+      ? "border-red-500/30 bg-red-500/10 text-foreground"
       : tone === "green"
-        ? "border-emerald-500/30 bg-emerald-500/10 text-[color:var(--foreground)]"
-        : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--foreground)]";
+        ? "border-emerald-500/30 bg-emerald-500/10 text-foreground"
+        : "border-outline bg-surface text-foreground";
 
   return (
     <div className={`ep-metric ${toneClass}`}>
@@ -489,7 +490,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
           >
             {expanded ? "Return to ordered path" : "Open full-width diagram"}
           </button>
-          <span className="text-[color:var(--text-tertiary)]">
+          <span className="text-ink-tertiary">
             {expanded
               ? "Full-width diagram — scroll horizontally."
               : `All ${layout.totalHopCount} steps shown in order.`}
@@ -557,9 +558,9 @@ function ExposurePathSequence({
                   {hop.label}
                 </p>
                 {hop.subtitle ? (
-                  /sha256:[a-f0-9]{32,}/i.test(hop.subtitle) ? (
+                  /(?:sha256:[a-f0-9]{32,}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i.test(hop.subtitle) ? (
                     <details className="ep-identifier">
-                      <summary aria-label={`Show full identifier for ${hop.label}`}>{hop.subtitle.replace(/(sha256:[a-f0-9]{12})[a-f0-9]+/i, "$1…")}</summary>
+                      <summary aria-label={`Show full identifier for ${hop.label}`}>{/sha256:/i.test(hop.subtitle) ? hop.subtitle.replace(/(sha256:[a-f0-9]{12})[a-f0-9]+/i, "$1…") : "Identifier"}</summary>
                       <code>{hop.subtitle}</code>
                     </details>
                   ) : <p className="ep-sequence-subtitle">{hop.subtitle}</p>

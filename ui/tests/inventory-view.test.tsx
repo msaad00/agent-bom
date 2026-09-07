@@ -201,6 +201,30 @@ describe("AssetInventoryView inventory projection", () => {
 });
 
 describe("InventoryIndex whole-query truth", () => {
+  it("opens with asset rows and keeps secondary filters in a disclosure", async () => {
+    render(<InventoryProvider><InventoryIndex /></InventoryProvider>);
+    const table = await screen.findByRole("table", {name:"Asset inventory"});
+    expect(within(table).getByText("requests")).toBeVisible();
+    expect(screen.getByLabelText("Filter by provider")).not.toBeVisible();
+    fireEvent.click(screen.getByText(/Advanced filters/));
+    expect(screen.getByLabelText("Filter by provider")).toBeVisible();
+    expect(screen.queryByText(/whole-query facet|API metadata/)).not.toBeInTheDocument();
+  });
+
+  it("loads selected asset details and the next page from the same snapshot", async () => {
+    render(<InventoryProvider><InventoryIndex /></InventoryProvider>);
+    const table = await screen.findByRole("table", {name:"Asset inventory"});
+    fireEvent.click(within(table).getByText("requests"));
+    await waitFor(() => expect(api.getInventoryAsset).toHaveBeenCalledWith("pkg:requests", SNAPSHOT));
+    vi.mocked(api.getInventoryAssets).mockResolvedValueOnce(page([asset("pkg:fastapi")], {
+      pagination: { total:700, offset:100, limit:100, next_cursor:"", has_more:false, facet_filtered:false },
+    }));
+    fireEvent.click(screen.getByRole("button", {name:"Load more"}));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({scanId:SNAPSHOT,cursor:"cursor-2"})));
+    expect(await within(table).findByText("fastapi")).toBeVisible();
+    expect(within(table).getByText("requests")).toBeVisible();
+  });
+
   it("renders authoritative snapshot and kind totals despite a bounded first page", async () => {
     render(
       <InventoryProvider>
@@ -221,11 +245,11 @@ describe("InventoryIndex whole-query truth", () => {
   });
 
   it.each([
-    { count: 0, expected: "none yet", theme: "light" },
-    { count: 1, expected: "identity", theme: "dark" },
-    { count: 396, expected: "identities", theme: "light" },
-    { count: 396, expected: "identities", theme: "dark" },
-  ])("renders the identity inventory count for $count in $theme theme", async ({ count, expected, theme }) => {
+    { count: 0, theme: "light" },
+    { count: 1, theme: "dark" },
+    { count: 396, theme: "light" },
+    { count: 396, theme: "dark" },
+  ])("renders the identity inventory count for $count in $theme theme", async ({ count, theme }) => {
     document.documentElement.dataset.theme = theme;
     const identityFacets = facets();
     identityFacets.type.buckets.push({ value: "user", count });
@@ -250,7 +274,7 @@ describe("InventoryIndex whole-query truth", () => {
 
     const identities = await screen.findByRole("link", { name: /^Identities & credentials/ });
     expect(within(identities).getByText(count.toLocaleString())).toBeInTheDocument();
-    expect(within(identities).getByText(expected)).toBeInTheDocument();
+    expect(identities).toHaveAccessibleName(`Identities & credentials ${count.toLocaleString()}`);
     expect(within(identities).queryByText("identitys")).not.toBeInTheDocument();
     delete document.documentElement.dataset.theme;
   });

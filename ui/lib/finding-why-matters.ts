@@ -1,5 +1,5 @@
 import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
-import type { EnrichedVuln } from "@/lib/findings-view";
+import { findingWorkloadScope, type EnrichedVuln } from "@/lib/findings-view";
 
 export interface WhyItMattersLink {
   href: string;
@@ -26,9 +26,9 @@ function reachSentence(vuln: EnrichedVuln): string | null {
     typeof vuln.graph_min_hop_distance === "number" && vuln.graph_min_hop_distance > 0
       ? ` with a ${vuln.graph_min_hop_distance}-hop graph path`
       : vuln.graph_reachable
-        ? " with a confirmed graph path"
+        ? " with a reported graph path"
         : "";
-  return `Reachability is ${band}${score}${hop}, so this finding is prioritized above static-only CVE noise.`;
+  return `Reported reachability is ${band}${score}${hop}. Inspect the path evidence before concluding that the finding is exploitable.`;
 }
 
 function runtimeSentence(vuln: EnrichedVuln): string | null {
@@ -37,29 +37,33 @@ function runtimeSentence(vuln: EnrichedVuln): string | null {
   if (state === "blocked") {
     const count = vuln.runtime_evidence?.blocked_count;
     const suffix = typeof count === "number" && count > 0 ? ` (${count} blocked invocation${count === 1 ? "" : "s"})` : "";
-    return `Runtime enforcement already blocked tool activity tied to this exposure${suffix}; use the trace explorer to prove the deny decision.`;
+    return `Runtime enforcement recorded blocked tool activity${suffix}; remediation still needs verification. Review the trace for the deny decision.`;
   }
   if (state === "observed") {
     const count = vuln.runtime_evidence?.observed_count;
     const suffix = typeof count === "number" && count > 0 ? ` (${count} observed call${count === 1 ? "" : "s"})` : "";
-    return `Agents have invoked reachable tools on live paths${suffix}, so exploitability is not theoretical.`;
+    return `Runtime tool activity was observed${suffix}. Activity alone does not prove exploitation or a complete attack path.`;
   }
   return `Runtime evidence is ${state}, which should be weighed alongside static reachability.`;
 }
 
 function exposureSentence(vuln: EnrichedVuln): string | null {
+  const scope = findingWorkloadScope(vuln);
   const parts: string[] = [];
-  if (vuln.agents.length > 0) {
-    parts.push(`${vuln.agents.length} agent surface${vuln.agents.length === 1 ? "" : "s"}`);
+  if (scope.agents.length > 0) {
+    parts.push(`${scope.agents.length} agent surface${scope.agents.length === 1 ? "" : "s"}`);
+  }
+  if (scope.sbomSources.length > 0) {
+    parts.push(`${scope.sbomSources.length} SBOM source${scope.sbomSources.length === 1 ? "" : "s"}`);
   }
   if (vuln.exposed_credentials.length > 0) {
-    parts.push(`${vuln.exposed_credentials.length} exposed credential name${vuln.exposed_credentials.length === 1 ? "" : "s"}`);
+    parts.push(`${vuln.exposed_credentials.length} credential reference${vuln.exposed_credentials.length === 1 ? "" : "s"}`);
   }
   if (vuln.reachable_tools.length > 0) {
-    parts.push(`${vuln.reachable_tools.length} confirmed tool${vuln.reachable_tools.length === 1 ? "" : "s"}`);
+    parts.push(`${vuln.reachable_tools.length} linked tool${vuln.reachable_tools.length === 1 ? "" : "s"}`);
   }
   if (parts.length === 0) return null;
-  let sentence = `Blast radius spans ${parts.join(", ")}.`;
+  let sentence = `Reported scope includes ${parts.join(", ")}.`;
   if (vuln.phantom_tools?.length) {
     sentence += ` ${vuln.phantom_tools.length} registry-only tool${vuln.phantom_tools.length === 1 ? " is" : "s are"} excluded from scoring.`;
   }
@@ -94,10 +98,7 @@ export function buildWhyItMatters(vuln: EnrichedVuln): WhyItMattersNarrative | n
     links.push({ href: "/compliance", label: "View compliance evidence" });
   }
 
-  const headline =
-    vuln.severity === "critical" || vuln.severity === "high"
-      ? "Prioritize remediation — reachable exposure with governance impact"
-      : "Why this finding is ranked in your queue";
+  const headline = "Reported scope and activity";
 
   return { headline, paragraphs, complianceTags, links };
 }

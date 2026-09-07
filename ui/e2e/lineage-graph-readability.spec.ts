@@ -221,7 +221,7 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
   await expect(page.getByText("Advanced controls", { exact: true })).toBeHidden();
   const evidenceControls = page.getByTestId("graph-evidence-controls");
   await expect(evidenceControls).not.toHaveAttribute("open", "");
-  await expect(evidenceControls.getByText("Evidence & controls", { exact: true })).toBeVisible();
+  await expect(evidenceControls.getByText("Filters and evidence", { exact: true })).toBeVisible();
 
   const largeOverview = page.getByTestId("large-graph-overview");
   const application = page.getByRole("application");
@@ -291,6 +291,8 @@ test("lineage graph controls zoom, move, persist, lock, fit, and auto-layout", a
   const before = await node.boundingBox();
   expect(before).not.toBeNull();
 
+  await expect(page.getByRole("button", { name: "Edit layout" })).toBeHidden();
+  await page.getByText("Layout", { exact: true }).click();
   await page.getByRole("button", { name: "Edit layout" }).click();
   const editableNode = await node.boundingBox();
   const canvasBox = await canvas.boundingBox();

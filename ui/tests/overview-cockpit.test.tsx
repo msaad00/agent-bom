@@ -55,6 +55,57 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
+  it("shows one grade and one numeric score in the posture summary", () => {
+    render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
+    expect(screen.getAllByText("62%")).toHaveLength(1);
+    expect(screen.getAllByText("Grade C")).toHaveLength(1);
+  });
+
+  it.each([
+    "sbom:/private/tmp/reference/model.cdx.json",
+    "sbom:C:\\reference\\model.cdx.json",
+  ])("labels %s as an SBOM source and preserves its full technical value", async (source) => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} topPath={{
+      ...baseProps.topPath,
+      nodes: [{ type: "cve", label: "CVE-2020-14343" }, { type: "agent", label: source }],
+    }} />);
+    expect(screen.getByText("SBOM source: model.cdx.json")).toBeVisible();
+    expect(screen.queryByText(/Affected workload:/)).not.toBeInTheDocument();
+    expect(screen.getByText(source)).not.toBeVisible();
+    await user.click(screen.getByText("Technical details"));
+    expect(screen.getByText(source)).toBeVisible();
+  });
+
+  it.each(["agent", "server"] as const)("preserves the affected workload label for a normal %s", (type) => {
+    render(<OverviewCockpit {...baseProps} topPath={{
+      ...baseProps.topPath,
+      nodes: [{ type: "cve", label: "CVE-2020-14343" }, { type, label: "api-worker" }],
+    }} />);
+    expect(screen.getByText("Affected workload: api-worker")).toBeVisible();
+    expect(screen.queryByText(/SBOM source:/)).not.toBeInTheDocument();
+  });
+
+  it("keeps exact technical identifiers behind a separate disclosure", async () => {
+    const user = userEvent.setup();
+    const findingId = "fdf2bafa-4d62-505a-b16c-4c74d646437f";
+    render(<OverviewCockpit {...baseProps} topPath={{
+      key: "opaque-finding", href: "/findings?severity=high", riskScore: 10,
+      nodes: [
+        { type: "cve", label: findingId, severity: "high" },
+        { type: "package", label: "requests" },
+        { type: "agent", label: "data-pipeline" },
+        { type: "credential", label: "SERVICE_KEY" },
+      ],
+    }} />);
+    expect(screen.getByText(findingId)).not.toBeVisible();
+    expect(screen.getByRole("link", { name: /Finding.*requests.*data-pipeline/i })).toHaveAttribute("href", "/findings?severity=high");
+    expect(screen.queryByText(/exposes a credential/i)).not.toBeInTheDocument();
+    await user.click(screen.getByText("Technical details"));
+    expect(screen.getByText(findingId)).toBeVisible();
+    expect(screen.getByText("SERVICE_KEY")).toBeVisible();
+  });
+
   it("renders a single exec overview without altitude lenses or next-steps farm", () => {
     render(<OverviewCockpit {...baseProps} />);
 
@@ -72,7 +123,7 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByTestId("overview-activated-services")).not.toBeInTheDocument();
     expect(screen.queryByText(/Trend unavailable/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Current evidence snapshot/i)).toBeInTheDocument();
-    expect(screen.getByText(/Highest priority:/i)).toHaveTextContent(/path reaches an agent/i);
+    expect(screen.queryByText(/Highest priority:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/critical path/i)).not.toBeInTheDocument();
   });
 
@@ -191,11 +242,11 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    expect(screen.getByText("CVE-2026-5555")).toBeInTheDocument();
-    expect(screen.getByText("urllib3")).toBeInTheDocument();
-    expect(screen.getByText("CVE-2026-4444")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /CVE-2026-5555/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: /urllib3/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: /CVE-2026-4444/ })).toBeVisible();
     // Worst-first row drills to the exact CVE's finding rows (non-empty target).
-    const worst = screen.getByText("CVE-2026-5555").closest("a");
+    const worst = screen.getByRole("link", { name: /CVE-2026-5555/ });
     expect(worst).toHaveAttribute("href", "/findings?cve=CVE-2026-5555");
   });
 
@@ -210,9 +261,7 @@ describe("OverviewCockpit", () => {
   it("surfaces risk themes and links into findings / compliance", () => {
     render(<OverviewCockpit {...baseProps} findingsScopeLabel="Current findings · configured window" />);
 
-    expect(screen.getByText(/2 critical findings need attention/i)).toBeInTheDocument();
-    expect(screen.getByText("CVE-2020-14343")).toBeInTheDocument();
-    expect(screen.getByText("cursor")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /CVE-2020-14343.*cursor/i })).toBeVisible();
     expect(screen.getByRole("link", { name: "Critical findings" })).toHaveAttribute(
       "href",
       "/findings?scope=all&severity=critical",
@@ -518,6 +567,21 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText("Framework 9")).not.toBeInTheDocument();
   });
 
+  it("explains nonlinear pressure and the worse scan posture without subtracting the inputs", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} score={37} scoreFloored={true} scoreBreakdown={[
+      { driver: "critical", label: "Critical findings", count: 2, weight: 12, contribution: 24 },
+      { driver: "high", label: "High findings", count: 10, weight: 6, contribution: 60 },
+      { driver: "other", label: "Other findings", count: 61, weight: 2, contribution: 122 },
+    ]} />);
+    await user.click(screen.getByRole("button", { name: /What influences this score/ }));
+    expect(screen.getByText("Total weighted pressure: 206.0")).toBeVisible();
+    expect(screen.getByText(/nonlinear/i)).toBeVisible();
+    expect(screen.getByText(/worse recorded scan posture/i)).toBeVisible();
+    expect(screen.getByText("37%")).toBeVisible();
+    expect(screen.queryByText(/points off 100|Score = 100|−122/)).not.toBeInTheDocument();
+  });
+
   it("renders the score breakdown explainer from weighted inputs (#3940)", () => {
     render(
       <OverviewCockpit
@@ -534,7 +598,7 @@ describe("OverviewCockpit", () => {
 
     expect(screen.getByTestId("overview-score-explainer")).toBeInTheDocument();
     expect(screen.getByTestId("score-driver-critical")).toBeInTheDocument();
-    expect(screen.getByText("−24.0")).toBeInTheDocument();
+    expect(screen.getByText("24.0")).toBeInTheDocument();
     // Zero-contribution drivers are omitted so the panel stays legible.
     expect(screen.queryByTestId("score-driver-medium")).not.toBeInTheDocument();
   });

@@ -5,7 +5,6 @@ import type { ElementType } from "react";
 import {
   ArrowRight,
   Bug,
-  ChevronRight,
   Fingerprint,
   UserRound,
   Flame,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react";
 
 import type { OverviewResponse } from "@/lib/api";
+import { sbomSourceName } from "@/lib/findings-view";
 import type {
   ExecScoreDriver,
   OverviewCoverageLane,
@@ -91,7 +91,7 @@ function hasEvaluatedCompliance(compliance: OverviewComplianceSnapshot | null | 
 // coverage, Open issues, Compliance) — larger + normal-case so exec section
 // titles read as headings, not micro-labels (issue #3940 / #3931 item G).
 const SECTION_TITLE_CLASS =
-  "text-sm font-semibold normal-case tracking-normal text-[color:var(--foreground)]";
+  "text-sm font-semibold normal-case tracking-normal text-foreground";
 
 /**
  * How the posture score is rendered. Display-only groundwork for a future
@@ -178,6 +178,7 @@ export interface OverviewCockpitProps {
   scoreFormat?: PostureScoreFormat | undefined;
   /** Weighted inputs behind the score, for the "what influences this" panel. */
   scoreBreakdown?: ExecScoreDriver[] | null | undefined;
+  scoreFloored?: boolean | undefined;
   /** Called when the user picks a display format; parent persists it (#3940). */
   onScoreFormatChange?: ((format: PostureScoreFormat) => void) | undefined;
   postureSummary?: string | undefined;
@@ -224,6 +225,7 @@ export function OverviewCockpit({
   score,
   scoreFormat = "percent",
   scoreBreakdown = null,
+  scoreFloored,
   onScoreFormatChange,
   postureSummary,
   postureTrend = null,
@@ -261,7 +263,8 @@ export function OverviewCockpit({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 lg:p-5">
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+      <section className="min-w-0 rounded-2xl border border-outline bg-surface p-4 lg:p-5">
         <Collapsible
           bare
           title="Command center"
@@ -271,11 +274,7 @@ export function OverviewCockpit({
         >
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
 
-          {/* 1 — Posture headline + open issues by severity.
-              Posture track is capped (minmax) so a long summary can't grow it
-              unbounded and squeeze the open-issues severity tiles into an
-              unreadable sliver. */}
-          <div className="mt-1 grid gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
+          <div className="mt-3 grid gap-4">
             <PostureHero
               loading={loading}
               grade={grade}
@@ -303,22 +302,19 @@ export function OverviewCockpit({
 
           {/* 1b — What influences the score: read-only weighted-input breakdown
               so the grade is legible, not opaque (#3940). */}
-          <ScoreExplainer breakdown={scoreBreakdown} grade={grade} />
+          <ScoreExplainer breakdown={scoreBreakdown} grade={grade} floored={scoreFloored} />
         </Collapsible>
       </section>
 
       {/* 4 — Top risks: the hero exposure path */}
-      <section className="min-h-0">
+      <section className="min-h-0 min-w-0">
         <TopRisksPanel
           topPath={topPath}
           exposurePaths={exposurePaths}
-          critical={critical}
-          high={high}
-          credentials={credentials}
-          summaryReady={summaryReady}
           agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
         />
       </section>
+      </div>
       <section className="space-y-2" aria-label="Coverage and compliance context">
         <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />
         <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
@@ -349,25 +345,25 @@ function FreshnessStatus({
     <div
       data-testid="overview-freshness"
       role="status"
-      className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2"
+      className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1"
     >
       <div className="flex items-center gap-2">
         <span
-          className={`h-2 w-2 rounded-full ${latestScan ? "bg-emerald-500" : "bg-[color:var(--text-tertiary)]"}`}
+          className={`h-2 w-2 rounded-full ${latestScan ? "bg-emerald-500" : "bg-ink-tertiary"}`}
           aria-hidden="true"
         />
-        <span className="text-xs font-semibold text-[color:var(--foreground)]">{label}</span>
+        <span className="text-xs font-semibold text-foreground">{label}</span>
       </div>
       {loading ? (
-        <span className="text-[11px] text-[color:var(--text-tertiary)]">
+        <span className="text-[11px] text-ink-tertiary">
           Refreshing current evidence.
         </span>
       ) : latestScan ? (
-        <time className="text-xs font-medium tabular-nums text-[color:var(--text-secondary)]">
+        <time className="text-xs font-medium tabular-nums text-ink-secondary">
           {latestScan}
         </time>
       ) : (
-        <span className="text-[11px] text-[color:var(--text-tertiary)]">
+        <span className="text-[11px] text-ink-tertiary">
           {scans === 0 ? "Run a scan to establish freshness." : "The current evidence has no observed scan timestamp."}
         </span>
       )}
@@ -397,7 +393,7 @@ function CoverageOperationsSection({
   return (
     <Collapsible
       bare
-      className="mt-4 border-t border-[color:var(--border-subtle)] pt-1"
+      className="mt-4 border-t border-outline pt-1"
       data-testid="overview-coverage-operations"
       title="Coverage & operations"
       titleClassName={SECTION_TITLE_CLASS}
@@ -410,7 +406,7 @@ function CoverageOperationsSection({
           className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400"
         >
           {dataSourceCount > 0 ? (
-            <span className="text-[color:var(--text-tertiary)]">{dataSourceCount} connected · </span>
+            <span className="text-ink-tertiary">{dataSourceCount} connected · </span>
           ) : null}
           Connections <ArrowRight className="h-3 w-3" />
         </Link>
@@ -449,8 +445,8 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
   if (!coverage || coverage.length === 0) return null;
   return (
     <div className="pt-1" data-testid="overview-security-coverage">
-      <h3 className="mb-1 text-xs font-semibold text-[color:var(--foreground)]">Security disciplines</h3>
-      <p className="mb-2 text-[11px] leading-4 text-[color:var(--text-tertiary)]">
+      <h3 className="mb-1 text-xs font-semibold text-foreground">Security disciplines</h3>
+      <p className="mb-2 text-[11px] leading-4 text-ink-tertiary">
         Open findings per posture discipline — not assets or accounts. Lenses overlap, so one repo CVE counts under both Vuln mgmt and ASPM; lanes are not additive and will not sum to the total.
       </p>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
@@ -462,28 +458,28 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="flex flex-col gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition-colors hover:border-[color:var(--border-strong)]"
+              className="flex flex-col gap-2 rounded-xl border border-outline bg-surface-elevated p-3 transition-colors hover:border-outline-strong"
             >
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-xs font-semibold text-[color:var(--foreground)]">{lane.label}</span>
+                <span className="text-xs font-semibold text-foreground">{lane.label}</span>
                 {/* The unit is not decoration. A bare "1610" under a heading
                     called CSPM reads as assets, accounts, VMs or data stores
                     depending on the reader — every one of which is wrong. These
                     are FINDINGS in that posture lane, which is also what the
                     severity chips below sum to. */}
                 <span className="flex items-baseline gap-1">
-                  <span className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">
+                  <span className="text-lg font-bold tabular-nums text-foreground">
                     {total > 0 ? lane.count.toLocaleString() : "—"}
                   </span>
                   {total > 0 ? (
-                    <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-[color:var(--text-tertiary)]">
+                    <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
                       {lane.count === 1 ? "finding" : "findings"}
                     </span>
                   ) : null}
                 </span>
               </div>
               {/* Stacked severity strip — widths reflect share of the lane count. */}
-              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
+              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
                 {total > 0 &&
                   bands.map((band) => (
                     <span
@@ -498,7 +494,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               </div>
               <div className="flex flex-wrap gap-1">
                 {total === 0 ? (
-                  <span className="text-[11px] text-[color:var(--text-tertiary)]">No evidence</span>
+                  <span className="text-[11px] text-ink-tertiary">No evidence</span>
                 ) : (
                   bands.map((band) => (
                     <span
@@ -592,8 +588,8 @@ function EstateOpsStrip({
   return (
     <div data-testid="overview-estate-ops">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-xs font-semibold text-[color:var(--foreground)]">Operational signals</h3>
-        <span className="text-[11px] text-[color:var(--text-tertiary)]">
+        <h3 className="text-xs font-semibold text-foreground">Operational signals</h3>
+        <span className="text-[11px] text-ink-tertiary">
           {active} of {tiles.length} active
         </span>
       </div>
@@ -614,7 +610,7 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
       <Link
         href={tile.href}
         title={tile.hint ?? tile.label}
-        className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-[color:var(--border-subtle)] bg-transparent px-3 py-2 text-[color:var(--text-tertiary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+        className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-outline bg-transparent px-3 py-2 text-ink-tertiary transition hover:border-outline-strong hover:text-foreground"
       >
         <span className="truncate text-[11px] font-medium">{tile.label}</span>
         <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium">
@@ -629,15 +625,15 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
     <Link
       href={tile.href}
       title={tile.hint ?? tile.label}
-      className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 transition hover:border-[color:var(--border-strong)]"
+      className="flex items-center justify-between gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-2 transition hover:border-outline-strong"
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
-        <span className="truncate text-[11px] font-medium text-[color:var(--foreground)]">{tile.label}</span>
+        <span className="truncate text-[11px] font-medium text-foreground">{tile.label}</span>
       </div>
       <div className="flex shrink-0 items-baseline gap-1">
         <span className={`font-mono text-base font-semibold ${tone.text}`}>{tile.metric}</span>
-        <span className="truncate text-[10px] text-[color:var(--text-tertiary)]" title={tile.metricLabel}>
+        <span className="truncate text-[10px] text-ink-tertiary" title={tile.metricLabel}>
           {tile.metricLabel}
         </span>
       </div>
@@ -660,19 +656,19 @@ function ComplianceSnapshotPanel({
   const failing = evidenceReady ? allFrameworks.filter((item) => item.kind === "scored" && item.fail > 0).length : 0;
   const statusTone =
     !evidenceReady
-      ? "text-[color:var(--text-tertiary)]"
+      ? "text-ink-tertiary"
       : compliance?.overallStatus === "pass"
         ? "text-emerald-400"
         : compliance?.overallStatus === "warning"
           ? "text-amber-300"
           : compliance?.overallStatus === "fail"
             ? "text-red-400"
-            : "text-[color:var(--text-tertiary)]";
+            : "text-ink-tertiary";
 
   return (
     <Collapsible
       bare
-      className="mt-4 border-t border-[color:var(--border-subtle)]"
+      className="mt-4 border-t border-outline"
       title="Compliance"
       titleClassName={SECTION_TITLE_CLASS}
       defaultOpen={defaultOpen}
@@ -720,14 +716,14 @@ function ComplianceSnapshotPanel({
               <Link
                 key={framework.id}
                 href="/compliance"
-                className="grid min-h-[3.25rem] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-2 transition hover:border-[color:var(--border-strong)]"
+                className="grid min-h-[3.25rem] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-outline bg-surface-muted px-2.5 py-2 transition hover:border-outline-strong"
               >
                 <FrameworkIcon frameworkId={framework.id} size={32} />
                 <div className="min-w-0">
-                  <p className="truncate text-[11px] font-semibold leading-tight text-[color:var(--foreground)]">
+                  <p className="truncate text-[11px] font-semibold leading-tight text-foreground">
                     {framework.label}
                   </p>
-                  <p className="mt-0.5 truncate text-[10px] leading-tight text-[color:var(--text-tertiary)]">
+                  <p className="mt-0.5 truncate text-[10px] leading-tight text-ink-tertiary">
                     {isApplicability
                       ? `${framework.applicable ?? 0}/${framework.total} risks applicable`
                       : evaluated === 0
@@ -745,17 +741,17 @@ function ComplianceSnapshotPanel({
                         ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-200"
                         : tone === "pass"
                           ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                          : "border border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
+                          : "border border-outline bg-surface text-ink-tertiary"
                   }`}
                 >
-                  {tone === "applicability" ? "observed" : tone === "not_applicable" ? "none" : tone === "not_evaluated" ? "n/a" : tone}
+                  {tone === "applicability" ? "Risks mapped" : tone === "not_applicable" ? "none" : tone === "not_evaluated" ? "n/a" : tone}
                 </span>
               </Link>
             );
           })}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-5 text-center text-xs text-[color:var(--text-tertiary)]">
+        <div className="rounded-xl border border-dashed border-outline bg-surface-muted px-4 py-5 text-center text-xs text-ink-tertiary">
           {hasScanEvidence
             ? "Completed scans have not produced mapped framework evidence. Review scan scope before drawing a compliance conclusion."
             : "Run a scan to light up OWASP, NIST, CIS, and related framework coverage. Empty estates do not show pass tiles."}
@@ -768,223 +764,147 @@ function ComplianceSnapshotPanel({
 function TopRisksPanel({
   topPath,
   exposurePaths,
-  critical,
-  high,
-  credentials,
-  summaryReady,
   agentMeshHref = null,
 }: {
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
-  critical: number;
-  high: number;
-  credentials: number | null;
-  summaryReady: boolean;
   agentMeshHref?: string | null;
 }) {
-  const headline =
-    summaryReady && critical > 0
-      ? `${critical} critical finding${critical === 1 ? "" : "s"} need attention`
-      : summaryReady && high > 0
-        ? `${high} high-severity finding${high === 1 ? "" : "s"} in the latest scan`
-        : "No prioritized risk themes yet";
-
-  // Rank the correlated exposure paths by composite risk so the exec view leads
-  // with the worst chain. Each row shows the whole path in one glance:
-  // CVE → package → MCP/runtime → agent → credential. Fall back to the single
-  // top path when the full list hasn't been computed yet.
   const allPaths = exposurePaths.length > 0 ? exposurePaths : topPath ? [topPath] : [];
   const ranked = [...allPaths].sort((a, b) => b.riskScore - a.riskScore);
-  const MAX_ROWS = 5;
-  const shown = ranked.slice(0, MAX_ROWS);
+  const shown = ranked.slice(0, 3);
   const moreCount = ranked.length - shown.length;
-  const metaBits = [
-    summaryReady && critical > 0 ? `${critical} critical` : null,
-    summaryReady && high > 0 ? `${high} high` : null,
-    summaryReady && credentials != null && credentials > 0
-      ? `${credentials} touch secrets`
-      : null,
-  ].filter(Boolean);
 
   return (
-    <Collapsible
-      title="Top risks"
-      subtitle="Highest-risk exposure paths — correlated CVE → package → agent → credential"
-      count={ranked.length || undefined}
-      defaultOpen
-      scrollMaxHeight="28rem"
-      actions={
-        <div className="flex flex-wrap items-center gap-3">
-          {agentMeshHref ? (
-            <Link href={agentMeshHref} className="text-xs text-emerald-500 hover:text-emerald-400">
-              Agent mesh
-            </Link>
-          ) : null}
-          <Link href="/security-graph" className="text-xs text-emerald-500 hover:text-emerald-400">
-            Security graph
-          </Link>
-        </div>
-      }
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="text-sm font-semibold text-[color:var(--foreground)]">{headline}</p>
-        {metaBits.length > 0 ? (
-          <p className="text-[11px] text-[color:var(--text-tertiary)]">{metaBits.join(" · ")}</p>
-        ) : null}
-      </div>
-
+    <Collapsible title="Top risks" subtitle="Prioritized findings and affected workloads"
+      count={ranked.length || undefined} defaultOpen>
       {shown.length > 0 ? (
-        <div className="mt-3 space-y-2">
-          {shown.map((path, index) => (
-            <RiskChainRow key={path.key} path={path} rank={index + 1} />
-          ))}
+        <div className="space-y-2">
+          {shown.map((path, index) => <RiskChainRow key={path.key} path={path} rank={index + 1} />)}
         </div>
       ) : (
-        <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
+        <p className="text-sm text-ink-secondary">
           Run a scan to correlate CVEs, packages, agents, and credentials into ranked exposure paths.
         </p>
       )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {moreCount > 0 ? (
-          <Link
-            href="/security-graph"
-            className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-          >
-            +{moreCount} more risk path{moreCount === 1 ? "" : "s"} <ArrowRight className="h-3 w-3" />
-          </Link>
-        ) : null}
-        <Link
-          href="/findings?scope=all&severity=critical"
-          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
-        >
-          Critical findings
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <Link href="/security-graph" className="text-emerald-600 dark:text-emerald-400">
+          {moreCount > 0 ? `Security graph · ${moreCount} more risk paths` : "Security graph"}
         </Link>
-        <Link
-          href="/compliance"
-          className="rounded-lg border border-emerald-700/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200"
-        >
-          Compliance evidence
-        </Link>
+        {agentMeshHref ? <Link href={agentMeshHref} className="text-emerald-600 dark:text-emerald-400">Agent mesh</Link> : null}
+        <Link href="/findings?scope=all&severity=critical" className="text-ink-secondary">Critical findings</Link>
+        <Link href="/compliance" className="text-ink-secondary">Compliance evidence</Link>
       </div>
     </Collapsible>
   );
 }
 
-const RISK_NODE_ORDER: ExposurePathView["nodes"][number]["type"][] = [
-  "cve",
-  "package",
-  "server",
-  "agent",
-  "credential",
-];
-
 function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) {
-  // Order the chain into the readable attack narrative regardless of the raw
-  // node order: CVE → package → MCP/runtime → agent → credential.
-  const ordered = RISK_NODE_ORDER.flatMap((type) =>
-    path.nodes.filter((node) => node.type === type),
-  );
-  const hasCredential = path.nodes.some((node) => node.type === "credential");
-  const hasAgent = path.nodes.some((node) => node.type === "agent");
-  const topReason = `path${hasAgent ? " reaches an agent" : ""}${hasCredential ? " and exposes a credential" : ""}`;
+  const finding = path.nodes.find((node) => node.type === "cve");
+  const pkg = path.nodes.find((node) => node.type === "package");
+  const workload = path.nodes.find((node) => node.type === "agent") ?? path.nodes.find((node) => node.type === "server");
+  const sbomSource = workload ? sbomSourceName(workload.label) : null;
+  const findingLabel = finding && /^(CVE-\d{4}-\d+|GHSA-[\w-]+)$/i.test(finding.label) ? finding.label : "Finding";
+  const severity = finding?.severity?.toLowerCase();
+  const knownSeverity = severity && ["critical", "high", "medium", "low"].includes(severity) ? severity : null;
+
+  const severityTone = knownSeverity === "critical"
+    ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+    : knownSeverity === "high"
+      ? "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-300"
+      : "border-outline bg-surface-muted text-ink-secondary";
 
   return (
-    <Link
-      href={path.href}
-      className="group block rounded-lg border-b border-[color:var(--border-subtle)] px-3 py-3 transition hover:bg-[color:var(--surface-muted)]"
-    >
-      <div className="flex items-center gap-3">
-        <span className="w-4 shrink-0 text-center font-mono text-xs text-[color:var(--text-tertiary)]">
-          {rank}
-        </span>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-y-1">
-          {ordered.map((node, index) => (
-            <span key={`${node.type}-${index}`} className="inline-flex min-w-0 max-w-full items-center">
-              {index > 0 ? (
-                <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-[color:var(--text-tertiary)]" />
-              ) : null}
-              <span
-                className={`px-1 py-0.5 text-sm [overflow-wrap:anywhere] ${node.type === "cve" ? "font-medium text-[color:var(--foreground)]" : "text-[color:var(--text-secondary)]"}`}
-                title={node.label}
-              >
-                {node.label}
-              </span>
-            </span>
-          ))}
+    <article className={`rounded-lg border ${rank === 1 ? "border-outline-strong bg-surface-muted/40" : "border-outline"}`}>
+      <Link href={path.href} className="group block rounded-lg p-3 transition hover:bg-surface-muted">
+        <div className="flex items-start gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
+              <span>{findingLabel}</span>{pkg ? <> in <span>{pkg.label}</span></> : null}
+            </p>
+            <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere]">
+              {sbomSource ? `SBOM source: ${sbomSource}` : workload ? `Affected workload: ${workload.label}` : "Workload not identified"}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-secondary">
+              <span className={`rounded-md border px-2 py-0.5 font-semibold capitalize ${severityTone}`}>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
+              <span>Path priority <strong className="font-semibold tabular-nums text-foreground">{Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "unavailable"}</strong></span>
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">Inspect finding <ArrowRight className="h-3 w-3" aria-hidden="true" /></span>
+            </div>
+          </div>
         </div>
-        <span className="shrink-0 text-sm text-[color:var(--text-secondary)]" title={`Path priority ${path.riskScore.toFixed(1)}`}>
-          <span className="hidden sm:inline">Priority </span><strong className="font-medium text-[color:var(--foreground)]">{path.riskScore.toFixed(1)}</strong>
-        </span>
-        <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition group-hover:text-[color:var(--foreground)]" />
-      </div>
-      {rank === 1 ? (
-        <p className="mt-1.5 pl-7 text-xs font-medium text-[color:var(--text-secondary)]">
-          Highest priority: {topReason}
-        </p>
-      ) : null}
-    </Link>
+      </Link>
+      <details className="border-t border-outline px-3 py-2 text-xs">
+        <summary className="cursor-pointer text-ink-tertiary">Technical details</summary>
+        <dl className="mt-2 space-y-2">
+          {path.nodes.map((node, index) => (
+            <div key={`${node.type}-${index}`} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+              <dt className="capitalize text-ink-tertiary">{node.type === "cve" ? "Finding" : (node.type === "agent" || node.type === "server") && sbomSourceName(node.label) !== null ? "SBOM source" : node.type}</dt>
+              <dd className="text-ink-secondary [overflow-wrap:anywhere]">{node.label}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    </article>
   );
 }
 
 /**
  * Read-only "what influences this score" panel. Lists the weighted inputs
  * (severity buckets, KEV, exposure, compliance, unrated) with each driver's
- * count × weight = penalty contribution, so the grade is legible instead of an
- * opaque number (#3940). Only drivers that actually moved the score are shown.
+ * count × weight = relative pressure, so the grade is legible instead of an
+ * opaque number (#3940). Only inputs with finite positive pressure are shown.
  * A full weight/threshold editor is a documented follow-up.
  */
 function ScoreExplainer({
   breakdown,
   grade,
+  floored,
 }: {
+  floored?: boolean | undefined;
   breakdown?: ExecScoreDriver[] | null | undefined;
   grade: string;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
   const rows = (breakdown ?? [])
-    .filter((row) => row.count > 0 || row.contribution > 0)
+    .filter((row) => Number.isFinite(row.contribution) && row.contribution > 0 && Number.isFinite(row.count) && Number.isFinite(row.weight))
     .sort((a, b) => b.contribution - a.contribution);
   if (ungraded || rows.length === 0) return null;
-  const totalPenalty = rows.reduce((sum, row) => sum + row.contribution, 0);
+  const totalPressure = rows.reduce((sum, row) => sum + row.contribution, 0);
 
   return (
     <Collapsible
       bare
-      className="mt-4 border-t border-[color:var(--border-subtle)]"
+      className="mt-4 border-t border-outline"
       title="What influences this score"
       titleClassName={SECTION_TITLE_CLASS}
-      subtitle="Weighted risk inputs behind the grade · each shown as count × weight = points off 100"
+      subtitle="Relative weighted inputs and scoring method"
       defaultOpen={false}
       data-testid="overview-score-explainer"
     >
       <div className="mt-2 space-y-1.5">
         {rows.map((row) => {
-          const share = totalPenalty > 0 ? (row.contribution / totalPenalty) * 100 : 0;
           return (
-            <div key={row.driver} className="flex items-center gap-3" data-testid={`score-driver-${row.driver}`}>
-              <span className="w-40 shrink-0 truncate text-[11px] text-[color:var(--text-secondary)]" title={row.label}>
+            <div key={row.driver} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3" data-testid={`score-driver-${row.driver}`}>
+              <span className="text-[11px] text-ink-secondary" title={row.label}>
                 {row.label}
               </span>
-              <span className="w-24 shrink-0 text-right font-mono text-[11px] tabular-nums text-[color:var(--text-tertiary)]">
+              <span className="text-right font-mono text-[11px] tabular-nums text-ink-tertiary">
                 {row.count} × {row.weight}
               </span>
-              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
-                <span
-                  className="block h-full rounded-full bg-[color:var(--severity-high)]"
-                  style={{ width: `${Math.min(100, share)}%` }}
-                />
-              </div>
-              <span className="w-14 shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums text-[color:var(--foreground)]">
-                −{row.contribution.toFixed(1)}
+              <span className="w-14 shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums text-foreground">
+                {row.contribution.toFixed(1)}
               </span>
             </div>
           );
         })}
       </div>
-      <p className="mt-2 text-[10px] leading-tight text-[color:var(--text-tertiary)]">
-        Score = 100 − total points off (capped at 100). Weights, grade thresholds, and the display format are
-        configurable per tenant via the score-config API. A full in-UI weight editor is a follow-up.
+      <p className="mt-3 text-xs font-medium text-ink-secondary">Total weighted pressure: {totalPressure.toFixed(1)}</p>
+      <p className="mt-2 text-xs leading-relaxed text-ink-tertiary">
+        Each input is count × weight. The server converts combined pressure to a score using a nonlinear curve;
+        these values are not points deducted from 100.
+        {floored === true ? " The worse recorded scan posture limits the displayed score." : ""}
+        {floored === undefined ? " Whether a recorded scan limits this score is unavailable." : ""}
       </p>
     </Collapsible>
   );
@@ -1005,7 +925,7 @@ function ScoreFormatToggle({
 }) {
   return (
     <div
-      className="inline-flex overflow-hidden rounded-md border border-[color:var(--border-subtle)]"
+      className="inline-flex overflow-hidden rounded-md border border-outline"
       role="group"
       aria-label="Score display format"
       data-testid="score-format-toggle"
@@ -1020,8 +940,8 @@ function ScoreFormatToggle({
             aria-pressed={active}
             className={`px-1.5 py-0.5 text-[10px] font-semibold transition ${
               active
-                ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                : "bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]"
+                ? "bg-surface-elevated text-foreground"
+                : "bg-surface-muted text-ink-tertiary hover:text-foreground"
             }`}
           >
             {option.label}
@@ -1056,57 +976,40 @@ function PostureHero({
   cves: number | null;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
-  const badgeTone = ungraded
-    ? "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]"
-    : grade === "A" || grade === "B"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
-      : grade === "C" || grade === "D"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
-        : "border-red-500/40 bg-red-500/10 text-red-400";
   const graded = typeof score === "number" && !ungraded;
   const scoreDisplay = graded ? formatPostureScore(score, grade, scoreFormat) : null;
+  const scoreTone = graded && ["D", "F"].includes(grade)
+    ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+    : graded && grade === "C"
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+      : "border-outline-strong bg-surface-muted text-foreground";
   const blurb = loading
     ? "Refreshing the current posture and evidence summary."
     : derivePostureBlurb({ summary, critical, high, cves, graded });
 
   return (
     <div className="flex items-center gap-4">
-      <div
-        className={`flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl border ${badgeTone}`}
-        title={
-          loading
-            ? "Loading posture"
-            : graded
-              ? `Grade ${grade}${scoreDisplay ? ` · ${scoreDisplay}` : ""}`
-              : "Awaiting scan"
-        }
-      >
-        <span className="text-3xl font-bold leading-none">{grade}</span>
-        {graded && scoreFormat !== "grade" && scoreDisplay ? (
-          <span className="mt-0.5 text-[10px] font-semibold leading-none opacity-80">{scoreDisplay}</span>
-        ) : null}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-tertiary">
             Risk posture
           </p>
           {graded && onScoreFormatChange ? (
             <ScoreFormatToggle value={scoreFormat} onChange={onScoreFormatChange} />
           ) : null}
         </div>
-        <p className="mt-1 flex items-baseline gap-2 text-lg font-semibold text-[color:var(--foreground)]">
+        <p className={`mt-2 inline-flex flex-wrap items-baseline gap-3 rounded-xl border px-4 py-3 font-semibold ${scoreTone}`} data-testid="overview-posture-score">
           {loading ? (
             "Loading posture…"
           ) : graded ? (
             <>
               {/* Always show BOTH the letter grade and the %/points, whatever the
                   chosen primary format, so the number is never ambiguous. */}
-              <span>{scoreDisplay}</span>
+              <span className="text-4xl leading-none tracking-tight tabular-nums">{scoreDisplay}</span>
               {scoreFormat !== "grade" ? (
-                <span className="text-xs font-medium text-[color:var(--text-tertiary)]">Grade {grade}</span>
+                <span className="text-xs font-medium text-ink-tertiary">Grade {grade}</span>
               ) : typeof score === "number" ? (
-                <span className="text-xs font-medium text-[color:var(--text-tertiary)]">{Math.round(score)}%</span>
+                <span className="text-xs font-medium text-ink-tertiary">{Math.round(score)}%</span>
               ) : null}
             </>
           ) : (
@@ -1116,7 +1019,7 @@ function PostureHero({
         {graded ? (
           trend && trend.points >= 2 ? (
             <p
-              className="mt-1 text-[10px] text-[color:var(--text-tertiary)]"
+              className="mt-1 text-[10px] text-ink-tertiary"
               data-testid="overview-posture-trend"
               title={`Previous posture score: ${Math.round(trend.previousScore)}%`}
             >
@@ -1125,12 +1028,12 @@ function PostureHero({
                 : `${trend.direction === "improved" ? "Improved" : "Worsened"} ${Math.abs(Math.round(trend.delta))} points since the previous scan`}
             </p>
           ) : (
-            <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
+            <p className="mt-1 text-[10px] text-ink-tertiary">
               Current evidence snapshot · ranked exposure paths below show what to fix first
             </p>
           )
         ) : null}
-        <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">{blurb}</p>
+        <p className="mt-1 text-xs text-ink-secondary">{blurb}</p>
       </div>
     </div>
   );
@@ -1150,12 +1053,12 @@ const ISSUE_TYPE_GLYPH: Record<IssueType, ElementType> = {
 // Neutral grayscale fills for the in-tile issue-type mini bar — segments stay
 // distinguishable by lightness (theme-safe text tokens), never by severity hue.
 const ISSUE_TYPE_BAR: Record<IssueType, string> = {
-  vulnerability: "bg-[color:var(--text-secondary)]",
-  misconfiguration: "bg-[color:var(--text-tertiary)]",
-  secret: "bg-[color:var(--text-secondary)] opacity-60",
-  pii: "bg-[color:var(--text-secondary)] opacity-45",
-  identity: "bg-[color:var(--text-tertiary)] opacity-50",
-  unclassified: "bg-[color:var(--text-tertiary)] opacity-35",
+  vulnerability: "bg-ink-secondary",
+  misconfiguration: "bg-ink-tertiary",
+  secret: "bg-ink-secondary opacity-60",
+  pii: "bg-ink-secondary opacity-45",
+  identity: "bg-ink-tertiary opacity-50",
+  unclassified: "bg-ink-tertiary opacity-35",
 };
 
 /**
@@ -1180,9 +1083,9 @@ function CategoryChip({
     <Link
       href={href}
       title={title}
-      className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+      className="inline-flex items-center gap-1 rounded-full border border-outline bg-surface-muted px-2 py-0.5 text-[10px] font-semibold text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
     >
-      <Icon className="h-3 w-3 text-[color:var(--text-tertiary)]" aria-hidden="true" />
+      <Icon className="h-3 w-3 text-ink-tertiary" aria-hidden="true" />
       {label} {value}
     </Link>
   );
@@ -1246,7 +1149,7 @@ function SeverityIssueStrip({
 
   return (
     <div
-      className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1"
+      className="min-w-0 rounded-xl border border-outline bg-surface-muted px-3 py-1"
       data-testid="overview-severity-issue-strip"
     >
       <Collapsible
@@ -1255,8 +1158,8 @@ function SeverityIssueStrip({
         titleClassName={SECTION_TITLE_CLASS}
         subtitle={scopeLabel ?? "By severity and issue class"}
         defaultOpen
-        actions={
-          <div className="flex flex-wrap items-center gap-1.5">
+      >
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
             {/* Category chips are neutral + iconified: hue is reserved for
                 severity alone, so a category never mimics a severity band
                 (KEV is not amber, Secrets is not red, Compliance is not a
@@ -1293,9 +1196,7 @@ function SeverityIssueStrip({
               />
             ) : null}
           </div>
-        }
-      >
-      <div className="mb-3 mt-1 flex h-2.5 overflow-hidden rounded-full bg-[color:var(--surface)]">
+      <div className="mb-3 mt-1 flex h-2.5 overflow-hidden rounded-full bg-surface">
         {summaryReady && stackedTotal > 0 ? (
           bands.map((band) =>
             band.value > 0 ? (
@@ -1327,7 +1228,7 @@ function SeverityIssueStrip({
             href={findingsHref({ scope: "all", severity: band.key })}
             className={`rounded-lg border px-2.5 py-2 transition ${band.tint}`}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-secondary)]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-secondary">
               {band.label}
             </p>
             <p className={`mt-1 font-mono text-xl font-semibold ${band.tone}`}>
@@ -1335,7 +1236,7 @@ function SeverityIssueStrip({
             </p>
             {hasTyped && summaryReady ? (
               <div className="mt-2 space-y-1">
-                <div className="flex h-1.5 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
+                <div className="flex h-1.5 overflow-hidden rounded-full bg-surface-muted">
                   {issueTypes.map((issue) => {
                     const count = resolved[issue][band.key];
                     if (count <= 0 || band.value <= 0) return null;
@@ -1349,7 +1250,7 @@ function SeverityIssueStrip({
                     );
                   })}
                 </div>
-                <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] text-[color:var(--text-tertiary)]">
+                <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] text-ink-tertiary">
                   {issueTypes.map((issue) => {
                     const count = resolved[issue][band.key];
                     if (count <= 0) return null;
@@ -1364,14 +1265,14 @@ function SeverityIssueStrip({
                 </div>
               </div>
             ) : (
-              <p className="mt-2 text-[9px] text-[color:var(--text-tertiary)]">All issue types</p>
+              <p className="mt-2 text-[9px] text-ink-tertiary">All issue types</p>
             )}
           </Link>
         ))}
       </div>
 
       {hasTyped && summaryReady ? (
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-[color:var(--border-subtle)] pt-2.5">
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-outline pt-2.5">
           {issueTypes.map((issue) => {
             const total = resolved.byType[issue];
             if (total <= 0) return null;
@@ -1380,9 +1281,9 @@ function SeverityIssueStrip({
               <Link
                 key={issue}
                 href={findingsHref({ scope: "all", issue })}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface px-2 py-0.5 text-[10px] text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
               >
-                <Glyph className="h-3 w-3 text-[color:var(--text-tertiary)]" aria-hidden="true" />
+                <Glyph className="h-3 w-3 text-ink-tertiary" aria-hidden="true" />
                 {ISSUE_TYPE_SHORT[issue]} {total}
               </Link>
             );
@@ -1403,6 +1304,6 @@ function domainStatusTone(status: OverviewDomainStatus): { dot: string; text: st
     case "ok":
       return { dot: "bg-emerald-500", text: "text-emerald-400" };
     default:
-      return { dot: "bg-[color:var(--text-tertiary)]", text: "text-[color:var(--text-tertiary)]" };
+      return { dot: "bg-ink-tertiary", text: "text-ink-tertiary" };
   }
 }

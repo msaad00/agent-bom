@@ -25,7 +25,7 @@ launched.
 
 | Data class | Control | Default | Code path |
 |---|---|---|---|
-| API scan jobs | `AGENT_BOM_API_JOB_TTL` | `3600` seconds | `src/agent_bom/config.py`, `src/agent_bom/api/server.py`, store `cleanup_expired()` |
+| API scan jobs and result evidence | `AGENT_BOM_API_JOB_TTL` | `7776000` seconds (90 days) | `src/agent_bom/config.py`, `src/agent_bom/api/server.py`, store `cleanup_expired()` |
 | Retained scan jobs per tenant | `AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT` | `500` | `src/agent_bom/config.py`, `src/agent_bom/api/tenant_quota.py` |
 | Scan cache | `AGENT_BOM_SCAN_CACHE`, `AGENT_BOM_SCAN_CACHE_MAX_ENTRIES` | local cache, `100000` entries | `src/agent_bom/scan_cache.py`, `src/agent_bom/config.py` |
 | Enrichment cache | `AGENT_BOM_ENRICHMENT_TTL`, `AGENT_BOM_ENRICHMENT_MAX_CACHE` | `604800` seconds, `10000` entries | `src/agent_bom/enrichment.py`, `src/agent_bom/config.py` |
@@ -40,6 +40,12 @@ launched.
 Backup retention, object lock, legal hold, and immutable evidence archive
 windows are not set by the application. They belong in the operator's database,
 bucket, and backup policy.
+
+Job expiration removes the scan results used by findings and posture. An explicit
+shorter TTL is honored; deletion is not evidence that findings were remediated.
+Graph snapshots have an independent retention policy. See the
+[persistent API setup](ENTERPRISE_DEPLOYMENT.md#3-centralized-api-server--fleet-dashboard)
+for configuration and the storage/quota tradeoff.
 
 ## Tenant Data Export
 

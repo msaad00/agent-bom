@@ -492,7 +492,7 @@ ENRICHMENT_MAX_CACHE_ENTRIES = _int("AGENT_BOM_ENRICHMENT_MAX_CACHE", 10_000)
 # Used by api/server.py for the REST API job queue.
 #
 # 10 concurrent scan jobs prevents resource exhaustion on shared hosts.
-# 1-hour TTL auto-cleans completed jobs.  200 in-memory ceiling triggers
+# Completed job evidence has a separate bounded TTL. The 200-job in-memory ceiling triggers
 # LRU eviction for long-running API instances.
 
 API_MAX_CONCURRENT_JOBS = _int("AGENT_BOM_API_MAX_JOBS", 10)
@@ -557,7 +557,11 @@ AZURE_EVENT_VISIBILITY_TIMEOUT = _int("AGENT_BOM_AZURE_EVENT_VISIBILITY_TIMEOUT"
 # CIS rules. These knobs bound a single pull pass so it always terminates.
 GCP_EVENT_MAX_MESSAGES = _int("AGENT_BOM_GCP_EVENT_MAX_MESSAGES", 10)
 GCP_EVENT_MAX_BATCHES = _int("AGENT_BOM_GCP_EVENT_MAX_BATCHES", 10)
-API_JOB_TTL_SECONDS = _int("AGENT_BOM_API_JOB_TTL", 3_600)
+# Retain completed scan results for 90 days by default, matching the default
+# findings read window. These jobs hold the evidence used by findings/posture,
+# not just disposable queue metadata. Explicit TTL overrides remain seconds;
+# shorter values delete that evidence sooner. Graph retention is independent.
+API_JOB_TTL_SECONDS = _int("AGENT_BOM_API_JOB_TTL", 90 * 24 * 60 * 60)
 API_MAX_IN_MEMORY_JOBS = _int("AGENT_BOM_API_MAX_MEMORY_JOBS", 200)
 API_MAX_JOB_PROGRESS_EVENTS = _int("AGENT_BOM_API_MAX_JOB_PROGRESS_EVENTS", 500)
 API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT = _int("AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT", API_MAX_CONCURRENT_JOBS)

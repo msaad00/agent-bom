@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-07T17:29:24.716Z",
-  "source_commit": "4898ced30ba9675802f4a6747407ac600b4e79c0",
+  "captured_at": "2026-09-07T17:40:50.151Z",
+  "source_commit": "c3a5214892d9850f3a8601ef826de8b9762d3c65",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:8df21f41bb5730a9e809cc2c3377ab9313b2260e23a599479fa87a2092af83e3",
+  "capture_inputs_sha256": "sha256:aa68cf9be232983c3a6614da12316c7adcba5a4dd49e643d3fb7e63d65d2dd97",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.103.2",
-      "sha256": "sha256:5b7298c3f57ba99a94f51a285ba23d00a5371acde09aaeb64bd93364313f28f9"
+      "sha256": "sha256:6eded9cd079322bbfb730d91155e53f0efc4a2b5ac60fc97a6f04354871b705e"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center in the light theme",
       "visible_version": "0.103.2",
-      "sha256": "sha256:4761d168693cca6415dbcee8fc40bdcebdfdc1e8cf605e7e1d6f017bbbda3ca7"
+      "sha256": "sha256:1c828384b66ecfdf8a3e925343a34b265500b6a0bf2b4871c0305e4cac6dfa91"
     },
     {
       "presentation": "dark mobile",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.103.2",
-      "sha256": "sha256:8afe5b65544e337c759f3f6904aee43a4be1c0bc6080eec8035cf1bc599a63aa"
+      "sha256": "sha256:7c78e943fd960d12cf107d18c5d84f7628ab2cfc6f6fc03e503611ec0b3dbf6e"
     },
     {
       "presentation": "dark desktop",

@@ -10,7 +10,7 @@ cleanup can resume after a worker restart.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Mapping
 
 from agent_bom.security import sanitize_text
@@ -182,6 +182,11 @@ class _PersistedLifecycleAdapter:
             )
         return self.execution
 
+    def mark_collector_cleanup_failed(self) -> None:
+        """Carry the local failure into the next atomic durable cleanup transition."""
+        if "collector_unmount_failed" not in self.execution.warning_codes:
+            self.execution = replace(self.execution, warning_codes=(*self.execution.warning_codes, "collector_unmount_failed"))
+
     def cleanup(self, target: CloudSideScanTarget, collector_id: str) -> SideScanExecutionRecord:
         """Retry teardown from persisted resources; every step is idempotent."""
         self._validate_target(target)
@@ -189,6 +194,11 @@ class _PersistedLifecycleAdapter:
             return self.execution
         self._save(self.execution.transition(phase="cleanup", cleanup_status=CleanupStatus.IN_PROGRESS))
         warning_codes = list(self.execution.warning_codes)
+        if "collector_unmount_failed" in warning_codes:
+            # Keep every owned dependency: no provider-wide assumption that a
+            # snapshot is safe to delete while its clone remains mounted.
+            self._save(self.execution.transition(cleanup_status=CleanupStatus.PARTIAL))
+            return self.execution
         order = {"attachment": 0, "scan_disk": 1, "snapshot": 2}
         resources = sorted(self.execution.cleanup_candidates(), key=lambda resource: order.get(resource.kind, 99))
         for resource in resources:

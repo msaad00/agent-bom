@@ -489,3 +489,26 @@ class TestEnumeration:
         targets = scanner.enumerate_target_volumes()
         assert len(targets) == 501
         assert targets[-1]["volume_id"] == "vol-500"
+
+
+@pytest.mark.asyncio
+async def test_failed_unmount_retains_aws_clone_and_reports_recovery_ids(enabled, debian_rootfs, monkeypatch):
+    async def no_cves(self, packages):
+        return 0
+
+    class FailedUnmount(FakeMountController):
+        def unmount(self, mount_point):
+            raise OSError("synthetic busy mount")
+
+    monkeypatch.setattr(AwsEbsSideScanner, "_scan_cves", no_cves)
+    ec2 = FakeEc2Client()
+    result = await AwsEbsSideScanner(
+        ec2_client=ec2, collector_instance_id="i-collector", availability_zone="us-east-1a", mount_controller=FailedUnmount(debian_rootfs)
+    ).scan_volume("vol-target")
+    assert "detach_volume" not in ec2.names()
+    assert "delete_volume" not in ec2.names()
+    assert "delete_snapshot" not in ec2.names()
+    assert result.cleaned_up is False
+    assert result.to_dict()["scan_volume_id"] == "vol-temp-1"
+    assert result.snapshot_id == "snap-1"
+    assert "collector_unmount_failed" in result.warnings

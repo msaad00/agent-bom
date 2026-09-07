@@ -14,10 +14,11 @@ Trust model (non-negotiable):
   *inside the target account*. No disk image or block data leaves the account.
 - **Metadata-only output.** Only the package SBOM, matched CVEs, and secret
   *type/location* (never secret values, never file contents) are returned.
-- **Mandatory cleanup.** Snapshot → volume → mount are always torn down in a
-  ``try/finally``, even if parsing raises or the process is interrupted. A
-  best-effort orphan sweep deletes any ``agent-bom-sidescan``-tagged snapshots
-  left behind by an earlier crash.
+- **Cleanup evidence.** ``try/finally`` attempts mount → volume → snapshot
+  cleanup. Failed unmounts retain the clone and snapshot for operator recovery;
+  warning codes and resource IDs identify incomplete cleanup. A best-effort
+  orphan sweep handles tagged snapshots after crashes; it is not proof that a
+  collector mount or attached volume has been recovered.
 
 The actual OS-level mount runs on the collector and is abstracted behind a
 :class:`MountController` so the lifecycle is fully mockable in tests with no real
@@ -146,12 +147,14 @@ class SideScanResult:
     vulnerability_count: int = 0
     warnings: list[str] = field(default_factory=list)
     cleaned_up: bool = False
+    scan_volume_id: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "instance_id": self.instance_id,
             "volume_id": self.volume_id,
             "snapshot_id": self.snapshot_id,
+            "scan_volume_id": self.scan_volume_id,
             "package_count": len(self.packages),
             "vulnerability_count": self.vulnerability_count,
             "secret_count": len(self.secrets),
@@ -217,11 +220,11 @@ class CollectorMountController:
         try:
             subprocess.run(["umount", str(mount_point)], check=True, capture_output=True, timeout=120)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as exc:
-            logger.warning("side-scan: umount %s failed (best-effort): %s", mount_point, sanitize_text(exc))
+            raise SideScanConfigError("Collector unmount failed; local cleanup requires operator attention") from exc
         try:
             mount_point.rmdir()
-        except OSError:
-            pass
+        except OSError as exc:
+            raise SideScanConfigError("Collector mount directory cleanup failed; operator attention required") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -340,9 +343,9 @@ class AwsEbsSideScanner:
     ) -> SideScanResult:
         """Run the full snapshot → mount → parse → cleanup lifecycle for one volume.
 
-        Cleanup is guaranteed via ``try/finally`` — a parse failure or
-        interruption still tears down the snapshot and temp volume. Returns a
-        metadata-only :class:`SideScanResult`.
+        Cleanup is attempted via ``try/finally``. A failed unmount retains the
+        clone and snapshot for operator recovery. Returns a metadata-only
+        :class:`SideScanResult` with resource IDs and cleanup warnings.
         """
         result = SideScanResult(instance_id=instance_id, volume_id=volume_id)
         state = _LifecycleState()
@@ -361,7 +364,8 @@ class AwsEbsSideScanner:
             if scan_secrets_enabled:
                 result.secrets = self._scan_secrets_redacted(mount_point)
         finally:
-            # MANDATORY: always reap what we created, even on failure / interrupt.
+            # Attempt cleanup on failure too; retain resources if unmount is unsafe.
+            result.scan_volume_id = state.volume_id
             cleanup_warnings = self._cleanup(state)
             result.warnings.extend(cleanup_warnings)
             result.cleaned_up = not cleanup_warnings
@@ -492,8 +496,10 @@ class AwsEbsSideScanner:
         if state.mount_point is not None:
             try:
                 self._mount_controller.unmount(state.mount_point)
-            except Exception as exc:  # noqa: BLE001
-                warnings.append(f"unmount failed: {exc}")
+            except Exception:  # noqa: BLE001
+                warnings.append("collector_unmount_failed")
+                # Retain the mounted clone and its snapshot for operator recovery.
+                return warnings
 
         if state.volume_id:
             if state.attached_device:

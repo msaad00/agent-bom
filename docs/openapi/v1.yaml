@@ -5955,9 +5955,9 @@ components:
         \ Wave 2).\n\nThe authenticated, tenant-scoped door for the shipped\n``run_provider_side_scan``\
         \ executor that previously ran only from the CLI.\nRead-only toward customer\
         \ targets: agent-bom snapshots the disk, mounts a\ntemp copy on an in-account\
-        \ collector read-only, records SBOM + CVE + secret\n*metadata* only, and tears\
-        \ every owned temporary resource down. Credentials\nare never embedded and\
-        \ never accepted here \u2014 the executor resolves read-only\ncredentials\
+        \ collector read-only, records SBOM + CVE + secret\n*metadata* only, and attempts\
+        \ cleanup of owned temporary resources. Credentials\nare never embedded and\
+        \ never accepted here \u2014 the executor resolves scoped\nlifecycle credentials\
         \ from the provider's default chain. AWS EBS keeps its own CLI\nentrypoint\
         \ (its results are not persisted to the shared lifecycle store)."
       properties:

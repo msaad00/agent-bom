@@ -8,6 +8,8 @@ mutation credentials.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import time
 import uuid
@@ -120,8 +122,18 @@ class CloudSideScanExecutionResult:
     vulnerability_count: int = 0
     warnings: list[str] = field(default_factory=list)
     cleaned_up: bool = False
+    replayed: bool = False
+    # A replay has durable counts, not fabricated package/finding objects.
+    recorded_counts: dict[str, int] | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        counts = self.recorded_counts or {
+            "package_count": len(self.packages),
+            "vulnerability_count": self.vulnerability_count,
+            "secret_count": len(self.secrets),
+            "config_finding_count": len(self.config_findings),
+            "ioc_finding_count": len(self.ioc_findings),
+        }
         return {
             "provider": self.provider,
             "target_type": self.target_type,
@@ -133,11 +145,8 @@ class CloudSideScanExecutionResult:
             "cleanup_status": self.cleanup_status,
             "snapshot_id": self.snapshot_id,
             "scan_disk_id": self.scan_disk_id,
-            "package_count": len(self.packages),
-            "vulnerability_count": self.vulnerability_count,
-            "secret_count": len(self.secrets),
-            "config_finding_count": len(self.config_findings),
-            "ioc_finding_count": len(self.ioc_findings),
+            **counts,
+            "replayed": self.replayed,
             "secrets": [secret.to_dict() for secret in self.secrets],
             "config_findings": [finding.to_dict() for finding in self.config_findings],
             "ioc_findings": [finding.to_dict() for finding in self.ioc_findings],
@@ -296,10 +305,16 @@ async def run_cloud_side_scan_targets(
             if mount_point is not None:
                 try:
                     mount_controller.unmount(mount_point)
-                except Exception as exc:  # noqa: BLE001
-                    result.warnings.append(f"unmount failed: {sanitize_text(exc)}")
+                except Exception:  # noqa: BLE001
+                    result.warnings.append("collector_unmount_failed")
+                    mark_cleanup_failed = getattr(lifecycle, "mark_collector_cleanup_failed", None)
+                    if callable(mark_cleanup_failed):
+                        mark_cleanup_failed()
             persisted_cleanup = getattr(lifecycle, "cleanup", None)
-            if callable(persisted_cleanup):
+            if "collector_unmount_failed" in result.warnings and not callable(getattr(lifecycle, "mark_collector_cleanup_failed", None)):
+                # Custom/non-persisted adapters must also retain a mounted clone.
+                result.cleanup_status = "partial"
+            elif callable(persisted_cleanup):
                 try:
                     execution = persisted_cleanup(target, collector_id)
                     result.execution_id = str(getattr(execution, "execution_id", result.execution_id))
@@ -404,8 +419,8 @@ async def run_provider_side_scan(
 
     This is the shipped Azure Managed Disk + GCP Persistent Disk executor: it
     builds the durable lifecycle record, constructs the concrete injected-SDK
-    adapter, and drives :func:`run_cloud_side_scan_targets`, which guarantees
-    teardown of every owned temporary resource on success *and* failure. AWS EBS
+    adapter, and drives :func:`run_cloud_side_scan_targets`, which attempts
+    teardown of owned temporary resources and persists incomplete cleanup. AWS EBS
     keeps its own entry point (:func:`agent_bom.cloud.side_scan.run_side_scan`).
 
     Credentials are never embedded; ``client_factory`` resolves them from the
@@ -432,7 +447,13 @@ async def run_provider_side_scan(
     if provider == "azure" and not str(collector_resource_group or "").strip():
         raise SideScanConfigError("Azure Managed Disk side-scan requires --collector-resource-group for the in-account collector VM")
 
-    from .side_scan_lifecycle import get_side_scan_state_store, new_side_scan_execution
+    from .side_scan_lifecycle import (
+        CleanupStatus,
+        ExecutionStatus,
+        SideScanStateConflictError,
+        get_side_scan_state_store,
+        new_side_scan_execution,
+    )
     from .side_scan_provider_adapters import (
         AzureManagedDiskLifecycleAdapter,
         GcpPersistentDiskLifecycleAdapter,
@@ -455,6 +476,23 @@ async def run_provider_side_scan(
     )
 
     store = get_side_scan_state_store(state_db_path=state_db_path)
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "provider": provider,
+                "target_id": target_id,
+                "account_id": account_id,
+                "location": location,
+                "collector_id": collector_id,
+                "collector_resource_group": str(collector_resource_group or "").strip(),
+                "collector_lun": collector_lun,
+                "region": str(region or "").strip(),
+                "scan_secrets_enabled": scan_secrets_enabled,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
     execution = store.create_or_get(
         new_side_scan_execution(
             tenant_id=tenant_id,
@@ -463,37 +501,87 @@ async def run_provider_side_scan(
             target_id=target_id,
             collector_id=collector_id,
             idempotency_key=idempotency_key or uuid.uuid4().hex,
+            request_fingerprint=fingerprint,
         )
     )
 
+    # Legacy records cannot prove the full request scope; never infer it from a name or key.
+    if execution.request_fingerprint != fingerprint or execution.collector_id != collector_id:
+        raise SideScanStateConflictError("Side-scan retry scope cannot be verified; inspect the existing execution")
+    if execution.status is not ExecutionStatus.QUEUED:
+        # Return recorded recovery references, including historical deleted resources.
+        # Never choose between multiple IDs or infer an ID from the request scope.
+        recorded_resource_ids: dict[str, str | None] = {}
+        for kind in ("snapshot", "scan_disk"):
+            resource_ids = {resource.resource_id for resource in execution.resources if resource.kind == kind}
+            recorded_resource_ids[kind] = next(iter(resource_ids)) if len(resource_ids) == 1 else None
+        return [
+            CloudSideScanExecutionResult(
+                provider=provider,
+                target_type=target.target_type,
+                target_id=target_id,
+                account_id=account_id,
+                location=location,
+                snapshot_id=recorded_resource_ids["snapshot"],
+                scan_disk_id=recorded_resource_ids["scan_disk"],
+                execution_id=execution.execution_id,
+                execution_status=execution.status.value,
+                cleanup_status=execution.cleanup_status.value,
+                vulnerability_count=execution.vulnerability_count,
+                recorded_counts={
+                    "package_count": execution.package_count,
+                    "vulnerability_count": execution.vulnerability_count,
+                    "secret_count": execution.secret_count,
+                    "config_finding_count": execution.config_finding_count,
+                    "ioc_finding_count": execution.ioc_finding_count,
+                },
+                cleaned_up=execution.cleanup_status is CleanupStatus.COMPLETE,
+                replayed=True,
+                warnings=list(execution.warning_codes),
+            )
+        ]
+    # Claim before SDK construction so a simultaneous retry cannot start a second lifecycle.
+    claimed = execution.transition(status=ExecutionStatus.RUNNING)
+    store.save(claimed, expected_version=execution.state_version)
+    execution = claimed
     factory = client_factory or _default_provider_clients
-    clients = factory(provider, account_id=account_id, region=region)
+    try:
+        clients = factory(provider, account_id=account_id, region=region)
+        lifecycle: CloudSideScanLifecycle
+        if provider == "azure":
+            lifecycle = AzureManagedDiskLifecycleAdapter(
+                snapshots_client=clients["snapshots_client"],
+                disks_client=clients["disks_client"],
+                virtual_machines_client=clients["virtual_machines_client"],
+                execution=execution,
+                state_store=store,
+                collector_resource_group=str(collector_resource_group),
+                collector_vm_name=collector_id,
+                collector_lun=collector_lun,
+                sleep=sleep,
+            )
+        else:
+            lifecycle = GcpPersistentDiskLifecycleAdapter(
+                snapshots_client=clients["snapshots_client"],
+                disks_client=clients["disks_client"],
+                instances_client=clients["instances_client"],
+                execution=execution,
+                state_store=store,
+                project_id=account_id,
+                collector_zone=location,
+                collector_instance=collector_id,
+                sleep=sleep,
+            )
 
-    lifecycle: CloudSideScanLifecycle
-    if provider == "azure":
-        lifecycle = AzureManagedDiskLifecycleAdapter(
-            snapshots_client=clients["snapshots_client"],
-            disks_client=clients["disks_client"],
-            virtual_machines_client=clients["virtual_machines_client"],
-            execution=execution,
-            state_store=store,
-            collector_resource_group=str(collector_resource_group),
-            collector_vm_name=collector_id,
-            collector_lun=collector_lun,
-            sleep=sleep,
+    except Exception as exc:
+        failed = execution.transition(
+            status=ExecutionStatus.FAILED,
+            phase="finished",
+            cleanup_status=CleanupStatus.COMPLETE,
+            failure_code="configuration_unavailable" if isinstance(exc, SideScanConfigError) else "provider_setup_failed",
         )
-    else:
-        lifecycle = GcpPersistentDiskLifecycleAdapter(
-            snapshots_client=clients["snapshots_client"],
-            disks_client=clients["disks_client"],
-            instances_client=clients["instances_client"],
-            execution=execution,
-            state_store=store,
-            project_id=account_id,
-            collector_zone=location,
-            collector_instance=collector_id,
-            sleep=sleep,
-        )
+        store.save(failed, expected_version=execution.state_version)
+        raise
 
     return await run_cloud_side_scan_targets(
         [target],

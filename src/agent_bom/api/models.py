@@ -1077,9 +1077,9 @@ class SideScanTriggerRequest(BaseModel):
     ``run_provider_side_scan`` executor that previously ran only from the CLI.
     Read-only toward customer targets: agent-bom snapshots the disk, mounts a
     temp copy on an in-account collector read-only, records SBOM + CVE + secret
-    *metadata* only, and tears every owned temporary resource down. Credentials
-    are never embedded and never accepted here — the executor resolves read-only
-    credentials from the provider's default chain. AWS EBS keeps its own CLI
+    *metadata* only, and attempts cleanup of owned temporary resources. Credentials
+    are never embedded and never accepted here — the executor resolves scoped
+    lifecycle credentials from the provider's default chain. AWS EBS keeps its own CLI
     entrypoint (its results are not persisted to the shared lifecycle store).
     """
 

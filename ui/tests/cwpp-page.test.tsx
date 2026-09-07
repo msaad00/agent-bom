@@ -9,7 +9,7 @@ const { apiMock, authState } = vi.hoisted(() => ({
     triggerSideScan: vi.fn(),
     getSideScan: vi.fn(),
   },
-  authState: { capabilities: ["scan.run"] as string[] },
+  authState: { role: "admin", capabilities: ["scan.run"] as string[] },
 }));
 
 vi.mock("next/link", () => ({
@@ -22,7 +22,7 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/components/auth-provider", () => ({
   useAuthState: () => ({
-    session: { authenticated: true, tenant_id: "tenant-acme", role: "admin" },
+    session: { authenticated: true, tenant_id: "tenant-acme", role: authState.role },
     loading: false,
     error: null,
     refresh: vi.fn(),
@@ -65,6 +65,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  authState.role = "admin";
   authState.capabilities = ["scan.run"];
   apiMock.listSideScans.mockReset();
   apiMock.triggerSideScan.mockReset();
@@ -106,6 +107,40 @@ describe("CWPP side-scan page", () => {
     expect(within(table).getByText("Failed")).toBeInTheDocument();
     // Metadata-only counts appear in the table.
     expect(within(table).getAllByText("42").length).toBeGreaterThan(0);
+  });
+
+  it.each(["queued", "running", "failed", "disabled", "denied", "unavailable"])(
+    "does not turn an unevaluable %s execution into zero findings",
+    async (status) => {
+      apiMock.listSideScans.mockResolvedValue(responseWithExecutions([execution({
+        status,
+        counts: { package_count: 0, vulnerability_count: 0, secret_count: 0 },
+      })]));
+      render(<CwppSideScanPage />);
+      const row = await screen.findByTestId("cwpp-execution-row");
+      expect(within(row).getAllByText("Unavailable", { exact: true })).toHaveLength(status === "unavailable" ? 4 : 3);
+      expect(within(row).queryByText("0", { exact: true })).not.toBeInTheDocument();
+    },
+  );
+
+  it("preserves reported partial counts without inventing missing measurements", async () => {
+    apiMock.listSideScans.mockResolvedValue(responseWithExecutions([execution({
+      status: "partial", cleanup_status: "partial",
+      counts: { package_count: 12, vulnerability_count: 0 },
+    })]));
+    render(<CwppSideScanPage />);
+    const row = await screen.findByTestId("cwpp-execution-row");
+    expect(within(row).getByText("12", { exact: true })).toBeInTheDocument();
+    expect(within(row).getByText("0", { exact: true })).toBeInTheDocument();
+    expect(within(row).getByText("Unavailable", { exact: true })).toBeInTheDocument();
+    expect(within(row).getByText("Partial cleanup", { exact: true })).toBeInTheDocument();
+  });
+
+  it("does not synthesize completed measurements when the counts object is absent", async () => {
+    apiMock.listSideScans.mockResolvedValue(responseWithExecutions([execution({ counts: undefined })]));
+    render(<CwppSideScanPage />);
+    const row = await screen.findByTestId("cwpp-execution-row");
+    expect(within(row).getAllByText("Unavailable", { exact: true })).toHaveLength(3);
   });
 
   it("filters and paginates execution history", async () => {
@@ -235,6 +270,20 @@ describe("CWPP side-scan page", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Scan complete/));
   });
 
+  it.each(["partial", "not_started"])("does not report success while cleanup is %s", async (cleanup) => {
+    apiMock.listSideScans.mockResolvedValue(responseWithExecutions([]));
+    apiMock.triggerSideScan.mockResolvedValue({ status: "scan_complete", execution_id: "exec-newrun", execution: execution({ cleanup_status: cleanup }) });
+    render(<CwppSideScanPage />);
+    await screen.findByText("Run a side-scan");
+    for (const placeholder of ["proj / SUB", "projects/…/disks/os", "us-central1-a", "collector-vm"]) {
+      fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value: "scope" } });
+    }
+    fireEvent.click(screen.getByRole("button", { name: /Run side-scan/i }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Cleanup:");
+    expect(status).not.toHaveClass("text-emerald-500");
+  });
+
   it("shows an honest disabled envelope when side-scan is off", async () => {
     apiMock.listSideScans.mockResolvedValue({ tenant_id: "tenant-acme", executions: [], capabilities: CAPABILITIES, credentialed_smoke: false });
     apiMock.triggerSideScan.mockResolvedValue({
@@ -255,7 +304,8 @@ describe("CWPP side-scan page", () => {
   });
 
   it("disables the run button for non-admin roles", async () => {
-    authState.capabilities = [];
+    authState.role = "analyst";
+    authState.capabilities = ["scan.run"];
     apiMock.listSideScans.mockResolvedValue({ tenant_id: "tenant-acme", executions: [], capabilities: CAPABILITIES, credentialed_smoke: false });
     render(<CwppSideScanPage />);
     await waitFor(() => expect(screen.getByText("Admin role required to run.")).toBeInTheDocument());

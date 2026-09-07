@@ -299,7 +299,7 @@ describe("OverviewCockpit", () => {
   it("shows an honest empty strip when there are genuinely no risks (#4063)", () => {
     render(<OverviewCockpit {...baseProps} topPath={null} exposurePaths={[]} critical={0} high={0} />);
     expect(
-      screen.getByText(/Run a scan to correlate CVEs, packages, agents, and credentials/i),
+      screen.getByText(/No prioritized findings in the current overview/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/CVE-/)).not.toBeInTheDocument();
   });

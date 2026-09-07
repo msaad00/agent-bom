@@ -66,6 +66,7 @@ export default function Dashboard() {
   const [overviewRefreshing, setOverviewRefreshing] = useState(false);
   const [overviewUnavailable, setOverviewUnavailable] = useState(false);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
+  const [complianceLoading, setComplianceLoading] = useState(true);
   const [trends, setTrends] = useState<TrendsResponse | null>(null);
   const [postureOverviewLoading, setPostureOverviewLoading] = useState(true);
   // Local display-format override; falls back to the persisted per-tenant
@@ -110,7 +111,9 @@ export default function Dashboard() {
         if (!cancelled) setCompliance(value);
       },
       () => {},
-    );
+    ).finally(() => {
+      if (!cancelled) setComplianceLoading(false);
+    });
     void api.getTrends(2).then(
       (value) => {
         if (!cancelled) setTrends(value);
@@ -466,7 +469,9 @@ export default function Dashboard() {
       )}
 
       <OverviewCockpit
-        loading={postureOverviewLoading}
+        loading={!importedReport && postureOverviewLoading}
+        overviewUnavailable={!importedReport && overviewUnavailable && !overview}
+        complianceLoading={!importedReport && complianceLoading}
         grade={postureGrade}
         score={postureScore}
         scoreFormat={scoreFormat}

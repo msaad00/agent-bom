@@ -172,6 +172,8 @@ function derivePostureBlurb({
 export interface OverviewCockpitProps {
   /** True until the posture and cross-domain overview requests settle. */
   loading?: boolean | undefined;
+  overviewUnavailable?: boolean | undefined;
+  complianceLoading?: boolean | undefined;
   grade: string;
   score?: number | undefined;
   /** Display-only score presentation. Defaults to a percentage. */
@@ -221,6 +223,8 @@ export interface OverviewCockpitProps {
 
 export function OverviewCockpit({
   loading = false,
+  overviewUnavailable = false,
+  complianceLoading = false,
   grade,
   score,
   scoreFormat = "percent",
@@ -307,12 +311,20 @@ export function OverviewCockpit({
 
       <section aria-label="Coverage & controls" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
         <h2 className={SECTION_TITLE_CLASS}>Coverage &amp; controls</h2>
-        <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />
-        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
+        {loading && !domains ? (
+          <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
+        ) : overviewUnavailable && !domains ? (
+          <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
+        ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
+        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
+          loading={loading || complianceLoading || (scans === null && !overviewUnavailable)} />
       </section>
       </div>
       <section aria-label="Top risks" className="min-w-0">
         <TopRisksPanel
+          loading={loading}
+          unavailable={overviewUnavailable}
+          scans={scans}
           topPath={topPath}
           exposurePaths={exposurePaths}
           agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
@@ -636,9 +648,11 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
 function ComplianceSnapshotPanel({
   compliance,
   hasScanEvidence = false,
+  loading = false,
 }: {
   compliance: OverviewComplianceSnapshot | null | undefined;
   hasScanEvidence?: boolean | undefined;
+  loading?: boolean | undefined;
 }) {
   const allFrameworks = compliance?.frameworks ?? [];
   const scored = allFrameworks.filter((item) => item.kind === "scored");
@@ -655,7 +669,9 @@ function ComplianceSnapshotPanel({
           Trust center <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
-      {evidenceReady ? (
+      {loading ? (
+        <p role="status" className="mt-2 text-xs text-ink-secondary">Loading control evaluation…</p>
+      ) : evidenceReady ? (
         <>
           <p className="mt-2 text-base font-semibold tabular-nums text-foreground">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
           <p className="mt-1 text-xs text-ink-secondary">{Math.round(compliance.overallScore)}% of {compliance.evaluatedControls} evaluated controls · {attention} framework{attention === 1 ? " needs" : "s need"} attention</p>
@@ -739,10 +755,16 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
 }
 
 function TopRisksPanel({
+  loading,
+  unavailable,
+  scans,
   topPath,
   exposurePaths,
   agentMeshHref = null,
 }: {
+  loading: boolean;
+  unavailable: boolean;
+  scans: number | null;
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
   agentMeshHref?: string | null;
@@ -755,13 +777,19 @@ function TopRisksPanel({
   return (
     <Collapsible title="Top risks"
       count={ranked.length || undefined} defaultOpen>
-      {shown.length > 0 ? (
+      {loading ? (
+        <p role="status" className="text-sm text-ink-secondary">Loading prioritized findings…</p>
+      ) : shown.length > 0 ? (
         <div className="space-y-2">
           {shown.map((path, index) => <RiskChainRow key={path.key} path={path} rank={index + 1} />)}
         </div>
       ) : (
         <p className="text-sm text-ink-secondary">
-          Run a scan to correlate CVEs, packages, agents, and credentials into ranked exposure paths.
+          {unavailable
+            ? "Prioritized findings unavailable."
+            : scans === 0
+              ? "No completed scans. Run a scan to assess findings."
+              : "No prioritized findings in the current overview."}
         </p>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">

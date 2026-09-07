@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 const EMPTY = {
@@ -58,5 +59,59 @@ for (const theme of ["light", "dark"] as const) {
     await page.keyboard.press("Escape");
     await expect(inspect).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  test(`Skills status and provenance chip contrast in ${theme}`, async ({ page }, testInfo) => {
+    await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.route("**/v1/**", (route) => route.fulfill({ json: {} }));
+    const statuses = ["malicious", "suspicious", "pending", "unavailable", "clean"];
+    const provenance = ["bundle_found_but_invalid", "unsigned", "unsigned", "missing", "verified"];
+    await page.route("**/v1/skills/scan", (route) => route.fulfill({ json: {
+      ...EMPTY, status: "completed", run_id: "contrast-fixture", created_at: "2026-09-07T00:00:00Z",
+      summary: { ...EMPTY.summary, files_scanned: 5 },
+      files: statuses.map((status, index) => ({ ...FILE, path: `skills/${status}/SKILL.md`, status, provenance: { ...FILE.provenance, status: provenance[index] } })),
+    } }));
+    await page.goto("/skills");
+    const chips = page.getByTestId("skills-row").locator("span.rounded-full");
+    await expect(chips).toHaveCount(10);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await page.waitForTimeout(500);
+    const contrast = await chips.evaluateAll((nodes) => {
+      const context = document.createElement("canvas").getContext("2d")!;
+      function rgba(color: string): number[] {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data];
+      }
+      function luminance(rgb: number[]): number {
+        return rgb.slice(0, 3).map((c) => {
+          const s = c / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+      }
+      return nodes.map((node) => {
+        const ancestors: Element[] = [];
+        for (let current: Element | null = node; current; current = current.parentElement) ancestors.unshift(current);
+        let background = [255, 255, 255];
+        for (const ancestor of ancestors) {
+          const color = rgba(getComputedStyle(ancestor).backgroundColor);
+          const alpha = color[3]! / 255;
+          background = background.map((value, i) => color[i]! * alpha + value * (1 - alpha));
+        }
+        const foreground = rgba(getComputedStyle(node).color);
+        const a = luminance(foreground);
+        const b = luminance(background);
+        return { text: node.textContent, foreground, background, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+      });
+    });
+    const evidencePath = testInfo.outputPath(`skills-chip-contrast-${theme}.json`);
+    await writeFile(evidencePath, JSON.stringify(contrast, null, 2));
+    await testInfo.attach(`skills-chip-contrast-${theme}`, { path: evidencePath, contentType: "application/json" });
+    await page.screenshot({ path: testInfo.outputPath(`skills-chip-contrast-${theme}.png`) });
+    for (const metric of contrast) expect(metric.ratio, `${theme} chip ${metric.text}`).toBeGreaterThanOrEqual(4.5);
   });
 }

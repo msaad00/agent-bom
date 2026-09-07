@@ -44,27 +44,27 @@ const STATUS_META: Record<SkillsScanFileStatus, StatusChipMeta> = {
   malicious: {
     label: "Malicious",
     icon: ShieldX,
-    chip: "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--status-danger)]",
+    chip: "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-red-800 dark:text-[color:var(--status-danger)]",
   },
   suspicious: {
     label: "Suspicious",
     icon: ShieldAlert,
-    chip: "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-[color:var(--status-warn)]",
+    chip: "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-amber-800 dark:text-[color:var(--status-warn)]",
   },
   pending: {
     label: "Pending review",
     icon: HelpCircle,
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   },
   unavailable: {
     label: "Unavailable",
     icon: HelpCircle,
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   },
   clean: {
     label: "Clean",
     icon: ShieldCheck,
-    chip: "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success)]",
+    chip: "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-emerald-800 dark:text-[color:var(--status-success)]",
   },
 };
 
@@ -74,19 +74,19 @@ const PROVENANCE_META: Record<
 > = {
   verified: {
     label: "Verified",
-    chip: "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success)]",
+    chip: "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-emerald-800 dark:text-[color:var(--status-success)]",
   },
   unsigned: {
     label: "Unsigned",
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   },
   bundle_found_but_invalid: {
     label: "Invalid signature",
-    chip: "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--status-danger)]",
+    chip: "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-red-800 dark:text-[color:var(--status-danger)]",
   },
   missing: {
     label: "Missing",
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   },
 };
 
@@ -122,7 +122,7 @@ function StatusChip({ status }: { status: SkillsScanFileStatus }) {
 function ProvenanceChip({ status }: { status: string }) {
   const meta = PROVENANCE_META[status] ?? {
     label: status,
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   };
   return (
     <span

@@ -2237,12 +2237,12 @@ function GraphPageInner() {
       ...edge,
       // ReactFlow measures label backgrounds when label content changes.
       // A stable group font prevents Fit/zoom from outgrowing that background.
-      labelStyle: edge.data?.isClusterEdge
-        ? { ...edge.labelStyle, fontSize: 18 }
-        : edge.labelStyle,
+      ...(edge.data?.isClusterEdge
+        ? { labelStyle: { ...edge.labelStyle, fontSize: 18 } }
+        : {}),
       // Unselected links retain their relationship labels and evidence while
       // using one legible theme-aware stroke. Focus restores semantic emphasis.
-      style: localNeighborhoodIds ? edge.style : { ...edge.style, stroke: "var(--text-tertiary)" },
+      ...(!localNeighborhoodIds ? { style: { ...edge.style, stroke: "var(--text-tertiary)" } } : {}),
     }));
   }, [
     layoutEdges,

@@ -436,8 +436,7 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
  * partition: one finding can count in several lanes (a repo CVE is both Vuln
  * mgmt and ASPM; an IaC misconfig is both CSPM and ASPM), so the lanes are not
  * additive — the caption above says so, and nothing here presents a lane total.
- * Each lane's count is the sum of its own severity strip, so the metric can
- * never contradict the strip. An ``unrated`` chip is surfaced only when
+ * Each lane retains its finding total and labeled severity counts. An ``unrated`` chip is surfaced only when
  * unknown-severity findings are present. All colors come from design tokens (no
  * hardcoded palette) so light + dark both read correctly.
  */
@@ -447,9 +446,9 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
     <div className="pt-1" data-testid="overview-security-coverage">
       <h3 className="mb-1 text-xs font-semibold text-foreground">Security disciplines</h3>
       <p className="mb-2 text-[11px] leading-4 text-ink-tertiary">
-        Open findings per posture discipline — not assets or accounts. Lenses overlap, so one repo CVE counts under both Vuln mgmt and ASPM; lanes are not additive and will not sum to the total. Zero open findings does not establish assessment coverage.
+        Overlapping finding counts, not additive. Zero findings does not establish assessment coverage.
       </p>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-1.5">
         {coverage.map((lane) => {
           const known = lane.evidence_status !== undefined;
           const exact = lane.evidence_status === "complete" && lane.count_exact !== false;
@@ -461,9 +460,9 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="flex flex-col gap-2 rounded-xl border border-outline bg-surface-elevated p-3 transition-colors hover:border-outline-strong"
+              className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg border border-outline bg-surface-elevated px-3 py-2 transition-colors hover:border-outline-strong"
             >
-              <div className="flex items-baseline justify-between gap-2">
+              <div className="flex flex-col gap-0.5">
                 <span className="text-xs font-semibold text-foreground">{lane.label}</span>
                 {/* The unit is not decoration. A bare "1610" under a heading
                     called CSPM reads as assets, accounts, VMs or data stores
@@ -471,7 +470,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                     are FINDINGS in that posture lane, which is also what the
                     severity chips below sum to. */}
                 <span className="flex items-baseline gap-1">
-                  <span className="text-lg font-bold tabular-nums text-foreground">
+                  <span className="text-sm font-semibold tabular-nums text-foreground">
                     {known && total > 0 ? `${exact ? "" : "≥"}${lane.count.toLocaleString()}` : "—"}
                   </span>
                   {known && total > 0 ? (
@@ -481,23 +480,10 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                   ) : null}
                 </span>
               </div>
-              {!exact && known && total > 0 ? (
-                <span className="text-[11px] text-ink-tertiary">{statusLabel} · at least this many</span>
-              ) : null}
-              {/* Stacked severity strip — widths reflect share of the lane count. */}
-              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
-                {known && total > 0 &&
-                  bands.map((band) => (
-                    <span
-                      key={band.key}
-                      className="h-full"
-                      style={{
-                        width: `${((lane.severity[band.key] || 0) / total) * 100}%`,
-                        backgroundColor: `var(${band.token})`,
-                      }}
-                    />
-                  ))}
-              </div>
+              <div className="min-w-0">
+                {!exact && known && total > 0 ? (
+                  <p className="mb-1 text-[11px] text-ink-tertiary">{statusLabel} · at least this many</p>
+                ) : null}
               <div className="flex flex-wrap gap-1">
                 {!known || total === 0 ? (
                   <span className="text-[11px] text-ink-tertiary">{exact ? "No open findings" : statusLabel}</span>
@@ -516,6 +502,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                     </span>
                   ))
                 )}
+              </div>
               </div>
             </Link>
           );

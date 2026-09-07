@@ -218,7 +218,7 @@ describe("OverviewCockpit", () => {
     expect(within(strip).getByText("Connect")).toBeInTheDocument();
   });
 
-  it("renders the five security coverage lanes with reconciled severity strips", async () => {
+  it("renders the five security coverage lanes with reconciled severity counts", async () => {
     const user = userEvent.setup();
     const coverage = [
       { domain: "cspm" as const, label: "CSPM", href: "/findings?domain=cspm", count: 3, severity: { critical: 1, high: 1, medium: 0, low: 0, unrated: 1 } },
@@ -239,12 +239,12 @@ describe("OverviewCockpit", () => {
     const section = screen.getByTestId("overview-security-coverage");
     expect(section).toBeInTheDocument();
     // Lanes are labeled as overlapping disciplines so a user never sums them.
-    expect(screen.getByText(/lenses overlap/i)).toBeInTheDocument();
+    expect(within(section).getByText(/overlapping finding counts/i)).toBeInTheDocument();
     expect(screen.getByText(/not additive/i)).toBeInTheDocument();
     // The magnitude must carry its unit. A bare number under a heading called
     // CSPM reads as assets, accounts or data stores depending on the reader —
     // all wrong. These are findings, which is what the severity chips sum to.
-    expect(screen.getByText(/open findings per posture discipline/i)).toBeInTheDocument();
+    expect(screen.getByText(/Zero findings does not establish assessment coverage/i)).toBeInTheDocument();
     expect(screen.getAllByText(/^findings?$/i).length).toBeGreaterThan(0);
     // Each lane links to its domain-filtered findings view.
     expect(screen.getByTestId("coverage-lane-cspm")).toHaveAttribute("href", "/findings?domain=cspm");

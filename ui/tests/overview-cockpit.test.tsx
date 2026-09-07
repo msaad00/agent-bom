@@ -81,6 +81,25 @@ describe("OverviewCockpit", () => {
     expect(within(evaluated).getByText("CIS Controls")).not.toBeVisible();
   });
 
+  it("keeps the label in the flexible column when a framework has no logo", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 50, overallStatus: "fail", evaluatedControls: 2, totalControls: 2, frameworks: [
+      { id: "nist-800-53", label: "NIST SP 800-53", kind: "scored", pass: 1, fail: 1, warn: 0, total: 2 },
+      { id: "cis", label: "CIS Controls", kind: "scored", pass: 0, fail: 0, warn: 0, total: 0 },
+    ] }} />);
+    await user.click(screen.getByRole("button", { name: /Evaluated frameworks/i }));
+    for (const label of ["NIST SP 800-53", "CIS Controls"]) {
+      const title = screen.getByText(label);
+      const card = title.closest("a")!;
+      expect(card).toHaveAttribute("href", "/compliance");
+      expect(card.children[0]).toHaveAttribute("aria-hidden", "true");
+      expect(card.children[1]).toContainElement(title);
+      expect(card.children[2]).toHaveTextContent(label === "CIS Controls" ? "n/a" : "fail");
+    }
+    expect(screen.getByText("1/2 pass · 1 fail")).toBeVisible();
+    expect(screen.getByText("Not evaluated · 0/0 controls")).toBeVisible();
+  });
+
   it("does not keep a settled unknown scan scope in a loading state", () => {
     const view = render(<OverviewCockpit {...baseProps} loading={false} complianceLoading={false} scanScopeLoading scans={null} />);
     expect(screen.getByText("Loading control evaluation…")).toBeVisible();

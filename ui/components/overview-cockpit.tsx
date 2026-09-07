@@ -725,7 +725,9 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
                 href="/compliance"
                 className="grid min-h-[3.25rem] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-outline bg-surface-muted px-2.5 py-2 transition hover:border-outline-strong"
               >
-                <FrameworkIcon frameworkId={framework.id} size={32} />
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center">
+                  <FrameworkIcon frameworkId={framework.id} size={32} />
+                </span>
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold leading-tight text-foreground">
                     {framework.label}

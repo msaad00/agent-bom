@@ -314,3 +314,44 @@ for (const theme of ["light", "dark"] as const) {
     for (const metric of contrast) expect(metric.ratio, `${theme} metric ${metric.text}`).toBeGreaterThanOrEqual(4.5);
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`framework names retain readable columns in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+      await page.addInitScript((selectedTheme) => localStorage.setItem("agent-bom-theme", selectedTheme), theme);
+      await page.setViewportSize({ width, height: 900 });
+      await routeProductFixture(page);
+      const scoredKeys = ["nist_ai_rmf", "eu_ai_act", "nist_csf", "iso_27001", "soc2", "cis_controls", "cmmc", "nist_800_53", "fedramp", "pci_dss"];
+      const mappingKeys = ["owasp_llm_top10", "owasp_mcp_top10", "mitre_atlas", "owasp_agentic_top10"];
+      await page.route("**/v1/compliance", (route) => route.fulfill({ json: {
+        overall_score: 100, overall_status: "pass", evaluated_controls: 6, total_controls: 6,
+        scan_count: 14, has_mcp_context: true, has_agent_context: true,
+        framework_kinds: Object.fromEntries([...scoredKeys.map((key) => [key, "scored"]), ...mappingKeys.map((key) => [key, "applicability"])]),
+        ...Object.fromEntries([...scoredKeys, ...mappingKeys].map((key) => [key, ["cis_controls", "nist_800_53", "fedramp", "pci_dss"].includes(key) ? [{ id: `${key}-1`, status: "pass" }] : []])),
+        summary: { cis_pass: 1, nist_800_53_pass: 1, pci_dss_pass: 1, fedramp_pass: 1, cis_foundations_pass: 1, cis_foundations_evaluated: 1, aisvs_pass: 1 },
+      } }));
+      await page.goto("/");
+      const disclosure = page.getByRole("button", { name: /Evaluated frameworks/i });
+      await disclosure.focus();
+      await page.keyboard.press("Enter");
+      const frameworks = page.getByTestId("overview-evaluated-frameworks");
+      for (const label of ["CIS Controls v8", "NIST SP 800-53", "PCI DSS 4.0", "FedRAMP Moderate", "CIS Foundations Benchmark", "OWASP AISVS"]) {
+        const title = frameworks.getByText(label, { exact: true });
+        const card = frameworks.getByRole("link", { name: new RegExp(label) });
+        await expect(title).toBeVisible();
+        await expect(card).toHaveAttribute("href", "/compliance");
+        const titleBox = await title.boundingBox();
+        const cardBox = await card.boundingBox();
+        expect(titleBox!.width).toBeGreaterThan(80);
+        expect(cardBox!.height).toBeLessThan(100);
+        await card.focus();
+        await expect(card).toBeFocused();
+      }
+      await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
+      await expect(page.getByText("Not evaluated · 0/0 controls").first()).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.waitForTimeout(350);
+      await page.getByRole("region", { name: "Coverage & controls" }).screenshot({ path: testInfo.outputPath(`frameworks-${theme}-${width}.png`) });
+    });
+  }
+}

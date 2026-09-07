@@ -92,6 +92,23 @@ def test_scan_skill_targets_records_summary_in_hmac_audit_chain(tmp_path):
     assert tampered == 0
 
 
+def test_scan_and_rescan_preserve_explicit_audit_tenant(monkeypatch, tmp_path):
+    import agent_bom.api.audit_log as audit
+
+    audit_log = audit.InMemoryAuditLog()
+    monkeypatch.setattr(audit, "_audit_log", audit_log)
+    skill_file = tmp_path / "SKILL.md"
+    skill_file.write_text("# Skill\nUse the filesystem server.\n")
+    catalog = tmp_path / "catalog.json"
+    scan_skill_targets([skill_file], catalog_path=catalog, tenant_id="team-a")
+    rescan_skill_catalog(catalog_path=catalog, tenant_id="team-a")
+
+    entries = audit_log.list_entries(tenant_id="team-a")
+    assert {entry.action for entry in entries} == {"skills.scan_completed", "skills.rescan_completed"}
+    assert audit_log.verify_integrity(tenant_id="team-a") == (2, 0)
+    assert audit_log.list_entries(tenant_id="default") == []
+
+
 def test_rescan_skill_catalog_records_summary_in_hmac_audit_chain(tmp_path):
     """Skill rescans should be chained without storing raw skill content."""
     from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log

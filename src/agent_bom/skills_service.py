@@ -370,7 +370,7 @@ def _persist_catalog(reports: list[SkillFileReport], catalog_path: str | Path | 
     return str(save_skills_catalog(catalog, catalog_path))
 
 
-def _record_skills_scan_audit(action: str, *, resource: str, summary: dict[str, object], catalog_path: str | None) -> None:
+def _record_skills_scan_audit(action: str, *, resource: str, summary: dict[str, object], catalog_path: str | None, tenant_id: str) -> None:
     """Append summary-only skill scan evidence to the signed audit chain."""
     count_key = "catalog_entries" if action == "skills.rescan_completed" else "files_scanned"
     safe_details: dict[str, object] = {
@@ -388,7 +388,7 @@ def _record_skills_scan_audit(action: str, *, resource: str, summary: dict[str, 
             action,
             actor="skills_service",
             resource=resource,
-            tenant_id="default",
+            tenant_id=tenant_id,
             **safe_details,
         )
     except Exception:  # noqa: BLE001
@@ -439,12 +439,10 @@ async def _scan_skill_targets_async(
     cwd: Path | None = None,
     intel_source: str | None = None,
     catalog_path: str | Path | None = None,
+    tenant_id: str = "default",
 ) -> SkillsScanReport:
     """Async implementation for scanning skill targets with bounded concurrency."""
     targets = resolve_skill_targets(paths, cwd=cwd)
-    if not targets:
-        return SkillsScanReport(files=[], catalog_path=None)
-
     sem = asyncio.Semaphore(_SKILLS_SCAN_CONCURRENCY)
 
     async def _scan_one(path: Path) -> SkillFileReport:
@@ -466,7 +464,9 @@ async def _scan_skill_targets_async(
     report = SkillsScanReport(files=reports, catalog_path=_persist_catalog(reports, catalog_path))
     summary = report.to_dict()["summary"]
     assert isinstance(summary, dict)
-    _record_skills_scan_audit("skills.scan_completed", resource="skills/scan", summary=summary, catalog_path=report.catalog_path)
+    _record_skills_scan_audit(
+        "skills.scan_completed", resource="skills/scan", summary=summary, catalog_path=report.catalog_path, tenant_id=tenant_id
+    )
     return report
 
 
@@ -476,14 +476,16 @@ def scan_skill_targets(
     cwd: Path | None = None,
     intel_source: str | None = None,
     catalog_path: str | Path | None = None,
+    tenant_id: str = "default",
 ) -> SkillsScanReport:
-    """Scan one or more skill targets and return aggregate results."""
+    """Scan targets; hosted callers supply the authenticated tenant for audit."""
     return _run_async_sync(
         _scan_skill_targets_async(
             paths,
             cwd=cwd,
             intel_source=intel_source,
             catalog_path=catalog_path,
+            tenant_id=tenant_id,
         )
     )
 
@@ -492,6 +494,7 @@ async def _rescan_skill_catalog_async(
     *,
     catalog_path: str | Path | None = None,
     intel_source: str | None = None,
+    tenant_id: str = "default",
 ) -> SkillsRescanReport:
     """Async implementation for rescanning cataloged skill bundles."""
     catalog = load_skills_catalog(catalog_path)
@@ -603,7 +606,9 @@ async def _rescan_skill_catalog_async(
     report = SkillsRescanReport(catalog_path=persisted, entries=serialized)
     summary = report.to_dict()["summary"]
     assert isinstance(summary, dict)
-    _record_skills_scan_audit("skills.rescan_completed", resource="skills/rescan", summary=summary, catalog_path=report.catalog_path)
+    _record_skills_scan_audit(
+        "skills.rescan_completed", resource="skills/rescan", summary=summary, catalog_path=report.catalog_path, tenant_id=tenant_id
+    )
     return report
 
 
@@ -611,9 +616,10 @@ def rescan_skill_catalog(
     *,
     catalog_path: str | Path | None = None,
     intel_source: str | None = None,
+    tenant_id: str = "default",
 ) -> SkillsRescanReport:
     """Re-scan skill bundles tracked in the local catalog."""
-    return _run_async_sync(_rescan_skill_catalog_async(catalog_path=catalog_path, intel_source=intel_source))
+    return _run_async_sync(_rescan_skill_catalog_async(catalog_path=catalog_path, intel_source=intel_source, tenant_id=tenant_id))
 
 
 def verify_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path | None = None) -> list[dict[str, object]]:

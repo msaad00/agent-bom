@@ -124,7 +124,7 @@ async def run_skills_scan(
 
     # `catalog_path` is intentionally omitted: on a shared API host we must not
     # write a cross-tenant catalog file to disk. Persistence is per-tenant below.
-    report = await _ai_scan_call(scan_skill_targets, targets)
+    report = await _ai_scan_call(scan_skill_targets, targets, tenant_id=tenant_id)
     payload: dict[str, Any] = {
         "scan_type": "skills",
         "run_id": run_id,

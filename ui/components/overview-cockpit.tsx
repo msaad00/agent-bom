@@ -274,9 +274,6 @@ export function OverviewCockpit({
   const coverageSummary = coverage?.length
     ? `${coverage.length} security disciplines`
     : "Security findings and operational context";
-  const complianceSummary = complianceEvaluated
-    ? `${compliance.frameworks.filter((framework) => framework.kind === "scored").reduce((sum, framework) => sum + framework.pass, 0)}/${compliance.evaluatedControls} controls pass`
-    : "Evaluated controls and risk mappings";
 
   return (
     <div className="space-y-4">
@@ -334,7 +331,7 @@ export function OverviewCockpit({
       </div>
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
-          <Collapsible bare title="Compliance & frameworks" subtitle={complianceSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen
+          <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
             actions={<Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">Trust center <ArrowRight className="h-3 w-3" /></Link>}>
             <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
               loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
@@ -467,7 +464,6 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
   if (!coverage || coverage.length === 0) return null;
   return (
     <div className="@container pt-1" data-testid="overview-security-coverage">
-      <h3 className="mb-1 text-xs font-semibold text-foreground">Security disciplines</h3>
       <p className="mb-2 text-[11px] leading-4 text-ink-tertiary">
         Overlapping finding counts, not additive. Zero findings does not establish assessment coverage.
       </p>
@@ -485,7 +481,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="min-w-0 rounded-lg border border-outline bg-surface-elevated px-3 py-2 transition-colors hover:border-outline-strong"
+              className="min-w-0 border-b border-outline px-2 py-2 transition-colors hover:bg-surface-muted"
             >
               <div className="flex flex-col gap-0.5">
                 <span className="flex items-start gap-2 text-xs font-semibold text-foreground"><Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-secondary" aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
@@ -716,16 +712,16 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
               <Link
                 key={framework.id}
                 href="/compliance"
-                className="grid min-h-[3.25rem] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-outline bg-surface-muted px-2.5 py-2 transition hover:border-outline-strong"
+                className="grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-outline px-1.5 py-2 transition hover:bg-surface-muted"
               >
-                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center">
-                  <FrameworkIcon frameworkId={framework.id} size={32} />
+                <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center">
+                  <FrameworkIcon frameworkId={framework.id} size={28} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold leading-tight text-foreground">
+                  <p className="text-xs font-semibold leading-tight text-foreground">
                     {framework.label}
                   </p>
-                  <p className="mt-0.5 text-[10px] leading-tight text-ink-tertiary">
+                  <p className="mt-0.5 text-[11px] leading-tight text-ink-secondary">
                     {isApplicability
                       ? `${framework.applicable ?? 0}/${framework.total} risks applicable`
                       : evaluated === 0
@@ -734,16 +730,16 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
                   </p>
                 </div>
                 <span
-                  className={`justify-self-end rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                  className={`justify-self-end text-[10px] font-semibold uppercase tracking-wide ${
                     tone === "applicability"
-                      ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                      ? "text-sky-700 dark:text-sky-300"
                       : tone === "fail"
-                      ? "bg-red-500/15 text-red-700 dark:text-red-300"
+                      ? "text-red-700 dark:text-red-300"
                       : tone === "warn"
-                        ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-200"
+                        ? "text-yellow-700 dark:text-yellow-200"
                         : tone === "pass"
-                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                          : "border border-outline bg-surface text-ink-tertiary"
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : "text-ink-tertiary"
                   }`}
                 >
                   {tone === "applicability" ? "Risks mapped" : tone === "not_applicable" ? "none" : tone === "not_evaluated" ? "n/a" : tone}
@@ -821,8 +817,8 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
       : "border-outline bg-surface-muted text-ink-secondary";
 
   return (
-    <article className={`@container rounded-lg border ${rank === 1 ? "border-outline-strong bg-surface-muted/40" : "border-outline"}`}>
-      <Link href={path.href} className="group block rounded-lg p-3 transition hover:bg-surface-muted">
+    <article className="@container border-b border-outline last:border-b-0">
+      <Link href={path.href} className="group block rounded-md px-1 py-3 transition hover:bg-surface-muted">
         <div className="flex items-start gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
           <div className="grid min-w-0 flex-1 gap-x-4 @min-[42rem]:grid-cols-[minmax(0,1fr)_auto]">
@@ -840,7 +836,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
           </div>
         </div>
       </Link>
-      <details className="border-t border-outline px-3 py-2 text-xs">
+      <details className="pb-3 pl-9 text-xs">
         <summary className="cursor-pointer text-ink-tertiary">Technical details</summary>
         <dl className="mt-2 space-y-2">
           {path.nodes.map((node, index) => (
@@ -1163,7 +1159,7 @@ function SeverityIssueStrip({
 
   return (
     <div
-      className="min-w-0 rounded-xl border border-outline bg-surface-muted px-3 py-1"
+      className="min-w-0 border-t border-outline pt-1"
       data-testid="overview-severity-issue-strip"
     >
       <Collapsible

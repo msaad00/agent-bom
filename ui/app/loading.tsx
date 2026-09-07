@@ -6,18 +6,18 @@ export default function Loading() {
           <span className="h-5 w-5 rounded border border-emerald-400/60" aria-hidden="true" />
         </div>
         <div>
-          <div className="h-4 w-36 rounded bg-[var(--surface-elevated)]" />
-          <div className="mt-2 h-3 w-56 rounded bg-[var(--surface)]" />
+          <div className="h-4 w-36 rounded bg-surface-elevated" />
+          <div className="mt-2 h-3 w-56 rounded bg-surface" />
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {["a", "b", "c", "d"].map((key) => (
-          <div key={key} className="h-28 rounded-lg border border-[var(--border-subtle)] bg-[var(--background)]" />
+          <div key={key} className="h-28 rounded-lg border border-outline bg-background" />
         ))}
       </div>
       <div className="mt-6 grid gap-4 lg:grid-cols-[1.7fr_1fr]">
-        <div className="h-80 rounded-lg border border-[var(--border-subtle)] bg-[var(--background)]" />
-        <div className="h-80 rounded-lg border border-[var(--border-subtle)] bg-[var(--background)]" />
+        <div className="h-80 rounded-lg border border-outline bg-background" />
+        <div className="h-80 rounded-lg border border-outline bg-background" />
       </div>
     </div>
   );

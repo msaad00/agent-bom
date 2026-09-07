@@ -182,6 +182,32 @@ For packaged rollout beyond shell scripts, the repo now also ships:
 agent-bom serve --port 8422 --persist jobs.db
 ```
 
+`jobs.db` retains scan results across restarts. Completed, failed, and cancelled
+jobs expire after **90 days** by default. Successful scan results are the source
+for the findings and posture views, so retention also controls how long that
+evidence remains available. The default findings read window is separately
+90 days; `window_days=0` shows all retained history, not deleted results.
+
+Set `AGENT_BOM_API_JOB_TTL` in seconds before starting the server to choose a
+different retention period. For example, retain jobs for 30 days:
+
+```bash
+AGENT_BOM_API_JOB_TTL=2592000 agent-bom serve --port 8422 --persist jobs.db
+```
+
+Explicit shorter values are honored: `3600` deletes terminal jobs after one
+hour, including their finding evidence. Expiration does not prove remediation.
+Graph snapshots follow their own retention policy and can still contain older
+evidence after scan results expire. Explicit tenant-scoped job deletion remains
+available through `DELETE /v1/scan/{job_id}`.
+
+Longer retention consumes more storage and reaches the default **500 retained
+jobs per tenant** admission limit sooner. At that limit, export and delete
+unneeded jobs or deliberately configure the tenant quota before scheduling
+more scans. The in-memory store remains limited to **200 jobs**, can evict older
+terminal jobs sooner, and is not a replacement for durable storage. Changing
+retention does not disable either limit or restore previously deleted evidence.
+
 **Endpoints:**
 - `POST /v1/scan` — submit scans from any source
 - `GET /v1/fleet` — view all discovered agents across the org

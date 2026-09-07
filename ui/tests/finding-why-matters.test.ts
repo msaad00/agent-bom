@@ -33,6 +33,18 @@ describe("buildWhyItMatters", () => {
     ).toBeNull();
   });
 
+  it("does not infer reachability from severity or exploitation from runtime activity", () => {
+    const narrative = buildWhyItMatters(baseVuln({ runtime_evidence: { state: "observed", observed_count: 2 } }));
+    expect(narrative?.headline).not.toMatch(/reachable/i);
+    expect(narrative?.paragraphs.join(" ")).not.toMatch(/exploitability is not theoretical|live paths|confirmed tool/);
+    expect(narrative?.paragraphs.join(" ")).toMatch(/does not prove exploitation/);
+  });
+
+  it("does not treat a blocked invocation as completed remediation", () => {
+    const narrative = buildWhyItMatters(baseVuln({ runtime_evidence: { state: "blocked", blocked_count: 3 } }));
+    expect(narrative?.paragraphs.join(" ")).toMatch(/remediation still needs verification/);
+  });
+
   it("summarizes reach, runtime, exposure, and compliance with proof links", () => {
     const narrative = buildWhyItMatters(
       baseVuln({
@@ -47,9 +59,9 @@ describe("buildWhyItMatters", () => {
     );
 
     expect(narrative).not.toBeNull();
-    expect(narrative?.paragraphs.join(" ")).toMatch(/Reachability is high/);
-    expect(narrative?.paragraphs.join(" ")).toMatch(/Runtime enforcement already blocked/);
-    expect(narrative?.paragraphs.join(" ")).toMatch(/Blast radius spans/);
+    expect(narrative?.paragraphs.join(" ")).toMatch(/Reported reachability is high/);
+    expect(narrative?.paragraphs.join(" ")).toMatch(/Runtime enforcement recorded blocked/);
+    expect(narrative?.paragraphs.join(" ")).toMatch(/Reported scope includes/);
     // Compliance mapping is now scannable chip data, not a run-on paragraph.
     expect(narrative?.complianceTags).toEqual(["owasp_llm:llm06", "mitre_atlas:exfiltration"]);
     expect(narrative?.links.map((link) => link.href)).toEqual(

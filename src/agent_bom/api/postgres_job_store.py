@@ -24,6 +24,7 @@ from agent_bom.api.postgres_common import (
 )
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY, _literal_like_pattern, _require_tenant_scope
+from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -32,8 +33,6 @@ if TYPE_CHECKING:
     from psycopg_pool import ConnectionPool
 
     from .server import ScanJob
-
-_JOB_TTL_SECONDS = 3600
 
 
 class PostgresJobStore:

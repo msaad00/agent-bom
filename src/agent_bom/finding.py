@@ -480,6 +480,7 @@ class Finding:
     first_seen: Optional[str] = None
     owner: Optional[str] = None
     sla_due_at: Optional[str] = None
+    sla_due_at_source: Optional[str] = None
 
     # Unique ID — deterministic UUID v5 based on content (computed in __post_init__)
     # Pass an explicit id= to override (e.g. when ingesting from external scanner)
@@ -701,13 +702,16 @@ class Finding:
 
     def to_dict(self) -> dict:
         """Return a JSON-serializable finding payload."""
-        from agent_bom.graph.sla import finding_owner, sla_due_at
+        from agent_bom.graph.sla import finding_owner, finding_sla_fields
 
-        kev_due_date = self.evidence.get("kev_due_date") if isinstance(self.evidence, dict) else None
-        resolved_sla = self.sla_due_at or sla_due_at(
-            self.effective_severity(),
-            self.first_seen,
-            kev_due_date=kev_due_date,
+        sla = finding_sla_fields(
+            {
+                "severity": self.effective_severity(),
+                "first_seen": self.first_seen,
+                "evidence": self.evidence,
+                "sla_due_at": self.sla_due_at,
+                "sla_due_at_source": self.sla_due_at_source or ("explicit" if self.sla_due_at is not None else None),
+            }
         )
         return {
             "schema_version": FINDING_SCHEMA_VERSION,
@@ -805,7 +809,7 @@ class Finding:
             # derived (unrated severity + no anchor/KEV date).
             "first_seen": self.first_seen,
             "owner": finding_owner(self.owner),
-            "sla_due_at": resolved_sla,
+            **sla,
             "status": self.lifecycle_status,
             "lifecycle_status": self.lifecycle_status,
             # Suppression state — a suppressed finding must never surface as

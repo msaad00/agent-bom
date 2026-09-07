@@ -269,12 +269,14 @@ def test_cyclonedx_scopes_shared_cve_workflow_to_each_affected_component() -> No
         "affects_ref": component_refs["payments-lib"],
         "owner": "payments-security",
         "sla_due_at": "2026-08-08T00:00:00+00:00",
+        "sla_due_at_source": "explicit",
         "workflow_status": "in_progress",
     }
     assert workflow_by_ref[component_refs["identity-lib"]] == {
         "affects_ref": component_refs["identity-lib"],
         "owner": "identity-security",
         "sla_due_at": "2026-08-15T00:00:00+00:00",
+        "sla_due_at_source": "explicit",
         "workflow_status": "in_progress",
     }
     property_names = [prop["name"] for prop in vulnerability.get("properties", [])]

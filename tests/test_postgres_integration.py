@@ -1524,3 +1524,65 @@ def test_audit_append_persists_entry_tenant_under_mismatched_ambient_context():
     by_id = {e.entry_id: e for e in rows}
     assert by_id[second.entry_id].prev_signature == by_id[first.entry_id].hmac_signature
     assert (verified, tampered) == (2, 0)
+
+
+def test_postgres_concurrent_first_insert_preserves_explicit_sla(monkeypatch):
+    """Two initially empty reads cannot let a derived scan erase an assignment."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from agent_bom.api import postgres_compliance_hub as hub
+    from agent_bom.api.finding_lifecycle import enriched_finding_payload
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    stores = [hub.PostgresComplianceHubStore(), hub.PostgresComplianceHubStore()]
+    tenant = f"sla-race-{uuid4().hex}"
+    finding_id = f"sla-{uuid4().hex}"
+    first_read, second_read, first_committed = threading.Event(), threading.Event(), threading.Event()
+    writer = threading.local()
+    original_fetch = hub._fetch_ledger_payloads_postgres
+
+    def coordinated_fetch(conn, tenant_id, finding_ids, **kwargs):
+        result = original_fetch(conn, tenant_id, finding_ids, **kwargs)
+        if kwargs.get("for_update") and finding_ids == [finding_id]:
+            if writer.index == 0:
+                first_read.set()
+                assert second_read.wait(10)
+            else:
+                second_read.set()
+                assert first_read.wait(10)
+                assert first_committed.wait(10)
+        return result
+
+    monkeypatch.setattr(hub, "_fetch_ledger_payloads_postgres", coordinated_fetch)
+
+    def write(index):
+        writer.index = index
+        token = set_current_tenant(tenant)
+        try:
+            row = {"id": finding_id, "severity": "high", "first_seen": "2026-08-01T00:00:00Z"}
+            if index == 0:
+                row.update(sla_due_at="2026-12-25T00:00:00Z", sla_due_at_source="explicit")
+            stores[index].add(tenant, [row])
+            if index == 0:
+                first_committed.set()
+        finally:
+            reset_current_tenant(token)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first, second = executor.submit(write, 0), executor.submit(write, 1)
+        first.result()
+        second.result()
+    monkeypatch.setattr(hub, "_fetch_ledger_payloads_postgres", original_fetch)
+    token = set_current_tenant(tenant)
+    try:
+        ledger = next(row for row in stores[0].list(tenant) if row["id"] == finding_id)
+        assert ledger["sla_due_at"] == "2026-12-25T00:00:00Z"
+        assert ledger["sla_due_at_source"] == "explicit"
+        rescan = {"id": finding_id, "severity": "critical", "first_seen": "2026-08-01T00:00:00Z"}
+        stores[0].upsert_current_batch(tenant, [rescan], observed_at="2026-08-01T00:00:00Z", batch_id="first")
+        current = canonical_finding_payload(enriched_finding_payload(stores[0].get_current(tenant, finding_id)))
+        assert current["sla_due_at"] == ledger["sla_due_at"]
+        assert current["sla_due_at_source"] == "explicit"
+    finally:
+        reset_current_tenant(token)

@@ -220,6 +220,7 @@ def _cyclonedx_vulnerability(
     )
     if sla_due is not None:
         vuln_properties.append({"name": "agent-bom:sla_due_at", "value": sla_due})
+        vuln_properties.append({"name": "agent-bom:sla_due_at_source", "value": "severity-kev/v1"})
     if vuln.epss_score is not None:
         vuln_properties.append({"name": "agent-bom:epss_score", "value": str(vuln.epss_score)})
     if vuln.epss_percentile is not None:
@@ -643,6 +644,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
         sla_due = finding.to_dict().get("sla_due_at")
         if sla_due:
             workflow["sla_due_at"] = str(sla_due)
+            workflow["sla_due_at_source"] = str(finding.to_dict()["sla_due_at_source"])
         status = workflow_status(finding)
         if status:
             workflow["workflow_status"] = status

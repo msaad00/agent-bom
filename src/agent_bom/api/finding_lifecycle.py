@@ -90,6 +90,10 @@ def apply_observation_to_current(
     updated_at: str,
 ) -> dict[str, Any]:
     """Return the merged current-state row after a new observation timestamp."""
+    from agent_bom.graph.sla import merge_finding_sla
+
+    first_seen = min(observed_at, str(existing["first_seen"])) if existing is not None else observed_at
+    payload = merge_finding_sla(payload, (existing or {}).get("payload") or {}, first_seen=first_seen)
     if existing is None:
         return {
             "canonical_id": canonical_id,

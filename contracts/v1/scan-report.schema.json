@@ -149,6 +149,8 @@
             "additionalProperties": true
           },
           "severity": { "type": "string", "minLength": 1 },
+          "sla_due_at": { "type": ["string", "null"], "format": "date-time" },
+          "sla_due_at_source": { "enum": ["severity-kev/v1", "explicit", "unknown", "unavailable"] },
           "title": { "type": "string" },
           "description": { "type": "string" },
           "evidence": { "type": "object" }

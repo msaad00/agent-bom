@@ -5,7 +5,18 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
-_OVERLAY_KEYS = ("origin", "ingest_source", "batch_id", "scan_id", "source", "id", "canonical_id")
+_OVERLAY_KEYS = (
+    "origin",
+    "ingest_source",
+    "batch_id",
+    "scan_id",
+    "source",
+    "id",
+    "canonical_id",
+    "sla_due_at",
+    "sla_due_at_source",
+    "kev_due_date",
+)
 
 
 def resolve_ledger_finding_id(payload: Mapping[str, Any], *, canonical_id: str = "") -> str:
@@ -16,7 +27,13 @@ def resolve_ledger_finding_id(payload: Mapping[str, Any], *, canonical_id: str =
 
 def current_state_overlay(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Persist only filter/sort helper fields in current-state rows."""
-    return {key: payload[key] for key in _OVERLAY_KEYS if key in payload and payload[key] is not None}
+    overlay = {key: payload[key] for key in _OVERLAY_KEYS if key in payload and payload[key] is not None}
+    # Policy dates are recomputed from canonical first_seen on read. Persist
+    # only assignments that would otherwise be lost when the ledger refreshes.
+    if payload.get("sla_due_at_source") not in {"explicit", "unknown"}:
+        overlay.pop("sla_due_at", None)
+        overlay.pop("sla_due_at_source", None)
+    return overlay
 
 
 def is_overlay_only_payload(payload: Mapping[str, Any]) -> bool:

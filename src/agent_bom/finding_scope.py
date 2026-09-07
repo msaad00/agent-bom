@@ -487,6 +487,7 @@ _CANONICAL_NULLABLE_FINDING_FIELDS: tuple[str, ...] = (
     "provenance",
     "owner",
     "sla_due_at",
+    "sla_due_at_source",
     "graph_reachable",
     "graph_min_hop_distance",
     # --verify-integrity verdict. Explicit null = the check never ran, which is
@@ -665,6 +666,18 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     if controls:
         payload["controls"] = controls
 
+    from agent_bom.graph.sla import SLA_DUE_SOURCES
+
+    source = row.get("sla_due_at_source")
+    if isinstance(source, str) and source in SLA_DUE_SOURCES:
+        payload["sla_due_at_source"] = source
+    kev = row.get("kev_due_date")
+    if kev is None and isinstance(row.get("evidence"), Mapping):
+        kev = row["evidence"].get("kev_due_date")
+    safe_kev = _safe_timestamp(kev)
+    if safe_kev is not None:
+        payload["kev_due_date"] = safe_kev
+
     for key in _FINDING_RESPONSE_TIMESTAMPS:
         safe_value = _safe_timestamp(row.get(key))
         if safe_value is not None:
@@ -810,22 +823,9 @@ def canonical_finding_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     # ``None`` when nobody is assigned (rendered "Unassigned" only in the CLI/UI);
     # the deadline stays ``None`` when no anchor or KEV date makes one derivable,
     # never a fabricated date.
-    from agent_bom.graph.sla import sla_due_at
+    from agent_bom.graph.sla import finding_sla_fields
 
-    if payload["sla_due_at"] is None:
-        # Latest observation is not the policy start: substituting it would
-        # restart the remediation window on every rescan. Keep an unknown
-        # first observation unknown; an explicit KEV date remains independent.
-        anchor = payload.get("first_seen")
-        evidence = payload.get("evidence")
-        kev_due_date = payload.get("kev_due_date")
-        if kev_due_date is None and isinstance(evidence, Mapping):
-            kev_due_date = evidence.get("kev_due_date")
-        payload["sla_due_at"] = sla_due_at(
-            payload.get("effective_severity") or payload.get("severity"),
-            anchor,
-            kev_due_date=kev_due_date,
-        )
+    payload.update(finding_sla_fields(payload))
     return payload
 
 

@@ -693,10 +693,18 @@ async def test_failed_unmount_retains_owned_resources_for_manual_recovery(
     mount = CollectorMountController()
     monkeypatch.setattr(mount, "attach_and_mount", lambda *_: tmp_path)
 
-    def fail_unmount(*args: Any, **kwargs: Any) -> None:
-        raise subprocess.CalledProcessError(1, ["umount"])
+    commands: list[str] = []
 
-    monkeypatch.setattr("agent_bom.cloud.side_scan.subprocess.run", fail_unmount)
+    def run_collector_command(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command[0])
+        if command[0] == "umount":
+            raise subprocess.CalledProcessError(1, command)
+        assert command[0] == "rpm"
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    # Exercise the Linux RPM branch even on hosts without rpm installed.
+    monkeypatch.setattr("agent_bom.filesystem.shutil.which", lambda command: "/usr/bin/rpm" if command == "rpm" else None)
+    monkeypatch.setattr("agent_bom.cloud.side_scan.subprocess.run", run_collector_command)
     result = (
         await run_cloud_side_scan_targets(
             [_target(provider)],
@@ -708,6 +716,7 @@ async def test_failed_unmount_retains_owned_resources_for_manual_recovery(
     )[0]
     record = store.get(tenant_id="tenant-a", execution_id=adapter.execution.execution_id)
     assert record is not None
+    assert commands == ["rpm", "umount"]
     assert record.cleanup_status is CleanupStatus.PARTIAL
     assert "collector_unmount_failed" in record.warning_codes
     assert record.to_evidence_dict()["disposition"] == "partial"

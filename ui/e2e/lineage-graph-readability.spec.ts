@@ -355,3 +355,71 @@ for (const activation of ["pointer", "keyboard"] as const) {
     await expect(page.getByRole("heading", { name: "Reviewed package", exact: true })).toBeVisible();
   });
 }
+test("graph minimap mask follows light and dark themes without remounting", async ({ page }) => {
+  await routeGraphPage(page);
+  await page.goto("/graph?view=investigation", { waitUntil: "domcontentloaded" });
+  const mask = page.locator(".react-flow__minimap-mask");
+  await expect(mask).toBeVisible();
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate((value) => {
+      document.documentElement.dataset.theme = value;
+    }, theme);
+    const expected = theme === "light"
+      ? "rgba(226, 232, 240, 0.82)"
+      : "rgba(24, 24, 27, 0.82)";
+    await expect(mask).toHaveCSS("fill", expected);
+  }
+});
+
+test("grouped findings remain legible in both themes", async ({ page }, testInfo) => {
+  await routeGraphPage(page);
+  const graph = buildDenseGraph();
+  graph.nodes = [node("pkg:example", "package", "example@1.0.0")];
+  graph.edges = [];
+  graph.attack_paths = [];
+  for (let index = 0; index < 22; index++) {
+    const finding = `finding:${index}`;
+    graph.nodes.push(node(finding, "vulnerability", `Fixture finding ${index}`, "high"));
+    graph.edges.push(edge("pkg:example", finding, "vulnerable_to"));
+  }
+  await page.route("**/v1/graph?**", async (route) => {
+    await route.fulfill({ json: graph });
+  });
+  await page.goto("/graph?view=investigation", { waitUntil: "domcontentloaded" });
+  const pill = page.getByTestId("cluster-pill");
+  await expect(pill).toBeVisible();
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    const contrasts = await pill.evaluate((element) => {
+      // Rasterize computed CSS colors so the check also handles Tailwind's
+      // oklch colors. Composite translucent text/fills against the real surface.
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d")!;
+      const rgba = (color: string) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return Array.from(context.getImageData(0, 0, 1, 1).data);
+      };
+      const composite = (front: number[], back: number[]) =>
+        front.slice(0, 3).map((value, index) =>
+          value * front[3]! / 255 + back[index]! * (1 - front[3]! / 255));
+      const luminance = (rgb: number[]) => rgb.map((value) => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0);
+      const surface = rgba(getComputedStyle(document.documentElement).getPropertyValue("--surface"));
+      const background = composite(rgba(getComputedStyle(element).backgroundColor), surface);
+      return [...element.querySelectorAll("span")].map((label) => {
+        const foreground = composite(rgba(getComputedStyle(label).color), background);
+        const light = Math.max(luminance(foreground), luminance(background));
+        const dark = Math.min(luminance(foreground), luminance(background));
+        return (light + 0.05) / (dark + 0.05);
+      });
+    });
+    expect(contrasts).toHaveLength(2);
+    for (const contrast of contrasts) expect(contrast).toBeGreaterThanOrEqual(4.5);
+    await pill.screenshot({ path: testInfo.outputPath(`finding-group-${theme}.png`) });
+  }
+});

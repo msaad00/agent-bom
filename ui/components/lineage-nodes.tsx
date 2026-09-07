@@ -704,11 +704,11 @@ function ClusterPillNode({ data }: { data: LineageNodeData }) {
         className="!w-2 !h-2 !bg-sky-300"
       />
       <button type="button" aria-label={`Expand ${count} ${childType === "vulnerability" ? "findings" : "members"}`} className="nodrag nopan flex items-center gap-1.5 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-500">
-        <Icon className="w-3.5 h-3.5 text-sky-200" />
-        <span className="text-xs font-semibold text-sky-100 whitespace-nowrap">
+        <Icon className="w-3.5 h-3.5 text-sky-700 dark:text-sky-200" />
+        <span className="text-xs font-semibold text-sky-900 dark:text-sky-100 whitespace-nowrap">
           {data.label}
         </span>
-        <span className="text-[9px] uppercase tracking-[0.18em] text-sky-300/80">
+        <span className="text-[9px] uppercase tracking-[0.18em] text-sky-800 dark:text-sky-300/80">
           expand
         </span>
       </button>

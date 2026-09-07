@@ -12,7 +12,7 @@ import {
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, invalidateApiCache } from "@/lib/api";
 import type {
   AgentIdentitySummary,
   JITGrant,
@@ -472,6 +472,16 @@ export default function IdentityPage() {
     return () => { cancelled = true; };
   }, [refreshKey]);
 
+  function refreshEvidence() {
+    // Explicit refresh must not reuse the five-second GET cache. Keep the
+    // default cache policy for other pages and ordinary navigation intact.
+    for (const path of ["/v1/identities?", "/v1/identity-jit-grants?", "/v1/conditional-access-policies?",
+      "/v1/auth/secrets/credential-expiry", "/v1/identities/access-reviews?", "/v1/graph/nhi/governance"]) {
+      invalidateApiCache(`GET ${path}`);
+    }
+    setRefreshKey((value) => value + 1);
+  }
+
   if (loading && !loaded)
     return (
       <PageLoadingState
@@ -510,7 +520,7 @@ export default function IdentityPage() {
             conditional access.
           </p>
         </div>
-        <button type="button" disabled={loading} onClick={() => setRefreshKey((value) => value + 1)}
+        <button type="button" disabled={loading} onClick={refreshEvidence}
           className="ml-auto inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-secondary)] disabled:opacity-50">
           <RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           {loading ? "Refreshing evidence" : "Refresh evidence"}

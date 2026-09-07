@@ -2834,13 +2834,13 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "investigation-canvas-current-1512x811.png",
       page: `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&capture=1`,
-      scope: "Observed current-state Investigation Canvas at the audited 1512 by 811 viewport",
+      scope: "Modeled current-state Investigation Canvas at 1512 by 811",
       presentation: "dark desktop 1512x811",
     },
     {
       path: "investigation-canvas-proposed-1568x780.png",
       page: `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`,
-      scope: "Clearly modeled proposed-state comparison at the audited 1568 by 780 viewport",
+      scope: "Modeled proposed-state comparison at 1568 by 780",
       presentation: "light desktop 1568x780",
     },
     {

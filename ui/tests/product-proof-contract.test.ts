@@ -75,6 +75,8 @@ describe("product proof capture contract", () => {
       'page: `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`',
     );
     expect(source).not.toContain("lens=estate&rollup=1");
+    expect(source).toContain("Modeled current-state Investigation Canvas at 1512 by 811");
+    expect(source).not.toContain("Observed current-state Investigation Canvas at the audited");
     expect(source).toContain("assertCaptureSnapshotScope(route.request().url(), SCAN_ID, [body.scan_id])");
     expect(source).toContain("[body.current.scan_id, body.scenario.base_scan_id]");
     expect(source).toContain('newCapturePage("dark", { width: 1512, height: 811 })');

@@ -493,9 +493,14 @@ for (const width of [1440, 390]) {
         }
       }
       const contrast = await page.locator(".react-flow__edge-path").evaluateAll((paths) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d")!;
         const rgb = (value: string): number[] => {
-          if (value.startsWith("#")) return [1, 3, 5].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
-          return (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = value;
+          context.fillRect(0, 0, 1, 1);
+          return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
         };
         const luminance = (value: number[]) => value.map((channel) => {
           const s = channel / 255;

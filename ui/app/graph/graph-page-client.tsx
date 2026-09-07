@@ -2233,11 +2233,16 @@ function GraphPageInner() {
       // Past this many edges the captions overlap into noise, so they follow
       // the selection instead of blanketing the canvas. A capture keeps them.
       maxLabeledEdges: captureMode ? Number.POSITIVE_INFINITY : GRAPH_EDGE_LABEL_BUDGET,
-    }).map((edge) => localNeighborhoodIds ? edge : ({
+    }).map((edge) => ({
       ...edge,
+      // ReactFlow measures label backgrounds when label content changes.
+      // A stable group font prevents Fit/zoom from outgrowing that background.
+      labelStyle: edge.data?.isClusterEdge
+        ? { ...edge.labelStyle, fontSize: 18 }
+        : edge.labelStyle,
       // Unselected links retain their relationship labels and evidence while
       // using one legible theme-aware stroke. Focus restores semantic emphasis.
-      style: { ...edge.style, stroke: "var(--text-tertiary)" },
+      style: localNeighborhoodIds ? edge.style : { ...edge.style, stroke: "var(--text-tertiary)" },
     }));
   }, [
     layoutEdges,

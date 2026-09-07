@@ -99,7 +99,7 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
 
     journey = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
     stages = ["read-only connection", "collect", "inventory", "findings", "graph", "owner", "re-scan", "verify"]
-    images = ["workflow-dark.svg", "correlation-receipts-live.png"]
+    images = ["correlation-receipts-live.png"]
     normalized = " ".join(journey.lower().split())
     assert all(stage in normalized for stage in stages)
     assert all(image in journey for image in images)
@@ -134,13 +134,13 @@ def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
     frontdoor = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
     normalized = " ".join(frontdoor.split())
 
-    assert "two honest entry paths" in frontdoor
+    assert "Start with a repository" in frontdoor
     for capability in ("repository", "image", "SBOM", "MCP config", "AWS", "Azure", "GCP", "Snowflake"):
         assert capability in frontdoor
     assert "no connection required" in frontdoor
-    assert "Add a read-only connection" in frontdoor
-    assert "Finding + UnifiedGraph" in normalized
-    assert "Inventory is always the output" in normalized
+    assert "add a read-only connection" in frontdoor
+    assert "| Scan | Centralize | Enforce |" in normalized
+    assert "Inventory is the output of a scan" in normalized
     assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in frontdoor
 
     header_note = readme.split('<p align="center">', 2)[2].split("</p>", 1)[0]
@@ -214,7 +214,7 @@ def test_primary_local_control_plane_first_runs_use_one_durable_sqlite_path() ->
     first_run = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
 
     personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
-    path_b = readme.split("### Path B — connect a source, then scan", 1)[1].split("\n### ", 1)[0]
+    path_b = readme.split("### Connect a source, then scan", 1)[1].split("\n### ", 1)[0]
     self_host = readme.split("## Self-host", 1)[1].split("\n## ", 1)[0]
     pypi_starts = pypi.split("## Recommended starting points", 1)[1].split("\n## ", 1)[0]
     platform_start = start_here.split("## Platform / SRE", 1)[1].split("\n## ", 1)[0]
@@ -229,7 +229,7 @@ def test_primary_local_control_plane_first_runs_use_one_durable_sqlite_path() ->
 def test_readme_primary_local_operator_first_runs_grant_scan_role_explicitly() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
-    path_b = readme.split("### Path B — connect a source, then scan", 1)[1].split("\n### ", 1)[0]
+    path_b = readme.split("### Connect a source, then scan", 1)[1].split("\n### ", 1)[0]
     self_host = readme.split("## Self-host", 1)[1].split("\n## ", 1)[0]
 
     for surface in (personas, path_b, self_host):
@@ -240,7 +240,7 @@ def test_readme_primary_local_operator_first_runs_grant_scan_role_explicitly() -
 
 def test_readme_connection_first_run_requires_an_explicit_scan_after_verification() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    path_b = readme.split("### Path B — connect a source, then scan", 1)[1].split("\n### ", 1)[0]
+    path_b = readme.split("### Connect a source, then scan", 1)[1].split("\n### ", 1)[0]
 
     assert "explicit first scan after verification" in path_b
     assert "Connections default to auto-scan on creation" not in path_b

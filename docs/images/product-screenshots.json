@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-07T03:34:20.961Z",
-  "source_commit": "a6bda8e813c33141f11be80e76addfc8f328b4b8",
+  "captured_at": "2026-09-07T08:04:59.341Z",
+  "source_commit": "6984378275338c75d9767fa1e56995e6a02bde1e",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:24cc7f34fe4c491a38d8f8893c837f158a69e50fe085f013ea586aa627fbb877",
+  "capture_inputs_sha256": "sha256:fb3a3608bdcc6f768a27777a8052bc9f7f0764eb67016ad8eebbc51b6bd34076",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -179,18 +179,18 @@
     {
       "presentation": "dark desktop 1512x811",
       "path": "investigation-canvas-current-1512x811.png",
-      "page": "/security-graph?lens=estate&rollup=1&capture=1",
-      "scope": "Observed current-state Investigation Canvas at the audited 1512 by 811 viewport",
+      "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&capture=1",
+      "scope": "Modeled current-state Investigation Canvas at 1512 by 811",
       "visible_version": "0.103.2",
-      "sha256": "sha256:c886241a47ee5dc9c9d961fd5d79a910d67a2fff3f73e4d0b1316ac629036d1e"
+      "sha256": "sha256:8c4e6cb67a8142efa1a50503ef5366af3b21440b810ecc55792d39901c6517a9"
     },
     {
       "presentation": "light desktop 1568x780",
       "path": "investigation-canvas-proposed-1568x780.png",
-      "page": "/security-graph?lens=estate&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
-      "scope": "Clearly modeled proposed-state comparison at the audited 1568 by 780 viewport",
+      "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
+      "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.103.2",
-      "sha256": "sha256:53c56ca5aac1d5b5d9738399812d7fccd7e864cb541145278b9e422d79a7e93f"
+      "sha256": "sha256:36ea3537fc5b6e1b2765e9a3072b0290a508f19aaf7e3f4a26c6090ea6f10ff2"
     },
     {
       "presentation": "dark desktop",

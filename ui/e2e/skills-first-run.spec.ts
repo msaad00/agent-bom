@@ -53,12 +53,14 @@ for (const theme of ["light", "dark"] as const) {
     await expect(drawer).toHaveCount(0);
     await expect(inspect).toBeFocused();
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(500);
     await inspect.press("Space");
     await expect(drawer).toBeVisible();
+    await page.waitForTimeout(500);
     await page.screenshot({ path: testInfo.outputPath(`skills-evidence-${theme}-mobile.png`) });
     await page.keyboard.press("Escape");
     await expect(inspect).toBeFocused();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
 
@@ -71,7 +73,7 @@ for (const theme of ["light", "dark"] as const) {
     const provenance = ["bundle_found_but_invalid", "unsigned", "unsigned", "missing", "verified"];
     await page.route("**/v1/skills/scan", (route) => route.fulfill({ json: {
       ...EMPTY, status: "completed", run_id: "contrast-fixture", created_at: "2026-09-07T00:00:00Z",
-      summary: { ...EMPTY.summary, files_scanned: 5 },
+      summary: { ...EMPTY.summary, files_scanned: 5, malicious_status_files: 1, suspicious_status_files: 1, pending_status_files: 1, unavailable_status_files: 1, clean_files: 1, verified_files: 1 },
       files: statuses.map((status, index) => ({ ...FILE, path: `skills/${status}/SKILL.md`, status, provenance: { ...FILE.provenance, status: provenance[index] } })),
     } }));
     await page.goto("/skills");

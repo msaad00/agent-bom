@@ -339,11 +339,46 @@ def test_canonical_payload_derives_sla_from_first_seen() -> None:
     assert delta.days == SEVERITY_SLA_DAYS["high"]
 
 
-def test_canonical_payload_sla_falls_back_to_last_seen_anchor() -> None:
+def test_canonical_payload_rescan_does_not_start_sla_without_first_seen() -> None:
     from agent_bom.finding_scope import canonical_finding_payload
 
-    payload = canonical_finding_payload({"severity": "critical", "last_seen": "2026-08-01T00:00:00+00:00"})
-    assert payload["sla_due_at"] is not None
+    for timestamp_field in ("last_seen", "last_observed"):
+        for observed_at in ("2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z"):
+            payload = canonical_finding_payload(
+                {"id": "same-finding", "severity": "high", "first_seen": None, timestamp_field: observed_at}
+            )
+            assert payload["first_seen"] is None
+            assert payload["last_observed"] == observed_at
+            assert payload["sla_due_at"] is None
+
+
+def test_canonical_payload_rescan_preserves_supported_policy_anchor() -> None:
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    for severity, expected_due in (("critical", "2026-08-08"), ("high", "2026-08-31"), ("medium", "2026-10-30"), ("low", "2027-01-28")):
+        for observed_at in ("2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z"):
+            payload = canonical_finding_payload(
+                {"id": "same-finding", "severity": severity, "first_seen": "2026-08-01T00:00:00Z", "last_seen": observed_at}
+            )
+            assert payload["sla_due_at"] == f"{expected_due}T00:00:00+00:00"
+
+
+def test_canonical_payload_kev_deadline_without_policy_anchor_is_stable() -> None:
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    for observed_at in ("2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z"):
+        for kev_evidence in ({"kev_due_date": "2026-09-15"}, {"evidence": {"kev_due_date": "2026-09-15"}}):
+            payload = canonical_finding_payload({"severity": "critical", "last_observed": observed_at, **kev_evidence})
+            assert payload["sla_due_at"] == "2026-09-15T00:00:00+00:00"
+
+
+def test_canonical_payload_manual_deadline_without_anchor_is_preserved() -> None:
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    payload = canonical_finding_payload(
+        {"severity": "critical", "last_observed": "2026-09-01T00:00:00Z", "sla_due_at": "2026-08-05T00:00:00Z"}
+    )
+    assert payload["sla_due_at"] == "2026-08-05T00:00:00Z"
 
 
 def test_canonical_payload_preserves_precomputed_sla() -> None:

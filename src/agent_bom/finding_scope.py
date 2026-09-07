@@ -813,7 +813,10 @@ def canonical_finding_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     from agent_bom.graph.sla import sla_due_at
 
     if payload["sla_due_at"] is None:
-        anchor = payload.get("first_seen") or payload.get("last_seen") or payload.get("last_observed")
+        # Latest observation is not the policy start: substituting it would
+        # restart the remediation window on every rescan. Keep an unknown
+        # first observation unknown; an explicit KEV date remains independent.
+        anchor = payload.get("first_seen")
         evidence = payload.get("evidence")
         kev_due_date = payload.get("kev_due_date")
         if kev_due_date is None and isinstance(evidence, Mapping):

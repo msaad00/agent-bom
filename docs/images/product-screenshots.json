@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-07T22:27:43.248Z",
-  "source_commit": "51e7314df2fbad06dd422021d9e419f702f3b52c",
+  "captured_at": "2026-09-07T23:07:46.099Z",
+  "source_commit": "806b396931d615a86b03a107d8371dbd7bb3231c",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:4c6c104dc0b36d25d6aace692235c8f3f5c2374ebd00d0e17b2c369eb7b00dfb",
+  "capture_inputs_sha256": "sha256:b5b6188bc49aecb7329f10ad6c9688c6d85462062ebe283b1c8f8a404dfa707b",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -158,7 +158,7 @@
       "evidence_sha256": "sha256:b7f7b30b5939a4efe71c9af5de5e2302d9f27eca4ca010a00d669bb5fc8a0652",
       "correlation_manifest_sha256": "sha256:cc9f3fe5ed5e792bcd69e96a35c120b90aaf3d34ead006b130e1db2a7a8135ff",
       "visible_version": "0.103.2",
-      "sha256": "sha256:974b6477bcfe0eb5304e48a7b0d363c24bbefc6f7a2ca0006cd82c9dc47a58c9"
+      "sha256": "sha256:54d73c14b9d3bb3d2bfc7c600dce6369eba5edb1f307e455c71ae4f06047a8ee"
     },
     {
       "presentation": "light desktop",
@@ -206,7 +206,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
       "visible_version": "0.103.2",
-      "sha256": "sha256:7fdd491251c5defe5885f820e75ab9ad49ccdaa3e72a18c340f750f154bd522a"
+      "sha256": "sha256:f33007330636d8d5283ddcbf249c78c5210b79862fa74db69637300665ecd5f6"
     },
     {
       "presentation": "dark desktop",
@@ -222,7 +222,7 @@
       "page": "/fleet?capture=1",
       "scope": "Expanded quarantined fleet row showing lifecycle distribution, owner metadata, environment label, and enforcement state",
       "visible_version": "0.103.2",
-      "sha256": "sha256:c647d9becd6704ece9208b9f1c47063a16c8c65c3b598eba932ecf0ef72eb64d"
+      "sha256": "sha256:01717b354b653de3637db5c4edfde889717cc02a913d7a21b31901fc8f2ab4df"
     },
     {
       "presentation": "dark desktop",

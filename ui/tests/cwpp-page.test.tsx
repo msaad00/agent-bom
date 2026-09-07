@@ -77,13 +77,13 @@ afterEach(() => {
 });
 
 describe("CWPP side-scan page", () => {
-  it("renders capabilities and honest credentialed_smoke=false note", async () => {
+  it("renders capabilities and an honest live execution boundary", async () => {
     apiMock.listSideScans.mockResolvedValue({ tenant_id: "tenant-acme", executions: [], capabilities: CAPABILITIES, credentialed_smoke: false });
     render(<CwppSideScanPage />);
     await waitFor(() => expect(screen.getByText("Executor capabilities")).toBeInTheDocument());
     expect(screen.getByText("azure-managed-disk")).toBeInTheDocument();
     expect(screen.getByText("gcp-persistent-disk")).toBeInTheDocument();
-    expect(screen.getByText(/credentialed_smoke=false/)).toBeInTheDocument();
+    expect(screen.getByText(/Live cloud execution is not yet verified/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Run a side-scan" }).closest("form")).toHaveClass("min-w-0");
     expect(screen.getByRole("heading", { name: "Headless equivalent (CLI)" }).parentElement).toHaveClass("min-w-0");
   });

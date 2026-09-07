@@ -281,10 +281,9 @@ export default function CwppSideScanPage() {
             <HardDrive className="h-6 w-6 text-[color:var(--accent)]" /> CWPP side-scan
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-[color:var(--text-secondary)]">
-            Agentless disk side-scan for Azure Managed Disk and GCP Persistent Disk. Each run snapshots the target
-            disk, mounts a temp copy on an in-account collector read-only, records package, vulnerability and redacted secret
-            counts, and attempts cleanup of owned temporary resources. No block data leaves the account, and a zero-finding
-            run is never a clean-workload claim.
+            Scan Azure or GCP disk snapshots read-only on an in-account collector. Review package, vulnerability and
+            redacted secret counts, then check cleanup status. Disk data stays in the account; zero findings do not
+            prove a clean workload.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -313,8 +312,7 @@ export default function CwppSideScanPage() {
           ))}
         </div>
         <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
-          No live credentialed smoke is claimed for any provider yet (credentialed_smoke=false). AWS EBS keeps its own
-          CLI entrypoint and is not persisted to this lifecycle store.
+          Live cloud execution is not yet verified. AWS EBS uses a separate CLI and is absent from this history.
         </p>
       </section>
 
@@ -361,7 +359,7 @@ export default function CwppSideScanPage() {
             )}
           </div>
           <p className="mt-2 text-[11px] text-[color:var(--text-tertiary)]">
-            Requires an admin operator and an API executor running on the selected collector host. Uses its configured cloud identity; no credential is accepted in this form.
+            Admin access and an API executor on the selected collector are required. Uses the collector’s cloud identity.
           </p>
           <div className="mt-3 flex items-center gap-3">
             <button
@@ -389,7 +387,7 @@ export default function CwppSideScanPage() {
           <h2 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
             <Terminal className="h-4 w-4 text-[color:var(--text-secondary)]" /> Headless equivalent (CLI)
           </h2>
-          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">The same executor for agents / CI — mirrors the form above.</p>
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Run the same request from CLI or CI.</p>
           <pre className="mt-2 overflow-x-auto rounded-md bg-[color:var(--surface)] p-3 font-mono text-[11px] leading-5 text-[color:var(--foreground)]">{cliSnippet}</pre>
         </div>
       </section>

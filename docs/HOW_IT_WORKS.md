@@ -34,6 +34,11 @@ observed, inferred, or modeled; a drawn connection alone is not exploit proof.
 Inventory is the list of entities. The graph adds the relationships needed to
 explain which findings can affect which systems.
 
+Imported SBOM inventory appears as a source artifact linked to its packages and
+findings. Package names alone do not establish applications, running agents, MCP
+servers, tool access, or credentials. New scans use this classification; retained
+snapshots keep their original evidence and can be compared with a fresh scan.
+
 `UnifiedGraph` is the canonical graph contract for normalized entities,
 relationships, scope, and analysis completeness. `ContextGraph` is the local
 agent/MCP context builder that can project into that contract; it is not a

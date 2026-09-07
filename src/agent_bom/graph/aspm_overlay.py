@@ -151,6 +151,10 @@ def _app_identity(finding: Any, manifest_roots: list[str]) -> tuple[str, str]:
     """
     asset = _finding_asset(finding)
     location = _norm_path(asset.get("location"))
+    if not location and str(_finding_field(finding, "source") or "").upper() == "SBOM" and asset.get("asset_type") == "package":
+        # A package name alone does not identify an application. Explicit
+        # project/manifest paths still participate in application correlation.
+        return "", ""
     if location:
         segments = location.split("/")
         is_manifest = segments[-1].lower() in _MANIFEST_FILES

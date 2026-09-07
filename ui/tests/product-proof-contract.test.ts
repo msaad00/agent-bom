@@ -177,8 +177,10 @@ describe("product proof capture contract", () => {
   });
 
   it("asserts the current canonical Findings vocabulary", () => {
-    expect(source).toContain('expectedText: ["Findings queue", "15 issues"');
-    expect(source).not.toContain('expectedText: ["Findings queue", "15 findings"');
+    expect(source).toContain('expectedText: ["Findings", "15 findings", /Detection/i, /Observed/i, /Remediation/i');
+    expect(source).toContain('getByRole("heading", { name: "Findings", exact: true })');
+    expect(source).toContain('getByRole("row").filter({ hasText: "DEMO-VULN-21441" })');
+    expect(source).not.toContain('expectedText: ["Findings queue"');
   });
 
   it("tracks the current scan workspace proof copy", () => {

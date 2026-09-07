@@ -124,8 +124,17 @@ async function routeFindings(page: Page) {
       },
     }),
   );
-  await page.route("**/v1/findings?**", (route) =>
-    route.fulfill({
+  await page.route("**/v1/findings?**", (route) => {
+    if (new URL(route.request().url()).searchParams.get("q") === "no-match") {
+      return route.fulfill({
+        json: {
+          schema_version: "v1", findings: [], count: 0, total: 0,
+          total_approximate: false, limit: 25, offset: 0,
+          has_more: false, warnings: [],
+        },
+      });
+    }
+    return route.fulfill({
       json: {
         schema_version: "v1",
         findings: [finding],
@@ -171,31 +180,69 @@ async function routeFindings(page: Page) {
         },
         facets_approximate: false,
       },
-    }),
-  );
+    });
+  });
 }
 
-test("engineering and compliance findings expose different task workflows", async ({ page }) => {
-  await routeFindings(page);
-  await page.goto("/findings?scope=all");
-
-  await expect(page.getByRole("heading", { name: "Findings", exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Engineering findings summary" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Reach / exploit" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Fix & verify" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Control mapping" })).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Compliance", exact: true }).click();
-  await expect.poll(() => new URL(page.url()).searchParams.get("lens")).toBe("trust");
-  await expect(page.getByRole("region", { name: "Compliance findings summary" })).toBeVisible();
-  await expect(page.getByText("Disposition queue", { exact: true })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Control mapping" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Evidence freshness" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Disposition / attestation" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Reach / exploit" })).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Open details for CVE-2026-4242" }).click();
-  const drawer = page.getByRole("dialog", { name: "Finding details for CVE-2026-4242" });
-  await expect(drawer.getByText("Evidence & disposition")).toBeVisible();
-  await expect(drawer.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
-});
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`single findings queue and evidence preferences ${theme} ${width}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      await routeFindings(page);
+      await page.goto("/findings?q=no-match&severity=high&owner=team");
+      await expect(page.getByText("No findings match the selected filters.")).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Search findings" })).toHaveValue("no-match");
+      await expect(page.getByText("Columns", { exact: true })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`findings-empty-${theme}-${width}.png`), fullPage: true });
+      const clearFilters = page.getByRole("button", { name: "Clear filters", exact: true });
+      await clearFilters.focus();
+      await page.keyboard.press("Enter");
+      await expect.poll(() => {
+        const params = new URL(page.url()).searchParams;
+        return ["q", "severity", "owner"].some((name) => params.has(name));
+      }).toBe(false);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(page.getByRole("heading", { name: "Findings", exact: true })).toBeVisible();
+      await expect(page.getByTestId("findings-workspace-summary")).toHaveCount(0);
+      await expect(page.getByRole("group", { name: "Findings altitude" })).toHaveCount(0);
+      await expect(page.getByText("Source: osv", { exact: true })).toBeVisible();
+      if (width > 767) {
+        await expect(page.getByRole("columnheader", { name: "Remediation" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Finding", exact: true })).toHaveCount(0);
+        const columns = page.getByText("Columns", { exact: true });
+        await columns.focus(); await page.keyboard.press("Enter");
+        await page.getByRole("checkbox", { name: "Control mapping" }).check();
+        await page.getByRole("checkbox", { name: "Disposition / attestation" }).check();
+        const move = page.getByRole("button", { name: "Move Observed up" });
+        await move.focus(); await page.keyboard.press("Enter");
+        const order = await page.getByRole("columnheader").allTextContents();
+        await page.reload();
+        await expect.poll(() => page.getByRole("columnheader").allTextContents()).toEqual(order);
+        await columns.click();
+        await page.getByRole("button", { name: "Reset view" }).click();
+        await columns.click();
+        await expect(page.getByRole("columnheader", { name: "Control mapping" })).toHaveCount(0);
+      } else {
+        const article = page.getByRole("article");
+        const columns = page.getByText("Columns", { exact: true });
+        await columns.click();
+        await page.getByRole("checkbox", { name: "Detection" }).uncheck();
+        await expect(article.getByText("Source: osv", { exact: true })).toHaveCount(0);
+        await page.getByRole("checkbox", { name: "Detection" }).check();
+        const move = page.getByRole("button", { name: "Move Observed up" });
+        await move.focus(); await page.keyboard.press("Enter");
+        await expect.poll(() => article.locator("dt").allTextContents()).toEqual(["Priority", "Affected asset", "Observed", "Detection", "Remediation"]);
+        await page.getByRole("button", { name: "Reset view" }).click();
+        await columns.click();
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`findings-${theme}-${width}.png`), fullPage: true });
+      await page.getByRole("button", { name: "Open details for CVE-2026-4242" }).click();
+      const drawer = page.getByRole("dialog", { name: "Finding details for CVE-2026-4242" });
+      await drawer.getByRole("tab", { name: "Evidence" }).click();
+      await expect(drawer.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
+      await expect(drawer.getByText("Compliance controls", { exact: true })).toBeVisible();
+    });
+  }
+}

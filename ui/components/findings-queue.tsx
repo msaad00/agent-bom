@@ -1,7 +1,8 @@
 "use client";
 
 import { ChevronDown, ChevronRight, ChevronUp, ExternalLink } from "lucide-react";
-import { Fragment, useLayoutEffect, useState } from "react";
+import { Fragment, useLayoutEffect, useState, type ReactNode } from "react";
+import { FINDING_COLUMN_LABELS, defaultFindingColumns, readFindingColumns, writeFindingColumns, type FindingColumnKey, type FindingColumnPreferences } from "@/lib/finding-columns";
 
 import { useAuthState } from "@/components/auth-provider";
 import { severityColor, severityDot, type FindingTriageItem } from "@/lib/api";
@@ -121,7 +122,6 @@ export function FindingsQueueTable({
   onMarkFP,
   selectedId,
   onSelect,
-  lens = "ops",
   triageByKey = new Map(),
 }: {
   vulns: EnrichedVuln[];
@@ -132,7 +132,7 @@ export function FindingsQueueTable({
   onMarkFP: (vulnId: string, packageName: string) => void;
   selectedId: string | null;
   onSelect: (vulnId: string | null) => void;
-  /** Retained for story/caller compatibility; persona columns own timestamp visibility. */
+  /** Retained for caller compatibility. The queue uses one column model. */
   showLifecycle?: boolean;
   lens?: FindingsLens;
   triageByKey?: ReadonlyMap<string, FindingTriageItem>;
@@ -140,6 +140,10 @@ export function FindingsQueueTable({
   const { hasCapability } = useAuthState();
   const canManageExceptions = hasCapability("exceptions.manage");
   const compactLayout = useCompactFindingsLayout();
+  const [preferences, setPreferences] = useState<FindingColumnPreferences>(defaultFindingColumns);
+  useLayoutEffect(() => { setPreferences(readFindingColumns()); }, []);
+  const columns = preferences.order.filter((key) => !preferences.hidden.includes(key));
+  const updateColumns = (next: FindingColumnPreferences) => { setPreferences(next); writeFindingColumns(next); };
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const toggleOccurrences = (rowKey: string) => {
     setExpandedGroups((current) => {
@@ -149,13 +153,11 @@ export function FindingsQueueTable({
       return next;
     });
   };
-  const emptyLabel =
-    lens === "trust"
-      ? "No findings match the selected compliance query."
-      : "No findings match the selected engineering filters.";
+  const emptyLabel = "No findings match the selected filters.";
 
   return (
     <div className="overflow-hidden rounded-xl border border-outline">
+      <FindingColumnsChooser preferences={preferences} onChange={updateColumns} />
       {compactLayout ? (
       <div className="divide-y divide-outline bg-background">
         {vulns.map((vuln) => {
@@ -164,7 +166,7 @@ export function FindingsQueueTable({
             <MobileFindingCard
               key={rowKey}
               vuln={vuln}
-              lens={lens}
+              columns={columns}
               triage={triageForFinding(vuln, triageByKey)}
               selected={selectedId === rowKey || selectedId === vuln.id}
               suppressed={suppressed.has(vuln.id)}
@@ -180,37 +182,17 @@ export function FindingsQueueTable({
       ) : (
       <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <caption className="sr-only">
-          {lens === "trust" ? "Compliance findings and evidence status" : "Engineering findings and remediation priority"}
-        </caption>
+        <caption className="sr-only">Findings and supporting evidence</caption>
         <thead className="bg-surface border-b border-outline">
-          {lens === "trust" ? (
-            <tr>
-              <th scope="col" aria-sort={ariaSort("id", sortKey, sortDir)} className="text-left px-4 py-3">
-                <SortButton label="Finding" field="id" current={sortKey} dir={sortDir} onClick={handleSort} />
-              </th>
-              <ColumnHeader>Control mapping</ColumnHeader>
-              <ColumnHeader>Evidence freshness</ColumnHeader>
-              <ColumnHeader>Disposition / attestation</ColumnHeader>
-              <ColumnHeader>Affected scope</ColumnHeader>
-              <ColumnHeader>Action</ColumnHeader>
-            </tr>
-          ) : (
-            <tr>
-              <th scope="col" aria-sort={ariaSort("id", sortKey, sortDir)} className="text-left px-4 py-3">
-                <SortButton label="Finding" field="id" current={sortKey} dir={sortDir} onClick={handleSort} />
-              </th>
-              <th scope="col" aria-sort={ariaSort("severity", sortKey, sortDir)} className="text-left px-4 py-3">
+          <tr>
+            <ColumnHeader>Finding</ColumnHeader>
+            {columns.map((key) => key === "priority" ? (
+              <th key={key} scope="col" aria-sort={ariaSort("severity", sortKey, sortDir)} className="text-left px-4 py-3">
                 <SortButton label="Priority" field="severity" current={sortKey} dir={sortDir} onClick={handleSort} />
               </th>
-              <ColumnHeader>Reach / exploit</ColumnHeader>
-              <ColumnHeader>Affected asset</ColumnHeader>
-              <ColumnHeader>Fix &amp; verify</ColumnHeader>
-              <ColumnHeader>Owner / SLA</ColumnHeader>
-              <ColumnHeader>Last observed</ColumnHeader>
-              <ColumnHeader>Action</ColumnHeader>
-            </tr>
-          )}
+            ) : <ColumnHeader key={key}>{FINDING_COLUMN_LABELS[key]}</ColumnHeader>)}
+            <ColumnHeader>Action</ColumnHeader>
+          </tr>
         </thead>
         <tbody className="divide-y divide-outline bg-background">
           {vulns?.map((v) => {
@@ -231,29 +213,16 @@ export function FindingsQueueTable({
                     occurrencesExpanded={occurrencesExpanded}
                     onToggleOccurrences={() => toggleOccurrences(rowKey)}
                   />
-                  {lens === "trust" ? (
-                    <ComplianceCells vuln={v} triage={triage} onSelect={() => onSelect(rowKey)} />
-                  ) : (
-                    <>
-                      <td className="px-4 py-3">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(v.severity)}`}>
-                        {v.severity}
-                      </span>
-                      </td>
-                      <EngineeringCells
-                        vuln={v}
-                        triage={triage}
-                        suppressed={suppressed.has(v.id)}
-                        onSelect={() => onSelect(rowKey)}
-                        onMarkFP={() => onMarkFP(v.id, v.packages[0] ?? "")}
-                        canMarkFalsePositive={canManageExceptions}
-                      />
-                    </>
-                  )}
+                  <EngineeringCells
+                    vuln={v} triage={triage} columns={columns}
+                    suppressed={suppressed.has(v.id)} onSelect={() => onSelect(rowKey)}
+                    onMarkFP={() => onMarkFP(v.id, v.packages[0] ?? "")}
+                    canMarkFalsePositive={canManageExceptions}
+                  />
                 </tr>
                 {occurrencesExpanded ? (
                   <tr className="bg-surface/45">
-                    <td colSpan={lens === "trust" ? 6 : 8} className="px-10 py-3">
+                    <td colSpan={columns.length + 2} className="px-10 py-3">
                       <OccurrenceList vuln={v} />
                     </td>
                   </tr>
@@ -292,7 +261,7 @@ function useCompactFindingsLayout() {
 
 function MobileFindingCard({
   vuln,
-  lens,
+  columns,
   triage,
   selected,
   suppressed,
@@ -303,7 +272,7 @@ function MobileFindingCard({
   onToggleOccurrences,
 }: {
   vuln: EnrichedVuln;
-  lens: FindingsLens;
+  columns: FindingColumnKey[];
   triage: FindingTriageItem | undefined;
   selected: boolean;
   suppressed: boolean;
@@ -313,11 +282,7 @@ function MobileFindingCard({
   occurrencesExpanded: boolean;
   onToggleOccurrences: () => void;
 }) {
-  const controls = controlLabels(vuln);
-  const evidenceSources = vuln.sources.filter((source) => source !== "finding");
   const affectedScope = [...vuln.packages, ...vuln.agents, ...vuln.affected_servers];
-  const observed = vuln.last_observed ?? vuln.last_seen;
-  const disposition = triage?.decision?.replaceAll("_", " ") ?? "Not reviewed";
   const exploit = vuln.is_kev ?? vuln.cisa_kev
     ? "CISA KEV"
     : typeof vuln.epss_score === "number"
@@ -325,6 +290,21 @@ function MobileFindingCard({
       : typeof vuln.cvss_score === "number"
         ? `CVSS ${vuln.cvss_score.toFixed(1)}`
         : "Unavailable";
+
+  const controls = controlLabels(vuln);
+  const due = formatSlaDue(vuln.sla_due_at);
+  const fields: Record<FindingColumnKey, ReactNode> = {
+    priority: <span className={`inline-block rounded border px-1.5 py-0.5 text-xs ${severityColor(vuln.severity)}`}>{vuln.severity}</span>,
+    asset: affectedScope.slice(0, 2).join(", ") || "Unavailable",
+    detection: <DetectionEvidence vuln={vuln} />,
+    observed: <ObservedEvidence vuln={vuln} />,
+    remediation: `${vuln.fixed_version ? `Upgrade ${vuln.fixed_version}` : "Fix not provided"} · ${remediationLifecycle(vuln)}`,
+    reach: vuln.graph_reachable === true ? `Reachable · ${exploit}` : vuln.graph_reachable === false ? `Unreachable · ${exploit}` : exploit,
+    owner: `${vuln.owner || triage?.assignee || "Unassigned"} · ${due?.label ?? "SLA unavailable"}`,
+    controls: controls.join(", ") || "Unavailable",
+    disposition: `${triage?.decision?.replaceAll("_", " ") || "Not reviewed"} · ${triage?.vex_eligible ? "OpenVEX ready" : "Attestation unavailable"}`,
+    scope: affectedScope.join(", ") || "Unavailable",
+  };
 
   return (
     <article
@@ -347,9 +327,6 @@ function MobileFindingCard({
             </span>
           ) : null}
         </span>
-        <span className={`shrink-0 rounded border px-2 py-0.5 text-[10px] font-medium uppercase ${severityColor(vuln.severity)}`}>
-          {vuln.severity}
-        </span>
       </button>
 
       <OccurrenceDisclosure
@@ -358,42 +335,9 @@ function MobileFindingCard({
         onToggle={onToggleOccurrences}
       />
 
-      {lens === "trust" ? (
-        <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 text-xs">
-          <MobileDetail label="Controls" value={controls.length > 0 ? controls.slice(0, 2).join(", ") : "Unavailable"} />
-          <MobileDetail
-            label="Evidence"
-            value={
-              observed
-                ? `${formatFindingTimestamp(observed)} · ${
-                    evidenceSources.length > 0
-                      ? `${evidenceSources.length} source${evidenceSources.length === 1 ? "" : "s"}`
-                      : "Source unavailable"
-                  }`
-                : "Unavailable"
-            }
-          />
-          <MobileDetail label="Disposition" value={disposition} />
-          <MobileDetail label="Affected scope" value={affectedScope.slice(0, 2).join(", ") || "Unavailable"} />
-        </dl>
-      ) : (
-        <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 text-xs">
-          <MobileDetail
-            label="Reach / exploit"
-            value={
-              vuln.graph_reachable === true
-                ? `Reachable · ${exploit}`
-                : vuln.graph_reachable === false
-                  ? `Unreachable · ${exploit}`
-                  : exploit
-            }
-          />
-          <MobileDetail label="Affected asset" value={affectedScope.slice(0, 2).join(", ") || "Unavailable"} />
-          <MobileDetail label="Fix" value={vuln.fixed_version ? `Upgrade ${vuln.fixed_version}` : "Unavailable"} />
-          <MobileDetail label="Owner / SLA" value={vuln.owner || triage?.assignee || "Unavailable"} />
-          <MobileDetail label="Last observed" value={observed ? formatFindingTimestamp(observed) : "Unavailable"} />
-        </dl>
-      )}
+      <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 text-xs">
+        {columns.map((key) => <MobileDetail key={key} label={FINDING_COLUMN_LABELS[key]} value={fields[key]} />)}
+      </dl>
 
       <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 border-t border-outline pt-3">
         <button
@@ -401,9 +345,9 @@ function MobileFindingCard({
           onClick={onSelect}
           className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"
         >
-          {lens === "trust" ? "Review evidence" : "Investigate"}
+          Investigate
         </button>
-        {lens === "ops" ? (
+        {
           suppressed ? (
             <span className="rounded border border-outline bg-surface-elevated px-2 py-1 text-xs text-ink-secondary">
               Suppressed
@@ -419,17 +363,13 @@ function MobileFindingCard({
               Mark false positive
             </button>
           )
-        ) : triage?.vex_eligible ? (
-          <span className="text-xs text-emerald-600 dark:text-emerald-400">OpenVEX ready</span>
-        ) : (
-          <span className="text-xs text-ink-tertiary">Attestation unavailable</span>
-        )}
+        }
       </div>
     </article>
   );
 }
 
-function MobileDetail({ label, value }: { label: string; value: string }) {
+function MobileDetail({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
       <dt className="text-[10px] font-medium uppercase tracking-wide text-ink-tertiary">{label}</dt>
@@ -483,7 +423,7 @@ function FindingIdentity({
                 event.stopPropagation();
                 onSelect(rowKey);
               }}
-              className="font-mono text-xs text-foreground transition-colors hover:text-emerald-400"
+              className="whitespace-nowrap font-mono text-xs text-foreground transition-colors hover:text-emerald-700 dark:hover:text-emerald-300"
             >
               {vuln.id}
             </button>
@@ -588,6 +528,7 @@ function OccurrenceList({ vuln }: { vuln: EnrichedVuln }) {
 
 function EngineeringCells({
   vuln,
+  columns,
   triage,
   suppressed,
   onSelect,
@@ -595,6 +536,7 @@ function EngineeringCells({
   canMarkFalsePositive,
 }: {
   vuln: EnrichedVuln;
+  columns: FindingColumnKey[];
   triage: FindingTriageItem | undefined;
   suppressed: boolean;
   onSelect: () => void;
@@ -605,9 +547,11 @@ function EngineeringCells({
   const sla = formatSlaDue(vuln.sla_due_at);
   const packageName = vuln.packages[0];
   const visibleAgents = vuln.agents.slice(0, 2);
-  return (
-    <>
-      <td className="px-4 py-3">
+  const controlTags = controlLabels(vuln);
+  const disposition = triage?.decision?.replaceAll("_", " ");
+  const affectedScope = [...vuln.packages, ...vuln.agents, ...vuln.affected_servers];
+  const cells: Record<FindingColumnKey | "action", ReactNode> = {
+    reach: (<td className="px-4 py-3">
         <div className="flex flex-col items-start gap-1">
           <div className="flex flex-wrap items-center gap-1">
             <ReachabilityBadge reachable={vuln.graph_reachable} hops={vuln.graph_min_hop_distance} />
@@ -625,8 +569,8 @@ function EngineeringCells({
             <span className="text-xs text-ink-tertiary">Unavailable</span>
           ) : null}
         </div>
-      </td>
-      <td className="px-4 py-3">
+      </td>),
+    asset: (<td className="px-4 py-3">
         <div className="flex flex-col gap-1 text-xs">
           {packageName ? (
             <a
@@ -658,18 +602,19 @@ function EngineeringCells({
             <span className="text-ink-tertiary">Agent unavailable</span>
           )}
         </div>
-      </td>
-      <td className="px-4 py-3">
+      </td>),
+    remediation: (<td className="px-4 py-3">
         <div className="flex flex-col gap-1 text-xs">
-          <span className={vuln.fixed_version ? "font-mono text-emerald-500" : "text-ink-tertiary"}>
-            {vuln.fixed_version ? `Upgrade ${vuln.fixed_version}` : "Fix unavailable"}
+          <span className={vuln.fixed_version ? "font-mono text-emerald-700 dark:text-emerald-300" : "text-ink-tertiary"}>
+            {vuln.fixed_version ? `Upgrade ${vuln.fixed_version}` : "Fix not provided"}
           </span>
+          <span className="text-ink-secondary">{remediationLifecycle(vuln)}</span>
           <span className="max-w-[14rem] truncate font-mono text-[11px] text-ink-tertiary" title={verifyCommand ?? undefined}>
             {verifyCommand ? `Verify: ${verifyCommand}` : "No scanner-provided verification command"}
           </span>
         </div>
-      </td>
-      <td className="px-4 py-3">
+      </td>),
+    owner: (<td className="px-4 py-3">
         <div className="flex flex-col gap-1 text-xs">
           <span className="text-ink-secondary">{vuln.owner || triage?.assignee || "Unassigned"}</span>
           {sla ? (
@@ -683,13 +628,9 @@ function EngineeringCells({
             <span className="text-ink-tertiary">SLA unavailable</span>
           )}
         </div>
-      </td>
-      <td className="px-4 py-3 text-xs font-mono text-ink-secondary">
-        {vuln.last_observed || vuln.last_seen
-          ? formatFindingTimestamp(vuln.last_observed ?? vuln.last_seen)
-          : "Unavailable"}
-      </td>
-      <td className="px-4 py-3">
+      </td>),
+    observed: (<td className="px-4 py-3 text-xs text-ink-secondary"><ObservedEvidence vuln={vuln} /></td>),
+    action: (<td className="px-4 py-3">
         {suppressed ? (
           <span className="text-xs font-medium px-2 py-0.5 rounded border bg-surface-elevated border-outline text-ink-secondary">
             Suppressed
@@ -720,27 +661,10 @@ function EngineeringCells({
             </button>
           </div>
         )}
-      </td>
-    </>
-  );
-}
-
-function ComplianceCells({
-  vuln,
-  triage,
-  onSelect,
-}: {
-  vuln: EnrichedVuln;
-  triage: FindingTriageItem | undefined;
-  onSelect: () => void;
-}) {
-  const controlTags = controlLabels(vuln);
-  const evidenceSources = vuln.sources.filter((source) => source !== "finding");
-  const disposition = triage?.decision?.replaceAll("_", " ");
-  const affectedScope = [...vuln.packages, ...vuln.agents, ...vuln.affected_servers];
-  return (
-    <>
-      <td className="px-4 py-3">
+      </td>),
+    detection: (<td className="px-4 py-3 text-xs text-ink-secondary"><DetectionEvidence vuln={vuln} /></td>),
+    priority: (<td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(vuln.severity)}`}>{vuln.severity}</span></td>),
+    controls: (<td className="px-4 py-3">
         {controlTags.length > 0 ? (
           <div className="flex max-w-[16rem] flex-wrap gap-1">
             {controlTags.slice(0, 2).map((tag) => (
@@ -761,26 +685,8 @@ function ComplianceCells({
             Unavailable · open Compliance
           </a>
         )}
-      </td>
-      <td className="px-4 py-3">
-        {evidenceSources.length > 0 || vuln.last_observed || vuln.last_seen ? (
-          <div className="flex flex-col gap-1 text-xs">
-            <span className="text-ink-secondary">
-              {vuln.last_observed || vuln.last_seen
-                ? formatFindingTimestamp(vuln.last_observed ?? vuln.last_seen)
-                : "Freshness unavailable"}
-            </span>
-            <span className="max-w-[12rem] truncate text-ink-tertiary" title={evidenceSources.join(", ")}>
-              {evidenceSources.length > 0
-                ? `${evidenceSources.length} source${evidenceSources.length === 1 ? "" : "s"} · ${evidenceSources.join(", ")}`
-                : "Source unavailable"}
-            </span>
-          </div>
-        ) : (
-          <span className="text-xs text-ink-tertiary">Unavailable</span>
-        )}
-      </td>
-      <td className="px-4 py-3">
+      </td>),
+    disposition: (<td className="px-4 py-3">
         <div className="flex flex-col items-start gap-1">
           <span className={`rounded border px-2 py-0.5 text-xs font-medium ${findingStatusClass(triage?.queue_state)}`}>
             {disposition || "Not reviewed"}
@@ -789,26 +695,55 @@ function ComplianceCells({
             <span className="text-[11px] text-emerald-600 dark:text-emerald-400">OpenVEX ready</span>
           ) : <span className="text-[11px] text-ink-tertiary">Attestation unavailable</span>}
         </div>
-      </td>
-      <td className="px-4 py-3 text-xs text-ink-secondary">
+      </td>),
+    scope: (<td className="px-4 py-3 text-xs text-ink-secondary">
         {affectedScope.length > 0 ? (
           <span className="block max-w-[14rem] truncate" title={affectedScope.join(", ")}>
             {affectedScope.slice(0, 2).join(", ")}{affectedScope.length > 2 ? ` +${affectedScope.length - 2}` : ""}
           </span>
         ) : "Unavailable"}
-      </td>
-      <td className="px-4 py-3">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelect();
-          }}
-          className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-500/15 dark:text-emerald-300"
-        >
-          Review evidence
-        </button>
-      </td>
-    </>
-  );
+      </td>),
+  };
+  return <>{[...columns, "action" as const].map((key) => <Fragment key={key}>{cells[key]}</Fragment>)}</>;
+}
+
+function remediationLifecycle(vuln: EnrichedVuln): string {
+  switch (vuln.lifecycle_status) {
+    case "open": return "Open";
+    case "reopened": return "Reopened";
+    case "resolved": return "Reported resolved · verification not provided";
+    case "suppressed": return "Suppressed · not verified fixed";
+    default: return "Status unavailable";
+  }
+}
+function ObservedEvidence({ vuln }: { vuln: EnrichedVuln }) {
+  const last = vuln.last_observed ?? vuln.last_seen;
+  return <span className="flex flex-col gap-1"><span>First: {vuln.first_seen ? formatFindingTimestamp(vuln.first_seen) : "Unavailable"}</span><span>Last: {last ? formatFindingTimestamp(last) : "Unavailable"}</span></span>;
+}
+function DetectionEvidence({ vuln }: { vuln: EnrichedVuln }) {
+  return <span className="flex flex-col gap-1 break-words"><span>Source: {vuln.detection_source || "Unavailable"}</span><span>Type: {vuln.finding_type || "Unavailable"}</span></span>;
+}
+function FindingColumnsChooser({ preferences, onChange }: { preferences: FindingColumnPreferences; onChange: (next: FindingColumnPreferences) => void }) {
+  const move = (key: FindingColumnKey, delta: number) => {
+    const order = [...preferences.order];
+    const index = order.indexOf(key);
+    const target = index + delta;
+    if (target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target]!, order[index]!];
+    onChange({ ...preferences, order });
+  };
+  return <details className="border-b border-outline p-3">
+    <summary className="w-fit cursor-pointer rounded text-sm font-medium text-ink-secondary focus-visible:outline-2 focus-visible:outline-emerald-600">Columns</summary>
+    <div className="mt-3 max-w-lg space-y-2" aria-label="Column preferences">
+      <p className="text-xs text-ink-secondary">Finding and Action stay visible. Preferences apply to both the table and mobile cards.</p>
+      <ul className="space-y-1">
+        {preferences.order.map((key, index) => <li key={key} className="flex items-center gap-2">
+          <label className="flex flex-1 items-center gap-2 text-sm text-ink-secondary"><input type="checkbox" checked={!preferences.hidden.includes(key)} onChange={() => onChange({ ...preferences, hidden: preferences.hidden.includes(key) ? preferences.hidden.filter(item => item !== key) : [...preferences.hidden, key] })} />{FINDING_COLUMN_LABELS[key]}</label>
+          <button type="button" aria-label={`Move ${FINDING_COLUMN_LABELS[key]} up`} disabled={index === 0} onClick={() => move(key, -1)} className="rounded border border-outline p-1 text-ink-secondary disabled:opacity-40"><ChevronUp className="h-4 w-4" /></button>
+          <button type="button" aria-label={`Move ${FINDING_COLUMN_LABELS[key]} down`} disabled={index === preferences.order.length - 1} onClick={() => move(key, 1)} className="rounded border border-outline p-1 text-ink-secondary disabled:opacity-40"><ChevronDown className="h-4 w-4" /></button>
+        </li>)}
+      </ul>
+      <button type="button" onClick={() => onChange(defaultFindingColumns())} className="rounded border border-outline px-3 py-1.5 text-sm text-ink-secondary">Reset view</button>
+    </div>
+  </details>;
 }

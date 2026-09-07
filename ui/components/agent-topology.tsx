@@ -16,15 +16,15 @@ import "@xyflow/react/dist/style.css";
 import { Lock, Network, Users } from "lucide-react";
 import type { Agent, AuthMeResponse } from "@/lib/api";
 import {
-  MAX_TOPOLOGY_AGENTS,
-  MAX_TOPOLOGY_SERVERS,
-  agentRiskScore,
   buildTopologyGraph,
-  selectAgentsForLens,
-  serverMatchesFilter,
+  filterTopologyAgents,
+  limitTopologyAgents,
+  topologyAgentDisplayName,
+  serviceKey,
+  serverHasCredentials,
+  serverVulnerabilityCount,
   topologySummary,
   type TopologyFilter,
-  type TopologyLens,
 } from "@/lib/agent-topology-graph";
 import { useDagreLrLayout } from "@/lib/use-dagre-lr";
 import { useThemeMode } from "@/lib/theme-mode";
@@ -124,14 +124,13 @@ function TopologyFlow({
   onSelect: (selection: { kind: "agent"; name: string } | { kind: "server"; serviceKey: string; label: string }) => void;
 }) {
   const theme = useThemeMode();
-  const { fitView } = useReactFlow();
+  const { fitView, getViewport, setViewport } = useReactFlow();
   const { nodes: rawNodes, edges } = useMemo(() => buildTopologyGraph(agents), [agents]);
   const { nodes, pending } = useDagreLrLayout(rawNodes, edges, {
     nodeWidth: 168,
     nodeHeight: 72,
     rankSep: 120,
     nodeSep: 28,
-    fitAspect: 2.6,
     minSeparation: { width: 168, height: 72, gap: 24 },
   });
   const displayEdges = useMemo(
@@ -146,12 +145,18 @@ function TopologyFlow({
 
   useEffect(() => {
     if (pending) return;
-    const timer = window.setTimeout(
-      () => fitView({ padding: 0.14, duration: 300, minZoom: 0.48, maxZoom: 1.05 }),
-      80,
-    );
-    return () => window.clearTimeout(timer);
-  }, [fitView, nodes, pending]);
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      await fitView({ padding: 0.14, duration: 0, minZoom: 0.9, maxZoom: 1.05 });
+      if (cancelled) return;
+      const viewport = getViewport();
+      const top = Math.min(...nodes.map((node) => node.position.y), 0);
+      // Start at the beginning of the readable columns, not halfway through
+      // tall inventory. Remaining rows remain available by panning.
+      void setViewport({ ...viewport, y: 24 - top * viewport.zoom });
+    }, 80);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [fitView, getViewport, setViewport, nodes, pending]);
 
   const handleNodeClick = useCallback(
     (_: unknown, node: Node) => {
@@ -177,8 +182,8 @@ function TopologyFlow({
       nodeTypes={nodeTypes}
       onNodeClick={handleNodeClick}
       fitView
-      fitViewOptions={{ padding: 0.14, minZoom: 0.48, maxZoom: 1.05 }}
-      minZoom={0.35}
+      fitViewOptions={{ padding: 0.14, minZoom: 0.9, maxZoom: 1.05 }}
+      minZoom={0.65}
       maxZoom={1.5}
       panOnDrag
       zoomOnScroll
@@ -194,13 +199,14 @@ function TopologyFlow({
 export function AgentTopology({
   agents,
   session,
+  sourceScope,
 }: {
   agents: Agent[];
   direction?: "LR" | "TB";
   session?: AuthMeResponse | null;
+  sourceScope?: string | undefined;
 }) {
-  const [filter, setFilter] = useState<TopologyFilter>("all");
-  const [lens, setLens] = useState<TopologyLens>("path");
+  const [filter, setFilter] = useState<TopologyFilter>("attention");
   const [selection, setSelection] = useState<
     { kind: "agent"; name: string } | { kind: "server"; serviceKey: string; label: string } | null
   >(null);
@@ -208,53 +214,25 @@ export function AgentTopology({
 
   const summary = useMemo(() => topologySummary(agents), [agents]);
 
-  const filteredAgents = useMemo(() => {
-    if (filter === "all") return agents;
-    if (filter === "unlinked") {
-      return agents
-        .filter((agent) => (agent.mcp_servers?.length ?? 0) === 0)
-        .map((agent) => ({ ...agent, mcp_servers: [] }));
-    }
-    return agents
-      .map((agent) => ({
-        ...agent,
-        mcp_servers: (agent.mcp_servers ?? []).filter((server) => serverMatchesFilter(server, filter)),
-      }))
-      .filter((agent) => agent.mcp_servers.length > 0);
-  }, [agents, filter]);
-
-  const lensAgents = useMemo(
-    () => selectAgentsForLens(filteredAgents, lens),
-    [filteredAgents, lens],
+  const filteredAgents = useMemo(() => filterTopologyAgents(agents, filter), [agents, filter]);
+  const displayAgents = useMemo(() => limitTopologyAgents(filteredAgents), [filteredAgents]);
+  const connectedAgents = useMemo(
+    () => displayAgents.filter((agent) => (agent.mcp_servers?.length ?? 0) > 0),
+    [displayAgents],
   );
-
-  const displayAgents = useMemo(() => {
-    let renderedServers = 0;
-    return [...lensAgents]
-      .sort(
-        (left, right) =>
-          agentRiskScore(right) - agentRiskScore(left) ||
-          (right.mcp_servers?.length ?? 0) - (left.mcp_servers?.length ?? 0) ||
-          left.name.localeCompare(right.name),
-      )
-      .filter((agent) => {
-        if (renderedServers >= MAX_TOPOLOGY_SERVERS) return false;
-        renderedServers += agent.mcp_servers?.length ?? 0;
-        return true;
-      })
-      .slice(0, MAX_TOPOLOGY_AGENTS);
-  }, [lensAgents]);
-
-  const hiddenAgentCount = Math.max(0, filteredAgents.length - displayAgents.length);
-  const filterOptions = useMemo(
-    () => [
-      { key: "all" as const, label: "All", count: summary.agents },
-      { key: "attention" as const, label: "Attention", count: summary.attentionServers },
-      { key: "credentialed" as const, label: "Credentialed", count: summary.credentialedServers },
-      { key: "unlinked" as const, label: "Unlinked", count: summary.unlinkedAgents },
-    ],
-    [summary],
+  const unlinkedAgents = useMemo(
+    () => displayAgents.filter((agent) => (agent.mcp_servers?.length ?? 0) === 0),
+    [displayAgents],
   );
+  const visible = topologySummary(displayAgents);
+  const matched = topologySummary(filteredAgents);
+  const capped = displayAgents.length < filteredAgents.length || visible.uniqueServices < matched.uniqueServices;
+  const filterOptions = [
+    { key: "all" as const, label: "Full mesh" },
+    { key: "attention" as const, label: "Needs attention" },
+    { key: "credentialed" as const, label: "Credential references" },
+    { key: "unlinked" as const, label: "Unlinked" },
+  ];
 
   const handleSelect = useCallback(
     (next: { kind: "agent"; name: string } | { kind: "server"; serviceKey: string; label: string }) => {
@@ -268,8 +246,8 @@ export function AgentTopology({
       <div className="flex h-[320px] items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
         <div className="text-center">
           <Network className="mx-auto mb-2 h-8 w-8 text-[color:var(--text-tertiary)]" />
-          <p className="text-sm text-[color:var(--text-secondary)]">No agents discovered yet</p>
-          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Run a scan to see the topology</p>
+          <p className="text-sm text-[color:var(--text-secondary)]">No agent configurations available</p>
+          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Configure supported clients on this API host, then refresh the inventory</p>
         </div>
       </div>
     );
@@ -280,44 +258,28 @@ export function AgentTopology({
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--border-subtle)] px-4 py-3">
         <div>
           <p className="text-[10px] uppercase tracking-[0.22em] text-[color:var(--text-tertiary)]">Agent topology</p>
-          <h3 className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">Trust mesh</h3>
+          <h3 className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">Agent mesh</h3>
           <p className="mt-1 max-w-2xl text-xs text-[color:var(--text-secondary)]">
-            Scanned AI runtimes connected to MCP services. Shared identities collapse into one server node; amber edges
-            mean credentials, red edges mean CVE evidence.
+            Configured relationships, grouped for display. Service groups do not establish shared runtime identity or an attack path.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <StatPill label="Agents" value={summary.agents} />
-          <StatPill label="Services" value={summary.uniqueServices} />
-          <StatPill label="Shared" value={summary.sharedServers} tone="cyan" />
-          <StatPill label="CVE" value={summary.vulnerableServers} tone="danger" />
-          <StatPill label="Secrets" value={summary.credentialedServers} tone="amber" />
+          <StatPill label="Service groups" value={summary.uniqueServices} />
+          <StatPill label="Multi-agent groups" value={summary.sharedServers} tone="cyan" />
+          <StatPill label="Groups with CVE refs" value={summary.vulnerableServers} tone="danger" />
+          <StatPill label="Groups with credential refs" value={summary.credentialedServers} tone="amber" />
         </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border-subtle)] px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-[color:var(--border-subtle)] p-0.5">
-            {(["path", "full"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setLens(value)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-                  lens === value
-                    ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                    : "text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]"
-                }`}
-              >
-                {value === "path" ? "Risk path" : "Full mesh"}
-              </button>
-            ))}
-          </div>
           {filterOptions.map((option) => (
             <button
               key={option.key}
               type="button"
               onClick={() => setFilter(option.key)}
+              aria-pressed={filter === option.key}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
                 filter === option.key
                   ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
@@ -325,7 +287,6 @@ export function AgentTopology({
               }`}
             >
               {option.label}
-              <span className="ml-1.5 font-mono text-[10px] text-[color:var(--text-tertiary)]">{option.count}</span>
             </button>
           ))}
         </div>
@@ -334,7 +295,7 @@ export function AgentTopology({
             <span className="h-2 w-4 rounded bg-slate-400/80" /> inventory
           </span>
           <span className="flex items-center gap-1">
-            <span className="h-2 w-4 rounded bg-amber-500/80" /> credentials
+            <span className="h-2 w-4 rounded bg-amber-500/80" /> credential references
           </span>
           <span className="flex items-center gap-1">
             <span className="h-2 w-4 rounded bg-red-500/80" /> CVE evidence
@@ -349,39 +310,90 @@ export function AgentTopology({
         </div>
       </div>
 
-      {hiddenAgentCount > 0 ? (
-        <div className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-2 text-xs text-[color:var(--text-secondary)]">
-          Showing the highest-risk slice ({displayAgents.length} agents). Switch to Full mesh or open Agent Mesh for the
-          remaining {hiddenAgentCount} agents.
-        </div>
-      ) : null}
+      <div className="border-b border-[color:var(--border-subtle)] px-4 py-2 text-xs text-[color:var(--text-secondary)]" aria-live="polite">
+        Showing {displayAgents.length} of {matched.agents} matching agents · {visible.uniqueServices} of {matched.uniqueServices} matching service groups.
+        {" "}Full inventory: {summary.agents} agents · {summary.uniqueServices} service groups · {summary.servers} configured relationships.
+        {capped ? " View limit reached. Narrow the filter or inspect the Agents inventory for the remaining records." : null}
+        {connectedAgents.length > 0 ? <span className="hidden md:inline"> Pan or zoom to inspect connections beyond the viewport.</span> : null}
+        <p className="mt-1">
+          {sourceScope === "local_discovery"
+            ? "Local configuration discovery; vulnerabilities are not assessed by this source. This scope differs from scanned findings."
+            : summary.vulnerableServers === 0 ? "No linked CVE evidence in this mesh; this does not establish a clean estate." : "CVE labels reflect evidence linked to this mesh only."}
+        </p>
+      </div>
 
       {showReadout ? (
         <div className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-xs text-[color:var(--text-secondary)]">
           Tenant {session?.tenant_id ?? "local"} · role {session?.role_summary?.display_name ?? session?.role ?? "viewer"} ·{" "}
           {summary.environments} env{summary.environments === 1 ? "" : "s"} ·{" "}
           {summary.unlinkedAgents > 0
-            ? `${summary.unlinkedAgents} agent${summary.unlinkedAgents === 1 ? "" : "s"} have no MCP edge in current evidence.`
-            : "Every agent has at least one MCP edge."}
+            ? `${summary.unlinkedAgents} agent${summary.unlinkedAgents === 1 ? "" : "s"} have no service relationship in current evidence.`
+            : "Every agent has at least one configured service relationship."}
         </div>
       ) : null}
 
-      <div className="px-2 pb-2 pt-1" style={{ height: 440 }}>
-        {displayAgents.length === 0 ? (
-          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
-            <div className="max-w-sm text-center">
-              <p className="text-sm font-medium text-[color:var(--foreground)]">No topology entities match this filter</p>
-              <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-                Try All or Risk path, or run a scan with MCP server evidence.
-              </p>
-            </div>
-          </div>
-        ) : (
+      {connectedAgents.length > 0 ? (
+        <div className="hidden px-2 pb-2 pt-1 md:block" style={{ height: Math.min(720, Math.max(440, visible.uniqueServices * 90)) }}>
           <ReactFlowProvider>
-            <TopologyFlow agents={displayAgents} onSelect={handleSelect} />
+            <TopologyFlow agents={connectedAgents} onSelect={handleSelect} />
           </ReactFlowProvider>
-        )}
-      </div>
+        </div>
+      ) : displayAgents.length === 0 ? (
+        <div className="px-4 py-10 text-center">
+          <p className="text-sm font-medium text-[color:var(--foreground)]">
+            {filter === "attention" ? "No attention signals in this mesh" : "No agents match this filter"}
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            Choose Full mesh to inspect all configured relationships. No signal does not mean an assessment passed.
+          </p>
+        </div>
+      ) : null}
+      {connectedAgents.length > 0 ? (
+        <section aria-label="Configured service relationships" className="p-4 md:hidden">
+          <ul className="space-y-4">
+            {connectedAgents.map((agent) => (
+              <li key={agent.name}>
+                <button type="button" aria-label={`Inspect agent ${topologyAgentDisplayName(agent)}`}
+                  onClick={() => handleSelect({ kind: "agent", name: agent.name })}
+                  className="text-left text-sm font-semibold text-[color:var(--foreground)]">
+                  {topologyAgentDisplayName(agent)}
+                </button>
+                <ul className="mt-2 space-y-2 border-l border-[color:var(--border-subtle)] pl-3">
+                  {(agent.mcp_servers ?? []).map((server) => (
+                    <li key={serviceKey(server)}>
+                      <button type="button" aria-label={`Inspect service ${server.name} for ${topologyAgentDisplayName(agent)}`}
+                        onClick={() => handleSelect({ kind: "server", serviceKey: serviceKey(server), label: server.name })}
+                        className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 text-left text-sm text-[color:var(--foreground)]">
+                        <span className="block break-words font-medium">{server.name}</span>
+                        <span className="mt-1 block text-xs text-[color:var(--text-secondary)]">
+                          Configured connection{serverHasCredentials(server) ? " · Credential reference" : ""}
+                          {serverVulnerabilityCount(server) > 0 ? ` · ${serverVulnerabilityCount(server)} linked CVE records` : ""}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {unlinkedAgents.length > 0 ? (
+        <section aria-label="Agents without service relationships" className="border-t border-[color:var(--border-subtle)] p-4">
+          <h4 className="text-xs font-semibold text-[color:var(--foreground)]">No service relationship observed</h4>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {unlinkedAgents.map((agent) => (
+              <li key={agent.name}>
+                <button type="button" aria-label={`Inspect ${topologyAgentDisplayName(agent)}`}
+                  onClick={() => handleSelect({ kind: "agent", name: agent.name })}
+                  className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-xs text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]">
+                  {topologyAgentDisplayName(agent)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <TopologyDetailDrawer agents={agents} selection={selection} onClose={() => setSelection(null)} />
     </div>

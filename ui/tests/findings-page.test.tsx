@@ -66,6 +66,7 @@ const canonicalFinding = {
 
 describe("FindingsPage", () => {
   beforeEach(() => {
+    localStorage.clear();
     authState.canManageExceptions = true;
     navigationState.query = "";
     apiMock.listFindings.mockReset();
@@ -169,7 +170,7 @@ describe("FindingsPage", () => {
         expect.objectContaining({ groupOccurrences: true }),
       ),
     );
-    expect(await screen.findByText(/1 issues · current state/)).toBeInTheDocument();
+    expect(await screen.findByText(/1 finding.*Last 90 days/)).toBeInTheDocument();
     const expander = await screen.findByRole("button", { name: "Show 2 affected asset occurrences" });
     expect(screen.queryByText("api-image")).not.toBeInTheDocument();
 
@@ -182,8 +183,8 @@ describe("FindingsPage", () => {
   it("keeps findings as a compact queue and opens evidence in a drawer", async () => {
     render(<FindingsPage />);
 
-    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
-    expect(screen.getByText("25 per page")).toBeInTheDocument();
+    expect(await screen.findByText("Findings and supporting evidence")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Findings altitude" })).not.toBeInTheDocument();
     expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-1234" }));
@@ -443,7 +444,7 @@ describe("FindingsPage", () => {
 
     render(<FindingsPage />);
 
-    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    expect(await screen.findByText("Findings and supporting evidence")).toBeInTheDocument();
     await waitFor(() => {
       expect(
         screen.getAllByRole("button", { name: "Open details for CVE-2020-14343" }).length,
@@ -491,7 +492,7 @@ describe("FindingsPage", () => {
   it("honours the compliance drill-through framework/control URL and surfaces removable chips", async () => {
     navigationState.query = "framework=soc2&control=CC6.1";
     render(<FindingsPage />);
-    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    expect(await screen.findByText("Findings and supporting evidence")).toBeInTheDocument();
 
     // The drill-through params are forwarded to the findings API.
     await waitFor(() =>
@@ -523,7 +524,7 @@ describe("FindingsPage", () => {
   it("owns owner and SLA workflow filters in the URL and canonical API", async () => {
     navigationState.query = "owner=payments-security&sla=overdue";
     render(<FindingsPage />);
-    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    expect(await screen.findByText("Findings and supporting evidence")).toBeInTheDocument();
 
     await waitFor(() =>
       expect(apiMock.listFindings).toHaveBeenLastCalledWith(
@@ -537,7 +538,7 @@ describe("FindingsPage", () => {
   it("owns reachability and triage filters in the URL and canonical API", async () => {
     navigationState.query = "reachability=reachable&triage=under_investigation";
     render(<FindingsPage />);
-    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    expect(await screen.findByText("Findings and supporting evidence")).toBeInTheDocument();
 
     await waitFor(() =>
       expect(apiMock.listFindings).toHaveBeenLastCalledWith(
@@ -550,7 +551,7 @@ describe("FindingsPage", () => {
 
   it("sends the selected issue class to the paginated findings API", async () => {
     render(<FindingsPage />);
-    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    expect(await screen.findByText("Findings and supporting evidence")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Misconfigurations" }));
 
@@ -563,9 +564,9 @@ describe("FindingsPage", () => {
 
   it("sends free-text search to the canonical findings API", async () => {
     render(<FindingsPage />);
-    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    expect(await screen.findByText("Findings and supporting evidence")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Search CVE, package, agent…"), {
+    fireEvent.change(screen.getByPlaceholderText("Search findings, assets, or controls…"), {
       target: { value: "pyyaml" },
     });
 
@@ -576,7 +577,7 @@ describe("FindingsPage", () => {
     );
   });
 
-  it("uses server facets for whole-query facts while keeping Engineering page metrics explicit", async () => {
+  it("keeps whole-query facets for filters without repeating a summary strip", async () => {
     apiMock.listFindings.mockResolvedValue({
       schema_version: "v1",
       findings: [
@@ -616,16 +617,16 @@ describe("FindingsPage", () => {
 
     expect(await screen.findByText("CVE-2026-2222")).toBeInTheDocument();
     expect(apiMock.listFindings).toHaveBeenCalledWith(expect.objectContaining({ includeFacets: true }));
-    const summary = screen.getByTestId("findings-workspace-summary");
-    expect(within(summary).getByText("5 observed ≤7d")).toBeInTheDocument();
-    expect(within(summary).getAllByText("Whole query")).toHaveLength(4);
-    expect(within(summary).queryByText("Current page")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("findings-workspace-summary")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Findings altitude" })).not.toBeInTheDocument();
+    expect(screen.getByText("Findings and supporting evidence")).toHaveClass("sr-only");
+    expect(screen.queryByRole("button", { name: "Finding" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Priority" })).toHaveAttribute("aria-sort", "descending");
+    fireEvent.click(screen.getByText("Columns", { exact: true }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Reach / exploit" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Owner / SLA" }));
     expect(screen.getByRole("columnheader", { name: "Reach / exploit" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Owner / SLA" })).toBeInTheDocument();
-    expect(screen.getByText("Engineering findings and remediation priority")).toHaveClass("sr-only");
-    expect(screen.getByRole("columnheader", { name: "Finding" })).toHaveAttribute("aria-sort", "none");
-    expect(screen.getByRole("columnheader", { name: "Priority" })).toHaveAttribute("aria-sort", "descending");
-    expect(screen.queryByRole("columnheader", { name: "Control mapping" })).not.toBeInTheDocument();
   });
 
   it("keeps unrated findings reachable from the severity controls", async () => {
@@ -736,13 +737,12 @@ describe("FindingsPage", () => {
     render(<FindingsPage />);
 
     expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
-    const summary = screen.getByTestId("findings-workspace-summary");
-    expect(within(summary).getByText("1 reachable")).toBeInTheDocument();
-    expect(within(summary).getByText("1 assessed · 1 unassessed")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Columns", { exact: true }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Reach / exploit" }));
     expect(screen.getByText("Reachable · 2 hops")).toBeInTheDocument();
   });
 
-  it("gives Compliance distinct columns, actions, and an evidence-first drawer", async () => {
+  it("retains compliance evidence as optional columns in the same queue", async () => {
     navigationState.query = "lens=trust";
     apiMock.listFindings.mockResolvedValue({
       schema_version: "v1",
@@ -792,16 +792,19 @@ describe("FindingsPage", () => {
 
     render(<FindingsPage />);
 
-    expect(await screen.findByText("Disposition queue")).toBeInTheDocument();
+    expect(await screen.findByText("Public storage policy")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Columns", { exact: true }));
+    for (const name of ["Control mapping", "Disposition / attestation", "Affected scope"]) fireEvent.click(screen.getByRole("checkbox", { name }));
     expect(screen.getByRole("columnheader", { name: "Control mapping" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Evidence freshness" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Observed" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Disposition / attestation" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Affected scope" })).toBeInTheDocument();
-    expect(screen.getByText("Compliance findings and evidence status")).toHaveClass("sr-only");
+    expect(screen.getByText("Findings and supporting evidence")).toHaveClass("sr-only");
     expect(screen.getByRole("columnheader", { name: "Finding" })).toHaveAttribute("scope", "col");
     expect(screen.queryByRole("columnheader", { name: "Reach / exploit" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Review evidence" }));
+    fireEvent.click(screen.getByRole("button", { name: "Investigate" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Evidence" }));
     const drawer = await screen.findByRole("dialog", { name: "Finding details for Public storage policy" });
     expect(within(drawer).getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
     expect(within(drawer).getByText("Compliance controls")).toBeInTheDocument();
@@ -879,6 +882,23 @@ describe("FindingsPage", () => {
     expect(apiMock.listFindings).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps active filters available when the query returns no matches", async () => {
+    navigationState.query = "q=no-match&severity=high&owner=team";
+    apiMock.listFindings.mockResolvedValue({ findings: [], total: 0 });
+    render(<FindingsPage />);
+    expect(await screen.findByText("No findings match the selected filters.")).toBeInTheDocument();
+    expect(screen.queryByText("No findings found")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Search findings" })).toHaveValue("no-match");
+    expect(screen.getByText("Columns", { exact: true })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    await waitFor(() => {
+      const query = apiMock.listFindings.mock.calls.at(-1)?.[0];
+      expect(query).not.toHaveProperty("query");
+      expect(query).not.toHaveProperty("owner");
+      expect(query).not.toHaveProperty("severity");
+    });
+  });
+
   it("defaults the time window to 90 days and can widen to all history (#4009)", async () => {
     apiMock.listFindings.mockResolvedValue({
       findings: [canonicalFinding],
@@ -887,16 +907,16 @@ describe("FindingsPage", () => {
     });
 
     render(<FindingsPage />);
-    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    expect(await screen.findByText("Findings and supporting evidence")).toBeInTheDocument();
 
     // The default window is visible (not silently applied).
-    expect(screen.getByTestId("findings-window-chip")).toHaveTextContent("Last 90 days");
+    expect(screen.getByText(/1 finding · Last 90 days/)).toHaveTextContent("Last 90 days");
     await waitFor(() =>
       expect(apiMock.listFindings).toHaveBeenCalledWith(expect.objectContaining({ windowDays: 90 })),
     );
 
     // Widening to "All time" re-queries with windowDays: 0.
-    fireEvent.click(screen.getByTestId("findings-window-chip"));
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
     fireEvent.change(screen.getByTestId("findings-window-select"), { target: { value: "0" } });
     await waitFor(() =>
       expect(apiMock.listFindings).toHaveBeenCalledWith(expect.objectContaining({ windowDays: 0 })),
@@ -947,7 +967,7 @@ describe("FindingsPage", () => {
     render(<FindingsPage />);
 
     expect(await screen.findByText("Page 1 · total unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Current state · Last 90 days")).toBeInTheDocument();
+    expect(screen.getByText(/Total unavailable · Last 90 days/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Next/i }));
 
     await waitFor(() =>

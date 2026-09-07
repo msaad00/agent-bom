@@ -14,6 +14,7 @@ import pytest
 from agent_bom.cli._server import (
     _api_auth_summary,
     _enforce_auth_defaults,
+    _enforce_cors_posture,
     _generate_dev_api_key,
     _should_auto_generate_dev_key,
 )
@@ -24,6 +25,21 @@ def test_enforce_auth_defaults_loopback_always_passes() -> None:
     _enforce_auth_defaults("serve", "127.0.0.1", api_key=None, allow_insecure_no_auth=False)
     _enforce_auth_defaults("serve", "localhost", api_key=None, allow_insecure_no_auth=False)
     _enforce_auth_defaults("serve", "::1", api_key=None, allow_insecure_no_auth=False)
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
+def test_wildcard_cors_is_limited_to_loopback_development(host: str) -> None:
+    _enforce_cors_posture(host, cors_allow_all=True)
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.0.2.10"])
+def test_wildcard_cors_is_rejected_on_non_loopback_listeners(host: str) -> None:
+    with pytest.raises(click.ClickException, match="explicit CORS origins"):
+        _enforce_cors_posture(host, cors_allow_all=True)
+
+
+def test_explicit_cors_policy_is_allowed_on_non_loopback_listeners() -> None:
+    _enforce_cors_posture("0.0.0.0", cors_allow_all=False)
 
 
 def test_enforce_auth_defaults_browser_only_sso_still_refuses(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -912,6 +912,7 @@ async def auth_policy(request: Request) -> dict:
     from agent_bom.api.middleware import (
         describe_proxy_control_plane_mtls_posture,
         describe_security_header_posture,
+        get_auth_posture,
         get_auth_runtime_status,
         get_rate_limit_key_status,
         get_rate_limit_runtime_status,
@@ -963,7 +964,7 @@ async def auth_policy(request: Request) -> dict:
         "rate_limit_runtime": rl_runtime,
         "auth_session_client_identity": _auth_session_client_identity_posture(),
         "trusted_proxy_auth": get_trusted_proxy_auth_status(),
-        "proxy_control_plane_mtls": describe_proxy_control_plane_mtls_posture(),
+        "proxy_control_plane_mtls": describe_proxy_control_plane_mtls_posture(listener_host=get_auth_posture().listener_host),
         "security_headers": describe_security_header_posture(),
         "backpressure": describe_backpressure_posture(),
         "proxy_sandbox": describe_proxy_sandbox_posture(),

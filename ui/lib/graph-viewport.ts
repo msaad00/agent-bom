@@ -30,10 +30,9 @@ export function graphFitViewOptions(input: GraphViewportInput): GraphFitViewOpti
   let padding = 0.16;
   let maxZoom = 1.05;
 
-  // maxZoom is the readability ceiling: when a small/medium topology is wide
-  // and short, fitView is width-bound and would otherwise zoom far out and
-  // leave the nodes tiny. A higher ceiling lets fitView scale the nodes up to
-  // a legible size before it stops.
+  // maxZoom is only a ceiling; fitting a wide topology can still produce
+  // unreadable labels. Initial large-graph framing uses a readable anchor below.
+  // Explicit Fit all retains these whole-topology options.
   if (nodeCount <= 0) {
     padding = 0.18;
     maxZoom = 1;
@@ -99,4 +98,27 @@ export function shouldShowGraphMiniMap(input: GraphViewportInput): boolean {
   if (input.selectedNode && nodeCount <= 28) return false;
   if (nodeCount <= 18 && edgeCount <= 36) return false;
   return true;
+}
+
+
+type ViewportAnchorNode = { id: string; data: { nodeType?: string } };
+
+/** Selects a viewport anchor only; never filters nodes, edges, or evidence. */
+export function graphInitialFitViewOptions(
+  nodes: readonly ViewportAnchorNode[],
+  options: GraphFitViewOptions,
+  selectedNodeId?: string | null,
+  proposedChangeIds: readonly string[] = [],
+): GraphFitViewOptions & { nodes?: { id: string }[]; minZoom?: number } {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const selected = selectedNodeId ? byId.get(selectedNodeId) : undefined;
+  const changed = [...proposedChangeIds].sort().map((id) => byId.get(id)).find(Boolean);
+  if (!selected && !changed && nodes.length <= 6) return options;
+  const contextTypes = new Set(["agent", "source_file", "server", "cloud_resource", "identity"]);
+  const stable = [...nodes].sort((left, right) => left.id.localeCompare(right.id));
+  const anchor = selected ?? changed ?? stable.find((node) => contextTypes.has(node.data.nodeType ?? "")) ?? stable[0];
+  if (!anchor) return options;
+  // A single ~260px card fits the narrow canvas at this zoom. Other nodes stay
+  // available through pan, minimap, and explicit Fit all, without tiny labels.
+  return { ...options, nodes: [{ id: anchor.id }], minZoom: 1.1, maxZoom: 1.1 };
 }

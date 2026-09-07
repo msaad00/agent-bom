@@ -76,6 +76,7 @@ _COLUMNS = [
     "lifecycle_status",
     "symbol_reachability_reason",
     "runtime_dependency_chain",
+    "sla_due_at_source",
 ]
 
 
@@ -128,6 +129,7 @@ def _row_dict(finding, report: AIBOMReport) -> dict[str, Any]:
         "asset_identifier": finding.asset.identifier or None,
         "owner": workflow.get("owner"),
         "sla_due_at": workflow.get("sla_due_at"),
+        "sla_due_at_source": workflow.get("sla_due_at_source"),
         "lifecycle_status": workflow.get("lifecycle_status"),
         "symbol_reachability_reason": evidence(finding, "symbol_reachability_reason", "") or None,
         "runtime_dependency_chain": ";".join(evidence(finding, "runtime_dependency_chain", []) or []) or None,
@@ -209,6 +211,7 @@ def _schema(pa):
             ("asset_identifier", pa.string()),
             ("owner", pa.string()),
             ("sla_due_at", pa.string()),
+            ("sla_due_at_source", pa.string()),
             ("lifecycle_status", pa.string()),
             ("symbol_reachability_reason", pa.string()),
             ("runtime_dependency_chain", pa.string()),

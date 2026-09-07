@@ -1,27 +1,28 @@
 """Finding-level remediation SLA policy — one source of truth for every surface.
 
-A finding's ``sla_due_at`` is a *derived* field: the report spine
-(:meth:`agent_bom.finding.Finding.to_dict`) and the API projection
-(:func:`agent_bom.finding_scope.canonical_finding_payload`) both call
-:func:`sla_due_at` so the CLI table, ``/v1/findings``, the JSON/SARIF/CDX/SPDX
-exports, and the UI cannot disagree about the same finding's deadline.
+Finding projections share deadline resolution and source metadata. Known policy
+values are derived from the first-seen anchor; explicit and unattributed legacy
+assignments remain intact. A source marker identifies how a value was supplied,
+not whether a human approved it.
 
 The policy is deliberately simple (severity → fixed remediation window from the
-finding's first-seen anchor). A KEV-listed finding honors the earlier of its
-severity window and the CISA BOD 22-01 deadline, because the most urgent binding
-deadline is the one that actually governs. When neither a policy window nor a KEV
-deadline can be computed the deadline is an explicit ``None`` — an honest
+finding's first-seen anchor). Under the built-in policy, an available KEV
+target competes with the severity window and the earlier date is used. This
+product default does not determine an organization's regulatory obligations.
+When neither a policy window nor a KEV deadline can be computed the deadline is an explicit ``None`` — an honest
 "unknown", never a fabricated date.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
+from typing import Any
 
 from agent_bom.graph.severity import normalize_severity
 
 # Severity → remediation window in days from the finding's first-seen anchor.
-# Conservative, industry-typical defaults; ``info``/``unknown`` intentionally
+# Built-in product defaults; ``info``/``unknown`` intentionally
 # carry no fixed deadline (an SLA there would be a fabricated claim).
 SEVERITY_SLA_DAYS: dict[str, int] = {
     "critical": 7,
@@ -81,6 +82,52 @@ def sla_due_at(
     if not candidates:
         return None
     return min(candidates).isoformat()
+
+
+# Versioned source identity lets current-state projections distinguish a computed
+# deadline from an explicit assignment without guessing from the date itself.
+SLA_POLICY_SOURCE = "severity-kev/v1"
+SLA_DUE_SOURCES = frozenset({SLA_POLICY_SOURCE, "explicit", "unknown", "unavailable"})
+
+
+def finding_sla_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Resolve a deadline and its source; preserve opaque legacy assignments."""
+    due = payload.get("sla_due_at")
+    source = payload.get("sla_due_at_source")
+    evidence = payload.get("evidence")
+    kev = payload.get("kev_due_date")
+    if kev is None and isinstance(evidence, Mapping):
+        kev = evidence.get("kev_due_date")
+    parsed_kev = _parse_iso(kev)
+    kev = parsed_kev.isoformat() if parsed_kev is not None else None
+    if due is not None and source != SLA_POLICY_SOURCE:
+        return {"sla_due_at": due, "sla_due_at_source": "explicit" if source == "explicit" else "unknown", "kev_due_date": kev}
+    due = sla_due_at(payload.get("effective_severity") or payload.get("severity"), payload.get("first_seen"), kev_due_date=kev)
+    return {"sla_due_at": due, "sla_due_at_source": SLA_POLICY_SOURCE if due is not None else "unavailable", "kev_due_date": kev}
+
+
+def carry_finding_sla(payload: Mapping[str, Any], previous: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep existing explicit or unattributed dates before ledger replacement."""
+    merged = dict(payload)
+    previous_due = previous.get("sla_due_at")
+    previous_source = previous.get("sla_due_at_source")
+    if previous_due is not None and previous_source != SLA_POLICY_SOURCE and merged.get("sla_due_at_source") != "explicit":
+        merged["sla_due_at"] = previous_due
+        merged["sla_due_at_source"] = "explicit" if previous_source == "explicit" else "unknown"
+    return merged
+
+
+def merge_finding_sla(payload: Mapping[str, Any], previous: Mapping[str, Any], *, first_seen: str) -> dict[str, Any]:
+    """Carry current assignments and derive only from canonical first sighting."""
+    merged = carry_finding_sla(payload, previous)
+    # The built-in policy retains an earlier KEV target when a subsequent scan
+    # omits the advisory enrichment. This is separate from a manual assignment.
+    kevs = [value for row in (payload, previous) if (value := _parse_iso(finding_sla_fields(row).get("kev_due_date"))) is not None]
+    if kevs:
+        merged["kev_due_date"] = min(kevs).isoformat()
+    merged["first_seen"] = first_seen
+    merged.update(finding_sla_fields(merged))
+    return merged
 
 
 def finding_owner(assignee: object) -> str | None:

@@ -424,3 +424,12 @@ def test_dependency_review_accepts_regex_declared_dual_license() -> None:
     assert "Apache-2.0" in global_allowlist
     assert "CNRI-Python" in global_allowlist
     assert "derived from CPython 2.6/3.1" in workflow
+
+
+def test_alpine_installs_jq_for_registry_selector_contracts() -> None:
+    """The full musl suite executes jq, including after bootstrap retries."""
+    steps = _ci()["jobs"]["test-alpine"]["steps"]
+    install = next(step for step in steps if step.get("name") == "Install build deps (Alpine)")
+    commands = [line for line in install["run"].splitlines() if "apk add --no-cache" in line]
+    assert commands
+    assert all("jq" in command.replace(";", " ").split() for command in commands)

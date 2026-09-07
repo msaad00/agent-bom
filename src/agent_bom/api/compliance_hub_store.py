@@ -439,6 +439,10 @@ def _redact_finding(payload: dict[str, Any]) -> dict[str, Any]:
     # every read. Keeping it in each ledger row wastes space and can drift from
     # the canonical classifier after an upgrade.
     clean.pop("finding_class", None)
+    # No deadline carries no provenance to preserve; recompute the unavailable
+    # response marker on read instead of repeating it in every ledger payload.
+    if clean.get("sla_due_at_source") == "unavailable":
+        clean.pop("sla_due_at_source", None)
     # Preserve the established hub identity contract: client-supplied
     # canonical_id is not authoritative at ingest; resolve_canonical_id() uses
     # the vetted finding id/content key after redaction.
@@ -719,8 +723,6 @@ def _upsert_current_finding_sqlite(
     metrics = lifecycle_metrics(payload)
     now = _now_utc_iso()
     ledger_finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
-    overlay = current_state_overlay(payload) if ledger_finding_id else dict(payload)
-    payload_json = encode_hub_payload(overlay)
     inserted = conn.execute(
         """
         INSERT OR IGNORE INTO hub_findings_current_observations
@@ -765,6 +767,8 @@ def _upsert_current_finding_sqlite(
         payload=payload,
         updated_at=now,
     )
+    overlay = current_state_overlay(merged["payload"]) if ledger_finding_id else merged["payload"]
+    payload_json = encode_hub_payload(overlay)
     origin_val = str(payload.get("origin") or "")
     # Materialise the scan filter key: batch_id first, scan_id fallback — the
     # canonical ``batch_id or scan_id`` the in-memory filter compares against so
@@ -1098,7 +1102,9 @@ class InMemoryComplianceHubStore:
             finding_id = str(stored.get("id") or "")
             if finding_id and finding_id in slots:
                 # Refresh payload, keep original ingest position.
-                bucket[slots[finding_id]] = stored
+                from agent_bom.graph.sla import carry_finding_sla
+
+                bucket[slots[finding_id]] = carry_finding_sla(stored, bucket[slots[finding_id]])
                 continue
             if finding_id:
                 slots[finding_id] = len(bucket)
@@ -1309,8 +1315,17 @@ class InMemoryComplianceHubStore:
             if obs_key in observations:
                 continue
             observations.add(obs_key)
+            existing = current.get(canonical)
+            if existing is not None:
+                existing = dict(existing)
+                slot = self._slots.get(tenant_id, {}).get(str(existing.get("ledger_finding_id") or ""))
+                ledger = self._by_tenant.get(tenant_id, [])
+                if slot is not None and slot < len(ledger):
+                    existing["payload"] = hydrate_current_payload(
+                        existing, ledger_payloads={str(existing["ledger_finding_id"]): ledger[slot]}
+                    )
             merged = apply_observation_to_current(
-                current.get(canonical),
+                existing,
                 canonical_id=canonical,
                 observed_at=observed_at,
                 metrics=lifecycle_metrics(payload),
@@ -1320,7 +1335,7 @@ class InMemoryComplianceHubStore:
             finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
             if finding_id:
                 merged["ledger_finding_id"] = finding_id
-                merged["payload"] = current_state_overlay(payload)
+                merged["payload"] = current_state_overlay(merged["payload"])
                 merged["ledger_ordinal"] = self._slots.get(tenant_id, {}).get(finding_id, _LEDGER_ORDINAL_SENTINEL)
             else:
                 merged["ledger_ordinal"] = _LEDGER_ORDINAL_SENTINEL
@@ -2025,6 +2040,14 @@ class SQLiteComplianceHubStore:
         cached ordinal/total. The commit and the post-commit stat/cache updates
         are the caller's responsibility (see ``add`` / ``ingest_batch_atomic``).
         """
+        from agent_bom.graph.sla import carry_finding_sla
+
+        # Serialize the legacy carry-forward read with the ensuing replacement.
+        if not self._conn.in_transaction:
+            self._conn.execute("BEGIN IMMEDIATE")
+        previous_payloads = _fetch_ledger_payloads_sqlite(
+            self._conn, tenant_id, [str(row["id"]) for row in findings if isinstance(row, dict) and row.get("id")]
+        )
         now = _now_utc_iso()
         next_ord = self._next_ordinal(tenant_id)
         rows: list[tuple[Any, ...]] = []
@@ -2036,6 +2059,8 @@ class SQLiteComplianceHubStore:
             slim = persist_finding_references_sqlite(self._conn, tenant_id, original)
             payload = _redact_finding(slim)
             finding_id = str(payload.get("id") or f"hub-{next_ord + offset}")
+            payload = carry_finding_sla(payload, previous_payloads.get(finding_id, {}))
+            previous_payloads[finding_id] = payload
             finding_ids.append(finding_id)
             rows.append(
                 (

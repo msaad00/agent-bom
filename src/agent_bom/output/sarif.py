@@ -719,13 +719,13 @@ def _cve_sarif_result(
     # Ownership + remediation SLA (single source of truth in agent_bom.graph.sla). The
     # scan-completion time anchors the deadline when the finding carries no
     # first-seen history, matching the JSON report spine.
-    from agent_bom.graph.sla import finding_owner
-    from agent_bom.graph.sla import sla_due_at as _compute_sla_due_at
+    from agent_bom.graph.sla import finding_owner, finding_sla_fields
 
-    finding_sla_due_at = finding.sla_due_at or _compute_sla_due_at(
-        finding.effective_severity(),
-        finding.first_seen or report.generated_at.isoformat(),
-        kev_due_date=evidence(finding, "kev_due_date"),
+    finding_sla = finding_sla_fields(
+        {
+            **finding.to_dict(),
+            "first_seen": finding.first_seen or report.generated_at.isoformat(),
+        }
     )
     result_properties: dict[str, Any] = {
         "advisory_id": rule_id,
@@ -733,7 +733,8 @@ def _cve_sarif_result(
         "occurrence_id": finding.id,
         "canonical_id": finding.id,
         "owner": finding_owner(finding.owner),
-        "sla_due_at": finding_sla_due_at,
+        "sla_due_at": finding_sla["sla_due_at"],
+        "sla_due_at_source": finding_sla["sla_due_at_source"],
         "blast_score": finding.risk_score,
         "match_confidence_tier": evidence(finding, "match_confidence_tier"),
         "cve_ids": _cve_ids_for_finding(finding),

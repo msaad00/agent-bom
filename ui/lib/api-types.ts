@@ -1369,6 +1369,7 @@ export interface FindingOccurrenceSummary {
   status?: string | undefined;
   owner?: string | null | undefined;
   sla_due_at?: string | null | undefined;
+  sla_due_at_source?: "severity-kev/v1" | "explicit" | "unknown" | "unavailable" | undefined;
   last_seen?: string | null | undefined;
   last_observed?: string | null | undefined;
   graph_reachable?: boolean | null | undefined;
@@ -1463,6 +1464,7 @@ export interface UnifiedFinding {
   provenance?: Record<string, unknown> | string | null | undefined;
   owner?: string | null | undefined;
   sla_due_at?: string | null | undefined;
+  sla_due_at_source?: "severity-kev/v1" | "explicit" | "unknown" | "unavailable" | undefined;
   triage_id?: string | null | undefined;
   triage_decision?: "not_affected" | "affected" | "under_investigation" | null | undefined;
   triage_queue_state?: string | null | undefined;

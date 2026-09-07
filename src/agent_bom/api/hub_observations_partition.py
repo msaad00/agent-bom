@@ -140,13 +140,13 @@ CREATE TABLE IF NOT EXISTS {OBSERVATIONS_TABLE} (
 
 
 def create_observation_partition_ddl(year: int, month: int) -> str:
-    """Return idempotent DDL for one monthly child partition."""
+    """Return monthly UTC bounds, independent of the migration session timezone."""
     start, end = month_range_bounds(year, month)
     child = partition_table_name(year, month)
     return f"""
 CREATE TABLE IF NOT EXISTS {child}
     PARTITION OF {OBSERVATIONS_TABLE}
-    FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}');
+    FOR VALUES FROM ('{start.isoformat()}T00:00:00+00:00') TO ('{end.isoformat()}T00:00:00+00:00');
 """
 
 
@@ -316,6 +316,9 @@ def _parse_observed_at_month(observed_at: str) -> date | None:
             parsed = datetime.fromisoformat(text[:10])
         except ValueError:
             return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    parsed = parsed.astimezone(timezone.utc)
     return date(parsed.year, parsed.month, 1)
 
 

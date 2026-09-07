@@ -24,7 +24,7 @@ repos:
   # between those releases, so the hook and CI were formatting to two different
   # targets with nothing comparing them. `make format-check` now does.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.5
+    rev: v0.16.6
     hooks:
       - id: ruff
         args: [--fix]
@@ -40,8 +40,8 @@ repos:
         # Keep these pins aligned with uv.lock; the toolchain contract checks it.
         additional_dependencies:
           - pydantic==2.13.5
-          - types-pyyaml==6.0.12.20260815
-          - anyio==4.14.2
+          - types-pyyaml==6.0.12.20260906
+          - anyio==4.15.1
           - cryptography==50.0.1
           - pyjwt==2.13.0
           - fastapi==0.141.1

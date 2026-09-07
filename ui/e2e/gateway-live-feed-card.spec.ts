@@ -150,7 +150,7 @@ test("unified activity stream renders without overflow at both widths", async ({
   await page.goto("/activity");
   await expect(stream).toBeVisible();
   await expect(stream.getByRole("heading", { name: "Event stream" })).toBeVisible();
-  await expect(stream.getByText("Live gateway")).toBeVisible();
+  await expect(stream.getByText("Live transport")).toBeVisible();
   await expect(stream.getByText(/extremely-long-undeclared-shadow/)).toBeVisible();
 
   // No event row extends past the stream's right edge.

@@ -159,7 +159,7 @@ test("activity merges observed events and opens evidence details", async ({ page
   await page.goto("/activity");
 
   await expect(page.getByRole("heading", { name: "Agent Activity Timeline" })).toBeVisible();
-  await expect(page.getByText("Live gateway")).toBeVisible();
+  await expect(page.getByText("Live transport")).toBeVisible();
   await expect(page.getByText("build-agent → filesystem.write_file")).toBeVisible();
   await expect(page.getByText("review-agent → repository.read")).toBeVisible();
 

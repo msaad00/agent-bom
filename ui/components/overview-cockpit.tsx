@@ -5,6 +5,10 @@ import type { ElementType } from "react";
 import {
   ArrowRight,
   Bug,
+  Bot,
+  Cloud,
+  CodeXml,
+  Database,
   Fingerprint,
   UserRound,
   Flame,
@@ -312,7 +316,7 @@ export function OverviewCockpit({
       </section>
 
       <section aria-label="Coverage & controls" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
-        <h2 className={SECTION_TITLE_CLASS}>Coverage &amp; controls</h2>
+        <Collapsible bare title="Coverage & controls" titleClassName={SECTION_TITLE_CLASS} defaultOpen>
         {loading && !domains ? (
           <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
         ) : overviewUnavailable && !domains ? (
@@ -320,6 +324,7 @@ export function OverviewCockpit({
         ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
         <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
           loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
+        </Collapsible>
       </section>
       </div>
       <section aria-label="Top risks" className="min-w-0">
@@ -404,18 +409,15 @@ function CoverageOperationsSection({
 
   return (
     <div className="mt-3" data-testid="overview-coverage-operations">
-      <EstateOpsStrip tiles={operationalTiles} />
+      <SecurityCoverageLanes coverage={coverage} />
+      <div className={coverage?.length ? "mt-3 border-t border-outline pt-3" : undefined}>
+        <EstateOpsStrip tiles={operationalTiles} />
+      </div>
       <Link href="/connections" className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
         {dataSourceCount > 0 ? `${dataSourceCount} connected · ` : ""}
         Connections <ArrowRight className="h-3 w-3" />
       </Link>
-      {coverage && coverage.length > 0 ? (
-        <Collapsible bare className="mt-3 border-t border-outline"
-          title="Findings by discipline" titleClassName={SECTION_TITLE_CLASS}
-          subtitle="Overlapping finding counts, not collection coverage" defaultOpen={false}>
-          <SecurityCoverageLanes coverage={coverage} />
-        </Collapsible>
-      ) : null}
+
     </div>
   );
 }
@@ -440,6 +442,14 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
  * unknown-severity findings are present. All colors come from design tokens (no
  * hardcoded palette) so light + dark both read correctly.
  */
+const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; order: number }> = {
+  cspm: { label: "Cloud security (CSPM)", icon: Cloud, order: 0 },
+  aspm: { label: "Application security (ASPM)", icon: CodeXml, order: 1 },
+  vuln: { label: "Vulnerability management", icon: Bug, order: 2 },
+  dspm: { label: "Data security (DSPM)", icon: Database, order: 3 },
+  aispm: { label: "AI security (AISPM)", icon: Bot, order: 4 },
+};
+
 function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
   if (!coverage || coverage.length === 0) return null;
   return (
@@ -449,7 +459,9 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
         Overlapping finding counts, not additive. Zero findings does not establish assessment coverage.
       </p>
       <div className="grid gap-1.5">
-        {coverage.map((lane) => {
+        {[...coverage].sort((left, right) => (SECURITY_DISCIPLINES[left.domain]?.order ?? 5) - (SECURITY_DISCIPLINES[right.domain]?.order ?? 5)).map((lane) => {
+          const discipline = SECURITY_DISCIPLINES[lane.domain];
+          const Icon = discipline?.icon ?? ShieldCheck;
           const known = lane.evidence_status !== undefined;
           const exact = lane.evidence_status === "complete" && lane.count_exact !== false;
           const statusLabel = lane.evidence_status === "partial" ? "Partial count" : "Count unavailable";
@@ -460,16 +472,16 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg border border-outline bg-surface-elevated px-3 py-2 transition-colors hover:border-outline-strong"
+              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3 rounded-lg border border-outline bg-surface-elevated px-3 py-2 transition-colors hover:border-outline-strong"
             >
               <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-semibold text-foreground">{lane.label}</span>
+                <span className="flex items-start gap-2 text-xs font-semibold text-foreground"><Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-secondary" aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
                 {/* The unit is not decoration. A bare "1610" under a heading
                     called CSPM reads as assets, accounts, VMs or data stores
                     depending on the reader — every one of which is wrong. These
                     are FINDINGS in that posture lane, which is also what the
                     severity chips below sum to. */}
-                <span className="flex items-baseline gap-1">
+                {known && total > 0 ? <span className="ml-6 flex items-baseline gap-1">
                   <span className="text-sm font-semibold tabular-nums text-foreground">
                     {known && total > 0 ? `${exact ? "" : "≥"}${lane.count.toLocaleString()}` : "—"}
                   </span>
@@ -478,7 +490,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                       {lane.count === 1 ? "finding" : "findings"}
                     </span>
                   ) : null}
-                </span>
+                </span> : null}
               </div>
               <div className="min-w-0">
                 {!exact && known && total > 0 ? (

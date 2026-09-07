@@ -109,6 +109,29 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/Framework coverage appears after the first completed scan/)).not.toBeInTheDocument();
   });
 
+  it("shows security services before operations and lets the right panel collapse by keyboard", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} coverage={[
+      { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
+      { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
+    ]} />);
+    const lanes = screen.getByTestId("overview-security-coverage");
+    expect(lanes).toBeVisible();
+    expect(within(lanes).getAllByRole("link")[0]).toHaveTextContent("Cloud security (CSPM)");
+    expect(within(lanes).getByText("AI security (AISPM)")).toBeVisible();
+    expect(lanes.compareDocumentPosition(screen.getByTestId("overview-estate-ops")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const toggle = screen.getByRole("button", { name: "Coverage & controls" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(lanes).not.toBeVisible();
+    expect(toggle).toHaveFocus();
+    await user.keyboard(" ");
+    expect(lanes).toBeVisible();
+    expect(screen.getByRole("region", { name: "Command center" })).toBeVisible();
+  });
+
   it("shows one grade and one numeric score in the posture summary", () => {
     render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
     expect(screen.getAllByText("62%")).toHaveLength(1);
@@ -219,7 +242,6 @@ describe("OverviewCockpit", () => {
   });
 
   it("renders the five security coverage lanes with reconciled severity counts", async () => {
-    const user = userEvent.setup();
     const coverage = [
       { domain: "cspm" as const, label: "CSPM", href: "/findings?domain=cspm", count: 3, severity: { critical: 1, high: 1, medium: 0, low: 0, unrated: 1 } },
       { domain: "vuln" as const, label: "Vuln mgmt", href: "/findings?domain=vuln", count: 2, severity: { critical: 2, high: 0, medium: 0, low: 0, unrated: 0 } },
@@ -229,13 +251,7 @@ describe("OverviewCockpit", () => {
     ].map((lane) => ({ ...lane, evidence_status: "complete" as const, count_exact: true }));
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} coverage={coverage} />);
 
-    const disclosure = screen.getByRole("button", { name: /Findings by discipline/i });
-    expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByTestId("overview-security-coverage")).not.toBeVisible();
-    expect(within(screen.getByTestId("overview-coverage-operations")).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
-    disclosure.focus();
-    await user.keyboard("{Enter}");
-    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByRole("button", { name: /Findings by discipline/i })).not.toBeInTheDocument();
     const section = screen.getByTestId("overview-security-coverage");
     expect(section).toBeInTheDocument();
     // Lanes are labeled as overlapping disciplines so a user never sums them.
@@ -258,11 +274,9 @@ describe("OverviewCockpit", () => {
   });
 
   it("does not present legacy discipline values as exact current counts", async () => {
-    const user = userEvent.setup();
     render(<OverviewCockpit {...baseProps} coverage={[
       { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 17, severity: { critical: 17, high: 0, medium: 0, low: 0, unrated: 0 } },
     ]} />);
-    await user.click(screen.getByRole("button", { name: /Findings by discipline/i }));
     const lane = within(screen.getByTestId("coverage-lane-aispm"));
     expect(lane.getByText("Count unavailable")).toBeInTheDocument();
     expect(lane.queryByText("17")).not.toBeInTheDocument();
@@ -270,13 +284,11 @@ describe("OverviewCockpit", () => {
   });
 
   it.each(["partial", "unavailable"] as const)("discloses %s discipline counts without claiming no evidence", async (evidenceStatus) => {
-    const user = userEvent.setup();
     const severity = { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 };
     render(<OverviewCockpit {...baseProps} coverage={[
       { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 0, severity, evidence_status: evidenceStatus, count_exact: false },
       { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 2, severity: { ...severity, high: 2 }, evidence_status: evidenceStatus, count_exact: false },
     ]} />);
-    await user.click(screen.getByRole("button", { name: /Findings by discipline/i }));
     expect(screen.queryByText("No evidence")).not.toBeInTheDocument();
     expect(screen.queryByText("No open findings")).not.toBeInTheDocument();
     expect(screen.getByText("≥2")).toBeInTheDocument();

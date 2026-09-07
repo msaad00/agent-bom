@@ -331,11 +331,17 @@ for (const theme of ["light", "dark"] as const) {
         summary: { cis_pass: 1, nist_800_53_pass: 1, pci_dss_pass: 1, fedramp_pass: 1, cis_foundations_pass: 1, cis_foundations_evaluated: 1, aisvs_pass: 1 },
       } }));
       await page.goto("/");
-      await page.getByRole("button", { name: /Findings by discipline/i }).click();
       const unavailableLane = page.getByTestId("coverage-lane-cspm");
       await expect(unavailableLane.getByText("Count unavailable")).toBeVisible();
       expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(56);
       await expect(unavailableLane.getByText("0", { exact: true })).toHaveCount(0);
+      const coverageToggle = page.getByRole("button", { name: "Coverage & controls", exact: true });
+      await coverageToggle.focus();
+      await page.keyboard.press("Enter");
+      await expect(unavailableLane).not.toBeVisible();
+      await expect(coverageToggle).toBeFocused();
+      await page.keyboard.press("Space");
+      await expect(unavailableLane).toBeVisible();
       const disclosure = page.getByRole("button", { name: /Evaluated frameworks/i });
       await disclosure.focus();
       await page.keyboard.press("Enter");

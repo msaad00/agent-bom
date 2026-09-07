@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 for (const theme of ["light", "dark"]) {
-  test(`partial Operations evidence remains honest and retryable in ${theme}`, async ({ page }) => {
+  test(`partial Operations evidence remains honest and retryable in ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.addInitScript((mode) => localStorage.setItem("agent-bom-theme", mode), theme);
     await page.route("**/v1/**", (route) => route.fulfill({ json: {} }));
@@ -31,7 +31,7 @@ for (const theme of ["light", "dark"]) {
     await expect(page.getByText("Anomaly analysis unavailable", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: /Cost & behavior anomalies/ }).click();
     await expect(page.getByText(/No statistical anomalies detected/)).toBeVisible();
-    await page.screenshot({ path: `/private/tmp/operations-evidence-${theme}-cost.png`, fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`operations-evidence-${theme}-cost.png`), fullPage: true });
 
     await page.route("**/v1/webhooks?**", (route) => route.fulfill({ json: { subscriptions: [], event_catalog: [], count: 0 } }));
     await page.route("**/v1/posture/webhooks/outbox?**", (route) => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
@@ -42,6 +42,6 @@ for (const theme of ["light", "dark"]) {
     await expect(page.locator("#main-content")).toHaveCSS("padding-left", "0px");
     await expect(page.getByText("Delivery telemetry unavailable", { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: `/private/tmp/operations-evidence-${theme}-webhooks-mobile.png`, fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`operations-evidence-${theme}-webhooks-mobile.png`), fullPage: true });
   });
 }

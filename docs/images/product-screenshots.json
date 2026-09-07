@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-07T18:51:35.832Z",
-  "source_commit": "b0722a4c6759c3e6cd2fdf1b83a6895a38344372",
+  "captured_at": "2026-09-07T18:57:32.175Z",
+  "source_commit": "83c653e17a1019afd629e603b3d7abff025fb6b8",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:668cca3e317e0f61b863336d8094f059637f45452465fdbaf509778a89ce0db4",
+  "capture_inputs_sha256": "sha256:701af5d38c9d9bacd992f16f3fc8db2851114e8a5e272d38bdbaf39cb9aac31c",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -76,7 +76,7 @@
       "page": "/graph?lens=mesh&capture=1",
       "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
       "visible_version": "0.103.2",
-      "sha256": "sha256:59cfb9a0e74f56cca4ba4e601f79fd5864e46beef8fdd46f6cf00b5b696e3ea3"
+      "sha256": "sha256:b6a492b85738dbc803909af957a592c790aaf210e67345a0cb98b810f104c8eb"
     },
     {
       "presentation": "dark desktop",
@@ -182,7 +182,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&capture=1",
       "scope": "Modeled current-state Investigation Canvas at 1512 by 811",
       "visible_version": "0.103.2",
-      "sha256": "sha256:bb5a89ec5bda48cc02dd48dd788a2c2e982c86798e75a6b59f5b0849f2ee283e"
+      "sha256": "sha256:8c4e6cb67a8142efa1a50503ef5366af3b21440b810ecc55792d39901c6517a9"
     },
     {
       "presentation": "light desktop 1568x780",
@@ -190,7 +190,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.103.2",
-      "sha256": "sha256:b402986770d7870dcb88abd5e0881324e79ff1140bbe15352a63ab85972d13a0"
+      "sha256": "sha256:36ea3537fc5b6e1b2765e9a3072b0290a508f19aaf7e3f4a26c6090ea6f10ff2"
     },
     {
       "presentation": "dark desktop",
@@ -198,7 +198,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability",
       "scope": "Focused highest-risk directed path from identity source through agent, MCP, package, and finding",
       "visible_version": "0.103.2",
-      "sha256": "sha256:65ea3283580223c69da115f11f25e8f434a8d545a4fad1504642d1531af4fbf6"
+      "sha256": "sha256:236d2112d5249cb3142e7189d7709d433bb50b2e4a055c6c108bcae1c763ce48"
     },
     {
       "presentation": "dark desktop",
@@ -206,7 +206,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
       "visible_version": "0.103.2",
-      "sha256": "sha256:2c9084126f13c291b40503643a146377b38bd4635d6b43a7e98683cff2416a3d"
+      "sha256": "sha256:f33007330636d8d5283ddcbf249c78c5210b79862fa74db69637300665ecd5f6"
     },
     {
       "presentation": "dark desktop",

@@ -64,7 +64,7 @@ describe("OverviewCockpit", () => {
     expect(risks.parentElement).toBe(posture.parentElement?.parentElement);
     expect(coverage.compareDocumentPosition(risks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(coverage).getByText("Operational signals")).toBeVisible();
-    expect(within(coverage).getByText(/No evaluated framework coverage/i)).toBeVisible();
+    expect(within(coverage).getByText(/Control evaluation unavailable/i)).toBeVisible();
     expect(within(coverage).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
   });
 
@@ -498,8 +498,8 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    expect(screen.getByText(/No evaluated framework coverage is available for completed scans/i)).toBeInTheDocument();
-    expect(screen.getByText(/Completed scans have not produced mapped framework evidence/i)).toBeInTheDocument();
+    expect(screen.getByText(/Control evaluation unavailable for completed scans/i)).toBeInTheDocument();
+    expect(screen.getByText(/Review scan scope and evaluation status/i)).toBeInTheDocument();
     expect(screen.queryByText(/Run a scan to light up/i)).not.toBeInTheDocument();
   });
 
@@ -553,7 +553,7 @@ describe("OverviewCockpit", () => {
     // Same treatment the Trust Center already uses for this status: an explicit
     // em dash, not a hidden chip that leaves the reader guessing.
     expect(screen.getByText("Compliance —")).toBeInTheDocument();
-    expect(screen.getByText(/No evaluated framework coverage is available for completed scans/i)).toBeInTheDocument();
+    expect(screen.getByText(/Control evaluation unavailable for completed scans/i)).toBeInTheDocument();
   });
 
   it("never renders a green PASS for a framework with zero evaluated controls (#3889)", () => {

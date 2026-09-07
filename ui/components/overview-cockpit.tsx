@@ -666,7 +666,7 @@ function ComplianceSnapshotPanel({
       ) : (
         <p className="mt-2 text-xs text-ink-secondary">
           {hasScanEvidence
-            ? "No evaluated framework coverage is available for completed scans. Completed scans have not produced mapped framework evidence. Review scan scope before drawing a compliance conclusion."
+            ? "Control evaluation unavailable for completed scans. Review scan scope and evaluation status before drawing a compliance conclusion."
             : "Framework coverage appears after the first completed scan. Empty estates do not show pass tiles."}
         </p>
       )}

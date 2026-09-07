@@ -108,6 +108,7 @@ export type PipelineSummary = {
   currentStepId: string | null;
   currentStepLabel: string | null;
   completedSteps: number;
+  skippedSteps: number;
   totalSteps: number;
   wallClockMs: number | null;
   stepDurationsMs: Record<string, number>;
@@ -124,6 +125,7 @@ export function summarizePipeline(
 ): PipelineSummary {
   const stepDurationsMs: Record<string, number> = {};
   let completedSteps = 0;
+  let skippedSteps = 0;
   let currentStepId: string | null = null;
   let currentStepLabel: string | null = null;
 
@@ -132,9 +134,10 @@ export function summarizePipeline(
     if (!event) continue;
     const duration = stepDurationMs(event);
     if (duration != null) stepDurationsMs[step.id] = duration;
-    if (event.status === "done" || event.status === "skipped") {
+    if (event.status === "done") {
       completedSteps += 1;
     }
+    if (event.status === "skipped") skippedSteps += 1;
     if (event.status === "running" || event.status === "failed") {
       currentStepId = step.id;
       currentStepLabel = step.label;
@@ -156,6 +159,7 @@ export function summarizePipeline(
     currentStepId,
     currentStepLabel,
     completedSteps,
+    skippedSteps,
     totalSteps: PIPELINE_STEPS.length,
     wallClockMs: jobWallClockMs(job),
     stepDurationsMs,

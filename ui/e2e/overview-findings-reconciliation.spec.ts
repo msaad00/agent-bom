@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import type { UnifiedFinding } from "../lib/api-types";
@@ -257,3 +257,60 @@ test("overview and current-state findings remain readable without mobile overflo
   expect(overflow, "findings mobile layout contains elements outside the viewport").toEqual([]);
   await capture(page, testInfo, "findings-current-state-mobile.png");
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`operational metrics meet text contrast in ${theme} theme`, async ({ page }, testInfo) => {
+    await page.addInitScript((selectedTheme) => localStorage.setItem("agent-bom-theme", selectedTheme), theme);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await routeProductFixture(page);
+    await page.route("**/v1/overview", (route) => route.fulfill({ json: {
+      ...OVERVIEW,
+      domains: {
+        ...OVERVIEW.domains,
+        runtime: { ...OVERVIEW.domains.runtime, status: "critical" },
+        cost: { ...OVERVIEW.domains.cost, status: "warn" },
+        identity: { ...OVERVIEW.domains.identity, status: "ok" },
+      },
+    } }));
+    await page.goto("/");
+    const metrics = page.getByTestId("overview-estate-ops").locator("span.font-mono");
+    await expect(metrics).toHaveCount(4);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    // Measure settled theme colors rather than the deliberate transition frame.
+    await page.waitForTimeout(500);
+    const contrast = await metrics.evaluateAll((nodes) => {
+      const context = document.createElement("canvas").getContext("2d")!;
+      function rgba(color: string): number[] {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data];
+      }
+      function luminance(rgb: number[]): number {
+        return rgb.slice(0, 3).map((c) => {
+          const s = c / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+      }
+      return nodes.map((node) => {
+        const ancestors: Element[] = [];
+        for (let current: Element | null = node; current; current = current.parentElement) ancestors.unshift(current);
+        let background = [255, 255, 255];
+        for (const ancestor of ancestors) {
+          const color = rgba(getComputedStyle(ancestor).backgroundColor);
+          const alpha = color[3]! / 255;
+          background = background.map((value, i) => color[i]! * alpha + value * (1 - alpha));
+        }
+        const foreground = rgba(getComputedStyle(node).color);
+        const a = luminance(foreground);
+        const b = luminance(background);
+        return { text: node.textContent, foreground, background, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+      });
+    });
+    const evidencePath = testInfo.outputPath(`operational-contrast-${theme}.json`);
+    await writeFile(evidencePath, JSON.stringify(contrast, null, 2));
+    await testInfo.attach(`operational-contrast-${theme}`, { path: evidencePath, contentType: "application/json" });
+    await page.screenshot({ path: testInfo.outputPath(`operational-contrast-${theme}.png`) });
+    for (const metric of contrast) expect(metric.ratio, `${theme} metric ${metric.text}`).toBeGreaterThanOrEqual(4.5);
+  });
+}

@@ -1306,11 +1306,11 @@ function SeverityIssueStrip({
 function domainStatusTone(status: OverviewDomainStatus): { dot: string; text: string } {
   switch (status) {
     case "critical":
-      return { dot: "bg-red-500", text: "text-red-400" };
+      return { dot: "bg-red-500", text: "text-red-800 dark:text-red-300" };
     case "warn":
-      return { dot: "bg-amber-500", text: "text-amber-400" };
+      return { dot: "bg-amber-500", text: "text-amber-800 dark:text-amber-300" };
     case "ok":
-      return { dot: "bg-emerald-500", text: "text-emerald-400" };
+      return { dot: "bg-emerald-500", text: "text-emerald-800 dark:text-emerald-300" };
     default:
       return { dot: "bg-ink-tertiary", text: "text-ink-tertiary" };
   }

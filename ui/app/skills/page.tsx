@@ -357,12 +357,13 @@ export default function SkillsPage() {
   );
 
   const scanForm = (
-    <div className="flex flex-wrap items-center gap-2">
-      <label htmlFor="skill-targets" className="sr-only">
+    <div className="flex max-w-sm flex-wrap items-center gap-2">
+      <label htmlFor="skill-targets" className="w-full text-sm font-medium text-[color:var(--foreground)]">
         Scan targets
       </label>
       <input
         id="skill-targets"
+        aria-describedby="skill-targets-help"
         value={targets}
         onChange={(e) => setTargets(e.target.value)}
         placeholder="Paths (relative to scan root)"
@@ -378,6 +379,9 @@ export default function SkillsPage() {
         {scanning ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ScrollText className="h-4 w-4" aria-hidden="true" />}
         Scan
       </button>
+      <p id="skill-targets-help" className="w-full text-xs text-[color:var(--text-secondary)]">
+        Paths on the control-plane host, relative to its allowed scan root. &quot;.&quot; selects that root.
+      </p>
     </div>
   );
 

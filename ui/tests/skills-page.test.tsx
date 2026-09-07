@@ -142,6 +142,20 @@ describe("SkillsPage", () => {
     expect(screen.getByTestId("skills-loading")).toBeInTheDocument();
   });
 
+  it("explains the host scan boundary beside the default target", async () => {
+    apiMock.getSkillsScan.mockResolvedValue(emptyReport());
+    render(<SkillsPage />);
+
+    const input = await screen.findByRole("textbox", { name: "Scan targets" });
+    expect(input).toHaveValue(".");
+    expect(screen.getByText("Scan targets", { selector: "label" })).not.toHaveClass("sr-only");
+    expect(input).toHaveAccessibleDescription(
+      'Paths on the control-plane host, relative to its allowed scan root. "." selects that root.',
+    );
+    expect(document.getElementById(input.getAttribute("aria-describedby")!)).toBeVisible();
+    expect(apiMock.runSkillsScan).not.toHaveBeenCalled();
+  });
+
   it("renders per-file verdict + provenance from the API report", async () => {
     apiMock.getSkillsScan.mockResolvedValue(report());
     render(<SkillsPage />);

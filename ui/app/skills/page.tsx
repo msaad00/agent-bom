@@ -373,7 +373,7 @@ export default function SkillsPage() {
         onClick={runScan}
         disabled={scanning}
         data-testid="skills-scan-button"
-        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[color:var(--accent)] bg-[color:var(--accent)] px-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-700 bg-emerald-700 px-3 text-sm font-medium text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 dark:border-emerald-400 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
       >
         {scanning ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ScrollText className="h-4 w-4" aria-hidden="true" />}
         Scan
@@ -457,13 +457,13 @@ export default function SkillsPage() {
             <SummaryStat
               label="Suspicious"
               value={report?.summary.suspicious_status_files ?? 0}
-              tone="text-[color:var(--status-warn)]"
+              tone="text-amber-800 dark:text-[color:var(--status-warn)]"
             />
             <SummaryStat label="Pending" value={report?.summary.pending_status_files ?? 0} />
             <SummaryStat
               label="Clean"
               value={report?.summary.clean_files ?? 0}
-              tone="text-[color:var(--status-success)]"
+              tone="text-emerald-800 dark:text-[color:var(--status-success)]"
             />
             <SummaryStat label="Findings" value={report?.summary.findings ?? 0} />
           </section>

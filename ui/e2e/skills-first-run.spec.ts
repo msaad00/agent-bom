@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 const EMPTY = {
   scan_type: "skills", report_type: "skills_scan", status: "no_data", run_id: null, created_at: null,
@@ -12,6 +12,38 @@ const FILE = {
   trust: { verdict: "benign", content_verdict: "benign", provenance_verdict: "unverified", review_verdict: "review", confidence: "medium", recommendations: [], review_reasons: [] },
   provenance: { status: "unsigned", sha256: "a".repeat(64), signer: null },
 };
+
+async function textContrast(elements: Locator) {
+  return elements.evaluateAll((nodes) => {
+      const context = document.createElement("canvas").getContext("2d")!;
+      function rgba(color: string): number[] {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data];
+      }
+      function luminance(rgb: number[]): number {
+        return rgb.slice(0, 3).map((c) => {
+          const s = c / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+      }
+      return nodes.map((node) => {
+        const ancestors: Element[] = [];
+        for (let current: Element | null = node; current; current = current.parentElement) ancestors.unshift(current);
+        let background = [255, 255, 255];
+        for (const ancestor of ancestors) {
+          const color = rgba(getComputedStyle(ancestor).backgroundColor);
+          const alpha = color[3]! / 255;
+          background = background.map((value, i) => color[i]! * alpha + value * (1 - alpha));
+        }
+        const foreground = rgba(getComputedStyle(node).color);
+        const a = luminance(foreground);
+        const b = luminance(background);
+        return { text: node.closest('[data-testid="skills-summary"]') ? node.parentElement?.textContent : node.textContent, foreground, background, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+      });
+    });
+}
 
 for (const theme of ["light", "dark"] as const) {
   test(`Skills first-run feedback and keyboard evidence in ${theme}`, async ({ page }, testInfo) => {
@@ -65,7 +97,7 @@ for (const theme of ["light", "dark"] as const) {
 }
 
 for (const theme of ["light", "dark"] as const) {
-  test(`Skills status and provenance chip contrast in ${theme}`, async ({ page }, testInfo) => {
+  test(`Skills action, summary and evidence text contrast in ${theme}`, async ({ page }, testInfo) => {
     await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.route("**/v1/**", (route) => route.fulfill({ json: {} }));
@@ -77,39 +109,14 @@ for (const theme of ["light", "dark"] as const) {
       files: statuses.map((status, index) => ({ ...FILE, path: `skills/${status}/SKILL.md`, status, provenance: { ...FILE.provenance, status: provenance[index] } })),
     } }));
     await page.goto("/skills");
-    const chips = page.getByTestId("skills-row").locator("span.rounded-full");
-    await expect(chips).toHaveCount(10);
+    const chips = page.locator('[data-testid="skills-row"] span.rounded-full, [data-testid="skills-summary"] .text-lg, [data-testid="skills-scan-button"]');
+    await expect(chips).toHaveCount(17);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await page.waitForTimeout(500);
-    const contrast = await chips.evaluateAll((nodes) => {
-      const context = document.createElement("canvas").getContext("2d")!;
-      function rgba(color: string): number[] {
-        context.clearRect(0, 0, 1, 1);
-        context.fillStyle = color;
-        context.fillRect(0, 0, 1, 1);
-        return [...context.getImageData(0, 0, 1, 1).data];
-      }
-      function luminance(rgb: number[]): number {
-        return rgb.slice(0, 3).map((c) => {
-          const s = c / 255;
-          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-        }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
-      }
-      return nodes.map((node) => {
-        const ancestors: Element[] = [];
-        for (let current: Element | null = node; current; current = current.parentElement) ancestors.unshift(current);
-        let background = [255, 255, 255];
-        for (const ancestor of ancestors) {
-          const color = rgba(getComputedStyle(ancestor).backgroundColor);
-          const alpha = color[3]! / 255;
-          background = background.map((value, i) => color[i]! * alpha + value * (1 - alpha));
-        }
-        const foreground = rgba(getComputedStyle(node).color);
-        const a = luminance(foreground);
-        const b = luminance(background);
-        return { text: node.textContent, foreground, background, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
-      });
-    });
+    const contrast = await textContrast(chips);
+    await page.getByTestId("skills-scan-button").hover();
+    await page.waitForTimeout(300);
+    contrast.push(...(await textContrast(page.getByTestId("skills-scan-button"))).map((value) => ({ ...value, text: "Scan (hover)" })));
     const evidencePath = testInfo.outputPath(`skills-chip-contrast-${theme}.json`);
     await writeFile(evidencePath, JSON.stringify(contrast, null, 2));
     await testInfo.attach(`skills-chip-contrast-${theme}`, { path: evidencePath, contentType: "application/json" });

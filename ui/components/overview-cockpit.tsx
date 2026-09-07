@@ -271,80 +271,86 @@ export function OverviewCockpit({
       ? "—"
       : undefined;
 
-  const coverageSummary = [
-    coverage?.length ? `${coverage.length} security disciplines` : null,
-    complianceEvaluated
-      ? `${compliance.frameworks.filter((framework) => framework.kind === "scored").reduce((sum, framework) => sum + framework.pass, 0)}/${compliance.evaluatedControls} controls pass`
-      : null,
-  ].filter(Boolean).join(" · ") || "Security findings and evaluated controls";
+  const coverageSummary = coverage?.length
+    ? `${coverage.length} security disciplines`
+    : "Security findings and operational context";
+  const complianceSummary = complianceEvaluated
+    ? `${compliance.frameworks.filter((framework) => framework.kind === "scored").reduce((sum, framework) => sum + framework.pass, 0)}/${compliance.evaluatedControls} controls pass`
+    : "Evaluated controls and risk mappings";
 
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 xl:grid-cols-2">
-      <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
-        <Collapsible
-          bare
-          title="Command center"
-          titleClassName={SECTION_TITLE_CLASS}
-          defaultOpen
-        >
-          <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
+        <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
+          <Collapsible
+            bare
+            title="Command center"
+            titleClassName={SECTION_TITLE_CLASS}
+            defaultOpen
+          >
+            <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
 
-          <div className="mt-2 grid gap-3">
-            <PostureHero
-              loading={loading}
-              grade={grade}
-              score={score}
-              scoreFormat={scoreFormat}
-              onScoreFormatChange={onScoreFormatChange}
-              summary={postureSummary}
-              trend={postureTrend}
-              critical={critical}
-              high={high}
-              cves={cves}
-            />
-            <SeverityIssueStrip
-              summaryReady={summaryReady}
-              critical={critical}
-              high={high}
-              kev={kev}
-              credentials={credentials}
-              complianceScore={complianceScore}
-              severity={severity}
-              matrix={issueMatrix}
-              scopeLabel={findingsScopeLabel}
-            />
-          </div>
+            <div className="mt-2 grid gap-3">
+              <PostureHero
+                loading={loading}
+                grade={grade}
+                score={score}
+                scoreFormat={scoreFormat}
+                onScoreFormatChange={onScoreFormatChange}
+                summary={postureSummary}
+                trend={postureTrend}
+                critical={critical}
+                high={high}
+                cves={cves}
+              />
+              <SeverityIssueStrip
+                summaryReady={summaryReady}
+                critical={critical}
+                high={high}
+                kev={kev}
+                credentials={credentials}
+                complianceScore={complianceScore}
+                severity={severity}
+                matrix={issueMatrix}
+                scopeLabel={findingsScopeLabel}
+              />
+            </div>
 
-          {/* 1b — What influences the score: read-only weighted-input breakdown
-              so the grade is legible, not opaque (#3940). */}
-          <ScoreExplainer breakdown={scoreBreakdown} grade={grade} floored={scoreFloored} />
-        </Collapsible>
-      </section>
+            {/* 1b — What influences the score: read-only weighted-input breakdown
+                so the grade is legible, not opaque (#3940). */}
+            <ScoreExplainer breakdown={scoreBreakdown} grade={grade} floored={scoreFloored} />
+          </Collapsible>
+        </section>
 
-      <section aria-label="Coverage & controls" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
-        <Collapsible bare title="Coverage & controls" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
-        {loading && !domains ? (
-          <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
-        ) : overviewUnavailable && !domains ? (
-          <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
-        ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
-        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
-          loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
-        </Collapsible>
-      </section>
+        <section aria-label="Coverage" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
+          <Collapsible bare title="Coverage" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
+            {loading && !domains ? (
+              <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
+            ) : overviewUnavailable && !domains ? (
+              <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
+            ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
+          </Collapsible>
+        </section>
       </div>
-      <section aria-label="Top risks" className="min-w-0">
-        <TopRisksPanel
-          loading={loading}
-          unavailable={overviewUnavailable}
-          scans={scans}
-          topPath={topPath}
-          exposurePaths={exposurePaths}
-          agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
-        />
-      </section>
-
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
+          <Collapsible bare title="Compliance & frameworks" subtitle={complianceSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen
+            actions={<Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">Trust center <ArrowRight className="h-3 w-3" /></Link>}>
+            <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
+              loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
+          </Collapsible>
+        </section>
+        <section aria-label="Top risks" className="min-w-0">
+          <TopRisksPanel
+            loading={loading}
+            unavailable={overviewUnavailable}
+            scans={scans}
+            topPath={topPath}
+            exposurePaths={exposurePaths}
+            agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
+          />
+        </section>
+      </div>
     </div>
   );
 }
@@ -659,13 +665,7 @@ function ComplianceSnapshotPanel({
   const passed = scored.reduce((total, item) => total + item.pass, 0);
 
   return (
-    <div className="mt-3 border-t border-outline pt-3" data-testid="overview-compliance-snapshot">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className={SECTION_TITLE_CLASS}>Evaluated compliance</h3>
-        <Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-          Trust center <ArrowRight className="h-3 w-3" />
-        </Link>
-      </div>
+    <div data-testid="overview-compliance-snapshot">
       {loading ? (
         <p role="status" className="mt-2 text-xs text-ink-secondary">Loading control evaluation…</p>
       ) : evidenceReady ? (
@@ -821,18 +821,18 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
       : "border-outline bg-surface-muted text-ink-secondary";
 
   return (
-    <article className={`rounded-lg border ${rank === 1 ? "border-outline-strong bg-surface-muted/40" : "border-outline"}`}>
+    <article className={`@container rounded-lg border ${rank === 1 ? "border-outline-strong bg-surface-muted/40" : "border-outline"}`}>
       <Link href={path.href} className="group block rounded-lg p-3 transition hover:bg-surface-muted">
         <div className="flex items-start gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
-          <div className="grid min-w-0 flex-1 gap-x-4 xl:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid min-w-0 flex-1 gap-x-4 @min-[42rem]:grid-cols-[minmax(0,1fr)_auto]">
             <p className="text-base font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
               <span>{findingLabel}</span>{pkg ? <> in <span>{pkg.label}</span></> : null}
             </p>
-            <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere] xl:col-start-1">
+            <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere] @min-[42rem]:col-start-1">
               {sbomSource ? `SBOM source: ${sbomSource}` : workload ? `Affected workload: ${workload.label}` : "Workload not identified"}
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-secondary xl:col-start-2 xl:row-start-1 xl:row-span-2 xl:mt-0">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-secondary @min-[42rem]:col-start-2 @min-[42rem]:row-start-1 @min-[42rem]:row-span-2 @min-[42rem]:mt-0">
               <span className={`rounded-md border px-2 py-0.5 font-semibold capitalize ${severityTone}`}>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
               <span>Path priority <strong className="font-semibold tabular-nums text-foreground">{Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "unavailable"}</strong></span>
               <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">Inspect finding <ArrowRight className="h-3 w-3" aria-hidden="true" /></span>

@@ -332,6 +332,21 @@ for (const theme of ["light", "dark"] as const) {
         summary: { cis_pass: 1, nist_800_53_pass: 1, pci_dss_pass: 1, fedramp_pass: 1, cis_foundations_pass: 1, cis_foundations_evaluated: 1, aisvs_pass: 1 },
       } }));
       await page.goto("/");
+      await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
+      await page.waitForTimeout(350);
+      const panels = await Promise.all(["Command center", "Coverage", "Compliance & frameworks", "Top risks"].map((name) => page.getByRole("region", { name, exact: true }).boundingBox()));
+      const [command, coverage, compliance, risks] = panels;
+      if (width === 1440) {
+        expect(Math.abs(command!.y - coverage!.y)).toBeLessThan(2);
+        expect(Math.abs(compliance!.y - risks!.y)).toBeLessThan(2);
+        expect(compliance!.y).toBeGreaterThan(command!.y + command!.height);
+        expect(risks!.x).toBeGreaterThan(compliance!.x + compliance!.width);
+      } else {
+        for (let index = 1; index < panels.length; index++) {
+          expect(panels[index]!.y).toBeGreaterThanOrEqual(panels[index - 1]!.y + panels[index - 1]!.height);
+        }
+      }
+      await page.screenshot({ path: testInfo.outputPath(`overview-two-row-${theme}-${width}.png`) });
       const operations = page.getByRole("button", { name: /Operational signals/ });
       await expect(operations).toHaveAttribute("aria-expanded", "false");
       if (width === 1440) {
@@ -361,13 +376,22 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByTestId("overview-score-explainer").screenshot({ path: testInfo.outputPath(`score-pressure-${theme}-${width}.png`) });
       await scoreToggle.focus();
       await page.keyboard.press("Enter");
-      const coverageToggle = page.getByRole("button", { name: /^Coverage & controls/ });
+      const coverageToggle = page.getByRole("button", { name: /^Coverage/ });
       await coverageToggle.focus();
       await page.keyboard.press("Enter");
       await expect(unavailableLane).not.toBeVisible();
       await expect(coverageToggle).toBeFocused();
       await page.keyboard.press("Space");
       await expect(unavailableLane).toBeVisible();
+      const complianceToggle = page.getByRole("button", { name: /^Compliance & frameworks/ });
+      await complianceToggle.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByText("6/6 evaluated controls pass")).not.toBeVisible();
+      await expect(complianceToggle).toBeFocused();
+      await expect(coverageToggle).toHaveAttribute("aria-expanded", "true");
+      await expect(page.getByRole("button", { name: /^Top risks/ })).toHaveAttribute("aria-expanded", "true");
+      await page.keyboard.press("Space");
+      await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
       const disclosure = page.getByRole("button", { name: /Evaluated frameworks/i });
       await disclosure.focus();
       await page.keyboard.press("Enter");
@@ -388,7 +412,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByText("Not evaluated · 0/0 controls").first()).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.waitForTimeout(350);
-      await page.getByRole("region", { name: "Coverage & controls" }).screenshot({ path: testInfo.outputPath(`frameworks-${theme}-${width}.png`) });
+      await page.getByRole("region", { name: "Compliance & frameworks" }).screenshot({ path: testInfo.outputPath(`frameworks-${theme}-${width}.png`) });
     });
   }
 }

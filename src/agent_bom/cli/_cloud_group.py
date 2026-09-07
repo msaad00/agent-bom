@@ -893,7 +893,10 @@ def side_scan_cmd(
         from agent_bom.security import sanitize_text
 
         con.print(f"\n  [red]side-scan failed for {provider_key}:[/red] [dim]{sanitize_text(exc)}[/dim]")
-        con.print("  [dim]Temporary snapshot/disk cleanup still ran; rerun to resume any partial teardown.[/dim]\n")
+        con.print(
+            "  [dim]Inspect execution history and owned resources for cleanup state; "
+            "a new scan does not resume an earlier teardown.[/dim]\n"
+        )
         raise SystemExit(1) from None
 
 
@@ -953,7 +956,7 @@ def _render_side_scan_results(con: Console, results: list[SideScanResult]) -> No
     """Render side-scan results in Rich tables — metadata only, no overflow."""
     from rich.table import Table
 
-    con.print("\n  [bold]EBS side-scan[/bold] [dim]· agentless · read-only output · auto-cleaned[/dim]")
+    con.print("\n  [bold]EBS side-scan[/bold] [dim]· agentless · read-only output · cleanup status recorded[/dim]")
 
     if not results:
         con.print("  [yellow]No target volumes resolved.[/yellow] [dim]Pass --volume-id or --instance-id.[/dim]\n")
@@ -980,6 +983,8 @@ def _render_side_scan_results(con: Console, results: list[SideScanResult]) -> No
     con.print(summary)
 
     for res in results:
+        if not res.cleaned_up and res.scan_volume_id:
+            con.print(f"  [yellow]Retained scan volume:[/yellow] {res.scan_volume_id} · snapshot {res.snapshot_id or 'unknown'}")
         if res.secrets:
             secrets = Table(title=f"Secrets · {res.volume_id} [dim](type + location only)[/dim]")
             secrets.add_column("Type")
@@ -999,7 +1004,7 @@ def _render_provider_side_scan_results(con: Console, provider: str, results: lis
     from rich.table import Table
 
     label = "Azure Managed Disk" if provider == "azure" else "GCP Persistent Disk"
-    con.print(f"\n  [bold]{label} side-scan[/bold] [dim]· agentless · read-only output · auto-cleaned[/dim]")
+    con.print(f"\n  [bold]{label} side-scan[/bold] [dim]· agentless · read-only output · cleanup status recorded[/dim]")
 
     if not results:
         con.print("  [yellow]No target disks resolved.[/yellow] [dim]Pass --volume-id (disk resource id).[/dim]\n")
@@ -1018,15 +1023,16 @@ def _render_provider_side_scan_results(con: Console, provider: str, results: lis
     for res in results:
         execution_status = str(res.execution_status or "unknown").replace("_", " ")
         cleanup_status = str(res.cleanup_status or ("complete" if res.cleaned_up else "partial")).replace("_", " ")
+        counts = res.to_dict()
         summary.add_row(
             str(res.execution_id or "—"),
             execution_status,
             str(res.target_id or "—"),
             str(res.snapshot_id or "—"),
             str(res.scan_disk_id or "—"),
-            str(len(res.packages)),
-            str(res.vulnerability_count),
-            str(len(res.secrets)),
+            str(counts["package_count"]),
+            str(counts["vulnerability_count"]),
+            str(counts["secret_count"]),
             f"[green]{cleanup_status}[/green]" if res.cleaned_up else f"[yellow]{cleanup_status}[/yellow]",
         )
     con.print(summary)

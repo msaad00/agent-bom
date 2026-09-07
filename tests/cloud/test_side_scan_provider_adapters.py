@@ -585,3 +585,257 @@ async def test_run_provider_side_scan_rejects_aws(tmp_path: Path, monkeypatch: p
             state_db_path=tmp_path / "state.db",
             client_factory=lambda *a, **k: {},
         )
+
+
+def _retry_kwargs(tmp_path: Path) -> dict[str, Any]:
+    return dict(
+        provider="gcp",
+        target_id=_GCP_DISK_ID,
+        account_id="proj-1",
+        location="us-central1-a",
+        collector_id="collector-1",
+        tenant_id="tenant-a",
+        idempotency_key="stable-retry",
+        state_db_path=tmp_path / "retry.db",
+        scan_secrets_enabled=False,
+        sleep=lambda _: None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_setup_failure_is_terminal_and_not_queued(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+
+    def unavailable(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise SideScanConfigError("synthetic provider unavailable")
+
+    with pytest.raises(SideScanConfigError):
+        await run_provider_side_scan(**_retry_kwargs(tmp_path), client_factory=unavailable)
+    record = SQLiteSideScanStateStore(tmp_path / "retry.db").list_recent(tenant_id="tenant-a")[0]
+    assert record.status is ExecutionStatus.FAILED
+    assert record.failure_code == "configuration_unavailable"
+    assert record.cleanup_status is CleanupStatus.COMPLETE
+    assert record.to_evidence_dict()["disposition"] == "unevaluable"
+    assert not record.resources
+
+    def forbidden(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        pytest.fail("failed setup retry must not construct provider clients")
+
+    replay = (await run_provider_side_scan(**_retry_kwargs(tmp_path), client_factory=forbidden))[0]
+    assert replay.replayed and replay.execution_status == "failed"
+    assert replay.snapshot_id is None and replay.scan_disk_id is None
+
+
+@pytest.mark.asyncio
+async def test_terminal_retry_preserves_counts_without_sdk_calls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+
+    async def two_vulns(packages: Any) -> int:
+        return 2
+
+    monkeypatch.setattr("agent_bom.cloud.side_scan_targets._scan_packages", two_vulns)
+    snapshots, disks, instances = FakeGcpCollection("snapshots"), FakeGcpCollection("disks"), FakeGcpInstances()
+
+    def factory(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return dict(snapshots_client=snapshots, disks_client=disks, instances_client=instances)
+
+    kwargs = _retry_kwargs(tmp_path)
+    first = await run_provider_side_scan(**kwargs, client_factory=factory, mount_controller=FakeMount(tmp_path))
+
+    def forbidden(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        pytest.fail("terminal retry must not construct provider clients")
+
+    second = await run_provider_side_scan(**kwargs, client_factory=forbidden)
+    assert second[0].to_dict()["vulnerability_count"] == first[0].to_dict()["vulnerability_count"] == 2
+    assert second[0].to_dict()["replayed"] is True
+    assert second[0].cleaned_up is True
+    assert second[0].execution_status == "scan_complete"
+    assert second[0].snapshot_id == first[0].snapshot_id is not None
+    assert second[0].scan_disk_id == first[0].scan_disk_id is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [{"collector_id": "other-collector"}, {"location": "other-zone"}, {"scan_secrets_enabled": True}])
+async def test_retry_rejects_changed_request_before_sdk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: dict[str, Any]) -> None:
+    from agent_bom.cloud.side_scan_lifecycle import SideScanStateConflictError
+
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+
+    def unavailable(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise SideScanConfigError("synthetic provider unavailable")
+
+    with pytest.raises(SideScanConfigError):
+        await run_provider_side_scan(**_retry_kwargs(tmp_path), client_factory=unavailable)
+
+    def forbidden(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        pytest.fail("conflicting retry must not construct provider clients")
+
+    with pytest.raises(SideScanStateConflictError):
+        await run_provider_side_scan(**(_retry_kwargs(tmp_path) | change), client_factory=forbidden)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["azure", "gcp"])
+async def test_failed_unmount_retains_owned_resources_for_manual_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    import subprocess
+
+    from agent_bom.cloud.side_scan import CollectorMountController
+
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+
+    async def no_vulns(packages: Any) -> int:
+        return 0
+
+    monkeypatch.setattr("agent_bom.cloud.side_scan_targets._scan_packages", no_vulns)
+    adapter, store, snapshots, disks, instances = (_gcp_adapter if provider == "gcp" else _azure_adapter)(tmp_path)
+    mount = CollectorMountController()
+    monkeypatch.setattr(mount, "attach_and_mount", lambda *_: tmp_path)
+
+    def fail_unmount(*args: Any, **kwargs: Any) -> None:
+        raise subprocess.CalledProcessError(1, ["umount"])
+
+    monkeypatch.setattr("agent_bom.cloud.side_scan.subprocess.run", fail_unmount)
+    result = (
+        await run_cloud_side_scan_targets(
+            [_target(provider)],
+            lifecycles={provider: adapter},
+            collector_ids={provider: "collector-1"},
+            mount_controller=mount,
+            scan_secrets_enabled=False,
+        )
+    )[0]
+    record = store.get(tenant_id="tenant-a", execution_id=adapter.execution.execution_id)
+    assert record is not None
+    assert record.cleanup_status is CleanupStatus.PARTIAL
+    assert "collector_unmount_failed" in record.warning_codes
+    assert record.to_evidence_dict()["disposition"] == "partial"
+    assert result.cleaned_up is False
+    assert snapshots.resources and disks.resources
+    assert instances.disks if provider == "gcp" else instances.data_disks
+    assert not snapshots.delete_calls and not disks.delete_calls
+    if provider == "gcp":
+        assert not instances.detach_calls
+    else:
+        assert len(instances.update_calls) == 1
+    assert {item.kind for item in record.cleanup_candidates()} == {"attachment", "scan_disk", "snapshot"}
+
+
+@pytest.mark.asyncio
+async def test_legacy_execution_without_request_scope_is_not_rewritten(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud.side_scan_lifecycle import SideScanStateConflictError
+
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+    store = SQLiteSideScanStateStore(tmp_path / "retry.db")
+    legacy = new_side_scan_execution(
+        tenant_id="tenant-a",
+        provider="gcp",
+        account_id="proj-1",
+        target_id=_GCP_DISK_ID,
+        collector_id="collector-1",
+        idempotency_key="stable-retry",
+    )
+    store.create_or_get(legacy)
+    before = legacy.to_dict()
+    assert "request_fingerprint" not in before
+
+    def forbidden(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        pytest.fail("legacy retry must not construct provider clients")
+
+    with pytest.raises(SideScanStateConflictError):
+        await run_provider_side_scan(**_retry_kwargs(tmp_path), client_factory=forbidden)
+    assert store.get(tenant_id="tenant-a", execution_id=legacy.execution_id).to_dict() == before
+
+
+@pytest.mark.asyncio
+async def test_inflight_retry_does_not_start_second_lifecycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+    scanning, finish = asyncio.Event(), asyncio.Event()
+
+    async def blocked_scan(packages: Any) -> int:
+        scanning.set()
+        await finish.wait()
+        return 0
+
+    monkeypatch.setattr("agent_bom.cloud.side_scan_targets._scan_packages", blocked_scan)
+    snapshots, disks, instances = FakeGcpCollection("snapshots"), FakeGcpCollection("disks"), FakeGcpInstances()
+
+    def factory(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return dict(snapshots_client=snapshots, disks_client=disks, instances_client=instances)
+
+    task = asyncio.create_task(
+        run_provider_side_scan(**_retry_kwargs(tmp_path), client_factory=factory, mount_controller=FakeMount(tmp_path))
+    )
+    await asyncio.wait_for(scanning.wait(), timeout=2)
+
+    def forbidden(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        pytest.fail("in-flight retry must not construct provider clients")
+
+    try:
+        replay = await run_provider_side_scan(**_retry_kwargs(tmp_path), client_factory=forbidden)
+        assert replay[0].execution_status == "running"
+        assert not replay[0].cleaned_up
+        assert len(snapshots.insert_calls) == 1
+    finally:
+        finish.set()
+        await task
+
+
+@pytest.mark.asyncio
+async def test_partial_cleanup_retry_retains_recorded_resource_ids_without_sdk_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+
+    async def no_vulns(packages: Any) -> int:
+        return 0
+
+    monkeypatch.setattr("agent_bom.cloud.side_scan_targets._scan_packages", no_vulns)
+    snapshots, disks, instances = FakeGcpCollection("snapshots"), FakeGcpCollection("disks"), FakeGcpInstances()
+
+    def factory(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return dict(snapshots_client=snapshots, disks_client=disks, instances_client=instances)
+
+    class RetainedMount(FakeMount):
+        def unmount(self, mount_point: Path) -> None:
+            raise SideScanConfigError("synthetic unmount failure")
+
+    kwargs = _retry_kwargs(tmp_path)
+    first = (await run_provider_side_scan(**kwargs, client_factory=factory, mount_controller=RetainedMount(tmp_path)))[0]
+    store = SQLiteSideScanStateStore(tmp_path / "retry.db")
+    record = store.get(tenant_id="tenant-a", execution_id=first.execution_id)
+    assert record is not None
+    assert record.cleanup_status is CleanupStatus.PARTIAL
+    before = record.to_dict()
+    resources = {resource.kind: resource.resource_id for resource in record.cleanup_candidates()}
+
+    def forbidden(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        pytest.fail("recorded retry must not construct clients or access cloud resources")
+
+    replay = (await run_provider_side_scan(**kwargs, client_factory=forbidden))[0]
+    assert replay.snapshot_id == first.snapshot_id == resources["snapshot"]
+    assert replay.scan_disk_id == first.scan_disk_id == resources["scan_disk"]
+    assert replay.to_dict()["snapshot_id"] == resources["snapshot"]
+    assert replay.to_dict()["scan_disk_id"] == resources["scan_disk"]
+    assert replay.replayed and not replay.cleaned_up
+    assert replay.cleanup_status == "partial"
+    assert "collector_unmount_failed" in replay.warnings
+    after = store.get(tenant_id="tenant-a", execution_id=first.execution_id)
+    assert after is not None and after.to_dict() == before
+    assert not instances.detach_calls and not snapshots.delete_calls and not disks.delete_calls
+
+    # A singular response field must not arbitrarily select one of several records.
+    from dataclasses import replace
+
+    snapshot = next(resource for resource in record.resources if resource.kind == "snapshot")
+    ambiguous = record.register_resource(replace(snapshot, resource_id=f"{snapshot.resource_id}-other"))
+    store.save(ambiguous, expected_version=record.state_version)
+    ambiguous_replay = (await run_provider_side_scan(**kwargs, client_factory=forbidden))[0]
+    assert ambiguous_replay.snapshot_id is None
+    assert ambiguous_replay.scan_disk_id == resources["scan_disk"]
+    unchanged = store.get(tenant_id="tenant-a", execution_id=first.execution_id)
+    assert unchanged is not None and unchanged.to_dict() == ambiguous.to_dict()
+    assert not instances.detach_calls and not snapshots.delete_calls and not disks.delete_calls

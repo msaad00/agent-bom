@@ -34,21 +34,21 @@ const EXECUTION_PAGE_SIZE = 25;
 function statusTone(status: string): { label: string; className: string; icon: typeof CheckCircle2 } {
   switch (status) {
     case "scan_complete":
-      return { label: "Scan complete", className: "text-emerald-500", icon: CheckCircle2 };
+      return { label: "Scan complete", className: "text-emerald-800 dark:text-emerald-300", icon: CheckCircle2 };
     case "partial":
-      return { label: "Partial", className: "text-amber-500", icon: ShieldAlert };
+      return { label: "Partial", className: "text-amber-800 dark:text-amber-300", icon: ShieldAlert };
     case "running":
-      return { label: "Running", className: "text-blue-500", icon: Loader2 };
+      return { label: "Running", className: "text-blue-700 dark:text-blue-300", icon: Loader2 };
     case "queued":
       return { label: "Queued", className: "text-[color:var(--text-tertiary)]", icon: Loader2 };
     case "failed":
-      return { label: "Failed", className: "text-red-500", icon: XCircle };
+      return { label: "Failed", className: "text-red-700 dark:text-red-300", icon: XCircle };
     case "disabled":
       return { label: "Disabled", className: "text-[color:var(--text-tertiary)]", icon: CircleSlash };
     case "denied":
-      return { label: "Denied", className: "text-red-500", icon: CircleSlash };
+      return { label: "Denied", className: "text-red-700 dark:text-red-300", icon: CircleSlash };
     case "unavailable":
-      return { label: "Unavailable", className: "text-amber-500", icon: ShieldAlert };
+      return { label: "Unavailable", className: "text-amber-800 dark:text-amber-300", icon: ShieldAlert };
     default:
       return { label: status || "Unknown", className: "text-[color:var(--text-secondary)]", icon: Disc3 };
   }
@@ -57,9 +57,9 @@ function statusTone(status: string): { label: string; className: string; icon: t
 function cleanupTone(status: string): { label: string; className: string } {
   switch (status) {
     case "complete":
-      return { label: "Cleaned up", className: "text-emerald-500" };
+      return { label: "Cleaned up", className: "text-emerald-800 dark:text-emerald-300" };
     case "partial":
-      return { label: "Partial cleanup", className: "text-amber-500" };
+      return { label: "Partial cleanup", className: "text-amber-800 dark:text-amber-300" };
     case "not_started":
       return { label: "Not started", className: "text-[color:var(--text-tertiary)]" };
     default:
@@ -92,7 +92,7 @@ function CapabilityCard({ cap }: { cap: SideScanProviderCapability }) {
         {rows.map((row) => (
           <div key={row.label} className="flex items-center justify-between text-xs">
             <dt className="text-[color:var(--text-secondary)]">{row.label}</dt>
-            <dd className={`inline-flex items-center gap-1 font-medium ${row.ok ? "text-emerald-500" : "text-[color:var(--text-tertiary)]"}`}>
+            <dd className={`inline-flex items-center gap-1 font-medium ${row.ok ? "text-emerald-800 dark:text-emerald-300" : "text-[color:var(--text-tertiary)]"}`}>
               {row.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleSlash className="h-3.5 w-3.5" />}
               {row.ok ? "yes" : row.note ?? "no"}
             </dd>
@@ -101,6 +101,12 @@ function CapabilityCard({ cap }: { cap: SideScanProviderCapability }) {
       </dl>
     </div>
   );
+}
+
+function reportedCount(record: SideScanExecutionRecord, key: "package_count" | "vulnerability_count" | "secret_count"): number | "Unavailable" {
+  if (record.status !== "scan_complete" && record.status !== "partial") return "Unavailable";
+  const value = record.counts?.[key];
+  return Number.isInteger(value) && value >= 0 ? value : "Unavailable";
 }
 
 function ExecutionRow({ record }: { record: SideScanExecutionRecord }) {
@@ -123,9 +129,9 @@ function ExecutionRow({ record }: { record: SideScanExecutionRecord }) {
         </span>
         <div className="font-mono text-[11px] text-[color:var(--text-tertiary)]">{record.account_id}</div>
       </td>
-      <td className="px-3 py-2 align-top text-right tabular-nums text-sm text-[color:var(--foreground)]">{record.counts.package_count}</td>
-      <td className="px-3 py-2 align-top text-right tabular-nums text-sm text-[color:var(--foreground)]">{record.counts.vulnerability_count}</td>
-      <td className="px-3 py-2 align-top text-right tabular-nums text-sm text-[color:var(--foreground)]">{record.counts.secret_count}</td>
+      <td className="px-3 py-2 align-top text-right tabular-nums text-sm text-[color:var(--foreground)]">{reportedCount(record, "package_count")}</td>
+      <td className="px-3 py-2 align-top text-right tabular-nums text-sm text-[color:var(--foreground)]">{reportedCount(record, "vulnerability_count")}</td>
+      <td className="px-3 py-2 align-top text-right tabular-nums text-sm text-[color:var(--foreground)]">{reportedCount(record, "secret_count")}</td>
       <td className="px-3 py-2 align-top">
         <span className={`text-xs font-medium ${cleanup.className}`}>{cleanup.label}</span>
       </td>
@@ -147,8 +153,8 @@ function fieldClass(): string {
 }
 
 export default function CwppSideScanPage() {
-  const { hasCapability } = useAuthState();
-  const canRun = hasCapability("scan.run");
+  const { session } = useAuthState();
+  const canRun = session?.authenticated === true && session.role === "admin";
   const [data, setData] = useState<SideScanListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -234,7 +240,8 @@ export default function CwppSideScanPage() {
         } else if (resp.status === "unavailable") {
           setTriggerNote({ tone: "warn", text: resp.reason ?? "Provider executor unavailable (extra or credentials missing)." });
         } else {
-          setTriggerNote({ tone: "ok", text: `Execution ${resp.execution_id.slice(0, 12)}… → ${statusTone(resp.status).label}.` });
+          const complete = resp.status === "scan_complete" && resp.execution?.cleanup_status === "complete";
+          setTriggerNote({ tone: complete ? "ok" : "warn", text: `Execution ${resp.execution_id.slice(0, 12)}… → ${statusTone(resp.status).label}. Cleanup: ${cleanupTone(resp.execution?.cleanup_status ?? "not_started").label}.` });
         }
         await load();
       } catch (err) {
@@ -275,8 +282,8 @@ export default function CwppSideScanPage() {
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-[color:var(--text-secondary)]">
             Agentless disk side-scan for Azure Managed Disk and GCP Persistent Disk. Each run snapshots the target
-            disk, mounts a temp copy on an in-account collector read-only, records SBOM + CVE + redacted secret
-            metadata, and tears every owned temporary resource down. No block data leaves the account, and a zero-finding
+            disk, mounts a temp copy on an in-account collector read-only, records package, vulnerability and redacted secret
+            counts, and attempts cleanup of owned temporary resources. No block data leaves the account, and a zero-finding
             run is never a clean-workload claim.
           </p>
         </div>
@@ -354,13 +361,13 @@ export default function CwppSideScanPage() {
             )}
           </div>
           <p className="mt-2 text-[11px] text-[color:var(--text-tertiary)]">
-            Runs through the stored, in-account collector — never a per-action credential. Requires an admin operator.
+            Requires an admin operator and an API executor running on the selected collector host. Uses its configured cloud identity; no credential is accepted in this form.
           </p>
           <div className="mt-3 flex items-center gap-3">
             <button
               type="submit"
               disabled={submitting || !canRun || !form.target_id || !form.account_id || !form.location || !form.collector_id}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 dark:bg-emerald-300 dark:text-emerald-950 dark:hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Run side-scan
             </button>
@@ -369,7 +376,7 @@ export default function CwppSideScanPage() {
           {triggerNote && (
             <p
               className={`mt-2 text-xs ${
-                triggerNote.tone === "ok" ? "text-emerald-500" : triggerNote.tone === "warn" ? "text-amber-500" : "text-red-500"
+                triggerNote.tone === "ok" ? "text-emerald-800 dark:text-emerald-300" : triggerNote.tone === "warn" ? "text-amber-800 dark:text-amber-300" : "text-red-700 dark:text-red-300"
               }`}
               role="status"
             >

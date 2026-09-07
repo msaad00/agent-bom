@@ -103,8 +103,21 @@ export function useGraphPresentation<T extends Node>({
     const stored = persistenceEnabled ? readGraphPresentation(browserStorage(), storageKey) : null;
     const compatible = stored?.layout === layout ? stored : null;
     const nextNodes = applyGraphPresentation(accessibleNodes, compatible);
-    nodesRef.current = nextNodes;
-    setPresentedNodes(nextNodes);
+    // ReactFlow needs measured dimensions during presentation-only updates.
+    // Dropping them on hover clears handle bounds and briefly hides the node,
+    // interrupting the pointer click that follows. Geometry is transient UI
+    // state and never grants permission to persist or edit the layout.
+    setPresentedNodes((current) => {
+      const previous = new Map(current.map((node) => [node.id, node]));
+      const measuredNodes = nextNodes.map((node) => {
+        const prior = previous.get(node.id);
+        return prior?.type === node.type && !node.measured && prior?.measured
+          ? { ...node, measured: prior.measured }
+          : node;
+      });
+      nodesRef.current = measuredNodes;
+      return measuredNodes;
+    });
     const nextViewport = compatible?.viewport ?? DEFAULT_VIEWPORT;
     viewportRef.current = nextViewport;
     setViewport(nextViewport);
@@ -132,8 +145,9 @@ export function useGraphPresentation<T extends Node>({
 
   const onNodesChange = useCallback(
     (changes: NodeChange<T>[]) => {
-      if (!persistenceEnabled) return;
-      const allowed = editing
+      const allowed = !persistenceEnabled
+        ? changes.filter((change) => change.type === "dimensions")
+        : editing
         ? changes.filter((change) => change.type !== "remove")
         : changes.filter(
             (change) => change.type !== "position" && change.type !== "remove",

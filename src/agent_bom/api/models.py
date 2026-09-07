@@ -1274,3 +1274,58 @@ class FindingTriageDecisionRequest(BaseModel):
     decision_reason: str = Field("", max_length=2000)
     assignee: str | None = Field(None, max_length=256)
     expires_at: str | None = Field(None, max_length=64)
+
+
+class InventoryPackageResponse(BaseModel):
+    """One package occurrence in the scanned estate; empty IDs are unknown."""
+
+    name: str
+    version: str
+    ecosystem: str
+    agent: str
+    server: str
+    agent_id: str = ""
+    server_id: str = ""
+    environment: str = ""
+
+
+class InventoryResponse(BaseModel):
+    scope: Literal["scanned_estate"]
+    source: str
+    agents: list[dict[str, Any]]
+    packages: list[InventoryPackageResponse]
+    jobs: list[dict[str, str]]
+    count: int = Field(ge=0)
+    total: int = Field(ge=0)
+    package_count: int = Field(ge=0)
+    package_total: int = Field(ge=0)
+    job_count: int = Field(ge=0)
+    job_total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=1000)
+    offset: int = Field(ge=0)
+    has_more: bool
+    warnings: list[str]
+
+
+class AgentBomManifestServerResponse(BaseModel):
+    """Identified server entity with preserved observation membership."""
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    canonical_id: str
+    agent_name: str = ""
+    agent_names: list[str] = Field(default_factory=list)
+    server_stable_id: str = ""
+    identity_basis: Literal["server_identity", "observation"] = "observation"
+    observation_ids: list[str] = Field(default_factory=list)
+    observations: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AgentBomManifestResponse(BaseModel):
+    """Typed identity/count boundary; other manifest sections remain additive."""
+
+    model_config = ConfigDict(extra="allow")
+    schema_version: Literal["agent-bom.manifest/v1"]
+    agents: list[dict[str, Any]]
+    mcp_servers: list[AgentBomManifestServerResponse]
+    summary: dict[str, int]

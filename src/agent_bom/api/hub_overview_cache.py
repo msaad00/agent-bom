@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 
 
@@ -57,6 +58,21 @@ _lock = threading.Lock()
 _entries: dict[str, _Entry] = {}
 _kev_entries: dict[str, _KevEntry] = {}
 _framework_entries: dict[str, _FrameworkEntry] = {}
+_coverage_entries: dict[str, tuple[float, int, dict[str, dict[str, int]], str]] = {}
+
+
+def get_cached_coverage(tenant_id: str, revision: int) -> tuple[dict[str, dict[str, int]], str] | None:
+    with _lock:
+        entry = _coverage_entries.get(tenant_id)
+        if _ttl_seconds() <= 0 or entry is None or entry[0] <= time.monotonic() or entry[1] != revision:
+            _coverage_entries.pop(tenant_id, None)
+            return None
+        return deepcopy(entry[2]), entry[3]
+
+
+def set_cached_coverage(tenant_id: str, revision: int, lanes: dict[str, dict[str, int]], status: str) -> None:
+    with _lock:
+        _coverage_entries[tenant_id] = (time.monotonic() + _ttl_seconds(), revision, deepcopy(lanes), status)
 
 
 def get_cached_severity(tenant_id: str, *, revision: int | None = None) -> dict[str, int] | None:
@@ -146,6 +162,7 @@ def invalidate_tenant(tenant_id: str) -> None:
         _entries.pop(tenant_id, None)
         _kev_entries.pop(tenant_id, None)
         _framework_entries.pop(tenant_id, None)
+        _coverage_entries.pop(tenant_id, None)
 
 
 def reset_hub_overview_cache() -> None:
@@ -154,3 +171,4 @@ def reset_hub_overview_cache() -> None:
         _entries.clear()
         _kev_entries.clear()
         _framework_entries.clear()
+        _coverage_entries.clear()

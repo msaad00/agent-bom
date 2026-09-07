@@ -117,10 +117,10 @@ describe("Agent BOM manifest row filters", () => {
     const rows = deriveManifestRows(manifest, now);
 
     expect(rows).toHaveLength(3);
-    expect(rows.map((row) => [row.name, row.source, row.runtimeState, row.riskLevel, row.freshness])).toEqual([
-      ["filesystem", "local", "gateway bound", "high", "seen_24h"],
-      ["cloud-admin", "runtime", "shadow runtime", "high", "stale"],
-      ["docs", "fleet", "inventory only", "low", "unknown"],
+    expect(rows.map((row) => [row.name, row.source, row.runtimeState, row.reviewStatus, row.freshness])).toEqual([
+      ["filesystem", "local", "gateway bound", "not assessed", "seen_24h"],
+      ["cloud-admin", "runtime", "shadow runtime", "review needed", "stale"],
+      ["docs", "fleet", "inventory only", "not assessed", "unknown"],
     ]);
   });
 
@@ -131,7 +131,7 @@ describe("Agent BOM manifest row filters", () => {
       owner: "unowned",
       runtime: "shadow runtime",
       freshness: "stale",
-      risk: "high",
+      review: "review needed",
     };
 
     expect(filterManifestRows(rows, filters).map((row) => row.name)).toEqual(["cloud-admin"]);
@@ -156,4 +156,81 @@ describe("Agent BOM manifest row filters", () => {
     expect(classifyFreshness("", now)).toBe("unknown");
     expect(classifyFreshness("not-a-date", now)).toBe("unknown");
   });
+});
+
+it("does not infer severity from credential names or missing assessment", () => {
+ const rows=deriveManifestRows({...manifest,mcp_servers:[{id:"read-only",credential_refs:[{name:"READ_ONLY_API_TOKEN"}],observed:{configured_locally:true},security:{warnings:[]}}]});
+ expect(rows[0]?.reviewStatus).toBe("not assessed");
+ expect(rows[0]?.reviewIndicators).toContain("1 credential reference");
+ expect(rows[0]?.toolCount).toBeNull();
+ });
+ it("preserves explicit security block evidence as a review indicator", () => {
+ const rows=deriveManifestRows({...manifest,mcp_servers:[{id:"blocked",security:{blocked:true},observed:{}}]});
+ expect(rows[0]?.reviewStatus).toBe("review needed");
+ expect(rows[0]?.reviewIndicators).toContain("Security block reported");
+ });
+
+it("does not assign ambiguous client names to another environment", () => {
+ const agents=[{id:"prod",name:"assistant",owner:"prod-team",environment:"prod"},{id:"dev",name:"assistant",owner:"dev-team",environment:"dev"}];
+ for (const ordered of [agents,[...agents].reverse()]) {
+  const row=deriveManifestRows({...manifest,agents:ordered,mcp_servers:[{id:"s",agent_name:"assistant"}]})[0];
+  expect(row?.environment).toBe("unknown");
+  expect(row?.owner).toBe("unknown");
+  const unmatched=deriveManifestRows({...manifest,agents:ordered,mcp_servers:[{id:"s",agent_name:"prod"}]})[0];
+  expect(unmatched?.environment).toBe("unknown");
+ }
+});
+
+it("prefers explicit server membership and leaves shared ownership unresolved", () => {
+  const agents = [
+    { id: "prod", name: "assistant", owner: "prod-team", environment: "prod", mcp_server_ids: ["s"] },
+    { id: "dev", name: "assistant", owner: "dev-team", environment: "dev" },
+  ];
+  expect(deriveManifestRows({ ...manifest, agents, mcp_servers: [{ id: "s", agent_name: "dev" }] })[0]?.environment).toBe("prod");
+  const shared = agents.map((agent) => ({ ...agent, mcp_server_ids: ["s"] }));
+  expect(deriveManifestRows({ ...manifest, agents: shared, mcp_servers: [{ id: "s", agent_name: "prod" }] })[0]?.environment).toBe("unknown");
+});
+
+it("does not interpret an observation client name as another agent ID", () => {
+  const agents = [
+    { id: "assistant", name: "different-client", owner: "prod-team", environment: "prod" },
+    { id: "dev-client", name: "assistant", owner: "dev-team", environment: "dev" },
+  ];
+  for (const ordered of [agents, [...agents].reverse()]) {
+    const row = deriveManifestRows({ ...manifest, agents: ordered, mcp_servers: [{ id: "s", agent_name: "assistant" }] })[0];
+    expect(row?.owner).toBe("dev-team");
+    expect(row?.environment).toBe("dev");
+  }
+});
+
+it("does not resolve a missing client name using its display placeholder", () => {
+  const agents = [{ id: "prod", name: "local discovery", owner: "prod-team", environment: "prod" }];
+  const row = deriveManifestRows({ ...manifest, agents, mcp_servers: [{ id: "s" }] })[0];
+  expect(row?.agentName).toBe("local discovery");
+  expect(row?.owner).toBe("unknown");
+  expect(row?.environment).toBe("unknown");
+});
+
+it("keeps every reported shared-server agent visible without assigning one owner", () => {
+  const shared: AgentBomManifestResponse = {
+    ...manifest,
+    agents: [{ id: "alpha-id", name: "alpha", owner: "team-a", environment: "prod" }, { id: "beta-id", name: "beta", owner: "team-b", environment: "dev" }],
+    mcp_servers: [{ id: "shared", name: "shared-server", agent_name: "", agent_names: ["alpha", "beta"], observation_ids: ["a", "b"] }],
+  };
+  const rows = deriveManifestRows(shared);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.agentName).toBe("alpha, beta");
+  expect(rows[0]?.owner).toBe("unknown");
+  expect(rows[0]?.environment).toBe("unknown");
+  expect(filterManifestRows(rows, { ...DEFAULT_MANIFEST_FILTERS, query: "beta" })).toHaveLength(1);
+});
+
+it("does not recover an observation-scoped conflict through an agent display name", () => {
+  const row = deriveManifestRows({ ...manifest,
+    agents: [{ id: "agent", name: "assistant", owner: "prod-team", environment: "prod", mcp_server_ids: ["shared"] }],
+    mcp_servers: [{ id: "observation:conflict", server_stable_id: "shared", identity_basis: "observation", agent_names: ["assistant"] }],
+  })[0];
+  expect(row?.agentName).toBe("assistant");
+  expect(row?.owner).toBe("unknown");
+  expect(row?.environment).toBe("unknown");
 });

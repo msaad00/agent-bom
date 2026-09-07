@@ -5,12 +5,13 @@
  * the route/filter scope that produced the first page.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
 import type {
   InventoryAsset,
+  InventoryAssetDetailResponse,
   InventoryAssetsResponse,
   InventoryFacets,
   InventorySummaryResponse,
@@ -110,10 +111,18 @@ function page(
 }
 
 function InventoryProbe() {
-  const { model, setFilter, loadMore } = useInventory();
+  const { model, setFilter, loadMore, error, loadingMore, reload, loadAssetDetail, details, detailLoadingId, detailError } = useInventory();
   return (
     <div>
       <span data-testid="loaded-agent-count">{model?.loadedByKind.agents ?? 0}</span>
+      <span data-testid="matching-total">{model?.matchingTotal ?? 0}</span>
+      <span data-testid="error">{error}</span>
+      <span data-testid="loading-more">{String(loadingMore)}</span>
+      <span data-testid="detail-name">{details["agent:one"]?.asset.name ?? ""}</span>
+      <span data-testid="detail-loading">{detailLoadingId}</span>
+      <span data-testid="detail-error">{detailError}</span>
+      <button type="button" onClick={reload}>Refresh</button>
+      <button type="button" onClick={() => void loadAssetDetail("agent:one")}>Open detail</button>
       <button
         type="button"
         onClick={() => {
@@ -132,7 +141,7 @@ function InventoryProbe() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.mocked(api.getInventorySummary).mockResolvedValue(summary());
   vi.mocked(api.getInventoryAssets).mockResolvedValue(page());
 });
@@ -231,5 +240,115 @@ describe("inventory API route scope", () => {
       expect.objectContaining({ type: ASSET_KIND_BY_ID.containers.entityTypes, scanId: SNAPSHOT }),
     );
     expect(api.getGraph).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("inventory continuation response scope", () => {
+  it.each(["success", "failure"])("ignores a late %s from the previous filter scope", async (outcome) => {
+    let resolveOld!: (value: InventoryAssetsResponse) => void;
+    let rejectOld!: (reason: Error) => void;
+    const oldRequest = new Promise<InventoryAssetsResponse>((resolve, reject) => {
+      resolveOld = resolve;
+      rejectOld = reject;
+    });
+    const filtered = page([asset("agent:payments")], { hasMore: false });
+    filtered.pagination.total = 1;
+    filtered.filters = { environment: "production", search: "payments" };
+    vi.mocked(api.getInventoryAssets)
+      .mockResolvedValueOnce(page())
+      .mockReturnValueOnce(oldRequest)
+      .mockResolvedValueOnce(filtered);
+    render(<InventoryProvider><InventoryProbe /></InventoryProvider>);
+    await waitFor(() => expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent("1"));
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Apply scope" }));
+    await waitFor(() => expect(screen.getByTestId("matching-total")).toHaveTextContent(/^1$/));
+    await act(async () => {
+      if (outcome === "success") resolveOld(page([asset("agent:outside-scope")], { hasMore: false }));
+      else rejectOld(new Error("obsolete query failure"));
+    });
+    expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent(/^1$/);
+    expect(screen.getByTestId("matching-total")).toHaveTextContent(/^1$/);
+    expect(screen.getByTestId("error")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("loading-more")).toHaveTextContent("false");
+  });
+});
+
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((resolveValue, rejectValue) => { resolve = resolveValue; reject = rejectValue; });
+  return { promise, resolve, reject };
+}
+
+function detail(name: string): InventoryAssetDetailResponse {
+  return { schema_version: "inventory.asset.v1", tenant_id: "default", asset: { ...asset("agent:one"), name },
+    node: {}, edges_out: [], edges_in: [], neighbors: [], sources: [], impact: {},
+    completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 1, total: 1 } };
+}
+
+describe("inventory snapshot request lifecycle", () => {
+  it("does not let the old route-kind continuation clear a newer pending continuation", async () => {
+    const old = deferred<InventoryAssetsResponse>();
+    const current = deferred<InventoryAssetsResponse>();
+    vi.mocked(api.getInventoryAssets).mockResolvedValueOnce(page()).mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(page([asset("container:one", "container")]))
+      .mockReturnValueOnce(current.promise);
+    const { rerender } = render(<InventoryProvider entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}><InventoryProbe /></InventoryProvider>);
+    await waitFor(() => expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent(/^1$/));
+    fireEvent.click(screen.getByText("Load more"));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(2));
+    rerender(<InventoryProvider entityTypes={ASSET_KIND_BY_ID.containers.entityTypes}><InventoryProbe /></InventoryProvider>);
+    await waitFor(() => expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent(/^0$/));
+    fireEvent.click(screen.getByText("Load more"));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(4));
+    await act(async () => old.resolve(page([asset("agent:obsolete")], { hasMore: false })));
+    expect(screen.getByTestId("loading-more")).toHaveTextContent("true");
+    expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent(/^0$/);
+    await act(async () => current.resolve(page([asset("container:two", "container")], { hasMore: false })));
+    expect(screen.getByTestId("loading-more")).toHaveTextContent("false");
+    expect(screen.getByTestId("error")).toBeEmptyDOMElement();
+  });
+
+  it.each(["success", "failure"])("ignores old-snapshot detail %s after refresh", async (outcome) => {
+    const old = deferred<InventoryAssetDetailResponse>();
+    const current = deferred<InventoryAssetDetailResponse>();
+    vi.mocked(api.getInventoryAsset).mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
+    vi.mocked(api.getInventorySummary).mockResolvedValueOnce(summary()).mockResolvedValueOnce({ ...summary(), scan_id: "new-snapshot" });
+    vi.mocked(api.getInventoryAssets).mockResolvedValueOnce(page()).mockResolvedValueOnce({ ...page(), scan_id: "new-snapshot" });
+    render(<InventoryProvider><InventoryProbe /></InventoryProvider>);
+    await waitFor(() => expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent(/^1$/));
+    fireEvent.click(screen.getByText("Open detail"));
+    await waitFor(() => expect(api.getInventoryAsset).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText("Refresh"));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({ scanId: "new-snapshot" })));
+    fireEvent.click(screen.getByText("Open detail"));
+    await waitFor(() => expect(api.getInventoryAsset).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      if (outcome === "success") old.resolve(detail("old-snapshot"));
+      else old.reject(new Error("obsolete snapshot error"));
+    });
+    expect(screen.getByTestId("detail-name")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("detail-error")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("detail-loading")).toHaveTextContent("agent:one");
+    await act(async () => current.resolve(detail("current-snapshot")));
+    expect(screen.getByTestId("detail-name")).toHaveTextContent("current-snapshot");
+    expect(api.getInventoryAsset).toHaveBeenLastCalledWith("agent:one", "new-snapshot");
+  });
+
+  it("keeps a pending same-snapshot detail valid when only filters change", async () => {
+    const pending = deferred<InventoryAssetDetailResponse>();
+    vi.mocked(api.getInventoryAsset).mockReturnValueOnce(pending.promise);
+    render(<InventoryProvider><InventoryProbe /></InventoryProvider>);
+    await waitFor(() => expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent(/^1$/));
+    fireEvent.click(screen.getByText("Open detail"));
+    await waitFor(() => expect(api.getInventoryAsset).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText("Apply scope"));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(2));
+    await act(async () => pending.resolve(detail("same-snapshot")));
+    expect(screen.getByTestId("detail-name")).toHaveTextContent("same-snapshot");
   });
 });

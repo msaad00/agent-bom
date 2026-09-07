@@ -726,6 +726,14 @@ export default function GraphPageClient() {
 function GraphPageInner() {
   const reactFlow = useReactFlow();
   const graphViewport = useViewport();
+  const [narrowViewport, setNarrowViewport] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 639px)");
+    const update = () => setNarrowViewport(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
   const { session, loading: authLoading } = useAuthState();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
@@ -1774,7 +1782,10 @@ function GraphPageInner() {
   // the broad estate view. Large graphs switch to the WebGL/overview
   // renderers upstream, so ReactFlow only ever lays out small/medium graphs
   // where dagre is the better fit.
-  const graphLayoutKind = "dagre-lr";
+  const compactGroupedTopology = aggregated.clusters.size > 0 && aggregated.nodes.length <= 6;
+  const compactMobileTopology = narrowViewport && !selectedAttackPath &&
+    !rollupNavigationActive && compactGroupedTopology;
+  const graphLayoutKind = compactMobileTopology ? "dagre" : "dagre-lr";
   const layoutInput = useMemo(
     () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds),
     [aggregated.edges, aggregated.nodes, attackPathNodeIds],
@@ -1784,6 +1795,7 @@ function GraphPageInner() {
     layoutInput.nodes,
     layoutInput.edges,
     {
+      dagre: { direction: "TB", nodeWidth: 260, nodeHeight: 132, rankSep: 32, nodeSep: 24 },
       force: {
         idealEdgeLength: filters.agentName ? 168 : 196,
         nodeRepulsion: filters.agentName ? 3600 : 4400,
@@ -1891,7 +1903,7 @@ function GraphPageInner() {
   // returns "cluster" | "summary" | "detail". The chosen render band
   // keeps dense graphs readable without changing node positions or data.
   const lodBand = useLodBand();
-  const effectiveLodBand = effectiveLodBandForGraph(lodBand, {
+  const effectiveLodBand = compactGroupedTopology ? "detail" : effectiveLodBandForGraph(lodBand, {
     sourceNodeCount: flow.nodes.length,
     renderedNodeCount: aggregated.nodes.length,
     clusterCount: aggregated.clusters.size,
@@ -2212,8 +2224,8 @@ function GraphPageInner() {
       });
     }
     return readableGraphEdges(layoutEdges, localNeighborhoodIds, {
-      baseOpacity: graphLayoutKind === "dagre-lr" ? 0.34 : 0.26,
-      highSignalOpacity: graphLayoutKind === "dagre-lr" ? 0.6 : 0.48,
+      baseOpacity: 1,
+      highSignalOpacity: 1,
       inactiveOpacity: 0.06,
       captureMode,
       zoom: graphViewport.zoom,
@@ -2221,14 +2233,23 @@ function GraphPageInner() {
       // Past this many edges the captions overlap into noise, so they follow
       // the selection instead of blanketing the canvas. A capture keeps them.
       maxLabeledEdges: captureMode ? Number.POSITIVE_INFINITY : GRAPH_EDGE_LABEL_BUDGET,
-    });
+    }).map((edge) => ({
+      ...edge,
+      // ReactFlow measures label backgrounds when label content changes.
+      // A stable group font prevents Fit/zoom from outgrowing that background.
+      ...(edge.data?.isClusterEdge
+        ? { labelStyle: { ...edge.labelStyle, fontSize: 18 } }
+        : {}),
+      // Unselected links retain their relationship labels and evidence while
+      // using one legible theme-aware stroke. Focus restores semantic emphasis.
+      ...(!localNeighborhoodIds ? { style: { ...edge.style, stroke: "var(--text-tertiary)" } } : {}),
+    }));
   }, [
     layoutEdges,
     localNeighborhoodIds,
     attackPathEdgeKeys,
     reachabilitySummary,
     blastRadius,
-    graphLayoutKind,
     captureMode,
     graphViewport.zoom,
     displayNodes,
@@ -2330,7 +2351,9 @@ function GraphPageInner() {
   const presentation = useGraphPresentation({
     nodes: displayNodes,
     scope: presentationScope,
-    layout: graphLayoutKind,
+    // Keep the saved-layout identity stable across the responsive default.
+    // Explicit personal positions and viewport remain authoritative on resize.
+    layout: "dagre-lr",
     enabled: !captureMode && !authLoading && Boolean(session),
     ownerActive: Boolean(session),
     localMode: session?.recommended_ui_mode === "no_auth",
@@ -3661,14 +3684,13 @@ function GraphPageInner() {
         </div>
       </div>
 
-      {/* A full viewport, not a letterbox. Secondary evidence and controls stay
-          in the disclosure above so this canvas begins in the first viewport
-          and still gets a screen of its own. */}
+      {/* Reserve the remaining viewport for topology; expanded evidence and
+          focused-path content can still scroll without hiding the controls. */}
       <div
         data-testid={selectedAttackPath ? "focused-path-surface" : undefined}
         className={selectedAttackPath
           ? "flex relative min-h-[540px]"
-          : "flex-1 flex relative min-h-[calc(100vh-3.5rem)]"}
+          : "flex relative h-[clamp(18rem,calc(100dvh-33rem),36rem)] md:h-[clamp(22rem,calc(100dvh-23rem),48rem)]"}
       >
         <div className="flex-1 relative min-h-0 flex flex-col">
           {selectedAttackPath && selectedPathDecision && (

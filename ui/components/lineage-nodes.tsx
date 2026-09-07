@@ -171,16 +171,17 @@ function NodeCard({
       />
       <div className="mb-1 flex min-w-0 items-start gap-2">
         <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
-        <span className="min-w-0 flex-1 break-words line-clamp-2 text-[24px] font-semibold leading-7 text-[var(--foreground)]">
-          {data.label}
-        </span>
         <span className="ml-auto shrink-0 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
-          {NODE_TYPE_BADGES[data.nodeType]}
+          {/* Applications share the container layout, not its runtime identity. */}
+          {data.entityType === "application" ? "Application" : NODE_TYPE_BADGES[data.nodeType]}
         </span>
         {data.runtimeEvidenceTier && data.runtimeEvidenceTier !== "static_scan" ? (
           <RuntimeEvidenceChip tier={data.runtimeEvidenceTier} />
         ) : null}
       </div>
+      <p className="mb-1 break-words line-clamp-3 text-lg font-semibold leading-6 text-[var(--foreground)]">
+        {data.label}
+      </p>
       {subtitle && (
         <div className="text-xs leading-4 text-[var(--text-secondary)] truncate">
           {subtitle}
@@ -702,15 +703,15 @@ function ClusterPillNode({ data }: { data: LineageNodeData }) {
         position={Position.Right}
         className="!w-2 !h-2 !bg-sky-300"
       />
-      <div className="flex items-center gap-1.5">
-        <Icon className="w-3.5 h-3.5 text-sky-200" />
-        <span className="text-xs font-semibold text-sky-100 whitespace-nowrap">
+      <button type="button" aria-label={`Expand ${count} ${childType === "vulnerability" ? "findings" : "members"}`} className="nodrag nopan flex items-center gap-1.5 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-500">
+        <Icon className="w-3.5 h-3.5 text-sky-700 dark:text-sky-200" />
+        <span className="text-lg font-semibold text-sky-900 dark:text-sky-100 whitespace-nowrap">
           {data.label}
         </span>
-        <span className="text-[9px] uppercase tracking-[0.18em] text-sky-300/80">
+        <span className="text-lg text-sky-800 dark:text-sky-300/80">
           expand
         </span>
-      </div>
+      </button>
     </div>
   );
 }

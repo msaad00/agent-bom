@@ -55,6 +55,19 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
+  it("places visible operational and compliance context before the full-width risk list", () => {
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+    const posture = screen.getByRole("region", { name: "Command center" });
+    const coverage = screen.getByRole("region", { name: "Coverage & controls" });
+    const risks = screen.getByRole("region", { name: "Top risks" });
+    expect(posture.parentElement).toBe(coverage.parentElement);
+    expect(risks.parentElement).toBe(posture.parentElement?.parentElement);
+    expect(coverage.compareDocumentPosition(risks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(coverage).getByText("Operational signals")).toBeVisible();
+    expect(within(coverage).getByText(/No evaluated framework coverage/i)).toBeVisible();
+    expect(within(coverage).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
+  });
+
   it("shows one grade and one numeric score in the posture summary", () => {
     render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
     expect(screen.getAllByText("62%")).toHaveLength(1);
@@ -140,20 +153,10 @@ describe("OverviewCockpit", () => {
     );
   });
 
-  it("consolidates security coverage and estate operations into one compact section", async () => {
-    const user = userEvent.setup();
+  it("shows operational signals without a combined discipline and operation count", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
-
     const section = screen.getByTestId("overview-coverage-operations");
-    expect(section).toBeInTheDocument();
-    expect(screen.queryByText("Security coverage")).not.toBeInTheDocument();
-    expect(screen.queryByText("Estate / operations")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Coverage & operations/i })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
+    expect(screen.queryByRole("button", { name: /Findings by discipline/i })).not.toBeInTheDocument();
 
     const strip = within(section).getByTestId("overview-estate-ops");
     // The old 7-lane cross-lane grid no longer exists as such.
@@ -185,7 +188,13 @@ describe("OverviewCockpit", () => {
     ].map((lane) => ({ ...lane, evidence_status: "complete" as const, count_exact: true }));
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} coverage={coverage} />);
 
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
+    const disclosure = screen.getByRole("button", { name: /Findings by discipline/i });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("overview-security-coverage")).not.toBeVisible();
+    expect(within(screen.getByTestId("overview-coverage-operations")).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
+    disclosure.focus();
+    await user.keyboard("{Enter}");
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
     const section = screen.getByTestId("overview-security-coverage");
     expect(section).toBeInTheDocument();
     // Lanes are labeled as overlapping disciplines so a user never sums them.
@@ -212,7 +221,7 @@ describe("OverviewCockpit", () => {
     render(<OverviewCockpit {...baseProps} coverage={[
       { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 17, severity: { critical: 17, high: 0, medium: 0, low: 0, unrated: 0 } },
     ]} />);
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
+    await user.click(screen.getByRole("button", { name: /Findings by discipline/i }));
     const lane = within(screen.getByTestId("coverage-lane-aispm"));
     expect(lane.getByText("Count unavailable")).toBeInTheDocument();
     expect(lane.queryByText("17")).not.toBeInTheDocument();
@@ -226,15 +235,14 @@ describe("OverviewCockpit", () => {
       { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 0, severity, evidence_status: evidenceStatus, count_exact: false },
       { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 2, severity: { ...severity, high: 2 }, evidence_status: evidenceStatus, count_exact: false },
     ]} />);
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
+    await user.click(screen.getByRole("button", { name: /Findings by discipline/i }));
     expect(screen.queryByText("No evidence")).not.toBeInTheDocument();
     expect(screen.queryByText("No open findings")).not.toBeInTheDocument();
     expect(screen.getByText("≥2")).toBeInTheDocument();
     expect(within(screen.getByTestId("coverage-lane-aispm")).getByText(evidenceStatus === "partial" ? "Partial count" : "Count unavailable")).toBeInTheDocument();
   });
 
-  it("keeps connected data sources out of leadership lanes and links to connections", async () => {
-    const user = userEvent.setup();
+  it("keeps connected data sources out of leadership lanes and links to connections", () => {
     render(
       <OverviewCockpit
         {...baseProps}
@@ -243,9 +251,8 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
     expect(screen.queryByText("Data sources")).not.toBeInTheDocument();
-    expect(screen.getByText(/3 of 4 operational lanes active/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 4 active/i)).toBeInTheDocument();
     expect(screen.getByText(/2 connected/i)).toBeInTheDocument();
   });
 
@@ -435,11 +442,9 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/improved|declined/i)).not.toBeInTheDocument();
   });
 
-  it("carries operational lane scope hints as tooltips, not visible sentences", async () => {
-    const user = userEvent.setup();
+  it("carries operational lane scope hints as tooltips, not visible sentences", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
 
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
     const strip = screen.getByTestId("overview-estate-ops");
     // The scope clarifier is a title tooltip on the tile, not always-visible copy.
     const runtimeTile = within(strip).getByText("Runtime").closest("a");

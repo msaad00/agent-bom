@@ -120,3 +120,21 @@ def test_real_stdio_wire_ignores_expired_http_credentials(tmp_path):
                 assert len((await session.list_tools()).tools) == 8
 
     asyncio.run(probe())
+
+
+def test_read_and_operator_credentials_must_be_distinct(clock):
+    with pytest.raises(ValueError, match="Read and operator MCP credentials must be distinct") as error:
+        mcp_server._StaticBearerTokenVerifier(
+            "synthetic-shared-private-value",
+            operator_token="synthetic-shared-private-value",
+            token_expires_at=deadline(),
+            operator_token_expires_at=deadline(),
+        )
+    assert "synthetic-shared-private-value" not in str(error.value)
+
+
+def test_remote_cli_help_explains_required_expiry():
+    result = CliRunner().invoke(main, ["mcp", "server", "--help"])
+    assert result.exit_code == 0
+    assert "AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT" in result.output
+    assert "timezone-aware" in result.output and "one hour" in result.output

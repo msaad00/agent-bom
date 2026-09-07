@@ -118,9 +118,10 @@ For non-loopback SSE or Streamable HTTP binds, `agent-bom` now fails closed unle
 `--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass
 `--allow-insecure-no-auth`. Keep TLS at your proxy or ingress for remote deployments.
 The regular bearer token is read-only. To enable audited Shield or identity
-write tools, configure a separate `AGENT_BOM_MCP_OPERATOR_TOKEN`; write calls
-still need `operator_role=admin`, the matching `operator_scopes` value, and an
-audit reason, but those arguments no longer authorize the write by themselves.
+write tools, configure a distinct `AGENT_BOM_MCP_OPERATOR_TOKEN`; startup rejects
+identical read and operator credential values. Write calls still need
+`operator_role=admin`, the matching `operator_scopes` value, and an audit reason,
+but those arguments no longer authorize the write by themselves.
 Every configured HTTP/SSE token requires an absolute timezone-aware ISO-8601
 expiry: `AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT` for read access and
 `AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT` when an operator token is configured.

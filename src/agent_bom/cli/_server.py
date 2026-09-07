@@ -1160,6 +1160,8 @@ def mcp_server_cmd(
       Local stdio:
         agent-bom mcp server
       Remote with bearer auth:
+        Provision the token and its absolute timezone-aware expiry within one hour.
+        Set AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT through your secure environment.
         agent-bom mcp server --transport sse --bearer-token <token>
         agent-bom mcp server --transport streamable-http --bearer-token <token>
 

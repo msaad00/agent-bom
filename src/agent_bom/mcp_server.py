@@ -194,6 +194,8 @@ class _StaticBearerTokenVerifier:
         token_expires_at: str | None = None,
         operator_token_expires_at: str | None = None,
     ):
+        if operator_token and hmac.compare_digest(token.encode(), operator_token.encode()):
+            raise ValueError("Read and operator MCP credentials must be distinct")
         self._token = token
         self._operator_token = operator_token
         now = datetime.now(timezone.utc)

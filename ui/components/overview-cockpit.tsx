@@ -430,14 +430,14 @@ function CoverageOperationsSection({
   );
 }
 
-// Severity bands shown in a coverage lane's strip, in descending order, plus
+// Severity counts shown in each discipline, in descending order, plus
 // ``unrated`` for findings whose severity is unknown/unscored (issue #3946).
-const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; label: string; token: string }[] = [
-  { key: "critical", label: "Critical", token: "--severity-critical" },
-  { key: "high", label: "High", token: "--severity-high" },
-  { key: "medium", label: "Medium", token: "--severity-medium" },
-  { key: "low", label: "Low", token: "--severity-low" },
-  { key: "unrated", label: "Unrated", token: "--severity-unrated" },
+const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; label: string }[] = [
+  { key: "critical", label: "Critical" },
+  { key: "high", label: "High" },
+  { key: "medium", label: "Medium" },
+  { key: "low", label: "Low" },
+  { key: "unrated", label: "Unrated" },
 ];
 
 /**
@@ -446,9 +446,8 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
  * partition: one finding can count in several lanes (a repo CVE is both Vuln
  * mgmt and ASPM; an IaC misconfig is both CSPM and ASPM), so the lanes are not
  * additive — the caption above says so, and nothing here presents a lane total.
- * Each lane retains its finding total and labeled severity counts. An ``unrated`` chip is surfaced only when
- * unknown-severity findings are present. All colors come from design tokens (no
- * hardcoded palette) so light + dark both read correctly.
+ * Each lane retains its finding total and labeled severity counts. Unrated is
+ * shown only when unknown-severity findings are present.
  */
 const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; order: number }> = {
   cspm: { label: "Cloud security (CSPM)", icon: Cloud, order: 0 },
@@ -461,12 +460,12 @@ const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; o
 function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
   if (!coverage || coverage.length === 0) return null;
   return (
-    <div className="pt-1" data-testid="overview-security-coverage">
+    <div className="@container pt-1" data-testid="overview-security-coverage">
       <h3 className="mb-1 text-xs font-semibold text-foreground">Security disciplines</h3>
       <p className="mb-2 text-[11px] leading-4 text-ink-tertiary">
         Overlapping finding counts, not additive. Zero findings does not establish assessment coverage.
       </p>
-      <div className="grid gap-1.5">
+      <div className="grid grid-cols-1 gap-2 @min-[30rem]:grid-cols-2">
         {[...coverage].sort((left, right) => (SECURITY_DISCIPLINES[left.domain]?.order ?? 5) - (SECURITY_DISCIPLINES[right.domain]?.order ?? 5)).map((lane) => {
           const discipline = SECURITY_DISCIPLINES[lane.domain];
           const Icon = discipline?.icon ?? ShieldCheck;
@@ -480,7 +479,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3 rounded-lg border border-outline bg-surface-elevated px-3 py-2 transition-colors hover:border-outline-strong"
+              className="min-w-0 rounded-lg border border-outline bg-surface-elevated px-3 py-2 transition-colors hover:border-outline-strong"
             >
               <div className="flex flex-col gap-0.5">
                 <span className="flex items-start gap-2 text-xs font-semibold text-foreground"><Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-secondary" aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
@@ -500,7 +499,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                   ) : null}
                 </span> : null}
               </div>
-              <div className="min-w-0">
+              <div className="ml-6 mt-1 min-w-0">
                 {!exact && known && total > 0 ? (
                   <p className="mb-1 text-[11px] text-ink-tertiary">{statusLabel} · at least this many</p>
                 ) : null}
@@ -511,12 +510,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                   bands.map((band) => (
                     <span
                       key={band.key}
-                      className="rounded px-1.5 py-0.5 text-[11px] font-medium tabular-nums"
-                      style={{
-                        color: `var(${band.token})`,
-                        backgroundColor: `var(${band.token}-bg)`,
-                        border: `1px solid var(${band.token}-border)`,
-                      }}
+                      className="text-[11px] font-medium tabular-nums text-ink-secondary"
                     >
                       {band.label} {lane.severity[band.key]}
                     </span>
@@ -896,23 +890,32 @@ function ScoreExplainer({
       <div className="mt-2 space-y-1.5">
         {rows.map((row) => {
           return (
-            <div key={row.driver} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3" data-testid={`score-driver-${row.driver}`}>
-              <span className="text-[11px] text-ink-secondary" title={row.label}>
-                {row.label}
-              </span>
-              <span className="text-right font-mono text-[11px] tabular-nums text-ink-tertiary">
-                {row.count} × {row.weight}
-              </span>
-              <span className="w-14 shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums text-foreground">
-                {row.contribution.toFixed(1)}
-              </span>
+            <div key={row.driver} className="space-y-1" data-testid={`score-driver-${row.driver}`}>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-0.5">
+                <span className="min-w-0 text-xs leading-4 text-ink-secondary [overflow-wrap:anywhere]">
+                  {row.label}
+                </span>
+                <span className="text-right font-mono text-xs font-semibold tabular-nums text-foreground">
+                  {row.contribution.toFixed(1)}
+                </span>
+                <span className="col-span-2 font-mono text-[11px] tabular-nums text-ink-tertiary">
+                  {row.count} × {row.weight}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
+                <div
+                  data-testid={`score-pressure-${row.driver}`}
+                  className="h-full rounded-full bg-accent-mint"
+                  style={{ width: `${(row.contribution / totalPressure) * 100}%` }}
+                />
+              </div>
             </div>
           );
         })}
       </div>
       <p className="mt-3 text-xs font-medium text-ink-secondary">Total weighted pressure: {totalPressure.toFixed(1)}</p>
       <p className="mt-2 text-xs leading-relaxed text-ink-tertiary">
-        Each input is count × weight. The server converts combined pressure to a score using a nonlinear curve;
+        Bars show each input’s share of weighted pressure (count × weight). The server converts combined pressure to a score using a nonlinear curve;
         these values are not points deducted from 100.
         {floored === true ? " The worse recorded scan posture limits the displayed score." : ""}
         {floored === undefined ? " Whether a recorded scan limits this score is unavailable." : ""}

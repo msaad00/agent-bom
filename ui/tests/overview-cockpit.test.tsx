@@ -707,6 +707,10 @@ describe("OverviewCockpit", () => {
     expect(screen.getByTestId("overview-score-explainer")).toBeInTheDocument();
     expect(screen.getByTestId("score-driver-critical")).toBeInTheDocument();
     expect(screen.getByText("24.0")).toBeInTheDocument();
+    // Bars represent proportions of weighted pressure, never score deductions.
+    expect(screen.getByTestId("score-pressure-critical")).toHaveStyle({ width: "80%" });
+    expect(screen.getByTestId("score-pressure-high")).toHaveStyle({ width: "20%" });
+    expect(screen.getByText(/Bars show each input.s share of weighted pressure/)).toBeInTheDocument();
     // Zero-contribution drivers are omitted so the panel stays legible.
     expect(screen.queryByTestId("score-driver-medium")).not.toBeInTheDocument();
   });

@@ -339,8 +339,28 @@ for (const theme of ["light", "dark"] as const) {
       }
       const unavailableLane = page.getByTestId("coverage-lane-cspm");
       await expect(unavailableLane.getByText("Count unavailable")).toBeVisible();
-      expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(56);
+      expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(112);
+      const cloudBox = (await unavailableLane.boundingBox())!;
+      const appBox = (await page.getByTestId("coverage-lane-aspm").boundingBox())!;
+      if (width === 1440) {
+        expect(Math.abs(cloudBox.y - appBox.y)).toBeLessThan(2);
+        expect(appBox.x).toBeGreaterThan(cloudBox.x + cloudBox.width);
+      } else {
+        expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
+        expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
+      }
       await expect(unavailableLane.getByText("0", { exact: true })).toHaveCount(0);
+      const scoreToggle = page.getByRole("button", { name: /What influences this score/ });
+      await scoreToggle.focus();
+      await page.keyboard.press("Enter");
+      const highPressure = (await page.getByTestId("score-pressure-high").boundingBox())!;
+      const criticalPressure = (await page.getByTestId("score-pressure-critical").boundingBox())!;
+      expect(highPressure.width / criticalPressure.width).toBeCloseTo(2, 1);
+      await expect(page.getByText("Critical findings", { exact: true })).toBeVisible();
+      await expect(page.getByText(/not points deducted from 100/)).toBeVisible();
+      await page.getByTestId("overview-score-explainer").screenshot({ path: testInfo.outputPath(`score-pressure-${theme}-${width}.png`) });
+      await scoreToggle.focus();
+      await page.keyboard.press("Enter");
       const coverageToggle = page.getByRole("button", { name: /^Coverage & controls/ });
       await coverageToggle.focus();
       await page.keyboard.press("Enter");

@@ -135,11 +135,9 @@ dark/light theme copies in the public README or Docker Hub description unless
 the section is specifically proving a theme bug fix. Do not publish a docs-only
 slide or card view in place of the graph screenshot.
 
-Keep
-`security-graph-live.png`, `lineage-graph-live.png`, and `context-map-live.png`
-in the explicitly synthetic graph gallery so readers can see fix-first paths, a filtered
-lineage drilldown, and focused lateral context without expanding every details
-block.
+Retain `security-graph-live.png`, `lineage-graph-live.png`, and
+`context-map-live.png` as synthetic UI regression captures. The public scenario
+guide selects evidence from the reproducible reference lab instead.
 
 For repeatable docs refreshes, use the deterministic Playwright harness from
 the UI package after the graph schema and UI build are current:
@@ -248,3 +246,13 @@ curl -X POST http://127.0.0.1:8422/v1/gateway/evaluate \
 If a future change to `src/agent_bom/demo.py` would publish a screenshot
 claiming CVEs against a clean version, that test fails before the change
 can land.
+
+## Public scenario selection
+
+The README embeds `correlation-receipts-live.png` for the operator conclusion;
+the scenario guide embeds `correlation-path-live.png` for its evidence drilldown.
+Do not repeat those images across both pages. Broader mesh, lineage, context,
+and synthetic vulnerability captures remain UI regression fixtures. Keep them
+in the generated set, but do not present their synthetic identifiers as real
+advisory or customer evidence. New public scenarios need reproducible source
+artifacts before they become product proof.

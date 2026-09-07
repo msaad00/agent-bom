@@ -199,6 +199,7 @@ def test_readme_persona_table_covers_each_operating_lane() -> None:
         "Platform / DevOps",
         "GRC / audit",
         "CISO / engineering leader",
+        "AI assistant / automation",
     ]
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -221,7 +222,7 @@ def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     assert "### See what needs fixing — and why" in workflow
     assert "Reference evidence lab — modeled local infrastructure" in normalized_workflow
     assert "correlation-receipts-live.png" in workflow
-    assert "correlation-path-live.png" in workflow
+    assert "docs/GALLERY.md#follow-an-image-processing-exposure" in workflow
     assert "CVE-2023-4863" in workflow
 
 
@@ -237,10 +238,11 @@ def test_readme_embeds_one_readable_workflow_and_moves_dense_detail_to_docs() ->
 def test_persona_table_rows_all_carry_a_concrete_first_action() -> None:
     """Every persona row gives a command or the exact UI action for its lane."""
     rows = {row[0]: row[1] for row in _readme_persona_rows()}
-    for role in ("Developer / AI engineer", "AppSec / product security", "Platform / DevOps", "GRC / audit"):
+    for role in ("Developer / AI engineer", "AI assistant / automation", "Platform / DevOps", "GRC / audit"):
         assert "`agent-bom " in rows[role] or "`pip install " in rows[role], (role, rows[role])
     assert rows["Cloud security"] == "Add a read-only connection, then run a scan"
-    assert rows["CISO / engineering leader"] == "Open **Architecture** in the self-hosted graph"
+    assert rows["CISO / engineering leader"] == "Open **Overview** in the self-hosted control plane"
+    assert rows["AppSec / product security"] == "Open **Overview**, then inspect a prioritized finding"
 
 
 def test_persona_card_copy_fits_inside_its_card() -> None:

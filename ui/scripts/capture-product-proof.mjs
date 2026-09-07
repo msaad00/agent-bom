@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { assertCaptureSnapshotScope } from "./product-proof-scope.mjs";
+import { waitForOwnedServer } from "./product-proof-server.mjs";
 import { promisify } from "node:util";
 
 const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
@@ -2331,20 +2332,6 @@ async function installRoutes(page) {
   await page.route("**/v1/gateway/evaluate", (route) => fulfill(route, { allowed: false, reason: "Blocked by default-deny prod MCP runtime / block-shell" }));
 }
 
-async function waitForServer(url) {
-  const deadline = Date.now() + 120_000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {
-      // Server is still starting.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error(`Timed out waiting for ${url}`);
-}
-
 async function startServerIfNeeded() {
   const standaloneRoot = path.join(UI_ROOT, ".next", "standalone");
   const standaloneStatic = path.join(standaloneRoot, ".next", "static");
@@ -2943,7 +2930,7 @@ async function main() {
   const server = await startServerIfNeeded();
   let browser;
   try {
-    await waitForServer(BASE_URL);
+    await waitForOwnedServer(BASE_URL, server);
     browser = await chromium.launch();
     const newCapturePage = async (theme, viewport) => {
       const capturePage = await browser.newPage({ viewport, deviceScaleFactor: 1 });

@@ -111,6 +111,7 @@ args = ["proxy", "--log", "~/.agent-bom/logs/filesystem.jsonl", "--", "npx", "@m
 - stdio transports have no native HTTP header channel. When a client or upstream includes W3C trace context in JSON-RPC `_meta.traceparent`, `_meta.tracestate`, or `_meta.baggage`, the proxy preserves those fields and rehydrates them onto the paired response when the upstream does not echo them back.
 - TOML clients like Codex CLI need manual proxy wrapping today.
 - SSE / HTTP clients can use `agent-bom mcp server --transport sse --bearer-token "$AGENT_BOM_MCP_BEARER_TOKEN"` or `--transport streamable-http`.
+- HTTP/SSE credentials require `AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT`, a timezone-aware absolute deadline within one hour. An optional operator credential requires its own `AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT`. Rotate token and deadline together; ordinary restarts do not renew them. Stdio does not use these credentials.
 - Non-loopback remote transports fail closed unless you configure `--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass `--allow-insecure-no-auth`.
 - Keep TLS at your ingress or reverse proxy for remote deployments.
 

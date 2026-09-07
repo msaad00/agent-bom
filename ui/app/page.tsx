@@ -472,6 +472,7 @@ export default function Dashboard() {
         loading={!importedReport && postureOverviewLoading}
         overviewUnavailable={!importedReport && overviewUnavailable && !overview}
         complianceLoading={!importedReport && complianceLoading}
+        scanScopeLoading={!importedReport && jobsLoading && !overviewSnapshot}
         grade={postureGrade}
         score={postureScore}
         scoreFormat={scoreFormat}

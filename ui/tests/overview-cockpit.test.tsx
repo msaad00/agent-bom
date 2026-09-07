@@ -81,6 +81,15 @@ describe("OverviewCockpit", () => {
     expect(within(evaluated).getByText("CIS Controls")).not.toBeVisible();
   });
 
+  it("does not keep a settled unknown scan scope in a loading state", () => {
+    const view = render(<OverviewCockpit {...baseProps} loading={false} complianceLoading={false} scanScopeLoading scans={null} />);
+    expect(screen.getByText("Loading control evaluation…")).toBeVisible();
+    view.rerender(<OverviewCockpit {...baseProps} loading={false} complianceLoading={false} scanScopeLoading={false} scans={null} />);
+    expect(screen.queryByText("Loading control evaluation…")).not.toBeInTheDocument();
+    expect(screen.getByText("Control evaluation unavailable. Scan scope could not be established.")).toBeVisible();
+    expect(screen.queryByText(/Framework coverage appears after the first completed scan/)).not.toBeInTheDocument();
+  });
+
   it("shows one grade and one numeric score in the posture summary", () => {
     render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
     expect(screen.getAllByText("62%")).toHaveLength(1);

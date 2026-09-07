@@ -174,6 +174,7 @@ export interface OverviewCockpitProps {
   loading?: boolean | undefined;
   overviewUnavailable?: boolean | undefined;
   complianceLoading?: boolean | undefined;
+  scanScopeLoading?: boolean | undefined;
   grade: string;
   score?: number | undefined;
   /** Display-only score presentation. Defaults to a percentage. */
@@ -225,6 +226,7 @@ export function OverviewCockpit({
   loading = false,
   overviewUnavailable = false,
   complianceLoading = false,
+  scanScopeLoading = false,
   grade,
   score,
   scoreFormat = "percent",
@@ -317,7 +319,7 @@ export function OverviewCockpit({
           <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
         ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
         <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
-          loading={loading || complianceLoading || (scans === null && !overviewUnavailable)} />
+          loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
       </section>
       </div>
       <section aria-label="Top risks" className="min-w-0">
@@ -649,10 +651,12 @@ function ComplianceSnapshotPanel({
   compliance,
   hasScanEvidence = false,
   loading = false,
+  scanScopeKnown = true,
 }: {
   compliance: OverviewComplianceSnapshot | null | undefined;
   hasScanEvidence?: boolean | undefined;
   loading?: boolean | undefined;
+  scanScopeKnown?: boolean | undefined;
 }) {
   const allFrameworks = compliance?.frameworks ?? [];
   const scored = allFrameworks.filter((item) => item.kind === "scored");
@@ -681,7 +685,9 @@ function ComplianceSnapshotPanel({
         </>
       ) : (
         <p className="mt-2 text-xs text-ink-secondary">
-          {hasScanEvidence
+          {!scanScopeKnown
+            ? "Control evaluation unavailable. Scan scope could not be established."
+            : hasScanEvidence
             ? "Control evaluation unavailable for completed scans. Review scan scope and evaluation status before drawing a compliance conclusion."
             : "Framework coverage appears after the first completed scan. Empty estates do not show pass tiles."}
         </p>

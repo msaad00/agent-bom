@@ -59,7 +59,7 @@ function RuntimeTabs() {
                 className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   selected
                     ? "bg-[color:var(--accent-soft)] text-emerald-800 dark:text-emerald-200"
-                    : "text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]"
+                    : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
                 }`}
               >
                 <Icon className="h-4 w-4" />

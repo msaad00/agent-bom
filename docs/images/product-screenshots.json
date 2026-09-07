@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-07T02:51:45.505Z",
-  "source_commit": "da4b506b124618ae12769699f0d219b577a417fc",
+  "captured_at": "2026-09-07T03:34:20.961Z",
+  "source_commit": "a6bda8e813c33141f11be80e76addfc8f328b4b8",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:b97102244165a15d188fe82e756221f9e5f929e1f256fa0bf783e8db50b7e8d2",
+  "capture_inputs_sha256": "sha256:24cc7f34fe4c491a38d8f8893c837f158a69e50fe085f013ea586aa627fbb877",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -76,7 +76,7 @@
       "page": "/graph?lens=mesh&capture=1",
       "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
       "visible_version": "0.103.2",
-      "sha256": "sha256:8bc3821bbd4edae93d83825f77f8569741c924852b1ee47848f7273294f2ae00"
+      "sha256": "sha256:c71214badd74120580b39037edf9f64137e1b23aca97dce71826eccd7a82367f"
     },
     {
       "presentation": "dark desktop",
@@ -182,7 +182,7 @@
       "page": "/security-graph?lens=estate&rollup=1&capture=1",
       "scope": "Observed current-state Investigation Canvas at the audited 1512 by 811 viewport",
       "visible_version": "0.103.2",
-      "sha256": "sha256:68c42291c8d0136f8edbed8da9294993f9b4e7d3a49d9c44315972f7e5ff9581"
+      "sha256": "sha256:c886241a47ee5dc9c9d961fd5d79a910d67a2fff3f73e4d0b1316ac629036d1e"
     },
     {
       "presentation": "light desktop 1568x780",
@@ -190,7 +190,7 @@
       "page": "/security-graph?lens=estate&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Clearly modeled proposed-state comparison at the audited 1568 by 780 viewport",
       "visible_version": "0.103.2",
-      "sha256": "sha256:2a634b95a500f1ccc56416f913386d52af30f2434f4080ef7d54ebe627fc1d6f"
+      "sha256": "sha256:53c56ca5aac1d5b5d9738399812d7fccd7e864cb541145278b9e422d79a7e93f"
     },
     {
       "presentation": "dark desktop",
@@ -198,7 +198,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability",
       "scope": "Focused highest-risk directed path from identity source through agent, MCP, package, and finding",
       "visible_version": "0.103.2",
-      "sha256": "sha256:b6225aa138d949ecdb83e526036d635be727db136f83a3dd5ee89725a09da2da"
+      "sha256": "sha256:c5d4d620bfce893f57fb37b01ab8f02167053b88f822df9b116f1ee34dd21f5b"
     },
     {
       "presentation": "dark desktop",
@@ -206,7 +206,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
       "visible_version": "0.103.2",
-      "sha256": "sha256:3b536be4d866c2bd0780e1cf3f0f79d4e1ba778ce07bf8a1c4f2b3da5988841e"
+      "sha256": "sha256:700be1e2dc835b332309545dffdf4ce2d564d54a3a94c57399374802dbf97531"
     },
     {
       "presentation": "dark desktop",

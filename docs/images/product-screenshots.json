@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-07T06:34:22.115Z",
-  "source_commit": "67b1dad11d7e99b4800f3b05ab3a04a498b1f00e",
+  "captured_at": "2026-09-07T17:29:24.716Z",
+  "source_commit": "4898ced30ba9675802f4a6747407ac600b4e79c0",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:602e9cdc83ade147f4cf31ee9cc97e27ca855262f8e0dc3ff73aa49d8e0b1128",
+  "capture_inputs_sha256": "sha256:8df21f41bb5730a9e809cc2c3377ab9313b2260e23a599479fa87a2092af83e3",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.103.2",
-      "sha256": "sha256:3f36667ac128f8e1c2750bbb38619fcab58392af4c270c2d9f832d680df22908"
+      "sha256": "sha256:5b7298c3f57ba99a94f51a285ba23d00a5371acde09aaeb64bd93364313f28f9"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center in the light theme",
       "visible_version": "0.103.2",
-      "sha256": "sha256:12c0294c5103a60c1e07fed530e607c0041c7281b458dd70621d6946dfe8a447"
+      "sha256": "sha256:4761d168693cca6415dbcee8fc40bdcebdfdc1e8cf605e7e1d6f017bbbda3ca7"
     },
     {
       "presentation": "dark mobile",
@@ -28,7 +28,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center at a 390 by 844 viewport",
       "visible_version": "0.103.2",
-      "sha256": "sha256:e316521d8949d4c5fe3ad029b019f4e6d201823354749a4d6116dd132c538f4f"
+      "sha256": "sha256:c63f5bc5b5a40b3b358608e517ee45518ce79a2e9bfc1d03e80b20606bd3b87a"
     },
     {
       "presentation": "dark desktop",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.103.2",
-      "sha256": "sha256:a3390f20d21526bfbcbc907178fa0b78031332d8d6b170978861f05a9e5a2c96"
+      "sha256": "sha256:8afe5b65544e337c759f3f6904aee43a4be1c0bc6080eec8035cf1bc599a63aa"
     },
     {
       "presentation": "dark desktop",
@@ -179,18 +179,18 @@
     {
       "presentation": "dark desktop 1512x811",
       "path": "investigation-canvas-current-1512x811.png",
-      "page": "/security-graph?lens=estate&rollup=1&capture=1",
-      "scope": "Observed current-state Investigation Canvas at the audited 1512 by 811 viewport",
+      "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&capture=1",
+      "scope": "Modeled current-state Investigation Canvas at 1512 by 811",
       "visible_version": "0.103.2",
-      "sha256": "sha256:68c42291c8d0136f8edbed8da9294993f9b4e7d3a49d9c44315972f7e5ff9581"
+      "sha256": "sha256:bb5a89ec5bda48cc02dd48dd788a2c2e982c86798e75a6b59f5b0849f2ee283e"
     },
     {
       "presentation": "light desktop 1568x780",
       "path": "investigation-canvas-proposed-1568x780.png",
-      "page": "/security-graph?lens=estate&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
-      "scope": "Clearly modeled proposed-state comparison at the audited 1568 by 780 viewport",
+      "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
+      "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.103.2",
-      "sha256": "sha256:e1b9a8d29eaf26ec2d8009a7765dd5b3e6a17ed3a6d1cb397bea0bc506207894"
+      "sha256": "sha256:b402986770d7870dcb88abd5e0881324e79ff1140bbe15352a63ab85972d13a0"
     },
     {
       "presentation": "dark desktop",

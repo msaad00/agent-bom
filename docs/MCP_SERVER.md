@@ -126,6 +126,20 @@ For hosted or shared deployments, set ISO-8601 expiries for both tokens with
 `AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT`; expired tokens are rejected before
 any read or write scope is returned.
 
+MCP HTTP authentication uses operator-provisioned bearer credentials. The MCP
+server does not expose an embedded OAuth authorization server or accept tokens
+previously minted by that embedded issuer. Unattended dynamic registration and
+OAuth token issuance are unavailable: PKCE alone does not establish permission
+to read the server's private evidence. Configure the existing bearer credential
+in the client through its supported secure credential mechanism. API SSO/OIDC
+and gateway authentication are separate surfaces.
+
+Token expiry remains explicit configuration. Replacing a bearer credential and
+restarting the MCP process revokes the old credential; environment changes do
+not hot-reload into a running verifier. There is no OAuth grant or token lifetime
+to extend beyond that configured credential.
+
+
 ### Enterprise Control-Plane Contract
 
 Local MCP server mode stays intentionally low-friction for workstation scans.

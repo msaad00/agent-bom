@@ -111,7 +111,7 @@
       "surface": "mcp_server",
       "transport": "http",
       "protocol_version": "2025-11-25",
-      "implementation_state": "partial",
+      "implementation_state": "not_implemented",
       "conformance_state": "nonconformant",
       "assessment_status": "partial",
       "lifecycle": "active",
@@ -119,10 +119,10 @@
       "evidence_refs": [
         {
           "kind": "executable_test",
-          "ref": "tests/test_mcp_protocol_compatibility.py::test_oauth_2025_resource_binding_gap_is_recorded_as_nonconformant",
+          "ref": "tests/test_mcp_protocol_compatibility.py::test_embedded_oauth_is_disabled_until_trusted_authorization_exists",
           "outcome": "passed"
         },
-        {"kind": "source", "ref": "src/agent_bom/api/oauth_as.py", "outcome": "observed_nonconformance"},
+        {"kind": "source", "ref": "src/agent_bom/mcp_server_factory.py", "outcome": "observed_nonconformance"},
         {
           "kind": "official_spec",
           "ref": "https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization",
@@ -130,7 +130,7 @@
         }
       ],
       "evidence_outcome": "observed_nonconformance",
-      "reason_codes": ["resource_parameter_not_bound", "token_audience_not_resource_server"]
+      "reason_codes": ["embedded_mcp_authorization_server_disabled", "trusted_client_authorization_not_implemented"]
     },
     {
       "feature_id": "proxy.session_era.forwarding",
@@ -628,7 +628,7 @@
       "lifecycle": "deprecated",
       "evidence_basis": ["static_code", "official_spec"],
       "evidence_refs": [
-        {"kind": "source", "ref": "src/agent_bom/api/oauth_as.py", "outcome": "reviewed"},
+        {"kind": "source", "ref": "src/agent_bom/mcp_server_factory.py", "outcome": "reviewed"},
         {"kind": "official_spec", "ref": "https://modelcontextprotocol.io/specification/2026-07-28/changelog", "outcome": "reviewed"}
       ],
       "evidence_outcome": "unverified",

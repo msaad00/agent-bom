@@ -1,18 +1,7 @@
-"""Gateway runtime-broker integration tests.
-
-Covers the broker capabilities wired into the gateway relay:
-  * OAuth 2.1 AS endpoints mounted on the gateway app (metadata discovery).
-  * AS-issued access tokens authenticating as the caller identity.
-  * A2A inline mutual-auth enforcement (deny weak / unauthenticated edges).
-  * Per-tool-call OAuth scope mapping (scope-denied tool call).
-  * DLP redaction + block on tool arguments and results.
-"""
+"""Gateway issuer rejection, bearer relay, A2A denial, and DLP contracts."""
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import secrets
 from typing import Any
 
 import pytest
@@ -49,44 +38,13 @@ def _server() -> OAuthAuthorizationServer:
     return OAuthAuthorizationServer(issuer="https://gw.example", signing_key=OAuthSigningKey())
 
 
-def _issue_token(server: OAuthAuthorizationServer, *, scope: str = "", subject: str = "agent-x") -> str:
-    reg = server.register_client(
-        {
-            "redirect_uris": ["https://app.example/cb"],
-            "grant_types": ["authorization_code", "client_credentials"],
-            "token_endpoint_auth_method": "client_secret_post",
-            "scope": scope,
-            "subject": subject,
-        }
-    )
-    tokens = server.token(
-        {
-            "grant_type": "client_credentials",
-            "client_id": reg["client_id"],
-            "client_secret": reg["client_secret"],
-            "scope": scope,
-        }
-    )
-    return tokens["access_token"]
-
-
 # ── AS mounted on the gateway ─────────────────────────────────────────────────
-
-
-def test_gateway_mounts_oauth_as_metadata() -> None:
-    settings = GatewaySettings(registry=_registry(), policy={}, oauth_as=_server())
-    client = TestClient(create_gateway_app(settings))
-    resp = client.get("/.well-known/oauth-authorization-server")
-    assert resp.status_code == 200
-    assert resp.json()["code_challenge_methods_supported"] == ["S256"]
-    assert client.get("/oauth/jwks.json").json()["keys"]
 
 
 def test_gateway_healthz_reports_broker_posture() -> None:
     settings = GatewaySettings(
         registry=_registry(),
         policy={},
-        oauth_as=_server(),
         a2a_mutual_auth_enforcement_mode="enforce",
         tool_scope_map={"fs.read": ["tools:read"]},
         dlp_enabled=True,
@@ -95,30 +53,13 @@ def test_gateway_healthz_reports_broker_posture() -> None:
     client = TestClient(create_gateway_app(settings))
     broker = client.get("/healthz").json()["broker_runtime"]
     assert broker == {
-        "oauth_as_enabled": True,
+        "oauth_as_enabled": False,
         "oidc_discovery_shim_enabled": False,
         "a2a_mutual_auth_enforcement_mode": "enforce",
         "tool_scope_mapped_tools": 1,
         "dlp_enabled": True,
         "dlp_mode": "enforce",
     }
-
-
-def test_as_token_authenticates_as_caller_identity() -> None:
-    server = _server()
-    token = _issue_token(server, scope="tools:read", subject="billing-agent")
-    caller, captured = _echo_caller()
-    settings = GatewaySettings(registry=_registry(), policy={}, oauth_as=server, upstream_caller=caller)
-    client = TestClient(create_gateway_app(settings))
-    # Standard MCP client presents the AS token in the Authorization header.
-    resp = client.post(
-        "/mcp/filesystem",
-        json=_tools_call("fs.read", {"path": "/tmp/x"}),
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 200
-    assert "error" not in resp.json()
-    assert captured["message"]["params"]["name"] == "fs.read"
 
 
 # ── A2A inline mutual-auth enforcement ────────────────────────────────────────
@@ -142,27 +83,6 @@ def test_a2a_enforce_denies_anonymous_edge() -> None:
     assert body["error"]["data"]["policy_source"] == "a2a_mutual_auth"
 
 
-def test_a2a_enforce_allows_verified_as_token() -> None:
-    server = _server()
-    token = _issue_token(server, subject="verified-agent")
-    caller, _ = _echo_caller()
-    settings = GatewaySettings(
-        registry=_registry(),
-        policy={},
-        oauth_as=server,
-        upstream_caller=caller,
-        a2a_mutual_auth_enforcement_mode="enforce",
-        listener_host="127.0.0.1",
-    )
-    client = TestClient(create_gateway_app(settings))
-    resp = client.post(
-        "/mcp/filesystem",
-        json=_tools_call("fs.read", {"path": "/tmp/x"}),
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert "error" not in resp.json()
-
-
 def test_a2a_enforce_denies_unverified_opaque_token() -> None:
     # An opaque policy.agent_tokens identity authenticates but is NOT mutual auth.
     caller, _ = _echo_caller()
@@ -180,48 +100,6 @@ def test_a2a_enforce_denies_unverified_opaque_token() -> None:
 
 
 # ── Per-tool-call OAuth scope mapping ─────────────────────────────────────────
-
-
-def test_scope_mapped_tool_denied_without_scope() -> None:
-    server = _server()
-    token = _issue_token(server, scope="tools:read", subject="reader")
-    caller, _ = _echo_caller()
-    settings = GatewaySettings(
-        registry=_registry(),
-        policy={},
-        oauth_as=server,
-        upstream_caller=caller,
-        tool_scope_map={"fs.write": ["tools:write"]},
-    )
-    client = TestClient(create_gateway_app(settings))
-    resp = client.post(
-        "/mcp/filesystem",
-        json=_tools_call("fs.write", {"path": "/x", "data": "y"}),
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    body = resp.json()
-    assert body["error"]["data"]["policy_source"] == "oauth_scope"
-
-
-def test_scope_mapped_tool_allowed_with_scope() -> None:
-    server = _server()
-    token = _issue_token(server, scope="tools:read tools:write", subject="writer")
-    caller, captured = _echo_caller()
-    settings = GatewaySettings(
-        registry=_registry(),
-        policy={},
-        oauth_as=server,
-        upstream_caller=caller,
-        tool_scope_map={"fs.write": ["tools:write"]},
-    )
-    client = TestClient(create_gateway_app(settings))
-    resp = client.post(
-        "/mcp/filesystem",
-        json=_tools_call("fs.write", {"path": "/x", "data": "y"}),
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert "error" not in resp.json()
-    assert captured["message"]["params"]["name"] == "fs.write"
 
 
 # ── DLP ───────────────────────────────────────────────────────────────────────
@@ -424,54 +302,65 @@ def test_dlp_audit_mode_does_not_block() -> None:
     assert any(e.get("action") == "gateway.dlp_arguments" for e in audits)
 
 
-def _pkce_pair() -> tuple[str, str]:
-    verifier = secrets.token_urlsafe(48)
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    return verifier, challenge
+def test_gateway_refuses_embedded_issuer_before_opening_routes() -> None:
+    settings = GatewaySettings(registry=_registry(), policy={}, oauth_as=_server())
+    with pytest.raises(ValueError, match="trusted client authorization"):
+        create_gateway_app(settings)
 
 
-def test_full_pkce_flow_then_relay_through_gateway() -> None:
-    server = _server()
+def test_gateway_bearer_relay_still_works_without_issuer(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    caller, captured = _echo_caller()
+    settings = GatewaySettings(registry=_registry(), policy={}, bearer_token="configured-token", upstream_caller=caller)
+    client = TestClient(create_gateway_app(settings))
+    for path in ("/oauth/register", "/oauth/token"):
+        assert client.post(path, json={}).status_code == 404
+    assert client.get("/oauth/authorize").status_code == 404
+    message = _tools_call("fs.read", {})
+    assert client.post("/mcp/filesystem", json=message).status_code == 401
+    response = client.post("/mcp/filesystem", json=message, headers={"Authorization": "Bearer configured-token"})
+    assert response.status_code == 200
+    assert "error" not in response.json()
+    assert captured["message"]["params"]["name"] == "fs.read"
+
+
+@pytest.mark.parametrize("env_enabled", [False, True])
+def test_gateway_cli_refuses_embedded_issuer_before_loading_upstreams(monkeypatch, env_enabled):
+    from click.testing import CliRunner
+
+    from agent_bom.cli._gateway import gateway_group
+
+    monkeypatch.setenv("AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS", "1" if env_enabled else "0")
+    result = CliRunner().invoke(gateway_group, ["serve", *([] if env_enabled else ["--enable-oauth-as"])])
+    assert result.exit_code != 0
+    assert "trusted client authorization" in result.output
+
+
+@pytest.mark.parametrize("scopes,allowed", [({"tools:read"}, False), ({"tools:read", "tools:write"}, True)])
+def test_external_identity_scope_mapping_remains_enforced(monkeypatch, tmp_path, scopes, allowed):
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    # Cryptographic external-IdP verification has its own OIDC/JWKS tests;
+    # this contract exercises the relay after that trusted boundary resolves.
+    monkeypatch.setattr("agent_bom.gateway_server.check_caller_identity", lambda message, policy: ("external-agent", True, None))
+    monkeypatch.setattr("agent_bom.gateway_server.identity_token_scopes", lambda token: scopes)
     caller, captured = _echo_caller()
     settings = GatewaySettings(
         registry=_registry(),
-        policy={},
-        oauth_as=server,
+        policy={"oidc_issuer": "https://idp.example"},
+        bearer_token="configured-token",
         upstream_caller=caller,
-        tool_scope_map={"fs.read": ["tools:read"]},
+        tool_scope_map={"fs.write": ["tools:write"]},
+        a2a_mutual_auth_enforcement_mode="enforce",
     )
     client = TestClient(create_gateway_app(settings))
-    reg = client.post(
-        "/oauth/register",
-        json={"redirect_uris": ["https://app.example/cb"], "scope": "tools:read"},
-    ).json()
-    verifier, challenge = _pkce_pair()
-    authorize = client.get(
-        "/oauth/authorize",
-        params={
-            "response_type": "code",
-            "client_id": reg["client_id"],
-            "redirect_uri": "https://app.example/cb",
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-            "scope": "tools:read",
-        },
-        follow_redirects=False,
-    )
-    code = authorize.headers["location"].split("code=")[1].split("&")[0]
-    token = client.post(
-        "/oauth/token",
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "client_id": reg["client_id"],
-            "code_verifier": verifier,
-        },
-    ).json()["access_token"]
-    resp = client.post(
+    response = client.post(
         "/mcp/filesystem",
-        json=_tools_call("fs.read", {"path": "/x"}),
-        headers={"Authorization": f"Bearer {token}"},
+        json=_tools_call("fs.write", {}, identity="verified-external-token"),
+        headers={"Authorization": "Bearer configured-token"},
     )
-    assert "error" not in resp.json()
-    assert captured["message"]["params"]["name"] == "fs.read"
+    if allowed:
+        assert "error" not in response.json()
+        assert captured["message"]["params"]["name"] == "fs.write"
+    else:
+        assert response.json()["error"]["data"]["policy_source"] == "oauth_scope"
+        assert not captured

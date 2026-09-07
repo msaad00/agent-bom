@@ -911,3 +911,8 @@ AUDIT_TRAIL_MAX_EVENTS = _int("AGENT_BOM_AUDIT_TRAIL_MAX_EVENTS", 2000)
 AUDIT_LOG_RETENTION_DAYS = _int("AGENT_BOM_AUDIT_LOG_RETENTION_DAYS", 0)
 LLM_COSTS_RETENTION_DAYS = _int("AGENT_BOM_LLM_COSTS_RETENTION_DAYS", 0)
 RUNTIME_OBSERVATIONS_RETENTION_DAYS = _int("AGENT_BOM_RUNTIME_OBSERVATIONS_RETENTION_DAYS", 0)
+
+
+# ── Gateway transport credentials ────────────────────────────────────────
+# Required absolute timezone-aware expiry within one hour when a static bearer is configured.
+GATEWAY_BEARER_TOKEN_EXPIRES_AT = _str("AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT", "")

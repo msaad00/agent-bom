@@ -120,7 +120,8 @@ agent-bom proxy \
 agent-bom gateway serve \
   --from-control-plane https://agent-bom.example.com \
   --control-plane-token "$AGENT_BOM_CONTROL_PLANE_TOKEN" \
-  --bearer-token "$AGENT_BOM_GATEWAY_BEARER_TOKEN"
+  --bearer-token "$AGENT_BOM_GATEWAY_BEARER_TOKEN" \
+  --bearer-token-expires-at "$AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT"
 ```
 
 Produces runtime audit and policy evidence for selected traffic. This is not a

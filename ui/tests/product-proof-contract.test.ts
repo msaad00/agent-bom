@@ -8,6 +8,11 @@ const graphPage = fs.readFileSync(path.join(process.cwd(), "app", "graph", "grap
 const exposurePath = fs.readFileSync(path.join(process.cwd(), "components", "exposure-path-command-center.tsx"), "utf8");
 
 describe("product proof capture contract", () => {
+  it("verifies its own spawned listener before opening a capture browser", () => {
+    expect(source).toContain("await waitForOwnedServer(BASE_URL, server)");
+    expect(source.indexOf("await waitForOwnedServer(BASE_URL, server)")).toBeLessThan(source.indexOf("browser = await chromium.launch()"));
+  });
+
   it("uses the hash-pinned real-advisory lab only for correlation proof and keeps gallery fixtures fictional", () => {
     expect(source).toContain("REFERENCE_LAB_PROOF_PATH");
     expect(source).toContain("REFERENCE_LAB_DIGEST_PATH");

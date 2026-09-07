@@ -1313,3 +1313,155 @@ def test_top_risk_merge_preserves_occurrences_and_unknown_identity() -> None:
     assert merged[0]["risk_score"] == 9.5
     malformed = dict(base, asset_id=["not-an-identity"])
     assert len(_merge_top_risks([malformed, dict(malformed)])) == 2
+
+
+def test_overview_disciplines_include_open_hub_findings() -> None:
+    _clear_jobs()
+    _ingest_hub_findings(
+        [
+            {
+                "id": "ai-critical",
+                "title": "Untrusted tool declaration",
+                "severity": "critical",
+                "security_domain": "aispm",
+                "source": "mcp_scan",
+                "finding_type": "tool_drift",
+            },
+        ]
+    )
+    overview = client_get_overview()
+    lane = next(row for row in overview["coverage"] if row["domain"] == "aispm")
+    response = TestClient(app).get("/v1/findings?domain=aispm", headers=_AUTH_HEADERS)
+    assert response.status_code == 200
+    assert lane["count"] == len(response.json()["findings"]) == overview["headline"]["critical"] == 1
+    assert lane["severity"]["critical"] == 1
+    assert lane["evidence_status"] == "complete"
+
+
+def test_overview_disciplines_exclude_resolved_scan_findings() -> None:
+    _clear_jobs()
+    _add_done_job(
+        [],
+        result_extra={
+            "findings": [
+                {
+                    "id": "resolved-ai",
+                    "severity": "critical",
+                    "security_domain": "aispm",
+                    "source": "mcp_scan",
+                    "finding_type": "tool_drift",
+                    "status": "resolved",
+                },
+            ]
+        },
+    )
+    overview = client_get_overview()
+    lane = next(row for row in overview["coverage"] if row["domain"] == "aispm")
+    response = TestClient(app).get("/v1/findings?domain=aispm", headers=_AUTH_HEADERS)
+    assert response.status_code == 200
+    assert lane["count"] == len(response.json()["findings"]) == overview["headline"]["critical"] == 0
+    assert lane["evidence_status"] == "complete"
+
+
+def test_overview_disciplines_disclose_exhausted_hub_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_jobs()
+    monkeypatch.setenv("AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET", "1")
+    _ingest_hub_findings(
+        [
+            {"id": "ai-one", "severity": "critical", "security_domain": "aispm", "source": "mcp_scan", "finding_type": "tool_drift"},
+            {"id": "cloud-two", "severity": "high", "security_domain": "cspm", "source": "aws", "finding_type": "cis"},
+        ]
+    )
+    overview = client_get_overview()
+    assert overview["headline"]["critical_high"] == 2
+    assert sum(row["count"] for row in overview["coverage"]) == 1
+    assert all(row["evidence_status"] == "partial" for row in overview["coverage"])
+    assert all(row["count_exact"] is False for row in overview["coverage"])
+
+
+def test_overview_disciplines_page_and_cache_current_hub_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    _clear_jobs()
+    store = get_compliance_hub_store()
+    _ingest_hub_findings(
+        [{"id": f"ai-{idx}", "severity": "high", "source": "mcp_scan", "finding_type": "tool_drift"} for idx in range(205)]
+    )
+    _ingest_hub_findings(
+        [
+            {"id": "other-tenant", "severity": "critical", "source": "mcp_scan", "finding_type": "tool_drift"},
+        ],
+        tenant_id="coverage-other",
+    )
+    original = store.list_current_page
+    calls = []
+
+    def pager(tenant_id, **kwargs):
+        if kwargs.get("sort") == "ordinal":
+            calls.append((tenant_id, kwargs))
+        return original(tenant_id, **kwargs)
+
+    monkeypatch.setattr(store, "list_current_page", pager)
+    try:
+        for _ in range(2):
+            lane = next(row for row in client_get_overview()["coverage"] if row["domain"] == "aispm")
+            assert lane["count"] == 205
+            assert lane["severity"]["critical"] == 0
+            assert lane["count_exact"] is True
+        assert len(calls) == 2  # two bounded pages, then revision cache reuse
+        assert all(tenant == "default" and kwargs["status"] == "open" and kwargs["origin"] == "bulk_ingest" for tenant, kwargs in calls)
+        _ingest_hub_findings(
+            [
+                {"id": "ai-new", "severity": "high", "source": "mcp_scan", "finding_type": "tool_drift"},
+            ]
+        )
+        lane = next(row for row in client_get_overview()["coverage"] if row["domain"] == "aispm")
+        assert lane["count"] == 206
+        assert len(calls) == 4
+    finally:
+        store.clear("coverage-other")
+
+
+def test_overview_disciplines_keep_scan_lower_bound_when_hub_paging_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    _clear_jobs()
+    _add_done_job([], result_extra={"findings": [{"id": "ai", "severity": "high", "security_domain": "aispm"}]})
+    store = get_compliance_hub_store()
+    original = store.list_current_page
+
+    def pager(tenant_id, **kwargs):
+        if kwargs.get("sort") == "ordinal":
+            raise RuntimeError("private-backend-detail")
+        return original(tenant_id, **kwargs)
+
+    monkeypatch.setattr(store, "list_current_page", pager)
+    data = client_get_overview()
+    lane = next(row for row in data["coverage"] if row["domain"] == "aispm")
+    assert lane["count"] == 1
+    assert lane["evidence_status"] == "unavailable"
+    assert lane["count_exact"] is False
+    assert "private-backend-detail" not in str(data)
+
+
+def test_overview_disciplines_deadline_never_claims_empty_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api import compliance_hub_store
+
+    _clear_jobs()
+    _ingest_hub_findings([{"id": "ai", "severity": "critical", "source": "mcp_scan", "finding_type": "tool_drift"}])
+    monkeypatch.setattr(compliance_hub_store, "scope_filter_deadline_seconds", lambda: 0)
+    overview = client_get_overview()
+    assert overview["headline"]["critical"] == 1
+    assert all(lane["count"] == 0 and lane["evidence_status"] == "partial" for lane in overview["coverage"])
+
+
+def test_overview_disciplines_exclude_resolved_hub_findings() -> None:
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    _clear_jobs()
+    _ingest_hub_findings([{"id": "ai", "severity": "critical", "source": "mcp_scan", "finding_type": "tool_drift"}])
+    get_compliance_hub_store().reconcile_current_absent("default", present_canonical_ids=set(), observed_at=_recent_stamp())
+    overview = client_get_overview()
+    lane = next(row for row in overview["coverage"] if row["domain"] == "aispm")
+    assert lane["count"] == overview["headline"]["critical"] == 0
+    assert lane["evidence_status"] == "complete"

@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { assertCaptureSnapshotScope } from "./product-proof-scope.mjs";
+import { waitForOwnedServer } from "./product-proof-server.mjs";
 import { promisify } from "node:util";
 
 const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
@@ -1168,14 +1169,15 @@ function overviewResponse() {
   const vulnSeverity = { critical: 3, high: 9, medium: 3, low: 0, unrated: 0 };
   const zeroSeverity = { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 };
   // Coverage lanes are overlapping posture lenses, not a partition: the demo's
-  // Fifteen unique reachable CVEs appear in both the vulnerability and AI-posture lenses.
+  // These fifteen CVEs are vulnerability findings; an MCP context alone does not
+  // classify a CVE as an assessed AI-posture finding.
   const coverage = [
     { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 0, severity: { ...zeroSeverity } },
     { domain: "vuln", label: "Vuln mgmt", href: "/findings?domain=vuln", count: 15, severity: { ...vulnSeverity } },
     { domain: "aspm", label: "AppSec / ASPM", href: "/findings?domain=aspm", count: 0, severity: { ...zeroSeverity } },
     { domain: "dspm", label: "DSPM", href: "/findings?domain=dspm", count: 0, severity: { ...zeroSeverity } },
-    { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 15, severity: { ...vulnSeverity } },
-  ];
+    { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 0, severity: { ...zeroSeverity } },
+  ].map((lane) => ({ ...lane, evidence_status: "complete", count_exact: true }));
   return {
     schema_version: "overview.v1",
     tenant_id: "default",
@@ -2330,20 +2332,6 @@ async function installRoutes(page) {
   await page.route("**/v1/gateway/evaluate", (route) => fulfill(route, { allowed: false, reason: "Blocked by default-deny prod MCP runtime / block-shell" }));
 }
 
-async function waitForServer(url) {
-  const deadline = Date.now() + 120_000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {
-      // Server is still starting.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error(`Timed out waiting for ${url}`);
-}
-
 async function startServerIfNeeded() {
   const standaloneRoot = path.join(UI_ROOT, ".next", "standalone");
   const standaloneStatic = path.join(standaloneRoot, ".next", "static");
@@ -2942,7 +2930,7 @@ async function main() {
   const server = await startServerIfNeeded();
   let browser;
   try {
-    await waitForServer(BASE_URL);
+    await waitForOwnedServer(BASE_URL, server);
     browser = await chromium.launch();
     const newCapturePage = async (theme, viewport) => {
       const capturePage = await browser.newPage({ viewport, deviceScaleFactor: 1 });

@@ -13,7 +13,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
     [
         (
             "Get started",
-            ["connect", "scan", "graph", "report", "up", "quickstart", "demo", "capabilities", "doctor", "samples"],
+            ["connect", "scan", "graph", "report", "up"],
         ),
         (
             "Scanning",
@@ -58,7 +58,19 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
         ),
         (
             "Utilities",
-            ["upgrade", "completions", "plugins", "profiles", "interactive", "graph-evidence"],
+            [
+                "quickstart",
+                "demo",
+                "samples",
+                "doctor",
+                "capabilities",
+                "upgrade",
+                "completions",
+                "plugins",
+                "profiles",
+                "interactive",
+                "graph-evidence",
+            ],
         ),
     ]
 )
@@ -71,7 +83,7 @@ CATEGORY_DESCRIPTIONS: dict[str, str] = {
     "Reporting": "Graph, mesh, dashboard, history, and narrative reporting workflows.",
     "Governance": "Policy, trust boundaries, fleet, FinOps, identity, API, scheduling, and operational control-plane commands.",
     "Database": "Local cache, vuln database, and framework catalog maintenance.",
-    "Utilities": "Shell completions and upgrade helpers.",
+    "Utilities": "Guided examples, readiness checks, supported capabilities, and shell helpers.",
     "Other": "Additional commands that do not fit a primary workflow bucket.",
 }
 
@@ -132,7 +144,7 @@ class GroupedGroup(SuggestingGroup):
         for category, cmd_names in self._command_categories.items():
             rows: list[tuple[str, str]] = []
             for name in cmd_names:
-                if name in commands:
+                if name in commands and name not in placed:
                     cmd = commands[name]
                     help_text = cmd.get_short_help_str(limit=48)
                     rows.append((name, help_text))

@@ -192,6 +192,10 @@ class TieredCommand(click.Command):
             else:
                 more.append(record)
 
+        if not show_all and (more or vendor):
+            formatter.write_paragraph()
+            formatter.write_text("All options: `agent-bom scan --help-all` (advanced flags and integrations).")
+
         if core:
             with formatter.section("Core options"):
                 formatter.write_dl(core)

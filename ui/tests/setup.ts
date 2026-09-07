@@ -1,4 +1,4 @@
-import "@testing-library/jest-dom";
+import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 
 import { clearCache } from "../lib/api-cache";

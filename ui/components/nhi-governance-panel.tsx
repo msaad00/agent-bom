@@ -5,11 +5,12 @@ import Link from "next/link";
 import { Loader2, ShieldAlert } from "lucide-react";
 
 import { api, type NhiGovernancePosture } from "@/lib/api";
+import { buildGraphInvestigationHref } from "@/lib/attack-paths";
 
 /**
  * Non-human identity governance posture from GET /v1/graph/nhi/governance.
  */
-export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) {
+export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string | undefined; refreshKey?: number }) {
   const [posture, setPosture] = useState<NhiGovernancePosture | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) 
     return () => {
       cancelled = true;
     };
-  }, [scanId]);
+  }, [scanId, refreshKey]);
 
   const rawCounts = posture?.counts ?? {};
   const identities = Array.isArray(posture?.identities) ? posture.identities : [];
@@ -75,16 +76,8 @@ export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) 
             NHI governance posture
           </h2>
           <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-            Graph-backed non-human identity risk from{" "}
-            <span className="font-mono">/v1/graph/nhi/governance</span>
-          </p>
-          {/* Counts DISCOVERED non-human identities across the estate — a
-              different population from the managed agent identities in the
-              tiles above, which agent-bom issues itself. Both numbers are
-              correct; without saying which is which they read as one number
-              disagreeing with itself. */}
-          <p className="mt-0.5 text-[11px] text-[color:var(--text-tertiary)]">
-            Discovered across the estate — not the agent identities issued above
+            Discovered identities in {scanId ? "the selected" : "the latest available"} graph snapshot.
+            Separate from identities issued and managed here.
           </p>
         </div>
         {loading ? <Loader2 className="h-4 w-4 animate-spin text-[color:var(--text-tertiary)]" /> : null}
@@ -92,7 +85,7 @@ export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) 
 
       {error ? (
         <p className="mt-3 text-xs text-red-400">{error}</p>
-      ) : (
+      ) : loading ? null : (
         <>
           <div className="mt-3 flex flex-wrap gap-2">
             {counts.slice(0, 8).map((entry) => (
@@ -122,12 +115,12 @@ export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) 
                 const label = String(
                   identity.name || identity.label || identity.node_id || "identity",
                 );
+                const evidenceScan = posture?.scan_id || scanId;
                 const href = identity.node_id
-                  ? `/security-graph?${new URLSearchParams({
-                      ...(scanId ? { scan: scanId } : {}),
-                      agent: label,
-                    }).toString()}`
-                  : "/security-graph";
+                  ? buildGraphInvestigationHref({
+                      rootId: String(identity.node_id), rootLabel: label, scanId: evidenceScan,
+                    })
+                  : `/security-graph${evidenceScan ? `?${new URLSearchParams({ scan: evidenceScan })}` : ""}`;
                 return (
                   <li key={id}>
                     <Link

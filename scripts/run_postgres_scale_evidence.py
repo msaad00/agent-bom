@@ -173,8 +173,11 @@ def _job_get_iter(job_store, sample_ids: list[tuple[str, str]]) -> list[float]:
     timings: list[float] = []
     for job_id, tenant_id in sample_ids:
         started = time.perf_counter()
-        _tenant_job_get(job_store, job_id, tenant_id)
-        timings.append((time.perf_counter() - started) * 1000)
+        job = _tenant_job_get(job_store, job_id, tenant_id)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        if job is None or getattr(job, "job_id", None) != job_id or getattr(job, "tenant_id", None) != tenant_id:
+            raise RuntimeError("Postgres benchmark job readback validation failed")
+        timings.append(elapsed_ms)
     return timings
 
 
@@ -287,7 +290,9 @@ def _run_clustered(
             replicas = [f.result() for f in as_completed(futures)]
     wall_ms = (time.perf_counter() - started) * 1000
 
-    total_ops = size * len(kinds) * n_replicas
+    # Reads are sampled (and absent without a preceding write pass), so the
+    # requested entity size is not an operation count for every workload.
+    total_ops = sum(replica[kind]["samples"] for replica in replicas for kind in ("audit_append", "job_put", "job_get") if kind in replica)
     return {
         "size_per_replica": size,
         "replicas": n_replicas,
@@ -375,8 +380,7 @@ def generate(
     base["gaps"] = [
         "Peak memory and client-reconnect recovery remain unverified unless the result artifact supplies measured values.",
         "Per-row p99 includes psycopg-pool acquisition; measure pool exhaustion separately under sustained load.",
-        "Audit-log append is HMAC-chained; chain-verification cost grows with "
-        "history. Run --kinds audit_verify to measure that path explicitly.",
+        "Audit-log append is HMAC-chained; separate audit-chain verification throughput is not measured by this harness.",
         "Read paths use RLS via tenant_id; cross-tenant join performance is not measured here.",
     ]
     return base

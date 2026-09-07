@@ -4653,6 +4653,15 @@
             "title": "Policy Source",
             "type": "string"
           },
+          "producer_assurance": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "caller_asserted"
+            ],
+            "title": "Producer Assurance",
+            "type": "string"
+          },
           "profile_id": {
             "default": "",
             "maxLength": 200,
@@ -4732,6 +4741,12 @@
             ],
             "title": "Age Seconds"
           },
+          "assurance_basis": {
+            "const": "transport_receipt",
+            "default": "transport_receipt",
+            "title": "Assurance Basis",
+            "type": "string"
+          },
           "heartbeat_at": {
             "anyOf": [
               {
@@ -4746,6 +4761,15 @@
           "live": {
             "title": "Live",
             "type": "boolean"
+          },
+          "producer_assurance": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "caller_asserted"
+            ],
+            "title": "Producer Assurance",
+            "type": "string"
           },
           "reason": {
             "title": "Reason",
@@ -4842,6 +4866,24 @@
             "title": "Llm Calls",
             "type": "integer"
           },
+          "producer_assurance": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "caller_asserted"
+            ],
+            "title": "Producer Assurance",
+            "type": "string"
+          },
+          "producer_assurance_count_basis": {
+            "const": "classified_events",
+            "default": "classified_events",
+            "title": "Producer Assurance Count Basis",
+            "type": "string"
+          },
+          "producer_assurance_counts": {
+            "$ref": "#/components/schemas/ProducerAssuranceCountsModel"
+          },
           "schema_version": {
             "title": "Schema Version",
             "type": "string"
@@ -4936,6 +4978,24 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "producer_assurance": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "caller_asserted"
+            ],
+            "title": "Producer Assurance",
+            "type": "string"
+          },
+          "producer_assurance_count_basis": {
+            "const": "classified_events",
+            "default": "classified_events",
+            "title": "Producer Assurance Count Basis",
+            "type": "string"
+          },
+          "producer_assurance_counts": {
+            "$ref": "#/components/schemas/ProducerAssuranceCountsModel"
           },
           "schema_version": {
             "title": "Schema Version",
@@ -6398,6 +6458,24 @@
           "filters"
         ],
         "title": "PresetCreate",
+        "type": "object"
+      },
+      "ProducerAssuranceCountsModel": {
+        "properties": {
+          "caller_asserted": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Caller Asserted",
+            "type": "integer"
+          },
+          "unknown": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unknown",
+            "type": "integer"
+          }
+        },
+        "title": "ProducerAssuranceCountsModel",
         "type": "object"
       },
       "PromptScanRequest": {

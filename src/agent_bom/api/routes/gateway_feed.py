@@ -48,6 +48,12 @@ from agent_bom.api.gateway_activity_store import (
     GatewayActivityWindowSummary,
     get_gateway_activity_store,
 )
+from agent_bom.api.proxy_provenance import (
+    ProducerAssurance,
+    producer_assurance_counts,
+    producer_assurance_rollup,
+    projected_producer_assurance,
+)
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.runtime.gateway_events import (
@@ -69,7 +75,14 @@ class GatewayFeedLedgerUnavailableError(RuntimeError):
     """The shared ledger cannot satisfy a cursor-backed read."""
 
 
+class ProducerAssuranceCountsModel(BaseModel):
+    unknown: int = Field(default=0, ge=0)
+    caller_asserted: int = Field(default=0, ge=0)
+
+
 class GatewayFeedHealthModel(BaseModel):
+    assurance_basis: Literal["transport_receipt"] = "transport_receipt"
+    producer_assurance: ProducerAssurance = "unknown"
     state: Literal["live", "stale", "unavailable", "sample"]
     live: bool
     heartbeat_at: str | None
@@ -79,6 +92,7 @@ class GatewayFeedHealthModel(BaseModel):
 
 
 class GatewayFeedEventModel(BaseModel):
+    producer_assurance: ProducerAssurance = "unknown"
     event_id: str
     decision_id: str = Field(default="", max_length=200)
     ts: str
@@ -138,6 +152,9 @@ class GatewayFeedWindowModel(BaseModel):
 
 
 class GatewayFeedResponseModel(BaseModel):
+    producer_assurance: ProducerAssurance = "unknown"
+    producer_assurance_counts: ProducerAssuranceCountsModel = Field(default_factory=ProducerAssuranceCountsModel)
+    producer_assurance_count_basis: Literal["classified_events"] = "classified_events"
     schema_version: str
     tenant_id: str
     generated_at: str
@@ -151,6 +168,9 @@ class GatewayFeedResponseModel(BaseModel):
 
 
 class GatewayFeedKpisModel(BaseModel):
+    producer_assurance: ProducerAssurance = "unknown"
+    producer_assurance_counts: ProducerAssuranceCountsModel = Field(default_factory=ProducerAssuranceCountsModel)
+    producer_assurance_count_basis: Literal["classified_events"] = "classified_events"
     schema_version: str
     tenant_id: str
     generated_at: str
@@ -228,6 +248,8 @@ def build_gateway_feed_health(
     """Describe transport freshness independently from retained event presence."""
     checked_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     base: dict[str, Any] = {
+        "assurance_basis": "transport_receipt",
+        "producer_assurance": "unknown",
         "state": "sample" if sample else "unavailable",
         "live": False,
         "heartbeat_at": heartbeat_at,
@@ -496,6 +518,7 @@ def _normalize_alert_event(alert: dict[str, Any], tenant_id: str) -> dict[str, A
         detail = "authorized"
         shadow = False
     return {
+        "producer_assurance": projected_producer_assurance(alert),
         "event_id": str(alert.get("event_id") or ""),
         "decision_id": _bounded_alert_identifier(alert, "decision_id"),
         "ts": _alert_timestamp(alert),
@@ -565,6 +588,7 @@ def _normalize_llm_event(record: Any, tenant_id: str) -> dict[str, Any]:
         "tenant": tenant_id,
         "shadow": False,
         "source": "observability",
+        "producer_assurance": "unknown",
         "ingest_ordinal": None,
         "input_tokens": int(input_tokens),
         "output_tokens": int(output_tokens),
@@ -597,7 +621,11 @@ def build_gateway_feed(
 
     events.sort(key=_feed_order_key, reverse=True)
     bounded = events[:limit]
+    counts = {value: sum(e["producer_assurance"] == value for e in bounded) for value in ("unknown", "caller_asserted")}
     return {
+        "producer_assurance": producer_assurance_rollup(counts),
+        "producer_assurance_counts": counts,
+        "producer_assurance_count_basis": "classified_events",
         "schema_version": _FEED_SCHEMA_VERSION,
         "tenant_id": tenant_id,
         "generated_at": _now_iso(),
@@ -648,7 +676,12 @@ def build_gateway_feed_kpis(
     llm_calls = len(llm_records)
     calls_today = authorized + blocked + llm_calls
 
+    counts = producer_assurance_counts([alert for alert in alerts if _classify_alert_action(alert) is not None])
+    counts["unknown"] += llm_calls
     kpis: dict[str, Any] = {
+        "producer_assurance": producer_assurance_rollup(counts),
+        "producer_assurance_counts": counts,
+        "producer_assurance_count_basis": "classified_events",
         "schema_version": _FEED_SCHEMA_VERSION,
         "tenant_id": tenant_id,
         "generated_at": _now_iso(),
@@ -832,11 +865,13 @@ def _feed_health_from_metrics(metrics: dict[str, Any] | None) -> dict[str, Any]:
     # ``received_at`` is stamped by the server at ingestion. Client event
     # timestamps remain useful provenance, but are not transport heartbeats.
     heartbeat = metrics.get("received_at")
-    return build_gateway_feed_health(
+    health = build_gateway_feed_health(
         transport_enabled=True,
         heartbeat_at=str(heartbeat) if heartbeat else None,
         sample=sample,
     )
+    health["producer_assurance"] = projected_producer_assurance(metrics)
+    return health
 
 
 def _load_tenant_llm_records(tenant_id: str, *, limit: int) -> list[Any]:
@@ -1027,6 +1062,9 @@ async def gateway_feed_kpis(request: Request) -> dict[str, Any]:
     payload["shadow_ai_blocked"] += summary.shadow_blocked
     payload["data_filters_applied"] += summary.data_filters
     payload["calls_today"] += summary.tool_calls_authorized + summary.blocked
+    for assurance, count in summary.producer_assurance_counts.items():
+        payload["producer_assurance_counts"][assurance] += count
+    payload["producer_assurance"] = producer_assurance_rollup(payload["producer_assurance_counts"])
     partial_reasons: list[str] = []
     if not ledger_available:
         partial_reasons.append("ledger_unavailable")

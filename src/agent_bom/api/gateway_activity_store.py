@@ -15,7 +15,7 @@ import json
 import sqlite3
 import threading
 from collections import deque
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -307,6 +307,7 @@ class GatewayActivityWindowSummary:
     data_filters: int
     retention_floor_ordinal: int
     latest_ordinal: int
+    producer_assurance_counts: dict[str, int] = field(default_factory=lambda: {"unknown": 0, "caller_asserted": 0})
 
 
 class GatewayActivityStore(Protocol):
@@ -426,15 +427,17 @@ def _window_summary(
     *,
     start: str,
     end: str,
-    event_rows: list[tuple[str, str, int]],
+    event_rows: list[tuple[str, str, int, str]],
     floor: int,
     latest: int,
 ) -> GatewayActivityWindowSummary:
-    authorized = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_ALLOWED_EVENT_TYPES)
-    blocked = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES)
-    data_filters = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_DATA_FILTER_EVENT_TYPES)
+    authorized = sum(count for event_type, _reason, count, _assurance in event_rows if event_type in GATEWAY_ALLOWED_EVENT_TYPES)
+    blocked = sum(count for event_type, _reason, count, _assurance in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES)
+    data_filters = sum(count for event_type, _reason, count, _assurance in event_rows if event_type in GATEWAY_DATA_FILTER_EVENT_TYPES)
     shadow_blocked = sum(
-        count for event_type, reason, count in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES and _is_shadow_reason(reason)
+        count
+        for event_type, reason, count, _assurance in event_rows
+        if event_type in GATEWAY_BLOCKED_EVENT_TYPES and _is_shadow_reason(reason)
     )
     return GatewayActivityWindowSummary(
         tenant_id=tenant_id,
@@ -446,6 +449,15 @@ def _window_summary(
         data_filters=data_filters,
         retention_floor_ordinal=floor,
         latest_ordinal=latest,
+        producer_assurance_counts={
+            assurance: sum(
+                count
+                for event_type, _reason, count, value in event_rows
+                if value == assurance
+                and event_type in GATEWAY_ALLOWED_EVENT_TYPES | GATEWAY_BLOCKED_EVENT_TYPES | GATEWAY_DATA_FILTER_EVENT_TYPES
+            )
+            for assurance in ("unknown", "caller_asserted")
+        },
     )
 
 
@@ -727,15 +739,15 @@ class InMemoryGatewayActivityStore:
             all_tenant_rows = [record for (row_tenant, _), record in self._events.items() if row_tenant == tenant_id]
             latest = self._next_ordinal.get(tenant_id, 1) - 1
             floor = min((record.ingest_ordinal for record in all_tenant_rows), default=latest + 1)
-        grouped: dict[tuple[str, str], int] = {}
+        grouped: dict[tuple[str, str, str], int] = {}
         for record in rows:
-            key = (record.event_type, record.reason_code)
+            key = (record.event_type, record.reason_code, record.producer_assurance)
             grouped[key] = grouped.get(key, 0) + 1
         return _window_summary(
             tenant_id,
             start=start,
             end=end,
-            event_rows=[(event_type, reason, count) for (event_type, reason), count in grouped.items()],
+            event_rows=[(event_type, reason, count, assurance) for (event_type, reason, assurance), count in grouped.items()],
             floor=floor,
             latest=latest,
         )
@@ -958,12 +970,15 @@ class SQLiteGatewayActivityStore:
                 SELECT
                     json_extract(data, '$.event_type') AS event_type,
                     json_extract(data, '$.reason_code') AS reason_code,
+                    CASE WHEN json_extract(data, '$.record_schema_version') = 'gateway.activity.record.v2'
+                         AND json_extract(data, '$.submission_provenance.producer_assurance') = 'caller_asserted'
+                         THEN 'caller_asserted' ELSE 'unknown' END AS producer_assurance,
                     COUNT(*) AS event_count
                 FROM gateway_activity_events
                 WHERE tenant_id = ? AND event_timestamp >= ? AND event_timestamp <= ?
-                GROUP BY 1, 2
+                GROUP BY 1, 2, 3
             )
-            SELECT bounds.latest, bounds.floor, grouped.event_type, grouped.reason_code, grouped.event_count
+            SELECT bounds.latest, bounds.floor, grouped.event_type, grouped.reason_code, grouped.event_count, grouped.producer_assurance
             FROM bounds LEFT JOIN grouped ON TRUE
             """,
             (tenant_id, tenant_id, tenant_id, tenant_id, start, end),
@@ -974,8 +989,8 @@ class SQLiteGatewayActivityStore:
             start=start,
             end=end,
             event_rows=[
-                (str(event_type), str(reason), int(count))
-                for _, _, event_type, reason, count in rows
+                (str(event_type), str(reason), int(count), str(assurance))
+                for _, _, event_type, reason, count, assurance in rows
                 if event_type is not None and count is not None
             ],
             floor=floor,

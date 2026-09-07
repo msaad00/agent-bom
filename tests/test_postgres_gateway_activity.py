@@ -221,5 +221,8 @@ def test_postgres_mixed_provenance_versions_preserve_replay() -> None:
         assert [event["record_schema_version"] for event in page.events] == ["gateway.activity.record.v1", "gateway.activity.record.v2"]
         assert page.events[0]["event_digest"] == old.event_digest
         assert set(store.append_batch([old, new]).duplicate_event_ids) == {"legacy", "new"}
+        summary = store.summarize_window(tenant_id, start="2000-01-01T00:00:00+00:00", end="2099-12-31T23:59:59+00:00")
+        assert summary.producer_assurance_counts == {"unknown": 1, "caller_asserted": 1}
+        assert summary.tool_calls_authorized == 2
     finally:
         _cleanup(store, tenant_id)

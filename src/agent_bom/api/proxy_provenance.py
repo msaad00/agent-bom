@@ -91,3 +91,37 @@ def canonicalize_proxy_submission(
         gateway_activity_durable=False,
     )
     return enriched, provenance
+
+
+def projected_producer_assurance(payload: dict) -> ProducerAssurance:
+    """Read validated server projection metadata, never a flat assurance claim.
+
+    This is a consumer of admitted/stored records, not an authentication helper
+    for incoming request bodies. Malformed or historical metadata stays unknown.
+    """
+    from pydantic import ValidationError
+
+    if payload.get("record_schema_version") not in (None, "gateway.activity.record.v2"):
+        return "unknown"
+    metadata = payload.get("submission_provenance")
+    if not isinstance(metadata, dict | GatewaySubmissionProvenance):
+        return "unknown"
+    try:
+        provenance = GatewaySubmissionProvenance.model_validate(metadata)
+    except ValidationError:
+        return "unknown"
+    if (provenance.submission_source_id, provenance.submission_session_id) != (payload.get("source_id"), payload.get("session_id")):
+        return "unknown"
+    return provenance.producer_assurance
+
+
+def producer_assurance_rollup(counts: dict[str, int]) -> ProducerAssurance:
+    """Mixed or empty evidence cannot be upgraded to caller-asserted."""
+    return "caller_asserted" if counts.get("caller_asserted", 0) > 0 and counts.get("unknown", 0) == 0 else "unknown"
+
+
+def producer_assurance_counts(payloads: list[dict]) -> dict[str, int]:
+    counts = {"unknown": 0, "caller_asserted": 0}
+    for payload in payloads:
+        counts[projected_producer_assurance(payload)] += 1
+    return counts

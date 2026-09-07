@@ -620,12 +620,20 @@ class ClickHouseAnalyticsStore:
         if tenant_id is not None:
             where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
-            f"SELECT event_type, severity, uniqExact(event_id) AS cnt "  # nosec B608
+            f"SELECT event_type, severity, uniqExact(event_id) AS cnt, "
+            f"uniqExactIf(event_id, producer_assurance != 'caller_asserted') AS unknown_count "  # nosec B608
             f"FROM runtime_events "
             f"WHERE {where} "
             f"GROUP BY event_type, severity ORDER BY cnt DESC"
         )
-        return self._client.query_json(query)
+        rows = self._client.query_json(query)
+        for row in rows:
+            unknown = int(row.pop("unknown_count", row.get("cnt", 0)))
+            counts = {"unknown": unknown, "caller_asserted": max(0, int(row.get("cnt", 0)) - unknown)}
+            row["producer_assurance_counts"] = counts
+            row["producer_assurance"] = "caller_asserted" if counts["caller_asserted"] > 0 and counts["unknown"] == 0 else "unknown"
+            row["producer_assurance_count_basis"] = "classified_events"
+        return rows
 
     def query_top_riskiest_agents(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
         where_clause = ""

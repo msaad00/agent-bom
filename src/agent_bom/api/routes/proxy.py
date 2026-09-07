@@ -768,6 +768,8 @@ def _classify_authorization_event(alert: dict) -> str:
 
 def _authorization_trace(*, allowed_tool_calls: int, blocked_tool_calls: int, alerts: list[dict]) -> dict[str, object]:
     """Return accountable runtime authorization counts without raw arguments."""
+    from agent_bom.api.proxy_provenance import projected_producer_assurance
+
     trace_counts: Counter[str] = Counter()
     recent: list[dict[str, object]] = []
     for alert in sorted(alerts, key=lambda item: str(item.get("ts") or item.get("timestamp") or ""), reverse=True):
@@ -779,6 +781,7 @@ def _authorization_trace(*, allowed_tool_calls: int, blocked_tool_calls: int, al
                 {
                     "ts": alert.get("ts") or alert.get("timestamp") or alert.get("event_timestamp") or "",
                     "trace_class": trace_class,
+                    "producer_assurance": projected_producer_assurance(alert),
                     "source_id": alert.get("source_id") or "unknown",
                     "session_id": alert.get("session_id") or "unknown",
                     "tool_name": alert.get("tool_name") or alert.get("tool") or "",
@@ -814,7 +817,10 @@ def _runtime_metrics_for_tenant(tenant_id: str) -> dict | None:
 
 
 def _build_runtime_production_index(tenant_id: str, metrics: dict | None, alerts: list[dict]) -> dict[str, object]:
+    from agent_bom.api.proxy_provenance import producer_assurance_counts, producer_assurance_rollup
+
     metrics = dict(metrics or {})
+    assurance_counts = producer_assurance_counts(alerts + ([metrics] if metrics else []))
     alert_summary = _summarize_proxy_alerts(alerts)
     calls_by_tool = _numeric_mapping(metrics.get("calls_by_tool"))
     blocked_by_reason = _numeric_mapping(metrics.get("blocked_by_reason"))
@@ -850,6 +856,10 @@ def _build_runtime_production_index(tenant_id: str, metrics: dict | None, alerts
 
     return {
         "schema_version": "runtime.production_index.v1",
+        "producer_assurance": producer_assurance_rollup(assurance_counts),
+        "producer_assurance_counts": assurance_counts,
+        "producer_assurance_count_basis": "submissions",
+        "evidence_basis": "submitted_runtime_activity",
         "tenant_id": tenant_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "status": "ok" if metrics or alerts else "no_runtime_activity",
@@ -937,7 +947,11 @@ async def proxy_status(request: Request) -> dict:
             if metrics is not None:
                 metrics = dict(metrics)
 
+    from agent_bom.api.routes.gateway_feed import _feed_health_from_metrics
+
     if metrics is not None:
+        metrics["health"] = _feed_health_from_metrics(metrics)
+        metrics["producer_assurance"] = metrics["health"]["producer_assurance"]
         alert_summary = _summarize_proxy_alerts(_load_proxy_alerts(tenant_id))
         metrics["alert_summary"] = {key: value for key, value in alert_summary.items() if key != "recent_alerts"}
         metrics["recent_alerts"] = alert_summary["recent_alerts"]
@@ -945,6 +959,8 @@ async def proxy_status(request: Request) -> dict:
 
     return {
         "status": "no_proxy_session",
+        "health": _feed_health_from_metrics(None),
+        "producer_assurance": "unknown",
         "message": "No proxy metrics available. Start a proxy session or set AGENT_BOM_LOG.",
     }
 

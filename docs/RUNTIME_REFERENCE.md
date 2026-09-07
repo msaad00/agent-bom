@@ -157,3 +157,28 @@ ask "what runs where?" The per-surface docs above remain the source of
 truth for each surface's schema, configuration, and operational
 runbook. None of those docs are deprecated by this reference; future
 work may consolidate further once the runtime surface stabilises.
+
+### Producer assurance in runtime views
+
+Gateway feed events expose `producer_assurance` as `unknown` or
+`caller_asserted`. An authenticated collector may report a producer; storage
+integrity and a fresh receipt do not authenticate that reported producer.
+Historical records without submission provenance remain `unknown`.
+
+Feed and KPI responses expose `producer_assurance_counts` with
+`producer_assurance_count_basis: classified_events`. Feed counts describe the
+returned page; KPI counts describe classified events in the stated retained
+window. These include data-filter and LLM records, so they are not a replacement
+for tool-call totals. Unknown assurance does not mean an event is absent.
+Window completeness and receipt freshness retain their separate fields.
+
+Proxy status includes receipt health with `assurance_basis: transport_receipt`.
+A recent server receipt can report live transport while producer assurance
+remains unknown. Configuration alone indicates a connected/configured runtime
+surface and does not establish a live producer.
+
+The runtime production index counts alert and metrics submissions under
+`producer_assurance_count_basis: submissions`; a metrics summary may describe
+many calls. Blueprint comparison reports `comparison_scope:
+reported_activity_only`: an aligned result covers submitted activity only,
+not producer identity, unreported activity, or an approval of the deployment.

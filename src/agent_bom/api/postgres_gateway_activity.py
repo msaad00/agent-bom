@@ -279,12 +279,15 @@ class PostgresGatewayActivityStore:
                     SELECT
                         ((data::jsonb) ->> 'event_type') AS event_type,
                         ((data::jsonb) ->> 'reason_code') AS reason_code,
+                        CASE WHEN data::jsonb ->> 'record_schema_version' = 'gateway.activity.record.v2'
+                             AND data::jsonb #>> '{submission_provenance,producer_assurance}' = 'caller_asserted'
+                             THEN 'caller_asserted' ELSE 'unknown' END AS producer_assurance,
                         COUNT(*) AS event_count
                     FROM gateway_activity_events
                     WHERE tenant_id = %s AND event_timestamp >= %s AND event_timestamp <= %s
-                    GROUP BY 1, 2
+                    GROUP BY 1, 2, 3
                 )
-                SELECT bounds.latest, bounds.floor, grouped.event_type, grouped.reason_code, grouped.event_count
+                SELECT bounds.latest, bounds.floor, grouped.event_type, grouped.reason_code, grouped.event_count, grouped.producer_assurance
                 FROM bounds LEFT JOIN grouped ON TRUE
                 """,
                 (tenant_id, tenant_id, tenant_id, tenant_id, start, end),
@@ -295,8 +298,8 @@ class PostgresGatewayActivityStore:
             start=start,
             end=end,
             event_rows=[
-                (str(event_type), str(reason), int(count))
-                for _, _, event_type, reason, count in rows
+                (str(event_type), str(reason), int(count), str(assurance))
+                for _, _, event_type, reason, count, assurance in rows
                 if event_type is not None and count is not None
             ],
             floor=floor,

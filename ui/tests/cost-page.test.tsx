@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 
 import CostPage from "@/app/cost/page";
+import { api } from "@/lib/api";
 
 vi.mock("@/hooks/use-deployment-context", () => ({
   useDeploymentContext: () => ({ counts: { services: {} } }),
@@ -117,4 +118,37 @@ describe("CostPage (dense restyle)", () => {
       expect(screen.getByText("Avg cost / call")).toBeInTheDocument(),
     );
   });
+});
+
+
+describe("CostPage partial evidence", () => {
+  it("keeps spend visible when anomaly analysis is unavailable and can retry", async () => {
+    vi.mocked(api.getCostAnomalies).mockRejectedValueOnce(new Error("unavailable"));
+    render(<CostPage />);
+    await screen.findByTestId("cost-kpi-strip");
+    expect(screen.queryByText(/No statistical anomalies detected/)).not.toBeInTheDocument();
+    expect(screen.getByText("Anomaly analysis unavailable")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh cost data" }));
+    await waitFor(() => expect(screen.queryByText("Anomaly analysis unavailable")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /Cost & behavior anomalies/ }));
+    expect(screen.getByText(/No statistical anomalies detected/)).toBeInTheDocument();
+  });
+});
+
+
+it("does not turn a failed forecast into insufficient history", async () => {
+  vi.mocked(api.getCostForecast).mockRejectedValueOnce(new Error("unavailable"));
+  render(<CostPage />);
+  await screen.findByTestId("cost-kpi-strip");
+  expect(screen.queryByText("insufficient history")).not.toBeInTheDocument();
+  expect(screen.getByText("Forecast unavailable. Refresh to retry.")).toBeInTheDocument();
+});
+
+
+it("omits an empty agent chart when totals have no agent attribution", async () => {
+  vi.mocked(api.getCostReport).mockResolvedValueOnce({ ...report, by_agent: [] });
+  render(<CostPage />);
+  await screen.findByTestId("cost-kpi-strip");
+  expect(screen.queryByText("Spend by agent (top 10)")).not.toBeInTheDocument();
+  expect(screen.getByText("Agent attribution unavailable for this report.")).toBeInTheDocument();
 });

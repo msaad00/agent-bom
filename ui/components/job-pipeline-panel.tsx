@@ -329,7 +329,7 @@ export function JobPipelinePanel({
                   ? "Stage telemetry unavailable"
                   : telemetryState === "partial"
                     ? `${steps.size}/${summary.totalSteps} stages observed`
-                    : `${summary.completedSteps}/${summary.totalSteps} stages complete`}
+                    : `${summary.completedSteps}/${summary.totalSteps} stages complete${summary.skippedSteps > 0 ? ` · ${summary.skippedSteps} skipped` : ""}`}
             </span>
           </div>
           {resultStats.length > 0 ? (

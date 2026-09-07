@@ -199,7 +199,10 @@ describe("FindingsPage", () => {
     expect(drawer.querySelector("aside")).toHaveClass("max-w-2xl");
     expect(within(drawer).queryByText("Unavailable")).not.toBeInTheDocument();
     expect(within(drawer).queryByText("Last scanned")).not.toBeInTheDocument();
-    expect(within(drawer).getByText(/Source did not provide/i)).toBeInTheDocument();
+    expect(within(drawer).queryByText(/Source did not provide/i)).not.toBeInTheDocument();
+    expect(within(drawer).getByText("Next action")).toBeInTheDocument();
+    expect(within(drawer).getByRole("link", { name: "Review remediation" })).toHaveAttribute("href", "/remediation?q=CVE-2026-1234");
+    expect(within(drawer).queryByText("finding-1")).not.toBeInTheDocument();
 
     const closeButtons = within(drawer).getAllByRole("button", { name: "Close" });
     fireEvent.click(closeButtons.at(-1)!);
@@ -276,6 +279,27 @@ describe("FindingsPage", () => {
     expect(within(drawer).getByRole("button", { name: "Not affected" })).toBeDisabled();
   });
 
+  it("keeps package identity and version distinct from the owning MCP server", async () => {
+    apiMock.listFindings.mockResolvedValue({ total: 1, findings: [{
+      ...canonicalFinding,
+      asset: { name: "shell-runner-server", asset_type: "server" },
+      affected_servers: [],
+      package_version: "5.3",
+      fixed_version: "5.4",
+      remediation_guidance: "Upgrade the affected dependency.",
+      evidence: { package_name: "pyyaml", package_version: "5.2" },
+    }] });
+    render(<FindingsPage />);
+    await screen.findByText("CVE-2026-1234");
+    fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-1234" }));
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByText("pyyaml")).toBeInTheDocument();
+    expect(within(drawer).getByText("5.3 → 5.4")).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Evidence" }));
+    expect(within(drawer).getByText("shell-runner-server")).toBeInTheDocument();
+    expect(within(drawer).getByText("Upgrade the affected dependency.")).toBeInTheDocument();
+  });
+
   it("uses the persisted package identity when an older finding has no asset object", async () => {
     apiMock.listFindings.mockResolvedValue({
       schema_version: "v1",
@@ -313,6 +337,8 @@ describe("FindingsPage", () => {
           asset: { name: "pyyaml", asset_type: "package" },
           source: "osv",
           scan_id: "scan-intel-1",
+          owner: "package-owner",
+          sla_due_at: "2026-09-13T12:00:00Z",
           cvss_score: 8.8,
           cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
           epss_score: 0.42,
@@ -366,14 +392,21 @@ describe("FindingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-4242" }));
 
     const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-4242" });
+    expect(within(drawer).getByText("5.3 → 6.0.2")).toBeInTheDocument();
+    expect(within(drawer).queryByText(/First seen/i)).not.toBeInTheDocument();
+    expect(within(drawer).queryByText("security-platform")).not.toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("tab", { name: /Triage/ }));
+    expect(within(drawer).getByText("security-platform")).toBeInTheDocument();
+    expect(within(drawer).getByText("package-owner")).toBeInTheDocument();
+    expect(within(drawer).getByLabelText(/^SLA:/)).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Evidence" }));
     expect(within(drawer).getByText("v3.1 · high")).toBeInTheDocument();
     expect(within(drawer).getByText("97.5th percentile")).toBeInTheDocument();
     expect(within(drawer).getByText("Known exploited")).toBeInTheDocument();
     expect(within(drawer).getByText(/First seen/i)).toBeInTheDocument();
     expect(within(drawer).getByText(/Last observed/i)).toBeInTheDocument();
     expect(within(drawer).queryByText(/Last scanned/i)).not.toBeInTheDocument();
-    expect(within(drawer).getByText("5.3 → 6.0.2")).toBeInTheDocument();
-    expect(within(drawer).getByText("security-platform")).toBeInTheDocument();
+    expect(within(drawer).queryByText("security-platform")).not.toBeInTheDocument();
     expect(within(drawer).queryByLabelText(/SLA: unavailable/i)).not.toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole("tab", { name: "Evidence" }));

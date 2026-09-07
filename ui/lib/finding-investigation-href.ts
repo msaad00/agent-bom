@@ -7,12 +7,13 @@ import type { EnrichedVuln } from "@/lib/findings-view";
 export function buildFindingInvestigationHref(
   vuln: Pick<
     EnrichedVuln,
-    "id" | "node_id" | "finding_node_id" | "entity_type" | "packages" | "agents" | "finding_id"
+    "id" | "node_id" | "finding_node_id" | "entity_type" | "packages" | "agents" | "finding_id" | "scan_id"
   >,
   options?: { scanId?: string | undefined },
 ): string {
   const params = new URLSearchParams({ lens: "attack-path" });
-  if (options?.scanId) params.set("scan", options.scanId);
+  const scanId = options?.scanId ?? vuln.scan_id;
+  if (scanId) params.set("scan", scanId);
 
   const nodeId = vuln.node_id?.trim();
   if (nodeId) params.set("node", nodeId);

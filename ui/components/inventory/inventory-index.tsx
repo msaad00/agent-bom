@@ -1,26 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { ArrowRight } from "lucide-react";
+import { useMemo, useState } from "react";
+
 
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
 import { PageLaneHeader } from "@/components/page-lane";
-import { StatStrip } from "@/components/stat-strip";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { AssetDetail } from "@/components/inventory/asset-detail";
+import { SeverityBadge } from "@/components/severity-badge";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ICON_SIZE } from "@/lib/icon-sizes";
 import { useInventory } from "@/lib/inventory-context";
-import { ASSET_KINDS } from "@/lib/inventory";
+import { ASSET_KINDS, ASSET_KIND_BY_ID, type AssetRow } from "@/lib/inventory";
 
 export function InventoryIndex() {
-  const { model, summary, loading, error, errorKind } = useInventory();
+  const { model, summary, loading, error, errorKind, hasMore, loadingMore, loadMore,
+    details, detailLoadingId, detailError, loadAssetDetail } = useInventory();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const rows = useMemo(() => Object.values(model?.rowsByKind ?? {}).flat(), [model]);
+  const selected = rows.find((row) => row.id === selectedId) ?? null;
 
   const header = (
     <PageLaneHeader
       lane="command"
       title="Asset inventory"
-      subtitle="Every asset the platform has discovered, by type — correlated back to findings, blast radius, and the security graph. Coverage reflects only what has actually been scanned or connected."
+      subtitle="Explore discovered assets and their findings. Coverage reflects scanned and connected sources."
     />
   );
 
@@ -94,79 +100,68 @@ export function InventoryIndex() {
     <div className="space-y-6">
       {header}
 
-      <InventoryFacetBar />
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-secondary" aria-label="Snapshot summary">
+        <span><strong className="text-foreground">{totals.assets.toLocaleString()}</strong> snapshot assets</span>
+        <span><strong className="text-foreground">{totals.findings.toLocaleString()}</strong> snapshot findings</span>
+        <span>{totals.sources.toLocaleString()} evidence sources</span>
+      </div>
 
-      <StatStrip
-        items={[
-          { label: "Snapshot assets", value: totals.assets.toLocaleString() },
-          { label: "Matching filters", value: totals.matching.toLocaleString() },
-          { label: "Snapshot findings", value: totals.findings.toLocaleString(), accent: totals.findings > 0 ? "warn" : "neutral" },
-          { label: "Evidence sources", value: totals.sources.toLocaleString() },
-        ]}
-      />
+      <nav aria-label="Asset types" className="flex flex-wrap gap-2">
+        {cards.map(({ kind, total }) => {
+          const Icon = kind.icon;
+          return <Link key={kind.id} href={`/inventory/${kind.id}`} className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-xs text-ink-secondary hover:bg-surface-muted">
+            <Icon className={ICON_SIZE.sm} aria-hidden="true" />
+            <span>{kind.label}</span>{" "}<strong className="tabular-nums text-foreground">{total.toLocaleString()}</strong>
+          </Link>;
+        })}
+      </nav>
+
+      <InventoryFacetBar />
 
       {model?.completeness && !model.completeness.complete ? (
         <div
           data-testid="inventory-coverage"
-          className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]"
+          className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs leading-5 text-ink-secondary"
         >
-          <span className="font-medium text-[color:var(--foreground)]">Evidence coverage:</span>{" "}
-          {model.completeness.status}. Matching totals and facets remain exact; only the displayed rows are cursor-bounded.
+          <span className="font-medium text-foreground">Evidence coverage:</span>{" "}
+          {model.completeness.status}. More assets may be available beyond the rows shown.
         </div>
       ) : null}
 
       {model && model.matchingTotal === 0 ? (
         <PageEmptyState
           title="No assets match these filters"
-          detail="The snapshot contains assets, but none match the selected whole-inventory filters. Clear a filter or choose another source scope."
+          detail="The snapshot contains assets, but none match the selected filters. Clear a filter or choose another source scope."
         />
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map(({ kind, total }) => {
-          const Icon = kind.icon;
-          const empty = total === 0;
-          return (
-            <Link
-              key={kind.id}
-              href={`/inventory/${kind.id}`}
-              className={`group flex flex-col gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 transition-colors elev-1 hover:border-[color:var(--border-strong)] hover:bg-[color:var(--surface-elevated)] ${
-                empty ? "opacity-70" : ""
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]">
-                  <Icon className={ICON_SIZE.sm} aria-hidden="true" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h2 className="truncate text-sm font-semibold text-[color:var(--foreground)]">{kind.label}</h2>
-                    <ArrowRight
-                      className={`${ICON_SIZE.xs} ml-auto shrink-0 text-[color:var(--text-tertiary)] transition-transform group-hover:translate-x-0.5 group-hover:text-[color:var(--text-secondary)]`}
-                      aria-hidden="true"
-                    />
-                  </div>
-                  <p className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-[color:var(--text-tertiary)]">
-                    {kind.description}
-                  </p>
-                </div>
-              </div>
+      {model && model.matchingTotal > 0 ? <>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-secondary">
+          <span>Showing {rows.length.toLocaleString()} of {totals.matching.toLocaleString()} matching assets</span>
+          {hasMore ? <button type="button" disabled={loadingMore} onClick={() => { void loadMore(); }}
+            className="rounded-lg border border-outline px-3 py-2 text-foreground disabled:opacity-50">
+            {loadingMore ? "Loading…" : "Load more"}
+          </button> : null}
+        </div>
+        <DataTable<AssetRow> columns={columns} rows={rows} rowKey={row => row.id} caption="Asset inventory"
+          selectedKey={selected?.id} maxHeight="32rem" onRowClick={row => { setSelectedId(row.id); void loadAssetDetail(row.id); }} />
+        {selected && model ? <section aria-label="Selected asset details">
+          <div className="mb-2 flex justify-end"><button type="button" onClick={() => setSelectedId(null)} className="text-xs underline">Close asset details</button></div>
+          <AssetDetail row={selected} config={ASSET_KIND_BY_ID[selected.kind]} detail={details[selected.id]}
+            loading={detailLoadingId === selected.id} error={detailError} scanId={model.scanId} />
+        </section> : null}
+      </> : null}
 
-              <div className="flex items-end justify-between">
-                <div>
-                  <span className="font-mono text-2xl font-semibold text-[color:var(--foreground)]">
-                    {total.toLocaleString()}
-                  </span>
-                  <span className="ml-1 text-[11px] text-[color:var(--text-tertiary)]">
-                    {empty ? "none yet" : total === 1 ? kind.singular : (kind.countPlural ?? kind.label)}
-                  </span>
-                </div>
-                <span className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">whole-query facet</span>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
     </div>
   );
 }
+
+const columns: DataTableColumn<AssetRow>[] = [
+  { key: "asset", header: "Asset", cell: row => <div className="min-w-0 [overflow-wrap:anywhere]">
+    <p className="font-medium text-foreground">{row.label}</p>
+    <p className="text-xs text-ink-tertiary">{[row.entityType, row.version].filter(Boolean).join(" · ")}</p>
+  </div> },
+  { key: "severity", header: "Finding severity", cell: row => <SeverityBadge severity={row.topFindingSeverity} /> },
+  { key: "findings", header: "Findings", align: "right", cell: row => row.findingCount.toLocaleString() },
+  { key: "source", header: "Sources", className: "hidden md:table-cell", cell: row => row.dataSources.join(", ") || "—" },
+];

@@ -4,6 +4,19 @@ import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href"
 import { defaultOperatorLanding, OVERVIEW_LANDING } from "@/lib/operator-landing";
 
 describe("buildFindingInvestigationHref", () => {
+  it("pins investigation to the scan that supplied the finding", () => {
+    const finding = { id: "CVE-2026-0001", packages: ["pillow@9.0.0"], agents: [], scan_id: "scan-evidence-1" };
+    const params = new URL(buildFindingInvestigationHref(finding), "http://localhost").searchParams;
+    expect(params.get("scan")).toBe("scan-evidence-1");
+    expect(params.get("package")).toBe("pillow@9.0.0");
+  });
+
+  it("preserves an explicitly selected snapshot override", () => {
+    const finding = { id: "CVE-2026-0001", packages: [], agents: [], scan_id: "scan-evidence-1" };
+    const params = new URL(buildFindingInvestigationHref(finding, { scanId: "scan-selected" }), "http://localhost").searchParams;
+    expect(params.get("scan")).toBe("scan-selected");
+  });
+
   it("prefers stamped graph FKs over free-floating CVE-only links", () => {
     expect(
       buildFindingInvestigationHref({

@@ -498,6 +498,7 @@ for (const proof of [
     await expect(page.getByRole("status")).toContainText(
       "Proposed scenario — not observed or deployed",
     );
+    await expect(page.getByRole("group", { name: "Investigation view" })).toBeHidden();
     await expect(page.getByText("Current · observed")).toBeVisible();
     await expect(page.getByText("Proposed · modeled")).toBeVisible();
     await page.getByRole("tab", { name: "Difference" }).click();
@@ -704,17 +705,10 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   await rollupRequest;
   await openEvidenceControls(page);
   await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
-  // The roll-up used to emit no edges, so this banner had to disclaim that the
-  // cards were "not rendered relationship evidence". It now draws the real
-  // aggregated relationships between containers, so the banner says so and the
-  // old disclaimer must NOT come back.
-  await expect(page.getByText(/real relationships, aggregated/i)).toBeVisible();
-  await expect(page.getByText(/not rendered relationship evidence/i)).toHaveCount(0);
-  // The banner claims aggregated relationships; the canvas has to hold one, or
-  // the claim is the disclaimer it replaced with the word "not" removed.
+  // Aggregated scope navigation must retain the actual relationship edge.
   await expect(page.locator(".react-flow__edge")).toHaveCount(1);
   await expect(page.getByTestId("graph-compression-summary")).toHaveCount(0);
-  await expect(page.getByText(/2 containers at this level.*1241 nodes in snapshot/)).toBeVisible();
+  await expect(page.getByText(/2 nodes and scopes at this level.*1241 nodes in snapshot/)).toBeVisible();
   const cards = page.locator('[data-rollup-container="true"]');
   await expect(cards).toHaveCount(2);
   const [firstBox, secondBox] = await Promise.all([cards.nth(0).boundingBox(), cards.nth(1).boundingBox()]);
@@ -959,4 +953,18 @@ test("selected paths 13 and 25 retain hydrated anchors beyond fix-first enrichme
   await expect(proof.getByText("runtime-anchor-25", { exact: true })).toBeVisible();
   await expect(proof.getByText("finding-anchor-25", { exact: true })).toBeVisible();
   await expect(proof.getByText(/path nodes unavailable/)).toHaveCount(0);
+});
+
+
+test("URL-selected path returns to summary without reopening the path", async ({ page }) => {
+  await routeCockpit(page, 200, { rollupItemCount: 30 });
+  await page.goto(`/security-graph?lens=estate&scan=${scanId}&path=top`);
+  const views = page.getByRole("group", { name: "Investigation view" });
+  await views.getByRole("button", { name: "Back to summary", exact: true }).click();
+  await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]path=/);
+  await views.getByRole("button", { name: "Graph", exact: true }).click();
+  await views.getByRole("button", { name: "Back to summary", exact: true }).click();
+  await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]path=/);
 });

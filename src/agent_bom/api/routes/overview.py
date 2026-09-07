@@ -425,11 +425,26 @@ def _row_risk_score(row: dict[str, Any]) -> float:
 
 def _finding_top_risk(row: dict[str, Any]) -> dict[str, Any]:
     """Build a top-risk strip entry from a unified findings-spine or hub row."""
-    asset = row.get("asset") if isinstance(row.get("asset"), dict) else {}
-    evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
+    raw_asset = row.get("asset")
+    raw_evidence = row.get("evidence")
+    asset = raw_asset if isinstance(raw_asset, dict) else {}
+    evidence = raw_evidence if isinstance(raw_evidence, dict) else {}
+    package = row.get("package")
+    if not package and evidence.get("package_name"):
+        package = str(evidence["package_name"])
+    if package and package == evidence.get("package_name") and evidence.get("package_version"):
+        package += f"@{evidence['package_version']}"
+    if not package and asset.get("asset_type") == "package":
+        package = asset.get("name")
+    servers = list(row.get("affected_servers") or [])
+    if not servers and asset.get("asset_type") == "mcp_server" and asset.get("name"):
+        servers = [asset["name"]]
     return {
         "vulnerability_id": str(row.get("cve_id") or row.get("canonical_id") or row.get("id") or row.get("finding_id") or ""),
-        "package": row.get("package") or (asset or {}).get("name") or (evidence or {}).get("package_name"),
+        "canonical_id": row.get("canonical_id"),
+        "asset_id": asset.get("canonical_id") or asset.get("stable_id"),
+        "affected_servers": servers,
+        "package": package,
         "severity": (str(row.get("severity") or "").strip().lower() or "low"),
         "risk_score": _row_risk_score(row),
         "is_kev": bool(row.get("is_kev") or row.get("cisa_kev")),
@@ -1004,20 +1019,37 @@ def _hub_top_risks(
 
 
 def _merge_top_risks(*groups: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
-    """Merge scan + hub top-risk entries: dedupe by id, sort by risk, cap.
+    """Merge identical canonical occurrences, preserving unknown identities.
 
-    Deduped on ``vulnerability_id`` (keeping the higher-risk occurrence) so a
-    finding present in both the scan spine and the hub ledger is not doubled;
-    keyless entries (no id) are always kept.
+    A CVE identifies a weakness, not the runtime occurrence bearing it. Scope,
+    package/version and agents remain part of the key even if a producer reuses
+    a canonical id. Missing canonical identity cannot prove equivalence.
     """
-    best_by_id: dict[str, dict[str, Any]] = {}
+    best_by_id: dict[tuple[Any, ...], dict[str, Any]] = {}
     keyless: list[dict[str, Any]] = []
     for group in groups:
         for entry in group:
-            key = str(entry.get("vulnerability_id") or "")
-            if not key:
+            canonical_id = entry.get("canonical_id")
+            agents = entry.get("affected_agents") or []
+            servers = entry.get("affected_servers") or []
+            if (
+                not isinstance(canonical_id, str)
+                or not canonical_id.strip()
+                or any(value is not None and not isinstance(value, str) for value in (entry.get("asset_id"), entry.get("package")))
+                or not isinstance(agents, list)
+                or not isinstance(servers, list)
+                or any(not isinstance(name, str) for name in [*agents, *servers])
+            ):
                 keyless.append(entry)
                 continue
+            key = (
+                canonical_id,
+                entry.get("vulnerability_id"),
+                entry.get("asset_id"),
+                entry.get("package"),
+                tuple(sorted(agents)),
+                tuple(sorted(servers)),
+            )
             existing = best_by_id.get(key)
             if existing is None or float(entry.get("risk_score") or 0.0) > float(existing.get("risk_score") or 0.0):
                 best_by_id[key] = entry
@@ -1500,6 +1532,7 @@ def _compose_overview(
         "schema_version": "overview.v1",
         "tenant_id": tenant_id,
         "posture": posture,
+        "finding_counts": {key: exec_counts[key] for key in ("critical", "high", "medium", "low", "unrated", "total", "kev")},
         "headline": {
             "critical": headline_critical,
             "high": headline_high,

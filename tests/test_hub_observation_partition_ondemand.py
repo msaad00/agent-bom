@@ -95,3 +95,15 @@ def test_current_month_partition_not_recreated_when_present(monkeypatch):
     created = ensure_observation_partition_for(spy, "2026-07-16T00:00:00Z", now=_NOW)
     assert created is False
     assert not any("partition of" in s for s in spy.executed)
+
+
+@pytest.mark.parametrize(
+    ("observed_at", "expected_month"),
+    [("2026-07-31T20:00:00-04:00", "08"), ("2026-09-01T08:59:59+09:00", "08")],
+)
+def test_offset_observation_admission_uses_utc_month(observed_at, expected_month):
+    spy = _PartitionSpy()
+    with pytest.raises(ObservationPartitionUnavailableError) as raised:
+        ensure_observation_partition_for(spy, observed_at, now=_NOW)
+    assert raised.value.partition == f"hub_findings_current_observations_y2026m{expected_month}"
+    assert not spy._created_partition()

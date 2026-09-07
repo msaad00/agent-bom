@@ -10,6 +10,7 @@ import {
   CalendarCheck,
   Radar,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
@@ -420,9 +421,13 @@ export default function IdentityPage() {
   const [campaigns, setCampaigns] = useState<AccessReviewCampaign[]>([]);
   const [discovery, setDiscovery] = useState<NhiDiscoveryResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [failures, setFailures] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
     void Promise.allSettled([
       api.listIdentities(true, RECORD_LIMIT),
       api.listJitGrants(true, RECORD_LIMIT),
@@ -440,6 +445,7 @@ export default function IdentityPage() {
           reviewResult,
           discoverResult,
         ]) => {
+          if (cancelled) return;
           if (idResult.status === "fulfilled") {
             setIdentities(idResult.value.identities);
           }
@@ -460,10 +466,13 @@ export default function IdentityPage() {
             setDiscovery(discoverResult.value);
         },
       )
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => {
+        if (!cancelled) { setLoading(false); setLoaded(true); }
+      });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
 
-  if (loading)
+  if (loading && !loaded)
     return (
       <PageLoadingState
         title="Loading identity governance"
@@ -492,7 +501,7 @@ export default function IdentityPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Fingerprint className="h-6 w-6 text-indigo-400" />
         <div>
           <h1 className="text-2xl font-semibold text-[var(--foreground)]">Identity</h1>
@@ -501,6 +510,11 @@ export default function IdentityPage() {
             conditional access.
           </p>
         </div>
+        <button type="button" disabled={loading} onClick={() => setRefreshKey((value) => value + 1)}
+          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-secondary)] disabled:opacity-50">
+          <RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Refreshing evidence" : "Refresh evidence"}
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -547,13 +561,13 @@ export default function IdentityPage() {
 
       {failures.credentials ? <UnavailableSection title="Credential expiry unavailable" detail={failures.credentials} /> : credExpiry && <CredentialExpiryPanel report={credExpiry} />}
 
-      <NhiGovernancePanel />
+      <NhiGovernancePanel refreshKey={refreshKey} />
 
       {failures.reviews ? <UnavailableSection title="Access reviews unavailable" detail={failures.reviews} /> : <AccessReviewPanel campaigns={campaigns} />}
 
       {failures.discovery ? <UnavailableSection title="Identity discovery unavailable" detail={failures.discovery} /> : <NhiDiscoveryPanel discovery={discovery} />}
 
-      {identities.length > 0 && (
+      {!failures.identities && identities.length > 0 && (
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <Fingerprint className="h-4 w-4 text-indigo-400" />
@@ -609,7 +623,7 @@ export default function IdentityPage() {
         </div>
       )}
 
-      {grants.length > 0 && (
+      {!failures.grants && grants.length > 0 && (
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-emerald-400" />
@@ -659,7 +673,7 @@ export default function IdentityPage() {
         </div>
       )}
 
-      {policies.length > 0 && (
+      {!failures.policies && policies.length > 0 && (
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-blue-400" />

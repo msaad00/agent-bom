@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import IdentityPage from "@/app/identity/page";
 
@@ -75,6 +75,18 @@ describe("Identity evidence source states", () => {
     expect(apiMock.listJitGrants).toHaveBeenCalledWith(true, 200);
     expect(apiMock.listConditionalAccessPolicies).toHaveBeenCalledWith(true, 200);
     expect(apiMock.listAccessReviews).toHaveBeenCalledWith(200);
+  });
+  it("retries failed sources through the visible refresh action", async () => {
+    apiMock.listJitGrants.mockRejectedValueOnce(new Error("private failure"))
+      .mockResolvedValueOnce({ grants: [{ grant_id: "grant-1", status: "active", agent_id: "billing", allowed_tools: [], expires_at: "2026-09-08T00:00:00Z" }] });
+    render(<IdentityPage />);
+    await screen.findByText("JIT grants unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Refresh evidence" }));
+    await waitFor(() => expect(tile("Active JIT grants").getByText("1")).toBeVisible());
+    expect(screen.queryByText("JIT grants unavailable")).not.toBeInTheDocument();
+    expect(tile("Active identities").getByText("0")).toBeVisible();
+    expect(apiMock.listJitGrants).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(apiMock.getNhiGovernance).toHaveBeenCalledTimes(2));
   });
   it("links graph identities by canonical node and returned snapshot", async () => {
     apiMock.getNhiGovernance.mockResolvedValue({ scan_id: "snapshot-evidence", counts: { total: 1 }, identities: [{ node_id: "identity:billing", label: "Billing service identity", risk_score: 4 }] });

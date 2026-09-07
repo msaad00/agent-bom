@@ -10,7 +10,7 @@ import { buildGraphInvestigationHref } from "@/lib/attack-paths";
 /**
  * Non-human identity governance posture from GET /v1/graph/nhi/governance.
  */
-export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) {
+export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string | undefined; refreshKey?: number }) {
   const [posture, setPosture] = useState<NhiGovernancePosture | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +36,7 @@ export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) 
     return () => {
       cancelled = true;
     };
-  }, [scanId]);
+  }, [scanId, refreshKey]);
 
   const rawCounts = posture?.counts ?? {};
   const identities = Array.isArray(posture?.identities) ? posture.identities : [];

@@ -1,0 +1,49 @@
+{
+  "description": "One package occurrence in the scanned estate; empty IDs are unknown.",
+  "properties": {
+    "agent": {
+      "title": "Agent",
+      "type": "string"
+    },
+    "agent_id": {
+      "default": "",
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "ecosystem": {
+      "title": "Ecosystem",
+      "type": "string"
+    },
+    "environment": {
+      "default": "",
+      "title": "Environment",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "server": {
+      "title": "Server",
+      "type": "string"
+    },
+    "server_id": {
+      "default": "",
+      "title": "Server Id",
+      "type": "string"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "ecosystem",
+    "agent",
+    "server"
+  ],
+  "title": "InventoryPackageResponse",
+  "type": "object"
+}

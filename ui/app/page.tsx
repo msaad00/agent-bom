@@ -12,7 +12,6 @@ import {
   formatDate,
   type PostureCountsResponse,
   type ComplianceResponse,
-  type TrendsResponse,
 } from "@/lib/api";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
@@ -66,7 +65,7 @@ export default function Dashboard() {
   const [overviewRefreshing, setOverviewRefreshing] = useState(false);
   const [overviewUnavailable, setOverviewUnavailable] = useState(false);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
-  const [trends, setTrends] = useState<TrendsResponse | null>(null);
+  const [complianceLoading, setComplianceLoading] = useState(true);
   const [postureOverviewLoading, setPostureOverviewLoading] = useState(true);
   // Local display-format override; falls back to the persisted per-tenant
   // config carried on the overview posture. Toggling persists via the API (#3940).
@@ -110,31 +109,17 @@ export default function Dashboard() {
         if (!cancelled) setCompliance(value);
       },
       () => {},
-    );
-    void api.getTrends(2).then(
-      (value) => {
-        if (!cancelled) setTrends(value);
-      },
-      () => {},
-    );
+    ).finally(() => {
+      if (!cancelled) setComplianceLoading(false);
+    });
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
   }, []);
 
-  const postureTrend = useMemo(() => {
-    const current = trends?.data_points?.[0];
-    const previous = trends?.data_points?.[1];
-    if (!current || !previous) return null;
-    const delta = current.posture_score - previous.posture_score;
-    return {
-      direction: delta > 0 ? "improved" as const : delta < 0 ? "worsened" as const : "unchanged" as const,
-      delta,
-      previousScore: previous.posture_score,
-      points: trends?.count ?? trends.data_points.length,
-    };
-  }, [trends]);
+  // Per-scan trend points do not establish comparable scope or scoring for
+  // the aggregate overview. Promote no delta until that contract exists.
 
   useEffect(() => {
     let cancelled = false;
@@ -428,7 +413,7 @@ export default function Dashboard() {
                 (New Scan lives in the nav + empty states for engineers). */}
             <Link
               href="/compliance"
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800"
             >
               Compliance <ArrowRight className="h-4 w-4" />
             </Link>
@@ -466,7 +451,10 @@ export default function Dashboard() {
       )}
 
       <OverviewCockpit
-        loading={postureOverviewLoading}
+        loading={!importedReport && postureOverviewLoading}
+        overviewUnavailable={!importedReport && overviewUnavailable && !overview}
+        complianceLoading={!importedReport && complianceLoading}
+        scanScopeLoading={!importedReport && jobsLoading && !overviewSnapshot}
         grade={postureGrade}
         score={postureScore}
         scoreFormat={scoreFormat}
@@ -474,7 +462,6 @@ export default function Dashboard() {
         scoreFloored={overview?.posture.floored}
         onScoreFormatChange={handleScoreFormatChange}
         postureSummary={overview?.posture.summary ?? posture?.summary}
-        postureTrend={postureTrend}
         critical={criticalCount}
         high={highCount}
         kev={summaryReady ? displayedKevCount : null}

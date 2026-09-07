@@ -423,3 +423,100 @@ test("grouped findings remain legible in both themes", async ({ page }, testInfo
     await pill.screenshot({ path: testInfo.outputPath(`finding-group-${theme}.png`) });
   }
 });
+
+for (const routePath of ["/graph", "/security-graph"]) {
+for (const width of [1440, 390]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`grouped SBOM titles and controls fit ${routePath} ${width}px ${theme}`, async ({ page }, testInfo) => {
+      const sourceLabel = "SBOM: modeled-reference-evidence-lab.cdx.json";
+      const graph = buildDenseGraph();
+      const source = node("source:readable", "source_file", sourceLabel);
+      const pkg = node("package:readable", "package", "pillow@9.0.0", "high", 0, { name: "pillow", version: "9.0.0", ecosystem: "pypi" });
+      const findings = Array.from({ length: 22 }, (_, i) => node(`readable:${i}`, "vulnerability", `Fixture finding ${i}`, "high"));
+      graph.nodes = [source, pkg, ...findings];
+      graph.edges = [edge(source.id, pkg.id, "contains"), ...findings.flatMap((finding) => [edge(pkg.id, finding.id, "has_cve"), edge(source.id, finding.id, "has_cve")])].map((item) => ({ ...item, traversable: false }));
+      graph.pagination = { total: 24, offset: 0, limit: 250, has_more: false };
+      await routeGraphPage(page, graph);
+      await page.setViewportSize({ width, height: 811 });
+      await page.goto(`${routePath}?lens=estate&scan=${scanId}&rollup=0`);
+      await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);
+      await expect(page.getByRole("button", { name: "Expand 22 findings" })).toBeVisible();
+      let lastTransform = "";
+      let stableFrames = 0;
+      await expect.poll(async () => {
+        const transform = await page.locator(".react-flow__viewport").evaluate((item) => getComputedStyle(item).transform);
+        stableFrames = transform === lastTransform ? stableFrames + 1 : 0;
+        lastTransform = transform;
+        return stableFrames;
+      }, { intervals: [100] }).toBeGreaterThanOrEqual(3);
+      const controls = page.locator(".react-flow__controls");
+      await expect(controls).toBeVisible();
+      const controlsBox = await controls.boundingBox();
+      expect(controlsBox!.y + controlsBox!.height).toBeLessThanOrEqual(811);
+      {
+        for (const label of [sourceLabel, "pillow@9.0.0", "+22 CVEs", "expand"]) {
+          const metrics = await page.locator(".react-flow__node").getByText(label, { exact: true }).evaluate((element) => ({
+            height: element.clientHeight, contentHeight: element.scrollHeight,
+            zoom: new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a,
+            lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+            renderedFontSize: Number.parseFloat(getComputedStyle(element).fontSize) * new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a,
+          }));
+          await testInfo.attach(`rendered-label-${label}`, { body: JSON.stringify({ label, width, theme, routePath, ...metrics }), contentType: "application/json" });
+          expect(metrics.contentHeight).toBeLessThanOrEqual(metrics.height + 1);
+          expect(metrics.renderedFontSize).toBeGreaterThanOrEqual(12);
+          if (label === "pillow@9.0.0") expect(metrics.height).toBeLessThanOrEqual(metrics.lineHeight + 1);
+        }
+      }
+      const boxes = await page.locator(".react-flow__node").evaluateAll((nodes) => nodes.map((item) => {
+        const box = item.getBoundingClientRect();
+        return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+      }));
+      expect(boxes).toHaveLength(3);
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i]!; const b = boxes[j]!;
+          expect(a.right + 4 <= b.left || b.right + 4 <= a.left || a.bottom + 4 <= b.top || b.bottom + 4 <= a.top).toBe(true);
+        }
+      }
+      const contrast = await page.locator(".react-flow__edge-path").evaluateAll((paths) => {
+        const rgb = (value: string): number[] => {
+          if (value.startsWith("#")) return [1, 3, 5].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
+          return (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+        };
+        const luminance = (value: number[]) => value.map((channel) => {
+          const s = channel / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
+        const background = rgb(getComputedStyle(document.documentElement).getPropertyValue("--surface").trim());
+        return paths.map((path) => {
+          const style = getComputedStyle(path);
+          const group = path.closest(".react-flow__edge")!;
+          const alpha = Number(style.opacity) * Number(getComputedStyle(group).opacity) * Number(style.strokeOpacity);
+          const color = rgb(style.stroke).map((channel, index) => channel * alpha + background[index]! * (1 - alpha));
+          const values = [luminance(color), luminance(background)].sort((a, b) => b - a);
+          return (values[0]! + 0.05) / (values[1]! + 0.05);
+        });
+      });
+      expect(contrast).toHaveLength(3);
+      for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(3);
+      await page.screenshot({ path: testInfo.outputPath(`grouped-${width}-${theme}.png`) });
+      const packageNode = page.getByTestId(`rf__node-${pkg.id}`);
+      await packageNode.click();
+      await expect(page.getByRole("heading", { name: "pillow@9.0.0", exact: true })).toBeVisible();
+      await page.setViewportSize({ width: width === 390 ? 1440 : 390, height: 811 });
+      await expect(page.getByRole("heading", { name: "pillow@9.0.0", exact: true })).toBeVisible();
+      expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
+      await page.getByRole("button", { name: "Close", exact: true }).click();
+      await page.goto("/findings");
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/findings");
+      await page.goBack();
+      await expect.poll(() => new URL(page.url()).pathname).toBe(routePath);
+      expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
+      // A saved desktop viewport stays authoritative after mobile navigation.
+      // The visible Fit action restores the scope without deleting personal layout.
+      await page.getByRole("button", { name: "Fit View", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Expand 22 findings" })).toBeVisible();
+    });
+  }
+}
+}

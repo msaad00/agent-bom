@@ -55,7 +55,7 @@ describe("buildExposurePathView", () => {
 
   it("builds the node chain with a stable semantic key", () => {
     const view = buildExposurePathView(makeBlast(), "scan-1", 3);
-    expect(view.key).toBe("cve-2026-0002::flask::claude%20desktop::mcp-fs");
+    expect(view.key).toContain("cve-2026-0002::flask::claude%20desktop::mcp-fs::snapshot:scan-1");
     expect(buildExposurePathView(makeBlast(), "scan-1", 99).key).toBe(view.key);
     expect(view.riskScore).toBe(9.1);
     expect(view.nodes).toEqual([
@@ -69,7 +69,7 @@ describe("buildExposurePathView", () => {
 
   it("uses an index-less key for a single row", () => {
     const view = buildExposurePathView(makeBlast({ package: undefined }), "scan-1");
-    expect(view.key).toBe("cve-2026-0002::unknown::claude%20desktop::mcp-fs");
+    expect(view.key).toContain("cve-2026-0002::unknown::claude%20desktop::mcp-fs::snapshot:scan-1");
     // Package hop dropped when absent; scan still threaded.
     expect(view.href).toBe(
       "/security-graph?lens=attack-path&scan=scan-1&cve=CVE-2026-0002&agent=Claude+Desktop",
@@ -194,5 +194,29 @@ describe("buildExecExposurePaths", () => {
   it("returns an empty strip when there are genuinely no risks", () => {
     expect(buildExecExposurePaths([], [])).toEqual([]);
     expect(buildExecExposurePaths([], null)).toEqual([]);
+  });
+});
+
+describe("canonical overview occurrence reconciliation", () => {
+  const occurrence = () => ({ ...makeBlast({ vulnerability_id: "CVE-2020-14343", package: "pyyaml@5.3" }), canonical_id: "finding-a", asset: { stable_id: "runtime-a" }, scanId: "snapshot-a" });
+  const aggregate = () => ({ ...makeTopRisk({ vulnerability_id: "CVE-2020-14343", package: "pyyaml@5.3", affected_agents: ["Claude Desktop"] }), canonical_id: "finding-a", asset_id: "runtime-a", affected_servers: ["mcp-fs"] });
+  it("suppresses the aggregate only for the same canonical occurrence", () => {
+    expect(buildExecExposurePaths([occurrence()], [aggregate()])).toHaveLength(1);
+  });
+  it("keeps different runtime identities despite equal display names", () => {
+    expect(buildExecExposurePaths([occurrence(), { ...occurrence(), canonical_id: "finding-b", asset: { stable_id: "runtime-b" } }], [], 10)).toHaveLength(2);
+    expect(buildExecExposurePaths([occurrence()], [{ ...aggregate(), canonical_id: "finding-b", asset_id: "runtime-b" }])).toHaveLength(2);
+  });
+  it("keeps distinct versions and agents even if a producer reuses an identity", () => {
+    for (const variant of [{ package: "pyyaml@5.2" }, { affected_agents: ["Other Agent"] }, { affected_agents: ["Claude Desktop", "Other Agent"] }, { affected_servers: ["other-server"] }, { affected_servers: ["mcp-fs", "other-server"] }]) {
+      expect(buildExecExposurePaths([occurrence()], [{ ...aggregate(), ...variant }])).toHaveLength(2);
+    }
+  });
+  it("keeps missing identities snapshot scoped and does not guess ambiguous aggregates", () => {
+    const unnamed = makeBlast({ package: undefined, affected_agents: [], affected_servers: [] });
+    expect(buildExecExposurePaths([unnamed, { ...unnamed }], [])).toHaveLength(2);
+    expect(buildExecExposurePaths([{ ...unnamed, scanId: "s1" }, { ...unnamed, scanId: "s2" }], [])).toHaveLength(2);
+    expect(buildExecExposurePaths([occurrence()], [{ ...aggregate(), canonical_id: undefined }])).toHaveLength(2);
+    expect(buildExecExposurePaths([occurrence(), { ...occurrence(), asset: { stable_id: "runtime-b" } }], [aggregate()], 10)).toHaveLength(2);
   });
 });

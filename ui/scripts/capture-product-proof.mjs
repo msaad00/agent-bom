@@ -3102,7 +3102,7 @@ async function main() {
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       await scrollTo(dashboardPage, 720);
     }, {
-      expectedText: ["Top risks", "Recent scans", "Activity", "DEMO-VULN-21441"],
+      expectedText: ["Top risks", "Recent scans", "Activity", "Finding in next", "developer-copilot"],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
     });
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {
@@ -3240,7 +3240,7 @@ async function main() {
         awaitResponses: [
           (response) => new URL(response.url()).pathname === "/v1/graph/rollup" && response.ok(),
         ],
-        expectedText: ["Investigation Canvas", "Risk-prioritized scopes", "aggregated relationship rows"],
+        expectedText: ["Investigation Canvas", "Prioritized findings and scopes", "aggregated relationship rows"],
         expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/rollup", "/v1/graph/scenarios"],
         readySelector: '[data-testid="graph-rollup-decision-surface"]',
         assertNoHorizontalOverflow: true,
@@ -3401,7 +3401,7 @@ async function main() {
       });
       await scrollTo(inventoryPage, 0);
     }, {
-      expectedText: ["Asset inventory", "Packages", "MCP servers", "AI agents", "Cloud resources", "Coverage reflects only what has actually been scanned or connected"],
+      expectedText: ["Asset inventory", "Packages", "MCP servers", "AI agents", "Cloud resources", "Coverage reflects scanned and connected sources"],
       expectedApiPaths: ["/v1/inventory/summary", "/v1/inventory/assets"],
     });
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {

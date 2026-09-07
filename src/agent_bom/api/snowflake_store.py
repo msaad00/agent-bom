@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity, native_app_mode
+from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 
 from .exception_store import ExceptionStatus, VulnException
 from .fleet_store import FleetAgent, FleetEndpoint, FleetLifecycleState
@@ -42,7 +43,6 @@ def _sf_connect(**kwargs: Any) -> Any:
     return snowflake.connector.connect(**kwargs)
 
 
-_JOB_TTL_SECONDS = 3600
 _SNOWFLAKE_TENANT_ACCESS_TABLE = "agent_bom_tenant_access"
 _SNOWFLAKE_TENANT_ROW_ACCESS_POLICY = "agent_bom_tenant_isolation"
 _SNOWFLAKE_TENANT_TABLES = (

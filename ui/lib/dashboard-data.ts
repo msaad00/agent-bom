@@ -247,12 +247,28 @@ function execExposureSemanticKey(
   return dimensions.map((value) => encodeURIComponent(value.trim().toLowerCase())).join("::");
 }
 
-function execExposureAggregateKey(
-  finding: string,
-  packageName?: string | null,
-  agent?: string | null,
-): string {
-  return execExposureSemanticKey(finding, packageName, agent, null);
+function occurrenceNames(names: string[] | undefined): string {
+  return JSON.stringify([...new Set(names ?? [])].sort());
+}
+
+function canonicalOccurrenceKey(id: string, assetId?: string | null): string {
+  return `::canonical:${encodeURIComponent(id)}::asset:${encodeURIComponent(assetId ?? "unknown")}`;
+}
+
+/** An overview aggregate is covered only by one unambiguous richer occurrence. */
+function coversOverviewRisk(blast: BlastRadius, risk: OverviewTopRisk): boolean {
+  if (blast.vulnerability_id !== risk.vulnerability_id || !blast.package || blast.package !== risk.package) return false;
+  const agents = blastAgents(blast);
+  if (!agents.length || occurrenceNames(agents) !== occurrenceNames(risk.affected_agents)) return false;
+  if (risk.affected_servers?.length && occurrenceNames(blast.affected_servers) !== occurrenceNames(risk.affected_servers)) return false;
+  if (blast.canonical_id || risk.canonical_id) {
+    if (!blast.canonical_id || blast.canonical_id !== risk.canonical_id) return false;
+    const assetId = blast.asset?.canonical_id ?? blast.asset?.stable_id;
+    return (assetId ?? null) === (risk.asset_id ?? null);
+  }
+  // Legacy responses lack canonical identity. Exact package/version and agent
+  // evidence can cover one candidate, but never resolve several runtimes.
+  return true;
 }
 
 /**
@@ -285,7 +301,10 @@ export function buildExposurePathView(
       blast.package,
       agents[0],
       blast.affected_servers?.[0],
-    ),
+    ) + (blast.canonical_id
+      ? canonicalOccurrenceKey(blast.canonical_id, blast.asset?.canonical_id ?? blast.asset?.stable_id)
+      : `::snapshot:${encodeURIComponent(scanId ?? "unknown")}`)
+      + `::package:${encodeURIComponent(blast.package ?? "")}::agents:${encodeURIComponent(occurrenceNames(agents))}::servers:${encodeURIComponent(occurrenceNames(blast.affected_servers))}`,
     nodes,
     riskScore: blast.risk_score ?? blast.blast_score / 10,
     href: buildSecurityGraphHref({
@@ -334,7 +353,9 @@ export function buildTopRiskExposurePath(
       : "/findings";
 
   return {
-    key: execExposureSemanticKey(risk.vulnerability_id, risk.package, agent),
+    key: execExposureSemanticKey(risk.vulnerability_id, risk.package, agent, risk.affected_servers?.[0])
+      + (risk.canonical_id ? canonicalOccurrenceKey(risk.canonical_id, risk.asset_id)
+        + `::package:${encodeURIComponent(risk.package ?? "")}::agents:${encodeURIComponent(occurrenceNames(risk.affected_agents))}::servers:${encodeURIComponent(occurrenceNames(risk.affected_servers))}` : ""),
     nodes,
     riskScore: risk.risk_score ?? 0,
     href,
@@ -348,9 +369,9 @@ export function buildTopRiskExposurePath(
  * the server-reconciled `overview.top_risks` — the authoritative source that also
  * covers hub/bulk-ingested findings, which never create scan jobs — contributes
  * any risk not already represented by a scan blast. Presentation rows dedupe
- * by finding + package + agent + asset; the aggregate overview copy is removed
- * when a richer scan occurrence covers its finding/package/agent. Different
- * agents or assets remain distinct. Ranked worst-first and capped.
+ * by canonical occurrence and package/version/agent/asset scope, falling back
+ * to snapshot-scoped presentations for legacy scans. An aggregate copy is
+ * removed only when exactly one richer occurrence covers it. Ranked and capped.
  */
 export function buildExecExposurePaths(
   allBlast: (BlastRadius & { scanId?: string })[],
@@ -363,24 +384,22 @@ export function buildExecExposurePaths(
   const seen = new Set<string>();
   const blastViews = blastRanked.flatMap((blast, index) => {
     const view = buildExposurePathView(blast, blast.scanId, index);
+    if (!blast.canonical_id && !blast.scanId) view.key += `::unresolved:${index}`;
     if (seen.has(view.key)) return [];
     seen.add(view.key);
     return [view];
   });
-  const covered = new Set(
-    blastRanked.map((blast) =>
-      execExposureAggregateKey(blast.vulnerability_id, blast.package, blastAgents(blast)[0]),
-    ),
-  );
   const topRiskViews = (topRisks ?? [])
     .filter(
       (risk) =>
         risk.vulnerability_id &&
-        !covered.has(execExposureAggregateKey(risk.vulnerability_id, risk.package, risk.affected_agents?.[0])),
+        new Set(blastRanked.filter((blast) => coversOverviewRisk(blast, risk))
+          .map((blast) => buildExposurePathView(blast, blast.scanId).key)).size !== 1,
     )
     .flatMap((risk, index) => {
       const view = buildTopRiskExposurePath(risk, blastViews.length + index);
-      if (seen.has(view.key)) return [];
+      if (seen.has(view.key) && risk.canonical_id) return [];
+      if (seen.has(view.key)) view.key += `::unresolved:${index}`;
       seen.add(view.key);
       return [view];
     });

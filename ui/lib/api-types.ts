@@ -1580,6 +1580,8 @@ export interface WorkloadRuntimeEvidence {
 
 export interface BlastRadius {
   vulnerability_id: string;
+  canonical_id?: string | undefined;
+  asset?: { canonical_id?: string; stable_id?: string } | undefined;
   severity: string;
   package?: string | undefined;
   ecosystem?: string | undefined;
@@ -3219,6 +3221,9 @@ export interface OverviewCoverageLane {
 
 export interface OverviewTopRisk {
   vulnerability_id: string;
+  canonical_id?: string | null | undefined;
+  asset_id?: string | null | undefined;
+  affected_servers?: string[] | undefined;
   package: string | null;
   severity: string;
   risk_score: number;
@@ -3243,7 +3248,7 @@ export type ExecScoreDisplayFormat = "grade" | "percent" | "points";
 /** The configurable exec risk-score posture block on the overview payload. */
 export interface OverviewPosture {
   grade: string;
-  score: number;
+  score: number | null;
   summary: string;
   points?: number;
   percent?: number;
@@ -3291,6 +3296,8 @@ export interface ScoreConfigUpdate {
 }
 
 export interface OverviewResponse {
+  /** Counts from the same evidence snapshot as posture and top_risks. */
+  finding_counts?: Pick<PostureCountsResponse, "critical" | "high" | "medium" | "low" | "unrated" | "total" | "kev">;
   schema_version: string;
   tenant_id: string;
   posture: OverviewPosture;

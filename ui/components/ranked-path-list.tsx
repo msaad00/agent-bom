@@ -1,7 +1,5 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
-
 import { pathSpanLabel } from "@/lib/exposure-path";
 
 export interface RankedPathRow {
@@ -73,22 +71,32 @@ export function RankedPathList({
             aria-pressed={active}
             aria-controls={controlsId}
             onClick={() => onSelect(row.selectionKey)}
-            className={`grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition sm:gap-3 ${
+            className={`flex w-full flex-col items-stretch gap-2 rounded-xl border px-3 py-3 text-left transition ${
               active
                 ? "border-orange-400/70 bg-orange-500/10 ring-1 ring-orange-400/60"
-                : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] hover:border-[color:var(--border-strong)]"
+                : "border-outline bg-surface-elevated hover:border-outline-strong"
             }`}
           >
-            <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center justify-between gap-2">
               <span
                 className={`mb-1 inline-flex rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
                   row.rank === 1
                     ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
-                    : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
+                    : "bg-surface text-ink-tertiary"
                 }`}
               >
                 {row.rank === 1 ? "#1 fix first" : `#${row.rank}`}
               </span>
+            <span className="flex items-baseline gap-1.5 text-ink-secondary">
+              <span className="text-[10px]">
+                Path priority
+              </span>
+              <span className="font-mono text-xs font-semibold text-foreground">
+                {row.riskScore.toFixed(1)}
+              </span>
+            </span>
+            </span>
+            <span className="min-w-0">
               {advisory ? (
                 <span
                   data-testid="ranked-path-advisory"
@@ -98,17 +106,17 @@ export function RankedPathList({
                 </span>
               ) : null}
               <span
-                className="line-clamp-2 break-normal text-sm font-medium leading-snug text-[color:var(--foreground)]"
+                className="line-clamp-3 break-words text-sm font-medium leading-snug text-foreground"
                 title={advisory ? `${advisory} · ${displayTitle}` : displayTitle}
               >
                 {displayTitle}
               </span>
-              <span className="mt-0.5 block text-[11px] text-[color:var(--text-tertiary)]">
+              <span className="mt-0.5 block text-[11px] text-ink-tertiary">
                 {pathSpanLabel(row.nodeCount)} · {row.agents} agent{row.agents === 1 ? "" : "s"}
               </span>
               {row.roleChain ? (
                 <span
-                  className="mt-0.5 block truncate font-mono text-[10px] text-[color:var(--text-secondary)]"
+                  className="mt-0.5 block truncate font-mono text-[10px] text-ink-secondary"
                   title={row.roleChain}
                 >
                   {row.roleChain}
@@ -135,20 +143,6 @@ export function RankedPathList({
                 </span>
               ) : null}
             </span>
-            <span className="justify-self-auto rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-right">
-              <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-red-700 dark:text-red-200">
-                Path risk
-              </span>
-              <span className="block font-mono text-sm font-semibold leading-4 text-red-800 dark:text-red-100">
-                {row.riskScore.toFixed(1)}
-              </span>
-            </span>
-            <ChevronRight
-              className={`h-4 w-4 shrink-0 self-center transition ${
-                active ? "text-orange-300" : "text-[color:var(--text-tertiary)]"
-              }`}
-              aria-hidden="true"
-            />
           </button>
         );
       })}

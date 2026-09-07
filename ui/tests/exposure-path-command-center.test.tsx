@@ -114,6 +114,17 @@ describe("ExposurePathCommandCenter", () => {
     expect(screen.getByText("Validate the lead finding")).toBeInTheDocument();
   });
 
+  it("keeps raw finding identifiers in evidence and does not invent a path summary", () => {
+    const findingId = "2176ecf3-971b-5006-9b0c-f59ff11cc7ff";
+    render(<ExposurePathCommandCenter path={{ ...basePath, findings: [findingId], summary: undefined }} />);
+    const header = screen.getByRole("heading", { level: 2 }).closest(".ep-header");
+    expect(header).not.toHaveTextContent(findingId);
+    expect(screen.getByText(findingId)).not.toBeVisible();
+    fireEvent.click(screen.getByText("Evidence & relationships"));
+    expect(screen.getByText(findingId)).toBeVisible();
+    expect(screen.queryByText(/inherits downstream credential and tool exposure/)).not.toBeInTheDocument();
+  });
+
   it("keeps the decision proof and action visible while technical analysis is disclosed", () => {
     render(
       <ExposurePathCommandCenter

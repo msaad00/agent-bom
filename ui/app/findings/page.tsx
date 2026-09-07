@@ -119,6 +119,9 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
     const findingLabel = finding.cve_id || finding.title || finding.id;
     const sourceLabel = uniqueStrings([finding.source, finding.finding_type, ...(finding.scan_sources ?? [])]);
     const evidence = finding.evidence ?? {};
+    const packageName = finding.package_name?.trim() || finding.package?.trim() || recordString(evidence, "package_name") || assetName;
+    const currentVersion = finding.package_version ?? recordString(evidence, "package_version");
+    const serverAsset = finding.asset?.asset_type === "server" || finding.asset?.asset_type === "mcp_server" || finding.entity_type === "server";
     const references = uniqueStrings([
       ...(finding.references ?? []),
       ...recordStrings(evidence, "references"),
@@ -156,19 +159,17 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       kev_date_added: finding.kev_date_added ?? recordString(evidence, "kev_date_added"),
       kev_due_date: finding.kev_due_date ?? recordString(evidence, "kev_due_date"),
       fixed_version: finding.fixed_version ?? undefined,
-      current_version:
-        finding.package_version ??
-        recordString(evidence, "package_version"),
+      current_version: currentVersion,
       published_at: finding.published_at ?? recordString(evidence, "published_at"),
       modified_at: finding.modified_at ?? recordString(evidence, "modified_at"),
       severity_source: finding.severity_source ?? recordString(evidence, "severity_source"),
       confidence: finding.confidence ?? recordNumber(evidence, "confidence"),
       match_confidence_tier:
         finding.match_confidence_tier ?? recordString(evidence, "match_confidence_tier"),
-      packages: [assetName],
+      packages: [packageName],
       agents: finding.affected_agents ?? [],
       sources: sourceLabel.length > 0 ? sourceLabel : ["finding"],
-      affected_servers: finding.affected_servers ?? [],
+      affected_servers: uniqueStrings([...(finding.affected_servers ?? []), ...(serverAsset && assetName !== "Unavailable" ? [assetName] : [])]),
       exposed_credentials: finding.exposed_credentials ?? [],
       reachable_tools: finding.exposed_tools ?? [],
       phantom_tools: raw.phantom_tools ?? [],
@@ -186,9 +187,9 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       remediation_items: finding.remediation_guidance
         ? [
             {
-              package: assetName,
+              package: packageName,
               ecosystem: finding.asset?.asset_type ?? finding.finding_type ?? "finding",
-              current_version: "",
+              current_version: currentVersion ?? "",
               fixed_version: finding.fixed_version ?? null,
               action: "review",
               command: null,
@@ -863,7 +864,7 @@ function FindingsPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <div
-              className="flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5"
+              className="flex rounded-lg border border-outline bg-surface-muted p-0.5"
               role="group"
               aria-label="Findings altitude"
             >
@@ -874,8 +875,8 @@ function FindingsPage() {
                   onClick={() => selectLens(value)}
                   className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
                     lens === value
-                      ? "bg-[color:var(--surface)] text-[color:var(--foreground)] shadow-sm"
-                      : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
+                      ? "bg-surface text-foreground shadow-sm"
+                      : "text-ink-tertiary hover:text-ink-secondary"
                   }`}
                 >
                   {lensLabel(value)}
@@ -902,7 +903,7 @@ function FindingsPage() {
           </div>
         }
       />
-      <p className="text-xs text-[color:var(--text-tertiary)]">{lensHint}</p>
+      <p className="text-xs text-ink-tertiary">{lensHint}</p>
 
       {triageError && (
         <div className="rounded-lg border border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
@@ -937,7 +938,7 @@ function FindingsPage() {
       {!loading && !error && scopeCompleteness?.status === "partial" && (
         <div
           data-testid="findings-scope-partial"
-          className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]"
+          className="rounded-md border border-outline bg-surface-muted px-3 py-2 text-xs text-ink-secondary"
         >
           Partial results — filter matching stopped after {scopeCompleteness.scanned_rows.toLocaleString()} scanned rows
           to keep the read fast. Page through with Next for the rest, or narrow the filters.
@@ -965,7 +966,7 @@ function FindingsPage() {
           <section
             aria-label={`${lensLabel(lens)} findings summary`}
             data-testid="findings-workspace-summary"
-            className="grid gap-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4 sm:grid-cols-2 xl:grid-cols-4"
+            className="grid gap-5 rounded-xl border border-outline bg-surface p-4 sm:grid-cols-2 xl:grid-cols-4"
           >
             {workspaceMetrics.map((metric) => (
               <div
@@ -973,17 +974,17 @@ function FindingsPage() {
                 className="min-w-0"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-[var(--text-secondary)]">
+                  <span className="text-xs font-medium text-ink-secondary">
                     {metric.label}
                   </span>
-                  <span className="text-xs text-[var(--text-tertiary)]">
+                  <span className="text-xs text-ink-tertiary">
                     {metric.scope === "query" ? "Whole query" : "Current page"}
                   </span>
                 </div>
-                <p className={`mt-1 text-sm font-semibold ${metric.unavailable ? "text-[var(--text-tertiary)]" : "text-[var(--foreground)]"}`}>
+                <p className={`mt-1 text-sm font-semibold ${metric.unavailable ? "text-ink-tertiary" : "text-foreground"}`}>
                   {metric.value}
                 </p>
-                <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">{metric.detail}</p>
+                <p className="mt-0.5 text-[11px] text-ink-tertiary">{metric.detail}</p>
               </div>
             ))}
           </section>
@@ -993,8 +994,8 @@ function FindingsPage() {
           <div className="flex flex-col gap-3">
             {/* One-line queue caption (verbose explainer moved to the title tooltip). */}
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-[var(--text-tertiary)]">
-                <span className="font-semibold text-[var(--text-secondary)]" title={findingsQueueDetail(lens)}>
+              <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-tertiary">
+                <span className="font-semibold text-ink-secondary" title={findingsQueueDetail(lens)}>
                   {findingsQueueTitle(lens)}
                 </span>
                 <span aria-hidden="true">·</span>
@@ -1002,7 +1003,7 @@ function FindingsPage() {
                 <span aria-hidden="true">·</span>
                 <span>{PAGE_SIZE} per page</span>
               </p>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-tertiary)]">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-ink-tertiary">
                 <span title="OpenVEX export is available after a finding is triaged as not_affected with justification">
                   {vexEligibleCount} OpenVEX-ready
                 </span>
@@ -1016,7 +1017,7 @@ function FindingsPage() {
                 ) : (
                   <a
                     href="/remediation"
-                    className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+                    className="rounded-full border border-outline bg-surface px-2 py-1 hover:border-outline-strong hover:text-ink-secondary"
                   >
                     Remediation
                   </a>
@@ -1026,23 +1027,23 @@ function FindingsPage() {
 
             {/* Primary toolbar: search + issue type + severity, with
                 advanced filters tucked into the "Filters (n)" popover. */}
-            <div className="flex flex-col gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 px-3 py-2.5">
+            <div className="flex flex-col gap-2.5 rounded-xl border border-outline bg-background/70 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
                   placeholder={findingsSearchPlaceholder(lens)}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="min-w-[12rem] flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:border-[var(--border-strong)] focus:outline-none"
+                  className="min-w-[12rem] flex-1 rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground placeholder-[var(--text-tertiary)] focus:border-outline-strong focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={() => setFiltersOpen(true)}
                   data-testid="findings-window-chip"
                   title="Findings are scoped to this time window. Open Filters to widen."
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface-muted px-2.5 py-1 text-[11px] font-medium text-ink-secondary transition-colors hover:border-outline-strong hover:text-foreground"
                 >
-                  <span className="text-[color:var(--text-tertiary)]">Window</span>
+                  <span className="text-ink-tertiary">Window</span>
                   {appliedWindow?.label ??
                     WINDOW_OPTIONS.find((o) => o.value === windowDays)?.label ??
                     "Last 90 days"}
@@ -1056,8 +1057,8 @@ function FindingsPage() {
                     data-testid="findings-filters-toggle"
                     className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                       activeFilterCount > 0
-                        ? "border-[color:var(--border-strong)] bg-[var(--surface-elevated)] text-[var(--foreground)]"
-                        : "border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+                        ? "border-outline-strong bg-surface-elevated text-foreground"
+                        : "border-outline text-ink-secondary hover:border-outline-strong hover:text-foreground"
                     }`}
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -1068,15 +1069,15 @@ function FindingsPage() {
                       role="dialog"
                       aria-label="Advanced filters"
                       data-testid="findings-filters-popover"
-                      className="absolute right-0 z-40 mt-2 flex w-[min(22rem,90vw)] flex-col gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 shadow-xl"
+                      className="absolute right-0 z-40 mt-2 flex w-[min(22rem,90vw)] flex-col gap-3 rounded-xl border border-outline bg-surface p-3 shadow-xl"
                     >
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Time window</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Time window</span>
                         <select
                           value={windowDays}
                           onChange={(e) => setWindowDays(Number(e.target.value))}
                           data-testid="findings-window-select"
-                          className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] focus:border-[var(--border-strong)] focus:outline-none"
+                          className="rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground focus:border-outline-strong focus:outline-none"
                         >
                           {WINDOW_OPTIONS.map(({ value, label }) => (
                             <option key={value} value={value}>
@@ -1086,7 +1087,7 @@ function FindingsPage() {
                         </select>
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Domain</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Domain</span>
                         <div className="flex flex-wrap items-center gap-1">
                           {DOMAIN_FILTERS.map(({ key, label }) => (
                             <button
@@ -1095,8 +1096,8 @@ function FindingsPage() {
                               onClick={() => setDomainFilter(key)}
                               className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
                                 domainFilter === key
-                                  ? "border-[color:var(--accent-mint)] bg-[color:var(--surface-muted)] text-[color:var(--foreground)]"
-                                  : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                                  ? "border-accent-mint bg-surface-muted text-foreground"
+                                  : "border-outline text-ink-secondary hover:border-outline-strong hover:text-foreground"
                               }`}
                             >
                               {label}
@@ -1105,11 +1106,11 @@ function FindingsPage() {
                         </div>
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Cloud</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Cloud</span>
                         <select
                           value={providerFilter}
                           onChange={(e) => setProviderFilter(e.target.value)}
-                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                          className="rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground focus:border-outline-strong focus:outline-none"
                         >
                           <option value="">Any provider</option>
                           {PROVIDER_OPTIONS.map((p) => (
@@ -1120,41 +1121,41 @@ function FindingsPage() {
                         </select>
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Account</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Account</span>
                         <input
                           type="text"
                           placeholder="e.g. aws:123456789012"
                           value={accountFilter}
                           onChange={(e) => setAccountFilter(e.target.value)}
-                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                          className="rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground placeholder-[color:var(--text-tertiary)] focus:border-outline-strong focus:outline-none"
                         />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Environment</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Environment</span>
                         <input
                           type="text"
                           placeholder="e.g. prod"
                           value={environmentFilter}
                           onChange={(e) => setEnvironmentFilter(e.target.value)}
-                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                          className="rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground placeholder-[color:var(--text-tertiary)] focus:border-outline-strong focus:outline-none"
                         />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Owner</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Owner</span>
                         <input
                           type="text"
                           placeholder="e.g. payments-security"
                           value={ownerFilter}
                           onChange={(e) => setOwnerFilter(e.target.value)}
-                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                          className="rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground placeholder-[color:var(--text-tertiary)] focus:border-outline-strong focus:outline-none"
                         />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">SLA</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">SLA</span>
                         <select
                           value={slaFilter}
                           onChange={(e) => setSlaFilter(e.target.value as "" | "overdue" | "due" | "unassigned")}
-                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                          className="rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground focus:border-outline-strong focus:outline-none"
                         >
                           <option value="">Any SLA</option>
                           <option value="overdue">Overdue</option>
@@ -1163,11 +1164,11 @@ function FindingsPage() {
                         </select>
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Reachability</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Reachability</span>
                         <select
                           value={reachabilityFilter}
                           onChange={(e) => setReachabilityFilter(e.target.value as ReachabilityFilter)}
-                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                          className="rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground focus:border-outline-strong focus:outline-none"
                         >
                           <option value="">Any reachability</option>
                           <option value="reachable">Reachable</option>
@@ -1176,11 +1177,11 @@ function FindingsPage() {
                         </select>
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Triage</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Triage</span>
                         <select
                           value={triageFilter}
                           onChange={(e) => setTriageFilter(e.target.value as TriageFilter)}
-                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                          className="rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground focus:border-outline-strong focus:outline-none"
                         >
                           <option value="">Any triage state</option>
                           <option value="not_affected">Not affected</option>
@@ -1189,19 +1190,19 @@ function FindingsPage() {
                           <option value="untriaged">Untriaged</option>
                         </select>
                       </div>
-                      <div className="flex items-center justify-between gap-2 border-t border-[color:var(--border-subtle)] pt-2">
+                      <div className="flex items-center justify-between gap-2 border-t border-outline pt-2">
                         <button
                           type="button"
                           onClick={clearAdvancedFilters}
                           disabled={activeFilterCount === 0}
-                          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-secondary transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Clear all
                         </button>
                         <button
                           type="button"
                           onClick={() => setFiltersOpen(false)}
-                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-strong)]"
+                          className="rounded-lg border border-outline bg-surface-elevated px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-outline-strong"
                         >
                           Done
                         </button>
@@ -1212,7 +1213,7 @@ function FindingsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-1">
-                <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Issue type</span>
+                <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Issue type</span>
                 {ISSUE_TYPE_FILTERS.map(({ key, label, hint }) => (
                   <button
                     key={key}
@@ -1222,7 +1223,7 @@ function FindingsPage() {
                     className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
                       issueTypeFilter === key
                         ? "border-cyan-700 bg-cyan-500/10 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-200"
-                        : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+                        : "border-outline text-ink-tertiary hover:border-outline-strong hover:text-ink-secondary"
                     }`}
                   >
                     {label}
@@ -1232,15 +1233,15 @@ function FindingsPage() {
 
               <div className="flex flex-wrap items-center gap-1">
                 <div className="flex flex-wrap items-center gap-1">
-                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Severity</span>
+                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">Severity</span>
                   {FILTERS?.map(({ key, label, color }) => (
                     <button
                       key={key}
                       onClick={() => setFilter(key)}
                       className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
                         filter === key
-                          ? `${color} border-[var(--border-strong)] bg-[var(--surface-elevated)]`
-                          : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+                          ? `${color} border-outline-strong bg-surface-elevated`
+                          : "text-ink-tertiary border-outline hover:border-outline-strong hover:text-ink-secondary"
                       }`}
                     >
                       {label}
@@ -1262,7 +1263,7 @@ function FindingsPage() {
                     onClick={chip.onClear}
                     data-testid={`findings-chip-${chip.key}`}
                     aria-label={`Remove filter ${chip.label}`}
-                    className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-xs font-medium text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                    className="inline-flex items-center gap-1 rounded-full border border-outline bg-surface-muted px-2.5 py-1 text-xs font-medium text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
                   >
                     {chip.label}
                     <X className="h-3 w-3" aria-hidden="true" />
@@ -1271,7 +1272,7 @@ function FindingsPage() {
                 <button
                   type="button"
                   onClick={clearAdvancedFilters}
-                  className="rounded-full px-2 py-1 text-xs font-medium text-[color:var(--text-tertiary)] transition hover:text-[color:var(--foreground)]"
+                  className="rounded-full px-2 py-1 text-xs font-medium text-ink-tertiary transition hover:text-foreground"
                 >
                   Clear all
                 </button>
@@ -1279,7 +1280,7 @@ function FindingsPage() {
             )}
 
             {detailLoading && vulns.length > 0 && (
-              <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+              <div className="flex items-center gap-2 text-xs text-ink-tertiary">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Refreshing the server-backed queue…
               </div>

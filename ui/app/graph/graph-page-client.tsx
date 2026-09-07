@@ -116,6 +116,7 @@ import {
 } from "@/lib/graph-utils";
 import {
   graphFitViewOptions,
+  graphInitialFitViewOptions,
   shouldShowGraphMiniMap,
 } from "@/lib/graph-viewport";
 import {
@@ -2320,6 +2321,29 @@ function GraphPageInner() {
       }),
     [captureMode, displayEdges.length, displayNodes.length],
   );
+  const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
+    // Capture mode deliberately frames the complete bounded topology.
+    if (captureMode) return viewportOptions;
+    const difference = scenarioState !== "current" ? scenarioComparison?.difference : undefined;
+    const proposedIds = [...(difference?.nodes_added ?? []), ...(difference?.nodes_changed ?? [])]
+      .flatMap((item): string[] => {
+        if (typeof item === "string") return [item];
+        if (!item || typeof item !== "object") return [];
+        const id = "node_id" in item ? item.node_id : "id" in item ? item.id : null;
+        return typeof id === "string" ? [id] : [];
+      });
+    return graphInitialFitViewOptions(displayNodes, viewportOptions, selectedNodeId, proposedIds);
+  }, [captureMode, displayNodes, viewportOptions, selectedNodeId, scenarioState, scenarioComparison]);
+  const initialAnchorId = initialViewportRequest.nodes?.[0]?.id;
+  // React Flow shares this prop with its queued imperative fit operation.
+  // Hover/LOD node objects must not overwrite a user's pending Fit all request
+  // with an equivalent-but-new initial anchor options object.
+  const initialViewportOptions = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(
+    () => initialAnchorId
+      ? graphInitialFitViewOptions([{ id: initialAnchorId, data: {} }], viewportOptions, initialAnchorId)
+      : viewportOptions,
+    [initialAnchorId, viewportOptions],
+  );
   const showMiniMap = useMemo(
     () =>
       !captureMode &&
@@ -3744,6 +3768,12 @@ function GraphPageInner() {
               </div>
             </section>
           )}
+          {!captureMode && initialViewportOptions.nodes && graphRenderer.kind === "react-flow" && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
+              <span>{graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length} graph nodes · {displayEdges.length} relationships</span>
+              <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
+            </div>
+          )}
           <div className="relative min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
@@ -3805,13 +3835,13 @@ function GraphPageInner() {
             />
           ) : (
             <ReactFlow
-              key={captureMode ? "lineage-capture" : presentation.storageKey}
+              key={captureMode ? "lineage-capture" : `${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "initial"}`}
               nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}
-              fitView={!presentation.hasSavedState}
-              fitViewOptions={viewportOptions}
-              defaultViewport={presentation.viewport}
+              fitView={!presentation.hasSavedState && !presentation.restoredSavedState}
+              fitViewOptions={initialViewportOptions}
+              defaultViewport={presentation.restoredViewport ?? presentation.viewport}
               minZoom={0.16}
               maxZoom={2.5}
               zoomOnScroll={!captureMode}
@@ -3854,6 +3884,7 @@ function GraphPageInner() {
               <Controls className={CONTROLS_CLASS} />
               {showMiniMap && (
                 <MiniMap
+                  style={narrowViewport ? { width: 96, height: 64 } : undefined}
                   nodeColor={minimapNodeColor}
                   className={MINIMAP_CLASS}
                   bgColor={MINIMAP_BG}

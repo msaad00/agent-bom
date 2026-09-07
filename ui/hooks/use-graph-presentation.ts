@@ -61,7 +61,12 @@ export function useGraphPresentation<T extends Node>({
   // Distinguish a viewport restored from storage from one first persisted by
   // this mount. React Flow must remount when late auth enables storage and a
   // saved viewport appears; otherwise its earlier one-shot fit wins visually.
-  const [restoredSavedState, setRestoredSavedState] = useState(() => Boolean(persistenceEnabled && initialState));
+  const [restoration, setRestoration] = useState({ storageKey, invalidated: false });
+  if (restoration.storageKey !== storageKey) {
+    setRestoration({ storageKey, invalidated: false });
+  }
+  const restoredSavedState = Boolean(initialState?.layout === layout) &&
+    !(restoration.storageKey === storageKey && restoration.invalidated);
   const accessibleNodes = useMemo(
     () =>
       nodes.map((node) => {
@@ -123,7 +128,6 @@ export function useGraphPresentation<T extends Node>({
     setViewport(nextViewport);
     setEditing(persistenceEnabled && compatible?.locked === false);
     setHasSavedState(Boolean(persistenceEnabled && compatible));
-    setRestoredSavedState(Boolean(persistenceEnabled && compatible));
   }, [accessibleNodes, layout, persistenceEnabled, storageKey]);
 
   const persist = useCallback(
@@ -211,7 +215,7 @@ export function useGraphPresentation<T extends Node>({
     setViewport(DEFAULT_VIEWPORT);
     setEditing(false);
     setHasSavedState(false);
-    setRestoredSavedState(false);
+    setRestoration({ storageKey, invalidated: true });
   }, [accessibleNodes, persistenceEnabled, storageKey]);
 
   const autoLayout = useCallback(() => {
@@ -236,6 +240,7 @@ export function useGraphPresentation<T extends Node>({
     editing,
     hasSavedState,
     restoredSavedState,
+    restoredViewport: restoredSavedState ? initialState?.viewport : undefined,
     viewport,
     onNodesChange,
     onNodeDragStop,

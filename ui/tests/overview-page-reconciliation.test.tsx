@@ -198,7 +198,9 @@ describe("Overview canonical finding counts", () => {
       result: { agents: [], blast_radius: [], summary: { total_vulnerabilities: 22, critical_findings: 4 } },
     });
     render(<Dashboard />);
-    const row = await screen.findByRole("link", { name: /SBOM scan.*22 vulns/i });
+    const count = await screen.findByText("22 vulns");
+    const row = count.closest("a");
+    expect(row).toHaveAccessibleName(/SBOM scan.*22 vulns/i);
     expect(row).toHaveTextContent("4 CRIT");
     expect(row).not.toHaveTextContent("Metrics unavailable");
     expect(row).not.toHaveTextContent("agents");

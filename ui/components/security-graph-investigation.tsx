@@ -192,11 +192,11 @@ function InvestigationFlow({
           nodes={presentation.nodes}
           edges={presentedEdges}
           nodeTypes={lineageNodeTypes}
-          fitView={!presentation.hasSavedState}
+          fitView={!presentation.hasSavedState && !presentation.restoredSavedState}
           fitViewOptions={fitOptions}
           minZoom={0.2}
           maxZoom={2.5}
-          defaultViewport={presentation.viewport}
+          defaultViewport={presentation.restoredViewport ?? presentation.viewport}
           zoomOnScroll
           zoomOnPinch
           panOnDrag

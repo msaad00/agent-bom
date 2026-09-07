@@ -55,20 +55,24 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
-  it("places visible operational and compliance context before the full-width risk list", () => {
+  it("separates posture and coverage from the compliance and risk decision row", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
     const posture = screen.getByRole("region", { name: "Command center" });
-    const coverage = screen.getByRole("region", { name: /^Coverage & controls/ });
+    const coverage = screen.getByRole("region", { name: /^Coverage$/ });
     const risks = screen.getByRole("region", { name: "Top risks" });
     expect(posture.parentElement).toBe(coverage.parentElement);
-    expect(risks.parentElement).toBe(posture.parentElement?.parentElement);
+    const compliance = screen.getByRole("region", { name: "Compliance & frameworks" });
+    expect(risks.parentElement).toBe(compliance.parentElement);
+    expect(risks.parentElement).not.toBe(posture.parentElement);
+    expect(within(coverage).queryByText(/Control evaluation unavailable/i)).not.toBeInTheDocument();
+    expect(within(compliance).getByText(/Control evaluation unavailable/i)).toBeVisible();
     expect(coverage.compareDocumentPosition(risks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(coverage).getByText("Operational signals")).toBeVisible();
-    expect(within(coverage).getByText(/Control evaluation unavailable/i)).toBeVisible();
+
     expect(within(coverage).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
   });
 
-  it("separates evaluated controls from risk mappings and keeps both details closed initially", () => {
+  it("shows evaluated controls and risk mappings initially in separate sections", () => {
     render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 50, overallStatus: "fail", evaluatedControls: 2, totalControls: 12, frameworks: [
       { id: "cis", label: "CIS Controls", kind: "scored", pass: 1, fail: 1, warn: 0, total: 2 },
       { id: "atlas", label: "MITRE ATLAS", kind: "applicability", applicable: 3, pass: 0, fail: 0, warn: 0, total: 10 },
@@ -77,17 +81,25 @@ describe("OverviewCockpit", () => {
     const evaluated = screen.getByTestId("overview-evaluated-frameworks");
     const mappings = screen.getByTestId("overview-risk-mappings");
     expect(within(evaluated).queryByText("MITRE ATLAS")).not.toBeInTheDocument();
-    expect(within(mappings).getByText("MITRE ATLAS")).not.toBeVisible();
-    expect(within(evaluated).getByText("CIS Controls")).not.toBeVisible();
+    expect(within(mappings).getByText("MITRE ATLAS")).toBeVisible();
+    expect(within(evaluated).getByText("CIS Controls")).toBeVisible();
   });
 
-  it("keeps the label in the flexible column when a framework has no logo", async () => {
-    const user = userEvent.setup();
+  it("shows available risk mappings when control evaluation is unavailable", () => {
+    render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 0, overallStatus: "no_data", evaluatedControls: 0, totalControls: 10, frameworks: [
+      { id: "atlas", label: "MITRE ATLAS", kind: "applicability", applicable: 3, pass: 0, fail: 0, warn: 0, total: 10 },
+    ] }} />);
+    expect(screen.getByText(/Control evaluation unavailable for completed scans/i)).toBeVisible();
+    expect(screen.getByText("MITRE ATLAS")).toBeVisible();
+    expect(screen.getByText("3/10 risks applicable")).toBeVisible();
+    expect(screen.queryByTestId("overview-evaluated-frameworks")).not.toBeInTheDocument();
+  });
+
+  it("keeps the label in the flexible column when a framework has no logo", () => {
     render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 50, overallStatus: "fail", evaluatedControls: 2, totalControls: 2, frameworks: [
       { id: "nist-800-53", label: "NIST SP 800-53", kind: "scored", pass: 1, fail: 1, warn: 0, total: 2 },
       { id: "cis", label: "CIS Controls", kind: "scored", pass: 0, fail: 0, warn: 0, total: 0 },
     ] }} />);
-    await user.click(screen.getByRole("button", { name: /Evaluated frameworks/i }));
     for (const label of ["NIST SP 800-53", "CIS Controls"]) {
       const title = screen.getByText(label);
       const card = title.closest("a")!;
@@ -120,7 +132,7 @@ describe("OverviewCockpit", () => {
     expect(within(lanes).getAllByRole("link")[0]).toHaveTextContent("Cloud security (CSPM)");
     expect(within(lanes).getByText("AI security (AISPM)")).toBeVisible();
     expect(lanes.compareDocumentPosition(screen.getByTestId("overview-estate-ops")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const toggle = screen.getByRole("button", { name: /^Coverage & controls/ });
+    const toggle = screen.getByRole("button", { name: /^Coverage/ });
     expect(toggle).toHaveTextContent("2 security disciplines");
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     toggle.focus();
@@ -131,6 +143,19 @@ describe("OverviewCockpit", () => {
     await user.keyboard(" ");
     expect(lanes).toBeVisible();
     expect(screen.getByRole("region", { name: "Command center" })).toBeVisible();
+  });
+
+  it("collapses compliance independently from coverage and risks", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+    const toggle = screen.getByRole("button", { name: /^Compliance & frameworks/ });
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveFocus();
+    expect(screen.getByText(/Control evaluation unavailable/i)).not.toBeVisible();
+    expect(screen.getByRole("button", { name: /^Coverage/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /^Top risks/ })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("keeps operational details closed until requested without hiding their summary", async () => {
@@ -645,7 +670,7 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/0\/65 pass/i)).not.toBeInTheDocument();
   });
 
-  it("keeps all framework details available without expanding them by default", () => {
+  it("shows all framework details by default", () => {
     const frameworks = Array.from({ length: 9 }, (_, index) => ({
       id: `framework-${index + 1}`,
       label: `Framework ${index + 1}`,
@@ -672,7 +697,7 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/1 framework needs attention/i)).toBeInTheDocument();
     expect(screen.getByText("8/9 evaluated controls pass")).toBeVisible();
     expect(screen.getByText("Framework 8")).toBeInTheDocument();
-    expect(screen.getByText("Framework 9")).not.toBeVisible();
+    expect(screen.getByText("Framework 9")).toBeVisible();
   });
 
   it("explains nonlinear pressure and the worse scan posture without subtracting the inputs", async () => {
@@ -748,8 +773,8 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    expect(screen.getByText("CIS Controls v8")).not.toBeVisible();
-    await user.click(screen.getByRole("button", { name: /Evaluated frameworks/i }));
     expect(screen.getByText("CIS Controls v8")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /Evaluated frameworks/i }));
+    expect(screen.getByText("CIS Controls v8")).not.toBeVisible();
   });
 });

@@ -86,3 +86,16 @@ def test_blame_ignore_list_holds_only_resolvable_full_shas() -> None:
             text=True,
         )
         assert resolved.stdout.strip() == "commit", f"{sha} does not resolve to a commit in this repository"
+
+
+def test_mypy_hook_matches_locked_checker_and_typed_runtime_dependencies() -> None:
+    """An isolated hook needs the same checker and typed imports as project CI."""
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    versions = {package["name"]: package["version"] for package in lock["package"]}
+    config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    repo = next(repo for repo in config["repos"] if repo["repo"].endswith("/mirrors-mypy"))
+    assert repo["rev"] == f"v{versions['mypy']}"
+    hook = next(hook for hook in repo["hooks"] if hook["id"] == "mypy")
+    dependencies = set(hook["additional_dependencies"])
+    for name in ("pydantic", "types-pyyaml", "anyio", "cryptography", "pyjwt", "fastapi", "starlette"):
+        assert f"{name}=={versions[name]}" in dependencies, f"missing locked typed dependency: {name}"

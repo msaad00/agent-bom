@@ -272,3 +272,48 @@ def test_typed_model_copy_does_not_bypass_persistence_redaction():
     forged = typed.model_copy(update={"producer_assurance": "verified"})
     with pytest.raises(ValueError):
         object.__new__(ClickHouseAnalyticsStore)._event_row({"event_id": "forged", "submission_provenance": forged})
+
+
+@pytest.mark.parametrize("source", ["reported", "legacy", "empty"])
+def test_metrics_websocket_preserves_http_receipt_health_and_assurance(boundary, source, monkeypatch):
+    from agent_bom.api.server import configure_api
+
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None, allow_unauthenticated=False)
+    client, _, _, tokens = boundary
+    client.app.include_router(proxy.ws_router)
+    if source == "reported":
+        assert post(boundary, body()).status_code == 200
+    elif source == "legacy":
+        proxy.push_proxy_metrics({"tenant_id": "tenant-a", "total_tool_calls": 1, "source_id": "legacy", "session_id": "batch"})
+    headers = {"Authorization": "Bearer " + tokens["analyst"]}
+    status = client.get("/v1/proxy/status", headers=headers)
+    assert status.status_code == 200
+    with client.websocket_connect("/ws/proxy/metrics", headers=headers) as socket:
+        snapshot = socket.receive_json()
+    expected = status.json()
+    assert snapshot["producer_assurance"] == expected["producer_assurance"]
+    for field in ("assurance_basis", "producer_assurance", "state", "live", "heartbeat_at", "stale_after_seconds", "reason"):
+        assert snapshot["health"][field] == expected["health"][field]
+    assert snapshot["producer_assurance"] == ("caller_asserted" if source == "reported" else "unknown")
+    assert snapshot["total_tool_calls"] == (0 if source == "empty" else 1)
+
+
+def test_metrics_websocket_does_not_copy_another_tenants_assurance(boundary, monkeypatch):
+    from agent_bom.api.auth import get_key_store
+    from agent_bom.api.server import configure_api
+
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None, allow_unauthenticated=False)
+
+    client, _, _, _ = boundary
+    client.app.include_router(proxy.ws_router)
+    assert post(boundary, body()).status_code == 200
+    token, key = create_api_key("other-tenant", Role.ANALYST, tenant_id="tenant-b", principal_id="principal-b")
+    get_key_store().add(key)
+    with client.websocket_connect("/ws/proxy/metrics", headers={"Authorization": "Bearer " + token}) as socket:
+        snapshot = socket.receive_json()
+    assert snapshot["total_tool_calls"] == 0
+    assert snapshot["producer_assurance"] == "unknown"
+    assert snapshot["health"]["state"] == "unavailable"
+    assert snapshot["health"]["heartbeat_at"] is None

@@ -1339,6 +1339,8 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     import asyncio
     import time as _time
 
+    from agent_bom.api.routes.gateway_feed import _feed_health_from_metrics
+
     try:
         from fastapi.websockets import WebSocketDisconnect
     except ImportError:
@@ -1355,6 +1357,9 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
             # Build snapshot from in-process metrics buffer
             metrics_snapshot = _runtime_metrics_for_tenant(tenant_id) or {}
 
+            # Delivery time is not a heartbeat from the submitting runtime.
+            receipt_health = _feed_health_from_metrics(metrics_snapshot)
+
             # Count alerts in last 60 seconds
             cutoff = now - 60
             recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff and _alert_visible_to_tenant(a, tenant_id)]
@@ -1362,6 +1367,8 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
             await websocket.send_json(
                 {
                     "ts": now,
+                    "health": receipt_health,
+                    "producer_assurance": receipt_health["producer_assurance"],
                     "tool_calls": metrics_snapshot.get("calls_by_tool", {}),
                     "blocked": metrics_snapshot.get("blocked_by_reason", {}),
                     "alerts_last_60s": len(recent_alerts),

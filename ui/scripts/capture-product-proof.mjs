@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { assertCaptureSnapshotScope } from "./product-proof-scope.mjs";
 import { promisify } from "node:util";
 
 const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
@@ -1995,70 +1996,76 @@ async function installRoutes(page) {
     (route) => fulfill(route, REFERENCE_LAB.correlation),
   );
   await page.route("**/v1/graph/presets**", (route) => fulfill(route, []));
-  await page.route(`**/v1/graph/scenarios/${SCENARIO_ID}/comparison?**`, (route) =>
-    fulfill(route, graphScenarioComparison()),
-  );
+  await page.route(`**/v1/graph/scenarios/${SCENARIO_ID}/comparison?**`, (route) => {
+    const body = graphScenarioComparison();
+    assertCaptureSnapshotScope(route.request().url(), SCAN_ID, [body.current.scan_id, body.scenario.base_scan_id]);
+    return fulfill(route, body);
+  });
   await page.route("**/v1/graph/scenarios", (route) => fulfill(route, {
     schema: "graph.scenarios.v1",
     count: 1,
     scenarios: [graphScenario()],
   }));
-  await page.route("**/v1/graph/rollup?**", (route) => fulfill(route, {
-    scan_id: SCAN_ID,
-    tenant_id: "default",
-    created_at: CREATED_AT,
-    mode: "rollup",
-    filters: { min_severity: "high" },
-    top_level: graph.nodes.slice(0, 30).map((node) => ({
-      id: node.id,
-      label: node.label,
-      entity_type: node.entity_type,
-      severity: node.severity,
-      is_container: true,
-      has_children: true,
-      direct_child_count: 3,
-      aggregate: {
-        descendant_count: 12,
-        by_type: { agent: 2, server: 3, package: 4, vulnerability: 3 },
-        severity_counts: { critical: 2, high: 4, medium: 3, low: 0 },
-        worst_severity: node.severity,
-        worst_severity_rank: severityId(node.severity),
-        internet_exposed: node.severity === "critical",
-        toxic_combo: node.severity === "critical",
-        exposed_count: node.severity === "critical" ? 2 : 0,
-        toxic_count: node.severity === "critical" ? 1 : 0,
+  await page.route("**/v1/graph/rollup?**", (route) => {
+    const body = {
+      scan_id: SCAN_ID,
+      tenant_id: "default",
+      created_at: CREATED_AT,
+      mode: "rollup",
+      filters: { min_severity: "high" },
+      top_level: graph.nodes.slice(0, 30).map((node) => ({
+        id: node.id,
+        label: node.label,
+        entity_type: node.entity_type,
+        severity: node.severity,
+        is_container: true,
+        has_children: true,
+        direct_child_count: 3,
+        aggregate: {
+          descendant_count: 12,
+          by_type: { agent: 2, server: 3, package: 4, vulnerability: 3 },
+          severity_counts: { critical: 2, high: 4, medium: 3, low: 0 },
+          worst_severity: node.severity,
+          worst_severity_rank: severityId(node.severity),
+          internet_exposed: node.severity === "critical",
+          toxic_combo: node.severity === "critical",
+          exposed_count: node.severity === "critical" ? 2 : 0,
+          toxic_count: node.severity === "critical" ? 1 : 0,
+        },
+      })),
+      summary: {
+        total_nodes: graph.nodes.length,
+        total_nodes_source: graph.nodes.length,
+        total_edges: graph.edges.length,
+        container_count: 30,
+        severity_counts: graph.stats.severity_counts,
       },
-    })),
-    summary: {
-      total_nodes: graph.nodes.length,
-      total_nodes_source: graph.nodes.length,
-      total_edges: graph.edges.length,
-      container_count: 30,
-      severity_counts: graph.stats.severity_counts,
-    },
-    edges: [
-      {
-        source: graph.nodes[0].id,
-        target: graph.nodes[1].id,
-        count: 1,
-        relationships: ["hosts"],
+      edges: [
+        {
+          source: graph.nodes[0].id,
+          target: graph.nodes[1].id,
+          count: 1,
+          relationships: ["hosts"],
+        },
+      ],
+      completeness: {
+        returned: 30,
+        total: 30,
+        truncated: false,
+        reason: "",
       },
-    ],
-    completeness: {
-      returned: 30,
-      total: 30,
-      truncated: false,
-      reason: "",
-    },
-    edge_count_metadata: {
-      definition: "aggregated non-containment relationship rows between returned containers",
-      source_total: 1,
-      returned: 1,
-      truncated: false,
-      source_truncated: false,
-      reason: "",
-    },
-  }));
+      edge_count_metadata: {
+        definition: "aggregated non-containment relationship rows between returned containers",
+        source_total: 1,
+        returned: 1,
+        truncated: false,
+        source_truncated: false,
+        reason: "",
+      },
+    };
+    assertCaptureSnapshotScope(route.request().url(), SCAN_ID, [body.scan_id]);
+    return fulfill(route, body);
+  });
   await page.route("**/v1/graph/attack-paths?**", (route) => {
     const url = new URL(route.request().url());
     const selectedGraph = url.searchParams.get("scan_id") === REFERENCE_CORRELATION_ID ? referenceGraph : graph;
@@ -2827,14 +2834,14 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "investigation-canvas-current-1512x811.png",
-      page: "/security-graph?lens=estate&rollup=1&capture=1",
-      scope: "Observed current-state Investigation Canvas at the audited 1512 by 811 viewport",
+      page: `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&capture=1`,
+      scope: "Modeled current-state Investigation Canvas at 1512 by 811",
       presentation: "dark desktop 1512x811",
     },
     {
       path: "investigation-canvas-proposed-1568x780.png",
-      page: `/security-graph?lens=estate&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`,
-      scope: "Clearly modeled proposed-state comparison at the audited 1568 by 780 viewport",
+      page: `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`,
+      scope: "Modeled proposed-state comparison at 1568 by 780",
       presentation: "light desktop 1568x780",
     },
     {
@@ -3211,7 +3218,7 @@ async function main() {
     const currentCanvasPage = await newCapturePage("dark", { width: 1512, height: 811 });
     await capture(
       currentCanvasPage,
-      "/security-graph?lens=estate&rollup=1&capture=1",
+      `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&capture=1`,
       "investigation-canvas-current-1512x811.png",
       async (canvasPage) => {
         await canvasPage.waitForLoadState("networkidle");
@@ -3252,7 +3259,7 @@ async function main() {
     const proposedCanvasPage = await newCapturePage("light", { width: 1568, height: 780 });
     await capture(
       proposedCanvasPage,
-      `/security-graph?lens=estate&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`,
+      `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`,
       "investigation-canvas-proposed-1568x780.png",
       async (canvasPage) => {
         await canvasPage.waitForLoadState("networkidle");

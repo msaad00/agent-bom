@@ -158,6 +158,23 @@ That SQLite path keeps scan history, findings, compliance posture, and graph
 inventory available after the local process restarts. A bare `agent-bom serve`
 remains available for an intentionally ephemeral session.
 
+Standalone Skills scans also use this SQLite file (or `AGENT_BOM_DB` when
+starting the API directly). The latest result is isolated by authenticated tenant
+and survives a process restart. Workers must share the same local database file;
+separate pod volumes are separate stores. Without configured persistence, Skills
+results are process-local and disappear on restart or differ between workers.
+
+Skills results currently have no automatic age or row-count retention policy.
+The latest-result view does not delete earlier runs. Monitor the SQLite file's
+size and back it up according to your evidence retention policy; this store is
+separate from common scan-job retention and graph inventory.
+
+Postgres and Snowflake do not currently implement Skills result persistence.
+When either tier is selected without an explicit SQLite `AGENT_BOM_DB` companion,
+the Skills endpoints return `503` before scanning instead of silently losing
+results in memory. Other control-plane endpoints keep their configured backend.
+An explicitly injected Skills store remains authoritative.
+
 For the curated dashboard demo:
 
 ```bash

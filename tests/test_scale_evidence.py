@@ -219,3 +219,57 @@ def test_postgres_scale_job_operations_install_and_reset_tenant(monkeypatch) -> 
         ("get", ("job-a", "tenant-a")),
         ("reset", "token"),
     ]
+
+
+@pytest.mark.parametrize("replicas", [1, 2])
+@pytest.mark.parametrize(
+    ("kinds", "calls_per_replica"),
+    [
+        (["audit", "job_put", "job_get"], 2100),
+        (["job_put", "job_get"], 1100),
+        (["audit", "job_put"], 2000),
+        (["job_get"], 0),
+    ],
+)
+def test_postgres_scale_throughput_counts_actual_sampled_calls(monkeypatch, replicas, kinds, calls_per_replica):
+    """Exercise the real sampling loop without a database or process spawn."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    script = Path("scripts/run_postgres_scale_evidence.py")
+    spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    class Jobs:
+        def __init__(self):
+            self.rows = {}
+
+        def put(self, job):
+            self.rows[(job.tenant_id, job.job_id)] = job
+
+        def get(self, job_id, tenant_id):
+            return self.rows[(tenant_id, job_id)]
+
+    class Audit:
+        def append(self, entry):
+            pass
+
+    monkeypatch.setattr("agent_bom.api.postgres_store.PostgresJobStore", Jobs)
+    monkeypatch.setattr("agent_bom.api.postgres_audit.PostgresAuditLog", Audit)
+    monkeypatch.setattr(module, "_set_postgres_env", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "ProcessPoolExecutor", ThreadPoolExecutor)
+    clock = iter((0.0, 2.0))
+    # Only outer duration is fixed; workers keep real per-call timing.
+    real_worker = module._replica_worker
+    worker_results = [real_worker("unused", 1000, idx, kinds, 1, 4) for idx in range(replicas)]
+    monkeypatch.setattr(module, "_replica_worker", lambda dsn, size, idx, *args: worker_results[idx])
+    monkeypatch.setattr(module.time, "perf_counter", lambda: next(clock))
+
+    result = module._run_clustered("unused", 1000, replicas, kinds, 1, 4)
+
+    assert result["total_ops"] == calls_per_replica * replicas
+    assert result["ops_per_second"] == calls_per_replica * replicas / 2
+    assert result["wall_ms"] == 2000
+    if "job_get" in kinds and "job_put" in kinds:
+        assert all(worker["job_get"]["samples"] == 100 for worker in result["per_replica"])

@@ -68,6 +68,19 @@ describe("OverviewCockpit", () => {
     expect(within(coverage).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
   });
 
+  it("separates evaluated controls from risk mappings and keeps both details closed initially", () => {
+    render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 50, overallStatus: "fail", evaluatedControls: 2, totalControls: 12, frameworks: [
+      { id: "cis", label: "CIS Controls", kind: "scored", pass: 1, fail: 1, warn: 0, total: 2 },
+      { id: "atlas", label: "MITRE ATLAS", kind: "applicability", applicable: 3, pass: 0, fail: 0, warn: 0, total: 10 },
+    ] }} />);
+    expect(screen.getByText("1/2 evaluated controls pass")).toBeVisible();
+    const evaluated = screen.getByTestId("overview-evaluated-frameworks");
+    const mappings = screen.getByTestId("overview-risk-mappings");
+    expect(within(evaluated).queryByText("MITRE ATLAS")).not.toBeInTheDocument();
+    expect(within(mappings).getByText("MITRE ATLAS")).not.toBeVisible();
+    expect(within(evaluated).getByText("CIS Controls")).not.toBeVisible();
+  });
+
   it("shows one grade and one numeric score in the posture summary", () => {
     render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
     expect(screen.getAllByText("62%")).toHaveLength(1);
@@ -568,7 +581,7 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/0\/65 pass/i)).not.toBeInTheDocument();
   });
 
-  it("computes compliance totals and failures before limiting the visible cards", () => {
+  it("keeps all framework details available without expanding them by default", () => {
     const frameworks = Array.from({ length: 9 }, (_, index) => ({
       id: `framework-${index + 1}`,
       label: `Framework ${index + 1}`,
@@ -593,9 +606,9 @@ describe("OverviewCockpit", () => {
     );
 
     expect(screen.getByText(/1 framework needs attention/i)).toBeInTheDocument();
-    expect(within(screen.getByTestId("overview-compliance-snapshot")).getByText("9", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("8/9 evaluated controls pass")).toBeVisible();
     expect(screen.getByText("Framework 8")).toBeInTheDocument();
-    expect(screen.queryByText("Framework 9")).not.toBeInTheDocument();
+    expect(screen.getByText("Framework 9")).not.toBeVisible();
   });
 
   it("explains nonlinear pressure and the worse scan posture without subtracting the inputs", async () => {
@@ -667,8 +680,8 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    expect(screen.getByText("CIS Controls v8")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: /Compliance/i }));
     expect(screen.getByText("CIS Controls v8")).not.toBeVisible();
+    await user.click(screen.getByRole("button", { name: /Evaluated frameworks/i }));
+    expect(screen.getByText("CIS Controls v8")).toBeVisible();
   });
 });

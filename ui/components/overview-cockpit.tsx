@@ -264,17 +264,16 @@ export function OverviewCockpit({
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 xl:grid-cols-2">
-      <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline bg-surface p-4 lg:p-5">
+      <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
         <Collapsible
           bare
           title="Command center"
           titleClassName={SECTION_TITLE_CLASS}
-          subtitle="Current posture and open findings"
           defaultOpen
         >
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
 
-          <div className="mt-3 grid gap-4">
+          <div className="mt-2 grid gap-3">
             <PostureHero
               loading={loading}
               grade={grade}
@@ -306,7 +305,7 @@ export function OverviewCockpit({
         </Collapsible>
       </section>
 
-      <section aria-label="Coverage & controls" className="min-w-0 rounded-2xl border border-outline bg-surface p-4 lg:p-5">
+      <section aria-label="Coverage & controls" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
         <h2 className={SECTION_TITLE_CLASS}>Coverage &amp; controls</h2>
         <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />
         <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
@@ -637,44 +636,51 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
 function ComplianceSnapshotPanel({
   compliance,
   hasScanEvidence = false,
-  defaultOpen = true,
 }: {
   compliance: OverviewComplianceSnapshot | null | undefined;
   hasScanEvidence?: boolean | undefined;
-  defaultOpen?: boolean | undefined;
 }) {
   const allFrameworks = compliance?.frameworks ?? [];
-  const frameworks = allFrameworks.slice(0, 8);
+  const scored = allFrameworks.filter((item) => item.kind === "scored");
+  const mappings = allFrameworks.filter((item) => item.kind === "applicability");
   const evidenceReady = hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance);
-  const failing = evidenceReady ? allFrameworks.filter((item) => item.kind === "scored" && item.fail > 0).length : 0;
-
+  const attention = scored.filter((item) => item.fail > 0 || item.warn > 0).length;
+  const passed = scored.reduce((total, item) => total + item.pass, 0);
 
   return (
-    <Collapsible
-      bare
-      className="mt-4 border-t border-outline"
-      title="Evaluated compliance"
-      titleClassName={SECTION_TITLE_CLASS}
-      defaultOpen={defaultOpen}
-      subtitle={<span className="block whitespace-normal">{
-        evidenceReady
-          ? `${Math.round(compliance.overallScore)}% of ${compliance.evaluatedControls} evaluated control${compliance.evaluatedControls === 1 ? "" : "s"} · ${failing} framework${failing === 1 ? " needs" : "s need"} attention`
-          : hasScanEvidence
-            ? "No evaluated framework coverage is available for completed scans"
-            : "Framework coverage appears after the first completed scan"
-      }</span>}
-      count={evidenceReady && allFrameworks.length > 0 ? allFrameworks.length : undefined}
-      scrollMaxHeight="16rem"
-      data-testid="overview-compliance-snapshot"
-      actions={
-        <div className="flex items-center gap-3">
-          <Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
-            Trust center <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
-      }
-    >
-      {evidenceReady && frameworks.length > 0 ? (
+    <div className="mt-3 border-t border-outline pt-3" data-testid="overview-compliance-snapshot">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className={SECTION_TITLE_CLASS}>Evaluated compliance</h3>
+        <Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+          Trust center <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+      {evidenceReady ? (
+        <>
+          <p className="mt-2 text-base font-semibold tabular-nums text-foreground">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
+          <p className="mt-1 text-xs text-ink-secondary">{Math.round(compliance.overallScore)}% of {compliance.evaluatedControls} evaluated controls · {attention} framework{attention === 1 ? " needs" : "s need"} attention</p>
+          <Collapsible bare title="Evaluated frameworks" defaultOpen={false} data-testid="overview-evaluated-frameworks">
+            <FrameworkCards frameworks={scored} />
+          </Collapsible>
+        </>
+      ) : (
+        <p className="mt-2 text-xs text-ink-secondary">
+          {hasScanEvidence
+            ? "No evaluated framework coverage is available for completed scans. Completed scans have not produced mapped framework evidence. Review scan scope before drawing a compliance conclusion."
+            : "Framework coverage appears after the first completed scan. Empty estates do not show pass tiles."}
+        </p>
+      )}
+      {hasScanEvidence && mappings.length > 0 ? (
+        <Collapsible bare title="Risk mappings" subtitle="Applicable risks, separate from control pass/fail" defaultOpen={false} data-testid="overview-risk-mappings">
+          <FrameworkCards frameworks={mappings} />
+        </Collapsible>
+      ) : null}
+    </div>
+  );
+}
+
+function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot["frameworks"] }) {
+  return (
         <div className="grid gap-2 sm:grid-cols-2">
           {frameworks.map((framework) => {
             const evaluated = frameworkEvaluated(framework);
@@ -729,14 +735,6 @@ function ComplianceSnapshotPanel({
             );
           })}
         </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-outline bg-surface-muted px-4 py-5 text-center text-xs text-ink-tertiary">
-          {hasScanEvidence
-            ? "Completed scans have not produced mapped framework evidence. Review scan scope before drawing a compliance conclusion."
-            : "Run a scan to light up OWASP, NIST, CIS, and related framework coverage. Empty estates do not show pass tiles."}
-        </div>
-      )}
-    </Collapsible>
   );
 }
 
@@ -755,7 +753,7 @@ function TopRisksPanel({
   const moreCount = ranked.length - shown.length;
 
   return (
-    <Collapsible title="Top risks" subtitle="Prioritized findings and affected workloads"
+    <Collapsible title="Top risks"
       count={ranked.length || undefined} defaultOpen>
       {shown.length > 0 ? (
         <div className="space-y-2">
@@ -857,7 +855,6 @@ function ScoreExplainer({
       className="mt-4 border-t border-outline"
       title="What influences this score"
       titleClassName={SECTION_TITLE_CLASS}
-      subtitle="Relative weighted inputs and scoring method"
       defaultOpen={false}
       data-testid="overview-score-explainer"
     >
@@ -977,7 +974,7 @@ function PostureHero({
             <ScoreFormatToggle value={scoreFormat} onChange={onScoreFormatChange} />
           ) : null}
         </div>
-        <p className={`mt-2 inline-flex flex-wrap items-baseline gap-3 rounded-xl border px-4 py-3 font-semibold ${scoreTone}`} data-testid="overview-posture-score">
+        <p className={`mt-2 inline-flex flex-wrap items-baseline gap-3 rounded-xl border px-3 py-2 font-semibold ${scoreTone}`} data-testid="overview-posture-score">
           {loading ? (
             "Loading posture…"
           ) : graded ? (
@@ -1205,16 +1202,16 @@ function SeverityIssueStrip({
           <Link
             key={band.key}
             href={findingsHref({ scope: "all", severity: band.key })}
-            className={`rounded-lg border px-2.5 py-2 transition ${band.tint}`}
+            className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg border px-2.5 py-2 transition ${band.tint}`}
           >
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-secondary">
               {band.label}
             </p>
-            <p className={`mt-1 font-mono text-xl font-semibold ${band.tone}`}>
+            <p className={`font-mono text-xl font-semibold ${band.tone}`}>
               {summaryReady ? band.value : "—"}
             </p>
             {hasTyped && summaryReady ? (
-              <div className="mt-2 space-y-1">
+              <div className="col-span-2 mt-2 space-y-1">
                 <div className="flex h-1.5 overflow-hidden rounded-full bg-surface-muted">
                   {issueTypes.map((issue) => {
                     const count = resolved[issue][band.key];
@@ -1243,9 +1240,7 @@ function SeverityIssueStrip({
                   })}
                 </div>
               </div>
-            ) : (
-              <p className="mt-2 text-[9px] text-ink-tertiary">All issue types</p>
-            )}
+            ) : null}
           </Link>
         ))}
       </div>

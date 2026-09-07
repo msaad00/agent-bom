@@ -456,8 +456,12 @@ export AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON='{
 ```
 
 The shim publishes public metadata only; tokens still come from the upstream
-IdP. For agent-bom-native MCP OAuth (broker AS), use
-`AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS` instead.
+IdP. Embedded gateway OAuth issuance is unavailable until trusted client
+authorization is implemented. `--enable-oauth-as` and
+`AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS` now fail startup; remove the setting and
+configure bearer or API-key authentication. The gateway does not accept tokens
+from the former embedded issuer. Existing external OIDC/JWKS identity validation
+and the read-only discovery shim remain available.
 
 See [`docs/design/OIDC_DISCOVERY_SHIM.md`](design/OIDC_DISCOVERY_SHIM.md) and
 `deploy/helm/agent-bom/examples/oidc-discovery-shim-values.yaml` for architecture,

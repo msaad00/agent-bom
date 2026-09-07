@@ -62,7 +62,8 @@ def apply_code_graph_overlay(
 
     files_by_dir: dict[str, list[str]] = defaultdict(list)
     for node in graph.nodes.values():
-        if node.entity_type != EntityType.SOURCE_FILE:
+        if node.entity_type != EntityType.SOURCE_FILE or node.dimensions.surface == "sbom":
+            # Imported inventory is a source artifact, not observed source code.
             continue
         path = _norm_path((node.attributes or {}).get("path") or node.label)
         if not path:

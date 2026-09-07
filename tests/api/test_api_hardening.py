@@ -62,6 +62,32 @@ def test_configure_api_cannot_carry_wildcard_to_a_public_listener():
         configure_api(cors_origins=["http://127.0.0.1:3000"], listener_host="127.0.0.1")
 
 
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost"])
+def test_env_wildcard_cors_accepts_explicit_loopback_host(monkeypatch, host):
+    monkeypatch.setenv("AGENT_BOM_CORS_ORIGINS", "*")
+    monkeypatch.setenv("AGENT_BOM_API_HOST", host)
+    try:
+        configure_api_from_env()
+        assert get_auth_posture().listener_host == host
+        response = TestClient(app).options(
+            "/v1/jobs", headers={"Origin": "https://local-ui.example", "Access-Control-Request-Method": "GET"}
+        )
+        assert response.headers["access-control-allow-origin"] == "*"
+    finally:
+        configure_api(cors_origins=["http://127.0.0.1:3000"], listener_host="127.0.0.1")
+
+
+@pytest.mark.parametrize("host", [None, "0.0.0.0", "::"])
+def test_env_wildcard_cors_rejects_unknown_or_public_host(monkeypatch, host):
+    monkeypatch.setenv("AGENT_BOM_CORS_ORIGINS", "*")
+    if host is None:
+        monkeypatch.delenv("AGENT_BOM_API_HOST", raising=False)
+    else:
+        monkeypatch.setenv("AGENT_BOM_API_HOST", host)
+    with pytest.raises(ValueError, match="loopback"):
+        configure_api_from_env()
+
+
 def test_configure_api_persists_effective_listener_host():
     """Runtime posture must describe the address the API actually listens on."""
     configure_api(api_key=None, allow_unauthenticated=True, listener_host="0.0.0.0")

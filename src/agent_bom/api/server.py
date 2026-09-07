@@ -1099,6 +1099,7 @@ def configure_api_from_env() -> None:
         cors_allow_all=allow_all,
         api_key=api_key,
         rate_limit_rpm=DEFAULT_RATE_LIMIT_RPM,
+        listener_host=os.environ.get("AGENT_BOM_API_HOST"),
     )
 
 

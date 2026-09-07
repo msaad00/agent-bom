@@ -173,8 +173,11 @@ def _job_get_iter(job_store, sample_ids: list[tuple[str, str]]) -> list[float]:
     timings: list[float] = []
     for job_id, tenant_id in sample_ids:
         started = time.perf_counter()
-        _tenant_job_get(job_store, job_id, tenant_id)
-        timings.append((time.perf_counter() - started) * 1000)
+        job = _tenant_job_get(job_store, job_id, tenant_id)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        if job is None or getattr(job, "job_id", None) != job_id or getattr(job, "tenant_id", None) != tenant_id:
+            raise RuntimeError("Postgres benchmark job readback validation failed")
+        timings.append(elapsed_ms)
     return timings
 
 

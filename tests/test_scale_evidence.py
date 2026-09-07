@@ -273,3 +273,30 @@ def test_postgres_scale_throughput_counts_actual_sampled_calls(monkeypatch, repl
     assert result["wall_ms"] == 2000
     if "job_get" in kinds and "job_put" in kinds:
         assert all(worker["job_get"]["samples"] == 100 for worker in result["per_replica"])
+
+
+@pytest.mark.parametrize(
+    "returned",
+    [None, SimpleNamespace(job_id="wrong", tenant_id="tenant-a"), SimpleNamespace(job_id="job-a", tenant_id="wrong")],
+)
+def test_postgres_scale_readback_fails_on_missing_or_mismatched_job(monkeypatch, returned):
+    script = Path("scripts/run_postgres_scale_evidence.py")
+    spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "_tenant_job_get", lambda *args: returned)
+
+    with pytest.raises(RuntimeError, match="^Postgres benchmark job readback validation failed$"):
+        module._job_get_iter(object(), [("job-a", "tenant-a")])
+
+
+def test_postgres_scale_readback_accepts_matching_job(monkeypatch):
+    script = Path("scripts/run_postgres_scale_evidence.py")
+    spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "_tenant_job_get", lambda *args: SimpleNamespace(job_id="job-a", tenant_id="tenant-a"))
+
+    assert len(module._job_get_iter(object(), [("job-a", "tenant-a")])) == 1

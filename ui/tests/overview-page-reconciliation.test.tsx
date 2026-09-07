@@ -124,6 +124,72 @@ describe("Overview canonical finding counts", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  it("does not present pending initial requests as an empty estate or a scan recommendation", async () => {
+    apiMock.getOverview.mockReturnValue(new Promise(() => {}));
+    apiMock.listJobs.mockReturnValue(new Promise(() => {}));
+    apiMock.getCompliance.mockReturnValue(new Promise(() => {}));
+    await act(async () => { render(<Dashboard />); });
+    expect(screen.getByText("Loading posture…")).toBeVisible();
+    expect(screen.queryByText(/Framework coverage appears after the first completed scan/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Run a scan/)).not.toBeInTheDocument();
+  });
+
+  it("does not label control evaluation unavailable while its initial request is pending", async () => {
+    apiMock.getCompliance.mockReturnValue(new Promise(() => {}));
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText("49%")).toBeVisible());
+    expect(screen.queryByText(/Control evaluation unavailable for completed scans/)).not.toBeInTheDocument();
+  });
+
+  it("shows first-scan guidance only after a successful empty overview settles", async () => {
+    let resolveOverview!: (value: OverviewResponse) => void;
+    apiMock.getOverview.mockReturnValue(new Promise<OverviewResponse>((resolve) => { resolveOverview = resolve; }));
+    apiMock.listJobs.mockResolvedValue({ jobs: [] });
+    render(<Dashboard />);
+    expect(screen.queryByText(/No completed scans. Run a scan/)).not.toBeInTheDocument();
+    const empty = overviewFixture();
+    await act(async () => resolveOverview({ ...empty, headline: { ...empty.headline, scans: 0, latest_scan_at: null }, finding_counts: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: 0, kev: 0 } }));
+    expect(screen.getByText("No completed scans. Run a scan to assess findings.")).toBeVisible();
+    expect(screen.queryByText("Loading prioritized findings…")).not.toBeInTheDocument();
+  });
+
+  it("distinguishes an initial overview failure from an empty result", async () => {
+    apiMock.getOverview.mockRejectedValue(new Error("private upstream"));
+    apiMock.listJobs.mockResolvedValue({ jobs: [] });
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText("Overview unavailable.")).toBeVisible());
+    expect(screen.getByText("Coverage unavailable.")).toBeVisible();
+    expect(screen.getByText("Prioritized findings unavailable.")).toBeVisible();
+    expect(screen.queryByText(/No completed scans. Run a scan/)).not.toBeInTheDocument();
+    expect(screen.queryByText("private upstream")).not.toBeInTheDocument();
+  });
+
+  it("changes pending control evaluation to unavailable only when the request fails", async () => {
+    let rejectCompliance!: (reason: Error) => void;
+    apiMock.getCompliance.mockReturnValue(new Promise((_, reject) => { rejectCompliance = reject; }));
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText("49%")).toBeVisible());
+    expect(screen.getByText("Loading control evaluation…")).toBeVisible();
+    await act(async () => rejectCompliance(new Error("private control source")));
+    expect(screen.getByText(/Control evaluation unavailable for completed scans/)).toBeVisible();
+    expect(screen.queryByText("Loading control evaluation…")).not.toBeInTheDocument();
+    expect(screen.queryByText("private control source")).not.toBeInTheDocument();
+  });
+  it("does not infer estate improvement from unqualified independent scan scores", async () => {
+    apiMock.getTrends.mockResolvedValue({
+      count: 2,
+      data_points: [
+        { scan_id: "public-docs-repo", timestamp: "2026-07-17T12:00:00Z", posture_score: 90, posture_grade: "A", total_vulns: 1, critical: 0, high: 0, medium: 1, low: 0 },
+        { scan_id: "payments-production", timestamp: "2026-07-17T11:00:00Z", posture_score: 10, posture_grade: "F", total_vulns: 20, critical: 10, high: 10, medium: 0, low: 0 },
+      ],
+    });
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText("49%")).toBeVisible());
+    // No server evidence binds these independent scan scores to a comparable estate baseline.
+    expect(screen.queryByTestId("overview-posture-trend")).not.toBeInTheDocument();
+  });
+
+
   it("restores recent-scan metadata from bounded hydrated details after a cold API start", async () => {
     apiMock.listJobs.mockResolvedValue({ jobs: [{ job_id: "cold-sbom", status: "done", created_at: "2026-09-06T22:26:37Z" }] });
     apiMock.getScan.mockResolvedValue({
@@ -261,13 +327,18 @@ describe("Overview canonical finding counts", () => {
 
   it("retains the last coherent snapshot and discloses an unavailable refresh", async () => {
     vi.useFakeTimers();
-    apiMock.getOverview.mockResolvedValueOnce({ ...overviewFixture(), finding_counts: { ...deploymentCounts, critical: 3 } })
+    apiMock.getOverview.mockResolvedValueOnce({ ...overviewFixture(), finding_counts: { ...deploymentCounts, critical: 3 }, top_risks: [
+      { vulnerability_id: "CVE-2025-1234", package: "requests", severity: "high", risk_score: 7, is_kev: false, cvss_score: 7, epss_score: null, affected_agents: [] },
+    ] })
       .mockRejectedValueOnce(new Error("private upstream details"));
     render(<Dashboard />);
     await act(async () => {});
     await act(async () => { vi.advanceTimersByTime(60_000); });
     expect(screen.getByText("Overview refresh unavailable. Showing the last loaded snapshot.")).toHaveAttribute("role", "status");
     expect(screen.getByRole("link", { name: /^Critical 3/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /CVE-2025-1234 in requests/ })).toBeVisible();
+    expect(screen.queryByText("Prioritized findings unavailable.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading prioritized findings…")).not.toBeInTheDocument();
     expect(screen.queryByText("private upstream details")).not.toBeInTheDocument();
   });
 });

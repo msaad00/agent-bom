@@ -203,7 +203,7 @@ _PROXY_CONTROL_PLANE_MTLS_MODES = {"app_native", "delegated", "disabled"}
 def _is_loopback_listener(host: str | None) -> bool:
     cleaned = (host or "").strip().lower()
     if not cleaned:
-        return True
+        return False
     if cleaned in {"localhost", "127.0.0.1", "::1"}:
         return True
     try:
@@ -213,7 +213,8 @@ def _is_loopback_listener(host: str | None) -> bool:
 
 
 def _configured_listener_host(host: str | None = None) -> str:
-    return (host or os.environ.get("AGENT_BOM_API_HOST") or "127.0.0.1").strip() or "127.0.0.1"
+    # Direct ASGI imports do not reveal the ASGI server's actual bind address.
+    return (host or "").strip() or os.environ.get("AGENT_BOM_API_HOST", "").strip() or "unknown"
 
 
 def _production_or_clustered_control_plane() -> bool:
@@ -272,9 +273,11 @@ def describe_control_plane_direct_listener_posture(
         "production_or_clustered": production_or_clustered,
         "trusted_proxy_attestation": "enabled" if trusted_proxy_ok else "disabled",
         "mtls_enforced": bool(mtls_ok),
-        "status": "unsafe" if unsafe else "ok",
+        "status": "unknown" if host == "unknown" else ("unsafe" if unsafe else "ok"),
         "message": (
-            "Production or clustered control planes must not expose a non-loopback listener without "
+            "Listener address is not declared; set AGENT_BOM_API_HOST to the ASGI server's actual bind address."
+            if host == "unknown"
+            else "Production or clustered control planes must not expose a non-loopback listener without "
             "trusted-proxy attestation or app-native mTLS."
             if unsafe
             else "Direct listener posture is acceptable for the declared deployment mode."
@@ -560,7 +563,7 @@ class AuthPosture:
     def summary_line(self) -> str:
         """One structured line summarizing the posture for the startup log."""
         sources = ">".join(self.sources) if self.sources else "none"
-        scope = "loopback" if self.listener_loopback else "non-loopback"
+        scope = "unknown" if self.listener_host == "unknown" else ("loopback" if self.listener_loopback else "non-loopback")
         return (
             f"auth posture: sources=[{sources}] "
             f"anonymous={'on' if self.anonymous_allowed else 'off'} "
@@ -571,8 +574,8 @@ class AuthPosture:
 
 
 _EMPTY_AUTH_POSTURE = AuthPosture(
-    listener_host="127.0.0.1",
-    listener_loopback=True,
+    listener_host="unknown",
+    listener_loopback=False,
     api_key=False,
     oidc_bearer=False,
     oidc_browser=False,

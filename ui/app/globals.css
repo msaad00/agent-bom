@@ -109,6 +109,7 @@
    * amount of it into --surface, so the board follows the theme instead of
    * baking in a dark palette.
    */
+  --graph-minimap-mask: rgba(24, 24, 27, 0.82);
   --graph-agent: #34d399;
   --graph-server: #38bdf8;
   --graph-package: #fbbf24;
@@ -122,6 +123,7 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
+  --graph-minimap-mask: rgba(226, 232, 240, 0.82);
   /* Cool gray canvas — white cards sit clearly above panels and the page. */
   --background: #e6eaf1;
   --foreground: #12141a;

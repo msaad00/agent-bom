@@ -5,6 +5,10 @@ import type { ElementType } from "react";
 import {
   ArrowRight,
   Bug,
+  Bot,
+  Cloud,
+  CodeXml,
+  Database,
   Fingerprint,
   UserRound,
   Flame,
@@ -172,6 +176,9 @@ function derivePostureBlurb({
 export interface OverviewCockpitProps {
   /** True until the posture and cross-domain overview requests settle. */
   loading?: boolean | undefined;
+  overviewUnavailable?: boolean | undefined;
+  complianceLoading?: boolean | undefined;
+  scanScopeLoading?: boolean | undefined;
   grade: string;
   score?: number | undefined;
   /** Display-only score presentation. Defaults to a percentage. */
@@ -205,7 +212,7 @@ export interface OverviewCockpitProps {
   issueMatrix?: IssueSeverityMatrix | null | undefined;
   domains: OverviewResponse["domains"] | null;
   /** Five security-posture coverage lanes (CSPM / Vuln / ASPM / DSPM /
-   *  AISPM) with reconciled, non-overlapping counts (issue #3946). */
+   *  AISPM) with evidence-qualified, overlapping counts (issue #3946). */
   coverage?: OverviewCoverageLane[] | null | undefined;
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
@@ -221,6 +228,9 @@ export interface OverviewCockpitProps {
 
 export function OverviewCockpit({
   loading = false,
+  overviewUnavailable = false,
+  complianceLoading = false,
+  scanScopeLoading = false,
   grade,
   score,
   scoreFormat = "percent",
@@ -261,20 +271,26 @@ export function OverviewCockpit({
       ? "—"
       : undefined;
 
+  const coverageSummary = [
+    coverage?.length ? `${coverage.length} security disciplines` : null,
+    complianceEvaluated
+      ? `${compliance.frameworks.filter((framework) => framework.kind === "scored").reduce((sum, framework) => sum + framework.pass, 0)}/${compliance.evaluatedControls} controls pass`
+      : null,
+  ].filter(Boolean).join(" · ") || "Security findings and evaluated controls";
+
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 xl:grid-cols-2">
-      <section className="min-w-0 rounded-2xl border border-outline bg-surface p-4 lg:p-5">
+      <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
         <Collapsible
           bare
           title="Command center"
           titleClassName={SECTION_TITLE_CLASS}
-          subtitle="Current posture and open findings"
           defaultOpen
         >
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
 
-          <div className="mt-3 grid gap-4">
+          <div className="mt-2 grid gap-3">
             <PostureHero
               loading={loading}
               grade={grade}
@@ -306,18 +322,27 @@ export function OverviewCockpit({
         </Collapsible>
       </section>
 
-      {/* 4 — Top risks: the hero exposure path */}
-      <section className="min-h-0 min-w-0">
+      <section aria-label="Coverage & controls" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
+        <Collapsible bare title="Coverage & controls" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
+        {loading && !domains ? (
+          <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
+        ) : overviewUnavailable && !domains ? (
+          <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
+        ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
+        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
+          loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
+        </Collapsible>
+      </section>
+      </div>
+      <section aria-label="Top risks" className="min-w-0">
         <TopRisksPanel
+          loading={loading}
+          unavailable={overviewUnavailable}
+          scans={scans}
           topPath={topPath}
           exposurePaths={exposurePaths}
           agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
         />
-      </section>
-      </div>
-      <section className="space-y-2" aria-label="Coverage and compliance context">
-        <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />
-        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
       </section>
 
     </div>
@@ -383,7 +408,6 @@ function CoverageOperationsSection({
   const operationalTiles = buildOperationalTiles(domains);
   if ((!coverage || coverage.length === 0) && operationalTiles.length === 0) return null;
 
-  const active = operationalTiles.filter(opsLaneActive).length;
   const dataSources = services?.data_sources;
   const dataSourceCount =
     dataSources && (dataSources.state === "live" || dataSources.state === "connected")
@@ -391,43 +415,29 @@ function CoverageOperationsSection({
       : 0;
 
   return (
-    <Collapsible
-      bare
-      className="mt-4 border-t border-outline pt-1"
-      data-testid="overview-coverage-operations"
-      title="Coverage & operations"
-      titleClassName={SECTION_TITLE_CLASS}
-      subtitle={`${coverage?.length ?? 0} security disciplines · ${active} of ${operationalTiles.length} operational lanes active`}
-      count={(coverage?.length ?? 0) + operationalTiles.length}
-      defaultOpen={false}
-      actions={
-        <Link
-          href="/connections"
-          className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400"
-        >
-          {dataSourceCount > 0 ? (
-            <span className="text-ink-tertiary">{dataSourceCount} connected · </span>
-          ) : null}
-          Connections <ArrowRight className="h-3 w-3" />
-        </Link>
-      }
-    >
-      <div className="space-y-4 pb-2">
-        <SecurityCoverageLanes coverage={coverage} />
+    <div className="mt-3" data-testid="overview-coverage-operations">
+      <SecurityCoverageLanes coverage={coverage} />
+      <Collapsible bare title="Operational signals"
+        subtitle={operationalTiles.length ? `${operationalTiles.filter(opsLaneActive).length} of ${operationalTiles.length} active` : undefined}
+        defaultOpen={false} className={coverage?.length ? "mt-3 border-t border-outline" : undefined}>
         <EstateOpsStrip tiles={operationalTiles} />
-      </div>
-    </Collapsible>
+      <Link href="/connections" className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+        {dataSourceCount > 0 ? `${dataSourceCount} connected · ` : ""}
+        Connections <ArrowRight className="h-3 w-3" />
+      </Link>
+      </Collapsible>
+    </div>
   );
 }
 
-// Severity bands shown in a coverage lane's strip, in descending order, plus
+// Severity counts shown in each discipline, in descending order, plus
 // ``unrated`` for findings whose severity is unknown/unscored (issue #3946).
-const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; label: string; token: string }[] = [
-  { key: "critical", label: "Critical", token: "--severity-critical" },
-  { key: "high", label: "High", token: "--severity-high" },
-  { key: "medium", label: "Medium", token: "--severity-medium" },
-  { key: "low", label: "Low", token: "--severity-low" },
-  { key: "unrated", label: "Unrated", token: "--severity-unrated" },
+const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; label: string }[] = [
+  { key: "critical", label: "Critical" },
+  { key: "high", label: "High" },
+  { key: "medium", label: "Medium" },
+  { key: "low", label: "Low" },
+  { key: "unrated", label: "Unrated" },
 ];
 
 /**
@@ -436,21 +446,32 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
  * partition: one finding can count in several lanes (a repo CVE is both Vuln
  * mgmt and ASPM; an IaC misconfig is both CSPM and ASPM), so the lanes are not
  * additive — the caption above says so, and nothing here presents a lane total.
- * Each lane's count is the sum of its own severity strip, so the metric can
- * never contradict the strip. An ``unrated`` chip is surfaced only when
- * unknown-severity findings are present. All colors come from design tokens (no
- * hardcoded palette) so light + dark both read correctly.
+ * Each lane retains its finding total and labeled severity counts. Unrated is
+ * shown only when unknown-severity findings are present.
  */
+const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; order: number }> = {
+  cspm: { label: "Cloud security (CSPM)", icon: Cloud, order: 0 },
+  aspm: { label: "Application security (ASPM)", icon: CodeXml, order: 1 },
+  vuln: { label: "Vulnerability management", icon: Bug, order: 2 },
+  dspm: { label: "Data security (DSPM)", icon: Database, order: 3 },
+  aispm: { label: "AI security (AISPM)", icon: Bot, order: 4 },
+};
+
 function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
   if (!coverage || coverage.length === 0) return null;
   return (
-    <div className="pt-1" data-testid="overview-security-coverage">
+    <div className="@container pt-1" data-testid="overview-security-coverage">
       <h3 className="mb-1 text-xs font-semibold text-foreground">Security disciplines</h3>
       <p className="mb-2 text-[11px] leading-4 text-ink-tertiary">
-        Open findings per posture discipline — not assets or accounts. Lenses overlap, so one repo CVE counts under both Vuln mgmt and ASPM; lanes are not additive and will not sum to the total.
+        Overlapping finding counts, not additive. Zero findings does not establish assessment coverage.
       </p>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        {coverage.map((lane) => {
+      <div className="grid grid-cols-1 gap-2 @min-[30rem]:grid-cols-2">
+        {[...coverage].sort((left, right) => (SECURITY_DISCIPLINES[left.domain]?.order ?? 5) - (SECURITY_DISCIPLINES[right.domain]?.order ?? 5)).map((lane) => {
+          const discipline = SECURITY_DISCIPLINES[lane.domain];
+          const Icon = discipline?.icon ?? ShieldCheck;
+          const known = lane.evidence_status !== undefined;
+          const exact = lane.evidence_status === "complete" && lane.count_exact !== false;
+          const statusLabel = lane.evidence_status === "partial" ? "Partial count" : "Count unavailable";
           const total = COVERAGE_SEVERITY_BANDS.reduce((sum, band) => sum + (lane.severity[band.key] || 0), 0);
           const bands = COVERAGE_SEVERITY_BANDS.filter((band) => (lane.severity[band.key] || 0) > 0);
           return (
@@ -458,58 +479,44 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="flex flex-col gap-2 rounded-xl border border-outline bg-surface-elevated p-3 transition-colors hover:border-outline-strong"
+              className="min-w-0 rounded-lg border border-outline bg-surface-elevated px-3 py-2 transition-colors hover:border-outline-strong"
             >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-xs font-semibold text-foreground">{lane.label}</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="flex items-start gap-2 text-xs font-semibold text-foreground"><Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-secondary" aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
                 {/* The unit is not decoration. A bare "1610" under a heading
                     called CSPM reads as assets, accounts, VMs or data stores
                     depending on the reader — every one of which is wrong. These
                     are FINDINGS in that posture lane, which is also what the
                     severity chips below sum to. */}
-                <span className="flex items-baseline gap-1">
-                  <span className="text-lg font-bold tabular-nums text-foreground">
-                    {total > 0 ? lane.count.toLocaleString() : "—"}
+                {known && total > 0 ? <span className="ml-6 flex items-baseline gap-1">
+                  <span className="text-sm font-semibold tabular-nums text-foreground">
+                    {known && total > 0 ? `${exact ? "" : "≥"}${lane.count.toLocaleString()}` : "—"}
                   </span>
-                  {total > 0 ? (
+                  {known && total > 0 ? (
                     <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
                       {lane.count === 1 ? "finding" : "findings"}
                     </span>
                   ) : null}
-                </span>
+                </span> : null}
               </div>
-              {/* Stacked severity strip — widths reflect share of the lane count. */}
-              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
-                {total > 0 &&
-                  bands.map((band) => (
-                    <span
-                      key={band.key}
-                      className="h-full"
-                      style={{
-                        width: `${((lane.severity[band.key] || 0) / total) * 100}%`,
-                        backgroundColor: `var(${band.token})`,
-                      }}
-                    />
-                  ))}
-              </div>
+              <div className="ml-6 mt-1 min-w-0">
+                {!exact && known && total > 0 ? (
+                  <p className="mb-1 text-[11px] text-ink-tertiary">{statusLabel} · at least this many</p>
+                ) : null}
               <div className="flex flex-wrap gap-1">
-                {total === 0 ? (
-                  <span className="text-[11px] text-ink-tertiary">No evidence</span>
+                {!known || total === 0 ? (
+                  <span className="text-[11px] text-ink-tertiary">{exact ? "No open findings" : statusLabel}</span>
                 ) : (
                   bands.map((band) => (
                     <span
                       key={band.key}
-                      className="rounded px-1.5 py-0.5 text-[11px] font-medium tabular-nums"
-                      style={{
-                        color: `var(${band.token})`,
-                        backgroundColor: `var(${band.token}-bg)`,
-                        border: `1px solid var(${band.token}-border)`,
-                      }}
+                      className="text-[11px] font-medium tabular-nums text-ink-secondary"
                     >
                       {band.label} {lane.severity[band.key]}
                     </span>
                   ))
                 )}
+              </div>
               </div>
             </Link>
           );
@@ -583,17 +590,9 @@ function EstateOpsStrip({
 }) {
   if (tiles.length === 0) return null;
 
-  const active = tiles.filter(opsLaneActive).length;
-
   return (
     <div data-testid="overview-estate-ops">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-xs font-semibold text-foreground">Operational signals</h3>
-        <span className="text-[11px] text-ink-tertiary">
-          {active} of {tiles.length} active
-        </span>
-      </div>
-      <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-1 grid gap-2 sm:grid-cols-2">
         {tiles.map((tile) => (
           <OpsTileCard key={tile.key} tile={tile} />
         ))}
@@ -631,9 +630,9 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
         <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
         <span className="truncate text-[11px] font-medium text-foreground">{tile.label}</span>
       </div>
-      <div className="flex shrink-0 items-baseline gap-1">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-end gap-x-1">
         <span className={`font-mono text-base font-semibold ${tone.text}`}>{tile.metric}</span>
-        <span className="truncate text-[10px] text-ink-tertiary" title={tile.metricLabel}>
+        <span className="text-right text-[10px] text-ink-tertiary" title={tile.metricLabel}>
           {tile.metricLabel}
         </span>
       </div>
@@ -644,59 +643,60 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
 function ComplianceSnapshotPanel({
   compliance,
   hasScanEvidence = false,
-  defaultOpen = true,
+  loading = false,
+  scanScopeKnown = true,
 }: {
   compliance: OverviewComplianceSnapshot | null | undefined;
   hasScanEvidence?: boolean | undefined;
-  defaultOpen?: boolean | undefined;
+  loading?: boolean | undefined;
+  scanScopeKnown?: boolean | undefined;
 }) {
   const allFrameworks = compliance?.frameworks ?? [];
-  const frameworks = allFrameworks.slice(0, 8);
+  const scored = allFrameworks.filter((item) => item.kind === "scored");
+  const mappings = allFrameworks.filter((item) => item.kind === "applicability");
   const evidenceReady = hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance);
-  const failing = evidenceReady ? allFrameworks.filter((item) => item.kind === "scored" && item.fail > 0).length : 0;
-  const statusTone =
-    !evidenceReady
-      ? "text-ink-tertiary"
-      : compliance?.overallStatus === "pass"
-        ? "text-emerald-400"
-        : compliance?.overallStatus === "warning"
-          ? "text-amber-300"
-          : compliance?.overallStatus === "fail"
-            ? "text-red-400"
-            : "text-ink-tertiary";
+  const attention = scored.filter((item) => item.fail > 0 || item.warn > 0).length;
+  const passed = scored.reduce((total, item) => total + item.pass, 0);
 
   return (
-    <Collapsible
-      bare
-      className="mt-4 border-t border-outline"
-      title="Compliance"
-      titleClassName={SECTION_TITLE_CLASS}
-      defaultOpen={defaultOpen}
-      subtitle={
-        evidenceReady
-          ? `${Math.round(compliance.overallScore)}% of ${compliance.evaluatedControls} evaluated control${compliance.evaluatedControls === 1 ? "" : "s"} · ${failing} framework${failing === 1 ? " needs" : "s need"} attention`
-          : hasScanEvidence
-            ? "No evaluated framework coverage is available for completed scans"
-            : "Framework coverage appears after the first completed scan"
-      }
-      count={evidenceReady && allFrameworks.length > 0 ? allFrameworks.length : undefined}
-      scrollMaxHeight="16rem"
-      data-testid="overview-compliance-snapshot"
-      actions={
-        <div className="flex items-center gap-3">
-          {evidenceReady ? (
-            <span className={`text-sm font-semibold tabular-nums ${statusTone}`}>
-              {Math.round(compliance.overallScore)}%
-            </span>
-          ) : null}
-          <Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
-            Trust center <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
-      }
-    >
-      {evidenceReady && frameworks.length > 0 ? (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="mt-3 border-t border-outline pt-3" data-testid="overview-compliance-snapshot">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className={SECTION_TITLE_CLASS}>Evaluated compliance</h3>
+        <Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+          Trust center <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+      {loading ? (
+        <p role="status" className="mt-2 text-xs text-ink-secondary">Loading control evaluation…</p>
+      ) : evidenceReady ? (
+        <>
+          <p className="mt-2 text-base font-semibold tabular-nums text-foreground">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
+          <p className="mt-1 text-xs text-ink-secondary">{Math.round(compliance.overallScore)}% of {compliance.evaluatedControls} evaluated controls · {attention} framework{attention === 1 ? " needs" : "s need"} attention</p>
+          <Collapsible bare title="Evaluated frameworks" defaultOpen={false} data-testid="overview-evaluated-frameworks">
+            <FrameworkCards frameworks={scored} />
+          </Collapsible>
+        </>
+      ) : (
+        <p className="mt-2 text-xs text-ink-secondary">
+          {!scanScopeKnown
+            ? "Control evaluation unavailable. Scan scope could not be established."
+            : hasScanEvidence
+            ? "Control evaluation unavailable for completed scans. Review scan scope and evaluation status before drawing a compliance conclusion."
+            : "Framework coverage appears after the first completed scan. Empty estates do not show pass tiles."}
+        </p>
+      )}
+      {hasScanEvidence && mappings.length > 0 ? (
+        <Collapsible bare title="Risk mappings" subtitle="Applicable risks, separate from control pass/fail" defaultOpen={false} data-testid="overview-risk-mappings">
+          <FrameworkCards frameworks={mappings} />
+        </Collapsible>
+      ) : null}
+    </div>
+  );
+}
+
+function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot["frameworks"] }) {
+  return (
+        <div className="grid gap-2 sm:grid-cols-2">
           {frameworks.map((framework) => {
             const evaluated = frameworkEvaluated(framework);
             const isApplicability = framework.kind === "applicability";
@@ -718,12 +718,14 @@ function ComplianceSnapshotPanel({
                 href="/compliance"
                 className="grid min-h-[3.25rem] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-outline bg-surface-muted px-2.5 py-2 transition hover:border-outline-strong"
               >
-                <FrameworkIcon frameworkId={framework.id} size={32} />
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center">
+                  <FrameworkIcon frameworkId={framework.id} size={32} />
+                </span>
                 <div className="min-w-0">
-                  <p className="truncate text-[11px] font-semibold leading-tight text-foreground">
+                  <p className="text-[11px] font-semibold leading-tight text-foreground">
                     {framework.label}
                   </p>
-                  <p className="mt-0.5 truncate text-[10px] leading-tight text-ink-tertiary">
+                  <p className="mt-0.5 text-[10px] leading-tight text-ink-tertiary">
                     {isApplicability
                       ? `${framework.applicable ?? 0}/${framework.total} risks applicable`
                       : evaluated === 0
@@ -750,22 +752,20 @@ function ComplianceSnapshotPanel({
             );
           })}
         </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-outline bg-surface-muted px-4 py-5 text-center text-xs text-ink-tertiary">
-          {hasScanEvidence
-            ? "Completed scans have not produced mapped framework evidence. Review scan scope before drawing a compliance conclusion."
-            : "Run a scan to light up OWASP, NIST, CIS, and related framework coverage. Empty estates do not show pass tiles."}
-        </div>
-      )}
-    </Collapsible>
   );
 }
 
 function TopRisksPanel({
+  loading,
+  unavailable,
+  scans,
   topPath,
   exposurePaths,
   agentMeshHref = null,
 }: {
+  loading: boolean;
+  unavailable: boolean;
+  scans: number | null;
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
   agentMeshHref?: string | null;
@@ -776,15 +776,21 @@ function TopRisksPanel({
   const moreCount = ranked.length - shown.length;
 
   return (
-    <Collapsible title="Top risks" subtitle="Prioritized findings and affected workloads"
+    <Collapsible title="Top risks"
       count={ranked.length || undefined} defaultOpen>
-      {shown.length > 0 ? (
+      {loading ? (
+        <p role="status" className="text-sm text-ink-secondary">Loading prioritized findings…</p>
+      ) : shown.length > 0 ? (
         <div className="space-y-2">
           {shown.map((path, index) => <RiskChainRow key={path.key} path={path} rank={index + 1} />)}
         </div>
       ) : (
         <p className="text-sm text-ink-secondary">
-          Run a scan to correlate CVEs, packages, agents, and credentials into ranked exposure paths.
+          {unavailable
+            ? "Prioritized findings unavailable."
+            : scans === 0
+              ? "No completed scans. Run a scan to assess findings."
+              : "No prioritized findings in the current overview."}
         </p>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
@@ -819,14 +825,14 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
       <Link href={path.href} className="group block rounded-lg p-3 transition hover:bg-surface-muted">
         <div className="flex items-start gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
-          <div className="min-w-0 flex-1">
+          <div className="grid min-w-0 flex-1 gap-x-4 xl:grid-cols-[minmax(0,1fr)_auto]">
             <p className="text-base font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
               <span>{findingLabel}</span>{pkg ? <> in <span>{pkg.label}</span></> : null}
             </p>
-            <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere]">
+            <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere] xl:col-start-1">
               {sbomSource ? `SBOM source: ${sbomSource}` : workload ? `Affected workload: ${workload.label}` : "Workload not identified"}
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-secondary">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-secondary xl:col-start-2 xl:row-start-1 xl:row-span-2 xl:mt-0">
               <span className={`rounded-md border px-2 py-0.5 font-semibold capitalize ${severityTone}`}>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
               <span>Path priority <strong className="font-semibold tabular-nums text-foreground">{Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "unavailable"}</strong></span>
               <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">Inspect finding <ArrowRight className="h-3 w-3" aria-hidden="true" /></span>
@@ -878,30 +884,38 @@ function ScoreExplainer({
       className="mt-4 border-t border-outline"
       title="What influences this score"
       titleClassName={SECTION_TITLE_CLASS}
-      subtitle="Relative weighted inputs and scoring method"
       defaultOpen={false}
       data-testid="overview-score-explainer"
     >
       <div className="mt-2 space-y-1.5">
         {rows.map((row) => {
           return (
-            <div key={row.driver} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3" data-testid={`score-driver-${row.driver}`}>
-              <span className="text-[11px] text-ink-secondary" title={row.label}>
-                {row.label}
-              </span>
-              <span className="text-right font-mono text-[11px] tabular-nums text-ink-tertiary">
-                {row.count} × {row.weight}
-              </span>
-              <span className="w-14 shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums text-foreground">
-                {row.contribution.toFixed(1)}
-              </span>
+            <div key={row.driver} className="space-y-1" data-testid={`score-driver-${row.driver}`}>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-0.5">
+                <span className="min-w-0 text-xs leading-4 text-ink-secondary [overflow-wrap:anywhere]">
+                  {row.label}
+                </span>
+                <span className="text-right font-mono text-xs font-semibold tabular-nums text-foreground">
+                  {row.contribution.toFixed(1)}
+                </span>
+                <span className="col-span-2 font-mono text-[11px] tabular-nums text-ink-tertiary">
+                  {row.count} × {row.weight}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
+                <div
+                  data-testid={`score-pressure-${row.driver}`}
+                  className="h-full rounded-full bg-accent-mint"
+                  style={{ width: `${(row.contribution / totalPressure) * 100}%` }}
+                />
+              </div>
             </div>
           );
         })}
       </div>
       <p className="mt-3 text-xs font-medium text-ink-secondary">Total weighted pressure: {totalPressure.toFixed(1)}</p>
       <p className="mt-2 text-xs leading-relaxed text-ink-tertiary">
-        Each input is count × weight. The server converts combined pressure to a score using a nonlinear curve;
+        Bars show each input’s share of weighted pressure (count × weight). The server converts combined pressure to a score using a nonlinear curve;
         these values are not points deducted from 100.
         {floored === true ? " The worse recorded scan posture limits the displayed score." : ""}
         {floored === undefined ? " Whether a recorded scan limits this score is unavailable." : ""}
@@ -976,7 +990,7 @@ function PostureHero({
   cves: number | null;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
-  const graded = typeof score === "number" && !ungraded;
+  const graded = !loading && typeof score === "number" && !ungraded;
   const scoreDisplay = graded ? formatPostureScore(score, grade, scoreFormat) : null;
   const scoreTone = graded && ["D", "F"].includes(grade)
     ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
@@ -998,7 +1012,7 @@ function PostureHero({
             <ScoreFormatToggle value={scoreFormat} onChange={onScoreFormatChange} />
           ) : null}
         </div>
-        <p className={`mt-2 inline-flex flex-wrap items-baseline gap-3 rounded-xl border px-4 py-3 font-semibold ${scoreTone}`} data-testid="overview-posture-score">
+        <p className={`mt-2 inline-flex flex-wrap items-baseline gap-3 rounded-xl border px-3 py-2 font-semibold ${scoreTone}`} data-testid="overview-posture-score">
           {loading ? (
             "Loading posture…"
           ) : graded ? (
@@ -1118,28 +1132,28 @@ function SeverityIssueStrip({
     {
       key: "critical",
       label: "Critical",
-      tone: "text-[color:var(--severity-critical)]",
+      tone: "text-red-800 dark:text-red-200",
       tint: "border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] hover:border-[color:var(--severity-critical)]",
       value: summaryReady ? (hasTyped ? resolved.totals.critical : critical) : 0,
     },
     {
       key: "high",
       label: "High",
-      tone: "text-[color:var(--severity-high)]",
+      tone: "text-orange-800 dark:text-orange-200",
       tint: "border-[color:var(--severity-high-border)] bg-[color:var(--severity-high-bg)] hover:border-[color:var(--severity-high)]",
       value: summaryReady ? (hasTyped ? resolved.totals.high : high) : 0,
     },
     {
       key: "medium",
       label: "Medium",
-      tone: "text-[color:var(--severity-medium)]",
+      tone: "text-amber-800 dark:text-amber-200",
       tint: "border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] hover:border-[color:var(--severity-medium)]",
       value: summaryReady ? (hasTyped ? resolved.totals.medium : severity.medium) : 0,
     },
     {
       key: "low",
       label: "Low",
-      tone: "text-[color:var(--severity-low)]",
+      tone: "text-blue-800 dark:text-blue-200",
       tint: "border-[color:var(--severity-low-border)] bg-[color:var(--severity-low-bg)] hover:border-[color:var(--severity-low)]",
       value: summaryReady ? (hasTyped ? resolved.totals.low : severity.low) : 0,
     },
@@ -1226,16 +1240,16 @@ function SeverityIssueStrip({
           <Link
             key={band.key}
             href={findingsHref({ scope: "all", severity: band.key })}
-            className={`rounded-lg border px-2.5 py-2 transition ${band.tint}`}
+            className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg border px-2.5 py-2 transition ${band.tint}`}
           >
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-secondary">
               {band.label}
             </p>
-            <p className={`mt-1 font-mono text-xl font-semibold ${band.tone}`}>
+            <p className={`font-mono text-xl font-semibold ${band.tone}`}>
               {summaryReady ? band.value : "—"}
             </p>
             {hasTyped && summaryReady ? (
-              <div className="mt-2 space-y-1">
+              <div className="col-span-2 mt-2 space-y-1">
                 <div className="flex h-1.5 overflow-hidden rounded-full bg-surface-muted">
                   {issueTypes.map((issue) => {
                     const count = resolved[issue][band.key];
@@ -1264,9 +1278,7 @@ function SeverityIssueStrip({
                   })}
                 </div>
               </div>
-            ) : (
-              <p className="mt-2 text-[9px] text-ink-tertiary">All issue types</p>
-            )}
+            ) : null}
           </Link>
         ))}
       </div>
@@ -1298,11 +1310,11 @@ function SeverityIssueStrip({
 function domainStatusTone(status: OverviewDomainStatus): { dot: string; text: string } {
   switch (status) {
     case "critical":
-      return { dot: "bg-red-500", text: "text-red-400" };
+      return { dot: "bg-red-500", text: "text-red-800 dark:text-red-300" };
     case "warn":
-      return { dot: "bg-amber-500", text: "text-amber-400" };
+      return { dot: "bg-amber-500", text: "text-amber-800 dark:text-amber-300" };
     case "ok":
-      return { dot: "bg-emerald-500", text: "text-emerald-400" };
+      return { dot: "bg-emerald-500", text: "text-emerald-800 dark:text-emerald-300" };
     default:
       return { dot: "bg-ink-tertiary", text: "text-ink-tertiary" };
   }

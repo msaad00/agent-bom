@@ -511,6 +511,14 @@ export interface AgentBomManifestEdge {
   attributes: Record<string, unknown>;
 }
 
+export interface AgentBomManifestServer extends Record<string, unknown> {
+  server_stable_id?: string;
+  identity_basis?: "server_identity" | "observation";
+  agent_names?: string[];
+  observation_ids?: string[];
+  observations?: Array<Record<string, unknown>>;
+}
+
 export interface AgentBomManifestResponse {
   schema_version: "agent-bom.manifest/v1" | string;
   generated_at: string;
@@ -551,7 +559,7 @@ export interface AgentBomManifestResponse {
     }>;
   };
   agents: Array<Record<string, unknown>>;
-  mcp_servers: Array<Record<string, unknown>>;
+  mcp_servers: AgentBomManifestServer[];
   graph: {
     nodes: AgentBomManifestNode[];
     edges: AgentBomManifestEdge[];

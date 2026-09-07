@@ -335,7 +335,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(unavailableLane.getByText("Count unavailable")).toBeVisible();
       expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(56);
       await expect(unavailableLane.getByText("0", { exact: true })).toHaveCount(0);
-      const coverageToggle = page.getByRole("button", { name: "Coverage & controls", exact: true });
+      const coverageToggle = page.getByRole("button", { name: /^Coverage & controls/ });
       await coverageToggle.focus();
       await page.keyboard.press("Enter");
       await expect(unavailableLane).not.toBeVisible();

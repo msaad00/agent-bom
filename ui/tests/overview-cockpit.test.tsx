@@ -58,7 +58,7 @@ describe("OverviewCockpit", () => {
   it("places visible operational and compliance context before the full-width risk list", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
     const posture = screen.getByRole("region", { name: "Command center" });
-    const coverage = screen.getByRole("region", { name: "Coverage & controls" });
+    const coverage = screen.getByRole("region", { name: /^Coverage & controls/ });
     const risks = screen.getByRole("region", { name: "Top risks" });
     expect(posture.parentElement).toBe(coverage.parentElement);
     expect(risks.parentElement).toBe(posture.parentElement?.parentElement);
@@ -120,7 +120,8 @@ describe("OverviewCockpit", () => {
     expect(within(lanes).getAllByRole("link")[0]).toHaveTextContent("Cloud security (CSPM)");
     expect(within(lanes).getByText("AI security (AISPM)")).toBeVisible();
     expect(lanes.compareDocumentPosition(screen.getByTestId("overview-estate-ops")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const toggle = screen.getByRole("button", { name: "Coverage & controls" });
+    const toggle = screen.getByRole("button", { name: /^Coverage & controls/ });
+    expect(toggle).toHaveTextContent("2 security disciplines");
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     toggle.focus();
     await user.keyboard("{Enter}");

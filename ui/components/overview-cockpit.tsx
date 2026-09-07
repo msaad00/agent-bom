@@ -212,7 +212,7 @@ export interface OverviewCockpitProps {
   issueMatrix?: IssueSeverityMatrix | null | undefined;
   domains: OverviewResponse["domains"] | null;
   /** Five security-posture coverage lanes (CSPM / Vuln / ASPM / DSPM /
-   *  AISPM) with reconciled, non-overlapping counts (issue #3946). */
+   *  AISPM) with evidence-qualified, overlapping counts (issue #3946). */
   coverage?: OverviewCoverageLane[] | null | undefined;
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
@@ -271,6 +271,13 @@ export function OverviewCockpit({
       ? "—"
       : undefined;
 
+  const coverageSummary = [
+    coverage?.length ? `${coverage.length} security disciplines` : null,
+    complianceEvaluated
+      ? `${compliance.frameworks.filter((framework) => framework.kind === "scored").reduce((sum, framework) => sum + framework.pass, 0)}/${compliance.evaluatedControls} controls pass`
+      : null,
+  ].filter(Boolean).join(" · ") || "Security findings and evaluated controls";
+
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 xl:grid-cols-2">
@@ -316,7 +323,7 @@ export function OverviewCockpit({
       </section>
 
       <section aria-label="Coverage & controls" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
-        <Collapsible bare title="Coverage & controls" titleClassName={SECTION_TITLE_CLASS} defaultOpen>
+        <Collapsible bare title="Coverage & controls" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
         {loading && !domains ? (
           <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
         ) : overviewUnavailable && !domains ? (

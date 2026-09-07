@@ -176,3 +176,14 @@ describe("scan-pipeline-progress", () => {
     expect(running.steps.size).toBe(0);
   });
 });
+
+
+it("counts skipped stages separately from completed work", () => {
+  const steps = parsePipelineStepsFromProgress([
+    JSON.stringify({ type: "step", step_id: "discovery", status: "done", message: "done" }),
+    JSON.stringify({ type: "step", step_id: "enrichment", status: "skipped", message: "not requested" }),
+  ]);
+  const summary = summarizePipeline(steps, { created_at: "2026-06-27T00:00:00Z", status: "done" });
+  expect(summary.completedSteps).toBe(1);
+  expect(summary.skippedSteps).toBe(1);
+});

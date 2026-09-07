@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useId, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Lock, Shield } from "lucide-react";
 
@@ -26,6 +26,8 @@ const TABS: { key: RuntimeTab; label: string; icon: typeof Shield; description: 
 ];
 
 function RuntimeTabs() {
+  const tabId = useId();
+  const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
   const searchParams = useSearchParams();
   const router = useRouter();
   const tab: RuntimeTab = searchParams.get("tab") === "gateway" ? "gateway" : "proxy";
@@ -46,7 +48,7 @@ function RuntimeTabs() {
           role="tablist"
           aria-label="Runtime surface"
         >
-          {TABS.map((item) => {
+          {TABS.map((item, index) => {
             const Icon = item.icon;
             const selected = item.key === tab;
             return (
@@ -54,7 +56,21 @@ function RuntimeTabs() {
                 key={item.key}
                 type="button"
                 role="tab"
+                id={`${tabId}-${item.key}`}
+                aria-controls={`${tabId}-panel-${item.key}`}
                 aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                ref={(button) => { tabButtons.current[index] = button; }}
+                onKeyDown={(event) => {
+                  const nextIndex = event.key === "ArrowRight" ? (index + 1) % TABS.length
+                    : event.key === "ArrowLeft" ? (index - 1 + TABS.length) % TABS.length
+                      : event.key === "Home" ? 0
+                        : event.key === "End" ? TABS.length - 1 : null;
+                  if (nextIndex === null) return;
+                  event.preventDefault();
+                  router.replace(`/runtime?tab=${TABS[nextIndex]!.key}`);
+                  tabButtons.current[nextIndex]?.focus();
+                }}
                 onClick={() => router.replace(`/runtime?tab=${item.key}`)}
                 className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   selected
@@ -72,9 +88,15 @@ function RuntimeTabs() {
 
       <p className="text-xs text-[color:var(--text-tertiary)]">{active.description}</p>
 
-      <RuntimeEmbedProvider>
-        {tab === "proxy" ? <ProxyDashboard /> : <GatewayPage />}
-      </RuntimeEmbedProvider>
+      {TABS.map((item) => (
+        <div key={item.key} role="tabpanel" id={`${tabId}-panel-${item.key}`} aria-labelledby={`${tabId}-${item.key}`} hidden={tab !== item.key} tabIndex={0}>
+          {tab === item.key ? (
+            <RuntimeEmbedProvider>
+              {item.key === "proxy" ? <ProxyDashboard /> : <GatewayPage />}
+            </RuntimeEmbedProvider>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }

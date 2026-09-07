@@ -29,6 +29,8 @@ describe("service registry helpers", () => {
   });
 
   it("maps unlock destinations for connect surfaces", () => {
+    expect(SERVICE_META.runtime_gateway.unlockHref).toBe("/runtime?tab=gateway");
+    expect(SERVICE_META.runtime_proxy.unlockHref).toBe("/runtime?tab=proxy");
     expect(SERVICE_META.cloud_accounts.unlockHref).toBe("/connections");
     expect(SERVICE_META.data_sources.unlockHref).toBe("/connections?tab=sources");
   });

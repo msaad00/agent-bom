@@ -1923,15 +1923,15 @@ export const api = {
     if (filters?.costCenter) params.set("cost_center", filters.costCenter);
     if (filters?.tag) params.set("tag", filters.tag);
     const qs = params.toString();
-    return get<CostReport>(`/v1/observability/costs${qs ? `?${qs}` : ""}`);
+    return get<CostReport>(`/v1/observability/costs${qs ? `?${qs}` : ""}`, { ttlMs: 0 });
   },
   getCostBudget: (agent?: string) =>
     get<CostBudgetStatus>(`/v1/observability/costs/budget${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
   /** Forward-looking burn-rate + budget-runway projection (reference only) */
   getCostForecast: (agent?: string) =>
-    get<CostForecast>(`/v1/observability/costs/forecast${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
+    get<CostForecast>(`/v1/observability/costs/forecast${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`, { ttlMs: 0 }),
   getCostAnomalies: (zThreshold?: number) =>
-    get<AnomaliesReport>(`/v1/observability/anomalies${zThreshold ? `?z_threshold=${zThreshold}` : ""}`),
+    get<AnomaliesReport>(`/v1/observability/anomalies${zThreshold ? `?z_threshold=${zThreshold}` : ""}`, { ttlMs: 0 }),
 
   // ── Identity / access-governance cockpit ──
   listIdentities: (includeInactive = false, limit = 200) =>

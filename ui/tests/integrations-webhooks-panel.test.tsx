@@ -116,3 +116,17 @@ describe("WebhooksPanel", () => {
     expect(screen.getByRole("button", { name: /New subscription/i })).toBeDisabled();
   });
 });
+
+
+it("preserves subscriptions without converting failed delivery telemetry to zero", async () => {
+  apiMock.listWebhookOutbox.mockRejectedValueOnce(new Error("unavailable"));
+  render(<WebhooksPanel />);
+  expect(await screen.findByText("https://hooks.example.com/•••")).toBeInTheDocument();
+  expect(screen.getByText("Delivery telemetry unavailable")).toBeInTheDocument();
+  for (const label of ["Outbox pending", "Delivered", "Dead-letter"]) {
+    expect(screen.getByText(label).parentElement?.parentElement).toHaveTextContent("Unavailable");
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() => expect(screen.queryByText("Delivery telemetry unavailable")).not.toBeInTheDocument());
+  expect(screen.getByText("Delivered").parentElement?.parentElement).toHaveTextContent("5");
+});

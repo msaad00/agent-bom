@@ -101,6 +101,13 @@ function healthLabel(health: GatewayFeedHealth | null): string {
   return "Gateway unavailable";
 }
 
+function eventTone(event: ActivityEvent): "blocked" | "allowed" | "unknown" {
+  const decision = event.decision?.toLowerCase();
+  if (event.blocked || ["deny", "denied", "blocked", "failed", "error"].includes(decision ?? "")) return "blocked";
+  if (["allow", "allowed", "success", "successful"].includes(decision ?? "")) return "allowed";
+  return "unknown";
+}
+
 function display(value: string | number | null): string {
   if (value === null || value === "") return "Unavailable";
   return typeof value === "number" ? value.toLocaleString() : value;
@@ -189,7 +196,7 @@ export function ActivityEventStream({
             </span>
           </div>
           <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-            Gateway decisions and AI telemetry ordered by recorded observation time.
+            Gateway decisions and AI telemetry ordered by recorded observation time. Gateway refreshes every 15 seconds; up to 100 recent gateway records.
           </p>
         </div>
         <label className="relative w-full md:w-72">
@@ -211,7 +218,9 @@ export function ActivityEventStream({
       ) : events.length === 0 ? (
         <div className="flex items-center justify-center gap-2 px-4 py-8 text-xs text-[var(--text-tertiary)]">
           <CircleAlert className="h-4 w-4" />
-          No observed activity matches this view.
+          {gatewayHealth === null
+            ? "Gateway evidence unavailable. Collection health could not be verified."
+            : "No observed activity matches this view."}
         </div>
       ) : (
         <ul className="max-h-[34rem] divide-y divide-[var(--border-subtle)] overflow-y-auto">
@@ -223,8 +232,8 @@ export function ActivityEventStream({
                 className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--surface-elevated)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500"
               >
                 <span
-                  className={`mt-1.5 h-2 w-2 rounded-full ${event.blocked ? "bg-red-500" : "bg-emerald-500"}`}
-                  aria-label={event.blocked ? "blocked or failed" : "allowed or successful"}
+                  className={`mt-1.5 h-2 w-2 rounded-full ${eventTone(event) === "blocked" ? "bg-red-500" : eventTone(event) === "allowed" ? "bg-emerald-500" : "bg-[var(--text-tertiary)]"}`}
+                  aria-label={eventTone(event) === "blocked" ? "blocked or failed" : eventTone(event) === "allowed" ? "allowed or successful" : "decision unassessed"}
                 />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-[var(--foreground)]">

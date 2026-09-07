@@ -244,6 +244,8 @@ class GatewayActivityRecord:
             provenance = self.submission_provenance
             if not isinstance(provenance, GatewaySubmissionProvenance):
                 raise ValueError("gateway activity v2 requires typed submission provenance")
+            provenance = GatewaySubmissionProvenance.model_validate(provenance)
+            object.__setattr__(self, "submission_provenance", provenance)
             if provenance.submission_source_id != self.source_id or provenance.submission_session_id != self.session_id:
                 raise ValueError("gateway activity submission context does not match provenance")
         else:
@@ -456,6 +458,30 @@ def _digest_payload(record: GatewayActivityRecord) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _matches_stored_digest(record: GatewayActivityRecord, stored_digest: str) -> bool:
+    """Accept exact historical-v1 replay without upgrading its unknown actor.
+
+    A v2 actor/claim change still conflicts. Historical records lack actor
+    metadata; equality proves only their original canonical event content.
+    Stored records and tombstones are never rewritten by this comparison.
+    """
+    if stored_digest == record.event_digest:
+        return True
+    if record.record_schema_version != "gateway.activity.record.v2":
+        return False
+    provenance = record.submission_provenance
+    if (
+        provenance is None
+        or provenance.reported_source_id not in ("", record.source_id)
+        or provenance.reported_session_id not in ("", record.session_id)
+    ):
+        # Historical v1 did not retain nested origins. A differing new claim
+        # cannot safely be compared and must remain an explicit conflict.
+        return False
+    legacy = replace(record, record_schema_version="gateway.activity.record.v1", submission_provenance=None)
+    return stored_digest == _digest_payload(legacy)
+
+
 def gateway_activity_record_from_event(
     event: dict[str, Any],
     *,
@@ -636,7 +662,7 @@ class InMemoryGatewayActivityStore:
                 tombstone = self._tombstones.get(key)
                 existing_digest = existing.event_digest if existing is not None else tombstone[0] if tombstone else None
                 if existing_digest is not None:
-                    if existing_digest != record.event_digest:
+                    if not _matches_stored_digest(record, existing_digest):
                         raise GatewayActivityConflictError(f"gateway activity event_id conflict: {record.event_id}")
                     duplicates.append(record.event_id)
                 else:
@@ -783,7 +809,7 @@ class SQLiteGatewayActivityStore:
             for record in prepared:
                 digest = active.get(record.event_id) or tombstones.get(record.event_id)
                 if digest is not None:
-                    if digest != record.event_digest:
+                    if not _matches_stored_digest(record, digest):
                         raise GatewayActivityConflictError(f"gateway activity event_id conflict: {record.event_id}")
                     duplicates.append(record.event_id)
                 else:

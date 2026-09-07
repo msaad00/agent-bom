@@ -19,6 +19,7 @@ from agent_bom.api.gateway_activity_store import (
     GatewayActivityWindowSummary,
     _decode_cursor,
     _encode_cursor,
+    _matches_stored_digest,
     _page,
     _prepare_batch,
     _record_from_json,
@@ -132,7 +133,7 @@ class PostgresGatewayActivityStore:
                     digest = active.get(record.event_id) or tombstones.get(record.event_id)
                     if digest is None:
                         new_records.append(record)
-                    elif digest == record.event_digest:
+                    elif _matches_stored_digest(record, digest):
                         duplicates.append(record.event_id)
                     else:
                         raise GatewayActivityConflictError(f"gateway activity event_id conflict: {record.event_id}")

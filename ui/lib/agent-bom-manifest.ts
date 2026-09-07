@@ -113,12 +113,15 @@ export function deriveManifestRows(manifest: AgentBomManifestResponse, now: Date
     const serverRow = asRecord(server);
     const tools = Array.isArray(serverRow.tools) ? serverRow.tools : [];
     const observed = asRecord(serverRow.observed);
-    const observationName = asString(serverRow.agent_name);
-    const agentName = observationName || "local discovery";
+    const observationNames = [...new Set(asStringList(serverRow.agent_names))];
+    const legacyName = asString(serverRow.agent_name);
+    if (!observationNames.length && legacyName) observationNames.push(legacyName);
+    const observationName = observationNames.length === 1 ? observationNames[0] : "";
+    const agentName = observationNames.join(", ") || "local discovery";
     const members = agentsByServer.get(asString(serverRow.id)) ?? [];
     const agent = members.length > 0
       ? (members.length === 1 ? members[0] : undefined)
-      : observationName ? agentsByName.get(observationName) : undefined;
+      : observationName && serverRow.identity_basis !== "observation" ? agentsByName.get(observationName) : undefined;
     const security = asRecord(serverRow.security);
     const runtimeState = classifyRuntimeState(observed);
     const lastSeen = asString(observed.last_seen, "-");

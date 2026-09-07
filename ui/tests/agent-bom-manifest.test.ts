@@ -210,3 +210,27 @@ it("does not resolve a missing client name using its display placeholder", () =>
   expect(row?.owner).toBe("unknown");
   expect(row?.environment).toBe("unknown");
 });
+
+it("keeps every reported shared-server agent visible without assigning one owner", () => {
+  const shared: AgentBomManifestResponse = {
+    ...manifest,
+    agents: [{ id: "alpha-id", name: "alpha", owner: "team-a", environment: "prod" }, { id: "beta-id", name: "beta", owner: "team-b", environment: "dev" }],
+    mcp_servers: [{ id: "shared", name: "shared-server", agent_name: "", agent_names: ["alpha", "beta"], observation_ids: ["a", "b"] }],
+  };
+  const rows = deriveManifestRows(shared);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.agentName).toBe("alpha, beta");
+  expect(rows[0]?.owner).toBe("unknown");
+  expect(rows[0]?.environment).toBe("unknown");
+  expect(filterManifestRows(rows, { ...DEFAULT_MANIFEST_FILTERS, query: "beta" })).toHaveLength(1);
+});
+
+it("does not recover an observation-scoped conflict through an agent display name", () => {
+  const row = deriveManifestRows({ ...manifest,
+    agents: [{ id: "agent", name: "assistant", owner: "prod-team", environment: "prod", mcp_server_ids: ["shared"] }],
+    mcp_servers: [{ id: "observation:conflict", server_stable_id: "shared", identity_basis: "observation", agent_names: ["assistant"] }],
+  })[0];
+  expect(row?.agentName).toBe("assistant");
+  expect(row?.owner).toBe("unknown");
+  expect(row?.environment).toBe("unknown");
+});

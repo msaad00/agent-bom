@@ -1,9 +1,9 @@
 {
   "release_version": "0.103.2",
-  "captured_at": "2026-09-07T02:22:49.712Z",
-  "source_commit": "b33102229ef3135cdc5504d8b7bde1e487ec5436",
+  "captured_at": "2026-09-07T02:45:03.929Z",
+  "source_commit": "8ff2bfd3060759552cb9966d04cba3bf81ed3556",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:2766fef72fc1fed8fbc9d87a49d2f379c11cdaa6df6c99780e6b37ccdfbdea25",
+  "capture_inputs_sha256": "sha256:08000a30be465d324b170e3dff27b40853bd531d53a94ca0c2073a4a43107014",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.103.2",
-      "sha256": "sha256:ca6ce6c1a4f0f94c5e2923aba6f67803087891546d4aa2d55a5d75988c5f9a5f"
+      "sha256": "sha256:53fb9c2653fd092fcc1f1919e837213c8a7e23ac27ca89f0ac1823fb169102e4"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center in the light theme",
       "visible_version": "0.103.2",
-      "sha256": "sha256:7128d2ecbdf0e9d2bc750ac83873fac84736699eb5c8f7356281d6ac2e3b33fd"
+      "sha256": "sha256:0feeef10348f61658b90ae01ff38e62e018ce8c16555ecf0a8f7497a58d85469"
     },
     {
       "presentation": "dark mobile",
@@ -28,7 +28,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center at a 390 by 844 viewport",
       "visible_version": "0.103.2",
-      "sha256": "sha256:391b3436a710546e715e4b26107de593de06914af95ffffaa3b253b6e60a0a00"
+      "sha256": "sha256:9ca8ef212de88479a3454d0dc7a4bcbd0ad2d26dc8cbb59b6daebe1f05aee885"
     },
     {
       "presentation": "dark desktop",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.103.2",
-      "sha256": "sha256:17a3617f1affdee75664795b3a76427824d5ab794bbc757fdc4badb7b18f9b57"
+      "sha256": "sha256:8799edd18b6962f70a854d9000bccc181fea21c442da15f1835090fd0a53bd4c"
     },
     {
       "presentation": "dark desktop",

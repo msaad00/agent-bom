@@ -154,8 +154,7 @@ function buildDenseGraph() {
   };
 }
 
-async function routeGraphPage(page: Page) {
-  const graph = buildDenseGraph();
+async function routeGraphPage(page: Page, graph = buildDenseGraph()) {
 
   await page.route("**/health", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok" }) });
@@ -316,3 +315,43 @@ test("lineage graph controls zoom, move, persist, lock, fit, and auto-layout", a
   await page.getByRole("button", { name: "Lock layout" }).click();
   await expect(page.getByRole("button", { name: "Edit layout" })).toBeVisible();
 });
+
+
+for (const activation of ["pointer", "keyboard"] as const) {
+  test(`SBOM finding group restores every relationship with ${activation} activation`, async ({ page }) => {
+    const source = node("source:sbom", "source_file", "SBOM: reviewed-project.cdx.json");
+    const pkg = node("package:reviewed", "package", "Reviewed package", "high", 0, { name: "reviewed-package", version: "1.0" });
+    const findings = Array.from({ length: 22 }, (_, index) => node(`finding:${index}`, "vulnerability", `Fixture finding ${index}`, "high"));
+    const graph = buildDenseGraph();
+    graph.nodes = [source, pkg, ...findings];
+    graph.edges = [
+      edge(source.id, pkg.id, "contains"),
+      ...findings.flatMap((finding) => [edge(pkg.id, finding.id, "has_cve"), edge(source.id, finding.id, "has_cve")]),
+    ].map((relationship) => ({ ...relationship, traversable: false, evidence: { source: "bounded SBOM fixture" } }));
+    graph.pagination = { total: 24, offset: 0, limit: 250, has_more: false };
+    await routeGraphPage(page, graph);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/graph?scan=${scanId}&rollup=0`);
+    const pill = page.getByRole("button", { name: "Expand 22 findings", exact: true });
+    await expect(pill).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(3);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(3);
+    if (activation === "keyboard") {
+      await pill.focus();
+      await pill.press("Enter");
+    } else {
+      await pill.hover();
+      await pill.click();
+    }
+    await expect(pill).toHaveCount(0);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(45);
+    await page.getByRole("button", { name: "Fit View", exact: true }).click();
+    await expect(page.locator(".react-flow__node")).toHaveCount(24);
+    const renderedEdges = await page.locator(".react-flow__edge").evaluateAll((elements) => elements.map((element) => element.getAttribute("data-id")));
+    expect(new Set(renderedEdges).size).toBe(45);
+    const packageNode = page.getByTestId(`rf__node-${pkg.id}`);
+    await packageNode.hover();
+    await packageNode.click();
+    await expect(page.getByRole("heading", { name: "Reviewed package", exact: true })).toBeVisible();
+  });
+}

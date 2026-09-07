@@ -26,7 +26,7 @@ export const MINIMAP_CLASS = "graph-flow-minimap";
 // light/dark toggle without any runtime JS (was a hardcoded near-black #09090b
 // that rendered as a black panel on the light canvas).
 export const MINIMAP_BG = "var(--surface)";
-export const MINIMAP_MASK = "rgba(24,24,27,0.82)";
+export const MINIMAP_MASK = "var(--graph-minimap-mask)";
 
 // Dot-grid tint. #1c1c1e sat one step off the page background, so the canvas
 // read flat/dark; a lighter neutral makes the grid legible on both the dark

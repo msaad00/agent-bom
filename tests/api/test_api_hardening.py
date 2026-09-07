@@ -20,7 +20,7 @@ from agent_bom.api.browser_session import (
     create_browser_session_token,
     revoke_browser_session_token,
 )
-from agent_bom.api.middleware import InMemoryRateLimitStore
+from agent_bom.api.middleware import InMemoryRateLimitStore, get_auth_posture
 from agent_bom.api.oidc import OIDCConfig
 from agent_bom.api.server import (
     DEFAULT_RATE_LIMIT_RPM,
@@ -45,6 +45,58 @@ def test_health_no_auth():
     client = TestClient(app)
     resp = client.get("/health")
     assert resp.status_code == 200
+
+
+@pytest.mark.parametrize("origins", [["*"], ["https://trusted.example", "*"]])
+def test_configure_api_rejects_explicit_wildcard_origin_on_public_listener(origins):
+    with pytest.raises(ValueError, match="loopback"):
+        configure_api(cors_origins=origins, listener_host="0.0.0.0")
+
+
+def test_configure_api_cannot_carry_wildcard_to_a_public_listener():
+    configure_api(cors_allow_all=True, listener_host="127.0.0.1")
+    try:
+        with pytest.raises(ValueError, match="loopback"):
+            configure_api(listener_host="0.0.0.0")
+    finally:
+        configure_api(cors_origins=["http://127.0.0.1:3000"], listener_host="127.0.0.1")
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost"])
+def test_env_wildcard_cors_accepts_explicit_loopback_host(monkeypatch, host):
+    monkeypatch.setenv("AGENT_BOM_CORS_ORIGINS", "*")
+    monkeypatch.setenv("AGENT_BOM_API_HOST", host)
+    try:
+        configure_api_from_env()
+        assert get_auth_posture().listener_host == host
+        response = TestClient(app).options(
+            "/v1/jobs", headers={"Origin": "https://local-ui.example", "Access-Control-Request-Method": "GET"}
+        )
+        assert response.headers["access-control-allow-origin"] == "*"
+    finally:
+        configure_api(cors_origins=["http://127.0.0.1:3000"], listener_host="127.0.0.1")
+
+
+@pytest.mark.parametrize("host", [None, "0.0.0.0", "::"])
+def test_env_wildcard_cors_rejects_unknown_or_public_host(monkeypatch, host):
+    monkeypatch.setenv("AGENT_BOM_CORS_ORIGINS", "*")
+    if host is None:
+        monkeypatch.delenv("AGENT_BOM_API_HOST", raising=False)
+    else:
+        monkeypatch.setenv("AGENT_BOM_API_HOST", host)
+    with pytest.raises(ValueError, match="loopback"):
+        configure_api_from_env()
+
+
+def test_configure_api_persists_effective_listener_host():
+    """Runtime posture must describe the address the API actually listens on."""
+    configure_api(api_key=None, allow_unauthenticated=True, listener_host="0.0.0.0")
+    try:
+        posture = get_auth_posture()
+        assert posture.listener_host == "0.0.0.0"
+        assert posture.listener_loopback is False
+    finally:
+        configure_api(api_key=None, allow_unauthenticated=True, listener_host="127.0.0.1")
 
 
 def test_kubernetes_probe_aliases_no_auth():
@@ -589,7 +641,7 @@ def test_trust_headers_present():
 
 def test_configure_api_refreshes_cors_policy():
     """configure_api() should update the live CORS middleware, not just a module variable."""
-    configure_api(cors_allow_all=True)
+    configure_api(cors_allow_all=True, listener_host="127.0.0.1")
     client = TestClient(app)
     resp = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
     assert resp.status_code == 200
@@ -600,6 +652,12 @@ def test_configure_api_refreshes_cors_policy():
     resp = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
     assert resp.status_code == 200
     assert resp.headers.get("access-control-allow-origin") is None
+
+
+@pytest.mark.parametrize("listener_host", [None, "0.0.0.0", "::", "api.example.com"])
+def test_configure_api_rejects_wildcard_cors_without_loopback_listener(listener_host: str | None):
+    with pytest.raises(ValueError, match="loopback listener_host"):
+        configure_api(cors_allow_all=True, listener_host=listener_host)
 
 
 def test_configure_api_defaults_to_release_safe_rate_limit():

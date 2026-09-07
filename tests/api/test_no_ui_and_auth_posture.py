@@ -148,3 +148,24 @@ def test_auth_posture_helper_warns_when_unauthenticated_opt_in(caplog):
 
     assert any(r.levelno == logging.WARNING and _UNAUTH_OPT_IN_MSG in r.getMessage() for r in caplog.records)
     assert not any(_NO_AUTH_MSG in r.getMessage() for r in caplog.records)
+
+
+def test_unknown_listener_keeps_authentication_and_explicit_anonymous_policy(monkeypatch):
+    from agent_bom.api.middleware import get_auth_posture
+
+    for name in ("AGENT_BOM_API_HOST", "AGENT_BOM_API_KEY", "AGENT_BOM_API_KEYS", "AGENT_BOM_ALLOW_UNAUTHENTICATED_API"):
+        monkeypatch.delenv(name, raising=False)
+    configure_api_from_env()
+    client = TestClient(app, base_url="http://203.0.113.10:8422", client=("198.51.100.8", 41000))
+    assert get_auth_posture().listener_host == "unknown"
+    assert client.get("/v1/jobs").status_code == 401
+
+    configure_api(api_key="listener-posture-test-key", allow_unauthenticated=False)
+    assert client.get("/v1/jobs").status_code == 401
+    assert client.get("/v1/jobs", headers={"X-API-Key": "listener-posture-test-key"}).status_code == 200
+
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    configure_api_from_env()
+    assert get_auth_posture().listener_host == "unknown"
+    assert get_auth_posture().anonymous_allowed is True
+    assert client.get("/v1/jobs").status_code == 200

@@ -195,3 +195,28 @@ def test_startup_log_emits_one_posture_line(caplog, monkeypatch):
         assert "sources=" in posture_lines[0]
     finally:
         apply_auth_posture(derive_auth_posture(api_key_configured=False, allow_unauthenticated=False, listener_host="127.0.0.1"))
+
+
+@pytest.mark.parametrize("listener_host", [None, "", "   "])
+def test_unknown_listener_is_not_reported_as_loopback(monkeypatch, listener_host):
+    from agent_bom.api.middleware import describe_control_plane_direct_listener_posture
+
+    monkeypatch.delenv("AGENT_BOM_API_HOST", raising=False)
+    monkeypatch.setenv("AGENT_BOM_DEPLOYMENT_ENV", "production")
+    posture = derive_auth_posture(api_key_configured=False, allow_unauthenticated=False, listener_host=listener_host)
+    assert posture.listener_host == "unknown"
+    assert posture.listener_loopback is False
+    assert "listener=unknown(unknown)" in posture.summary_line()
+    direct = describe_control_plane_direct_listener_posture(listener_host=listener_host, mtls_ok=False, trusted_proxy_ok=False)
+    assert direct["status"] == "unknown"
+    assert direct["loopback"] is False
+    assert "not declared" in direct["message"]
+    assert posture.auth_required is True
+
+
+def test_listener_environment_remains_authoritative(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_API_HOST", "127.0.0.1")
+    posture = derive_auth_posture(api_key_configured=False, allow_unauthenticated=True)
+    assert posture.listener_host == "127.0.0.1"
+    assert posture.listener_loopback is True
+    assert posture.recommended_ui_mode == "no_auth"

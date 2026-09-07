@@ -211,3 +211,26 @@ describe("useGraphPresentation", () => {
     expect(window.localStorage.getItem(graphPresentationStorageKey(nextScope))).toBeNull();
   });
 });
+
+
+describe("transient graph geometry", () => {
+  it("retains measured geometry on hover refresh without enabling layout persistence", () => {
+    const { result, rerender } = renderHook(
+      ({ graphNodes }) => useGraphPresentation({ nodes: graphNodes, scope, layout: "dagre-lr", enabled: false }),
+      { initialProps: { graphNodes: nodes } },
+    );
+    act(() => result.current.onNodesChange([
+      { id: "package:a", type: "dimensions", dimensions: { width: 240, height: 100 } },
+      { id: "package:a", type: "position", position: { x: 999, y: 999 } },
+    ]));
+    expect(result.current.nodes[0]?.measured).toEqual({ width: 240, height: 100 });
+    expect(result.current.nodes[0]?.position).toEqual({ x: 0, y: 0 });
+    rerender({ graphNodes: [{ ...nodes[0]!, data: { label: "Package A", highlighted: true } }] });
+    expect(result.current.nodes[0]?.measured).toEqual({ width: 240, height: 100 });
+    expect(result.current.nodes[0]?.data.highlighted).toBe(true);
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.hasSavedState).toBe(false);
+    rerender({ graphNodes: [{ id: "package:b", position: { x: 10, y: 20 }, data: { label: "Package B" } }] });
+    expect(result.current.nodes[0]?.measured).toBeUndefined();
+  });
+});

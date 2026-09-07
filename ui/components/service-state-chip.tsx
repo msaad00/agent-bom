@@ -3,6 +3,7 @@ import type { ServiceEntry, ServiceId } from "@/lib/api-types";
 import {
   SERVICE_META,
   serviceRequiresLabel,
+  serviceSetupAction,
   serviceStateLabel,
 } from "@/lib/service-registry";
 
@@ -23,8 +24,8 @@ export function ServiceStateChip({
   registry?: Partial<Record<ServiceId, ServiceEntry>> | undefined;
   showUnlock?: boolean;
 }) {
-  const meta = SERVICE_META[serviceId];
   const requires = serviceRequiresLabel(registry, serviceId);
+  const setup = serviceSetupAction(serviceId, entry, registry);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -41,10 +42,10 @@ export function ServiceStateChip({
       ) : null}
       {showUnlock && entry.state !== "live" ? (
         <Link
-          href={meta.unlockHref}
-          className="text-[11px] font-medium text-emerald-400 hover:text-emerald-300"
+          href={setup.href}
+          className="text-[11px] font-medium text-emerald-800 hover:text-emerald-900 dark:text-emerald-200 dark:hover:text-emerald-100"
         >
-          {meta.unlockLabel}
+          {setup.label}
         </Link>
       ) : null}
     </div>
@@ -65,13 +66,14 @@ export function ServiceStateBanner({
   }
   const meta = SERVICE_META[serviceId];
   const requires = serviceRequiresLabel(registry, serviceId);
+  const setup = serviceSetupAction(serviceId, entry, registry);
   return (
     <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
       <span className="font-medium text-[color:var(--foreground)]">{meta.label}</span> is{" "}
       {entry.state === "locked" ? "not configured yet" : "connected but waiting for first evidence"}.
       {requires ? ` Requires ${requires}.` : null}{" "}
-      <Link href={meta.unlockHref} className="font-medium text-emerald-400 hover:text-emerald-300">
-        {meta.unlockLabel}
+      <Link href={setup.href} className="font-medium text-emerald-800 hover:text-emerald-900 dark:text-emerald-200 dark:hover:text-emerald-100">
+        {setup.label}
       </Link>
     </div>
   );

@@ -154,8 +154,7 @@ function buildDenseGraph() {
   };
 }
 
-async function routeGraphPage(page: Page) {
-  const graph = buildDenseGraph();
+async function routeGraphPage(page: Page, graph = buildDenseGraph()) {
 
   await page.route("**/health", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok" }) });
@@ -316,3 +315,227 @@ test("lineage graph controls zoom, move, persist, lock, fit, and auto-layout", a
   await page.getByRole("button", { name: "Lock layout" }).click();
   await expect(page.getByRole("button", { name: "Edit layout" })).toBeVisible();
 });
+
+
+for (const activation of ["pointer", "keyboard"] as const) {
+  test(`SBOM finding group restores every relationship with ${activation} activation`, async ({ page }) => {
+    const source = node("source:sbom", "source_file", "SBOM: reviewed-project.cdx.json");
+    const pkg = node("package:reviewed", "package", "Reviewed package", "high", 0, { name: "reviewed-package", version: "1.0" });
+    const findings = Array.from({ length: 22 }, (_, index) => node(`finding:${index}`, "vulnerability", `Fixture finding ${index}`, "high"));
+    const graph = buildDenseGraph();
+    graph.nodes = [source, pkg, ...findings];
+    graph.edges = [
+      edge(source.id, pkg.id, "contains"),
+      ...findings.flatMap((finding) => [edge(pkg.id, finding.id, "has_cve"), edge(source.id, finding.id, "has_cve")]),
+    ].map((relationship) => ({ ...relationship, traversable: false, evidence: { source: "bounded SBOM fixture" } }));
+    graph.pagination = { total: 24, offset: 0, limit: 250, has_more: false };
+    await routeGraphPage(page, graph);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/graph?scan=${scanId}&rollup=0`);
+    const pill = page.getByRole("button", { name: "Expand 22 findings", exact: true });
+    await expect(pill).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(3);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(3);
+    if (activation === "keyboard") {
+      await pill.focus();
+      await pill.press("Enter");
+    } else {
+      await pill.hover();
+      await pill.click();
+    }
+    await expect(pill).toHaveCount(0);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(45);
+    await page.getByRole("button", { name: "Fit View", exact: true }).click();
+    await expect(page.locator(".react-flow__node")).toHaveCount(24);
+    const renderedEdges = await page.locator(".react-flow__edge").evaluateAll((elements) => elements.map((element) => element.getAttribute("data-id")));
+    expect(new Set(renderedEdges).size).toBe(45);
+    const packageNode = page.getByTestId(`rf__node-${pkg.id}`);
+    await packageNode.hover();
+    await packageNode.click();
+    await expect(page.getByRole("heading", { name: "Reviewed package", exact: true })).toBeVisible();
+  });
+}
+test("graph minimap mask follows light and dark themes without remounting", async ({ page }) => {
+  await routeGraphPage(page);
+  await page.goto("/graph?view=investigation", { waitUntil: "domcontentloaded" });
+  const mask = page.locator(".react-flow__minimap-mask");
+  await expect(mask).toBeVisible();
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate((value) => {
+      document.documentElement.dataset.theme = value;
+    }, theme);
+    const expected = theme === "light"
+      ? "rgba(226, 232, 240, 0.82)"
+      : "rgba(24, 24, 27, 0.82)";
+    await expect(mask).toHaveCSS("fill", expected);
+  }
+});
+
+test("grouped findings remain legible in both themes", async ({ page }, testInfo) => {
+  await routeGraphPage(page);
+  const graph = buildDenseGraph();
+  graph.nodes = [node("pkg:example", "package", "example@1.0.0")];
+  graph.edges = [];
+  graph.attack_paths = [];
+  for (let index = 0; index < 22; index++) {
+    const finding = `finding:${index}`;
+    graph.nodes.push(node(finding, "vulnerability", `Fixture finding ${index}`, "high"));
+    graph.edges.push(edge("pkg:example", finding, "vulnerable_to"));
+  }
+  await page.route("**/v1/graph?**", async (route) => {
+    await route.fulfill({ json: graph });
+  });
+  await page.goto("/graph?view=investigation", { waitUntil: "domcontentloaded" });
+  const pill = page.getByTestId("cluster-pill");
+  await expect(pill).toBeVisible();
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    const contrasts = await pill.evaluate((element) => {
+      // Rasterize computed CSS colors so the check also handles Tailwind's
+      // oklch colors. Composite translucent text/fills against the real surface.
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d")!;
+      const rgba = (color: string) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return Array.from(context.getImageData(0, 0, 1, 1).data);
+      };
+      const composite = (front: number[], back: number[]) =>
+        front.slice(0, 3).map((value, index) =>
+          value * front[3]! / 255 + back[index]! * (1 - front[3]! / 255));
+      const luminance = (rgb: number[]) => rgb.map((value) => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0);
+      const surface = rgba(getComputedStyle(document.documentElement).getPropertyValue("--surface"));
+      const background = composite(rgba(getComputedStyle(element).backgroundColor), surface);
+      return [...element.querySelectorAll("span")].map((label) => {
+        const foreground = composite(rgba(getComputedStyle(label).color), background);
+        const light = Math.max(luminance(foreground), luminance(background));
+        const dark = Math.min(luminance(foreground), luminance(background));
+        return (light + 0.05) / (dark + 0.05);
+      });
+    });
+    expect(contrasts).toHaveLength(2);
+    for (const contrast of contrasts) expect(contrast).toBeGreaterThanOrEqual(4.5);
+    await pill.screenshot({ path: testInfo.outputPath(`finding-group-${theme}.png`) });
+  }
+});
+
+for (const routePath of ["/graph", "/security-graph"]) {
+for (const width of [1440, 390]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`grouped SBOM titles and controls fit ${routePath} ${width}px ${theme}`, async ({ page }, testInfo) => {
+      const sourceLabel = "SBOM: modeled-reference-evidence-lab.cdx.json";
+      const graph = buildDenseGraph();
+      const source = node("source:readable", "source_file", sourceLabel);
+      const pkg = node("package:readable", "package", "pillow@9.0.0", "high", 0, { name: "pillow", version: "9.0.0", ecosystem: "pypi" });
+      const findings = Array.from({ length: 22 }, (_, i) => node(`readable:${i}`, "vulnerability", `Fixture finding ${i}`, "high"));
+      graph.nodes = [source, pkg, ...findings];
+      graph.edges = [edge(source.id, pkg.id, "contains"), ...findings.flatMap((finding) => [edge(pkg.id, finding.id, "has_cve"), edge(source.id, finding.id, "has_cve")])].map((item) => ({ ...item, traversable: false }));
+      graph.pagination = { total: 24, offset: 0, limit: 250, has_more: false };
+      await routeGraphPage(page, graph);
+      await page.setViewportSize({ width, height: 811 });
+      await page.goto(`${routePath}?lens=estate&scan=${scanId}&rollup=0`);
+      await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);
+      await expect(page.getByRole("button", { name: "Expand 22 findings" })).toBeVisible();
+      let lastTransform = "";
+      let stableFrames = 0;
+      await expect.poll(async () => {
+        const transform = await page.locator(".react-flow__viewport").evaluate((item) => getComputedStyle(item).transform);
+        stableFrames = transform === lastTransform ? stableFrames + 1 : 0;
+        lastTransform = transform;
+        return stableFrames;
+      }, { intervals: [100] }).toBeGreaterThanOrEqual(3);
+      const controls = page.locator(".react-flow__controls");
+      await expect(controls).toBeVisible();
+      const controlsBox = await controls.boundingBox();
+      expect(controlsBox!.y + controlsBox!.height).toBeLessThanOrEqual(811);
+      {
+        for (const label of [sourceLabel, "pillow@9.0.0", "+22 CVEs", "expand"]) {
+          const metrics = await page.locator(".react-flow__node").getByText(label, { exact: true }).evaluate((element) => ({
+            height: element.clientHeight, contentHeight: element.scrollHeight,
+            zoom: new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a,
+            lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+            renderedFontSize: Number.parseFloat(getComputedStyle(element).fontSize) * new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a,
+          }));
+          await testInfo.attach(`rendered-label-${label}`, { body: JSON.stringify({ label, width, theme, routePath, ...metrics }), contentType: "application/json" });
+          expect(metrics.contentHeight).toBeLessThanOrEqual(metrics.height + 1);
+          expect(metrics.renderedFontSize).toBeGreaterThanOrEqual(12);
+          if (label === "pillow@9.0.0") expect(metrics.height).toBeLessThanOrEqual(metrics.lineHeight + 1);
+        }
+      }
+      const boxes = await page.locator(".react-flow__node").evaluateAll((nodes) => nodes.map((item) => {
+        const box = item.getBoundingClientRect();
+        return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+      }));
+      expect(boxes).toHaveLength(3);
+      for (const box of boxes) expect(box.bottom).toBeLessThanOrEqual(811);
+      const memberLabels = await page.locator(".react-flow__edge-text").evaluateAll((labels) => labels.filter((label) => label.textContent === "22 members").map((label) => {
+        const text = label.getBoundingClientRect();
+        const background = label.parentElement!.querySelector(".react-flow__edge-textbg")!.getBoundingClientRect();
+        return { text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom }, background: { left: background.left, right: background.right, top: background.top, bottom: background.bottom } };
+      }));
+      expect(memberLabels.length).toBeGreaterThan(0);
+      for (const { text, background } of memberLabels) {
+        expect(text.left).toBeGreaterThanOrEqual(background.left);
+        expect(text.right).toBeLessThanOrEqual(background.right);
+        expect(text.top).toBeGreaterThanOrEqual(background.top);
+        expect(text.bottom).toBeLessThanOrEqual(background.bottom);
+      }
+      await testInfo.attach("bottom-clearance-and-edge-labels", { body: JSON.stringify({ boxes, memberLabels, viewportHeight: 811 }), contentType: "application/json" });
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i]!; const b = boxes[j]!;
+          expect(a.right + 4 <= b.left || b.right + 4 <= a.left || a.bottom + 4 <= b.top || b.bottom + 4 <= a.top).toBe(true);
+        }
+      }
+      const contrast = await page.locator(".react-flow__edge-path").evaluateAll((paths) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d")!;
+        const rgb = (value: string): number[] => {
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = value;
+          context.fillRect(0, 0, 1, 1);
+          return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+        };
+        const luminance = (value: number[]) => value.map((channel) => {
+          const s = channel / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
+        const background = rgb(getComputedStyle(document.documentElement).getPropertyValue("--surface").trim());
+        return paths.map((path) => {
+          const style = getComputedStyle(path);
+          const group = path.closest(".react-flow__edge")!;
+          const alpha = Number(style.opacity) * Number(getComputedStyle(group).opacity) * Number(style.strokeOpacity);
+          const color = rgb(style.stroke).map((channel, index) => channel * alpha + background[index]! * (1 - alpha));
+          const values = [luminance(color), luminance(background)].sort((a, b) => b - a);
+          return (values[0]! + 0.05) / (values[1]! + 0.05);
+        });
+      });
+      expect(contrast).toHaveLength(3);
+      for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(3);
+      await page.screenshot({ path: testInfo.outputPath(`grouped-${width}-${theme}.png`) });
+      const packageNode = page.getByTestId(`rf__node-${pkg.id}`);
+      await packageNode.click();
+      await expect(page.getByRole("heading", { name: "pillow@9.0.0", exact: true })).toBeVisible();
+      await page.setViewportSize({ width: width === 390 ? 1440 : 390, height: 811 });
+      await expect(page.getByRole("heading", { name: "pillow@9.0.0", exact: true })).toBeVisible();
+      expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
+      await page.getByRole("button", { name: "Close", exact: true }).click();
+      await page.goto("/findings");
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/findings");
+      await page.goBack();
+      await expect.poll(() => new URL(page.url()).pathname).toBe(routePath);
+      expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
+      // A saved desktop viewport stays authoritative after mobile navigation.
+      // The visible Fit action restores the scope without deleting personal layout.
+      await page.getByRole("button", { name: "Fit View", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Expand 22 findings" })).toBeVisible();
+    });
+  }
+}
+}

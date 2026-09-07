@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -107,6 +108,9 @@ export function InventoryProvider({
   const [details, setDetails] = useState<Record<string, InventoryAssetDetailResponse>>({});
   const [detailLoadingId, setDetailLoadingId] = useState("");
   const [detailError, setDetailError] = useState("");
+  // Continuations are query-scoped; details remain valid across filters but not refreshes.
+  const pageGeneration = useRef(0);
+  const snapshotGeneration = useRef(0);
 
   const reload = useCallback(() => setNonce((value) => value + 1), []);
   const entityTypesKey = (entityTypes ?? []).join(",");
@@ -118,6 +122,11 @@ export function InventoryProvider({
 
   useEffect(() => {
     let cancelled = false;
+    pageGeneration.current += 1;
+    snapshotGeneration.current += 1;
+    setLoadingMore(false);
+    setDetailLoadingId("");
+    setDetailError("");
     setLoadingSummary(true);
     setLoadingPage(false);
     setSummary(null);
@@ -139,6 +148,7 @@ export function InventoryProvider({
       });
     return () => {
       cancelled = true;
+      snapshotGeneration.current += 1;
     };
   }, [nonce]);
 
@@ -159,6 +169,8 @@ export function InventoryProvider({
 
   useEffect(() => {
     if (!summary) return;
+    pageGeneration.current += 1;
+    setLoadingMore(false);
     let cancelled = false;
     setLoadingPage(true);
     setError("");
@@ -182,6 +194,7 @@ export function InventoryProvider({
       });
     return () => {
       cancelled = true;
+      pageGeneration.current += 1;
     };
   }, [summary, requestScope]);
 
@@ -194,6 +207,7 @@ export function InventoryProvider({
 
   const loadMore = useCallback(async () => {
     if (!summary || !page || !page.pagination.has_more || loadingPage || loadingMore) return;
+    const generation = pageGeneration.current;
     setLoadingMore(true);
     try {
       const next = await api.getInventoryAssets({
@@ -202,27 +216,34 @@ export function InventoryProvider({
         limit: INVENTORY_PAGE_SIZE,
         cursor: page.pagination.next_cursor,
       });
+      if (generation !== pageGeneration.current) return;
       setPage((current) => (current ? mergeInventoryAssetPages(current, next) : next));
     } catch (err: unknown) {
+      if (generation !== pageGeneration.current) return;
       const classified = classifyError(err);
       setError(classified.message);
       setErrorKind(classified.kind);
     } finally {
-      setLoadingMore(false);
+      if (generation === pageGeneration.current) setLoadingMore(false);
     }
   }, [summary, page, loadingPage, loadingMore, requestScope]);
 
   const loadAssetDetail = useCallback(async (assetId: string) => {
     if (!summary || details[assetId] || detailLoadingId === assetId) return;
+    const generation = snapshotGeneration.current;
     setDetailLoadingId(assetId);
     setDetailError("");
     try {
       const detail = await api.getInventoryAsset(assetId, summary.scan_id);
+      if (generation !== snapshotGeneration.current) return;
       setDetails((current) => ({ ...current, [assetId]: detail }));
     } catch (err: unknown) {
+      if (generation !== snapshotGeneration.current) return;
       setDetailError(classifyError(err).message);
     } finally {
-      setDetailLoadingId("");
+      if (generation === snapshotGeneration.current) {
+        setDetailLoadingId((current) => current === assetId ? "" : current);
+      }
     }
   }, [summary, details, detailLoadingId]);
 

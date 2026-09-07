@@ -7147,13 +7147,20 @@ def _resolve_skill_audit_target_ids(
     if source_file:
         if source_file in agent_config_path_to_id:
             target_ids.add(agent_config_path_to_id[source_file])
-        source_name = PurePath(source_file).name
-        for config_path, agent_id in agent_config_path_to_id.items():
-            if source_name and source_name == PurePath(config_path).name:
-                target_ids.add(agent_id)
+        elif source_file == PurePath(source_file).name:
+            # Legacy basename-only evidence may identify an owner only when the
+            # name has one match. A qualified source must never cross scopes by
+            # dropping its directory, even when its exact path is unknown.
+            candidates = {
+                agent_id for config_path, agent_id in agent_config_path_to_id.items() if source_file == PurePath(config_path).name
+            }
+            if len(candidates) == 1:
+                target_ids.update(candidates)
 
-    if not target_ids and len(agent_name_to_ids) == 1:
-        only_agent_ids = next(iter(agent_name_to_ids.values()))
-        target_ids.update(only_agent_ids)
+    if not target_ids and not source_file:
+        # One display-name bucket can still contain distinct agent occurrences.
+        candidates = {agent_id for agent_ids in agent_name_to_ids.values() for agent_id in agent_ids}
+        if len(candidates) == 1:
+            target_ids.update(candidates)
 
     return sorted(target_ids)

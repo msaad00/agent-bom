@@ -54,7 +54,7 @@ is wired into the docs site so drift produces a visible regression.
 | `config/schemas/inventory.schema.json` | `Package.ecosystem` enum values | 9 |
 | `config/schemas/inventory.schema.json` | `MCPServer.transport` enum values | 3 |
 | `docs/openapi/v1.json` | paths | 342 |
-| `docs/openapi/v1.json` | component schemas | 162 |
+| `docs/openapi/v1.json` | component schemas | 166 |
 
 <!-- DATA_MODEL_ATLAS:END -->
 
@@ -523,6 +523,11 @@ tenant boundary, persistence behavior, and redaction behavior here.
 | `findings.triage.vex.v1` | `GET /v1/findings/triage/vex` | auditors, CI release evidence, downstream VEX consumers | signed OpenVEX document for eligible `not_affected` decisions with justification, tenant id, statement count, signature metadata | Derived from tenant-scoped triage rows only. Export payloads are canonicalized and signed; only `not_affected` decisions with explicit OpenVEX justification are emitted. |
 
 ### `agent-bom.manifest/v1`
+
+Manifest agent-to-server relationships prefer explicit server membership. A
+legacy observation's agent name creates a relationship only when it identifies
+one agent in the tenant. Repeated names across environments remain unlinked
+until identity evidence disambiguates them; input order never selects an owner.
 
 The Agent BOM manifest answers "what AI agents, MCP servers, tools, credential
 references, owners, and runtime observations are present?" in one portable

@@ -3,6 +3,7 @@ import type { Edge, Node } from "@xyflow/react";
 
 import {
   aggregateSiblings,
+  type ClusterPillData,
   CLUSTER_ID_PREFIX,
   EXPANDED_AGGREGATION_THRESHOLD,
   FOCUSED_AGGREGATION_THRESHOLD,
@@ -128,4 +129,78 @@ describe("aggregateSiblings", () => {
     // Two clusters: one per relationship.
     expect(result.clusters.size).toBe(2);
   });
+});
+
+function sbomFindingGraph(): { nodes: Node<LineageNodeData>[]; edges: Edge[] } {
+  const nodes = [makeNode("package:pillow@9", "package"), makeNode("source:sbom", "sourceFile"),
+    ...Array.from({ length: 22 }, (_, i) => makeNode(`finding:${i}`, "vulnerability", `CVE-fixture-${i}`))];
+  const edges = nodes.slice(2).flatMap((node) => [
+    { ...makeEdge("package:pillow@9", node.id, "has_cve"), data: { relationship: "has_cve", evidence: { reference: `advisory:${node.id}` } } },
+    { ...makeEdge("source:sbom", node.id, "contains"), data: { relationship: "contains", evidence: { reference: `source:${node.id}` } } },
+  ]);
+  return { nodes, edges };
+}
+
+it("groups 22 leaf findings by package while preserving both parent memberships and every receipt", () => {
+  const { nodes, edges } = sbomFindingGraph();
+  const before = structuredClone({ nodes, edges });
+  const result = aggregateSiblings(nodes, edges, { thresholdN: 20 });
+  expect(result.clusters.size).toBe(1);
+  expect(result.nodes).toHaveLength(3);
+  expect(result.edges).toHaveLength(2);
+  const [id, group] = [...result.clusters.entries()][0]!;
+  expect(group.parentId).toBe("package:pillow@9");
+  expect(group.members).toEqual(nodes.slice(2).map((node) => node.id));
+  expect(new Set(result.edges.map((edge) => edge.source))).toEqual(new Set(["package:pillow@9", "source:sbom"]));
+  expect(result.edges.flatMap((edge) => edge.data?.originalEdgeIds).sort()).toEqual(edges.map((edge) => edge.id).sort());
+  for (const edge of result.edges) {
+    expect(edge.target).toBe(id);
+    expect(edge.data?.isClusterEdge).toBe(true);
+    expect(edge.data?.traversable).toBe(false);
+    expect(edge.data?.members).toHaveLength(22);
+  }
+  const pill = result.nodes.find((node) => node.id === id)!;
+  expect((pill.data as ClusterPillData).memberEdges).toEqual(edges);
+  expect({ nodes, edges }).toEqual(before);
+  const expanded = aggregateSiblings(nodes, edges, { thresholdN: 20, expandedClusterIds: new Set([id]) });
+  expect(expanded.clusters.size).toBe(0);
+  expect(expanded.nodes).toEqual(nodes);
+  expect(expanded.edges).toEqual(edges);
+});
+
+it("never hides multi-package findings or outgoing evidence behind a package group", () => {
+  const { nodes, edges } = sbomFindingGraph();
+  nodes.push(makeNode("package:other", "package"), makeNode("identity", "serviceAccount"));
+  edges.push(makeEdge("package:other", "finding:0", "has_cve"), makeEdge("finding:1", "identity", "reaches"));
+  const result = aggregateSiblings(nodes, edges, { thresholdN: 20 });
+  const group = [...result.clusters.values()][0]!;
+  expect(group.members).toHaveLength(20);
+  expect(result.nodes.map((node) => node.id)).toContain("finding:0");
+  expect(result.nodes.map((node) => node.id)).toContain("finding:1");
+  const visible = new Set(result.nodes.map((node) => node.id));
+  expect(result.edges.every((edge) => visible.has(edge.source) && visible.has(edge.target))).toBe(true);
+});
+
+it("deduplicates membership and retains differing source-file membership on expansion", () => {
+  const { nodes, edges } = sbomFindingGraph();
+  nodes.push(makeNode("source:second", "sourceFile"));
+  edges.push({ ...makeEdge("package:pillow@9", "finding:0", "has_cve"), id: "independent-receipt", data: { relationship: "has_cve", evidence: "second observation" } });
+  edges.push(makeEdge("source:second", "finding:0", "contains"));
+  const result = aggregateSiblings(nodes, edges, { thresholdN: 20 });
+  const [id, group] = [...result.clusters.entries()][0]!;
+  expect(group.members).toHaveLength(22);
+  expect(result.edges.find((edge) => edge.source === "source:second")?.data?.members).toEqual(["finding:0"]);
+  expect(result.edges.find((edge) => edge.source === "source:second")?.label).toBe("1 member");
+  const expanded = aggregateSiblings(nodes, edges, { thresholdN: 20, expandedClusterIds: new Set([id]) });
+  expect(expanded.edges).toEqual(edges);
+});
+
+
+it("does not collapse a non-leaf parent and leave its evidence edge dangling", () => {
+  const nodes = [makeNode("server", "server"), ...Array.from({length: 5}, (_, i) => makeNode(`package:${i}`, "package")), makeNode("finding", "vulnerability")];
+  const edges = nodes.slice(1, 6).map((node) => makeEdge("server", node.id, "contains"));
+  edges.push(makeEdge("package:0", "finding", "has_cve"));
+  const result = aggregateSiblings(nodes, edges, {thresholdN: 5});
+  expect(result.nodes).toEqual(nodes);
+  expect(result.edges).toEqual(edges);
 });

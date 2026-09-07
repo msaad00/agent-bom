@@ -37,6 +37,8 @@ export type ClusterPillData = LineageNodeData & {
   childType: LineageNodeType;
   /** Edge kind shared by every collapsed parent→child link (for restore). */
   edgeKey: string;
+  /** Original incoming edges, including their evidence, retained for inspection. */
+  memberEdges: Edge[];
   /** True when xyflow should render this as a pulsing "click to expand" pill. */
   isCluster: true;
 };
@@ -155,17 +157,32 @@ export function aggregateSiblings(
     }
   }
 
-  // Track which children + parent→child edges to drop, plus the cluster
-  // nodes/edges to add. A child is only collapsed when it has exactly one
-  // parent in the visible graph — multi-parent children would lose context
-  // if hidden under one cluster, so we leave them on the canvas.
-  const childParentCount = new Map<string, number>();
+  // Only leaf nodes can be hidden: an outgoing relationship would otherwise
+  // point from an absent node or falsely become a traversable group path.
+  const incoming = new Map<string, Edge[]>();
+  const outgoing = new Set(edges.map((edge) => edge.source));
   for (const edge of edges) {
-    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) continue;
-    childParentCount.set(
-      edge.target,
-      (childParentCount.get(edge.target) ?? 0) + 1,
-    );
+    const entries = incoming.get(edge.target) ?? [];
+    entries.push(edge);
+    incoming.set(edge.target, entries);
+  }
+
+  // A finding may be attached to both its affected package and the SBOM
+  // source file. The package is the one authoritative grouping anchor; source
+  // membership remains visible on separate, non-traversable summary links.
+  // Multi-package or other secondary parents stay explicit on the canvas.
+  const packageGroupByChild = new Map<string, string>();
+  for (const node of nodes) {
+    if (!["vulnerability", "misconfiguration"].includes(node.data.nodeType) || outgoing.has(node.id)) continue;
+    const parents = incoming.get(node.id) ?? [];
+    if (parents.length < 2) continue;
+    const packageEdges = parents.filter((edge) => nodeById.get(edge.source)?.data.nodeType === "package");
+    const packageIds = new Set(packageEdges.map((edge) => edge.source));
+    if (packageIds.size !== 1) continue;
+    const anchor = packageEdges[0]!;
+    if (!parents.every((edge) => edge.source === anchor.source || nodeById.get(edge.source)?.data.nodeType === "sourceFile")) continue;
+    if (!packageEdges.every((edge) => readEdgeKind(edge) === readEdgeKind(anchor))) continue;
+    packageGroupByChild.set(node.id, siblingGroupKey({ parentId: anchor.source, edgeKind: readEdgeKind(anchor), childType: node.data.nodeType }));
   }
 
   const dropNodeIds = new Set<string>();
@@ -174,14 +191,13 @@ export function aggregateSiblings(
   const addEdges: Edge[] = [];
   const clusters: SiblingAggregateResult["clusters"] = new Map();
 
-  for (const group of groups.values()) {
-    if (group.childIds.length < thresholdN) continue;
+  for (const [key, group] of groups) {
+    const uniqueChildren = [...new Set(group.childIds)];
+    if (uniqueChildren.length < thresholdN) continue;
 
-    // Skip children that have multiple parents — collapsing them under one
-    // cluster would silently drop edges to other parents, which is exactly
-    // the kind of context loss the focus / readability features must avoid.
-    const collapsible = group.childIds.filter(
-      (id) => (childParentCount.get(id) ?? 0) === 1,
+    const collapsible = uniqueChildren.filter((id) =>
+      !outgoing.has(id) && !dropNodeIds.has(id) &&
+      ((incoming.get(id)?.length ?? 0) === 1 || packageGroupByChild.get(id) === key),
     );
     if (collapsible.length < thresholdN) continue;
 
@@ -193,16 +209,9 @@ export function aggregateSiblings(
     if (expanded.has(id)) continue;
 
     for (const childId of collapsible) dropNodeIds.add(childId);
-    // Drop every visible parent→child edge that touched a collapsed child.
-    for (const edge of edges) {
-      if (
-        edge.source === group.parentId &&
-        dropNodeIds.has(edge.target) &&
-        readEdgeKind(edge) === group.edgeKind
-      ) {
-        dropEdgeIds.add(edge.id);
-      }
-    }
+    const members = new Set(collapsible);
+    const memberEdges = edges.filter((edge) => members.has(edge.target));
+    for (const edge of memberEdges) dropEdgeIds.add(edge.id);
 
     const data: ClusterPillData = {
       label: clusterLabel(group.childType, collapsible.length),
@@ -212,6 +221,7 @@ export function aggregateSiblings(
       parentId: group.parentId,
       childType: group.childType,
       edgeKey: group.edgeKind,
+      memberEdges,
       isCluster: true,
     };
 
@@ -225,18 +235,35 @@ export function aggregateSiblings(
       data: data as unknown as LineageNodeData,
     });
 
-    addEdges.push({
-      id: `${id}=>edge`,
-      source: group.parentId,
-      target: id,
-      type: "smoothstep",
-      // Carry the original relationship so colour mapping / legend stays
-      // consistent — the cluster pill represents the same edge kind as the
-      // ones it absorbed.
-      data: { relationship: group.edgeKind, isClusterEdge: true },
-      style: { strokeDasharray: "4 4", opacity: 0.85 },
-      markerEnd: { type: "arrowclosed" as never },
-    });
+    // Each summary edge retains its exact parent, relationship and member
+    // subset. It is a presentation aggregate, never an attack-path receipt.
+    const parentLinks = new Map<string, Edge[]>();
+    for (const edge of memberEdges) {
+      const linkKey = JSON.stringify([edge.source, readEdgeKind(edge)]);
+      const links = parentLinks.get(linkKey) ?? [];
+      links.push(edge);
+      parentLinks.set(linkKey, links);
+    }
+    for (const [linkKey, links] of parentLinks) {
+      const first = links[0]!;
+      const linkedMembers = [...new Set(links.map((edge) => edge.target))];
+      addEdges.push({
+        id: `${id}=>edge:${linkKey}`,
+        source: first.source,
+        target: id,
+        type: "smoothstep",
+        label: `${linkedMembers.length} ${linkedMembers.length === 1 ? "member" : "members"}`,
+        data: {
+          relationship: readEdgeKind(first),
+          isClusterEdge: true,
+          traversable: false,
+          members: linkedMembers,
+          originalEdgeIds: links.map((edge) => edge.id),
+        },
+        style: { strokeDasharray: "4 4", opacity: 0.85 },
+        markerEnd: { type: "arrowclosed" as never },
+      });
+    }
 
     clusters.set(id, {
       parentId: group.parentId,

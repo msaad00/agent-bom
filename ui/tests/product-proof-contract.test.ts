@@ -8,6 +8,11 @@ const graphPage = fs.readFileSync(path.join(process.cwd(), "app", "graph", "grap
 const exposurePath = fs.readFileSync(path.join(process.cwd(), "components", "exposure-path-command-center.tsx"), "utf8");
 
 describe("product proof capture contract", () => {
+  it("verifies its own spawned listener before opening a capture browser", () => {
+    expect(source).toContain("await waitForOwnedServer(BASE_URL, server)");
+    expect(source.indexOf("await waitForOwnedServer(BASE_URL, server)")).toBeLessThan(source.indexOf("browser = await chromium.launch()"));
+  });
+
   it("uses the hash-pinned real-advisory lab only for correlation proof and keeps gallery fixtures fictional", () => {
     expect(source).toContain("REFERENCE_LAB_PROOF_PATH");
     expect(source).toContain("REFERENCE_LAB_DIGEST_PATH");
@@ -70,10 +75,15 @@ describe("product proof capture contract", () => {
   it("locks current and proposed Investigation Canvas proof to both audited viewports", () => {
     expect(source).toContain('path: "investigation-canvas-current-1512x811.png"');
     expect(source).toContain('path: "investigation-canvas-proposed-1568x780.png"');
-    expect(source).toContain('page: "/security-graph?lens=estate&rollup=1&capture=1"');
+    expect(source).toContain('page: `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&capture=1`');
     expect(source).toContain(
-      'page: `/security-graph?lens=estate&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`',
+      'page: `/security-graph?lens=estate&scan=${SCAN_ID}&rollup=1&scenario=${SCENARIO_ID}&state=proposed&capture=1`',
     );
+    expect(source).not.toContain("lens=estate&rollup=1");
+    expect(source).toContain("Modeled current-state Investigation Canvas at 1512 by 811");
+    expect(source).not.toContain("Observed current-state Investigation Canvas at the audited");
+    expect(source).toContain("assertCaptureSnapshotScope(route.request().url(), SCAN_ID, [body.scan_id])");
+    expect(source).toContain("[body.current.scan_id, body.scenario.base_scan_id]");
     expect(source).toContain('newCapturePage("dark", { width: 1512, height: 811 })');
     expect(source).toContain('newCapturePage("light", { width: 1568, height: 780 })');
     expect(source).toContain('data-testid="graph-rollup-decision-surface"');

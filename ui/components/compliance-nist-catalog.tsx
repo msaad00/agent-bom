@@ -40,13 +40,13 @@ function BucketTile({
 }) {
   const color =
     accent === "success"
-      ? "text-[color:var(--status-success)]"
+      ? "text-emerald-800 dark:text-emerald-200"
       : accent === "warn"
-        ? "text-[color:var(--status-warn)]"
+        ? "text-amber-800 dark:text-amber-200"
         : accent === "danger"
-          ? "text-[color:var(--status-danger)]"
+          ? "text-red-800 dark:text-red-200"
           : accent === "error"
-            ? "text-[color:var(--status-warn)]"
+            ? "text-amber-800 dark:text-amber-200"
             : "text-[color:var(--foreground)]";
   return (
     <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">

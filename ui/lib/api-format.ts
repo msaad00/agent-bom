@@ -12,13 +12,13 @@ import type { Agent } from "./api";
 export function severityColor(severity: string): string {
   switch (severity?.toLowerCase()) {
     case "critical":
-      return "text-[color:var(--severity-critical)] bg-[color:var(--severity-critical-bg)] border-[color:var(--severity-critical-border)]";
+      return "text-red-800 dark:text-red-200 bg-[color:var(--severity-critical-bg)] border-[color:var(--severity-critical-border)]";
     case "high":
-      return "text-[color:var(--severity-high)] bg-[color:var(--severity-high-bg)] border-[color:var(--severity-high-border)]";
+      return "text-orange-800 dark:text-orange-200 bg-[color:var(--severity-high-bg)] border-[color:var(--severity-high-border)]";
     case "medium":
-      return "text-[color:var(--severity-medium)] bg-[color:var(--severity-medium-bg)] border-[color:var(--severity-medium-border)]";
+      return "text-amber-800 dark:text-amber-200 bg-[color:var(--severity-medium-bg)] border-[color:var(--severity-medium-border)]";
     case "low":
-      return "text-[color:var(--severity-low)] bg-[color:var(--severity-low-bg)] border-[color:var(--severity-low-border)]";
+      return "text-blue-800 dark:text-blue-200 bg-[color:var(--severity-low-bg)] border-[color:var(--severity-low-border)]";
     default:
       return "text-[color:var(--text-secondary)] bg-[color:var(--surface-muted)] border-[color:var(--border-subtle)]";
   }

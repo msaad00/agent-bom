@@ -404,6 +404,15 @@ def test_ui_csp_headers_do_not_allow_eval():
     # one-line CSP flip when the collector lands.
 
 
+def test_security_docs_define_production_browser_exposure_boundaries():
+    root = Path(__file__).resolve().parent.parent.parent
+    security_md = (root / "SECURITY.md").read_text(encoding="utf-8")
+
+    assert "Wildcard CORS is restricted to loopback development" in security_md
+    assert "AGENT_BOM_DISABLE_DOCS=1" in security_md
+    assert "`/docs`, `/redoc`, and `/openapi.json`" in security_md
+
+
 def test_root_allows_head_when_dashboard_is_bundled(tmp_path: Path, monkeypatch):
     """Packaged dashboard should answer HEAD like a normal static site root."""
     index_file = tmp_path / "index.html"

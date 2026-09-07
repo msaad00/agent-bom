@@ -50,13 +50,12 @@ from agent_bom.agent_identity import (
     check_caller_identity,
     extract_identity_token,
     identity_token_scopes,
-    scopes_from_claims,
 )
 from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.forwarded_identity import resolve_forwarded_client_ip
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
-from agent_bom.api.oauth_as import OAuthAuthorizationServer, build_oauth_as_router
+from agent_bom.api.oauth_as import OAuthAuthorizationServer
 from agent_bom.api.oidc_discovery_shim import OIDCDiscoveryShimConfig, build_oidc_discovery_shim_router
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
 from agent_bom.firewall import (
@@ -1116,15 +1115,6 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
             raise HTTPException(status_code=401, detail="gateway authentication required")
         return _configured_gateway_tenant_id(), "static_gateway_token"
 
-    # OAuth 2.1 broker: a standard MCP client presenting an AS-issued access
-    # token in the Authorization header satisfies transport auth (the AS already
-    # authenticated the client + bound the token via PKCE). Only AS-signed,
-    # unexpired tokens pass; any other bearer falls through to API-key auth.
-    if settings.oauth_as is not None and raw_token:
-        claims = settings.oauth_as.validate_token(raw_token)
-        if claims is not None:
-            return _configured_gateway_tenant_id(), "oauth_as"
-
     try:
         store = get_key_store()
         has_keys = store.has_keys()
@@ -1995,6 +1985,11 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     Separating app construction from CLI entry point keeps the server
     testable end-to-end via ``TestClient(create_gateway_app(settings))``.
     """
+    if settings.oauth_as is not None:
+        raise ValueError(
+            "Embedded OAuth AS is unavailable until trusted client authorization is implemented; "
+            "use configured bearer or API-key authentication"
+        )
     if settings.audit_sink is None:
         try:
             settings.audit_sink = build_local_gateway_audit_sink()
@@ -2260,14 +2255,6 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         request_token = _extract_request_token(request) if auth_method == "api_key" else None
         await sink.bind_authenticated_tenant(tenant_id, request_token)
 
-    # OAuth 2.1 Authorization Server (broker AS): mount the unauthenticated
-    # discovery/registration/PKCE/token/JWKS endpoints so standard MCP clients
-    # can auto-authenticate to brokered MCPs. These deliberately sit outside the
-    # gateway transport-auth gate — they ARE the auth bootstrap.
-    if settings.oauth_as is not None:
-        app.include_router(build_oauth_as_router(settings.oauth_as))
-        if settings.oauth_as.signing_key.ephemeral:
-            logger.warning("gateway OAuth AS enabled with an ephemeral signing key; set AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM for production")
     if settings.oidc_discovery_shim is not None:
         app.include_router(build_oidc_discovery_shim_router(settings.oidc_discovery_shim))
 
@@ -2317,7 +2304,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             "policy_runtime": policy_runtime,
             "firewall_runtime": firewall_runtime,
             "broker_runtime": {
-                "oauth_as_enabled": settings.oauth_as is not None,
+                "oauth_as_enabled": False,
                 "oidc_discovery_shim_enabled": settings.oidc_discovery_shim is not None,
                 "a2a_mutual_auth_enforcement_mode": settings.a2a_mutual_auth_enforcement_mode,
                 "tool_scope_mapped_tools": len(settings.tool_scope_map),
@@ -2602,13 +2589,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         #   3. fully-missing token — permitted on a loopback bind (local dev)
         #      or with the explicit opt-out, else fail closed by default on a
         #      non-loopback bind (mirrors the transport-auth opt-out precedent).
-        # An OAuth-2.1 AS access token (broker mode) is a cryptographically
-        # verified identity: validate it in-process (no self-HTTP) and prefer it
-        # over the _meta channel. Standard MCP clients present it in the
-        # Authorization header; we also accept it in _meta.agent_identity. The
-        # ``scope`` claim drives per-tool-call scope enforcement below.
         identity_token = extract_identity_token(message)
-        as_claims: dict[str, Any] | None = None
         token_scopes: set[str] = set()
         scoped_identity: Any = None
         managed_identity_lookup_unavailable = False
@@ -2621,14 +2602,6 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             except Exception as exc:  # noqa: BLE001
                 managed_identity_lookup_unavailable = True
                 logger.warning("gateway managed identity lookup failed: %s", sanitize_text(_sanitize_for_log(exc)))
-        if settings.oauth_as is not None:
-            for candidate in (identity_token, _extract_request_token(request)):
-                if candidate:
-                    as_claims = settings.oauth_as.validate_token(candidate)
-                    if as_claims is not None:
-                        identity_token = candidate
-                        break
-
         if scoped_identity is not None:
             source_agent = scoped_identity.agent_id
             token_present = True
@@ -2644,12 +2617,6 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             ):
                 identity_invalid_reason = "managed identity has no role blueprint binding"
                 identity_failure_code = ProfileResolutionCode.PROFILE_INCOMPLETE.value
-        elif as_claims is not None:
-            source_agent = str(as_claims.get("sub") or "").strip() or ANONYMOUS
-            token_present = True
-            identity_invalid_reason = None
-            identity_verified = source_agent != ANONYMOUS
-            token_scopes = scopes_from_claims(as_claims)
         else:
             source_agent, token_present, identity_invalid_reason = check_caller_identity(message, current_policy)
             if identity_invalid_reason is not None:

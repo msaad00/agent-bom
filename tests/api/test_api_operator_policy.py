@@ -59,6 +59,7 @@ def _restore_runtime_modules():
 
 
 def _clear_rate_limit_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_API_HOST", raising=False)
     monkeypatch.delenv("AGENT_BOM_RATE_LIMIT_KEY", raising=False)
     monkeypatch.delenv("AGENT_BOM_AUDIT_HMAC_KEY", raising=False)
     monkeypatch.delenv("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED", raising=False)
@@ -264,7 +265,9 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["proxy_control_plane_mtls"]["mtls_mode"] == "none"
     assert body["proxy_control_plane_mtls"]["status"] == "disabled"
     assert body["proxy_control_plane_mtls"]["app_native_mtls"]["complete"] is False
-    assert body["proxy_control_plane_mtls"]["direct_listener"]["status"] == "ok"
+    assert body["proxy_control_plane_mtls"]["direct_listener"]["status"] == "unknown"
+    assert body["proxy_control_plane_mtls"]["direct_listener"]["host"] == "unknown"
+    assert body["proxy_control_plane_mtls"]["direct_listener"]["loopback"] is False
     assert body["security_headers"]["hsts"]["preload"] is False
     assert body["security_headers"]["hsts"]["header"] == "max-age=31536000; includeSubDomains"
     assert body["security_headers"]["csp"]["dashboard"]["mode"] in {"inline_compat", "hash_manifest"}
@@ -399,6 +402,7 @@ def test_proxy_control_plane_mtls_posture_requires_delegated_evidence(monkeypatc
 
 def test_proxy_control_plane_mtls_posture_reports_ok_when_delegated_and_attested(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_API_HOST", "0.0.0.0")
     monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE", "delegated")
     monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_PROVIDER", "istio")
     monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF", "secret/agent-bom/proxy-client-ca")
@@ -997,3 +1001,17 @@ def test_readyz_red_when_shared_auth_schema_is_unavailable(monkeypatch) -> None:
         reset_auth_state_for_tests()
     assert not status.ready
     assert status.reason == "shared_auth_state_unavailable"
+
+
+@pytest.mark.parametrize("listener_host", ["127.0.0.1", "0.0.0.0"])
+@pytest.mark.parametrize("configured_environment", [None, "192.0.2.1"])
+def test_auth_policy_uses_actual_configured_listener(monkeypatch, listener_host, configured_environment):
+    _clear_rate_limit_env(monkeypatch)
+    if configured_environment is not None:
+        monkeypatch.setenv("AGENT_BOM_API_HOST", configured_environment)
+    _server_mod.configure_api(api_key="listener-policy-test-key", allow_unauthenticated=False, listener_host=listener_host)
+    response = TestClient(app).get("/v1/auth/policy", headers={"X-API-Key": "listener-policy-test-key"})
+    assert response.status_code == 200
+    direct = response.json()["proxy_control_plane_mtls"]["direct_listener"]
+    assert direct["host"] == listener_host
+    assert direct["loopback"] is (listener_host == "127.0.0.1")

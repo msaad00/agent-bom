@@ -55,6 +55,97 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
+  it("places visible operational and compliance context before the full-width risk list", () => {
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+    const posture = screen.getByRole("region", { name: "Command center" });
+    const coverage = screen.getByRole("region", { name: /^Coverage & controls/ });
+    const risks = screen.getByRole("region", { name: "Top risks" });
+    expect(posture.parentElement).toBe(coverage.parentElement);
+    expect(risks.parentElement).toBe(posture.parentElement?.parentElement);
+    expect(coverage.compareDocumentPosition(risks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(coverage).getByText("Operational signals")).toBeVisible();
+    expect(within(coverage).getByText(/Control evaluation unavailable/i)).toBeVisible();
+    expect(within(coverage).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
+  });
+
+  it("separates evaluated controls from risk mappings and keeps both details closed initially", () => {
+    render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 50, overallStatus: "fail", evaluatedControls: 2, totalControls: 12, frameworks: [
+      { id: "cis", label: "CIS Controls", kind: "scored", pass: 1, fail: 1, warn: 0, total: 2 },
+      { id: "atlas", label: "MITRE ATLAS", kind: "applicability", applicable: 3, pass: 0, fail: 0, warn: 0, total: 10 },
+    ] }} />);
+    expect(screen.getByText("1/2 evaluated controls pass")).toBeVisible();
+    const evaluated = screen.getByTestId("overview-evaluated-frameworks");
+    const mappings = screen.getByTestId("overview-risk-mappings");
+    expect(within(evaluated).queryByText("MITRE ATLAS")).not.toBeInTheDocument();
+    expect(within(mappings).getByText("MITRE ATLAS")).not.toBeVisible();
+    expect(within(evaluated).getByText("CIS Controls")).not.toBeVisible();
+  });
+
+  it("keeps the label in the flexible column when a framework has no logo", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 50, overallStatus: "fail", evaluatedControls: 2, totalControls: 2, frameworks: [
+      { id: "nist-800-53", label: "NIST SP 800-53", kind: "scored", pass: 1, fail: 1, warn: 0, total: 2 },
+      { id: "cis", label: "CIS Controls", kind: "scored", pass: 0, fail: 0, warn: 0, total: 0 },
+    ] }} />);
+    await user.click(screen.getByRole("button", { name: /Evaluated frameworks/i }));
+    for (const label of ["NIST SP 800-53", "CIS Controls"]) {
+      const title = screen.getByText(label);
+      const card = title.closest("a")!;
+      expect(card).toHaveAttribute("href", "/compliance");
+      expect(card.children[0]).toHaveAttribute("aria-hidden", "true");
+      expect(card.children[1]).toContainElement(title);
+      expect(card.children[2]).toHaveTextContent(label === "CIS Controls" ? "n/a" : "fail");
+    }
+    expect(screen.getByText("1/2 pass · 1 fail")).toBeVisible();
+    expect(screen.getByText("Not evaluated · 0/0 controls")).toBeVisible();
+  });
+
+  it("does not keep a settled unknown scan scope in a loading state", () => {
+    const view = render(<OverviewCockpit {...baseProps} loading={false} complianceLoading={false} scanScopeLoading scans={null} />);
+    expect(screen.getByText("Loading control evaluation…")).toBeVisible();
+    view.rerender(<OverviewCockpit {...baseProps} loading={false} complianceLoading={false} scanScopeLoading={false} scans={null} />);
+    expect(screen.queryByText("Loading control evaluation…")).not.toBeInTheDocument();
+    expect(screen.getByText("Control evaluation unavailable. Scan scope could not be established.")).toBeVisible();
+    expect(screen.queryByText(/Framework coverage appears after the first completed scan/)).not.toBeInTheDocument();
+  });
+
+  it("shows security services before operations and lets the right panel collapse by keyboard", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} coverage={[
+      { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
+      { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
+    ]} />);
+    const lanes = screen.getByTestId("overview-security-coverage");
+    expect(lanes).toBeVisible();
+    expect(within(lanes).getAllByRole("link")[0]).toHaveTextContent("Cloud security (CSPM)");
+    expect(within(lanes).getByText("AI security (AISPM)")).toBeVisible();
+    expect(lanes.compareDocumentPosition(screen.getByTestId("overview-estate-ops")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const toggle = screen.getByRole("button", { name: /^Coverage & controls/ });
+    expect(toggle).toHaveTextContent("2 security disciplines");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(lanes).not.toBeVisible();
+    expect(toggle).toHaveFocus();
+    await user.keyboard(" ");
+    expect(lanes).toBeVisible();
+    expect(screen.getByRole("region", { name: "Command center" })).toBeVisible();
+  });
+
+  it("keeps operational details closed until requested without hiding their summary", async () => {
+    const user = userEvent.setup();
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+    const toggle = screen.getByRole("button", { name: /Operational signals.*3 of 4 active/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Runtime")).not.toBeVisible();
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("Runtime")).toBeVisible();
+    expect(screen.getByRole("link", { name: /Connections/ })).toHaveAttribute("href", "/connections");
+    expect(toggle).toHaveFocus();
+  });
+
   it("shows one grade and one numeric score in the posture summary", () => {
     render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
     expect(screen.getAllByText("62%")).toHaveLength(1);
@@ -140,20 +231,10 @@ describe("OverviewCockpit", () => {
     );
   });
 
-  it("consolidates security coverage and estate operations into one compact section", async () => {
-    const user = userEvent.setup();
+  it("shows operational signals without a combined discipline and operation count", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
-
     const section = screen.getByTestId("overview-coverage-operations");
-    expect(section).toBeInTheDocument();
-    expect(screen.queryByText("Security coverage")).not.toBeInTheDocument();
-    expect(screen.queryByText("Estate / operations")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Coverage & operations/i })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
+    expect(screen.queryByRole("button", { name: /Findings by discipline/i })).not.toBeInTheDocument();
 
     const strip = within(section).getByTestId("overview-estate-ops");
     // The old 7-lane cross-lane grid no longer exists as such.
@@ -169,32 +250,31 @@ describe("OverviewCockpit", () => {
     expect(within(strip).getByText("Ops")).toBeInTheDocument();
     // 3 of 4 active — cost is idle, so it de-emphasizes into a Connect prompt
     // instead of a loud zero tile.
-    expect(within(strip).getByText(/3 of 4 active/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 4 active/i)).toBeInTheDocument();
     expect(within(strip).getByText("LLM Cost")).toBeInTheDocument();
     expect(within(strip).getByText("Connect")).toBeInTheDocument();
   });
 
-  it("renders the five security coverage lanes with reconciled severity strips", async () => {
-    const user = userEvent.setup();
+  it("renders the five security coverage lanes with reconciled severity counts", async () => {
     const coverage = [
       { domain: "cspm" as const, label: "CSPM", href: "/findings?domain=cspm", count: 3, severity: { critical: 1, high: 1, medium: 0, low: 0, unrated: 1 } },
       { domain: "vuln" as const, label: "Vuln mgmt", href: "/findings?domain=vuln", count: 2, severity: { critical: 2, high: 0, medium: 0, low: 0, unrated: 0 } },
       { domain: "aspm" as const, label: "ASPM", href: "/findings?domain=aspm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
       { domain: "dspm" as const, label: "DSPM", href: "/findings?domain=dspm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
       { domain: "aispm" as const, label: "AISPM", href: "/findings?domain=aispm", count: 1, severity: { critical: 0, high: 0, medium: 1, low: 0, unrated: 0 } },
-    ];
+    ].map((lane) => ({ ...lane, evidence_status: "complete" as const, count_exact: true }));
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} coverage={coverage} />);
 
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
+    expect(screen.queryByRole("button", { name: /Findings by discipline/i })).not.toBeInTheDocument();
     const section = screen.getByTestId("overview-security-coverage");
     expect(section).toBeInTheDocument();
     // Lanes are labeled as overlapping disciplines so a user never sums them.
-    expect(screen.getByText(/lenses overlap/i)).toBeInTheDocument();
+    expect(within(section).getByText(/overlapping finding counts/i)).toBeInTheDocument();
     expect(screen.getByText(/not additive/i)).toBeInTheDocument();
     // The magnitude must carry its unit. A bare number under a heading called
     // CSPM reads as assets, accounts or data stores depending on the reader —
     // all wrong. These are findings, which is what the severity chips sum to.
-    expect(screen.getByText(/open findings per posture discipline/i)).toBeInTheDocument();
+    expect(screen.getByText(/Zero findings does not establish assessment coverage/i)).toBeInTheDocument();
     expect(screen.getAllByText(/^findings?$/i).length).toBeGreaterThan(0);
     // Each lane links to its domain-filtered findings view.
     expect(screen.getByTestId("coverage-lane-cspm")).toHaveAttribute("href", "/findings?domain=cspm");
@@ -203,12 +283,33 @@ describe("OverviewCockpit", () => {
     // Empty lanes still render (DSPM at zero), but never present missing evidence
     // as a factual zero.
     expect(screen.getByTestId("coverage-lane-dspm")).toBeInTheDocument();
-    expect(within(screen.getByTestId("coverage-lane-dspm")).getByText("No evidence")).toBeInTheDocument();
+    expect(within(screen.getByTestId("coverage-lane-dspm")).getByText("No open findings")).toBeInTheDocument();
     expect(within(screen.getByTestId("coverage-lane-dspm")).queryByText("0")).not.toBeInTheDocument();
   });
 
-  it("keeps connected data sources out of leadership lanes and links to connections", async () => {
-    const user = userEvent.setup();
+  it("does not present legacy discipline values as exact current counts", async () => {
+    render(<OverviewCockpit {...baseProps} coverage={[
+      { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 17, severity: { critical: 17, high: 0, medium: 0, low: 0, unrated: 0 } },
+    ]} />);
+    const lane = within(screen.getByTestId("coverage-lane-aispm"));
+    expect(lane.getByText("Count unavailable")).toBeInTheDocument();
+    expect(lane.queryByText("17")).not.toBeInTheDocument();
+    expect(lane.queryByText("Critical 17")).not.toBeInTheDocument();
+  });
+
+  it.each(["partial", "unavailable"] as const)("discloses %s discipline counts without claiming no evidence", async (evidenceStatus) => {
+    const severity = { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 };
+    render(<OverviewCockpit {...baseProps} coverage={[
+      { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 0, severity, evidence_status: evidenceStatus, count_exact: false },
+      { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 2, severity: { ...severity, high: 2 }, evidence_status: evidenceStatus, count_exact: false },
+    ]} />);
+    expect(screen.queryByText("No evidence")).not.toBeInTheDocument();
+    expect(screen.queryByText("No open findings")).not.toBeInTheDocument();
+    expect(screen.getByText("≥2")).toBeInTheDocument();
+    expect(within(screen.getByTestId("coverage-lane-aispm")).getByText(evidenceStatus === "partial" ? "Partial count" : "Count unavailable")).toBeInTheDocument();
+  });
+
+  it("keeps connected data sources out of leadership lanes and links to connections", () => {
     render(
       <OverviewCockpit
         {...baseProps}
@@ -217,9 +318,8 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
     expect(screen.queryByText("Data sources")).not.toBeInTheDocument();
-    expect(screen.getByText(/3 of 4 operational lanes active/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 4 active/i)).toBeInTheDocument();
     expect(screen.getByText(/2 connected/i)).toBeInTheDocument();
   });
 
@@ -253,7 +353,7 @@ describe("OverviewCockpit", () => {
   it("shows an honest empty strip when there are genuinely no risks (#4063)", () => {
     render(<OverviewCockpit {...baseProps} topPath={null} exposurePaths={[]} critical={0} high={0} />);
     expect(
-      screen.getByText(/Run a scan to correlate CVEs, packages, agents, and credentials/i),
+      screen.getByText(/No prioritized findings in the current overview/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/CVE-/)).not.toBeInTheDocument();
   });
@@ -353,6 +453,16 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText("Last successful scan unavailable")).not.toBeInTheDocument();
   });
 
+  it("keeps pending posture neutral even when a prior adverse score is present", () => {
+    render(<OverviewCockpit {...baseProps} grade="F" score={42} loading />);
+
+    const score = screen.getByTestId("overview-posture-score");
+    expect(score).toHaveTextContent("Loading posture…");
+    expect(score).toHaveClass("bg-surface-muted", "text-foreground");
+    expect(score).not.toHaveClass("bg-red-500/10", "text-red-700");
+    expect(screen.queryByTestId("score-format-toggle")).not.toBeInTheDocument();
+  });
+
   it("never asserts 'no vulnerabilities' while open CVEs are present", () => {
     // Backend posture summary is derived from only the latest single scan, so it
     // can read "No vulnerabilities found" even when the estate rollup shows open
@@ -409,11 +519,9 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/improved|declined/i)).not.toBeInTheDocument();
   });
 
-  it("carries operational lane scope hints as tooltips, not visible sentences", async () => {
-    const user = userEvent.setup();
+  it("carries operational lane scope hints as tooltips, not visible sentences", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
 
-    await user.click(screen.getByRole("button", { name: /Coverage & operations/i }));
     const strip = screen.getByTestId("overview-estate-ops");
     // The scope clarifier is a title tooltip on the tile, not always-visible copy.
     const runtimeTile = within(strip).getByText("Runtime").closest("a");
@@ -454,8 +562,8 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    expect(screen.getByText(/No evaluated framework coverage is available for completed scans/i)).toBeInTheDocument();
-    expect(screen.getByText(/Completed scans have not produced mapped framework evidence/i)).toBeInTheDocument();
+    expect(screen.getByText(/Control evaluation unavailable for completed scans/i)).toBeInTheDocument();
+    expect(screen.getByText(/Review scan scope and evaluation status/i)).toBeInTheDocument();
     expect(screen.queryByText(/Run a scan to light up/i)).not.toBeInTheDocument();
   });
 
@@ -509,7 +617,7 @@ describe("OverviewCockpit", () => {
     // Same treatment the Trust Center already uses for this status: an explicit
     // em dash, not a hidden chip that leaves the reader guessing.
     expect(screen.getByText("Compliance —")).toBeInTheDocument();
-    expect(screen.getByText(/No evaluated framework coverage is available for completed scans/i)).toBeInTheDocument();
+    expect(screen.getByText(/Control evaluation unavailable for completed scans/i)).toBeInTheDocument();
   });
 
   it("never renders a green PASS for a framework with zero evaluated controls (#3889)", () => {
@@ -537,7 +645,7 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/0\/65 pass/i)).not.toBeInTheDocument();
   });
 
-  it("computes compliance totals and failures before limiting the visible cards", () => {
+  it("keeps all framework details available without expanding them by default", () => {
     const frameworks = Array.from({ length: 9 }, (_, index) => ({
       id: `framework-${index + 1}`,
       label: `Framework ${index + 1}`,
@@ -562,9 +670,9 @@ describe("OverviewCockpit", () => {
     );
 
     expect(screen.getByText(/1 framework needs attention/i)).toBeInTheDocument();
-    expect(within(screen.getByTestId("overview-compliance-snapshot")).getByText("9", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("8/9 evaluated controls pass")).toBeVisible();
     expect(screen.getByText("Framework 8")).toBeInTheDocument();
-    expect(screen.queryByText("Framework 9")).not.toBeInTheDocument();
+    expect(screen.getByText("Framework 9")).not.toBeVisible();
   });
 
   it("explains nonlinear pressure and the worse scan posture without subtracting the inputs", async () => {
@@ -599,6 +707,10 @@ describe("OverviewCockpit", () => {
     expect(screen.getByTestId("overview-score-explainer")).toBeInTheDocument();
     expect(screen.getByTestId("score-driver-critical")).toBeInTheDocument();
     expect(screen.getByText("24.0")).toBeInTheDocument();
+    // Bars represent proportions of weighted pressure, never score deductions.
+    expect(screen.getByTestId("score-pressure-critical")).toHaveStyle({ width: "80%" });
+    expect(screen.getByTestId("score-pressure-high")).toHaveStyle({ width: "20%" });
+    expect(screen.getByText(/Bars show each input.s share of weighted pressure/)).toBeInTheDocument();
     // Zero-contribution drivers are omitted so the panel stays legible.
     expect(screen.queryByTestId("score-driver-medium")).not.toBeInTheDocument();
   });
@@ -636,8 +748,8 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    expect(screen.getByText("CIS Controls v8")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: /Compliance/i }));
     expect(screen.getByText("CIS Controls v8")).not.toBeVisible();
+    await user.click(screen.getByRole("button", { name: /Evaluated frameworks/i }));
+    expect(screen.getByText("CIS Controls v8")).toBeVisible();
   });
 });

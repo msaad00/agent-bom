@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import type { UnifiedFinding } from "../lib/api-types";
@@ -257,3 +257,138 @@ test("overview and current-state findings remain readable without mobile overflo
   expect(overflow, "findings mobile layout contains elements outside the viewport").toEqual([]);
   await capture(page, testInfo, "findings-current-state-mobile.png");
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`operational metrics meet text contrast in ${theme} theme`, async ({ page }, testInfo) => {
+    await page.addInitScript((selectedTheme) => localStorage.setItem("agent-bom-theme", selectedTheme), theme);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await routeProductFixture(page);
+    await page.route("**/v1/overview", (route) => route.fulfill({ json: {
+      ...OVERVIEW,
+      domains: {
+        ...OVERVIEW.domains,
+        runtime: { ...OVERVIEW.domains.runtime, status: "critical" },
+        cost: { ...OVERVIEW.domains.cost, status: "warn" },
+        identity: { ...OVERVIEW.domains.identity, status: "ok" },
+      },
+    } }));
+    await page.goto("/");
+    await page.getByRole("button", { name: /Operational signals/ }).click();
+    const metrics = page.getByTestId("overview-estate-ops").locator("span.font-mono");
+    await expect(metrics).toHaveCount(4);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    // Measure settled theme colors rather than the deliberate transition frame.
+    await page.waitForTimeout(500);
+    const contrast = await metrics.evaluateAll((nodes) => {
+      const context = document.createElement("canvas").getContext("2d")!;
+      function rgba(color: string): number[] {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data];
+      }
+      function luminance(rgb: number[]): number {
+        return rgb.slice(0, 3).map((c) => {
+          const s = c / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+      }
+      return nodes.map((node) => {
+        const ancestors: Element[] = [];
+        for (let current: Element | null = node; current; current = current.parentElement) ancestors.unshift(current);
+        let background = [255, 255, 255];
+        for (const ancestor of ancestors) {
+          const color = rgba(getComputedStyle(ancestor).backgroundColor);
+          const alpha = color[3]! / 255;
+          background = background.map((value, i) => color[i]! * alpha + value * (1 - alpha));
+        }
+        const foreground = rgba(getComputedStyle(node).color);
+        const a = luminance(foreground);
+        const b = luminance(background);
+        return { text: node.textContent, foreground, background, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+      });
+    });
+    const evidencePath = testInfo.outputPath(`operational-contrast-${theme}.json`);
+    await writeFile(evidencePath, JSON.stringify(contrast, null, 2));
+    await testInfo.attach(`operational-contrast-${theme}`, { path: evidencePath, contentType: "application/json" });
+    await page.screenshot({ path: testInfo.outputPath(`operational-contrast-${theme}.png`) });
+    for (const metric of contrast) expect(metric.ratio, `${theme} metric ${metric.text}`).toBeGreaterThanOrEqual(4.5);
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`framework names retain readable columns in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+      await page.addInitScript((selectedTheme) => localStorage.setItem("agent-bom-theme", selectedTheme), theme);
+      await page.setViewportSize({ width, height: 900 });
+      await routeProductFixture(page);
+      const scoredKeys = ["nist_ai_rmf", "eu_ai_act", "nist_csf", "iso_27001", "soc2", "cis_controls", "cmmc", "nist_800_53", "fedramp", "pci_dss"];
+      const mappingKeys = ["owasp_llm_top10", "owasp_mcp_top10", "mitre_atlas", "owasp_agentic_top10"];
+      await page.route("**/v1/compliance", (route) => route.fulfill({ json: {
+        overall_score: 100, overall_status: "pass", evaluated_controls: 6, total_controls: 6,
+        scan_count: 14, has_mcp_context: true, has_agent_context: true,
+        framework_kinds: Object.fromEntries([...scoredKeys.map((key) => [key, "scored"]), ...mappingKeys.map((key) => [key, "applicability"])]),
+        ...Object.fromEntries([...scoredKeys, ...mappingKeys].map((key) => [key, ["cis_controls", "nist_800_53", "fedramp", "pci_dss"].includes(key) ? [{ id: `${key}-1`, status: "pass" }] : []])),
+        summary: { cis_pass: 1, nist_800_53_pass: 1, pci_dss_pass: 1, fedramp_pass: 1, cis_foundations_pass: 1, cis_foundations_evaluated: 1, aisvs_pass: 1 },
+      } }));
+      await page.goto("/");
+      const operations = page.getByRole("button", { name: /Operational signals/ });
+      await expect(operations).toHaveAttribute("aria-expanded", "false");
+      if (width === 1440) {
+        expect((await page.getByRole("region", { name: "Top risks" }).boundingBox())!.y).toBeLessThan(850);
+      }
+      const unavailableLane = page.getByTestId("coverage-lane-cspm");
+      await expect(unavailableLane.getByText("Count unavailable")).toBeVisible();
+      expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(112);
+      const cloudBox = (await unavailableLane.boundingBox())!;
+      const appBox = (await page.getByTestId("coverage-lane-aspm").boundingBox())!;
+      if (width === 1440) {
+        expect(Math.abs(cloudBox.y - appBox.y)).toBeLessThan(2);
+        expect(appBox.x).toBeGreaterThan(cloudBox.x + cloudBox.width);
+      } else {
+        expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
+        expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
+      }
+      await expect(unavailableLane.getByText("0", { exact: true })).toHaveCount(0);
+      const scoreToggle = page.getByRole("button", { name: /What influences this score/ });
+      await scoreToggle.focus();
+      await page.keyboard.press("Enter");
+      const highPressure = (await page.getByTestId("score-pressure-high").boundingBox())!;
+      const criticalPressure = (await page.getByTestId("score-pressure-critical").boundingBox())!;
+      expect(highPressure.width / criticalPressure.width).toBeCloseTo(2, 1);
+      await expect(page.getByTestId("score-driver-critical").getByText("Critical findings", { exact: true })).toBeVisible();
+      await expect(page.getByText(/not points deducted from 100/)).toBeVisible();
+      await page.getByTestId("overview-score-explainer").screenshot({ path: testInfo.outputPath(`score-pressure-${theme}-${width}.png`) });
+      await scoreToggle.focus();
+      await page.keyboard.press("Enter");
+      const coverageToggle = page.getByRole("button", { name: /^Coverage & controls/ });
+      await coverageToggle.focus();
+      await page.keyboard.press("Enter");
+      await expect(unavailableLane).not.toBeVisible();
+      await expect(coverageToggle).toBeFocused();
+      await page.keyboard.press("Space");
+      await expect(unavailableLane).toBeVisible();
+      const disclosure = page.getByRole("button", { name: /Evaluated frameworks/i });
+      await disclosure.focus();
+      await page.keyboard.press("Enter");
+      const frameworks = page.getByTestId("overview-evaluated-frameworks");
+      for (const label of ["CIS Controls v8", "NIST SP 800-53", "PCI DSS 4.0", "FedRAMP Moderate", "CIS Foundations Benchmark", "OWASP AISVS"]) {
+        const title = frameworks.getByText(label, { exact: true });
+        const card = frameworks.getByRole("link", { name: new RegExp(label) });
+        await expect(title).toBeVisible();
+        await expect(card).toHaveAttribute("href", "/compliance");
+        const titleBox = await title.boundingBox();
+        const cardBox = await card.boundingBox();
+        expect(titleBox!.width).toBeGreaterThan(80);
+        expect(cardBox!.height).toBeLessThan(100);
+        await card.focus();
+        await expect(card).toBeFocused();
+      }
+      await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
+      await expect(page.getByText("Not evaluated · 0/0 controls").first()).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.waitForTimeout(350);
+      await page.getByRole("region", { name: "Coverage & controls" }).screenshot({ path: testInfo.outputPath(`frameworks-${theme}-${width}.png`) });
+    });
+  }
+}

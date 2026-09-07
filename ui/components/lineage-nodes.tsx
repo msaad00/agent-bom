@@ -175,7 +175,8 @@ function NodeCard({
           {data.label}
         </span>
         <span className="ml-auto shrink-0 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
-          {NODE_TYPE_BADGES[data.nodeType]}
+          {/* Applications share the container layout, not its runtime identity. */}
+          {data.entityType === "application" ? "Application" : NODE_TYPE_BADGES[data.nodeType]}
         </span>
         {data.runtimeEvidenceTier && data.runtimeEvidenceTier !== "static_scan" ? (
           <RuntimeEvidenceChip tier={data.runtimeEvidenceTier} />

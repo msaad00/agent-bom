@@ -431,7 +431,7 @@ export default function Dashboard() {
                 (New Scan lives in the nav + empty states for engineers). */}
             <Link
               href="/compliance"
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800"
             >
               Compliance <ArrowRight className="h-4 w-4" />
             </Link>

@@ -198,3 +198,23 @@ describe("ActivityEventStream", () => {
     expect(screen.queryByText("Live gateway")).not.toBeInTheDocument();
   });
 });
+
+
+it("does not present unavailable gateway evidence as an empty healthy stream", async () => {
+  apiMock.getGatewayFeed.mockRejectedValueOnce(new Error("unavailable"));
+  render(<ActivityEventStream observabilityEvents={[]} />);
+  await waitFor(() => expect(screen.queryByText("Loading activity…")).not.toBeInTheDocument());
+  expect(screen.queryByText("No observed activity matches this view.")).not.toBeInTheDocument();
+  expect(screen.getByText("Gateway evidence unavailable. Collection health could not be verified.")).toBeInTheDocument();
+});
+
+it("does not label an event with an unknown decision as successful", async () => {
+  apiMock.getGatewayFeed.mockResolvedValueOnce({
+    events: [{ event_id: "unknown", ts: "2026-07-26T17:00:00Z", agent: "agent", target: "target", action_type: "inventory_observed" }],
+    health: { state: "sample", live: false },
+  });
+  render(<ActivityEventStream observabilityEvents={[]} />);
+  await screen.findByText("agent → target");
+  expect(screen.queryByLabelText("allowed or successful")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("decision unassessed")).toBeInTheDocument();
+});

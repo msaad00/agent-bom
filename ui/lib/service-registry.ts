@@ -26,12 +26,12 @@ export const SERVICE_META: Record<
   },
   runtime_proxy: {
     label: "Runtime proxy",
-    unlockHref: "/runtime",
+    unlockHref: "/runtime?tab=proxy",
     unlockLabel: "Enable proxy",
   },
   runtime_gateway: {
     label: "Runtime gateway",
-    unlockHref: "/runtime",
+    unlockHref: "/runtime?tab=gateway",
     unlockLabel: "Enable gateway",
   },
   runtime_traces: {
@@ -41,8 +41,8 @@ export const SERVICE_META: Record<
   },
   ai_spend: {
     label: "AI spend",
-    unlockHref: "/cost",
-    unlockLabel: "View AI spend",
+    unlockHref: "/runtime?tab=proxy",
+    unlockLabel: "Set up runtime usage",
   },
   compliance: {
     label: "Compliance",
@@ -79,4 +79,24 @@ export function serviceRequiresLabel(
   return entry.requires
     .map((required) => SERVICE_META[required as ServiceId]?.label ?? required)
     .join(", ");
+}
+
+/** Route usage setup to an existing runtime surface, then its declared dependency. */
+export function serviceSetupAction(
+  id: ServiceId,
+  entry: ServiceEntry,
+  registry?: Partial<Record<ServiceId, ServiceEntry>>,
+): { href: string; label: string } {
+  const meta = SERVICE_META[id];
+  if (id !== "ai_spend") return { href: meta.unlockHref, label: meta.unlockLabel };
+  const runtimeDependencies = (entry.requires ?? []).filter(
+    (dependency): dependency is "runtime_proxy" | "runtime_gateway" =>
+      dependency === "runtime_proxy" || dependency === "runtime_gateway",
+  );
+  const candidates = [...new Set([...runtimeDependencies, "runtime_proxy", "runtime_gateway"] as const)];
+  const target = candidates.find((candidate) => {
+    const state = registry?.[candidate]?.state;
+    return state === "connected" || state === "live";
+  }) ?? candidates[0]!;
+  return { href: SERVICE_META[target].unlockHref, label: meta.unlockLabel };
 }

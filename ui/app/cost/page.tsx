@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DollarSign,
   Activity,
@@ -13,6 +13,7 @@ import {
   Flame,
   CalendarClock,
   UserCheck,
+  RefreshCw,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -43,7 +44,7 @@ import {
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { ChartTooltip } from "@/components/charts";
 import { PageLaneHeader } from "@/components/page-lane";
-import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
+import { ServiceStateBanner } from "@/components/service-state-chip";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { serviceEntry } from "@/lib/service-registry";
 import { StatStrip, type StatStripItem } from "@/components/stat-strip";
@@ -188,7 +189,7 @@ function toneChipClass(tone: "ok" | "warn" | "danger" | "muted"): string {
 }
 
 function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
-  const status = forecast?.status ?? "insufficient_history";
+  const status = forecast?.status ?? "unavailable";
   const meta = FORECAST_STATUS[status] ?? {
     label: status.replace(/_/g, " "),
     tone: "muted" as const,
@@ -219,7 +220,9 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
       </div>
       {!hasRate && !hasRunway ? (
         <p className="text-sm text-[color:var(--text-tertiary)]">
-          {status === "insufficient_history"
+          {status === "unavailable"
+            ? "Forecast unavailable. Refresh to retry."
+            : status === "insufficient_history"
             ? "Not enough timestamped spend yet to project a burn rate. A forecast appears once at least two priced LLM calls are recorded."
             : status === "no_budget"
               ? "A burn rate is available, but no spend budget is configured — there is nothing to project a runway against."
@@ -594,7 +597,11 @@ export default function CostPage() {
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<ApiOfflineKind>("network");
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    setAnomalies(null);
+    setForecast(null);
     void Promise.allSettled([
       api.getCostReport(),
       api.getCostAnomalies(),
@@ -626,6 +633,10 @@ export default function CostPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   if (loading)
     return (
       <PageLoadingState
@@ -648,7 +659,7 @@ export default function CostPage() {
     .sort((a, b) => b.cost_usd - a.cost_usd)
     .slice(0, 10)
     .map((r) => ({ name: r.key || "—", cost: Number(r.cost_usd.toFixed(4)) }));
-  const anomalyCount = anomalies?.anomaly_count ?? 0;
+  const anomalyCount = anomalies?.anomaly_count;
 
   const kpis: StatStripItem[] = [
     { label: "Total spend", value: fmtUsd(report.total_cost_usd), icon: DollarSign, accent: "success" },
@@ -672,19 +683,16 @@ export default function CostPage() {
         title="AI Spend"
         subtitle="Model and token cost from proxy/gateway usage — not cloud infrastructure billing."
         actions={
-          <ServiceStateChip
-            serviceId="ai_spend"
-            entry={aiSpendService}
-            registry={counts?.services}
-          />
+          <button type="button" onClick={load} aria-label="Refresh cost data"
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface)]">
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </button>
         }
       />
 
-      <ServiceStateBanner
-        serviceId="ai_spend"
-        entry={aiSpendService}
-        registry={counts?.services}
-      />
+      {counts?.services?.ai_spend ? (
+        <ServiceStateBanner serviceId="ai_spend" entry={aiSpendService} registry={counts.services} />
+      ) : null}
 
       <StatStrip items={kpis} data-testid="cost-kpi-strip" />
 
@@ -701,10 +709,12 @@ export default function CostPage() {
           data-testid="cost-empty-state"
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className={`grid gap-4 ${agentChart.length > 0 ? "lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]" : ""}`}>
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
             <BreakdownExplorer report={report} />
+            {agentChart.length === 0 ? <p className="mt-3 text-sm text-[var(--text-secondary)]">Agent attribution unavailable for this report.</p> : null}
           </div>
+          {agentChart.length > 0 ? (
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
             <div className="mb-3 flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-[color:var(--accent)]" />
@@ -733,6 +743,7 @@ export default function CostPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          ) : null}
         </div>
       )}
 
@@ -741,10 +752,15 @@ export default function CostPage() {
         subtitle="Statistical outliers across cost and call-rate baselines"
         icon={ShieldAlert}
         count={anomalyCount}
-        defaultOpen={anomalyCount > 0}
+        defaultOpen={anomalies === null || (anomalyCount ?? 0) > 0}
         data-testid="cost-anomalies"
       >
-        {anomalyCount === 0 ? (
+        {anomalies === null ? (
+          <p role="status" className="text-sm text-[var(--text-secondary)]">
+            <span className="font-medium">Anomaly analysis unavailable</span>
+            {" · "}Spend data is available. Refresh to retry the analysis.
+          </p>
+        ) : anomalyCount === 0 ? (
           <p className="text-sm text-[color:var(--text-tertiary)]">
             No statistical anomalies detected across cost or call-rate baselines.
           </p>

@@ -93,7 +93,9 @@ export function WebhooksPanel() {
   );
 
   const activeCount = subs.filter((s) => s.status === "active").length;
-  const stats = outbox?.stats ?? {};
+  const stats = outbox?.stats;
+  const deliveryCount = (key: "pending" | "delivered" | "dead_letter") =>
+    loading ? "Loading…" : stats?.[key] ?? "Unavailable";
 
   const columns = useMemo<DataTableColumn<WebhookSubscription>[]>(
     () => [
@@ -239,11 +241,18 @@ export function WebhooksPanel() {
           { label: "Subscriptions", value: subs.length, icon: Webhook },
           { label: "Active", value: activeCount, accent: "success" },
           { label: "Disabled", value: subs.length - activeCount, accent: activeCount === subs.length ? "neutral" : "warn" },
-          { label: "Outbox pending", value: Number(stats.pending ?? 0), accent: "warn" },
-          { label: "Delivered", value: Number(stats.delivered ?? 0), accent: "success" },
-          { label: "Dead-letter", value: Number(stats.dead_letter ?? 0), accent: "critical" },
+          { label: "Outbox pending", value: deliveryCount("pending"), accent: !loading && typeof stats?.pending === "number" ? "warn" : "neutral" },
+          { label: "Delivered", value: deliveryCount("delivered"), accent: !loading && typeof stats?.delivered === "number" ? "success" : "neutral" },
+          { label: "Dead-letter", value: deliveryCount("dead_letter"), accent: !loading && typeof stats?.dead_letter === "number" ? "critical" : "neutral" },
         ]}
       />
+
+      {!loading && !outbox ? (
+        <InlineNotice tone="info">
+          <span className="font-medium">Delivery telemetry unavailable</span>
+          {" · "}Subscriptions remain available. Refresh to retry delivery status.
+        </InlineNotice>
+      ) : null}
 
       {notice ? <InlineNotice tone={notice.tone} data-testid="webhook-notice">{notice.text}</InlineNotice> : null}
       {!canManage ? (

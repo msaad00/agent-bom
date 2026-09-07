@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -37,6 +38,10 @@ def _no_registry_network():
     """
     with patch("agent_bom.mcp_tools.scanning._version_published", new=AsyncMock(return_value=True)):
         yield
+
+
+def _token_deadline(seconds=1800):
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
 
 
 def _run(coro):
@@ -172,10 +177,11 @@ def test_unknown_mcp_profile_is_rejected():
         create_mcp_server(profile="everything")
 
 
-def test_create_mcp_server_enables_static_bearer_auth():
+def test_create_mcp_server_enables_static_bearer_auth(monkeypatch):
     """create_mcp_server should wire FastMCP auth when a bearer token is configured."""
     from agent_bom.mcp_server import _StaticBearerTokenVerifier, create_mcp_server
 
+    monkeypatch.setenv("AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT", _token_deadline())
     server = create_mcp_server(host="0.0.0.0", port=8423, bearer_token="test-token")
     assert isinstance(server._token_verifier, _StaticBearerTokenVerifier)
     assert server.settings.auth is not None
@@ -187,7 +193,9 @@ def test_static_bearer_verifier_keeps_read_and_operator_tokens_separate():
     """Read bearer tokens must not authorize MCP write tools."""
     from agent_bom.mcp_server import _StaticBearerTokenVerifier
 
-    verifier = _StaticBearerTokenVerifier("read-token", operator_token="operator-token")
+    verifier = _StaticBearerTokenVerifier(
+        "read-token", operator_token="operator-token", token_expires_at=_token_deadline(), operator_token_expires_at=_token_deadline()
+    )
     read_access = _run(verifier.verify_token("read-token"))
     operator_access = _run(verifier.verify_token("operator-token"))
 
@@ -212,7 +220,9 @@ def test_static_operator_token_authorizes_every_registered_write_family():
     from agent_bom.mcp_server import _StaticBearerTokenVerifier
     from agent_bom.mcp_server_runtime import authorize_destructive_tool
 
-    verifier = _StaticBearerTokenVerifier("read-token", operator_token="operator-token")
+    verifier = _StaticBearerTokenVerifier(
+        "read-token", operator_token="operator-token", token_expires_at=_token_deadline(), operator_token_expires_at=_token_deadline()
+    )
     operator_access = _run(verifier.verify_token("operator-token"))
 
     assert operator_access is not None
@@ -235,38 +245,25 @@ def test_static_operator_token_authorizes_every_registered_write_family():
         assert denial is None
 
 
-def test_static_bearer_verifier_rejects_expired_read_token():
-    from agent_bom.mcp_server import _StaticBearerTokenVerifier
+@pytest.mark.parametrize("expired_scope", ["read", "operator"])
+def test_static_bearer_verifier_rechecks_independent_deadlines(monkeypatch, expired_scope):
+    from unittest.mock import Mock
 
-    verifier = _StaticBearerTokenVerifier(
+    from agent_bom import mcp_server
+
+    verifier = mcp_server._StaticBearerTokenVerifier(
         "read-token",
         operator_token="operator-token",
-        token_expires_at="2020-01-01T00:00:00Z",
-        operator_token_expires_at="2099-01-01T00:00:00Z",
+        token_expires_at=_token_deadline(60 if expired_scope == "read" else 1800),
+        operator_token_expires_at=_token_deadline(60 if expired_scope == "operator" else 1800),
     )
-
-    assert _run(verifier.verify_token("read-token")) is None
-    operator_access = _run(verifier.verify_token("operator-token"))
-    assert operator_access is not None
-    assert operator_access.client_id == "agent-bom-operator-token"
-    assert operator_access.expires_at is not None
-
-
-def test_static_bearer_verifier_rejects_expired_operator_token():
-    from agent_bom.mcp_server import _StaticBearerTokenVerifier
-
-    verifier = _StaticBearerTokenVerifier(
-        "read-token",
-        operator_token="operator-token",
-        token_expires_at="2099-01-01T00:00:00+00:00",
-        operator_token_expires_at="2020-01-01T00:00:00+00:00",
-    )
-
-    read_access = _run(verifier.verify_token("read-token"))
-    assert read_access is not None
-    assert read_access.client_id == "agent-bom-static-token"
-    assert read_access.expires_at is not None
-    assert _run(verifier.verify_token("operator-token")) is None
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = datetime.now(timezone.utc) + timedelta(seconds=120)
+    monkeypatch.setattr(mcp_server, "datetime", clock)
+    assert _run(verifier.verify_token(f"{expired_scope}-token")) is None
+    valid_scope = "operator" if expired_scope == "read" else "read"
+    access = _run(verifier.verify_token(f"{valid_scope}-token"))
+    assert access is not None and access.expires_at is not None
 
 
 def test_static_bearer_verifier_requires_timezone_for_expiry():

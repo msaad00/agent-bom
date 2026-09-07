@@ -124,7 +124,7 @@ def validate(version: str | None = None) -> None:
             raise ValueError(f"{spec.relative_to(ROOT)} must use the immutable release tag {tag}")
         _yaml(spec)
         placeholders = set(re.findall(r"\{\{\s*([^} ]+)\s*\}\}", text))
-        allowed_placeholders = {"mcp_bearer_token"} if spec.name == "mcp-runtime-service.yaml" else set()
+        allowed_placeholders = {"mcp_bearer_token", "mcp_bearer_token_expires_at"} if spec.name == "mcp-runtime-service.yaml" else set()
         if placeholders != allowed_placeholders:
             raise ValueError(f"{spec.relative_to(ROOT)} has undeclared runtime placeholders: {sorted(placeholders)}")
 

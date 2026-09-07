@@ -111,7 +111,7 @@ import os
 import re
 import time
 from collections import OrderedDict, deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Awaitable, Callable, Optional, TypeVar
 
@@ -196,10 +196,12 @@ class _StaticBearerTokenVerifier:
     ):
         self._token = token
         self._operator_token = operator_token
-        self._token_expires_at = _parse_mcp_token_expiry(token_expires_at, "AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT")
-        self._operator_token_expires_at = _parse_mcp_token_expiry(
-            operator_token_expires_at,
-            "AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT",
+        now = datetime.now(timezone.utc)
+        self._token_expires_at = _parse_mcp_token_expiry(token_expires_at, "AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT", now=now)
+        self._operator_token_expires_at = (
+            _parse_mcp_token_expiry(operator_token_expires_at, "AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT", now=now)
+            if operator_token
+            else None
         )
 
     async def verify_token(self, token: str):
@@ -236,22 +238,27 @@ class _StaticBearerTokenVerifier:
         return None
 
 
-def _parse_mcp_token_expiry(value: str | None, env_name: str) -> datetime | None:
-    """Parse an optional MCP token expiry timestamp from environment/config."""
-    if not value:
-        return None
+def _parse_mcp_token_expiry(value: str | None, env_name: str, *, now: datetime) -> datetime:
+    """Require an absolute deadline that cannot renew when the process restarts."""
+    requirement = f"{env_name} must be a timezone-aware ISO-8601 expiry in the next hour"
+    if not value or not value.strip():
+        raise ValueError(requirement)
     cleaned = value.strip()
-    if not cleaned:
-        return None
     if cleaned.endswith("Z"):
         cleaned = f"{cleaned[:-1]}+00:00"
     try:
         parsed = datetime.fromisoformat(cleaned)
-    except ValueError as exc:
-        raise ValueError(f"{env_name} must be an ISO-8601 timestamp with timezone") from exc
+    except ValueError:
+        raise ValueError(requirement) from None
     if parsed.tzinfo is None:
-        raise ValueError(f"{env_name} must include timezone information")
-    return parsed.astimezone(timezone.utc)
+        raise ValueError(requirement)
+    try:
+        parsed = parsed.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        raise ValueError(requirement) from None
+    if not now < parsed <= now + timedelta(hours=1):
+        raise ValueError(requirement)
+    return parsed
 
 
 def _mcp_token_expired(expires_at: datetime | None) -> bool:

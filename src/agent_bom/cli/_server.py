@@ -1189,7 +1189,16 @@ def mcp_server_cmd(
         if not _is_loopback_host(host):
             os.environ["AGENT_BOM_MCP_REMOTE_BIND"] = "1"
 
-    server = create_mcp_server(host=host, port=port, bearer_token=bearer_token, profile=profile)
+    # Stdio uses its parent process boundary; inherited HTTP credentials do not
+    # activate a token verifier for a local session.
+    try:
+        server = create_mcp_server(
+            host=host, port=port, bearer_token=bearer_token if transport in ("sse", "streamable-http") else None, profile=profile
+        )
+    except ValueError as exc:
+        from agent_bom.security import sanitize_error
+
+        raise click.ClickException(sanitize_error(exc)) from exc
 
     if transport in ("sse", "streamable-http"):
         from agent_bom import __version__ as _ver

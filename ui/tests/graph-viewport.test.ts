@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
+import { graphFitViewOptions, graphInitialFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 
 describe("graph viewport framing", () => {
   it("zooms small operator-scoped graphs instead of leaving empty canvas", () => {
@@ -55,5 +55,28 @@ describe("graph viewport framing", () => {
     expect(capture.maxZoom).toBeLessThanOrEqual(2.25);
     expect(capture.padding).toBeGreaterThan(interactive.padding);
     expect(capture.duration).toBe(0);
+  });
+});
+
+
+describe("readable initial graph focus", () => {
+  const nodes = Array.from({ length: 30 }, (_, index) => ({ id: `node:${index}`, data: { nodeType: index === 20 ? "agent" : "package" } }));
+  const options = graphFitViewOptions({ nodeCount: nodes.length });
+  it("uses deterministic context without mutating the complete graph", () => {
+    const before = structuredClone(nodes);
+    const fit = graphInitialFitViewOptions(nodes, options);
+    expect(fit.nodes).toEqual([{ id: "node:20" }]);
+    expect(fit.minZoom! * 11).toBeGreaterThanOrEqual(12);
+    expect(graphInitialFitViewOptions([...nodes].reverse(), options)).toEqual(fit);
+    expect(nodes).toEqual(before);
+    expect(options).not.toHaveProperty("nodes"); // Explicit Fit all is unchanged.
+  });
+  it("prefers selection, then existing proposed changes, and ignores absent IDs", () => {
+    expect(graphInitialFitViewOptions(nodes, options, "node:4", ["node:3"]).nodes).toEqual([{ id: "node:4" }]);
+    expect(graphInitialFitViewOptions(nodes, options, "absent", ["absent", "node:3"]).nodes).toEqual([{ id: "node:3" }]);
+  });
+  it("retains full-fit framing for compact unselected graphs", () => {
+    expect(graphInitialFitViewOptions(nodes.slice(0, 3), options)).toBe(options);
+    expect(graphInitialFitViewOptions([], options)).toBe(options);
   });
 });

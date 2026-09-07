@@ -63,6 +63,44 @@ describe("useGraphPresentation", () => {
     expect(result.current.nodes[0]?.ariaLabel).toBe("Package A");
   });
 
+  it("does not treat a viewport first persisted during this mount as restored", () => {
+    const { result, rerender } = renderHook(({ currentNodes }) =>
+      useGraphPresentation({ nodes: currentNodes, scope, layout: "dagre-lr" }),
+      { initialProps: { currentNodes: nodes } },
+    );
+    act(() => result.current.onMoveEnd(null, { x: 10, y: 20, zoom: 0.3 }));
+    rerender({ currentNodes: nodes.map((node) => ({ ...node, data: { ...node.data, highlighted: true } })) });
+    expect(result.current.hasSavedState).toBe(true);
+    expect(result.current.restoredSavedState).toBe(false);
+    expect(result.current.restoredViewport).toBeUndefined();
+  });
+
+  it("invalidates restored viewport on reset, including later pan and presentation updates", () => {
+    writeGraphPresentation(window.localStorage, graphPresentationStorageKey(scope), {
+      version: 1, positions: {}, viewport: { x: -20, y: 15, zoom: 0.3 }, layout: "dagre-lr", locked: true,
+    });
+    const { result, rerender } = renderHook(({ currentNodes, currentScope }) =>
+      useGraphPresentation({ nodes: currentNodes, scope: currentScope, layout: "dagre-lr" }),
+      { initialProps: { currentNodes: nodes, currentScope: scope } },
+    );
+    expect(result.current.restoredSavedState).toBe(true);
+    act(() => result.current.reset());
+    expect(result.current.restoredSavedState).toBe(false);
+    expect(result.current.restoredViewport).toBeUndefined();
+    act(() => result.current.onMoveEnd(null, { x: 30, y: 40, zoom: 1.2 }));
+    rerender({ currentNodes: nodes.map((node) => ({ ...node, data: { ...node.data, highlighted: true } })), currentScope: scope });
+    expect(result.current.hasSavedState).toBe(true);
+    expect(result.current.restoredSavedState).toBe(false);
+    expect(result.current.restoredViewport).toBeUndefined();
+    expect(result.current.viewport).toEqual({ x: 30, y: 40, zoom: 1.2 });
+    // Returning from a different graph scope is a fresh restoration of the
+    // newly saved viewport, never the viewport discarded by Reset.
+    rerender({ currentNodes: nodes, currentScope: { ...scope, snapshotId: "another" } });
+    rerender({ currentNodes: nodes, currentScope: scope });
+    expect(result.current.restoredSavedState).toBe(true);
+    expect(result.current.restoredViewport).toEqual({ x: 30, y: 40, zoom: 1.2 });
+  });
+
   it("rejects an invalid saved viewport so the canvas can fit visible evidence", () => {
     window.localStorage.setItem(
       graphPresentationStorageKey(scope),

@@ -4,6 +4,26 @@ const scanId = "scan-dense-graph";
 const previousScanId = "scan-dense-graph-prev";
 const createdAt = "2026-05-08T16:00:00Z";
 
+async function settledViewportZoom(page: Page): Promise<number> {
+  let previous = "";
+  let unchangedSince = Date.now();
+  let zoom = 0;
+  await expect.poll(async () => {
+    const transform = await page.locator(".react-flow__viewport").evaluate(
+      element => getComputedStyle(element).transform,
+    );
+    if (transform !== previous) {
+      previous = transform;
+      unchangedSince = Date.now();
+    }
+    zoom = await page.locator(".react-flow__viewport").evaluate(
+      element => new DOMMatrixReadOnly(getComputedStyle(element).transform).a,
+    );
+    return Date.now() - unchangedSince >= 350;
+  }, { intervals: [100] }).toBe(true);
+  return zoom;
+}
+
 type GraphNode = {
   id: string;
   entity_type: string;
@@ -237,9 +257,12 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
     await expect(page.getByText("Pan, zoom, search, filter, and select nodes for evidence.")).toBeVisible();
   } else {
     await expect(desktopNode).toBeVisible();
+    await expect(page.getByTestId("graph-viewport-scope")).toContainText("Focused view");
+    // Initial context stays readable; the explicit whole-topology action makes
+    // distant findings available without claiming all-fit labels are readable.
+    await page.getByRole("button", { name: "Fit all", exact: true }).click();
     await expect(application.getByText("CVE-2026-103", { exact: true })).toBeVisible();
-    // Topology with the legend collapsed — proves the nodes fill the canvas
-    // and read clearly at default zoom.
+    // Whole topology with the legend collapsed after the explicit Fit all.
     await application.screenshot({
       path: testInfo.outputPath(`lineage-graph-canvas-${theme}.png`),
     });
@@ -282,11 +305,10 @@ for (const theme of ["dark", "light"] as const) {
 test("lineage graph controls zoom, move, persist, lock, fit, and auto-layout", async ({ page }) => {
   await routeGraphPage(page);
   await page.goto("/graph", { waitUntil: "domcontentloaded" });
-  await page.waitForURL((url) => url.pathname === "/graph" && url.searchParams.has("layers"));
-
   const canvas = page.locator(".react-flow").last();
-  const node = canvas.locator(".react-flow__node").first();
+  const node = canvas.getByTestId("rf__node-agent:desktop");
   await expect(node).toBeVisible();
+  await expect.poll(() => canvas.locator(".react-flow__viewport").evaluate((element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a)).toBeCloseTo(1.1, 2);
   const before = await node.boundingBox();
   expect(before).not.toBeNull();
 
@@ -344,9 +366,10 @@ for (const activation of ["pointer", "keyboard"] as const) {
       await pill.click();
     }
     await expect(pill).toHaveCount(0);
-    await expect(page.locator(".react-flow__edge")).toHaveCount(45);
     await page.getByRole("button", { name: "Fit View", exact: true }).click();
+    await expect(page.locator(".react-flow__edge")).toHaveCount(45);
     await expect(page.locator(".react-flow__node")).toHaveCount(24);
+    await expect(page.getByTestId("graph-viewport-scope")).toContainText("Topology view");
     const renderedEdges = await page.locator(".react-flow__edge").evaluateAll((elements) => elements.map((element) => element.getAttribute("data-id")));
     expect(new Set(renderedEdges).size).toBe(45);
     const packageNode = page.getByTestId(`rf__node-${pkg.id}`);
@@ -538,4 +561,56 @@ for (const width of [1440, 390]) {
     });
   }
 }
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`expanded graph starts with readable context at ${width}px ${theme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 811 });
+      const graph = buildDenseGraph();
+      await routeGraphPage(page, graph);
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      await page.goto(`/graph?scan=${scanId}&scope=expanded`);
+      const flow = page.locator(".react-flow");
+      const anchor = page.getByTestId("rf__node-agent:desktop");
+      await expect(anchor).toBeVisible();
+      await expect.poll(async () => anchor.evaluate((element) => {
+        const viewport = element.closest(".react-flow__viewport");
+        const title = [...element.querySelectorAll("*")].find((item) => item.childElementCount === 0 && item.textContent === "Desktop Agent");
+        if (!viewport || !title) return 0;
+        return parseFloat(getComputedStyle(title).fontSize) * new DOMMatrixReadOnly(getComputedStyle(viewport).transform).a;
+      })).toBeGreaterThanOrEqual(12);
+      await expect(page.getByTestId("graph-viewport-scope")).toContainText("Focused view");
+      await flow.scrollIntoViewIfNeeded();
+      const titleBox = await anchor.getByText("Desktop Agent", { exact: true }).boundingBox();
+      const mapBox = await flow.locator(".react-flow__minimap").boundingBox();
+      expect(titleBox).not.toBeNull();
+      expect(mapBox).not.toBeNull();
+      const overlapWidth = Math.max(0, Math.min(titleBox!.x + titleBox!.width, mapBox!.x + mapBox!.width) - Math.max(titleBox!.x, mapBox!.x));
+      const overlapHeight = Math.max(0, Math.min(titleBox!.y + titleBox!.height, mapBox!.y + mapBox!.height) - Math.max(titleBox!.y, mapBox!.y));
+      expect(overlapWidth * overlapHeight).toBe(0);
+      await page.screenshot({ path: testInfo.outputPath(`initial-focus-${width}-${theme}.png`) });
+      await page.getByRole("button", { name: "Fit all", exact: true }).click();
+      await expect(page.getByTestId("graph-viewport-scope")).toContainText(`${graph.nodes.length} graph nodes · ${graph.edges.length} relationships`);
+      const zoom = await settledViewportZoom(page);
+      await page.reload();
+      await expect.poll(async () => flow.locator(".react-flow__viewport").evaluate((element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a)).toBeCloseTo(zoom, 2);
+      if (width === 1440) {
+        await page.getByText("Layout", { exact: true }).click();
+        await page.getByRole("button", { name: "Reset layout", exact: true }).click();
+        const resetZoom = await settledViewportZoom(page);
+        await page.getByRole("button", { name: "Zoom In", exact: true }).click();
+        const movedZoom = await settledViewportZoom(page);
+        expect(movedZoom).toBeGreaterThan(resetZoom);
+        await page.reload();
+        await expect.poll(async () => flow.locator(".react-flow__viewport").evaluate((element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a)).toBeCloseTo(movedZoom, 2);
+      }
+      // The mobile minimum zoom still virtualizes offscreen nodes. Widening
+      // the same graph proves all original membership remains available.
+      await page.setViewportSize({ width: 1440, height: 811 });
+      await page.getByRole("button", { name: "Fit all", exact: true }).click();
+      await expect(page.locator(".react-flow__node")).toHaveCount(graph.nodes.length);
+      await expect(page.locator(".react-flow__edge")).toHaveCount(graph.edges.length);
+    });
+  }
 }

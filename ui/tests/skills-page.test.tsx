@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -213,11 +214,12 @@ describe("SkillsPage", () => {
   it("guides the operator to the CLI when server-side scans are disabled (400)", async () => {
     apiMock.getSkillsScan.mockResolvedValue(emptyReport());
     apiMock.runSkillsScan.mockRejectedValue(
-      new ApiValidationError("Invalid scan path", {
+      new ApiValidationError("Local filesystem scans are disabled", {
         url: "/v1/skills/scan",
         method: "POST",
         status: 400,
         statusText: "Bad Request",
+        body: { detail: "Local filesystem scans are disabled" },
       })
     );
     render(<SkillsPage />);
@@ -228,4 +230,39 @@ describe("SkillsPage", () => {
     const notice = await screen.findByTestId("skills-scan-disabled");
     expect(notice).toHaveTextContent(/agent-bom skills scan/i);
   });
+  it("reports invalid targets without claiming scanning is disabled or dropping prior results", async () => {
+    apiMock.getSkillsScan.mockResolvedValue(report());
+    apiMock.runSkillsScan.mockRejectedValue(new ApiValidationError("Invalid scan path", {
+      url: "/v1/skills/scan", method: "POST", status: 400, statusText: "Bad Request",
+      body: { detail: "Invalid scan path" },
+    }));
+    render(<SkillsPage />);
+    await screen.findByTestId("skills-summary");
+    fireEvent.click(screen.getByTestId("skills-scan-button"));
+    expect(await screen.findByText("Invalid scan path")).toBeVisible();
+    expect(screen.queryByTestId("skills-scan-disabled")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("skills-row")).toHaveLength(2);
+  });
+
+  it("distinguishes a completed empty scan from never scanned", async () => {
+    apiMock.getSkillsScan.mockResolvedValue({ ...emptyReport(), status: "completed", run_id: "empty-run", created_at: "2026-09-07T00:00:00Z" });
+    render(<SkillsPage />);
+    expect(await screen.findByText("No skill files found")).toBeVisible();
+    expect(screen.queryByText("No skills scanned yet")).not.toBeInTheDocument();
+    expect(screen.getByText(/completed scan found no matching skill/i)).toBeVisible();
+  });
+
+  it("opens file evidence with the keyboard and restores focus after closing", async () => {
+    apiMock.getSkillsScan.mockResolvedValue(report());
+    const user = userEvent.setup();
+    render(<SkillsPage />);
+    const action = await screen.findByRole("button", { name: "Inspect skills/risky/SKILL.md" });
+    action.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("dialog", { name: "Skill scan detail for skills/risky/SKILL.md" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(action).toHaveFocus();
+  });
+
 });

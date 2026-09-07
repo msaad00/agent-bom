@@ -316,7 +316,11 @@ export default function SkillsPage() {
         setScanNotice(`Scanned ${r.summary.files_scanned} file(s).`);
       })
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 400) {
+        if (
+          e instanceof ApiError && e.status === 400 &&
+          e.body !== null && typeof e.body === "object" &&
+          "detail" in e.body && e.body.detail === "Local filesystem scans are disabled"
+        ) {
           // Server-side path scans are disabled on this deployment. Point the
           // operator at the headless equivalent instead of leaking server config.
           setScanDisabled(true);
@@ -431,8 +435,10 @@ export default function SkillsPage() {
         <PageEmptyState
           data-testid="skills-empty"
           icon={FileWarning}
-          title="No skills scanned yet"
-          detail="Trigger a scan of your skill/instruction files to see per-file trust verdicts and signing provenance."
+          title={report?.status === "completed" ? "No skill files found" : "No skills scanned yet"}
+          detail={report?.status === "completed"
+            ? "The completed scan found no matching skill or instruction files. Check the selected paths and scan again."
+            : "Trigger a scan of your skill/instruction files to see per-file trust verdicts and signing provenance."}
           command={`${HEADLESS_CLI}   # or ${HEADLESS_API}`}
         />
       ) : (
@@ -535,9 +541,14 @@ export default function SkillsPage() {
                       className="cursor-pointer border-b border-[color:var(--border-subtle)] last:border-0 hover:bg-[color:var(--surface-muted)]"
                     >
                       <td className="max-w-0 px-3 py-2">
-                        <div className="truncate font-medium text-[color:var(--foreground)]">
+                        <button
+                          type="button"
+                          onClick={(event) => { event.stopPropagation(); setSelected(file); }}
+                          aria-label={`Inspect ${file.path}`}
+                          className="block max-w-full truncate rounded text-left font-medium text-[color:var(--foreground)] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)]"
+                        >
                           {fileName(file.path)}
-                        </div>
+                        </button>
                         <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">{file.path}</div>
                       </td>
                       <td className="px-3 py-2">

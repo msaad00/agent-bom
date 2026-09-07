@@ -26,19 +26,23 @@ import {
   PageLoadingState,
   PageEmptyState,
 } from "@/components/states/page-state";
-import {
-  ApiOfflineState,
-  type ApiOfflineKind,
-} from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { NhiGovernancePanel } from "@/components/nhi-governance-panel";
 
-function classifyApiErrorKind(err: unknown): ApiOfflineKind {
-  if (err instanceof ApiAuthError) return "auth";
-  if (err instanceof ApiForbiddenError) return "forbidden";
-  return "network";
+function sourceFailure(err: unknown): string {
+  if (err instanceof ApiAuthError) return "Sign in to load this evidence.";
+  if (err instanceof ApiForbiddenError) return "Your role cannot read this evidence.";
+  return "Could not load this evidence. Refresh to retry.";
 }
 
+function UnavailableSection({ title, detail }: { title: string; detail: string }) {
+  return <section role="status" className="rounded-lg border border-[var(--border-subtle)] p-4">
+    <h2 className="text-sm font-semibold text-[var(--foreground)]">{title}</h2>
+    <p className="mt-1 text-sm text-[var(--text-secondary)]">{detail}</p>
+  </section>;
+}
+
+const RECORD_LIMIT = 200;
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function Badge({
@@ -92,7 +96,7 @@ function StatCard({
 }: {
   icon: React.ElementType;
   label: string;
-  value: number;
+  value: number | null;
   color: string;
   /** What population this number counts.
    *
@@ -109,7 +113,7 @@ function StatCard({
         <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
       </div>
       <p className="text-2xl font-bold text-[var(--foreground)]">
-        {value.toLocaleString()}
+        {value === null ? "Unavailable" : value.toLocaleString()}
       </p>
       {scope ? <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">{scope}</p> : null}
     </div>
@@ -340,14 +344,11 @@ function NhiDiscoveryPanel({
 }: {
   discovery: NhiDiscoveryResponse | null;
 }) {
-  // No provider gated on → discovery disabled. The merge layer reports
-  // status "empty" with each provider's own gated status.
-  const enabledProviders = (discovery?.providers ?? []).filter(
-    (p) => (p.status ?? "").toLowerCase() === "ok",
-  );
-  const disabled =
-    discovery == null ||
-    (discovery.count === 0 && enabledProviders.length === 0);
+  // Only an explicit disabled result establishes that no provider is enabled.
+  const disabled = discovery !== null && discovery.providers.length > 0 &&
+    discovery.providers.every((provider) => provider.status === "disabled");
+  const incomplete = discovery === null || discovery.providers.length === 0 ||
+    discovery.providers.some((provider) => !["ok", "disabled"].includes(provider.status ?? ""));
 
   return (
     <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
@@ -374,10 +375,10 @@ function NhiDiscoveryPanel({
             <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
               <span className="text-xs text-[var(--text-tertiary)]">Identities</span>
               <p className="text-xl font-bold text-[var(--foreground)]">
-                {discovery.count.toLocaleString()}
+                {incomplete ? "Unavailable" : discovery?.count.toLocaleString()}
               </p>
             </div>
-            {discovery.providers.map((p) => (
+            {discovery?.providers.map((p) => (
               <div
                 key={p.provider ?? "provider"}
                 className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3"
@@ -387,7 +388,7 @@ function NhiDiscoveryPanel({
                 </span>
                 <div className="flex items-baseline gap-2">
                   <p className="text-xl font-bold text-[var(--foreground)]">
-                    {p.count.toLocaleString()}
+                    {p.status === "ok" ? p.count.toLocaleString() : "—"}
                   </p>
                   <Badge tone={p.status === "ok" ? "green" : "zinc"}>
                     {p.status ?? "—"}
@@ -396,9 +397,9 @@ function NhiDiscoveryPanel({
               </div>
             ))}
           </div>
-          {discovery.warnings.length > 0 && (
+          {(discovery?.warnings.length ?? 0) > 0 && (
             <ul className="space-y-1 text-xs text-[var(--text-tertiary)]">
-              {discovery.warnings.map((w, i) => (
+              {discovery?.warnings.map((w, i) => (
                 <li key={i}>· {w}</li>
               ))}
             </ul>
@@ -419,16 +420,15 @@ export default function IdentityPage() {
   const [campaigns, setCampaigns] = useState<AccessReviewCampaign[]>([]);
   const [discovery, setDiscovery] = useState<NhiDiscoveryResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [errorKind, setErrorKind] = useState<ApiOfflineKind>("network");
+  const [failures, setFailures] = useState<Record<string, string>>({});
 
   useEffect(() => {
     void Promise.allSettled([
-      api.listIdentities(true),
-      api.listJitGrants(true),
-      api.listConditionalAccessPolicies(true),
+      api.listIdentities(true, RECORD_LIMIT),
+      api.listJitGrants(true, RECORD_LIMIT),
+      api.listConditionalAccessPolicies(true, RECORD_LIMIT),
       api.getCredentialExpiry(),
-      api.listAccessReviews(),
+      api.listAccessReviews(RECORD_LIMIT),
       api.discoverNonHumanIdentities(),
     ])
       .then(
@@ -442,10 +442,12 @@ export default function IdentityPage() {
         ]) => {
           if (idResult.status === "fulfilled") {
             setIdentities(idResult.value.identities);
-          } else {
-            setError(idResult.reason?.message ?? "Failed to load identities");
-            setErrorKind(classifyApiErrorKind(idResult.reason));
           }
+          const results = { identities: idResult, grants: jitResult, policies: polResult,
+            credentials: credResult, reviews: reviewResult, discovery: discoverResult };
+          setFailures(Object.fromEntries(Object.entries(results).flatMap(([source, result]) =>
+            result.status === "rejected" ? [[source, sourceFailure(result.reason)]] : [],
+          )));
           if (jitResult.status === "fulfilled")
             setGrants(jitResult.value.grants);
           if (polResult.status === "fulfilled")
@@ -468,15 +470,6 @@ export default function IdentityPage() {
         detail="Managed agent identities, JIT grants, and conditional-access policies."
       />
     );
-  if (error)
-    return (
-      <ApiOfflineState
-        title="Identity data unavailable"
-        detail={error}
-        kind={errorKind}
-      />
-    );
-
   const activeIdentities = identities.filter(
     (i) => i.status === "active" || i.status === "rotating",
   ).length;
@@ -491,6 +484,7 @@ export default function IdentityPage() {
     campaigns.length > 0 ||
     (discovery?.count ?? 0) > 0;
   const isEmpty =
+    Object.keys(failures).length === 0 &&
     identities.length === 0 &&
     grants.length === 0 &&
     policies.length === 0 &&
@@ -513,30 +507,35 @@ export default function IdentityPage() {
         <StatCard
           icon={Fingerprint}
           label="Active identities"
-          value={activeIdentities}
+          value={failures.identities ? null : activeIdentities}
           color="text-indigo-400"
           scope="issued and managed here"
         />
         <StatCard
           icon={Clock}
           label="Active JIT grants"
-          value={activeGrants}
+          value={failures.grants ? null : activeGrants}
           color="text-emerald-400"
         />
         <StatCard
           icon={ShieldCheck}
           label="Conditional policies"
-          value={activePolicies}
+          value={failures.policies ? null : activePolicies}
           color="text-blue-400"
         />
         <StatCard
           icon={Ban}
           label="Revoked / expired"
-          value={inactiveIdentities}
+          value={failures.identities ? null : inactiveIdentities}
           color="text-[var(--text-secondary)]"
           scope="issued and managed here"
         />
       </div>
+
+      <p className="text-xs text-[var(--text-tertiary)]">Counts cover up to {RECORD_LIMIT} loaded records per list; they are not estate-wide totals.</p>
+      {failures.identities && <UnavailableSection title="Managed identities unavailable" detail={failures.identities} />}
+      {failures.grants && <UnavailableSection title="JIT grants unavailable" detail={failures.grants} />}
+      {failures.policies && <UnavailableSection title="Conditional policies unavailable" detail={failures.policies} />}
 
       {isEmpty && (
         <PageEmptyState
@@ -546,13 +545,13 @@ export default function IdentityPage() {
         />
       )}
 
-      {credExpiry && <CredentialExpiryPanel report={credExpiry} />}
+      {failures.credentials ? <UnavailableSection title="Credential expiry unavailable" detail={failures.credentials} /> : credExpiry && <CredentialExpiryPanel report={credExpiry} />}
 
       <NhiGovernancePanel />
 
-      <AccessReviewPanel campaigns={campaigns} />
+      {failures.reviews ? <UnavailableSection title="Access reviews unavailable" detail={failures.reviews} /> : <AccessReviewPanel campaigns={campaigns} />}
 
-      <NhiDiscoveryPanel discovery={discovery} />
+      {failures.discovery ? <UnavailableSection title="Identity discovery unavailable" detail={failures.discovery} /> : <NhiDiscoveryPanel discovery={discovery} />}
 
       {identities.length > 0 && (
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">

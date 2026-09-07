@@ -3,12 +3,43 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from test_proxy_provenance_foundation import provenance, record
 
-from agent_bom.api.gateway_activity_store import InMemoryGatewayActivityStore, SQLiteGatewayActivityStore
+from agent_bom.api.gateway_activity_store import (
+    InMemoryGatewayActivityStore,
+    SQLiteGatewayActivityStore,
+    gateway_activity_record_from_event,
+)
+from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance
 from agent_bom.api.routes.gateway_feed import _feed_health_from_metrics, build_gateway_feed, build_gateway_feed_kpis
 from agent_bom.api.routes.proxy import _build_runtime_production_index
 from agent_bom.runtime_blueprints import evaluate_runtime_blueprint_drift
+
+
+def provenance(**kwargs):
+    return GatewaySubmissionProvenance(submission_source_id="collector", submission_session_id="batch", **kwargs)
+
+
+def record(event_id="legacy", **kwargs):
+    return gateway_activity_record_from_event(
+        {
+            "schema_version": "gateway.runtime.event.v1",
+            "event_id": event_id,
+            "decision_id": event_id,
+            "event_type": "gateway.tool_call.allowed",
+            "event_timestamp": "2026-07-28T11:59:00+00:00",
+            "agent_id": "agent-a",
+            "upstream": "files",
+            "tool": "read_file",
+            "decision": "allow",
+            "policy_source": "policy",
+            "trace_id": "trace",
+        },
+        tenant_id="tenant-a",
+        source_id="collector",
+        session_id="batch",
+        received_at=datetime(2026, 7, 28, 12, tzinfo=timezone.utc),
+        **kwargs,
+    )
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
@@ -125,3 +156,57 @@ def test_legacy_version_cannot_acquire_assurance_from_extra_metadata():
     old = record().to_dict()
     old["submission_provenance"] = provenance(producer_assurance="caller_asserted").model_dump()
     assert projected_producer_assurance(old) == "unknown"
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_all_canonical_events_keep_window_and_fallback_counts_aligned(tmp_path, backend):
+    from agent_bom.api.gateway_activity_store import gateway_activity_record_from_event
+    from agent_bom.runtime.gateway_events import GATEWAY_CANONICAL_EVENT_TYPES, GATEWAY_DENIED_EVENT_TYPES
+
+    store = InMemoryGatewayActivityStore() if backend == "memory" else SQLiteGatewayActivityStore(str(tmp_path / "all-types.db"))
+    for tenant, timestamp in [("tenant-a", "2026-07-28T12:00:00+00:00"), ("tenant-b", "2026-07-28T12:00:00+00:00")]:
+        records = []
+        for version in ("legacy", "current"):
+            metadata = provenance(producer_assurance="caller_asserted") if version == "current" else None
+            for event_type in sorted(GATEWAY_CANONICAL_EVENT_TYPES):
+                event_id = f"{tenant}-{version}-{event_type}"
+                records.append(
+                    gateway_activity_record_from_event(
+                        {
+                            "schema_version": "gateway.runtime.event.v1",
+                            "event_id": event_id,
+                            "decision_id": event_id,
+                            "event_type": event_type,
+                            "event_timestamp": timestamp,
+                            "agent_id": "agent-a",
+                            "upstream": "files",
+                            "tool": "read_file",
+                            "decision": "deny" if event_type in GATEWAY_DENIED_EVENT_TYPES else "allow",
+                            "policy_source": "runtime",
+                            "trace_id": event_id,
+                        },
+                        tenant_id=tenant,
+                        source_id="collector",
+                        session_id="batch",
+                        submission_provenance=metadata,
+                    )
+                )
+        store.append_batch(records)
+        assert len(store.append_batch(records).duplicate_event_ids) == len(records)
+
+    retained = store.list_activity("tenant-a", limit=100).events
+    assert len(retained) == 2 * len(GATEWAY_CANONICAL_EVENT_TYPES)
+    # Enforcement evidence remains stored even though it is not a tool call.
+    assert sum(str(event["event_type"]).startswith("gateway.enforcement.") for event in retained) == 6
+    summary = store.summarize_window("tenant-a", start="2026-07-28T00:00:00+00:00", end="2026-07-29T00:00:00+00:00")
+    fallback = build_gateway_feed_kpis(tenant_id="tenant-a", alerts=retained, llm_records=[], uptime_seconds=None)
+    feed = build_gateway_feed(tenant_id="tenant-a", alerts=retained, llm_records=[], limit=100)
+    assert fallback["calls_today"] == summary.tool_calls_authorized + summary.blocked == 6
+    assert fallback["data_filters_applied"] == summary.data_filters == 6
+    assert fallback["producer_assurance_counts"] == summary.producer_assurance_counts == {"unknown": 6, "caller_asserted": 6}
+    assert feed["producer_assurance_counts"] == summary.producer_assurance_counts
+    assert all(
+        not event["event_id"].endswith(("enforcement.warned", "enforcement.observed", "enforcement.blocked")) for event in feed["events"]
+    )
+    empty = store.summarize_window("tenant-a", start="2026-07-29T00:00:00+00:00", end="2026-07-30T00:00:00+00:00")
+    assert empty.producer_assurance_counts == {"unknown": 0, "caller_asserted": 0}

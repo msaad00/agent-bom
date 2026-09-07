@@ -61,6 +61,7 @@ from agent_bom.runtime.gateway_events import (
     GATEWAY_BLOCKED_EVENT_TYPES,
     GATEWAY_CANONICAL_EVENT_TYPES,
     GATEWAY_DATA_FILTER_EVENT_TYPES,
+    GATEWAY_ENFORCEMENT_EVENT_TYPES,
     GATEWAY_PROFILE_EVENT_TYPES,
 )
 from agent_bom.runtime.profile_resolution import classify_profile_shadow_reason
@@ -470,8 +471,8 @@ def _classify_alert_action(alert: dict[str, Any]) -> str | None:
     feed stays consistent with ``/v1/runtime/production-index``.
     """
     event_type = str(alert.get("event_type") or "").lower()
-    if event_type in GATEWAY_PROFILE_EVENT_TYPES:
-        # Profile posture is durable evidence but is not itself a tool call.
+    if event_type in GATEWAY_PROFILE_EVENT_TYPES | GATEWAY_ENFORCEMENT_EVENT_TYPES:
+        # Profile and enforcement posture are evidence, not tool calls.
         # A later surface slice can render it as a dedicated activity class;
         # never inflate authorized/blocked call counts in the compatibility UI.
         return None

@@ -1,6 +1,6 @@
 import type { AgentBomManifestResponse } from "./api";
 
-export type ManifestRiskFilter = "all" | "high" | "medium" | "low";
+export type ManifestReviewFilter = "all" | "review needed" | "not assessed";
 export type ManifestFreshnessFilter = "all" | "seen_24h" | "seen_7d" | "stale" | "unknown";
 export type ManifestRuntimeFilter = "all" | "gateway bound" | "runtime observed" | "shadow runtime" | "inventory only";
 
@@ -8,7 +8,7 @@ export interface ManifestFilters {
   query: string;
   source: string;
   owner: string;
-  risk: ManifestRiskFilter;
+  review: ManifestReviewFilter;
   freshness: ManifestFreshnessFilter;
   runtime: ManifestRuntimeFilter;
 }
@@ -22,22 +22,22 @@ export interface ManifestRow {
   transport: string;
   authMode: string;
   source: string;
-  toolCount: number;
+  toolCount: number | null;
   credentialRefs: string[];
   runtimeState: ManifestRuntimeFilter;
   freshness: Exclude<ManifestFreshnessFilter, "all">;
-  riskLevel: ManifestRiskFilter;
+  reviewStatus: ManifestReviewFilter;
   lastSeen: string;
   warnings: string[];
+  reviewIndicators: string[];
 }
 
-const RISKY_CREDENTIAL_TOKENS = ["admin", "root", "prod", "token", "key", "secret", "password"];
 
 export const DEFAULT_MANIFEST_FILTERS: ManifestFilters = {
   query: "",
   source: "all",
   owner: "all",
-  risk: "all",
+  review: "all",
   freshness: "all",
   runtime: "all",
 };
@@ -97,64 +97,63 @@ function classifyRuntimeState(observed: Record<string, unknown>): ManifestRow["r
   return "shadow runtime";
 }
 
-function classifyRisk(row: {
-  credentialRefs: string[];
-  runtimeState: ManifestRow["runtimeState"];
-  warnings: string[];
-}): ManifestRiskFilter {
-  const hasRiskyCredential = row.credentialRefs.some((ref) =>
-    RISKY_CREDENTIAL_TOKENS.some((token) => ref.toLowerCase().includes(token)),
-  );
-  if (row.runtimeState === "shadow runtime" || row.warnings.length > 0 || hasRiskyCredential) {
-    return "high";
-  }
-  if (row.credentialRefs.length > 0 || row.runtimeState === "runtime observed") {
-    return "medium";
-  }
-  return "low";
-}
-
 export function deriveManifestRows(manifest: AgentBomManifestResponse, now: Date = new Date()): ManifestRow[] {
-  const agentsByName = new Map(
-    manifest.agents.map((agent) => {
-      const row = asRecord(agent);
-      return [asString(row.name), row] as const;
-    }),
-  );
-  const agentsById = new Map(
-    manifest.agents.map((agent) => {
-      const row = asRecord(agent);
-      return [asString(row.id, asString(row.canonical_id)), row] as const;
-    }),
-  );
+  const agentsByName = new Map<string, Record<string, unknown> | null>();
+  const agentsByServer = new Map<string, Record<string, unknown>[]>();
+  for (const agent of manifest.agents) {
+    const row = asRecord(agent);
+    for (const serverId of asStringList(row.mcp_server_ids)) {
+      agentsByServer.set(serverId, [...(agentsByServer.get(serverId) ?? []), row]);
+    }
+    const name = asString(row.name);
+    if (name) agentsByName.set(name, agentsByName.has(name) ? null : row);
+  }
 
   return manifest.mcp_servers.map((server) => {
     const serverRow = asRecord(server);
     const tools = Array.isArray(serverRow.tools) ? serverRow.tools : [];
     const observed = asRecord(serverRow.observed);
-    const agentName = asString(serverRow.agent_name, "local discovery");
-    const agent = agentsByName.get(agentName) ?? agentsById.get(agentName) ?? {};
+    const observationNames = [...new Set(asStringList(serverRow.agent_names))];
+    const legacyName = asString(serverRow.agent_name);
+    if (!observationNames.length && legacyName) observationNames.push(legacyName);
+    const observationName = observationNames.length === 1 ? observationNames[0] : "";
+    const agentName = observationNames.join(", ") || "local discovery";
+    const members = agentsByServer.get(asString(serverRow.id)) ?? [];
+    const agent = members.length > 0
+      ? (members.length === 1 ? members[0] : undefined)
+      : observationName && serverRow.identity_basis !== "observation" ? agentsByName.get(observationName) : undefined;
     const security = asRecord(serverRow.security);
     const runtimeState = classifyRuntimeState(observed);
     const lastSeen = asString(observed.last_seen, "-");
+    const credentialRefs = credentialNames(serverRow.credential_refs);
+    const warnings = asStringList(security.warnings);
+    const needsReview = Boolean(security.blocked) || warnings.length > 0 || runtimeState === "shadow runtime";
     const row = {
       id: asString(serverRow.id, asString(serverRow.name, "server")),
       agentName,
-      owner: asString(agent.owner, "unowned"),
-      environment: asString(agent.environment, "unknown"),
+      owner: agent ? asString(agent.owner, "unowned") : "unknown",
+      environment: asString(agent?.environment, "unknown"),
       name: asString(serverRow.name, "unnamed"),
       transport: asString(serverRow.transport, "unknown"),
       authMode: asString(serverRow.auth_mode, "unknown"),
       source: rowSource(serverRow, observed, manifest),
-      toolCount: asNumber(serverRow.tool_count) || tools.length,
-      credentialRefs: credentialNames(serverRow.credential_refs),
+      toolCount: typeof serverRow.tool_count === "number"
+        ? asNumber(serverRow.tool_count)
+        : Array.isArray(serverRow.tools) ? tools.length : null,
+      credentialRefs,
       runtimeState,
       freshness: classifyFreshness(lastSeen, now),
-      riskLevel: "low" as ManifestRiskFilter,
+      reviewStatus: needsReview ? "review needed" as const : "not assessed" as const,
       lastSeen,
-      warnings: asStringList(security.warnings),
+      warnings,
+      reviewIndicators: [
+        ...(security.blocked ? ["Security block reported"] : []),
+        ...warnings,
+        ...(runtimeState === "shadow runtime" ? ["Runtime observed without configured or fleet inventory"] : []),
+        ...(credentialRefs.length ? [`${credentialRefs.length} credential reference${credentialRefs.length === 1 ? "" : "s"}`] : []),
+      ],
     };
-    return { ...row, riskLevel: classifyRisk(row) };
+    return row;
   });
 }
 
@@ -167,7 +166,7 @@ export function filterManifestRows(rows: ManifestRow[], filters: ManifestFilters
       (queryTokens.length === 0 || queryTokens.every((token) => haystack.includes(token))) &&
       (filters.source === "all" || row.source === filters.source) &&
       (filters.owner === "all" || row.owner === filters.owner) &&
-      (filters.risk === "all" || row.riskLevel === filters.risk) &&
+      (filters.review === "all" || row.reviewStatus === filters.review) &&
       (filters.freshness === "all" || row.freshness === filters.freshness) &&
       (filters.runtime === "all" || row.runtimeState === filters.runtime)
     );

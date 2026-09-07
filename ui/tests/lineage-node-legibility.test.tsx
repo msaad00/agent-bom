@@ -37,7 +37,7 @@ describe("lineage node labels", () => {
     // line rather than a wider node.
     // Neither the detailed node nor the rolled-up summary node may clip.
     expect(source).not.toMatch(/flex-1 truncate/);
-    expect(source).toContain("line-clamp-3 text-lg");
+    expect(source).toContain('<p className="mb-1 break-words line-clamp-3 text-lg');
     expect(source).toContain("line-clamp-2 text-[11px]");
   });
 });

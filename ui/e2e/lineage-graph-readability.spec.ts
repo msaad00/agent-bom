@@ -472,6 +472,20 @@ for (const width of [1440, 390]) {
         return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
       }));
       expect(boxes).toHaveLength(3);
+      for (const box of boxes) expect(box.bottom).toBeLessThanOrEqual(811);
+      const memberLabels = await page.locator(".react-flow__edge-text").evaluateAll((labels) => labels.filter((label) => label.textContent === "22 members").map((label) => {
+        const text = label.getBoundingClientRect();
+        const background = label.parentElement!.querySelector(".react-flow__edge-textbg")!.getBoundingClientRect();
+        return { text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom }, background: { left: background.left, right: background.right, top: background.top, bottom: background.bottom } };
+      }));
+      expect(memberLabels.length).toBeGreaterThan(0);
+      for (const { text, background } of memberLabels) {
+        expect(text.left).toBeGreaterThanOrEqual(background.left);
+        expect(text.right).toBeLessThanOrEqual(background.right);
+        expect(text.top).toBeGreaterThanOrEqual(background.top);
+        expect(text.bottom).toBeLessThanOrEqual(background.bottom);
+      }
+      await testInfo.attach("bottom-clearance-and-edge-labels", { body: JSON.stringify({ boxes, memberLabels, viewportHeight: 811 }), contentType: "application/json" });
       for (let i = 0; i < boxes.length; i++) {
         for (let j = i + 1; j < boxes.length; j++) {
           const a = boxes[i]!; const b = boxes[j]!;

@@ -179,9 +179,9 @@ function NodeCard({
           <RuntimeEvidenceChip tier={data.runtimeEvidenceTier} />
         ) : null}
       </div>
-      <div className="mb-1 break-words line-clamp-3 text-lg font-semibold leading-6 text-[var(--foreground)]">
+      <p className="mb-1 break-words line-clamp-3 text-lg font-semibold leading-6 text-[var(--foreground)]">
         {data.label}
-      </div>
+      </p>
       {subtitle && (
         <div className="text-xs leading-4 text-[var(--text-secondary)] truncate">
           {subtitle}

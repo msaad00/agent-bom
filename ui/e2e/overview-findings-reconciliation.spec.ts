@@ -356,7 +356,7 @@ for (const theme of ["light", "dark"] as const) {
       const highPressure = (await page.getByTestId("score-pressure-high").boundingBox())!;
       const criticalPressure = (await page.getByTestId("score-pressure-critical").boundingBox())!;
       expect(highPressure.width / criticalPressure.width).toBeCloseTo(2, 1);
-      await expect(page.getByText("Critical findings", { exact: true })).toBeVisible();
+      await expect(page.getByTestId("score-driver-critical").getByText("Critical findings", { exact: true })).toBeVisible();
       await expect(page.getByText(/not points deducted from 100/)).toBeVisible();
       await page.getByTestId("overview-score-explainer").screenshot({ path: testInfo.outputPath(`score-pressure-${theme}-${width}.png`) });
       await scoreToggle.focus();

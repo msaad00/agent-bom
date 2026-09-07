@@ -65,6 +65,7 @@ from agent_bom.api.idempotency_store import (
 from agent_bom.api.models import (
     BrowserExtensionsRequest,
     DatasetCardsRequest,
+    InventoryResponse,
     JobStatus,
     ModelFilesRequest,
     ModelProvenanceRequest,
@@ -1175,31 +1176,36 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
 
 
 def _inventory_packages_from_agents(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Retain package occurrences; display names are not asset identities."""
     packages: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str, str, str]] = set()
-    for agent in agents:
+    seen: set[tuple[str, ...]] = set()
+    for agent_index, agent in enumerate(agents):
         agent_name = str(agent.get("name") or "")
-        for server in agent.get("mcp_servers", []) or []:
+        agent_id = str(agent.get("canonical_id") or agent.get("stable_id") or agent.get("agent_id") or "")
+        environment = str(agent.get("environment") or "")
+        for server_index, server in enumerate(agent.get("mcp_servers", []) or []):
             if not isinstance(server, dict):
                 continue
             server_name = str(server.get("name") or "")
+            server_id = str(server.get("canonical_id") or server.get("stable_id") or server.get("server_id") or "")
+            # Missing identity stays scoped to this observed row; never merge
+            # otherwise distinct runtime occurrences by their display labels.
+            agent_key = agent_id or f"unidentified-agent-row:{agent_index}"
+            server_key = server_id or f"unidentified-server-row:{agent_index}:{server_index}"
             for package in server.get("packages", []) or []:
                 if not isinstance(package, dict):
                     continue
                 row = {
-                    "name": package.get("name", ""),
-                    "version": package.get("version", ""),
-                    "ecosystem": package.get("ecosystem", ""),
+                    "name": str(package.get("name") or ""),
+                    "version": str(package.get("version") or ""),
+                    "ecosystem": str(package.get("ecosystem") or ""),
                     "agent": agent_name,
                     "server": server_name,
+                    "agent_id": agent_id,
+                    "server_id": server_id,
+                    "environment": environment,
                 }
-                key = (
-                    str(row["name"]),
-                    str(row["version"]),
-                    str(row["ecosystem"]),
-                    str(row["agent"]),
-                    str(row["server"]),
-                )
+                key = (str(row["name"]), str(row["version"]), str(row["ecosystem"]), agent_key, server_key, environment)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -4505,7 +4511,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     return response
 
 
-@router.get("/inventory", tags=["scan"])
+@router.get("/inventory", tags=["scan"], response_model=InventoryResponse)
 async def list_inventory(
     request: Request,
     # enforce limit cap server-side via Pydantic.

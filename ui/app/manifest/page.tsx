@@ -112,7 +112,7 @@ function EvidenceSourceRow({ source }: { source: AiBomEvidenceSource }) {
           source.active ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
         }`}
       >
-        {source.active ? "Live" : "Off"}
+        {source.status}
       </span>
     </div>
   );
@@ -134,7 +134,7 @@ function MetricChip({
   href,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   icon: ElementType;
   href?: string;
 }) {
@@ -146,9 +146,9 @@ function MetricChip({
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-tertiary)]" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">{label}</p>
+        <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">{label}</p>
         <p className="font-mono text-sm font-semibold tabular-nums text-[color:var(--foreground)]">
-          {value.toLocaleString()}
+          {value === null ? "Not collected" : value.toLocaleString()}
         </p>
       </div>
     </div>
@@ -177,7 +177,7 @@ function MiniGraph({ manifest }: { manifest: AgentBomManifestResponse }) {
           href="/graph?layers=agent,server,tool,credential"
           className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300"
         >
-          Open lineage <GitBranch className="h-3 w-3" />
+          Explore scan graph <GitBranch className="h-3 w-3" />
         </Link>
       </div>
 
@@ -258,8 +258,8 @@ export default function AgentBomManifestPage() {
     setFilters((current) => ({ ...current, [key]: value }));
   };
 
-  const metrics: { label: string; value: number; icon: ElementType; href?: string }[] = [
-    { label: "Agents", value: entityRollup.agents, icon: Bot, href: "/agents" },
+  const metrics: { label: string; value: number | null; icon: ElementType; href?: string }[] = [
+    { label: "Registered agents", value: entityRollup.agents, icon: Bot, href: "/agents" },
     { label: "MCP servers", value: entityRollup.mcpServers, icon: Server },
     { label: "Models", value: entityRollup.models, icon: Sparkles },
     { label: "Frameworks", value: entityRollup.frameworks, icon: Blocks },
@@ -280,7 +280,7 @@ export default function AgentBomManifestPage() {
       <PageLaneHeader
         lane="ai-estate"
         title="AI BOM"
-        subtitle="Live inventory from connected agents, cloud accounts, endpoints, and runtime — not a static upload."
+        subtitle="Registered agents and MCP configuration or runtime observations in this tenant. Scan findings and cloud inventory have separate evidence scopes."
         scopeChip={<ScopeChip label={scopeLabel} />}
         actions={
           <>
@@ -305,25 +305,26 @@ export default function AgentBomManifestPage() {
         }
       />
 
+      {error && manifest ? <p role="status" className="text-sm text-ink-secondary">Refresh unavailable; showing the previous manifest snapshot.</p> : null}
       {error ? (
         <Card className="border-red-500/30 bg-red-500/10 !p-3 text-sm text-red-700 dark:text-red-200">{error}</Card>
       ) : null}
 
       {/* Top row: sources | inventory metrics — side by side, scroll inside */}
       <div className="grid gap-3 lg:grid-cols-12">
-        <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 lg:col-span-4">
+        <section className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 lg:col-span-4">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
                 Evidence sources
               </p>
               <p className="mt-0.5 text-[11px] text-[color:var(--text-secondary)]">
-                What is plugged in and feeding this BOM
+                Deployment evidence availability; collection does not imply continuous monitoring
               </p>
             </div>
             <div className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-1 text-right">
-              <p className="font-mono text-sm font-semibold text-emerald-300">{activeSources}</p>
-              <p className="text-[9px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">live</p>
+              <p className="font-mono text-sm font-semibold text-emerald-300">{counts || manifest ? activeSources : "—"}</p>
+              <p className="text-[9px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">available</p>
             </div>
           </div>
           <div className="max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
@@ -333,7 +334,7 @@ export default function AgentBomManifestPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 lg:col-span-8">
+        <section className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 lg:col-span-8">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
@@ -351,12 +352,14 @@ export default function AgentBomManifestPage() {
               </div>
             ) : null}
           </div>
-          {manifest || !loading ? (
+          {manifest ? (
             <div className="grid max-h-52 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-4">
               {metrics.map((metric) => (
                 <MetricChip key={metric.label} {...metric} />
               ))}
             </div>
+          ) : !loading ? (
+            <p className="py-8 text-center text-sm">Inventory unavailable</p>
           ) : (
             <p className="py-8 text-center text-xs text-[color:var(--text-secondary)]">
               <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
@@ -391,8 +394,8 @@ export default function AgentBomManifestPage() {
           {/* Inventory table — primary, scrollable */}
           <div className="min-w-0 lg:col-span-8">
             <Section
-              label="Agent runtime inventory"
-              description="MCP servers and credential refs from agent runtimes. Cloud models appear when connectors are linked."
+              label="MCP inventory"
+              description="Client names come from MCP observations; they do not imply fleet enrollment. Credential references do not establish privilege or finding severity."
               divider
             >
               <Card flush className="overflow-hidden">
@@ -436,7 +439,7 @@ export default function AgentBomManifestPage() {
                   ))}
                   {(
                     [
-                      ["risk", "Risk", ["all", "high", "medium", "low"]],
+                      ["review", "Review", ["all", "review needed", "not assessed"]],
                       ["freshness", "Freshness", ["all", "seen_24h", "seen_7d", "stale", "unknown"]],
                       ["runtime", "Runtime", ["all", "gateway bound", "runtime observed", "shadow runtime", "inventory only"]],
                     ] as const
@@ -472,7 +475,7 @@ export default function AgentBomManifestPage() {
                   <table className="w-full min-w-[720px] text-left text-xs">
                     <thead className="sticky top-0 z-10 bg-[color:var(--surface-muted)] text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
                       <tr>
-                        {["Agent", "Owner", "Source", "Env", "MCP server", "Risk", "Transport", "Runtime", "Tools", "Creds", "Last seen"].map(
+                        {["Agent", "Owner", "Source", "Env", "MCP server", "Review", "Transport", "Runtime", "Tools", "Creds", "Last seen"].map(
                           (heading) => (
                             <th key={heading} className="whitespace-nowrap px-3 py-2 font-medium">
                               {heading}
@@ -491,20 +494,15 @@ export default function AgentBomManifestPage() {
                           <td className="px-3 py-2 font-medium text-[color:var(--foreground)]">{row.name}</td>
                           <td className="px-3 py-2">
                             <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                                row.riskLevel === "high"
-                                  ? "bg-red-500/10 text-red-700 dark:text-red-300"
-                                  : row.riskLevel === "medium"
-                                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-200"
-                                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
-                              }`}
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] ${row.reviewStatus === "review needed" ? "bg-amber-500/10 text-amber-700 dark:text-amber-200" : "text-ink-secondary"}`}
                             >
-                              {row.riskLevel}
+                              {row.reviewStatus}
                             </span>
+                            {row.reviewIndicators.map((indicator) => <p key={indicator} className="mt-1 max-w-56 text-xs text-ink-secondary">{indicator}</p>)}
                           </td>
                           <td className="px-3 py-2 text-[color:var(--text-secondary)]">{row.transport}</td>
                           <td className="px-3 py-2 text-[color:var(--text-secondary)]">{row.runtimeState}</td>
-                          <td className="px-3 py-2 text-[color:var(--foreground)]">{row.toolCount}</td>
+                          <td className="px-3 py-2 text-[color:var(--foreground)]">{row.toolCount ?? "Not collected"}</td>
                           <td className="max-w-[8rem] truncate px-3 py-2 text-[color:var(--text-secondary)]">
                             {row.credentialRefs.join(", ") || "—"}
                           </td>
@@ -530,7 +528,7 @@ export default function AgentBomManifestPage() {
           {/* Side column: graph + extended metrics */}
           <aside className="space-y-3 lg:col-span-4">
             <Collapsible
-              title="Reachability"
+              title="Inventory relationships"
               subtitle={`${manifest.graph.stats.nodes} nodes · ${manifest.graph.stats.edges} edges`}
               defaultOpen
               scrollMaxHeight="22rem"
@@ -545,14 +543,14 @@ export default function AgentBomManifestPage() {
               scrollMaxHeight="16rem"
             >
               <div className="grid grid-cols-2 gap-2">
-                <StatCard label="Tools" value={manifest.summary.tools} accent="info" />
+                <StatCard label="Tools" value={manifest.source === "control-plane" ? "Not collected" : manifest.summary.tools} accent="info" />
                 <StatCard label="Gateway" value={manifest.summary.gateway_registered_servers} />
                 <StatCard label="Owners" value={manifest.visibility.owners} />
                 <StatCard label="Unowned" value={manifest.visibility.unowned_agents} accent="medium" />
                 <StatCard label="Shadow" value={manifest.visibility.shadow_runtime_servers} accent="high" />
                 <StatCard label="Untracked" value={manifest.visibility.untracked_runtime_servers} accent="high" />
                 <StatCard label="Warnings" value={manifest.visibility.servers_with_warnings} accent="medium" />
-                <StatCard label="Risky refs" value={manifest.visibility.risky_credential_refs} accent="critical" />
+                <StatCard label="Credential name hints" value={manifest.visibility.risky_credential_refs} />
               </div>
             </Collapsible>
           </aside>

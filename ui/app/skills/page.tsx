@@ -44,27 +44,27 @@ const STATUS_META: Record<SkillsScanFileStatus, StatusChipMeta> = {
   malicious: {
     label: "Malicious",
     icon: ShieldX,
-    chip: "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--status-danger)]",
+    chip: "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-red-800 dark:text-[color:var(--status-danger)]",
   },
   suspicious: {
     label: "Suspicious",
     icon: ShieldAlert,
-    chip: "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-[color:var(--status-warn)]",
+    chip: "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-amber-800 dark:text-[color:var(--status-warn)]",
   },
   pending: {
     label: "Pending review",
     icon: HelpCircle,
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   },
   unavailable: {
     label: "Unavailable",
     icon: HelpCircle,
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   },
   clean: {
     label: "Clean",
     icon: ShieldCheck,
-    chip: "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success)]",
+    chip: "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-emerald-800 dark:text-[color:var(--status-success)]",
   },
 };
 
@@ -74,19 +74,19 @@ const PROVENANCE_META: Record<
 > = {
   verified: {
     label: "Verified",
-    chip: "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success)]",
+    chip: "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-emerald-800 dark:text-[color:var(--status-success)]",
   },
   unsigned: {
     label: "Unsigned",
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   },
   bundle_found_but_invalid: {
     label: "Invalid signature",
-    chip: "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--status-danger)]",
+    chip: "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-red-800 dark:text-[color:var(--status-danger)]",
   },
   missing: {
     label: "Missing",
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   },
 };
 
@@ -122,7 +122,7 @@ function StatusChip({ status }: { status: SkillsScanFileStatus }) {
 function ProvenanceChip({ status }: { status: string }) {
   const meta = PROVENANCE_META[status] ?? {
     label: status,
-    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]",
+    chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] dark:text-[color:var(--text-tertiary)]",
   };
   return (
     <span
@@ -316,7 +316,11 @@ export default function SkillsPage() {
         setScanNotice(`Scanned ${r.summary.files_scanned} file(s).`);
       })
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 400) {
+        if (
+          e instanceof ApiError && e.status === 400 &&
+          e.body !== null && typeof e.body === "object" &&
+          "detail" in e.body && e.body.detail === "Local filesystem scans are disabled"
+        ) {
           // Server-side path scans are disabled on this deployment. Point the
           // operator at the headless equivalent instead of leaking server config.
           setScanDisabled(true);
@@ -353,12 +357,13 @@ export default function SkillsPage() {
   );
 
   const scanForm = (
-    <div className="flex flex-wrap items-center gap-2">
-      <label htmlFor="skill-targets" className="sr-only">
+    <div className="flex max-w-sm flex-wrap items-center gap-2">
+      <label htmlFor="skill-targets" className="w-full text-sm font-medium text-[color:var(--foreground)]">
         Scan targets
       </label>
       <input
         id="skill-targets"
+        aria-describedby="skill-targets-help"
         value={targets}
         onChange={(e) => setTargets(e.target.value)}
         placeholder="Paths (relative to scan root)"
@@ -369,11 +374,14 @@ export default function SkillsPage() {
         onClick={runScan}
         disabled={scanning}
         data-testid="skills-scan-button"
-        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[color:var(--accent)] bg-[color:var(--accent)] px-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-700 bg-emerald-700 px-3 text-sm font-medium text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 dark:border-emerald-400 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
       >
         {scanning ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ScrollText className="h-4 w-4" aria-hidden="true" />}
         Scan
       </button>
+      <p id="skill-targets-help" className="w-full text-xs text-[color:var(--text-secondary)]">
+        Paths on the control-plane host, relative to its allowed scan root. &quot;.&quot; selects that root.
+      </p>
     </div>
   );
 
@@ -431,8 +439,10 @@ export default function SkillsPage() {
         <PageEmptyState
           data-testid="skills-empty"
           icon={FileWarning}
-          title="No skills scanned yet"
-          detail="Trigger a scan of your skill/instruction files to see per-file trust verdicts and signing provenance."
+          title={report?.status === "completed" ? "No skill files found" : "No skills scanned yet"}
+          detail={report?.status === "completed"
+            ? "The completed scan found no matching skill or instruction files. Check the selected paths and scan again."
+            : "Trigger a scan of your skill/instruction files to see per-file trust verdicts and signing provenance."}
           command={`${HEADLESS_CLI}   # or ${HEADLESS_API}`}
         />
       ) : (
@@ -451,13 +461,13 @@ export default function SkillsPage() {
             <SummaryStat
               label="Suspicious"
               value={report?.summary.suspicious_status_files ?? 0}
-              tone="text-[color:var(--status-warn)]"
+              tone="text-amber-800 dark:text-[color:var(--status-warn)]"
             />
             <SummaryStat label="Pending" value={report?.summary.pending_status_files ?? 0} />
             <SummaryStat
               label="Clean"
               value={report?.summary.clean_files ?? 0}
-              tone="text-[color:var(--status-success)]"
+              tone="text-emerald-800 dark:text-[color:var(--status-success)]"
             />
             <SummaryStat label="Findings" value={report?.summary.findings ?? 0} />
           </section>
@@ -535,9 +545,14 @@ export default function SkillsPage() {
                       className="cursor-pointer border-b border-[color:var(--border-subtle)] last:border-0 hover:bg-[color:var(--surface-muted)]"
                     >
                       <td className="max-w-0 px-3 py-2">
-                        <div className="truncate font-medium text-[color:var(--foreground)]">
+                        <button
+                          type="button"
+                          onClick={(event) => { event.stopPropagation(); setSelected(file); }}
+                          aria-label={`Inspect ${file.path}`}
+                          className="block max-w-full truncate rounded text-left font-medium text-[color:var(--foreground)] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)]"
+                        >
                           {fileName(file.path)}
-                        </div>
+                        </button>
                         <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">{file.path}</div>
                       </td>
                       <td className="px-3 py-2">

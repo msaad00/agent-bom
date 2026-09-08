@@ -2758,7 +2758,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "correlation-graph-live.png",
-      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      page: `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&path=top&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore`,
       scope: "Reference evidence lab interactive graph linking the real advisory to the modeled service and data asset, with remediation context",
       presentation: "dark desktop",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
@@ -3093,6 +3093,13 @@ async function main() {
     if (remediationUrl.searchParams.get("scan") !== REFERENCE_CORRELATION_ID || remediationUrl.searchParams.get("cve") !== "CVE-2023-4863") {
       throw new Error("Correlation drilldown lost its remediation context");
     }
+    await flowPage.getByTestId("selected-exposure-path").getByRole("button", { name: "Graph", exact: true }).click();
+    for (const hop of referenceGraph.attack_paths[0].hops) {
+      await flowPage.locator(`.react-flow__node[data-id="${hop}"]`).waitFor({ state: "visible" });
+    }
+    if (await flowPage.locator(".react-flow__edge").count() !== 7) {
+      throw new Error("Focused investigation omitted reference-lab path relationships");
+    }
     await flowPage.goBack();
     await flowPage.getByTestId("correlation-open-path").waitFor({ state: "visible" });
     if (await flowPage.getByTestId("selected-exposure-path").count()) {
@@ -3214,23 +3221,28 @@ async function main() {
       correlationPathAssertions,
     );
     await page.setViewportSize({ width: 1440, height: 980 });
-    const referenceGraphPage = await newCapturePage("dark", { width: 1440, height: 1100 });
+    const referenceGraphPage = await newCapturePage("dark", { width: 1440, height: 980 });
     await capture(
       referenceGraphPage,
-      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&path=top&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore`,
       "correlation-graph-live.png",
       async (graphPage) => {
-        await graphPage.getByTestId("selected-exposure-path").waitFor({ state: "visible" });
-        await graphPage.getByTestId("selected-exposure-path").getByRole("button", { name: "Graph", exact: true }).click();
-        await graphPage.locator(".react-flow__node").first().waitFor({ state: "visible" });
+        await graphPage.getByTestId("focused-path-decision").waitFor({ state: "visible" });
         await fitReactFlow(graphPage);
+        await graphPage.getByTestId("focused-path-surface").scrollIntoViewIfNeeded();
+        await graphPage.evaluate(() => window.scrollBy({ top: -76, behavior: "instant" }));
+        await graphPage.waitForTimeout(350);
       },
       {
-        expectedText: ["CVE-2023-4863", "Open pillow@9.0.0 remediation", "Modeled customer records"],
-        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
+        expectedText: ["CVE-2023-4863", "Open remediation plan", "Modeled customer records", "7/7 directed traversable relationships evidenced"],
+        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph"],
         readySelector: ".react-flow__node",
         minGraphNodes: 8,
+        maxGraphNodes: 8,
         minGraphEdges: 7,
+        maxGraphEdges: 7,
+        minGraphNodeFontPx: 12,
+        assertNoHorizontalOverflow: true,
       },
     );
     await referenceGraphPage.close();

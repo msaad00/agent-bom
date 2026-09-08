@@ -16,6 +16,10 @@ producer assurance.
 
 ### Fixed
 
+- Focused investigation graphs retain identity and data nodes that belong to the
+  selected path, even when those layers are hidden in the broader estate view.
+- Scan caching honors `AGENT_BOM_STATE_DIR` in read-only containers while
+  preserving explicit cache-path overrides.
 - Headline AI spend, call, token, and agent totals cover all retained matching
   records across memory, SQLite, and Postgres. Detail history is bounded and
   labeled; unavailable storage, unpriced calls, and unsupported forecasts stay

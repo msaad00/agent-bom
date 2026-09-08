@@ -1,390 +1,173 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  api,
-  type GatewayFeedActionType,
-  type GatewayFeedEvent,
-  type GatewayFeedHealth,
-  formatDate,
-} from "@/lib/api";
-import { getSessionWebSocketToken } from "@/lib/auth";
-import { getConfiguredApiUrl } from "@/lib/runtime-config";
-import { ApiError } from "@/lib/api-errors";
-import { mergeGatewayEvents, producerEvidenceLabel, PRODUCER_EVIDENCE_HINT } from "@/lib/gateway-feed";
-import {
-  Activity,
-  Ban,
-  Clock,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Activity, Clock, RefreshCw } from "lucide-react";
+import { formatDate } from "@/lib/api";
+import { useAuthState } from "@/components/auth-provider";
+import { producerEvidenceLabel, PRODUCER_EVIDENCE_HINT } from "@/lib/gateway-feed";
+import { ActivityStreamError, gatewayActivityPage, mergeActivity, streamGatewayActivity, type GatewayActivity, type ActivityPage } from "@/lib/gateway-activity";
 
-// ─── Action badge styling ─────────────────────────────────────────────────────
-
-const ACTION_META: Record<
-  GatewayFeedActionType,
-  { label: string; badge: string; icon: React.ElementType; tone: string }
-> = {
-  tool_call_authorized: {
-    label: "authorized",
-    badge: "bg-emerald-950 text-emerald-300 border-emerald-800",
-    icon: ShieldCheck,
-    tone: "text-emerald-400",
-  },
-  tool_call_blocked: {
-    label: "blocked",
-    badge: "bg-red-950 text-red-300 border-red-800",
-    icon: Ban,
-    tone: "text-red-400",
-  },
-  data_filter_applied: {
-    label: "data filter",
-    badge: "bg-amber-950 text-amber-300 border-amber-800",
-    icon: Activity,
-    tone: "text-amber-400",
-  },
-  llm_call: {
-    label: "LLM call",
-    badge: "bg-blue-950 text-blue-300 border-blue-800",
-    icon: Activity,
-    tone: "text-blue-400",
-  },
+const activityLabels: Record<string, string> = {
+  "gateway.tool_call.allowed": "Tool call allowed", "gateway.tool_call.blocked": "Tool call blocked",
+  "gateway.dlp.arguments_redacted": "Arguments redacted", "gateway.dlp.result_redacted": "Result redacted",
+  "gateway.dlp.result_blocked": "Result blocked", "gateway.visual.redacted": "Visual data redacted",
+  "gateway.visual_leak_blocked": "Visual leak blocked", "gateway.runtime_profile.blocked": "Profile blocked",
+  "gateway.runtime_profile.warned": "Profile warning", "gateway.runtime_profile.dev_bypass": "Development bypass",
+  "gateway.enforcement.warned": "Enforcement warning", "gateway.enforcement.observed": "Enforcement observation",
+  "gateway.enforcement.blocked": "Enforcement blocked",
 };
 
-// Live counters streamed by the existing /ws/proxy/metrics WebSocket. We use it
-// only to drive transport connectivity and refresh the KPI header in near-real
-// time; the authoritative fused feed is fetched from /v1/gateway/feed.
-interface LiveMetrics {
-  ts: number;
-  total_tool_calls: number;
-  total_blocked: number;
-}
-
-const UNAVAILABLE_HEALTH: GatewayFeedHealth = {
-  state: "unavailable",
-  live: false,
-  heartbeat_at: null,
-  age_seconds: null,
-  stale_after_seconds: 120,
-  reason: "not_loaded",
+const messages = {
+  connecting: "Connecting to durable activity…",
+  live: "Connected to durable activity",
+  reconnecting: "Reconnecting from the last complete batch…",
+  gap: "Activity gap: retained history moved or the cursor is invalid. The last complete batch is preserved.",
+  auth: "Sign in with permission to read gateway activity.",
+  unavailable: "Durable activity is unavailable. The last complete batch is preserved.",
+  invalid: "Activity response could not be verified. The last complete batch is preserved.",
 };
-
-function formatEventTime(ts: string): string {
-  if (!ts) return "—";
-  try {
-    return formatDate(ts);
-  } catch {
-    return ts;
-  }
-}
-
-// ─── Panel ────────────────────────────────────────────────────────────────────
+type StreamState = keyof typeof messages;
 
 export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
-  const [events, setEvents] = useState<GatewayFeedEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionFilter, setActionFilter] = useState<GatewayFeedActionType | "">("");
-  const [wsConnected, setWsConnected] = useState(false);
-  const [health, setHealth] = useState<GatewayFeedHealth>(UNAVAILABLE_HEALTH);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
-  const [feedSource, setFeedSource] = useState<string>("not loaded");
-  const [feedCompleteness, setFeedCompleteness] = useState<"complete" | "partial">("partial");
-  const wsRef = useRef<WebSocket | null>(null);
-  const eventsRef = useRef<GatewayFeedEvent[]>([]);
-
-  const applyLatest = useCallback((feed: Awaited<ReturnType<typeof api.getGatewayFeed>>, preserveHistory: boolean) => {
-    const incoming = Array.isArray(feed.events) ? feed.events : [];
-    const merged = preserveHistory ? mergeGatewayEvents(eventsRef.current, incoming) : incoming;
-    eventsRef.current = merged;
-    setEvents(merged);
-    setHealth(feed.health ?? UNAVAILABLE_HEALTH);
-    setFeedSource(feed.source ?? "degraded_single_process");
-    setFeedCompleteness(feed.completeness?.status ?? "partial");
-    if (!preserveHistory || eventsRef.current.length === incoming.length) {
-      setNextCursor(feed.next_cursor ?? null);
-      setHasMore(Boolean(feed.has_more));
-    }
-  }, []);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    void Promise.allSettled([api.getGatewayFeed(200)])
-      .then(([feedResult]) => {
-        const failures: string[] = [];
-        if (feedResult.status === "fulfilled") {
-          applyLatest(feedResult.value, false);
-        } else {
-          failures.push(`feed: ${feedResult.reason?.message ?? "request failed"}`);
-        }
-        setError(failures.length === 0 ? null : failures.join("; "));
-      })
-      .finally(() => setLoading(false));
-  }, [applyLatest]);
-
-  const loadOlder = async () => {
-    if (!nextCursor || loadingOlder) return;
-    setLoadingOlder(true);
-    setHistoryNotice(null);
-    try {
-      const page = await api.getGatewayFeed(200, nextCursor);
-      const merged = mergeGatewayEvents(eventsRef.current, Array.isArray(page.events) ? page.events : []);
-      eventsRef.current = merged;
-      setEvents(merged);
-      setNextCursor(page.next_cursor ?? null);
-      setHasMore(Boolean(page.has_more));
-      setFeedSource(page.source ?? feedSource);
-      setFeedCompleteness(page.completeness?.status ?? "partial");
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 410) {
-        const latest = await api.getGatewayFeed(200);
-        applyLatest(latest, false);
-        setHistoryNotice("Retained history moved forward; restarted from the newest durable event.");
-      } else {
-        setError(caught instanceof Error ? caught.message : "Could not load older gateway activity");
-      }
-    } finally {
-      setLoadingOlder(false);
-    }
-  };
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => load(), 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
-
-  // Reuse the existing proxy metrics WebSocket for a live indicator + a light
-  // periodic refresh. When new total_tool_calls/total_blocked counters tick we
-  // re-pull the fused feed (the WS itself does not carry fused events).
-  useEffect(() => {
-    const base = getConfiguredApiUrl() || window.location.origin;
-    const wsTarget = new URL(base.replace(/^http/, "ws") + "/ws/proxy/metrics");
-    const token = getSessionWebSocketToken();
-    const wsUrl = wsTarget.toString();
-
-    let ws: WebSocket;
-    let reconnectTimer: ReturnType<typeof setTimeout>;
-    let lastSeen = -1;
-    let lastRefresh = 0;
-
-    const connect = () => {
-      ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      ws.onopen = () => {
-        if (token) ws.send(JSON.stringify({ type: "auth", token }));
-        setWsConnected(true);
-      };
-      ws.onclose = () => {
-        setWsConnected(false);
-        reconnectTimer = setTimeout(connect, 5000);
-      };
-      ws.onerror = () => ws.close();
-      ws.onmessage = (e) => {
-        try {
-          const payload = JSON.parse(e.data) as { type?: string } & LiveMetrics;
-          if (payload?.type === "auth") return;
-          const total = (payload.total_tool_calls ?? 0) + (payload.total_blocked ?? 0);
-          const now = Date.now();
-          // Refresh the fused feed when the counter advances, throttled to at
-          // most once every 3s so a busy fleet doesn't hammer the API.
-          if (total !== lastSeen && now - lastRefresh > 3000) {
-            lastSeen = total;
-            lastRefresh = now;
-            void api.getGatewayFeed(200).then((feedResult) => {
-              applyLatest(feedResult, true);
-              onActivity?.();
-            });
-          }
-        } catch {
-          // ignore parse errors
-        }
-      };
-    };
-
-    connect();
-    return () => {
-      clearTimeout(reconnectTimer);
-      ws?.close();
-    };
-  }, [applyLatest, onActivity]);
-
-  const filtered = actionFilter ? events.filter((e) => e.action_type === actionFilter) : events;
-  const isLive = health.state === "live" && health.live && wsConnected;
-  const healthLabel =
-    health.state === "live"
-      ? "Disconnected"
-      : health.state.charAt(0).toUpperCase() + health.state.slice(1);
-
-  return (
-    <div className="space-y-5">
-      <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
-              <Activity className="h-4 w-4 text-emerald-400" />
-              Gateway activity
-            </h3>
-            <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-              Tool-call authorization, data filters, and blocks — per agent and target
-            </p>
-            <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
-              {feedSource === "gateway_activity_ledger" ? "Durable ledger" : "Single-process fallback"}
-              {" · "}{feedCompleteness === "complete" ? "Complete retained window" : "Partial retained window"}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xs text-[var(--text-tertiary)]" title={PRODUCER_EVIDENCE_HINT}>{producerEvidenceLabel(health.producer_assurance)}</span>
-            <div className="flex items-center gap-1.5 text-xs">
-              {isLive ? (
-                <>
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  <span className="text-emerald-400">Live transport</span>
-                </>
-              ) : (
-                <>
-                  <span className="h-2 w-2 rounded-full border border-[var(--text-tertiary)]" />
-                  <span className="text-[var(--text-tertiary)]">{healthLabel}</span>
-                </>
-              )}
-            </div>
-            <button
-              onClick={load}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        {/* Action filter */}
-        <div className="flex flex-wrap gap-1 mb-4">
-          {(
-            [
-              ["", "All"],
-              ["tool_call_authorized", "Authorized"],
-              ["tool_call_blocked", "Blocked"],
-              ["data_filter_applied", "Data filters"],
-              ["llm_call", "LLM calls"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value || "all"}
-              onClick={() => setActionFilter(value as GatewayFeedActionType | "")}
-              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                actionFilter === value
-                  ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
-                  : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {loading && (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--text-tertiary)]" />
-          </div>
-        )}
-
-        {error && !loading && (
-          <div className="text-center py-8 text-xs text-red-400">{error}</div>
-        )}
-
-        {historyNotice && !loading && (
-          <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-            {historyNotice}
-          </div>
-        )}
-
-        {!loading && !error && filtered.length === 0 && (
-          <div className="text-center py-10">
-            <ShieldCheck className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
-            <p className="text-[var(--text-tertiary)] text-xs">
-              No gateway activity yet. Events appear as agents call tools through the gateway/proxy.
-            </p>
-          </div>
-        )}
-
-        {!loading && !error && filtered.length > 0 && (
-          <>
-            <div className="space-y-1 max-h-[32rem] overflow-y-auto">
-              {filtered.map((event, i) => (
-                <FeedRow key={event.event_id || `${event.ts}-${event.agent}-${i}`} event={event} />
-              ))}
-            </div>
-            {hasMore && nextCursor ? (
-              <div className="mt-3 flex justify-center border-t border-[var(--border-subtle)] pt-3">
-                <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="graph-page-action disabled:opacity-50">
-                  {loadingOlder ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
-                  Load older retained activity
-                </button>
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-    </div>
-  );
+  const { session } = useAuthState();
+  return <ActivityFeed key={`${session?.tenant_id ?? ""}:${session?.subject ?? ""}`} onActivity={onActivity} tenantId={session?.tenant_id ?? undefined} />;
 }
 
-// ─── Feed row ─────────────────────────────────────────────────────────────────
+function ActivityFeed({ onActivity, tenantId }: { onActivity: (() => void) | undefined; tenantId: string | undefined }) {
+  const [events, setEvents] = useState<GatewayActivity[]>([]);
+  const [state, setState] = useState<StreamState>("connecting");
+  const [filter, setFilter] = useState("");
+  const [epoch, setEpoch] = useState(0);
+  const [history, setHistory] = useState(false);
+  const [latest, setLatest] = useState<number | null>(null);
+  const cursor = useRef<string | undefined>(undefined);
+  const tenant = useRef<string | undefined>(undefined);
+  const rows = useRef<GatewayActivity[]>([]);
+  const notify = useRef(onActivity);
+  useEffect(() => { notify.current = onActivity; }, [onActivity]);
 
-function FeedRow({ event }: { event: GatewayFeedEvent }) {
-  const meta = ACTION_META[event.action_type];
-  const Icon = meta.icon;
-  const traceId = event.trace_id?.trim() || "";
-  const graphHref = `/security-graph?${new URLSearchParams({
-    ...(traceId ? { trace: traceId } : {}),
-    ...(event.agent ? { agent: event.agent } : {}),
-  }).toString()}`;
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-y-2 px-3 py-2 bg-[var(--surface-elevated)]/50 border border-[var(--border-subtle)] rounded-lg">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
-        <Icon className={`w-3.5 h-3.5 shrink-0 ${meta.tone}`} />
-        {/* Per-agent attribution → target */}
-        <span className="text-xs text-[var(--foreground)] font-mono shrink-0 max-w-[10rem] truncate" title={event.agent}>
-          {event.agent}
-        </span>
-        <span className="text-[var(--text-tertiary)] shrink-0 text-xs">→</span>
-        <span className="text-xs text-[var(--text-secondary)] font-mono shrink-0 max-w-[12rem] truncate" title={event.target}>
-          {event.target}
-        </span>
-        <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs ${meta.badge}`}>
-          {meta.label}
-        </span>
-        <span className="text-xs text-[var(--text-tertiary)]" title={PRODUCER_EVIDENCE_HINT}>
-          {producerEvidenceLabel(event.producer_assurance)}
-        </span>
-        {event.shadow && (
-          <span className="shrink-0 rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-xs text-orange-300">
-            shadow AI
-          </span>
-        )}
-        <span className="text-xs text-[var(--text-tertiary)] truncate" title={event.detail}>
-          {event.detail}
-        </span>
-        {(traceId || event.agent) && (
-          <a
-            href={graphHref}
-            className="shrink-0 rounded border border-sky-700/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 dark:text-sky-200"
-            title={traceId ? `Pin via runtime_trace_id ${traceId}` : "Open agent in security graph"}
-          >
-            {traceId ? "Pin trace" : "Investigate"}
-          </a>
-        )}
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
+    let notifiedAt = 0;
+    const connect = async () => {
+      try {
+        for await (const page of streamGatewayActivity(cursor.current, controller.signal, tenantId)) {
+          if (controller.signal.aborted) return;
+          if (tenant.current && tenant.current !== page.tenant_id) {
+            rows.current = []; cursor.current = undefined; setEvents([]);
+            setState("auth"); return;
+          }
+          tenant.current = page.tenant_id;
+          rows.current = mergeActivity(rows.current, page.events);
+          setEvents(rows.current);
+          // Advance only after the entire batch is merged into the local view.
+          cursor.current = page.next_cursor;
+          setLatest(page.latest_ordinal);
+          setState("live");
+          failures = 0;
+          if (page.events.length && Date.now() - notifiedAt > 3000) {
+            notifiedAt = Date.now(); notify.current?.();
+          }
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        const kind = error instanceof ActivityStreamError ? error.kind : "transport";
+        if (kind !== "transport") { setState(kind); return; }
+        failures += 1;
+        if (failures > 5) { setState("unavailable"); return; }
+      }
+      if (!controller.signal.aborted) {
+        setState("reconnecting");
+        timer = setTimeout(() => void connect(), Math.min(1000 * 2 ** failures, 30000));
+      }
+    };
+    const start = setTimeout(() => void connect(), 0);
+    return () => { clearTimeout(start); clearTimeout(timer); controller.abort(); };
+  }, [epoch, tenantId]);
+
+  const reconnect = (restart = false) => {
+    if (restart) { cursor.current = undefined; rows.current = []; tenant.current = undefined; setEvents([]); setLatest(null); }
+    setState("connecting"); setEpoch(value => value + 1);
+  };
+  const receiptTime = events[0]?.ingested_at;
+  const staleReceipt = Boolean(receiptTime && Date.now() - Date.parse(receiptTime) > 120000);
+  const visible = events.filter(row => !filter || (filter === "deny" ? row.decision === "deny" : filter === "data" ? /dlp|visual/.test(row.event_type) : row.event_type.includes(filter)));
+
+  return <section className="min-w-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4 sm:p-5" aria-label="Gateway activity">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h3 className="flex items-center gap-2 text-sm font-semibold"><Activity className="h-4 w-4" />Gateway activity</h3>
+        <p className="mt-1 text-xs text-[var(--text-secondary)]">Canonical tool calls, data filters, profile and enforcement decisions.</p>
+        <p className="mt-1 text-xs text-[var(--text-secondary)]" role="status">{messages[state]}</p>
       </div>
-      <span className="ml-3 flex shrink-0 items-center gap-1 text-xs text-[color:var(--text-tertiary)]">
-        <Clock className="w-3 h-3" />
-        {formatEventTime(event.ts)}
-      </span>
+      <div className="flex flex-wrap gap-2">
+        <button className="graph-page-action" onClick={() => setHistory(value => !value)}>{history ? "Return to recent activity" : "Browse retained history"}</button>
+        {state === "gap" ? <button className="graph-page-action" onClick={() => reconnect(true)}>Start a new retained window</button> :
+          <button className="graph-page-action" onClick={() => reconnect()}><RefreshCw className="h-3 w-3" />Reconnect</button>}
+      </div>
     </div>
-  );
+    <p className="my-3 text-xs text-[var(--text-tertiary)]">Newest {events.length} events in this view · ledger position {latest ?? "unavailable"}. History is paged separately; reconnects do not reset the cursor.</p>
+    {staleReceipt && <p className="mb-3 text-xs text-amber-800 dark:text-amber-200">Latest receipt is older than 2 minutes. A connected transport does not prove current producer activity.</p>}
+    {history ? <RetainedHistory tenantId={tenant.current ?? tenantId} /> : <>
+      <div className="mb-3 flex flex-wrap gap-2" aria-label="Activity filters">
+        {[["", "All"], ["deny", "Blocked"], ["data", "Data filters"], ["runtime_profile", "Profile decisions"], ["enforcement", "Enforcement"]].map(([value, label]) =>
+          <button key={label} onClick={() => setFilter(value ?? "")} aria-pressed={filter === value} className={`rounded px-2 py-1 text-xs ${filter === value ? "bg-[var(--surface-muted)] text-[var(--foreground)]" : "text-[var(--text-secondary)]"}`}>{label}</button>)}
+      </div>
+      {!visible.length && <p className="py-6 text-sm text-[var(--text-secondary)]">{events.length ? "No activity matches this filter." : state === "live" ? "No retained gateway activity yet." : "No verified activity loaded."}</p>}
+      <ActivityRows events={visible} />
+    </>}
+  </section>;
+}
+
+function RetainedHistory({ tenantId }: { tenantId: string | undefined }) {
+  const [page, setPage] = useState<ActivityPage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [epoch, setEpoch] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    void gatewayActivityPage(cursor, controller.signal, tenantId).then(result => {
+      if (!controller.signal.aborted) { setPage(result); setError(null); setLoading(false); }
+    }).catch(caught => {
+      if (controller.signal.aborted) return;
+      setError(caught instanceof ActivityStreamError && caught.kind === "gap" ? "History expired. Choose Restart history to read the currently retained window." : "Retained history is unavailable. Retry without advancing the page.");
+      setLoading(false);
+    });
+    return () => controller.abort();
+  }, [cursor, epoch, tenantId]);
+  return <div>
+    <div className="mb-3 flex flex-wrap items-center gap-3">
+      <span className="text-xs text-[var(--text-secondary)]">Retained history · oldest pages first</span>
+      <button className="graph-page-action" disabled={loading} onClick={() => { setLoading(true); setCursor(undefined); setEpoch(n => n + 1); }}>Restart history</button>
+      {error ? <button className="graph-page-action" onClick={() => { setLoading(true); setEpoch(n => n + 1); }}>Retry history</button> : null}
+      <button className="graph-page-action" disabled={loading || !page?.has_more || Boolean(error)} onClick={() => { setLoading(true); setCursor(page?.next_cursor); }}>Next retained page</button>
+    </div>
+    {loading ? <p role="status">Loading retained page…</p> : null}
+    {error ? <p role="alert" className="text-sm text-amber-800 dark:text-amber-200">{error}</p> : null}
+    {page && <ActivityRows events={[...page.events].reverse()} />}
+  </div>;
+}
+
+function ActivityRows({ events }: { events: GatewayActivity[] }) {
+  return <div className="max-h-[36rem] space-y-1 overflow-y-auto">
+    {events.map(event => <article key={event.event_id} className="min-w-0 border-b border-[var(--border-subtle)] py-3 text-xs" data-testid="gateway-activity-row">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="min-w-0 break-all font-medium">{event.agent_id || "Unattributed agent"} → {event.upstream || "Gateway"}{event.tool ? ` / ${event.tool}` : ""}</p>
+        <span className={event.decision === "deny" ? "text-red-700 dark:text-red-300" : "text-[var(--text-secondary)]"}>{activityLabels[event.event_type] ?? "Gateway decision"}</span>
+      </div>
+      <p className="mt-1 break-all text-[var(--text-secondary)]">Profile {event.profile_id || "unavailable"} · revision {event.profile_revision || "unavailable"} · blueprint {event.blueprint_id || "unavailable"} / {event.blueprint_revision || "unavailable"}</p>
+      <p className="mt-1 break-all text-[var(--text-secondary)]">Policies: {event.policy_ids?.length ? event.policy_ids.join(", ") : event.policy_id || "unavailable"} · Evidence: {event.evidence_id || "unavailable"}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--text-tertiary)]">
+        <span title={PRODUCER_EVIDENCE_HINT}>{producerEvidenceLabel(event.submission_provenance?.producer_assurance)}</span>
+        <span>{(event.reason_code || event.data_action || "No reason recorded").replaceAll("_", " ")}</span>
+        {event.development_mode ? <strong className="text-amber-800 dark:text-amber-200">Development bypass</strong> : null}
+        <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />Received {event.ingested_at ? formatDate(event.ingested_at) : "unavailable"}</span>
+        {event.trace_id ? <a className="text-sky-800 underline dark:text-sky-200" href={`/security-graph?${new URLSearchParams({ trace: event.trace_id, agent: event.agent_id })}`}>Pin trace</a> : null}
+      </div>
+      <details className="mt-2 text-[var(--text-secondary)]"><summary className="cursor-pointer">Receipt details</summary><p className="mt-1 break-all">{event.event_type} · event {event.event_id} · identity {event.identity_id || "unavailable"} · receipt trace {event.receipt_trace_id || "unavailable"} · reported time {event.event_timestamp || "unavailable"}</p></details>
+    </article>)}
+  </div>;
 }

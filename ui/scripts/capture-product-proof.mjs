@@ -2276,6 +2276,31 @@ async function installRoutes(page) {
       { ts: CREATED_AT, agent: "shadow-copilot", action_type: "tool_call_blocked", target: "openai.chat.completions", detail: "Shadow AI detected", tenant: "tenant-alpha", shadow: true, source: "gateway" },
     ],
   }));
+  await page.route("**/v1/gateway/feed/stream*", (route) => {
+    const resumed = Boolean(route.request().headers()["last-event-id"]);
+    const events = [
+      ["developer-copilot", "github.repo-write", "deny", "Repo-write blocked by default-deny prod policy"],
+      ["finance-rag-agent", "snowflake.query", "allow", "Resume data masked"],
+      ["sre-runbook-agent", "slack.post", "allow", "Tool call authorized"],
+    ].map(([agent, tool, decision, reason], index) => ({
+      tenant_id: "default", event_id: `capture-activity-${index + 1}`, ingest_ordinal: index + 1,
+      event_type: decision === "deny" ? "gateway.tool_call.blocked" : "gateway.tool_call.allowed",
+      event_timestamp: CREATED_AT, ingested_at: CREATED_AT,
+      agent_id: agent, identity_id: `identity-${agent}`, upstream: tool, tool,
+      decision, profile_id: "production-runtime", profile_revision: 3,
+      blueprint_id: "enterprise-tools", blueprint_revision: 1,
+      policy_ids: ["prod-default-deny"], policy_id: "prod-default-deny",
+      evidence_id: `capture-receipt-${index + 1}`, trace_id: `capture-trace-${index + 1}`,
+      reason_code: reason, data_action: "", development_mode: false,
+    }));
+    const page = {
+      schema_version: "gateway.activity.stream.v1", tenant_id: "default",
+      events: resumed ? [] : events, next_cursor: "capture-activity-3",
+      has_more: false, retention_floor_ordinal: 1, latest_ordinal: 3,
+    };
+    return route.fulfill({ contentType: "text/event-stream", body:
+      `event: ${resumed ? "checkpoint" : "activity"}\nid: capture-activity-3\ndata: ${JSON.stringify(page)}\n\n` });
+  });
   await page.route("**/v1/gateway/feed/kpis", (route) => fulfill(route, {
     schema_version: "gateway.feed.kpis.v1",
     tenant_id: "tenant-alpha",
@@ -3465,7 +3490,7 @@ async function main() {
       await scrollTo(gatewayPage, 0);
     }, {
       expectedText: ["Calls today", "4,485", "Gateway activity", "developer-copilot", "Repo-write blocked"],
-      expectedApiPaths: ["/v1/gateway/policies", "/v1/gateway/feed", "/v1/gateway/feed/kpis"],
+      expectedApiPaths: ["/v1/gateway/policies", "/v1/gateway/feed/stream", "/v1/gateway/feed/kpis"],
     });
     await page.setViewportSize({ width: 1440, height: 1120 });
     await capture(page, "/audit?capture=1", "identity-audit-live.png", async (auditPage) => {

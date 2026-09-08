@@ -1,3 +1,4 @@
+import type { McpClientConfigAssignment, McpConfigAssignmentResponse } from "./api-types";
 /**
  * agent-bom API client
  * Connects to the FastAPI backend at NEXT_PUBLIC_API_URL (default: same origin)
@@ -1532,6 +1533,13 @@ export const api = {
   createSchedule: (body: ScheduleCreateRequest) => post<ScanSchedule>("/v1/schedules", body),
   toggleSchedule: (scheduleId: string) => put<ScanSchedule>(`/v1/schedules/${scheduleId}/toggle`, {}),
   deleteSchedule: (scheduleId: string) => del(`/v1/schedules/${scheduleId}`),
+
+  listRuntimeProfiles: () => get<{ assignments: McpClientConfigAssignment[] }>("/v1/mcp-config/assignments?include_revoked=true&limit=1000", { ttlMs: 0 }),
+  createRuntimeProfile: (body: Record<string, unknown>) => post<McpConfigAssignmentResponse>("/v1/mcp-config/assignments", body),
+  updateRuntimeProfile: (id: string, body: Record<string, unknown>) => put<McpConfigAssignmentResponse>(`/v1/mcp-config/assignments/${encodeURIComponent(id)}`, body),
+  revokeRuntimeProfile: (id: string) => post<McpConfigAssignmentResponse>(`/v1/mcp-config/assignments/${encodeURIComponent(id)}/revoke`, {}),
+  evaluateRuntimeProfile: (body: { config_id: string; issuer: string; environment: string; granted_scopes: string[]; upstream?: string; tool?: string }) =>
+    post<{ profile_allowed: boolean; reason_code: string; scope: string; executed: boolean }>("/v1/runtime/profiles/evaluate", body),
 
   // ── Gateway ──
   listGatewayPolicies: () => get<GatewayPolicyResponse>("/v1/gateway/policies"),

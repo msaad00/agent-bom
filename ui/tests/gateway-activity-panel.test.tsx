@@ -1,0 +1,44 @@
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { GatewayFeedPanel } from "@/app/gateway/GatewayFeedPanel";
+import { ActivityStreamError } from "@/lib/gateway-activity";
+import { activity } from "./fixtures/gateway-activity";
+const mocks = vi.hoisted(() => ({ stream: vi.fn(), page: vi.fn() }));
+vi.mock("@/components/auth-provider", () => ({ useAuthState: () => ({ session: { tenant_id: "tenant-a", subject: "operator" } }) }));
+vi.mock("@/lib/gateway-activity", async () => ({ ...await vi.importActual("@/lib/gateway-activity"), streamGatewayActivity: mocks.stream, gatewayActivityPage: mocks.page }));
+const batch = (start: number, count: number, cursor: string) => ({ schema_version: "gateway.activity.stream.v1", tenant_id: "tenant-a", events: Array.from({ length: count }, (_, i) => activity(start + i)), next_cursor: cursor, has_more: false, latest_ordinal: start + count - 1, retention_floor_ordinal: 1 });
+afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+it("merges more than 200 events, resumes once, deduplicates and preserves an explicit gap", async () => {
+  vi.useFakeTimers();
+  mocks.stream.mockImplementationOnce(async function* () { yield batch(1, 200, "200"); yield batch(201, 50, "250"); })
+    .mockImplementationOnce(async function* () { yield batch(250, 2, "251"); throw new ActivityStreamError("gap"); });
+  const view = render(<GatewayFeedPanel onActivity={() => {}} />);
+  await act(() => vi.advanceTimersByTimeAsync(0));
+  expect(screen.getAllByTestId("gateway-activity-row")).toHaveLength(250);
+  view.rerender(<GatewayFeedPanel onActivity={() => {}} />);
+  expect(mocks.stream).toHaveBeenCalledTimes(1);
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  expect(mocks.stream.mock.calls[1]?.[0]).toBe("250");
+  expect(screen.getAllByTestId("gateway-activity-row")).toHaveLength(251);
+  expect(screen.getByText(/Activity gap:/)).toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(60000));
+  expect(mocks.stream).toHaveBeenCalledTimes(2);
+  view.unmount();
+  expect((mocks.stream.mock.calls[1]?.[1] as AbortSignal).aborted).toBe(true);
+});
+it("paginates canonical history without replacing the live cursor", async () => {
+  vi.useFakeTimers();
+  mocks.stream.mockImplementation(async function* () { yield batch(500, 1, "live-500"); });
+  mocks.page.mockResolvedValueOnce({ ...batch(1, 2, "old-2"), has_more: true }).mockResolvedValueOnce(batch(3, 1, "old-3"));
+  render(<GatewayFeedPanel />);
+  await act(() => vi.advanceTimersByTimeAsync(0));
+  fireEvent.click(screen.getByRole("button", { name: "Browse retained history" }));
+  await act(async () => {});
+  expect(mocks.page.mock.calls[0]?.[0]).toBeUndefined();
+  fireEvent.click(screen.getByRole("button", { name: "Next retained page" }));
+  await act(async () => {});
+  expect(mocks.page.mock.calls[1]?.[0]).toBe("old-2");
+  fireEvent.click(screen.getByRole("button", { name: "Return to recent activity" }));
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  expect(mocks.stream.mock.calls[1]?.[0]).toBe("live-500");
+});

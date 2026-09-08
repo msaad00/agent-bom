@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   Activity,
 } from "lucide-react";
+import { RuntimeProfilesPanel } from "./RuntimeProfilesPanel";
 import { GatewayFeedPanel } from "./GatewayFeedPanel";
 import { GatewayFeedKpiBar } from "@/components/gateway-feed-kpi-bar";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -69,7 +70,7 @@ export default function GatewayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<"feed" | "policies" | "audit" | "evaluate">("feed");
+  const [tab, setTab] = useState<"feed" | "profiles" | "policies" | "audit" | "evaluate">("feed");
 
   // Evaluate form state
   const [evalTool, setEvalTool] = useState("");
@@ -200,8 +201,8 @@ export default function GatewayPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1.5">
-        {(["feed", "policies", "audit", "evaluate"] as const).map((t) => (
+      <div className="flex flex-wrap gap-1.5">
+        {(["feed", "profiles", "policies", "audit", "evaluate"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -214,7 +215,7 @@ export default function GatewayPage() {
             {t === "feed" && <Activity className="w-3.5 h-3.5" />}
             {t === "feed"
               ? "Live Feed"
-              : t === "policies"
+              : t === "profiles" ? "Runtime profiles" : t === "policies"
                 ? "Policies"
                 : t === "audit"
                   ? "Audit Log"
@@ -223,20 +224,22 @@ export default function GatewayPage() {
         ))}
       </div>
 
-      {/* Live Feed tab — self-contained, has its own data + WebSocket lifecycle */}
+      {tab === "profiles" && <RuntimeProfilesPanel />}
+
+      {/* Activity stream owns its authenticated connection and resume cursor. */}
       {tab === "feed" && (
         <GatewayFeedPanel onActivity={() => setKpiRefreshKey((current) => current + 1)} />
       )}
 
       {/* Loading */}
-      {loading && tab !== "feed" && (
+      {loading && tab !== "feed" && tab !== "profiles" && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-[var(--text-tertiary)]" />
         </div>
       )}
 
       {/* Error state */}
-      {error && !loading && tab !== "feed" && (
+      {error && !loading && tab !== "feed" && tab !== "profiles" && (
         <div className="text-center py-10 border border-dashed border-red-900/50 rounded-xl space-y-3">
           <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
           <p className="text-red-400 text-sm">Failed to load gateway data</p>

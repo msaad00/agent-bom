@@ -91,14 +91,14 @@ def test_totals_exceed_previous_overview_limit(tmp_path):
 def test_postgres_totals_and_filters_enforce_rls():
     import os
 
-    from psycopg_pool import ConnectionPool
-
     from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
     from agent_bom.api.postgres_cost import PostgresCostStore
 
     dsn = os.environ.get("COST_REPORT_TEST_POSTGRES_DSN")
     if not dsn:
         pytest.skip("requires isolated Postgres with a NOSUPERUSER NOBYPASSRLS test role")
+    from psycopg_pool import ConnectionPool
+
     with ConnectionPool(dsn) as pool:
         store = PostgresCostStore(pool=pool)
         token = set_current_tenant("cost-scope-a")

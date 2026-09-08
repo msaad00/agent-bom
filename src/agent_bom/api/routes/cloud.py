@@ -1216,8 +1216,7 @@ def _run_provider_side_scan_sync(**kwargs: Any) -> list[Any]:
 
     Kept module-level so the offload seam is spy-able/patch-able in tests and so
     the coroutine never touches the request event loop. ``run_provider_side_scan``
-    itself guarantees teardown of every owned temporary resource on success and
-    failure.
+    attempts teardown of owned temporary resources and records incomplete cleanup.
     """
     import asyncio
 
@@ -1231,16 +1230,18 @@ def _side_scan_result_summary(results: list[Any]) -> dict[str, Any]:
     if not results:
         return {}
     res = results[0]
+    counts = getattr(res, "recorded_counts", None) or {}
     return {
         "target_id": getattr(res, "target_id", ""),
         "snapshot_id": getattr(res, "snapshot_id", None),
         "scan_disk_id": getattr(res, "scan_disk_id", None),
-        "package_count": len(getattr(res, "packages", []) or []),
-        "vulnerability_count": int(getattr(res, "vulnerability_count", 0) or 0),
-        "secret_count": len(getattr(res, "secrets", []) or []),
-        "config_finding_count": len(getattr(res, "config_findings", []) or []),
-        "ioc_finding_count": len(getattr(res, "ioc_findings", []) or []),
+        "package_count": counts.get("package_count", len(getattr(res, "packages", []) or [])),
+        "vulnerability_count": counts.get("vulnerability_count", int(getattr(res, "vulnerability_count", 0) or 0)),
+        "secret_count": counts.get("secret_count", len(getattr(res, "secrets", []) or [])),
+        "config_finding_count": counts.get("config_finding_count", len(getattr(res, "config_findings", []) or [])),
+        "ioc_finding_count": counts.get("ioc_finding_count", len(getattr(res, "ioc_findings", []) or [])),
         "cleaned_up": bool(getattr(res, "cleaned_up", False)),
+        "replayed": bool(getattr(res, "replayed", False)),
         "warnings": [str(w) for w in (getattr(res, "warnings", []) or [])],
     }
 
@@ -1271,7 +1272,7 @@ async def cloud_side_scan_trigger(
     (``credentialed_smoke=false``).
     """
     from agent_bom.cloud.side_scan import SideScanConfigError, SideScanDisabledError
-    from agent_bom.cloud.side_scan_lifecycle import get_side_scan_state_store, new_side_scan_execution
+    from agent_bom.cloud.side_scan_lifecycle import SideScanStateConflictError, get_side_scan_state_store, new_side_scan_execution
 
     tenant_id = _tenant(request)
     provider = body.provider
@@ -1311,6 +1312,10 @@ async def cloud_side_scan_trigger(
     try:
         async with adaptive_backpressure("cloud_side_scan"):
             results = await anyio.to_thread.run_sync(lambda: _run_provider_side_scan_sync(**run_kwargs))
+    except SideScanStateConflictError as exc:
+        raise HTTPException(
+            status_code=409, detail="Side-scan request conflicts with an existing execution; inspect its scope and state."
+        ) from exc
     except SideScanDisabledError as exc:
         # The specific cause is logged server-side; the external response stays
         # generic so no exception detail reaches the caller (CodeQL:
@@ -1352,10 +1357,10 @@ async def cloud_side_scan_trigger(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        # The executor still ran guaranteed teardown; do not leak internals.
+        # Failures may precede resource creation; do not infer cleanup success.
         _logger.error("Cloud side-scan execution failed")
         raise HTTPException(
-            status_code=500, detail="Cloud side-scan failed; see server logs. Temporary resource teardown still ran."
+            status_code=500, detail="Cloud side-scan failed; inspect execution history for scan and cleanup state."
         ) from exc
 
     store = get_side_scan_state_store()

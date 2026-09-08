@@ -155,15 +155,17 @@ def _result_summary(results: list) -> dict:
     if not results:
         return {}
     res = results[0]
+    counts = getattr(res, "recorded_counts", None) or {}
     return {
         "target_id": getattr(res, "target_id", ""),
         "snapshot_id": getattr(res, "snapshot_id", None),
         "scan_disk_id": getattr(res, "scan_disk_id", None),
-        "package_count": len(getattr(res, "packages", []) or []),
-        "vulnerability_count": int(getattr(res, "vulnerability_count", 0) or 0),
-        "secret_count": len(getattr(res, "secrets", []) or []),
-        "config_finding_count": len(getattr(res, "config_findings", []) or []),
-        "ioc_finding_count": len(getattr(res, "ioc_findings", []) or []),
+        "package_count": counts.get("package_count", len(getattr(res, "packages", []) or [])),
+        "vulnerability_count": counts.get("vulnerability_count", int(getattr(res, "vulnerability_count", 0) or 0)),
+        "secret_count": counts.get("secret_count", len(getattr(res, "secrets", []) or [])),
+        "config_finding_count": counts.get("config_finding_count", len(getattr(res, "config_findings", []) or [])),
+        "ioc_finding_count": counts.get("ioc_finding_count", len(getattr(res, "ioc_findings", []) or [])),
         "cleaned_up": bool(getattr(res, "cleaned_up", False)),
+        "replayed": bool(getattr(res, "replayed", False)),
         "warnings": [str(w) for w in (getattr(res, "warnings", []) or [])],
     }

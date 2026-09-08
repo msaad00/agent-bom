@@ -329,3 +329,54 @@ def test_list_returns_server_pagination_and_filter_metadata(state_db, monkeypatc
     assert filtered.status_code == 200, filtered.text
     assert [row["execution_id"] for row in filtered.json()["executions"]] == [failed.execution_id]
     assert filtered.json()["page"]["total"] == 1
+
+
+def test_replay_summary_preserves_durable_counts_across_api_and_mcp() -> None:
+    from agent_bom.mcp_tools.side_scan import _result_summary
+
+    counts = {"package_count": 17, "vulnerability_count": 5, "secret_count": 3, "config_finding_count": 2, "ioc_finding_count": 1}
+    replay = CloudSideScanExecutionResult(
+        provider="gcp",
+        target_type="persistent_disk",
+        target_id="disk",
+        account_id="proj",
+        location="zone",
+        recorded_counts=counts,
+        replayed=True,
+    )
+    for summarize in (cloud_routes._side_scan_result_summary, _result_summary):
+        summary = summarize([replay])
+        assert {key: summary[key] for key in counts} == counts
+        assert summary["replayed"] is True
+
+
+def test_retry_scope_conflict_is_http_409(state_db, monkeypatch) -> None:
+    from agent_bom.cloud.side_scan_lifecycle import SideScanStateConflictError
+
+    def conflict(**kwargs):
+        raise SideScanStateConflictError("synthetic scope mismatch")
+
+    monkeypatch.setattr(cloud_routes, "_run_provider_side_scan_sync", conflict)
+    response = TestClient(app).post("/v1/cloud/side-scan", headers=_headers(), json=_valid_body())
+    assert response.status_code == 409
+    assert "synthetic" not in response.text
+
+
+def test_actual_setup_failure_history_matches_terminal_failure(state_db, monkeypatch) -> None:
+    from agent_bom.cloud.side_scan import SideScanConfigError
+
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+
+    def unavailable(*args, **kwargs):
+        raise SideScanConfigError("synthetic provider SDK unavailable")
+
+    monkeypatch.setattr("agent_bom.cloud.side_scan_targets._default_provider_clients", unavailable)
+    client = TestClient(app)
+    response = client.post("/v1/cloud/side-scan", headers=_headers(), json=_valid_body())
+    assert response.status_code == 200
+    assert response.json()["status"] == "unavailable"
+    saved = client.get(f"/v1/cloud/side-scan/{response.json()['execution_id']}", headers=_headers())
+    assert saved.status_code == 200
+    assert saved.json()["status"] == "failed"
+    assert saved.json()["execution"]["failure_code"] == "configuration_unavailable"
+    assert saved.json()["evidence"]["disposition"] == "unevaluable"

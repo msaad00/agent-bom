@@ -276,6 +276,7 @@ class SideScanExecutionRecord:
     state_version: int = 1
     created_at: str = ""
     updated_at: str = ""
+    request_fingerprint: str = ""
     schema_version: str = field(default=LIFECYCLE_SCHEMA_VERSION, init=False)
 
     def __post_init__(self) -> None:
@@ -292,6 +293,10 @@ class SideScanExecutionRecord:
         )
         if not all(str(value).strip() for value in required):
             raise ValueError("side-scan execution scope and timestamps are required")
+        if self.request_fingerprint and (
+            len(self.request_fingerprint) != 64 or any(c not in "0123456789abcdef" for c in self.request_fingerprint)
+        ):
+            raise ValueError("request_fingerprint must be a SHA-256 hex digest")
         if self.phase not in _PHASES:
             raise ValueError(f"unsupported side-scan phase: {self.phase}")
         counts = (
@@ -465,6 +470,7 @@ class SideScanExecutionRecord:
             "counts": self._counts(),
             "failure_code": self.failure_code,
             "warning_codes": list(self.warning_codes),
+            **({"request_fingerprint": self.request_fingerprint} if self.request_fingerprint else {}),
             "state_version": self.state_version,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -538,6 +544,7 @@ class SideScanExecutionRecord:
             ioc_finding_count=int(counts.get("ioc_finding_count", 0)),
             failure_code=str(payload.get("failure_code") or ""),
             warning_codes=tuple(str(item) for item in raw_warnings) if isinstance(raw_warnings, list) else (),
+            request_fingerprint=str(payload.get("request_fingerprint") or ""),
             state_version=_coerce_int(payload.get("state_version")),
             created_at=str(payload.get("created_at") or ""),
             updated_at=str(payload.get("updated_at") or ""),
@@ -1220,6 +1227,7 @@ def new_side_scan_execution(
     target_id: str,
     collector_id: str,
     idempotency_key: str,
+    request_fingerprint: str = "",
     now: str | None = None,
 ) -> SideScanExecutionRecord:
     """Build a deterministic execution identity for retry-safe scheduling."""
@@ -1238,6 +1246,7 @@ def new_side_scan_execution(
         target_id=target_id,
         collector_id=collector_id,
         cleanup_ownership=ownership,
+        request_fingerprint=request_fingerprint,
         created_at=timestamp,
         updated_at=timestamp,
     )

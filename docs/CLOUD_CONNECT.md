@@ -751,8 +751,27 @@ The Azure/GCP disk side-scan is now surface-aligned across CLI
 target on a cadence — every surface driving the same `run_provider_side_scan`
 executor and reading the same durable lifecycle store. The executors ship as
 injected-SDK lifecycle adapters, but no credentialed live smoke is claimed yet
-(`credentialed_smoke=false`) — live proof waits on read-only Azure/GCP
-credentials.
+(`credentialed_smoke=false`) — live proof requires scoped snapshot/attach/delete
+permissions and execution on the selected collector host. The API uses its own
+configured cloud identity; supplying a collector ID does not dispatch work to a
+remote host.
+
+Azure/GCP setup failures are stored as terminal, unevaluable executions with a
+safe failure code. Exact retries with the same idempotency key return the stored
+state and counts without running another cloud lifecycle. Changed collector,
+location, or scan options conflict; legacy records without a request fingerprint
+cannot prove equivalence and are rejected without rewriting history. A running
+execution remains running on retry. A new CLI invocation creates a new execution;
+it does not automatically resume an earlier cleanup.
+
+Scan completion and cleanup completion are separate. Failed unmounts remain
+recorded as partial cleanup; the owned attachment, clone disk and snapshot are
+retained for operator recovery. No detach or delete is attempted on that path. Inspect the
+execution's owned resources and warning codes before operator recovery; there is
+no automatic acknowledgement of a failed local unmount. Zero findings apply only
+to completed scan stages, never to a clean workload. The durable side-scan
+artifact contains lifecycle metadata and counts; it does not create a canonical
+package/CVE finding graph.
 
 ---
 

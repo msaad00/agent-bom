@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -314,7 +315,12 @@ def test_firewall_check_invalid_json_body() -> None:
 
 
 def test_p1_20_firewall_check_requires_bearer_when_configured() -> None:
-    settings = GatewaySettings(registry=_registry(), policy={}, bearer_token="s3cr3t")  # noqa: S106
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        bearer_token="s3cr3t",
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
+    )  # noqa: S106
     with TestClient(create_gateway_app(settings)) as client:
         # Missing auth -> 401 envelope from the gateway.
         unauth = client.post(
@@ -352,6 +358,7 @@ def test_firewall_static_bearer_uses_configured_tenant_binding(tmp_path: Path, m
         registry=_registry(),
         policy={},
         bearer_token="s3cr3t",  # noqa: S106
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
         firewall_policy_path=policy_path,
         audit_sink=audit,
     )
@@ -368,7 +375,12 @@ def test_firewall_static_bearer_uses_configured_tenant_binding(tmp_path: Path, m
 
 
 def test_p1_20_metrics_requires_bearer_when_configured() -> None:
-    settings = GatewaySettings(registry=_registry(), policy={}, bearer_token="s3cr3t")  # noqa: S106
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        bearer_token="s3cr3t",
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
+    )  # noqa: S106
     with TestClient(create_gateway_app(settings)) as client:
         unauth = client.get("/metrics")
         assert unauth.status_code == 401

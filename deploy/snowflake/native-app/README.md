@@ -33,8 +33,11 @@ token file. The app does not request a user password or private key.
 - `core.trigger_scan()` starts a read-only evidence scan.
 - `core.enable_scanner_service()` creates the default-off scanner after all
   advisory-feed integrations are bound.
-- `core.enable_mcp_runtime_service(token)` creates the default-off MCP service
-  with an operator-supplied bearer token of at least 32 characters.
+- `core.enable_mcp_runtime_service(token, expires_at)` creates the default-off MCP service
+  with a user-provisioned bearer token of at least 32 characters and an absolute
+  timezone-aware expiry within one hour. Calling it again suspends the service
+  and applies the replacement token and deadline; explicitly resume afterward.
+  Agent-Bom does not issue tokens or automatically rotate them.
 
 ## Verify the installation
 

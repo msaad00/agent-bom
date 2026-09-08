@@ -250,7 +250,7 @@ def test_native_app_service_specs_use_spcs_injected_context_without_unresolved_p
                 assert key not in env, f"{spec_name}:{container['name']} must use the SPCS-injected {key} value"
         rendered = yaml.safe_dump(spec)
         placeholders = set(re.findall(r"\{\{\s*([^} ]+)\s*\}\}", rendered))
-        expected = {"mcp_bearer_token"} if spec_name == "mcp-runtime-service.yaml" else set()
+        expected = {"mcp_bearer_token", "mcp_bearer_token_expires_at"} if spec_name == "mcp-runtime-service.yaml" else set()
         assert placeholders == expected
 
 
@@ -259,6 +259,7 @@ def test_mcp_runtime_spec_requires_bearer_token_and_has_no_advisory_egress(servi
     assert runtime["name"] == "agent-bom-mcp-runtime"
     assert runtime["env"]["AGENT_BOM_MCP_MODE"] == "1"
     assert runtime["env"]["AGENT_BOM_MCP_BEARER_TOKEN"] == "{{ mcp_bearer_token }}"
+    assert runtime["env"]["AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT"] == "{{ mcp_bearer_token_expires_at }}"
     assert "AGENT_BOM_ENABLE_ADVISORY_EGRESS" not in runtime["env"]
     assert runtime["command"][:4] == ["agent-bom", "mcp", "server", "--transport"]
 
@@ -266,7 +267,10 @@ def test_mcp_runtime_spec_requires_bearer_token_and_has_no_advisory_egress(servi
 def test_setup_sql_only_creates_phase4_services_from_opt_in_procedures(setup_sql: str):
     upper = setup_sql.upper()
     assert "CREATE OR REPLACE PROCEDURE CORE.ENABLE_SCANNER_SERVICE()" in upper
-    assert "CREATE OR REPLACE PROCEDURE CORE.ENABLE_MCP_RUNTIME_SERVICE(MCP_BEARER_TOKEN VARCHAR)" in upper
+    assert (
+        "CREATE OR REPLACE PROCEDURE CORE.ENABLE_MCP_RUNTIME_SERVICE(MCP_BEARER_TOKEN VARCHAR, MCP_BEARER_TOKEN_EXPIRES_AT VARCHAR)"
+        in upper
+    )
     assert "CORE.AGENT_BOM_SCANNER" in upper
     assert "CORE.AGENT_BOM_MCP_RUNTIME" in upper
     assert "LENGTH(TRIM(MCP_BEARER_TOKEN)) < 32" in upper
@@ -498,3 +502,14 @@ def test_release_workflow_builds_pushes_and_publishes_without_secret_echoes():
     assert workflow.count("pyyaml==6.0.2") == 2
     assert "pyyaml==6.0.3" not in workflow
     assert "environment: snowflake-marketplace" in workflow
+
+
+def test_mcp_runtime_repeat_configuration_updates_both_credentials_before_explicit_resume(setup_sql: str):
+    procedure = setup_sql.split("CREATE OR REPLACE PROCEDURE core.enable_mcp_runtime_service", 1)[1]
+    update = "ALTER SERVICE core.agent_bom_mcp_runtime\n        FROM SPECIFICATION_TEMPLATE_FILE"
+    assert update in procedure
+    assert procedure.index("ALTER SERVICE core.agent_bom_mcp_runtime SUSPEND;") < procedure.index(update)
+    spec_update = procedure.split(update, 1)[1].split(";", 1)[0]
+    assert "mcp_bearer_token => :mcp_bearer_token" in spec_update
+    assert "mcp_bearer_token_expires_at => :mcp_bearer_token_expires_at" in spec_update
+    assert "\n    ALTER SERVICE core.agent_bom_mcp_runtime RESUME;" not in procedure

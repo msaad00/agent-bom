@@ -6,6 +6,7 @@ spec:
         AGENT_BOM_SNOWFLAKE_NATIVE_APP: "1"
         AGENT_BOM_MCP_MODE: "1"
         AGENT_BOM_MCP_BEARER_TOKEN: "{{ mcp_bearer_token }}"
+        AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT: "{{ mcp_bearer_token_expires_at }}"
         AGENT_BOM_LOG_LEVEL: "INFO"
       command:
         - agent-bom

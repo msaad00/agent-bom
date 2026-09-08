@@ -8,6 +8,7 @@ agent id.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -66,6 +67,7 @@ def _settings(
         drift_enforcement_mode=mode,
         listener_host=listener_host,
         bearer_token="gateway-transport-token" if listener_host != "127.0.0.1" else None,
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
     )
 
 

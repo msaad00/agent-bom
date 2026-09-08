@@ -130,15 +130,26 @@ available.
 The MCP runtime service is packaged for customers that want read-only agent-bom
 MCP tools available inside the Native App boundary. It is not created during
 install, has no advisory-feed EAI attached, and requires an operator-provided
-bearer token.
+bearer token and a timezone-aware absolute expiry within one hour. Supply these
+through your operator credential workflow; the session variables below refer to
+those provisioned values, not literals to commit or store in worksheet history.
 
 ```sql
-CALL agent_bom.core.enable_mcp_runtime_service('<32+ character bearer token>');
+CALL agent_bom.core.enable_mcp_runtime_service($mcp_bearer_token, $mcp_bearer_token_expires_at);
 ALTER SERVICE agent_bom.core.agent_bom_mcp_runtime RESUME;
 ```
 
 Store the bearer token in your own secret manager or Snowflake secret workflow.
-Do not hard-code it in the app package or worksheet history.
+Do not hard-code it in the app package or worksheet history. Provision a fresh
+token and deadline through your own credential-management workflow; Agent-Bom
+does not issue or automatically rotate these credentials. Before expiry, call
+the same procedure with the replacement values. It creates the service if absent,
+suspends it, and applies both values with Snowflake's
+[ALTER SERVICE template update](https://docs.snowflake.com/en/sql-reference/sql/alter-service).
+Then explicitly resume it and update the client's secure credential settings.
+The update interrupts active sessions. Do not merely resume an expired
+configuration or extend the deadline of an unchanged token. The configured
+one-hour bound does not attest to the token's original creation time.
 
 ## 6 — (Recommended) Set a network policy
 

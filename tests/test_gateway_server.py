@@ -473,6 +473,7 @@ def test_relay_requires_gateway_token_when_configured() -> None:
         policy={},
         upstream_caller=fake_caller,
         bearer_token="gw-secret",
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
     )
     client = TestClient(create_gateway_app(settings))
     denied = client.post(

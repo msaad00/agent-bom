@@ -233,6 +233,12 @@ def init_policy_cmd(template_name: str, output_path: Path, mode: str, output_for
     help="Require incoming bearer/API-key auth for gateway clients.",
 )
 @click.option(
+    "--bearer-token-expires-at",
+    envvar="AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT",
+    default=None,
+    help="Required with --bearer-token: absolute timezone-aware ISO-8601 expiry in the next hour.",
+)
+@click.option(
     "--allow-insecure-no-auth",
     is_flag=True,
     default=False,
@@ -453,6 +459,7 @@ def serve_cmd(
     runtime_rate_limit_per_tenant_per_minute: int,
     require_shared_rate_limit: bool,
     bearer_token: str | None,
+    bearer_token_expires_at: str | None,
     allow_insecure_no_auth: bool,
     allow_anonymous_agents: bool,
     profile_enforcement: str,
@@ -535,6 +542,17 @@ def serve_cmd(
             raise click.ClickException("graph reachability bundle signing key must contain at least 32 bytes")
 
     from agent_bom.gateway_server import GatewaySettings, build_control_plane_audit_sink, create_gateway_app
+
+    if bearer_token:
+        from agent_bom.gateway_server import _parse_gateway_token_expiry
+
+        try:
+            _parse_gateway_token_expiry(bearer_token_expires_at)
+        except ValueError as exc:
+            raise click.ClickException(
+                "--bearer-token-expires-at / AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT must be a timezone-aware "
+                "ISO-8601 expiry in the next hour"
+            ) from exc
     from agent_bom.gateway_upstreams import (
         UpstreamConfigError,
         UpstreamRegistry,
@@ -652,6 +670,7 @@ def serve_cmd(
         audit_sink=audit_sink,
         control_plane_policies=control_plane_policies,
         bearer_token=bearer_token,
+        bearer_token_expires_at=bearer_token_expires_at,
         enable_visual_leak_detection=detect_visual_leaks,
         require_visual_leak_detection_ready=detect_visual_leaks and not allow_visual_leak_best_effort,
         runtime_rate_limit_per_tenant_per_minute=max(runtime_rate_limit_per_tenant_per_minute, 0),

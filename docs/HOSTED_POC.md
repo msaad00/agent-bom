@@ -357,8 +357,8 @@ Before sharing the link, verify:
 | Tenant binding | Each invited account has an explicit tenant. Do not use default-tenant OIDC/SAML fallbacks for multi-tenant testing. |
 | Connection broker | `AGENT_BOM_CONNECTIONS_KEY` is a Fernet key and is never committed, logged, or reused across unrelated environments. |
 | Audit integrity | `AGENT_BOM_AUDIT_HMAC_KEY` is set and survives restarts so audit signatures remain verifiable. |
-| MCP read access | `AGENT_BOM_MCP_BEARER_TOKEN` is tenant/environment-scoped and has an expiry where possible. |
-| MCP write access | `AGENT_BOM_MCP_OPERATOR_TOKEN` is separate from the read token, expires, and is issued only to operators who need Shield/gateway write tools. |
+| MCP read access | `AGENT_BOM_MCP_BEARER_TOKEN` must have an explicit `AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT` deadline within one hour; scope the deployment to its intended tenant/environment. |
+| MCP write access | `AGENT_BOM_MCP_OPERATOR_TOKEN` is separate from the read token, requires its own `AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT` deadline within one hour, and is issued only to operators who need Shield/gateway write tools. |
 | CORS/TLS | `CORS_ORIGINS` contains only your hosted URL and the internal UI origin. The front door terminates HTTPS; API/UI bind to loopback/private network only. |
 | Usage control | Invitees have explicit scan windows, provider/account scope, and a manual revoke path before they connect a cloud or Snowflake account. |
 
@@ -476,7 +476,7 @@ If this succeeds, the account can run the Native App containers.
 
    ```sql
    CALL agent_bom.core.enable_scanner_service();
-   CALL agent_bom.core.enable_mcp_runtime_service('<32+ character token>');
+   CALL agent_bom.core.enable_mcp_runtime_service($mcp_bearer_token, $mcp_bearer_token_expires_at);
    ```
 
 ## What to avoid

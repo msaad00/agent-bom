@@ -3,13 +3,19 @@
 import base64
 import hashlib
 import secrets
-from unittest.mock import AsyncMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.mcp_server import create_mcp_server
+
+
+@pytest.fixture(autouse=True)
+def _bounded_read_credential(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT", (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat())
 
 
 def _event(response):
@@ -128,12 +134,48 @@ def test_configured_read_token_reads_but_cannot_write(monkeypatch, tmp_path):
 @pytest.mark.parametrize("credential", ["wrong-token", "expired-read", "replaced-read"])
 def test_invalid_configured_read_credentials_fail_before_private_read(monkeypatch, tmp_path, credential):
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
-    if credential == "expired-read":
-        monkeypatch.setenv("AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT", "2020-01-01T00:00:00Z")
-    else:
-        monkeypatch.delenv("AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT", raising=False)
     server = create_mcp_server(
         host="127.0.0.1", port=8000, bearer_token="expired-read" if credential == "expired-read" else "current-read", profile="full"
     )
+    if credential == "expired-read":
+        from agent_bom import mcp_server
+
+        clock = Mock(wraps=datetime)
+        clock.now.return_value = datetime.now(timezone.utc) + timedelta(hours=1)
+        monkeypatch.setattr(mcp_server, "datetime", clock)
     with TestClient(server.streamable_http_app(), base_url="http://localhost:8000") as client:
         assert _read(client, credential)[0] == 401
+
+
+def test_existing_http_session_loses_access_at_token_deadline(monkeypatch, tmp_path):
+    from agent_bom import mcp_server
+
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    server = create_mcp_server(host="127.0.0.1", port=8000, bearer_token="private-read-token", profile="full")
+    with TestClient(server.streamable_http_app(), base_url="http://localhost:8000") as client:
+        status, called, headers = _read(client, "private-read-token")
+        assert status == 200 and called
+        clock = Mock(wraps=datetime)
+        clock.now.return_value = datetime.now(timezone.utc) + timedelta(hours=1)
+        monkeypatch.setattr(mcp_server, "datetime", clock)
+        with patch("agent_bom.api.routes.enterprise.list_audit_entries", new=AsyncMock()) as reader:
+            response = client.post(
+                "/mcp",
+                headers=headers,
+                json={"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "audit_query", "arguments": {}}},
+            )
+            assert response.status_code == 401
+            reader.assert_not_called()
+
+
+def test_sse_rejects_expired_credential_before_opening_stream(monkeypatch, tmp_path):
+    from agent_bom import mcp_server
+
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    server = create_mcp_server(host="127.0.0.1", port=8000, bearer_token="private-read-token")
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = datetime.now(timezone.utc) + timedelta(hours=1)
+    monkeypatch.setattr(mcp_server, "datetime", clock)
+    with TestClient(server.sse_app(), base_url="http://localhost:8000") as client:
+        response = client.get("/sse", headers={"Authorization": "Bearer private-read-token"})
+        assert response.status_code == 401

@@ -118,13 +118,20 @@ For non-loopback SSE or Streamable HTTP binds, `agent-bom` now fails closed unle
 `--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass
 `--allow-insecure-no-auth`. Keep TLS at your proxy or ingress for remote deployments.
 The regular bearer token is read-only. To enable audited Shield or identity
-write tools, configure a separate `AGENT_BOM_MCP_OPERATOR_TOKEN`; write calls
-still need `operator_role=admin`, the matching `operator_scopes` value, and an
-audit reason, but those arguments no longer authorize the write by themselves.
-For hosted or shared deployments, set ISO-8601 expiries for both tokens with
-`AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT` and
-`AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT`; expired tokens are rejected before
-any read or write scope is returned.
+write tools, configure a distinct `AGENT_BOM_MCP_OPERATOR_TOKEN`; startup rejects
+identical read and operator credential values. Write calls still need
+`operator_role=admin`, the matching `operator_scopes` value, and an audit reason,
+but those arguments no longer authorize the write by themselves.
+Every configured HTTP/SSE token requires an absolute timezone-aware ISO-8601
+expiry: `AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT` for read access and
+`AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT` when an operator token is configured.
+Startup rejects missing, malformed, expired, or more-than-one-hour deadlines;
+requests are rejected at expiry before any read or write scope is returned.
+Provision a fresh token and its deadline through your own credential-management
+workflow; Agent-Bom does not issue or automatically rotate these credentials.
+Supply both through the deployment's secure environment mechanism. The one-hour
+bound limits remaining acceptance, not proof of when the token was created.
+Local stdio does not use these HTTP credentials or require a token expiry.
 
 MCP HTTP authentication uses operator-provisioned bearer credentials. The MCP
 server does not expose an embedded OAuth authorization server or accept tokens
@@ -134,10 +141,13 @@ to read the server's private evidence. Configure the existing bearer credential
 in the client through its supported secure credential mechanism. API SSO/OIDC
 and gateway authentication are separate surfaces.
 
-Token expiry remains explicit configuration. Replacing a bearer credential and
-restarting the MCP process revokes the old credential; environment changes do
-not hot-reload into a running verifier. There is no OAuth grant or token lifetime
-to extend beyond that configured credential.
+Rotate the token and its absolute deadline together, then restart the MCP
+process to load the replacement. Environment changes do not hot-reload into a
+running verifier. Preserve the same deadline across ordinary restarts; never
+regenerate a deadline at boot for an unchanged token. A restart cannot extend an
+expired configured credential. There is no embedded OAuth refresh flow. Existing
+remote deployments must provision bounded credentials before upgrading; registry
+clients must receive the replacement through their secure credential settings.
 
 
 ### Enterprise Control-Plane Contract

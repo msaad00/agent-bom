@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from agent_bom.api.cost_store import CostBudget, LLMCostRecord, _decode_tags
+from agent_bom.api.cost_store import _REPORT_TOTALS_SQL, CostBudget, LLMCostRecord, _cost_scope, _decode_tags, _report_totals_row
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -184,15 +184,23 @@ class PostgresCostStore:
             for r in rows
         ]
 
-    def list_records(self, tenant_id: str, *, limit: int = 1000) -> list[LLMCostRecord]:
+    def report_totals(self, tenant_id: str, *, agent: str | None = None, cost_center: str | None = None) -> dict[str, Any]:
+        scope, params = _cost_scope(tenant_id, agent, cost_center, "%s")
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                "SELECT tenant_id, call_id, agent, session_id, provider, model, "
-                "input_tokens, output_tokens, cost_usd, priced, observed_at, "
-                "cost_center, allocation_tags "
-                "FROM llm_costs WHERE tenant_id = %s ORDER BY observed_at DESC LIMIT %s",
-                (tenant_id, limit),
-            ).fetchall()
+            return _report_totals_row(conn.execute(_REPORT_TOTALS_SQL + scope, params).fetchone())
+
+    def list_records(
+        self, tenant_id: str, *, limit: int = 1000, agent: str | None = None, cost_center: str | None = None
+    ) -> list[LLMCostRecord]:
+        scope, params = _cost_scope(tenant_id, agent, cost_center, "%s")
+        sql = (
+            "SELECT tenant_id, call_id, agent, session_id, provider, model, input_tokens, output_tokens, "
+            "cost_usd, priced, observed_at, cost_center, allocation_tags FROM llm_costs WHERE "
+        )
+        sql += scope
+        sql += " ORDER BY observed_at DESC, call_id DESC LIMIT %s"
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(sql, [*params, limit]).fetchall()
         return [
             LLMCostRecord(
                 r[0],

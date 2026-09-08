@@ -212,6 +212,13 @@ def _best_daily_rate(timed: Sequence[tuple[datetime, float]], now: datetime) -> 
     return max(candidates, key=lambda c: c[0])
 
 
+def unavailable_forecast(status: str, spend: float, budget: CostBudget | None = None, *, now: datetime | None = None) -> dict[str, Any]:
+    """Keep projections unknown when history or budget scope cannot support them."""
+    result = forecast_spend([], budget=budget, now=now)
+    result.update(status=status, current_spend_usd=spend)
+    return result
+
+
 def forecast_for_tenant(
     tenant_id: str,
     *,
@@ -228,12 +235,16 @@ def forecast_for_tenant(
     from agent_bom.api.cost_store import get_cost_store
 
     store = get_cost_store()
-    records = store.list_records(tenant_id, limit=max(1, min(limit, 100000)))
-    if agent:
-        records = [r for r in records if r.agent == agent]
+    records = store.list_records(tenant_id, limit=max(1, min(limit, 100000)), agent=agent)
+    totals = store.report_totals(tenant_id, agent=agent)
     budget = store.get_budget(tenant_id, agent or "")
     if budget is None and agent:
         budget = store.get_budget(tenant_id, "")
-    result = forecast_spend(records, budget=budget, now=now)
+    if len(records) != totals["total_calls"]:
+        result = unavailable_forecast("incomplete_history", totals["total_cost_usd"], budget, now=now)
+    elif budget is not None and budget.agent != (agent or ""):
+        result = unavailable_forecast("budget_scope_mismatch", totals["total_cost_usd"], budget, now=now)
+    else:
+        result = forecast_spend(records, budget=budget, now=now)
     result["tenant_id"] = tenant_id
     return result

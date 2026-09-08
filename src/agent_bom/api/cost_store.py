@@ -240,7 +240,11 @@ def budget_window_start(now: datetime | None = None) -> str | None:
 class CostStore(Protocol):
     def record_cost(self, record: LLMCostRecord) -> None: ...
 
-    def list_records(self, tenant_id: str, *, limit: int = 1000) -> list[LLMCostRecord]: ...
+    def list_records(
+        self, tenant_id: str, *, limit: int = 1000, agent: str | None = None, cost_center: str | None = None
+    ) -> list[LLMCostRecord]: ...
+
+    def report_totals(self, tenant_id: str, *, agent: str | None = None, cost_center: str | None = None) -> dict[str, Any]: ...
 
     def total_spend(self, tenant_id: str, *, agent: str | None = None, since: str | None = None) -> float: ...
 
@@ -251,6 +255,41 @@ class CostStore(Protocol):
     def get_budget(
         self, tenant_id: str, agent: str = "", *, cost_center: str = "", owner: str = "", workflow: str = ""
     ) -> CostBudget | None: ...
+
+
+# SQL aggregation returns a constant-size row regardless of ledger size. All
+# values are bound parameters; only the store-owned placeholder differs.
+_REPORT_TOTALS_SQL = (
+    "SELECT COUNT(*), COALESCE(SUM(cost_usd), 0), COALESCE(SUM(input_tokens), 0), "
+    "COALESCE(SUM(output_tokens), 0), COALESCE(SUM(CASE WHEN NOT priced THEN 1 ELSE 0 END), 0), "
+    "COUNT(DISTINCT NULLIF(agent, '')), MIN(observed_at), MAX(observed_at) "
+    "FROM llm_costs WHERE "
+)
+
+
+def _cost_scope(tenant_id: str, agent: str | None, cost_center: str | None, placeholder: str = "?") -> tuple[str, list[Any]]:
+    clauses = ["tenant_id = " + placeholder]
+    params: list[Any] = [tenant_id]
+    for column, value in (("agent", agent), ("cost_center", cost_center)):
+        if value:
+            clauses.append(column + " = " + placeholder)
+            params.append(value)
+    return " AND ".join(clauses), params
+
+
+def _report_totals_row(row: Any) -> dict[str, Any]:
+    return {
+        "total_calls": int(row[0]),
+        "total_cost_usd": round(float(row[1]), 6),
+        "total_input_tokens": int(row[2]),
+        "total_output_tokens": int(row[3]),
+        "unpriced_calls": int(row[4]),
+        "agents": int(row[5]),
+        "first_recorded_at": row[6],
+        "last_recorded_at": row[7],
+        "period": "all_recorded",
+        "basis": "estimated_token_cost",
+    }
 
 
 def spend_rollup(store: Any, tenant_id: str, *, since: str | None = None) -> list[dict[str, Any]]:
@@ -457,9 +496,36 @@ class InMemoryCostStore:
             self._seen[record.tenant_id].add(record.call_id)
             self._records[record.tenant_id].append(record)
 
-    def list_records(self, tenant_id: str, *, limit: int = 1000) -> list[LLMCostRecord]:
+    def list_records(
+        self, tenant_id: str, *, limit: int = 1000, agent: str | None = None, cost_center: str | None = None
+    ) -> list[LLMCostRecord]:
         with self._lock:
-            return list(self._records.get(tenant_id, []))[-limit:]
+            records = [
+                r
+                for r in self._records.get(tenant_id, [])
+                if (not agent or r.agent == agent) and (not cost_center or r.cost_center == cost_center)
+            ]
+            return sorted(records, key=lambda r: (r.observed_at, r.call_id), reverse=True)[:limit]
+
+    def report_totals(self, tenant_id: str, *, agent: str | None = None, cost_center: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            records = [
+                r
+                for r in self._records.get(tenant_id, [])
+                if (not agent or r.agent == agent) and (not cost_center or r.cost_center == cost_center)
+            ]
+            return _report_totals_row(
+                (
+                    len(records),
+                    sum(r.cost_usd for r in records),
+                    sum(r.input_tokens for r in records),
+                    sum(r.output_tokens for r in records),
+                    sum(not r.priced for r in records),
+                    len({r.agent for r in records if r.agent}),
+                    min((r.observed_at for r in records), default=None),
+                    max((r.observed_at for r in records), default=None),
+                )
+            )
 
     def total_spend(self, tenant_id: str, *, agent: str | None = None, since: str | None = None) -> float:
         with self._lock:
@@ -622,13 +688,17 @@ class SQLiteCostStore:
         )
         self._conn.commit()
 
-    def list_records(self, tenant_id: str, *, limit: int = 1000) -> list[LLMCostRecord]:
-        rows = self._conn.execute(
+    def list_records(
+        self, tenant_id: str, *, limit: int = 1000, agent: str | None = None, cost_center: str | None = None
+    ) -> list[LLMCostRecord]:
+        scope, params = _cost_scope(tenant_id, agent, cost_center)
+        sql = (
             "SELECT tenant_id, call_id, agent, session_id, provider, model, input_tokens, output_tokens, "
-            "cost_usd, priced, observed_at, cost_center, allocation_tags "
-            "FROM llm_costs WHERE tenant_id = ? ORDER BY observed_at DESC LIMIT ?",
-            (tenant_id, limit),
-        ).fetchall()
+            "cost_usd, priced, observed_at, cost_center, allocation_tags FROM llm_costs WHERE "
+        )
+        sql += scope
+        sql += " ORDER BY observed_at DESC, call_id DESC LIMIT ?"
+        rows = self._conn.execute(sql, [*params, limit]).fetchall()
         return [
             LLMCostRecord(
                 r[0],
@@ -647,6 +717,10 @@ class SQLiteCostStore:
             )
             for r in rows
         ]
+
+    def report_totals(self, tenant_id: str, *, agent: str | None = None, cost_center: str | None = None) -> dict[str, Any]:
+        scope, params = _cost_scope(tenant_id, agent, cost_center)
+        return _report_totals_row(self._conn.execute(_REPORT_TOTALS_SQL + scope, params).fetchone())
 
     def spend_rollup(self, tenant_id: str, *, since: str | None = None) -> list[dict[str, Any]]:
         """GROUP BY in SQL so a busy tenant is never truncated or walked in Python."""

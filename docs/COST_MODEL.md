@@ -1,9 +1,8 @@
 # Open Cost Model (FinOps)
 
 agent-bom attributes LLM API spend to agents, models, and providers so operators
-get cost accountability without adding a separate FinOps product. Unlike closed
-runtime platforms, the price model is **open and operator-tunable** — every
-number is in the repo and overridable.
+can inspect estimated token spend. The price model is open and operator-tunable;
+rates are recorded in the repository and can be overridden.
 
 ## How it works
 
@@ -29,6 +28,27 @@ OTel GenAI spans ──► token usage ──► open price table ──► per-
 
 No prompts, responses, or arguments are read or stored — only token counts and
 model identifiers. This preserves the read-only, metadata-only trust posture.
+
+## Reporting scope
+
+The Overview and cost report headline totals aggregate all retained cost records
+for the authenticated tenant, with any requested agent/cost-center filter.
+The report's `limit` bounds the detail breakdowns, including owner and tag slices;
+filters apply before that limit. `history.returned_calls` and `history.complete`
+identify whether those breakdowns cover the full matching ledger. Headline totals
+are independent of the detail limit on memory, SQLite, and Postgres stores.
+
+These are estimates from recorded tokens, not provider invoices or complete
+company AI spend. Unpriced calls remain explicit. Retention, missing telemetry,
+cache/tool charges, GPU infrastructure, and seat subscriptions can leave gaps.
+`first_recorded_at` and `last_recorded_at` are stored observation timestamps;
+the current trace ingestion path records receipt time, not provider billing time.
+Storage failures appear unavailable in Overview, never as zero spend.
+
+Forecasts return null projections with `incomplete_history` when the record limit
+truncates matching history, or `budget_scope_mismatch` when a broader budget cannot
+be forecast from the selected agent/cost-center history. A fallback tenant budget
+is compared with the tenant's spend, even when the report selects one agent.
 
 ## Price table
 

@@ -754,21 +754,19 @@ def _runtime_snapshot(request: Request, jobs: list[Any]) -> dict[str, Any]:
 def _cost_snapshot(request: Request) -> dict[str, Any]:
     """LLM spend rollup from the cost store (same source as /v1/observability/costs)."""
     try:
-        from agent_bom.api.cost_store import get_cost_store, summarize
+        from agent_bom.api.cost_store import get_cost_store
 
         store = get_cost_store()
-        records = store.list_records(_tenant_id(request), limit=10000)
-        report = summarize(records)
+        report = store.report_totals(_tenant_id(request))
         budget = store.get_budget(_tenant_id(request), "")
         return {
-            "total_cost_usd": report.get("total_cost_usd", 0.0),
-            "total_calls": report.get("total_calls", 0),
-            "agents": len(report.get("by_agent", {}) or {}),
+            **report,
+            "available": True,
             "budget_configured": budget is not None,
         }
     except Exception:  # pragma: no cover - cost store optional
         _logger.debug("cost snapshot failed", exc_info=False)
-        return {"total_cost_usd": 0.0, "total_calls": 0, "agents": 0, "budget_configured": False}
+        return {"available": False, "total_cost_usd": None, "total_calls": None, "agents": None, "budget_configured": None}
 
 
 def _identity_snapshot(request: Request) -> dict[str, Any]:
@@ -1597,9 +1595,9 @@ def _compose_overview(
         "cost": {
             "label": "LLM Cost",
             "href": "/cost",
-            "metric": round(float(cost["total_cost_usd"]), 2),
-            "metric_label": "USD tracked",
-            "status": "ok" if cost["total_calls"] > 0 else "idle",
+            "metric": round(float(cost["total_cost_usd"]), 2) if cost["available"] else None,
+            "metric_label": "USD estimated",
+            "status": ("ok" if cost["total_calls"] > 0 else "idle") if cost["available"] else "unavailable",
             "detail": cost,
         },
         "identity": {

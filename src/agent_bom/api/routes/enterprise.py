@@ -2182,7 +2182,7 @@ async def list_audit_entries(
         # schema_version on terminal list response.
         "schema_version": "v1",
         "entries": [e.to_dict() for e in entries],
-        "total": store.count(action=action, tenant_id=tenant_id),
+        "total": store.count(action=action, resource=resource, since=since, tenant_id=tenant_id),
         "limit": limit,
         "offset": offset,
     }

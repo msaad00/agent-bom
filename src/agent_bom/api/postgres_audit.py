@@ -496,7 +496,9 @@ class PostgresAuditLog:
                 for row in rows
             ]
 
-    def count(self, action: str | None = None, tenant_id: str | None = None) -> int:
+    def count(
+        self, action: str | None = None, tenant_id: str | None = None, *, resource: str | None = None, since: str | None = None
+    ) -> int:
         with _tenant_scope(tenant_id):
             sql = "SELECT COUNT(*) FROM audit_log"
             clauses: list[str] = []
@@ -507,6 +509,12 @@ class PostgresAuditLog:
             if action:
                 clauses.append("action = %s")
                 params.append(action)
+            if resource:
+                clauses.append("resource LIKE %s")
+                params.append(f"{resource}%")
+            if since:
+                clauses.append("timestamp >= %s")
+                params.append(since)
             if clauses:
                 sql += " WHERE " + " AND ".join(clauses)
             with _tenant_connection(self._pool) as conn:

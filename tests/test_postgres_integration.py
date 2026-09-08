@@ -1586,3 +1586,25 @@ def test_postgres_concurrent_first_insert_preserves_explicit_sla(monkeypatch):
         assert current["sla_due_at_source"] == "explicit"
     finally:
         reset_current_tenant(token)
+
+
+def test_postgres_audit_filtered_totals_match_paginated_rows():
+    from agent_bom.api.audit_log import AuditEntry
+    from agent_bom.api.postgres_store import PostgresAuditLog
+
+    store = PostgresAuditLog()
+    tenant = f"audit-filter-{uuid4().hex}"
+    for action, resource, timestamp in [
+        ("scan", "image/one", "2026-09-08T01:00:00Z"),
+        ("scan", "image/two", "2026-09-08T02:00:00Z"),
+        ("scan", "image/old", "2026-09-01T01:00:00Z"),
+        ("scan", "repo/one", "2026-09-08T01:00:00Z"),
+        ("config", "image/one", "2026-09-08T01:00:00Z"),
+    ]:
+        store.append(AuditEntry(action=action, actor="operator", resource=resource, timestamp=timestamp, details={"tenant_id": tenant}))
+    filters = dict(action="scan", resource="image/", since="2026-09-08", tenant_id=tenant)
+    assert store.count(**filters) == 2
+    assert len(store.list_entries(**filters, limit=1, offset=1)) == 1
+    assert store.list_entries(**filters, limit=1, offset=2) == []
+    assert store.count(**{**filters, "tenant_id": f"other-{tenant}"}) == 0
+    assert store.count(**{**filters, "resource": "absent/"}) == 0

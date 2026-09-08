@@ -346,7 +346,9 @@ class AuditLogStore(Protocol):
         offset: int = 0,
         tenant_id: str | None = None,
     ) -> list[AuditEntry]: ...
-    def count(self, action: str | None = None, tenant_id: str | None = None) -> int: ...
+    def count(
+        self, action: str | None = None, tenant_id: str | None = None, *, resource: str | None = None, since: str | None = None
+    ) -> int: ...
     def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]: ...
 
 
@@ -448,13 +450,19 @@ class InMemoryAuditLog:
             filtered = list(reversed(filtered))
             return filtered[offset : offset + limit]
 
-    def count(self, action: str | None = None, tenant_id: str | None = None) -> int:
+    def count(
+        self, action: str | None = None, tenant_id: str | None = None, *, resource: str | None = None, since: str | None = None
+    ) -> int:
         with self._lock:
             entries = self._entries
             if tenant_id is not None:
                 entries = [e for e in entries if str((e.details or {}).get("tenant_id", "")) == tenant_id]
             if action:
-                return sum(1 for e in entries if e.action == action)
+                entries = [e for e in entries if e.action == action]
+            if resource:
+                entries = [e for e in entries if e.resource.startswith(resource)]
+            if since:
+                entries = [e for e in entries if e.timestamp >= since]
             return len(entries)
 
     def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
@@ -763,7 +771,9 @@ class SQLiteAuditLog:
             for r in rows
         ]
 
-    def count(self, action: str | None = None, tenant_id: str | None = None) -> int:
+    def count(
+        self, action: str | None = None, tenant_id: str | None = None, *, resource: str | None = None, since: str | None = None
+    ) -> int:
         clauses = []
         params: list[object] = []
         if tenant_id is not None:
@@ -772,6 +782,12 @@ class SQLiteAuditLog:
         if action:
             clauses.append("action = ?")
             params.append(action)
+        if resource:
+            clauses.append("resource LIKE ?")
+            params.append(f"{resource}%")
+        if since:
+            clauses.append("timestamp >= ?")
+            params.append(since)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         row = self._conn.execute(f"SELECT COUNT(*) FROM audit_log{where}", params).fetchone()  # nosec B608
         return row[0] if row else 0

@@ -1473,9 +1473,9 @@ function auditEntries() {
   return [
     ["scan.completed", "api", "scan/" + SCAN_ID, { findings: 15, graph_nodes: graph.nodes.length }],
     ["gateway.policy.denied", "gateway", "tool/execute_command", { agent: "developer-copilot", rule: "block-shell" }],
-    ["agent_identity.issued", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
-    ["agent_identity.rotated", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
-    ["agent_identity.revoked", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
+    ["agent_identity.issued", "platform-admin", "identity/id_89c1a6f406bd7189", { tenant_id: "default", agent_id: "developer-copilot", owner: "platform-security", owner_type: "team", role: "analyst" }],
+    ["agent_identity.rotated", "platform-admin", "identity/id_89c1a6f406bd7189", { tenant_id: "default", agent_id: "developer-copilot", owner: "platform-security", owner_type: "team", rotated_from: "id_previous_copilot", overlap_seconds: 3600 }],
+    ["agent_identity.revoked", "security-operator", "identity/id_89c1a6f406bd7189", { tenant_id: "default", agent_id: "developer-copilot", owner: "platform-security", owner_type: "team", reason: "Contain unexpected shell access pending review" }],
     ["compliance.bundle.signed", "api", "compliance/soc2", { signer: "capture-key" }],
   ].map(([action, actor, resource, details], index) => ({
     entry_id: `entry-${index + 1}`,
@@ -2237,9 +2237,14 @@ async function installRoutes(page) {
   // Register the broad audit route before the specific integrity route.
   await page.route("**/v1/audit?**", (route) => {
     const url = new URL(route.request().url());
-    const resource = (url.searchParams.get("resource") ?? "").trim().toLowerCase();
-    const entries = auditEntries().filter((entry) => !resource || entry.resource.toLowerCase().includes(resource));
-    return fulfill(route, { entries, total: entries.length });
+    const resource = url.searchParams.get("resource") ?? "";
+    const action = url.searchParams.get("action") ?? "";
+    const since = url.searchParams.get("since") ?? "";
+    const entries = auditEntries().filter((entry) => (!resource || entry.resource.startsWith(resource))
+      && (!action || entry.action === action) && (!since || entry.timestamp >= since));
+    const offset = Number(url.searchParams.get("offset") ?? 0);
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    return fulfill(route, { entries: entries.slice(offset, offset + limit), total: entries.length });
   });
   await page.route("**/v1/audit/integrity?**", (route) => fulfill(route, {
     verified: 78,
@@ -3471,9 +3476,14 @@ async function main() {
       const resourceFilter = auditPage.getByPlaceholder("Filter by resource…");
       await resourceFilter.fill("identity");
       await filteredResponse;
-      const issuedEvent = auditPage.getByText("agent_identity.issued");
+      const issuedEvent = auditPage.getByRole("button", { name: /agent_identity.issued/ });
       await issuedEvent.waitFor({ state: "visible", timeout: 8_000 });
-      await issuedEvent.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+      await auditPage.getByRole("button", { name: /agent_identity.revoked/ }).click();
+      await auditPage.getByText("3 matching events").waitFor({ state: "visible" });
+      if (await auditPage.getByRole("button", { name: "Export and verify evidence" }).getAttribute("aria-expanded") !== "false") {
+        throw new Error("Audit export controls must start collapsed");
+      }
+      await scrollTo(auditPage, 0);
       await auditPage.waitForTimeout(350);
     }, {
       expectedText: ["agent_identity.issued", "agent_identity.rotated", "agent_identity.revoked", "identity/id_89c1a6f406bd7189"],

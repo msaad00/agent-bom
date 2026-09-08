@@ -20,10 +20,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.mcp_config_store import (
@@ -39,6 +40,7 @@ from agent_bom.api.mcp_config_store import (
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.versioning import API_V1_PREFIX
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.runtime.profile_resolution import ResolvedRuntimeProfile, resolve_runtime_profile
 from agent_bom.runtime_blueprints import runtime_role_blueprint
 
 if TYPE_CHECKING:
@@ -122,6 +124,113 @@ class McpConfigAssignmentUpdate(BaseModel):
     @classmethod
     def _normalize_expiry(cls, value: str) -> str:
         return _normalize_expiry_value(value)
+
+
+class RuntimeProfileEvaluationRequest(BaseModel):
+    """Operator-supplied simulation context; never caller credentials or payloads."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    config_id: str = Field(min_length=1, max_length=200)
+    issuer: str = Field(min_length=1, max_length=500)
+    environment: str = Field(min_length=1, max_length=120)
+    granted_scopes: list[str] = Field(default_factory=list, max_length=200)
+    upstream: str | None = Field(default=None, min_length=1, max_length=200)
+    tool: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("granted_scopes")
+    @classmethod
+    def _normalize_scopes(cls, values: list[str]) -> list[str]:
+        return _normalize_string_list(values)
+
+    @model_validator(mode="after")
+    def _target_pair(self) -> RuntimeProfileEvaluationRequest:
+        if self.tool is not None and self.upstream is None:
+            raise ValueError("upstream is required when testing a tool")
+        return self
+
+
+class RuntimeProfileEvaluationResponse(BaseModel):
+    schema_version: Literal["runtime.profile.evaluation.v1"] = "runtime.profile.evaluation.v1"
+    scope: Literal["profile_contract_only"] = "profile_contract_only"
+    executed: Literal[False] = False
+    profile_allowed: bool
+    reason_code: str
+    profile_id: str
+    profile: ResolvedRuntimeProfile | None = None
+
+
+@router.post(
+    "/runtime/profiles/evaluate",
+    dependencies=[cast(Any, require_authenticated_permission("read"))],
+    response_model=RuntimeProfileEvaluationResponse,
+)
+async def evaluate_runtime_profile(request: Request, body: RuntimeProfileEvaluationRequest) -> RuntimeProfileEvaluationResponse:
+    """Preview the canonical profile contract without issuing a grant or calling upstream.
+
+    Supplied issuer, environment and scopes are simulation inputs. Policy,
+    firewall, DLP, quotas and live credential verification still run at relay.
+    """
+    if str(getattr(request.state, "auth_method", "") or "") in {"", "anonymous", "no_auth"}:
+        raise HTTPException(status_code=401, detail="Authentication required for runtime profile evaluation")
+    tenant_id = _tenant(request)
+    config_id = body.config_id
+
+    def evaluate() -> RuntimeProfileEvaluationResponse:
+        from agent_bom.api.agent_identity_store import get_agent_identity_store
+
+        store = get_mcp_config_store()
+        assignment = store.get(tenant_id, config_id)
+        if assignment is None:
+            raise HTTPException(status_code=404, detail="MCP-client-config assignment not found")
+        profile = None
+        reason = "managed_identity_required"
+        if assignment.revoked or assignment.status == "revoked":
+            reason = "profile_revoked"
+        elif assignment.status != "active":
+            reason = "profile_disabled"
+        elif assignment.identity_id:
+            identity = get_agent_identity_store().get(assignment.identity_id, tenant_id=tenant_id)
+            if identity is None:
+                reason = "identity_invalid"
+            else:
+                resolution = resolve_runtime_profile(
+                    store,
+                    identity=identity,
+                    tenant_id=tenant_id,
+                    issuer=body.issuer,
+                    environment=body.environment,
+                    granted_scopes=set(body.granted_scopes),
+                )
+                reason = resolution.code.value
+                profile = resolution.profile
+                if profile is not None and profile.client_profile_id != config_id:
+                    profile = None
+                    reason = "profile_binding_changed"
+                if profile is not None and body.upstream is not None and not profile.allows_upstream(body.upstream):
+                    reason = "upstream_not_allowed"
+                elif profile is not None and body.tool is not None and not profile.allows_tool(body.tool):
+                    reason = "tool_not_allowed"
+        log_action(
+            "mcp_config.profile_evaluated",
+            actor=_actor(request),
+            resource=f"mcp-config/{config_id}",
+            tenant_id=tenant_id,
+            reason_code=reason,
+            executed=False,
+        )
+        return RuntimeProfileEvaluationResponse(
+            profile_allowed=reason == "resolved",
+            reason_code=reason,
+            profile_id=config_id,
+            profile=profile,
+        )
+
+    try:
+        return await anyio.to_thread.run_sync(evaluate)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - fail closed without backend exception text
+        raise HTTPException(status_code=503, detail="Runtime profile evaluation unavailable") from exc
 
 
 def _dep(permission: str) -> Any:

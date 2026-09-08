@@ -253,8 +253,8 @@ from agent_bom.cli._runtime import (  # noqa: E402
 )
 
 # ---------------------------------------------------------------------------
-# Runtime command group — hidden compatibility namespace.
-# Prefer top-level commands: `agent-bom proxy`, `agent-bom watch`, `agent-bom audit`.
+# Runtime group owns managed profiles and durable activity.
+# Proxy/watch/audit also retain their top-level shortcuts.
 # ---------------------------------------------------------------------------
 from agent_bom.cli._runtime_group import runtime_group  # noqa: E402
 
@@ -272,7 +272,7 @@ runtime_group.add_command(_runtime_watch_hidden, "watch")
 runtime_group.commands["configure"].hidden = True
 runtime_group.commands["protect"].hidden = True
 main.add_command(runtime_group)
-main.commands["runtime"].hidden = True  # Use proxy/watch/audit directly
+
 
 # Top-level shortcuts for primary runtime commands
 main.add_command(proxy_cmd, "proxy")

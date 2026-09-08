@@ -7,9 +7,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.104.0] - 2026-09-07
+## [0.104.0] - 2026-09-08
 
-This release improves the path from a developer scan to shared findings,
+This release improves the path from scoped scans to shared findings,
 operator review, and opt-in runtime controls. AI spend remains an estimate of
 recorded token usage; runtime receipts distinguish reported behavior from
 producer assurance.
@@ -18,9 +18,7 @@ producer assurance.
 
 - Preserve the imported report’s scan ID in finding links so investigation opens its persisted graph snapshot.
 - Keep AI spend visible within Overview coverage, with compliance and top risks directly below the main cards.
-
 - Keep advisory fixes scoped to their package and affected range; unknown fixes no longer inherit another package’s version.
-
 - Focused investigation graphs retain identity and data nodes that belong to the
   selected path, even when those layers are hidden in the broader estate view.
 - Scan caching honors `AGENT_BOM_STATE_DIR` in read-only containers while

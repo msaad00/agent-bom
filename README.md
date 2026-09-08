@@ -95,7 +95,7 @@ authenticated deployment guide below for a shared instance.
 | Where you run it | Start here |
 |---|---|
 | **Workstation evaluation** | [Docker pilot](docs/DEPLOY_QUICKSTART.md) — packaged API, dashboard and persistent state |
-| **Shared VM / private cloud** | [Authenticated deployment](site-docs/deployment/authenticated-hosted-instance.md) — Compose, PostgreSQL and configured identity |
+| **Shared VM / private cloud** | [Authenticated deployment](site-docs/deployment/authenticated-hosted-instance.md) · [Compose profile](deploy/docker-compose.platform.yml) — PostgreSQL and configured identity |
 | **Kubernetes** | [Helm deployment](site-docs/deployment/control-plane-helm.md) · [EKS Terraform](deploy/terraform/platform-eks) |
 | **Snowflake** | [Native App installation](docs/snowflake-native-app/INSTALL.md) |
 | **Restricted networks** | [Air-gapped image bundle](site-docs/deployment/airgapped-image-bundle.md) |

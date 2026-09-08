@@ -48,7 +48,9 @@ CREATE TABLE IF NOT EXISTS agent_bom.runtime_events (
     session_id String DEFAULT '',
     trace_id String DEFAULT '',
     request_id String DEFAULT '',
-    source_id String DEFAULT ''
+    source_id String DEFAULT '',
+    producer_assurance LowCardinality(String) DEFAULT 'unknown',
+    submission_provenance String DEFAULT '{}'
 ) ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (tenant_id, event_id)
 PARTITION BY toYYYYMM(event_timestamp);
@@ -244,6 +246,8 @@ ALTER TABLE agent_bom.runtime_events ADD COLUMN IF NOT EXISTS session_id String 
 ALTER TABLE agent_bom.runtime_events ADD COLUMN IF NOT EXISTS trace_id String DEFAULT '';
 ALTER TABLE agent_bom.runtime_events ADD COLUMN IF NOT EXISTS request_id String DEFAULT '';
 ALTER TABLE agent_bom.runtime_events ADD COLUMN IF NOT EXISTS source_id String DEFAULT '';
+ALTER TABLE agent_bom.runtime_events ADD COLUMN IF NOT EXISTS producer_assurance LowCardinality(String) DEFAULT 'unknown';
+ALTER TABLE agent_bom.runtime_events ADD COLUMN IF NOT EXISTS submission_provenance String DEFAULT '{}';
 ALTER TABLE agent_bom.posture_scores ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default';
 ALTER TABLE agent_bom.scan_metadata ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default';
 ALTER TABLE agent_bom.compliance_controls ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default';

@@ -195,3 +195,36 @@ def test_two_postgres_api_replicas_resume_one_shared_cursor_without_gaps() -> No
     finally:
         reset_current_tenant(token)
         _cleanup(first_replica, tenant_id)
+
+
+@pytest.mark.skipif(not os.environ.get("AGENT_BOM_POSTGRES_URL"), reason="requires a migrated live PostgreSQL database")
+def test_postgres_mixed_provenance_versions_preserve_replay() -> None:
+    from dataclasses import replace
+
+    from agent_bom.api.gateway_activity_store import _digest_payload
+    from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance
+
+    store = PostgresGatewayActivityStore(max_events_per_tenant=100)
+    tenant_id = f"gateway-provenance-{uuid.uuid4().hex}"
+    old = _record("legacy", tenant_id)
+    new = replace(
+        _record("new", tenant_id),
+        record_schema_version="gateway.activity.record.v2",
+        submission_provenance=GatewaySubmissionProvenance(
+            submission_source_id="gateway-node-a", submission_session_id="session-a", producer_assurance="caller_asserted"
+        ),
+    )
+    new = replace(new, event_digest=_digest_payload(new))
+    token = set_current_tenant(tenant_id)
+    try:
+        store.append_batch([old, new])
+        page = store.list_activity(tenant_id)
+        assert [event["record_schema_version"] for event in page.events] == ["gateway.activity.record.v1", "gateway.activity.record.v2"]
+        assert page.events[0]["event_digest"] == old.event_digest
+        assert set(store.append_batch([old, new]).duplicate_event_ids) == {"legacy", "new"}
+        summary = store.summarize_window(tenant_id, start="2000-01-01T00:00:00+00:00", end="2099-12-31T23:59:59+00:00")
+        assert summary.producer_assurance_counts == {"unknown": 1, "caller_asserted": 1}
+        assert summary.tool_calls_authorized == 2
+    finally:
+        reset_current_tenant(token)
+        _cleanup(store, tenant_id)

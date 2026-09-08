@@ -96,14 +96,45 @@ the README's Helm quick-start for the operator path.
 
 ## The audit relay
 
-All three policy layers (gateway, firewall, proxy) emit decisions to
-the same `/v1/proxy/audit` HMAC-chained relay. Each event carries:
+Gateway, firewall and proxy processes submit reported decisions to
+`POST /v1/proxy/audit`. Analyst ingestion remains supported. The server binds
+tenant and receipt time to the admitted request; the caller's source name does
+not authenticate the originating runtime.
 
-- the layer that made the decision,
-- the request fingerprint (tenant, agent, target, method, tool),
-- the decision (`allow` / `deny` / `redact` / `approve`),
-- the policy version that produced it,
-- a hash chain link so tampering is detectable.
+New canonical gateway records carry `gateway.activity.record.v2` submission
+provenance. `source_id` and `session_id` identify the submitting collector and
+batch consistently in alerts, the ledger and analytics. A relay's differing
+nested origins remain `reported_source_id` and `reported_session_id` inside
+`submission_provenance`. Multiple reported origins in one batch are supported.
+The server sets producer assurance to `caller_asserted`, discarding submitted
+assurance or actor claims. Keys without a stable principal remain unidentified;
+no person or producer identity is inferred from a key label.
+
+Durability, event digests and the API audit log establish receipt and retained
+record integrity. They do not prove the reported decision happened at an
+authenticated producer. Consumer posture/health assessments must be read with
+that evidence boundary; receipt freshness is not producer attestation.
+
+Producer-supplied `trace_id` remains part of canonical event identity. When it
+is absent, the API uses the stable `event_id` as the correlation fallback. The
+first request's trace is retained separately as `receipt_trace_id`; like receipt
+time, it is excluded from event-digest comparison and is not rewritten by a
+retry. Request/audit correlation remains available without turning a new HTTP
+request trace into a changed producer event. Historical records without this
+receipt field retain their original serialization. A pre-upgrade event whose
+trace was filled from an HTTP request can still conflict when retried without
+that original trace; stored history is not silently rewritten.
+
+Existing v1 records retain their bytes, digest and unknown producer assurance.
+An exact canonical retry can be deduplicated without upgrading that history.
+A new differing reported origin cannot be compared with v1, which did not
+retain it, and remains an explicit conflict. Changed v2 actors or event claims
+also conflict. Check `durable_conflict_count` and `durable_conflict_event_ids`
+even on a successful batch response; conflicted records are not accepted.
+Idempotency now includes authenticated submission context: an old cached
+request fingerprint may return409 after upgrade. A new idempotency key allows
+the unchanged canonical event to undergo ledger replay validation; it does not
+bypass an event-ID conflict.
 
 For a control-plane-connected multi-tenant gateway, an API key is first
 validated by the gateway and then reused only for that tenant's audit ingest.
@@ -116,10 +147,10 @@ API key or bearer token. After restart, any discovered tenant backlog remains
 degraded and blocks readiness until a newly authenticated request rebinds that
 tenant's credential; malformed or unsafe registry state fails closed.
 
-The chain is described in `docs/PROXY_AUDIT_LOG.md`. Operators reading
-audit output can attribute every denial to exactly one layer; the
-precedence rules in `docs/POLICY_PRECEDENCE.md` guarantee no event has
-ambiguous ownership.
+The [gateway activity store](../src/agent_bom/api/gateway_activity_store.py)
+implements canonical digest, conflict and retention rules. The
+[API audit log](../src/agent_bom/api/audit_log.py) records ingestion actions
+separately from the producer's reported policy decision.
 
 ## Where to go for surface-specific detail
 
@@ -136,3 +167,28 @@ ask "what runs where?" The per-surface docs above remain the source of
 truth for each surface's schema, configuration, and operational
 runbook. None of those docs are deprecated by this reference; future
 work may consolidate further once the runtime surface stabilises.
+
+### Producer assurance in runtime views
+
+Gateway feed events expose `producer_assurance` as `unknown` or
+`caller_asserted`. An authenticated collector may report a producer; storage
+integrity and a fresh receipt do not authenticate that reported producer.
+Historical records without submission provenance remain `unknown`.
+
+Feed and KPI responses expose `producer_assurance_counts` with
+`producer_assurance_count_basis: classified_events`. Feed counts describe the
+returned page; KPI counts describe classified events in the stated retained
+window. These include data-filter and LLM records, so they are not a replacement
+for tool-call totals. Unknown assurance does not mean an event is absent.
+Window completeness and receipt freshness retain their separate fields.
+
+Proxy status includes receipt health with `assurance_basis: transport_receipt`.
+A recent server receipt can report live transport while producer assurance
+remains unknown. Configuration alone indicates a connected/configured runtime
+surface and does not establish a live producer.
+
+The runtime production index counts alert and metrics submissions under
+`producer_assurance_count_basis: submissions`; a metrics summary may describe
+many calls. Blueprint comparison reports `comparison_scope:
+reported_activity_only`: an aligned result covers submitted activity only,
+not producer identity, unreported activity, or an approval of the deployment.

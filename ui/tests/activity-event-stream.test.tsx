@@ -71,13 +71,15 @@ describe("ActivityEventStream", () => {
       expect(screen.getByText("build-agent → filesystem.write_file")).toBeInTheDocument(),
     );
     expect(screen.getByText("review-agent → repository.read")).toBeInTheDocument();
-    expect(screen.getByText("Live gateway")).toBeInTheDocument();
+    expect(screen.getByText("Live transport")).toBeInTheDocument();
+    expect(screen.getAllByText("Producer unknown").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByText("build-agent → filesystem.write_file"));
 
     expect(screen.getByRole("dialog", { name: "Activity event details" })).toBeInTheDocument();
     expect(screen.getByText("runtime-policy")).toBeInTheDocument();
     expect(screen.getByText("trace-gateway")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByText("Producer unknown")).toBeInTheDocument();
     expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(3);
   });
 
@@ -167,6 +169,21 @@ describe("ActivityEventStream", () => {
     consoleError.mockRestore();
   });
 
+
+  it("keeps caller-reported producer identity distinct from transport health and event provenance", async () => {
+    apiMock.getGatewayFeed.mockResolvedValue({
+      events: [{ event_id: "reported", ts: "2026-07-26T17:00:00Z", agent: "reporting-agent", action_type: "tool_call_authorized", target: "repository.read", detail: "reported activity", source: "gateway_activity_ledger", producer_assurance: "caller_asserted" }],
+      health: { state: "live", live: true, producer_assurance: "caller_asserted" },
+    });
+    render(<ActivityEventStream observabilityEvents={[]} />);
+    await screen.findByText("reporting-agent → repository.read");
+    expect(screen.getByText("Live transport")).toBeInTheDocument();
+    expect(screen.getAllByText("Reported producer").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("reporting-agent → repository.read"));
+    expect(within(screen.getByRole("dialog")).getByText("Reported producer")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByText("gateway_activity_ledger")).toBeInTheDocument();
+  });
+
   it("never labels stale retained events as live", async () => {
     apiMock.getGatewayFeed.mockResolvedValue({
       events: [
@@ -195,7 +212,7 @@ describe("ActivityEventStream", () => {
     render(<ActivityEventStream observabilityEvents={[]} />);
 
     await waitFor(() => expect(screen.getByText("Stale gateway")).toBeInTheDocument());
-    expect(screen.queryByText("Live gateway")).not.toBeInTheDocument();
+    expect(screen.queryByText("Live transport")).not.toBeInTheDocument();
   });
 });
 

@@ -85,6 +85,72 @@ def test_glama_listing_accepts_exact_public_api_tool_inventory(monkeypatch, caps
     assert payload["expected_tool_count"] == 77
 
 
+def test_glama_listing_accepts_split_version_and_profile_aware_copy(monkeypatch, capsys, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    page = """<main>The full compatibility catalog has <strong>2 MCP tools</strong>.
+    <section>Tool changes <span>v</span><span>0.103.2</span></section></main>"""
+    contract = [{"name": name, "inputSchema": {"type": "object", "properties": {}}} for name in ["check", "scan"]]
+    expected = tmp_path / "contract.json"
+    expected.write_text(json.dumps(contract))
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: page)
+    monkeypatch.setattr(script, "_fetch_json", lambda _url, _timeout: {"tools": contract})
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "2",
+                "--expected-tool-contract-file",
+                str(expected),
+                "--json",
+                "--retries",
+                "1",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["listing_version"] == "0.103.2"
+    assert payload["exact_tool_set"] is True
+    assert payload["exact_input_schemas"] is True
+
+
+@pytest.mark.parametrize("version", ["0.103.20", "0.103.2rc1", "0.103.2-dev", "0.103.1"])
+def test_glama_split_version_requires_exact_release(version):
+    script = _load_script("check_glama_listing.py")
+    page = f"<main>v <span>{version}</span> The full compatibility catalog has 86 MCP tools.</main>"
+    assert any("v0.103.2" in failure for failure in script._check(page, "0.103.2", 86))
+
+
+def test_glama_profile_aware_copy_does_not_replace_indexed_schema_verification(monkeypatch, capsys, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    page = "v 0.103.2 The full compatibility catalog has 1 MCP tools."
+    expected = tmp_path / "contract.json"
+    expected.write_text(json.dumps([{"name": "scan", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}}]))
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: page)
+    monkeypatch.setattr(script, "_fetch_json", lambda _url, _timeout: {"tools": [{"name": "scan", "inputSchema": {"type": "object"}}]})
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.103.2",
+                "--expected-tool-count",
+                "1",
+                "--expected-tool-contract-file",
+                str(expected),
+                "--json",
+                "--retries",
+                "1",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["exact_input_schemas"] is False
+    assert "input schema differs" in payload["error"]
+
+
 def test_glama_listing_rejects_same_count_with_a_different_tool(monkeypatch, capsys, tmp_path):
     script = _load_script("check_glama_listing.py")
     expected_names = ["graph_correlate", "graph_correlation_status"]

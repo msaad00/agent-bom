@@ -152,6 +152,67 @@ implements canonical digest, conflict and retention rules. The
 [API audit log](../src/agent_bom/api/audit_log.py) records ingestion actions
 separately from the producer's reported policy decision.
 
+## Resumable gateway activity
+
+After configuring authenticated gateway audit ingest, read its canonical
+activity from the control plane:
+
+```bash
+curl --no-buffer --fail-with-body \
+  -H "X-API-Key: ${AGENT_BOM_API_KEY}" \
+  "${AGENT_BOM_API_URL}/v1/gateway/feed/stream?limit=100"
+```
+
+The artifact is an SSE stream of metadata-only `activity` frames. Each frame
+contains up to 500 canonical records in **ingest ordinal order**, including
+tool decisions, DLP actions, profile denials, warnings, and enforcement outcomes.
+Profile, blueprint, policy, evidence, and trace references remain distinct.
+Submission provenance retains its `unknown` or `caller_asserted` assurance;
+neither a received frame nor a heartbeat attests producer enforcement.
+
+Save the frame's `id` after processing its **entire** JSON batch. Resume with
+`Last-Event-ID: <saved-id>` or `?cursor=<saved-id>`. The header wins when both
+are present, so a browser reconnect does not reuse a stale initial query
+cursor. A `next_cursor` from `/v1/gateway/feed` can also start the stream. With
+no cursor, the stream begins at the oldest retained event, drains history,
+then polls for new commits. An empty ledger emits a `checkpoint` frame with a
+cursor that still catches events appended immediately after that read.
+
+This stream covers **canonical gateway activity only**. Legacy process-local
+alerts and LLM cost observations remain on the REST compatibility projection;
+they have no shared ledger ordinal. Historical records removed by retention
+are unavailable, as indicated by `retention_floor_ordinal`. Replaying an
+unacknowledged frame after a client crash is possible: consumers should commit
+their batch and cursor together or deduplicate by event ID. Store deduplication
+is bounded by the reported `dedupe_window_events`.
+
+| Condition | Behavior and next step |
+|---|---|
+| Anonymous caller, including loopback | HTTP 401; authenticate with a read-capable API key, browser session, or attested proxy identity. |
+| Malformed, future, or cross-tenant cursor | HTTP 400; do not switch tenants or silently discard the cursor. |
+| Cursor older than retention | HTTP 410 before streaming, or terminal `gap` after streaming starts; stop automatic reconnect, record the missing history, and explicitly reset to retained history. |
+| Ledger unavailable | HTTP 503, or terminal `unavailable`; back off and reconnect from the last processed cursor. No ring-buffer fallback. |
+| Ephemeral memory backend | HTTP 503; configure SQLite for one node or shared Postgres for replicas. |
+| Stream capacity exhausted | HTTP 503 with `Retry-After: 5`; retry with backoff. Capacity is 64 active streams per API worker. |
+| Normal connection renewal | Terminal `reconnect`; reconnect from the saved cursor through authentication again. |
+
+Connections renew after 30 seconds of iteration; a blocked send times out
+after 5 seconds. Revocation/expiry is rechecked on the next authenticated
+connection, rather than continuously during an existing connection. SSE
+comments every 10 seconds maintain the transport without advancing the cursor.
+Backfill and tailing use the same ledger reads, with no process-local subscribe
+handoff; database work runs off the event loop and holds no DB connection while
+waiting to send. Configure ingress to permit streaming, disable response
+buffering, and allow idle periods longer than the heartbeat interval.
+
+Rollback is additive: stop stream consumers and use `/v1/gateway/feed` REST
+readback. This endpoint requires no schema migration and changes no gateway
+enforcement settings. The current dashboard continues to use its existing
+metrics-driven refresh until its stream integration is delivered.
+
+Local SQLite restart/readback and API contracts do not establish deployed
+Helm/Postgres replica failover; that deployment acceptance remains separate.
+
 ## Where to go for surface-specific detail
 
 | Surface | Primary doc | Secondary references |

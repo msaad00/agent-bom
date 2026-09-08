@@ -215,6 +215,7 @@ def test_postgres_mixed_provenance_versions_preserve_replay() -> None:
         ),
     )
     new = replace(new, event_digest=_digest_payload(new))
+    token = set_current_tenant(tenant_id)
     try:
         store.append_batch([old, new])
         page = store.list_activity(tenant_id)
@@ -225,4 +226,5 @@ def test_postgres_mixed_provenance_versions_preserve_replay() -> None:
         assert summary.producer_assurance_counts == {"unknown": 1, "caller_asserted": 1}
         assert summary.tool_calls_authorized == 2
     finally:
+        reset_current_tenant(token)
         _cleanup(store, tenant_id)

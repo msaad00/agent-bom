@@ -823,7 +823,7 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
         "package": package,
         "severity": (item.get("severity") or "unknown").lower(),
         "source": "blast_radius",
-        "scan_id": job.job_id,
+        "scan_id": str((job.result or {}).get("scan_id") or job.job_id),
         "scan_sources": _scan_source_labels(job),
         "affected_agents": item.get("affected_agents", []),
         "affected_servers": item.get("affected_servers", []),
@@ -904,7 +904,7 @@ def _iter_package_findings(job: ScanJob) -> list[dict[str, Any]]:
                             "severity": str(vuln.get("severity") or "unknown").lower(),
                             "summary": vuln.get("summary") or vuln.get("description"),
                             "source": "package_vulnerability",
-                            "scan_id": job.job_id,
+                            "scan_id": str((job.result or {}).get("scan_id") or job.job_id),
                             "scan_sources": scan_sources,
                             "affected_agents": [agent_name] if agent_name else [],
                             "affected_servers": [server_name] if server_name else [],
@@ -1136,7 +1136,7 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         row = dict(item)
-        row.setdefault("scan_id", job.job_id)
+        row.setdefault("scan_id", str(result.get("scan_id") or job.job_id))
         row.setdefault("scan_sources", _scan_source_labels(job))
         _absorb(_attach_reach(row))
 

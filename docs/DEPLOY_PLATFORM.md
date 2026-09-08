@@ -26,7 +26,8 @@ This page is the docs-tree hub for deployment. Each sibling owns one job:
 Across every tier the posture is the same:
 
 - **Read-only on your cloud.** The scanner inventories accounts with read-only
-  roles (`SecurityAudit` / `ViewOnlyAccess`). It never mutates your resources.
+  roles (`SecurityAudit` / `ViewOnlyAccess`). Opt-in disk side-scans use a separate
+  grant to create and clean up temporary cloud resources.
 - **Keyless where possible.** Cloud access is via assumable roles bound to OIDC
   / IRSA, not long-lived keys. Secrets live in your secret manager and are
   referenced, never minted into Terraform state or kubeconfigs on disk.

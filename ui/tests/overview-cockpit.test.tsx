@@ -276,7 +276,7 @@ describe("OverviewCockpit", () => {
     // Spend has its own visible summary outside operational signals.
     expect(screen.getByText(/3 of 3 active/i)).toBeInTheDocument();
     expect(within(strip).queryByText("LLM Cost")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "AI spend & usage" })).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Coverage" })).getByRole("region", { name: "AI spend & usage" })).toBeVisible();
   });
 
   it("renders the five security coverage lanes with reconciled severity counts", async () => {

@@ -26,9 +26,9 @@ describe("SiemPanel", () => {
   it("renders connector types and formats", async () => {
     render(<SiemPanel />);
     const connectors = await screen.findByTestId("siem-connectors");
-    expect(connectors).toHaveTextContent("splunk");
+    await waitFor(() => expect(connectors).toHaveTextContent("splunk"));
     expect(connectors).toHaveTextContent("syslog");
-    expect(screen.getByTestId("siem-formats")).toHaveTextContent("ocsf");
+    await waitFor(() => expect(screen.getByTestId("siem-formats")).toHaveTextContent("ocsf"));
   });
 
   it("runs a connectivity test and shows the healthy result", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   api,
   type ApiKeyRecord,
@@ -10,43 +10,21 @@ import {
   formatDate,
 } from "@/lib/api";
 import { PaginationBar } from "@/components/pagination-bar";
-import {
-  FileText,
-  RefreshCw,
-  Loader2,
-  AlertTriangle,
-  ShieldCheck,
-  ShieldAlert,
-  Search,
-  CheckCircle2,
-  Filter,
-} from "lucide-react";
+import { RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthState } from "@/components/auth-provider";
-import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { KeyLifecyclePanel } from "@/components/key-lifecycle-panel";
 import { AuditEvidencePanel } from "@/components/audit-evidence-panel";
 import { PageLaneHeader } from "@/components/page-lane";
-
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const ACTION_COLORS: Record<string, string> = {
-  scan: "bg-emerald-950 text-emerald-300 border-emerald-800",
-  policy_eval: "bg-blue-950 text-blue-300 border-blue-800",
-  fleet_change: "bg-purple-950 text-purple-300 border-purple-800",
-  exception: "bg-yellow-950 text-yellow-300 border-yellow-800",
-  alert: "bg-red-950 text-red-300 border-red-800",
-  config: "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
-};
-
-const ACTION_TYPES = ["scan", "policy_eval", "fleet_change", "exception", "alert", "config"];
+import { Collapsible } from "@/components/collapsible";
 
 const PAGE_SIZE = 50;
+const FIELD = "min-w-0 rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 text-sm";
+const textDetail = (entry: AuditEntry, key: string) => typeof entry.details?.[key] === "string" ? entry.details[key] as string : "";
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function AuditLogPage() {
   const { session, loading: authSessionLoading, hasCapability } = useAuthState();
-  const { counts } = useDeploymentContext();
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [integrity, setIntegrity] = useState<AuditIntegrityResponse | null>(null);
@@ -58,43 +36,43 @@ export default function AuditLogPage() {
   const [adminError, setAdminError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
+  const requestId = useRef(0);
+  const [since, setSince] = useState("");
+  const [range, setRange] = useState("all");
+
   // Filters
   const [actionFilter, setActionFilter] = useState<string>("");
   const [resourceFilter, setResourceFilter] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const roleLabel = session?.role_summary?.display_name ?? session?.role ?? "Unknown";
   const canManageKeys = hasCapability("keys.manage");
-  const auditUnavailable = counts ? !(counts.has_proxy || counts.has_gateway || counts.has_traces) : false;
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [log, integ] = await Promise.all([
-        api.listAuditEntries({
-          action: actionFilter || undefined,
-          resource: resourceFilter || undefined,
-          limit: PAGE_SIZE,
-          offset: page * PAGE_SIZE,
-        }),
-        api.getAuditIntegrity(),
-      ]);
-      setEntries(log.entries);
-      setTotal(log.total);
-      setIntegrity(integ);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to load audit log";
-      if (/forbidden|analyst|viewer/i.test(message)) {
-        setError(
-          `Audit log requires analyst role or higher. You're signed in as ${roleLabel}. Sign in with a higher role to view entries.`
-        );
-      } else {
-        setError(message);
-      }
-    } finally {
-      setLoading(false);
+    const id = ++requestId.current;
+    const [log, integ] = await Promise.allSettled([
+      api.listAuditEntries({
+        action: actionFilter || undefined,
+        resource: resourceFilter || undefined,
+        since: since || undefined,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      }),
+      api.getAuditIntegrity(1000, false),
+    ]);
+    if (id !== requestId.current) return;
+    if (log.status === "fulfilled") {
+      setEntries(log.value.entries);
+      setTotal(log.value.total);
+    } else {
+      setEntries([]);
+      setTotal(0);
+      setError("Audit events are unavailable. Check your connection and audit access, then retry.");
     }
-  }, [actionFilter, resourceFilter, page, roleLabel]);
+    setIntegrity(integ.status === "fulfilled" ? integ.value : null);
+    setLoading(false);
+  }, [actionFilter, resourceFilter, since, page]);
 
   const loadAdmin = useCallback(async () => {
     if (authSessionLoading) {
@@ -121,14 +99,16 @@ export default function AuditLogPage() {
   }, [authSessionLoading, canManageKeys, roleLabel]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 150);
+    return () => { window.clearTimeout(timer); requestId.current += 1; };
+  }, [load]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load();
-      if (!authSessionLoading && canManageKeys) {
-        void loadAdmin();
-      }
+      if (!authSessionLoading && canManageKeys) void loadAdmin();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [authSessionLoading, canManageKeys, load, loadAdmin]);
+  }, [authSessionLoading, canManageKeys, loadAdmin]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -142,275 +122,119 @@ export default function AuditLogPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <PageLaneHeader
-        lane="governance"
-        title="Audit Log"
-        subtitle="HMAC-signed, tamper-evident log of scan, policy, and fleet actions."
-        actions={
-          <button
-            onClick={() => {
-              void load();
-              if (canManageKeys) {
-                void loadAdmin();
-              }
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
-          </button>
-        }
+    <div className="space-y-5">
+      <PageLaneHeader lane="governance" title="Audit Log"
+        subtitle="Trace human and agent actions to their recorded evidence."
+        actions={<button onClick={() => { void load(); }} className={`${FIELD} flex items-center gap-2`}>
+          <RefreshCw className="h-4 w-4" /> Refresh
+        </button>}
       />
 
-      {canManageKeys ? (
-        <KeyLifecyclePanel
-          loading={adminLoading}
-          error={adminError}
-          policy={authPolicy}
-          keys={keys}
-          onRefresh={loadAdmin}
-          roleLabel={roleLabel}
-        />
-      ) : null}
-
-      {/* Integrity banner + stats */}
-      {integrity && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
-            <FileText className="w-4 h-4 mb-2 text-blue-400" />
-            <div className="text-2xl font-bold font-mono">{total.toLocaleString()}</div>
-            <div className="text-xs text-[var(--text-tertiary)] mt-0.5">Total Entries</div>
-          </div>
-          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
-            <CheckCircle2 className="w-4 h-4 mb-2 text-emerald-400" />
-            <div className="text-2xl font-bold font-mono">{integrity.verified.toLocaleString()}</div>
-            <div className="text-xs text-[var(--text-tertiary)] mt-0.5">HMAC Verified</div>
-          </div>
-          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
-            {integrity.tampered > 0 ? (
-              <ShieldAlert className="w-4 h-4 mb-2 text-red-400" />
-            ) : (
-              <ShieldCheck className="w-4 h-4 mb-2 text-emerald-400" />
-            )}
-            <div className={`text-2xl font-bold font-mono ${integrity.tampered > 0 ? "text-red-400" : ""}`}>
-              {integrity.tampered}
-            </div>
-            <div className="text-xs text-[var(--text-tertiary)] mt-0.5">Tampered</div>
-          </div>
-          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
-            <Search className="w-4 h-4 mb-2 text-[var(--text-secondary)]" />
-            <div className="text-2xl font-bold font-mono">{integrity.checked.toLocaleString()}</div>
-            <div className="text-xs text-[var(--text-tertiary)] mt-0.5">Checked</div>
-          </div>
+      <section aria-label="Control-plane integrity" className="border-y border-[var(--border-subtle)] py-3 text-sm">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <strong className={integrity?.tampered ? "text-red-600 dark:text-red-400" : ""}>
+            {loading ? "Checking integrity…" : !integrity ? "Integrity unavailable" : integrity.tampered
+              ? `${integrity.tampered.toLocaleString()} integrity exceptions need review`
+              : integrity.checked ? "No integrity exceptions detected" : "No records checked"}
+          </strong>
+          {integrity && !loading && <span className="text-[var(--text-secondary)]">
+            {integrity.verified.toLocaleString()} verified / {integrity.checked.toLocaleString()} checked
+          </span>}
         </div>
-      )}
+        <p className="mt-1 text-xs text-[var(--text-tertiary)]">Current tenant · Control-plane records across all actions and dates. Independent of the event filters below; runtime logs are excluded.</p>
+      </section>
 
-      {/* Signed evidence export + tamper-evident verification */}
-      <AuditEvidencePanel />
+      <section aria-label="Audit trail" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">Audit trail</h2>
+          <span aria-live="polite" className="text-sm text-[var(--text-secondary)]">
+            {loading ? "Loading events…" : error ? "Events unavailable" : `${total.toLocaleString()} matching events`}
+          </span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <label className="grid gap-1 text-xs text-[var(--text-secondary)]">Time range
+            <select className={FIELD} value={range} onChange={(e) => {
+              const value = e.target.value;
+              setRange(value);
+              setSince(value === "all" ? "" : new Date(Date.now() - Number(value) * 86400000).toISOString());
+              setPage(0);
+            }}>
+              <option value="all">All retained events</option><option value="1">Last 24 hours</option>
+              <option value="7">Last 7 days</option><option value="30">Last 30 days</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs text-[var(--text-secondary)]">Action (exact name)
+            <input aria-label="Action (exact name)" className={FIELD} value={actionFilter} list="audit-actions" placeholder="All actions"
+              onChange={(e) => { setActionFilter(e.target.value); setPage(0); }} />
+            <datalist id="audit-actions">{Array.from(new Set(entries.map((e) => e.action))).map((action) => <option key={action} value={action}>{action}</option>)}</datalist>
+          </label>
+          <label className="grid gap-1 text-xs text-[var(--text-secondary)]">Resource prefix
+            <input className={FIELD} value={resourceFilter} placeholder="Filter by resource…"
+              onChange={(e) => { setResourceFilter(e.target.value); setPage(0); }} />
+          </label>
+        </div>
+        {error && !loading && <p role="alert" className="py-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+        {!loading && !error && entries.length === 0 && <p className="py-6 text-sm text-[var(--text-secondary)]">No events match this scope. Adjust the filters or record an action to begin an audit trail.</p>}
+        {!loading && !error && entries.length > 0 && <div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)]">
+          <div aria-hidden="true" className="hidden grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.4fr)_1rem] gap-3 py-2 text-xs text-[var(--text-tertiary)] lg:grid">
+            <span>Action</span><span>Actor</span><span>Resource</span><span>Recorded outcome</span><span>Time</span><span />
+          </div>
+          {entries.map((entry) => {
+            const isExpanded = expanded.has(entry.entry_id);
+            const outcome = textDetail(entry, "outcome") || textDetail(entry, "decision") || textDetail(entry, "status") || "Not recorded";
+            const finding = textDetail(entry, "finding_id");
+            const cve = textDetail(entry, "cve");
+            const node = textDetail(entry, "node_id");
+            const scan = textDetail(entry, "scan_id");
+            const graphParams = new URLSearchParams({ ...(scan ? { scan } : {}), ...(node ? { node } : {}), ...(cve ? { cve } : {}), ...(finding ? { finding } : {}) });
+            const Chevron = isExpanded ? ChevronDown : ChevronRight;
+            return <div key={entry.entry_id}>
+              <button aria-expanded={isExpanded} aria-controls={`evidence-${entry.entry_id}`} onClick={() => toggleExpand(entry.entry_id)}
+                className="grid w-full grid-cols-[minmax(0,1fr)_1rem] gap-2 py-4 text-left text-sm hover:bg-[var(--surface-elevated)] focus-visible:outline-2 focus-visible:outline-emerald-500 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.4fr)_1rem] lg:gap-3">
+                <span className="break-words font-medium">{entry.action}</span>
+                <span className="col-start-1 break-words text-[var(--text-secondary)] lg:col-auto"><span className="lg:hidden">Actor: </span>{entry.actor}</span>
+                <span className="col-start-1 break-all text-[var(--text-secondary)] lg:col-auto">{entry.resource}</span>
+                <span className="col-start-1 text-[var(--text-secondary)] lg:col-auto"><span className="lg:hidden">Outcome: </span>{outcome}</span>
+                <time dateTime={entry.timestamp} className="col-start-1 text-xs text-[var(--text-tertiary)] lg:col-auto">{formatDate(entry.timestamp)}</time>
+                <Chevron className="col-start-2 row-start-1 h-4 w-4 self-center lg:col-start-6" />
+              </button>
+              {isExpanded && <div id={`evidence-${entry.entry_id}`} className="space-y-3 border-l-2 border-emerald-600 pb-4 pl-4 text-sm">
+                <p className="break-all text-xs text-[var(--text-secondary)]">Event ID: {entry.entry_id} · {entry.hmac_signature ? "Signature recorded; the aggregate check does not provide a per-event verdict." : "No signature recorded."}</p>
+                <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                  {([["agent_id", "Agent"], ["owner", "Owner"], ["reason", "Reason"], ["rotated_from", "Previous identity"], ["source_receipt_id", "Source receipt"]] as const).map(([key, label]) => textDetail(entry, key) && <div key={key}>
+                    <dt className="text-xs text-[var(--text-tertiary)]">{label}</dt><dd className="break-all">{textDetail(entry, key)}</dd>
+                  </div>)}
+                </dl>
+                {["before", "after"].some((key) => entry.details?.[key] !== undefined) && <div className="grid items-start gap-3 sm:grid-cols-2">
+                  {["before", "after"].map((key) => entry.details?.[key] !== undefined && <div key={key}>
+                    <h3 className="mb-1 font-medium capitalize">{key}</h3>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(entry.details[key], null, 2)}</pre>
+                  </div>)}
+                </div>}
+                <div className="flex flex-wrap gap-4 text-emerald-700 dark:text-emerald-400">
+                  {graphParams.size > 0 && <a href={`/security-graph?${graphParams}`}>Open in security graph →</a>}
+                  {(finding || cve) && <a href={`/findings?${new URLSearchParams(finding ? { finding } : { cve })}`}>Open finding →</a>}
+                </div>
+                <details><summary className="cursor-pointer text-[var(--text-secondary)]">Structured event evidence</summary>
+                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs text-[var(--text-secondary)]">{JSON.stringify(entry, null, 2)}</pre>
+                </details>
+              </div>}
+            </div>;
+          })}
+        </div>}
+        {!loading && !error && totalPages > 1 && <PaginationBar page={page + 1} totalPages={totalPages} totalItems={total} itemLabel="events"
+          onPrevious={() => setPage((p) => Math.max(0, p - 1))} onNext={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          previousDisabled={page === 0} nextDisabled={page >= totalPages - 1} />}
+      </section>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
-          <Filter className="w-3.5 h-3.5" />
-          Filter:
-        </div>
-        <div className="flex min-w-0 flex-wrap gap-1">
-          <button
-            onClick={() => { setActionFilter(""); setPage(0); }}
-            className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-              !actionFilter ? "bg-[var(--surface-muted)] text-[var(--foreground)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
-            }`}
-          >
-            All
-          </button>
-          {ACTION_TYPES?.map((a) => (
-            <button
-              key={a}
-              onClick={() => { setActionFilter(a); setPage(0); }}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                actionFilter === a ? "bg-[var(--surface-muted)] text-[var(--foreground)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
-              }`}
-            >
-              {a}
-            </button>
-          ))}
-        </div>
-        <input
-          value={resourceFilter}
-          onChange={(e) => { setResourceFilter(e.target.value); setPage(0); }}
-          placeholder="Filter by resource…"
-          className="w-full min-w-0 rounded border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2.5 py-1 text-xs text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-blue-600 sm:w-48"
-        />
+      <div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)]">
+        <Collapsible bare title="Export and verify evidence" defaultOpen={false} titleClassName="text-sm font-medium">
+          <AuditEvidencePanel />
+        </Collapsible>
+        {canManageKeys && <Collapsible bare title="Key management and revocation" defaultOpen={false} titleClassName="text-sm font-medium">
+          <KeyLifecyclePanel loading={adminLoading} error={adminError} policy={authPolicy} keys={keys} onRefresh={loadAdmin} roleLabel={roleLabel} />
+        </Collapsible>}
       </div>
-
-      {/* Loading */}
-      {loading && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-[var(--text-tertiary)]" />
-        </div>
-      )}
-
-      {/* Error */}
-      {error && !loading && (
-        <div className="text-center py-10 border border-dashed border-red-900/50 rounded-xl space-y-3">
-          <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
-          <p className="text-red-400 text-sm">Failed to load audit log</p>
-          <p className="text-[var(--text-tertiary)] text-xs">{error}</p>
-          <button
-            onClick={load}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Retry
-          </button>
-        </div>
-      )}
-
-      {/* Entries */}
-      {!loading && !error && (
-        <>
-          {entries.length === 0 ? (
-            <div className="text-center py-16 border border-dashed border-[var(--border-subtle)] rounded-xl">
-              <FileText className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
-              <p className="text-[var(--text-tertiary)] text-sm">
-                {auditUnavailable ? "No runtime audit surfaces enabled" : "No audit log entries"}
-              </p>
-              <p className="text-[var(--text-tertiary)] text-xs mt-1">
-                {auditUnavailable
-                  ? "Enable proxy, gateway, or trace ingest to populate runtime audit history."
-                  : "Entries will appear as scan, policy, and fleet actions are performed."}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {entries?.map((entry) => {
-                const isExpanded = expanded.has(entry.entry_id);
-                return (
-                  <div
-                    key={entry.entry_id}
-                    className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg overflow-hidden"
-                  >
-                    <button
-                      onClick={() => toggleExpand(entry.entry_id)}
-                      className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-[var(--surface-elevated)]/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
-                            ACTION_COLORS[entry.action] ?? ACTION_COLORS.config
-                          }`}
-                        >
-                          {entry.action}
-                        </span>
-                        <span className="text-xs text-[var(--text-secondary)] font-mono shrink-0">
-                          {entry.actor}
-                        </span>
-                        <span className="text-xs text-[var(--text-tertiary)] truncate">
-                          {entry.resource}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-[var(--text-tertiary)] shrink-0 ml-3">
-                        {formatDate(entry.timestamp)}
-                      </span>
-                    </button>
-                    {isExpanded && (
-                      <div className="border-t border-[var(--border-subtle)] px-4 py-3 space-y-2">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                          <div>
-                            <span className="text-[var(--text-tertiary)]">Entry ID</span>
-                            <div className="text-[var(--text-secondary)] mt-0.5 font-mono text-[10px] break-all">
-                              {entry.entry_id}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-[var(--text-tertiary)]">Timestamp</span>
-                            <div className="text-[var(--text-secondary)] mt-0.5">
-                              {formatDate(entry.timestamp)}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-[var(--text-tertiary)]">Actor</span>
-                            <div className="text-[var(--text-secondary)] mt-0.5 font-mono">
-                              {entry.actor}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-[var(--text-tertiary)]">HMAC</span>
-                            <div className="text-[var(--text-secondary)] mt-0.5 font-mono text-[10px] truncate">
-                              {entry.hmac_signature.slice(0, 16)}…
-                            </div>
-                          </div>
-                        </div>
-                        {(() => {
-                          const details = entry.details ?? {};
-                          const nodeId =
-                            typeof details.node_id === "string" ? details.node_id : "";
-                          const findingId =
-                            typeof details.finding_id === "string"
-                              ? details.finding_id
-                              : typeof details.cve === "string"
-                                ? details.cve
-                                : "";
-                          const scanId =
-                            typeof details.scan_id === "string" ? details.scan_id : "";
-                          return (
-                            <div className="flex flex-wrap gap-2">
-                              {nodeId || findingId || scanId ? (
-                                <a
-                                  href={`/security-graph?${new URLSearchParams({
-                                    ...(scanId ? { scan: scanId } : {}),
-                                    ...(findingId ? { cve: findingId } : {}),
-                                    ...(nodeId && !findingId ? { agent: nodeId } : {}),
-                                  }).toString()}`}
-                                  className="rounded-lg border border-emerald-700/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-800 dark:text-emerald-200"
-                                >
-                                  Open in security graph
-                                </a>
-                              ) : null}
-                              {findingId ? (
-                                <a
-                                  href={`/findings?q=${encodeURIComponent(findingId)}`}
-                                  className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)]"
-                                >
-                                  Open finding
-                                </a>
-                              ) : null}
-                            </div>
-                          );
-                        })()}
-                        {Object.keys(entry.details).length > 0 && (
-                          <div>
-                            <span className="text-xs text-[var(--text-tertiary)] block mb-1">
-                              Details
-                            </span>
-                            <pre className="text-[11px] text-[var(--text-secondary)] bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded-lg p-3 overflow-x-auto max-h-48">
-                              {JSON.stringify(entry.details, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {totalPages > 1 && (
-            <PaginationBar
-              page={page + 1}
-              totalPages={totalPages}
-              totalItems={total}
-              itemLabel="entries"
-              onPrevious={() => setPage((p) => Math.max(0, p - 1))}
-              onNext={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              previousDisabled={page === 0}
-              nextDisabled={page >= totalPages - 1}
-              className="pt-2"
-            />
-          )}
-        </>
-      )}
     </div>
   );
 }

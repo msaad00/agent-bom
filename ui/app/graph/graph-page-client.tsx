@@ -1944,7 +1944,7 @@ function GraphPageInner() {
           return {
             ...node,
             position: {
-              x: serpentineColumn * 400,
+              x: serpentineColumn * 460,
               y: row * 220,
             },
             className: composeFocusClass(node.className, inPath, !inPath),
@@ -2386,18 +2386,20 @@ function GraphPageInner() {
   const fitVisible = useCallback(() => {
     void reactFlow.fitView({ ...viewportOptions, duration: 240 });
   }, [reactFlow, viewportOptions]);
-  const fitSelection = useCallback(() => {
+  const fitSelection = useCallback(async () => {
     if (!selectedNodeId) return;
     const node = reactFlow.getNode(selectedNodeId);
-    if (node) {
-      void reactFlow.fitView({
-        nodes: [node],
-        padding: 0.7,
-        duration: 240,
-        maxZoom: 1.4,
-      });
+    if (!node) return;
+    await reactFlow.fitView({ nodes: [node], padding: 0.7, maxZoom: 1.4 });
+    const canvas = document.querySelector(".react-flow");
+    const drawer = document.querySelector('[data-testid="graph-entity-drawer"]');
+    const drawerWidth = drawer?.getBoundingClientRect().width ?? 0;
+    if (canvas && drawerWidth < canvas.getBoundingClientRect().width) {
+      const viewport = reactFlow.getViewport();
+      void reactFlow.setViewport({ ...viewport, x: viewport.x - drawerWidth / 2 });
     }
   }, [reactFlow, selectedNodeId]);
+
   const autoLayout = useCallback(() => {
     presentation.autoLayout();
     window.setTimeout(fitVisible, 0);
@@ -3775,6 +3777,7 @@ function GraphPageInner() {
             <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
               <span>{graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length} graph nodes · {displayEdges.length} relationships</span>
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
+              {selectedNodeId && <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4">Focus selection</button>}
             </div>
           )}
           <div className="relative min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
@@ -3792,7 +3795,7 @@ function GraphPageInner() {
           ) : rollupCanvasPending ? (
             <GraphPanelSkeleton
               title="Loading scope navigation"
-              detail="Collapsing the containment hierarchy before rendering aggregate navigation cards."
+              detail="Grouping the containment hierarchy."
             />
           ) : rollupDecisionActive ? (
             <GraphRollupDecisionSurface
@@ -3806,11 +3809,11 @@ function GraphPageInner() {
           ) : displayNodes.length === 0 ? (
             <GraphEmptyState
               title="No nodes match the current graph scope"
-              detail="The current combination of layers, severity, agent, depth, and runtime scope filtered everything out."
+              detail="No results for these layers, severity and scope."
               suggestions={[
-                "Drop the severity threshold or turn off vulnerable-only.",
-                "Switch from Relevant paths to Expanded when you need broader topology.",
-                "Re-enable the package or server layers to recover the path context.",
+                "Lower severity or disable vulnerable-only.",
+                "Use Expanded for broader topology.",
+                "Enable package and server layers.",
               ]}
               command="agent-bom agents --demo --offline"
             />
@@ -3909,7 +3912,7 @@ function GraphPageInner() {
                     complete: false,
                     sampled: false,
                     returned: displayNodes.length,
-                    reason: `Interactive render budget is ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes, ranked by severity. Dense neighborhoods are aggregated — filter or focus here, or open the estate roll-up, which aggregates the complete graph. This canvas is not the full estate.`,
+                    reason: `Partial canvas: up to ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes ranked by severity. Filter or focus, or open the complete estate roll-up.`,
                   }
                 }
                 visibleCount={displayNodes.length}
@@ -3988,23 +3991,22 @@ function ReachabilityDrillInPanel({
 }) {
   const affectedCount = summary ? Math.max(0, summary.nodeIds.size - 1) : 0;
   return (
-    <div className="mt-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-100">
+    <div className="mt-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-foreground">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-2">
-          <Route className="mt-0.5 h-4 w-4 text-rose-300" />
+          <Route className="mt-0.5 h-4 w-4 text-rose-700 dark:text-rose-300" />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-rose-300">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-rose-700 dark:text-rose-300">
               Reachability drill-in
             </p>
-            <p className="mt-1 text-sm font-medium text-rose-50">
+            <p className="mt-1 text-sm font-medium text-foreground">
               {summary
-                ? `${summary.rootLabel} can reach ${affectedCount} node${affectedCount === 1 ? "" : "s"}`
+                ? `${summary.rootLabel} reaches ${affectedCount} node${affectedCount === 1 ? "" : "s"} in this graph`
                 : "Loading reachable graph"}
             </p>
             {summary?.truncated && (
               <p className="mt-1 text-[11px] text-amber-200">
-                Traversal budget reached; narrow the graph or inspect a smaller
-                root.
+                Traversal limited. Narrow the scope.
               </p>
             )}
             {error && (
@@ -4028,64 +4030,67 @@ function ReachabilityDrillInPanel({
       </div>
 
       {summary && (
-        <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <div className="rounded-xl border border-rose-400/20 bg-background/45 p-2">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">
-              Affected by type
-            </p>
-            {Object.keys(summary.countsByType).length === 0 ? (
-              <p className="mt-2 text-ink-secondary">
-                No downstream nodes returned for this root.
+        <details className="mt-2 border-t border-rose-400/20 pt-2" data-testid="reachability-evidence-details">
+          <summary className="cursor-pointer font-medium">Types and paths · {summary.pathPreviews.length} path previews</summary>
+          <div className="mt-2 space-y-3">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">
+                Affected by type
               </p>
-            ) : (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {Object.entries(summary.countsByType)
-                  .sort((left, right) => right[1] - left[1])
-                  .map(([type, count]) => (
-                    <span
-                      key={type}
-                      className="rounded border border-rose-400/20 bg-rose-950/60 px-1.5 py-0.5 text-[10px] text-rose-100"
-                    >
-                      {prettifyReachabilityType(type)}: {count}
-                    </span>
-                  ))}
-              </div>
-            )}
-          </div>
+              {Object.keys(summary.countsByType).length === 0 ? (
+                <p className="mt-2 text-ink-secondary">
+                  No downstream nodes returned for this root.
+                </p>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {Object.entries(summary.countsByType)
+                    .sort((left, right) => right[1] - left[1])
+                    .map(([type, count]) => (
+                      <span
+                        key={type}
+                        className="text-xs text-ink-secondary"
+                      >
+                        {prettifyReachabilityType(type)}: {count}
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
 
-          <div className="rounded-xl border border-rose-400/20 bg-background/45 p-2">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">
-              Bounded paths
-            </p>
-            {summary.pathPreviews.length === 0 ? (
-              <p className="mt-2 text-ink-secondary">
-                No path preview is available for this root.
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">
+                Bounded paths
               </p>
-            ) : (
-              <div className="mt-2 grid gap-1.5">
-                {summary.pathPreviews.map((path) => (
-                  <div
-                    key={`${path.targetId}:${path.hops.join(">")}`}
-                    className="rounded-lg bg-background/70 px-2 py-1.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-medium text-rose-50">
-                        {path.targetLabel}
-                      </span>
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-ink-tertiary">
-                        {prettifyReachabilityType(path.targetType)} ·{" "}
-                        {path.depth} hop{path.depth === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    <p className="mt-1 truncate font-mono text-[10px] text-ink-secondary">
-                      {path.labels.join(" -> ")}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
+              {summary.pathPreviews.length === 0 ? (
+                <p className="mt-2 text-ink-secondary">
+                  No path preview is available for this root.
+                </p>
+              ) : (
+                <div className="mt-2 grid gap-1.5">
+                  {summary.pathPreviews.map((path) => (
+                    <details
+                      key={`${path.targetId}:${path.hops.join(">")}`}
+                      className="border-b border-outline py-1.5"
+                    >
+                      <summary className="cursor-pointer">
+                        <span className="font-medium text-foreground">
+                          {path.targetLabel}
+                        </span>
+                        <span className="ml-2 text-[10px] text-ink-tertiary">
+                          {prettifyReachabilityType(path.targetType)} ·{" "}
+                          {path.depth} hop{path.depth === 1 ? "" : "s"}
+                        </span>
+                      </summary>
+                      <p className="mt-1 break-words text-xs text-ink-secondary">
+                        {path.labels.join(" -> ")}
+                      </p>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </details>
       )}
     </div>
   );

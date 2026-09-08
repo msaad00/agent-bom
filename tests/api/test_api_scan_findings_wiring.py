@@ -141,6 +141,7 @@ def wired_client(tmp_path, monkeypatch):
     set_graph_store(graph_store)
 
     report_json = _report_with_known_vuln()
+    report_json["scan_id"] = "imported-evidence-scan"
 
     def _complete_synchronously(job) -> None:
         job.status = JobStatus.DONE
@@ -188,6 +189,12 @@ def test_scan_vuln_flows_to_findings_and_attack_paths(wired_client):
     assert KNOWN_CVE in path_vuln_ids, f"known vuln missing from attack paths: {path_vuln_ids}"
 
     reachable = next(row for row in finding_rows if row.get("vulnerability_id") == KNOWN_CVE)
+    # Finding links must select the same persisted snapshot when an imported
+    # report id differs from the control-plane job id.
+    assert reachable["scan_id"] == scan.json()["result"]["scan_id"]
+    focused = wired_client.get("/v1/graph", params={"scan_id": reachable["scan_id"]})
+    assert focused.status_code == 200, focused.text
+    assert focused.json()["nodes"]
     # A derived agent -> server -> package -> CVE dependency chain is useful
     # topology, but it is not evidence that the vulnerability is reachable at
     # runtime. Keep the finding unknown until the path carries an explicit

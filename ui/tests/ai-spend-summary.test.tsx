@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { AiSpendSummary } from "@/components/ai-spend-summary";
 import type { OverviewDomain } from "@/lib/api-types";
@@ -9,7 +9,11 @@ describe("AI spend summary", () => {
   it("shows tenant ledger scope and incomplete pricing alongside totals", () => {
     render(<AiSpendSummary domain={domain} loading={false} />);
     const card = screen.getByRole("region", { name: "AI spend & usage" });
-    expect(within(card).getByText("$12.50")).toBeVisible();
+    const toggle = within(card).getByRole("button");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveTextContent("$12.50 estimated");
+    expect(within(card).queryByText("Recorded tokens")).not.toBeVisible();
+    fireEvent.click(toggle);
     expect(within(card).getByText("2,500")).toBeVisible();
     expect(within(card).getByText(/All retained usage/)).toBeVisible();
     expect(within(card).getByText(/Unpriced calls leave spend incomplete/)).toBeVisible();
@@ -22,7 +26,7 @@ describe("AI spend summary", () => {
   });
   it("shows unavailable money when every call is unpriced", () => {
     render(<AiSpendSummary domain={{ ...domain, detail: { ...domain.detail, unpriced_calls: 100, total_cost_usd: 0 } }} loading={false} />);
-    expect(screen.getByText("Unavailable")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("Unavailable");
     expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
   });
 });

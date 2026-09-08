@@ -68,7 +68,7 @@ describe("IntelPanel", () => {
         epss_percentile: 0.9,
         is_kev: true,
         kev_date_added: "2026-01-02",
-        affected: [{}],
+        affected: [{ ecosystem: "Alpine", package_name: "libwebp", fixed: "1.2.2-r2" }, { ecosystem: "PyPI", package_name: "Pillow", fixed: "10.0.1" }],
         canonical_ids: { cves: [], ghsas: [], osv: [], cwes: [] },
         evidence_links: [],
       },
@@ -81,6 +81,8 @@ describe("IntelPanel", () => {
     const result = await screen.findByTestId("intel-advisory-result");
     expect(result).toHaveTextContent("CVE-2024-3094");
     expect(result).toHaveTextContent(/KEV/);
+    expect(result).not.toHaveTextContent("fixed in 5.6.2");
+    expect(result).toHaveTextContent("Fixes depend on package and ecosystem.");
   });
 
   it("matches a package against advisory intel", async () => {

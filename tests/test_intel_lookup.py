@@ -163,6 +163,23 @@ def test_list_intel_sources_includes_feed_run_metadata(intel_db) -> None:  # noq
     assert amd["feed_run"]["content_hash"] == "sha256:test"
 
 
+@pytest.mark.parametrize("missing_fix", [None, ""])
+def test_lookup_advisory_keeps_fixes_scoped_to_package(intel_db, missing_fix) -> None:  # noqa: ANN001
+    conn = init_db(intel_db)
+    conn.execute(
+        "INSERT INTO affected(vuln_id, ecosystem, package_name, introduced, fixed) VALUES (?, ?, ?, ?, ?)",
+        ("GHSA-abcd-1234-wxyz", "npm", "different-package", "0", missing_fix),
+    )
+    conn.commit()
+    conn.close()
+
+    advisory = lookup_advisory("CVE-2026-12345", db_path=intel_db)["advisory"]
+    by_package = {row["package_name"]: row for row in advisory["affected"]}
+    assert by_package["requests"]["fixed"] == "2.32.0"
+    assert not by_package["different-package"]["fixed"]
+    assert advisory["fixed_version"] is None
+
+
 def test_lookup_advisory_by_alias_returns_evidence_links(intel_db) -> None:  # noqa: ANN001
     body = lookup_advisory("CVE-2026-12345", db_path=intel_db)
 

@@ -29,6 +29,7 @@ it("Refresh evidence bypasses a successful cached list before its five-second ex
   await api.listJitGrants(true, 200);
   render(<IdentityPage />);
   await screen.findByRole("button", { name: "Refresh evidence" });
+  await screen.findByText("No NHI count rollups for this snapshot.");
   const tile = () => within(screen.getByText("Active JIT grants").closest("div")!.parentElement!);
   expect(tile().getByText("0")).toBeVisible();
   active = true;

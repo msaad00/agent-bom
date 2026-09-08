@@ -273,13 +273,13 @@ for (const theme of ["light", "dark"] as const) {
         ...OVERVIEW.domains,
         runtime: { ...OVERVIEW.domains.runtime, status: "critical" },
         cost: { ...OVERVIEW.domains.cost, status: "warn" },
-        identity: { ...OVERVIEW.domains.identity, status: "ok" },
+        identity: { ...OVERVIEW.domains.identity, status: "warn" },
       },
     } }));
     await page.goto("/");
     await page.getByRole("button", { name: /Operational signals/ }).click();
     const metrics = page.getByTestId("overview-estate-ops").locator("span.font-mono");
-    await expect(metrics).toHaveCount(4);
+    await expect(metrics).toHaveCount(3);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     // Measure settled theme colors rather than the deliberate transition frame.
     await page.waitForTimeout(500);

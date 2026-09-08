@@ -319,7 +319,7 @@ export function OverviewCockpit({
           </Collapsible>
         </section>
 
-        <section aria-label="Coverage" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
+        <section aria-label="Coverage" className="min-w-0 rounded-2xl border border-sky-700/20 bg-gradient-to-br from-sky-500/5 via-surface to-surface p-4 dark:border-sky-400/20">
           <Collapsible bare title="Coverage" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
             {loading && !domains ? (
               <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
@@ -452,12 +452,12 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
  * Each lane retains its finding total and labeled severity counts. Unrated is
  * shown only when unknown-severity findings are present.
  */
-const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; order: number }> = {
-  cspm: { label: "Cloud security (CSPM)", icon: Cloud, order: 0 },
-  aspm: { label: "Application security (ASPM)", icon: CodeXml, order: 1 },
-  vuln: { label: "Vulnerability management", icon: Bug, order: 2 },
-  dspm: { label: "Data security (DSPM)", icon: Database, order: 3 },
-  aispm: { label: "AI security (AISPM)", icon: Bot, order: 4 },
+const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; order: number; accent: string; tile: string }> = {
+  cspm: { label: "Cloud security (CSPM)", icon: Cloud, order: 0, accent: "text-sky-700 dark:text-sky-300", tile: "border-sky-600/35 bg-sky-500/5 dark:border-sky-400/35" },
+  aspm: { label: "Application security (ASPM)", icon: CodeXml, order: 1, accent: "text-violet-700 dark:text-violet-300", tile: "border-violet-600/35 bg-violet-500/5 dark:border-violet-400/35" },
+  vuln: { label: "Vulnerability management", icon: Bug, order: 2, accent: "text-orange-700 dark:text-orange-300", tile: "border-orange-600/35 bg-orange-500/5 dark:border-orange-400/35" },
+  dspm: { label: "Data security (DSPM)", icon: Database, order: 3, accent: "text-cyan-700 dark:text-cyan-300", tile: "border-cyan-600/35 bg-cyan-500/5 dark:border-cyan-400/35" },
+  aispm: { label: "AI security (AISPM)", icon: Bot, order: 4, accent: "text-teal-700 dark:text-teal-300", tile: "border-teal-600/35 bg-teal-500/5 dark:border-teal-400/35" },
 };
 
 function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
@@ -481,10 +481,10 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="min-w-0 border-b border-outline px-2 py-2 transition-colors hover:bg-surface-muted"
+              className={`min-w-0 rounded-r-lg border-l-2 px-3 py-2 transition-colors hover:bg-surface-muted ${discipline?.tile ?? "border-outline"}`}
             >
               <div className="flex flex-col gap-0.5">
-                <span className="flex items-start gap-2 text-xs font-semibold text-foreground"><Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-secondary" aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
+                <span className="flex items-start gap-2 text-xs font-semibold text-foreground"><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${discipline?.accent ?? "text-ink-secondary"}`} aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
                 {/* The unit is not decoration. A bare "1610" under a heading
                     called CSPM reads as assets, accounts, VMs or data stores
                     depending on the reader — every one of which is wrong. These

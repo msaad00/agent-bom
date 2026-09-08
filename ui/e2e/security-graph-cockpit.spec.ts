@@ -960,11 +960,41 @@ test("URL-selected path returns to summary without reopening the path", async ({
   await routeCockpit(page, 200, { rollupItemCount: 30 });
   await page.goto(`/security-graph?lens=estate&scan=${scanId}&path=top`);
   const views = page.getByRole("group", { name: "Investigation view" });
-  await views.getByRole("button", { name: "Back to summary", exact: true }).click();
+  await views.getByRole("button", { name: "Summary", exact: true }).click();
   await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
   await expect(page).not.toHaveURL(/[?&]path=/);
   await views.getByRole("button", { name: "Graph", exact: true }).click();
-  await views.getByRole("button", { name: "Back to summary", exact: true }).click();
+  await views.getByRole("button", { name: "Summary", exact: true }).click();
   await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
   await expect(page).not.toHaveURL(/[?&]path=/);
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`estate topology opens fully framed with compact controls in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await routeCockpit(page, 200, { rollupItemCount: 30 });
+    await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+    await page.goto("/security-graph");
+    await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
+    const views = page.getByRole("group", { name: "Investigation view" });
+    await views.getByRole("button", { name: "Graph", exact: true }).click();
+    const canvas = page.locator(".react-flow").first();
+    await expect(canvas.locator(".react-flow__node")).toHaveCount(30);
+    await expect.poll(() => canvas.evaluate((element) => {
+      const frame = element.getBoundingClientRect();
+      return [...element.querySelectorAll(".react-flow__node")].every((node) => {
+        const box = node.getBoundingClientRect();
+        return box.left >= frame.left && box.top >= frame.top && box.right <= frame.right && box.bottom <= frame.bottom;
+      });
+    })).toBe(true);
+    const frame = await canvas.boundingBox();
+    expect(frame!.y).toBeLessThan(330);
+    expect(frame!.height).toBeGreaterThan(500);
+    await expect(canvas.locator(".react-flow__minimap")).toBeHidden();
+    await expect(views.getByRole("button")).toHaveCount(2);
+    await page.screenshot({ path: testInfo.outputPath(`estate-topology-${theme}.png`), fullPage: false });
+    await views.getByRole("button", { name: "Summary", exact: true }).click();
+    await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
+    await expect(page.getByTestId("graph-viewport-scope")).toBeHidden();
+  });
+}

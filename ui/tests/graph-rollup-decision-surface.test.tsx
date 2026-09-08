@@ -37,8 +37,9 @@ describe("GraphRollupDecisionSurface", () => {
     const onGraph = vi.fn();
     render(<InvestigationViewSwitch summary={false} onSummary={onSummary} onGraph={onGraph} />);
     expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Back to summary" }));
+    fireEvent.click(screen.getByRole("button", { name: "Summary" }));
     expect(onSummary).toHaveBeenCalledOnce();
+    expect(screen.getAllByRole("button")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Graph" }));
     expect(onGraph).toHaveBeenCalledOnce();
   });

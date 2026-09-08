@@ -11,7 +11,7 @@ import {
 import { getSessionWebSocketToken } from "@/lib/auth";
 import { getConfiguredApiUrl } from "@/lib/runtime-config";
 import { ApiError } from "@/lib/api-errors";
-import { mergeGatewayEvents } from "@/lib/gateway-feed";
+import { mergeGatewayEvents, producerEvidenceLabel, PRODUCER_EVIDENCE_HINT } from "@/lib/gateway-feed";
 import {
   Activity,
   Ban,
@@ -54,7 +54,7 @@ const ACTION_META: Record<
 };
 
 // Live counters streamed by the existing /ws/proxy/metrics WebSocket. We use it
-// only to drive the "Live" indicator and refresh the KPI header in near-real
+// only to drive transport connectivity and refresh the KPI header in near-real
 // time; the authoritative fused feed is fetched from /v1/gateway/feed.
 interface LiveMetrics {
   ts: number;
@@ -238,12 +238,13 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
               {" · "}{feedCompleteness === "complete" ? "Complete retained window" : "Partial retained window"}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs text-[var(--text-tertiary)]" title={PRODUCER_EVIDENCE_HINT}>{producerEvidenceLabel(health.producer_assurance)}</span>
             <div className="flex items-center gap-1.5 text-xs">
               {isLive ? (
                 <>
                   <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  <span className="text-emerald-400">Live</span>
+                  <span className="text-emerald-400">Live transport</span>
                 </>
               ) : (
                 <>
@@ -345,8 +346,8 @@ function FeedRow({ event }: { event: GatewayFeedEvent }) {
     ...(event.agent ? { agent: event.agent } : {}),
   }).toString()}`;
   return (
-    <div className="flex items-center justify-between px-3 py-2 bg-[var(--surface-elevated)]/50 border border-[var(--border-subtle)] rounded-lg">
-      <div className="flex items-center gap-3 min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-y-2 px-3 py-2 bg-[var(--surface-elevated)]/50 border border-[var(--border-subtle)] rounded-lg">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
         <Icon className={`w-3.5 h-3.5 shrink-0 ${meta.tone}`} />
         {/* Per-agent attribution → target */}
         <span className="text-xs text-[var(--foreground)] font-mono shrink-0 max-w-[10rem] truncate" title={event.agent}>
@@ -358,6 +359,9 @@ function FeedRow({ event }: { event: GatewayFeedEvent }) {
         </span>
         <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs ${meta.badge}`}>
           {meta.label}
+        </span>
+        <span className="text-xs text-[var(--text-tertiary)]" title={PRODUCER_EVIDENCE_HINT}>
+          {producerEvidenceLabel(event.producer_assurance)}
         </span>
         {event.shadow && (
           <span className="shrink-0 rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-xs text-orange-300">

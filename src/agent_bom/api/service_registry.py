@@ -84,7 +84,7 @@ def _fleet(tenant_id: str, deployment: dict[str, Any]) -> dict[str, Any]:
 
 def _runtime_flag(deployment: dict[str, Any], key: str) -> dict[str, Any]:
     if deployment.get(key):
-        return _entry("live", count=1)
+        return _entry("connected", count=1, detail="configuration or submitted activity present; producer liveness not established")
     return _entry("locked")
 
 

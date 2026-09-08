@@ -33,6 +33,7 @@ from agent_bom.api.gateway_activity_store import (
     get_gateway_activity_store,
 )
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
+from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance, canonicalize_proxy_submission
 from agent_bom.api.tenancy import require_request_tenant_id
 
 if TYPE_CHECKING:
@@ -141,20 +142,33 @@ def _reset_ws_handshake_rate_limit_for_tests() -> None:
         _ws_handshake_rate_limit_store = None
 
 
-def push_proxy_alert(alert: dict) -> None:
+def push_proxy_alert(alert: dict, *, submission_provenance: GatewaySubmissionProvenance | None = None) -> None:
     """Called by the proxy to record a runtime alert (in-process path)."""
     global _proxy_alerts_total
     sanitized = sanitize_sensitive_payload(alert)
     safe = redact_for_persistence(sanitized, EvidenceTier.SAFE_TO_STORE)
-    _proxy_alerts.append(safe if isinstance(safe, dict) else {})
+    projected = safe if isinstance(safe, dict) else {}
+    projected.pop("submission_provenance", None)
+    projected["producer_assurance"] = "unknown"
+    if isinstance(submission_provenance, GatewaySubmissionProvenance):
+        submission_provenance = GatewaySubmissionProvenance.model_validate(submission_provenance)
+        projected["submission_provenance"] = submission_provenance.model_dump()
+        projected["producer_assurance"] = submission_provenance.producer_assurance
+    _proxy_alerts.append(projected)
     _proxy_alerts_total += 1
 
 
-def push_proxy_metrics(metrics: dict) -> None:
+def push_proxy_metrics(metrics: dict, *, submission_provenance: GatewaySubmissionProvenance | None = None) -> None:
     """Record latest metrics with a server-authoritative receipt timestamp."""
     global _proxy_metrics
     sanitized = sanitize_sensitive_payload(metrics)
     _proxy_metrics = sanitized if isinstance(sanitized, dict) else {}
+    _proxy_metrics.pop("submission_provenance", None)
+    _proxy_metrics["producer_assurance"] = "unknown"
+    if isinstance(submission_provenance, GatewaySubmissionProvenance):
+        submission_provenance = GatewaySubmissionProvenance.model_validate(submission_provenance)
+        _proxy_metrics["submission_provenance"] = submission_provenance.model_dump()
+        _proxy_metrics["producer_assurance"] = submission_provenance.producer_assurance
     # ``metrics`` crosses a process/HTTP trust boundary. Preserve any client
     # event timestamp for event provenance, but never let it establish runtime
     # transport freshness. A caller-controlled future ``received_at`` would
@@ -191,6 +205,7 @@ def _gateway_activity_record_from_alert(
     session_id: str,
     received_at: datetime,
     request_trace_id: str,
+    submission_provenance: GatewaySubmissionProvenance | None = None,
 ) -> GatewayActivityRecord | None:
     """Project one gateway-shaped alert onto the strict metadata-only ledger.
 
@@ -239,7 +254,7 @@ def _gateway_activity_record_from_alert(
         "tool": str(alert.get("tool") or alert.get("tool_name") or "unknown"),
         "decision": str(alert.get("decision") or expected_decision),
         "policy_source": str(alert.get("policy_source") or "legacy_proxy"),
-        "trace_id": str(alert.get("trace_id") or request_trace_id or event_id),
+        "trace_id": str(alert.get("trace_id") or event_id),
     }
     for field in (
         "identity_id",
@@ -264,6 +279,8 @@ def _gateway_activity_record_from_alert(
         canonical["development_mode"] = alert["development_mode"]
     return gateway_activity_record_from_event(
         canonical,
+        submission_provenance=submission_provenance,
+        receipt_trace_id=request_trace_id,
         tenant_id=tenant_id,
         source_id=source_id,
         session_id=session_id,
@@ -308,7 +325,13 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
     source_id = body.source_id or "unknown"
     session_id = body.session_id or "default"
     analytics_events: list[dict] = []
-    request_hash = idempotency_request_fingerprint(body)
+    try:
+        _, submission_context = canonicalize_proxy_submission({}, source_id=source_id, session_id=session_id, request_state=request.state)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid proxy submission context") from exc
+    source_id = submission_context.submission_source_id
+    session_id = submission_context.submission_session_id
+    request_hash = idempotency_request_fingerprint({"body": body.model_dump(), "submission_context": submission_context.model_dump()})
     if body.idempotency_key:
         try:
             cached = _get_idempotency_store().get(
@@ -329,13 +352,27 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
     firewall_store = _get_firewall_decision_store()
     received_at = datetime.now(timezone.utc)
     prepared_alerts: list[dict[str, Any]] = []
+    submission_metadata: dict[int, GatewaySubmissionProvenance] = {}
     activity_records: list[GatewayActivityRecord] = []
+    summary = None
+    summary_provenance = None
+    if body.summary:
+        try:
+            summary, summary_provenance = canonicalize_proxy_submission(
+                body.summary, source_id=source_id, session_id=session_id, request_state=request.state
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid proxy submission context") from exc
     for alert in body.alerts:
-        enriched = dict(alert)
-        enriched.setdefault("source_id", source_id)
-        enriched.setdefault("session_id", session_id)
+        try:
+            enriched, provenance = canonicalize_proxy_submission(
+                alert, source_id=source_id, session_id=session_id, request_state=request.state
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid proxy submission context") from exc
+        submission_metadata[id(enriched)] = provenance
         enriched.setdefault("request_id", request_id)
-        enriched.setdefault("trace_id", trace_id)
+        enriched["receipt_trace_id"] = trace_id
         # Receipt time is transport metadata owned by this API process. Never
         # accept a caller-supplied future value into degraded feed ordering.
         enriched["received_at"] = received_at.isoformat()
@@ -350,9 +387,13 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
                 session_id=session_id,
                 received_at=received_at,
                 request_trace_id=trace_id,
+                submission_provenance=provenance,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Invalid canonical gateway activity event") from exc
+        # Request correlation is receipt metadata, not producer event identity.
+        # Keep it on the ring/audit view after constructing the stable event.
+        enriched.setdefault("trace_id", trace_id)
         if record is not None:
             activity_records.append(record)
     activity_candidate_ids = {record.event_id for record in activity_records}
@@ -400,7 +441,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         elif str(enriched.get("event_type") or "") in _CANONICAL_GATEWAY_EVENT_TYPES:
             enriched["gateway_activity_durable"] = False
         accepted_alerts.append(enriched)
-        push_proxy_alert(enriched)
+        push_proxy_alert(enriched, submission_provenance=submission_metadata[id(enriched)])
         # Tally inter-agent firewall decisions for the runtime-tab dashboard
         # (#982 PR 4). Non-firewall alerts are silently ignored by record().
         try:
@@ -428,17 +469,17 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
             )
         )
 
-    if body.summary:
-        summary = dict(body.summary)
-        summary.setdefault("source_id", source_id)
-        summary.setdefault("session_id", session_id)
+        analytics_events[-1]["submission_provenance"] = submission_metadata[id(enriched)]
+        analytics_events[-1]["producer_assurance"] = "caller_asserted"
+
+    if summary is not None:
         summary.setdefault("request_id", request_id)
         summary.setdefault("trace_id", trace_id)
         # Server-authoritative tenant tag — never honor a client-supplied
         # tenant_id, which would route this summary into another tenant's
         # metrics bucket on shared deployments.
         summary["tenant_id"] = tenant_id
-        push_proxy_metrics(summary)
+        push_proxy_metrics(summary, submission_provenance=summary_provenance)
 
     if analytics_events:
         try:
@@ -731,6 +772,8 @@ def _classify_authorization_event(alert: dict) -> str:
 
 def _authorization_trace(*, allowed_tool_calls: int, blocked_tool_calls: int, alerts: list[dict]) -> dict[str, object]:
     """Return accountable runtime authorization counts without raw arguments."""
+    from agent_bom.api.proxy_provenance import projected_producer_assurance
+
     trace_counts: Counter[str] = Counter()
     recent: list[dict[str, object]] = []
     for alert in sorted(alerts, key=lambda item: str(item.get("ts") or item.get("timestamp") or ""), reverse=True):
@@ -742,6 +785,7 @@ def _authorization_trace(*, allowed_tool_calls: int, blocked_tool_calls: int, al
                 {
                     "ts": alert.get("ts") or alert.get("timestamp") or alert.get("event_timestamp") or "",
                     "trace_class": trace_class,
+                    "producer_assurance": projected_producer_assurance(alert),
                     "source_id": alert.get("source_id") or "unknown",
                     "session_id": alert.get("session_id") or "unknown",
                     "tool_name": alert.get("tool_name") or alert.get("tool") or "",
@@ -777,7 +821,10 @@ def _runtime_metrics_for_tenant(tenant_id: str) -> dict | None:
 
 
 def _build_runtime_production_index(tenant_id: str, metrics: dict | None, alerts: list[dict]) -> dict[str, object]:
+    from agent_bom.api.proxy_provenance import producer_assurance_counts, producer_assurance_rollup
+
     metrics = dict(metrics or {})
+    assurance_counts = producer_assurance_counts(alerts + ([metrics] if metrics else []))
     alert_summary = _summarize_proxy_alerts(alerts)
     calls_by_tool = _numeric_mapping(metrics.get("calls_by_tool"))
     blocked_by_reason = _numeric_mapping(metrics.get("blocked_by_reason"))
@@ -813,6 +860,10 @@ def _build_runtime_production_index(tenant_id: str, metrics: dict | None, alerts
 
     return {
         "schema_version": "runtime.production_index.v1",
+        "producer_assurance": producer_assurance_rollup(assurance_counts),
+        "producer_assurance_counts": assurance_counts,
+        "producer_assurance_count_basis": "submissions",
+        "evidence_basis": "submitted_runtime_activity",
         "tenant_id": tenant_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "status": "ok" if metrics or alerts else "no_runtime_activity",
@@ -900,7 +951,11 @@ async def proxy_status(request: Request) -> dict:
             if metrics is not None:
                 metrics = dict(metrics)
 
+    from agent_bom.api.routes.gateway_feed import _feed_health_from_metrics
+
     if metrics is not None:
+        metrics["health"] = _feed_health_from_metrics(metrics)
+        metrics["producer_assurance"] = metrics["health"]["producer_assurance"]
         alert_summary = _summarize_proxy_alerts(_load_proxy_alerts(tenant_id))
         metrics["alert_summary"] = {key: value for key, value in alert_summary.items() if key != "recent_alerts"}
         metrics["recent_alerts"] = alert_summary["recent_alerts"]
@@ -908,6 +963,8 @@ async def proxy_status(request: Request) -> dict:
 
     return {
         "status": "no_proxy_session",
+        "health": _feed_health_from_metrics(None),
+        "producer_assurance": "unknown",
         "message": "No proxy metrics available. Start a proxy session or set AGENT_BOM_LOG.",
     }
 
@@ -1286,6 +1343,8 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     import asyncio
     import time as _time
 
+    from agent_bom.api.routes.gateway_feed import _feed_health_from_metrics
+
     try:
         from fastapi.websockets import WebSocketDisconnect
     except ImportError:
@@ -1302,6 +1361,9 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
             # Build snapshot from in-process metrics buffer
             metrics_snapshot = _runtime_metrics_for_tenant(tenant_id) or {}
 
+            # Delivery time is not a heartbeat from the submitting runtime.
+            receipt_health = _feed_health_from_metrics(metrics_snapshot)
+
             # Count alerts in last 60 seconds
             cutoff = now - 60
             recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff and _alert_visible_to_tenant(a, tenant_id)]
@@ -1309,6 +1371,8 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
             await websocket.send_json(
                 {
                     "ts": now,
+                    "health": receipt_health,
+                    "producer_assurance": receipt_health["producer_assurance"],
                     "tool_calls": metrics_snapshot.get("calls_by_tool", {}),
                     "blocked": metrics_snapshot.get("blocked_by_reason", {}),
                     "alerts_last_60s": len(recent_alerts),

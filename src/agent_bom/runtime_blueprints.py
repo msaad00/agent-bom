@@ -297,6 +297,12 @@ def evaluate_runtime_blueprint_drift(
 
     return {
         "schema_version": "runtime.blueprint_drift.v1",
+        "evidence_basis": "submitted_runtime_activity",
+        "comparison_scope": "reported_activity_only",
+        "producer_assurance": "caller_asserted" if production_index.get("producer_assurance") == "caller_asserted" else "unknown",
+        "producer_assurance_counts": production_index.get("producer_assurance_counts", {"unknown": 0, "caller_asserted": 0}),
+        "producer_assurance_count_basis": "submissions",
+        "evidence_limitation": "Comparison covers submitted runtime activity; it does not verify producer identity or unreported activity.",
         "tenant_id": tenant_id or "default",
         "blueprint_id": blueprint["blueprint_id"],
         "evaluated_at": datetime.now(timezone.utc).isoformat(),

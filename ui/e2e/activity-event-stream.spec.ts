@@ -159,18 +159,22 @@ test("activity merges observed events and opens evidence details", async ({ page
   await page.goto("/activity");
 
   await expect(page.getByRole("heading", { name: "Agent Activity Timeline" })).toBeVisible();
-  await expect(page.getByText("Live gateway")).toBeVisible();
+  await expect(page.getByText("Live transport")).toBeVisible();
   await expect(page.getByText("build-agent → filesystem.write_file")).toBeVisible();
   await expect(page.getByText("review-agent → repository.read")).toBeVisible();
 
-  await page.getByText("build-agent → filesystem.write_file").click();
+  await expect(page.getByText("Producer unknown").first()).toBeVisible();
+  const eventButton = page.getByRole("button", { name: /build-agent → filesystem.write_file/ });
+  await eventButton.focus();
+  await page.keyboard.press("Enter");
   const drawer = page.getByRole("dialog", { name: "Activity event details" });
   await expect(drawer).toBeVisible();
   await expect(drawer.getByText("runtime-policy")).toBeVisible();
   await expect(drawer.getByText("trace-gateway-browser")).toBeVisible();
   await expect(drawer.getByText("Unavailable").first()).toBeVisible();
 
-  await drawer.getByRole("button", { name: "Close" }).last().click();
+  await expect(drawer.getByText("Producer unknown")).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
   await expect(page.getByRole("heading", { name: /Query history/ })).toBeVisible();
 });

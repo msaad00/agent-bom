@@ -15,11 +15,12 @@ import json
 import sqlite3
 import threading
 from collections import deque
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
+from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance, ProducerAssurance
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.runtime.gateway_events import (
     GATEWAY_ALLOWED_EVENT_TYPES,
@@ -233,10 +234,38 @@ class GatewayActivityRecord:
     ingest_ordinal: int = 0
     raw_payload_stored: bool = False
     record_schema_version: str = "gateway.activity.record.v1"
+    submission_provenance: GatewaySubmissionProvenance | None = None
+    receipt_trace_id: str = ""
+
+    def __post_init__(self) -> None:
+        if self.record_schema_version == "gateway.activity.record.v1":
+            if self.submission_provenance is not None:
+                raise ValueError("legacy gateway activity cannot carry new provenance")
+        elif self.record_schema_version == "gateway.activity.record.v2":
+            provenance = self.submission_provenance
+            if not isinstance(provenance, GatewaySubmissionProvenance):
+                raise ValueError("gateway activity v2 requires typed submission provenance")
+            provenance = GatewaySubmissionProvenance.model_validate(provenance)
+            object.__setattr__(self, "submission_provenance", provenance)
+            if provenance.submission_source_id != self.source_id or provenance.submission_session_id != self.session_id:
+                raise ValueError("gateway activity submission context does not match provenance")
+        else:
+            raise ValueError("unsupported gateway activity record schema")
+
+    @property
+    def producer_assurance(self) -> ProducerAssurance:
+        return self.submission_provenance.producer_assurance if self.submission_provenance else "unknown"
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["policy_ids"] = list(self.policy_ids)
+        if not self.receipt_trace_id:
+            payload.pop("receipt_trace_id", None)
+        if self.submission_provenance is None:
+            # Preserve historical v1 serialization and event digests exactly.
+            payload.pop("submission_provenance", None)
+        else:
+            payload["submission_provenance"] = self.submission_provenance.model_dump()
         return payload
 
     def to_json(self) -> str:
@@ -281,6 +310,7 @@ class GatewayActivityWindowSummary:
     data_filters: int
     retention_floor_ordinal: int
     latest_ordinal: int
+    producer_assurance_counts: dict[str, int] = field(default_factory=lambda: {"unknown": 0, "caller_asserted": 0})
 
 
 class GatewayActivityStore(Protocol):
@@ -400,15 +430,17 @@ def _window_summary(
     *,
     start: str,
     end: str,
-    event_rows: list[tuple[str, str, int]],
+    event_rows: list[tuple[str, str, int, str]],
     floor: int,
     latest: int,
 ) -> GatewayActivityWindowSummary:
-    authorized = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_ALLOWED_EVENT_TYPES)
-    blocked = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES)
-    data_filters = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_DATA_FILTER_EVENT_TYPES)
+    authorized = sum(count for event_type, _reason, count, _assurance in event_rows if event_type in GATEWAY_ALLOWED_EVENT_TYPES)
+    blocked = sum(count for event_type, _reason, count, _assurance in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES)
+    data_filters = sum(count for event_type, _reason, count, _assurance in event_rows if event_type in GATEWAY_DATA_FILTER_EVENT_TYPES)
     shadow_blocked = sum(
-        count for event_type, reason, count in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES and _is_shadow_reason(reason)
+        count
+        for event_type, reason, count, _assurance in event_rows
+        if event_type in GATEWAY_BLOCKED_EVENT_TYPES and _is_shadow_reason(reason)
     )
     return GatewayActivityWindowSummary(
         tenant_id=tenant_id,
@@ -420,6 +452,15 @@ def _window_summary(
         data_filters=data_filters,
         retention_floor_ordinal=floor,
         latest_ordinal=latest,
+        producer_assurance_counts={
+            assurance: sum(
+                count
+                for event_type, _reason, count, value in event_rows
+                if value == assurance
+                and event_type in GATEWAY_ALLOWED_EVENT_TYPES | GATEWAY_BLOCKED_EVENT_TYPES | GATEWAY_DATA_FILTER_EVENT_TYPES
+            )
+            for assurance in ("unknown", "caller_asserted")
+        },
     )
 
 
@@ -428,8 +469,33 @@ def _digest_payload(record: GatewayActivityRecord) -> str:
     payload.pop("event_digest", None)
     payload.pop("ingest_ordinal", None)
     payload.pop("ingested_at", None)
+    payload.pop("receipt_trace_id", None)
     encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _matches_stored_digest(record: GatewayActivityRecord, stored_digest: str) -> bool:
+    """Accept exact historical-v1 replay without upgrading its unknown actor.
+
+    A v2 actor/claim change still conflicts. Historical records lack actor
+    metadata; equality proves only their original canonical event content.
+    Stored records and tombstones are never rewritten by this comparison.
+    """
+    if stored_digest == record.event_digest:
+        return True
+    if record.record_schema_version != "gateway.activity.record.v2":
+        return False
+    provenance = record.submission_provenance
+    if (
+        provenance is None
+        or provenance.reported_source_id not in ("", record.source_id)
+        or provenance.reported_session_id not in ("", record.session_id)
+    ):
+        # Historical v1 did not retain nested origins. A differing new claim
+        # cannot safely be compared and must remain an explicit conflict.
+        return False
+    legacy = replace(record, record_schema_version="gateway.activity.record.v1", submission_provenance=None)
+    return stored_digest == _digest_payload(legacy)
 
 
 def gateway_activity_record_from_event(
@@ -439,6 +505,8 @@ def gateway_activity_record_from_event(
     source_id: str,
     session_id: str,
     received_at: datetime | None = None,
+    submission_provenance: GatewaySubmissionProvenance | None = None,
+    receipt_trace_id: str = "",
 ) -> GatewayActivityRecord:
     """Validate one exact typed event and bind it to server-owned context."""
 
@@ -461,6 +529,9 @@ def gateway_activity_record_from_event(
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("gateway activity received_at must include a timezone")
     record = GatewayActivityRecord(
+        record_schema_version="gateway.activity.record.v2" if submission_provenance is not None else "gateway.activity.record.v1",
+        submission_provenance=submission_provenance,
+        receipt_trace_id=_optional_text(receipt_trace_id, "receipt_trace_id"),
         tenant_id=_required_text(tenant_id, "tenant_id"),
         event_id=event_id,
         decision_id=decision_id,
@@ -609,7 +680,7 @@ class InMemoryGatewayActivityStore:
                 tombstone = self._tombstones.get(key)
                 existing_digest = existing.event_digest if existing is not None else tombstone[0] if tombstone else None
                 if existing_digest is not None:
-                    if existing_digest != record.event_digest:
+                    if not _matches_stored_digest(record, existing_digest):
                         raise GatewayActivityConflictError(f"gateway activity event_id conflict: {record.event_id}")
                     duplicates.append(record.event_id)
                 else:
@@ -674,15 +745,15 @@ class InMemoryGatewayActivityStore:
             all_tenant_rows = [record for (row_tenant, _), record in self._events.items() if row_tenant == tenant_id]
             latest = self._next_ordinal.get(tenant_id, 1) - 1
             floor = min((record.ingest_ordinal for record in all_tenant_rows), default=latest + 1)
-        grouped: dict[tuple[str, str], int] = {}
+        grouped: dict[tuple[str, str, str], int] = {}
         for record in rows:
-            key = (record.event_type, record.reason_code)
+            key = (record.event_type, record.reason_code, record.producer_assurance)
             grouped[key] = grouped.get(key, 0) + 1
         return _window_summary(
             tenant_id,
             start=start,
             end=end,
-            event_rows=[(event_type, reason, count) for (event_type, reason), count in grouped.items()],
+            event_rows=[(event_type, reason, count, assurance) for (event_type, reason, assurance), count in grouped.items()],
             floor=floor,
             latest=latest,
         )
@@ -756,7 +827,7 @@ class SQLiteGatewayActivityStore:
             for record in prepared:
                 digest = active.get(record.event_id) or tombstones.get(record.event_id)
                 if digest is not None:
-                    if digest != record.event_digest:
+                    if not _matches_stored_digest(record, digest):
                         raise GatewayActivityConflictError(f"gateway activity event_id conflict: {record.event_id}")
                     duplicates.append(record.event_id)
                 else:
@@ -905,12 +976,15 @@ class SQLiteGatewayActivityStore:
                 SELECT
                     json_extract(data, '$.event_type') AS event_type,
                     json_extract(data, '$.reason_code') AS reason_code,
+                    CASE WHEN json_extract(data, '$.record_schema_version') = 'gateway.activity.record.v2'
+                         AND json_extract(data, '$.submission_provenance.producer_assurance') = 'caller_asserted'
+                         THEN 'caller_asserted' ELSE 'unknown' END AS producer_assurance,
                     COUNT(*) AS event_count
                 FROM gateway_activity_events
                 WHERE tenant_id = ? AND event_timestamp >= ? AND event_timestamp <= ?
-                GROUP BY 1, 2
+                GROUP BY 1, 2, 3
             )
-            SELECT bounds.latest, bounds.floor, grouped.event_type, grouped.reason_code, grouped.event_count
+            SELECT bounds.latest, bounds.floor, grouped.event_type, grouped.reason_code, grouped.event_count, grouped.producer_assurance
             FROM bounds LEFT JOIN grouped ON TRUE
             """,
             (tenant_id, tenant_id, tenant_id, tenant_id, start, end),
@@ -921,8 +995,8 @@ class SQLiteGatewayActivityStore:
             start=start,
             end=end,
             event_rows=[
-                (str(event_type), str(reason), int(count))
-                for _, _, event_type, reason, count in rows
+                (str(event_type), str(reason), int(count), str(assurance))
+                for _, _, event_type, reason, count, assurance in rows
                 if event_type is not None and count is not None
             ],
             floor=floor,
@@ -940,7 +1014,9 @@ class SQLiteGatewayActivityStore:
 
 def _record_from_json(raw: str) -> GatewayActivityRecord:
     payload = json.loads(raw)
+    raw_provenance = payload.get("submission_provenance")
     return GatewayActivityRecord(
+        submission_provenance=GatewaySubmissionProvenance.model_validate(raw_provenance) if raw_provenance is not None else None,
         tenant_id=str(payload["tenant_id"]),
         event_id=str(payload["event_id"]),
         decision_id=str(payload["decision_id"]),
@@ -963,6 +1039,7 @@ def _record_from_json(raw: str) -> GatewayActivityRecord:
         policy_source=str(payload["policy_source"]),
         reason_code=str(payload.get("reason_code") or ""),
         trace_id=str(payload["trace_id"]),
+        receipt_trace_id=str(payload.get("receipt_trace_id") or ""),
         data_action=str(payload.get("data_action") or ""),
         policy_id=str(payload.get("policy_id") or ""),
         evidence_id=str(payload.get("evidence_id") or ""),

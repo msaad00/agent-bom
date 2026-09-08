@@ -2455,6 +2455,9 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
           .locator('[data-testid="exposure-path-sequence"]')
           .allInnerTexts();
         const pathDetail = pathSequence.length > 0 ? `; rendered path: ${pathSequence.join(" | ")}` : "";
+        const failurePath = path.join(os.tmpdir(), `agent-bom-capture-failure-${filename}`);
+        await page.screenshot({ path: failurePath, fullPage: false });
+        console.error(`Capture failure screenshot: ${failurePath}`);
         throw new Error(`Expected content ${String(expected)} is missing on ${urlPath}${pathDetail}`);
       }
     }

@@ -117,7 +117,10 @@ const BUDGETS = {
   // measure 3908.4 KiB locally (+4.4 KiB over the prior ceiling) with no new
   // dependency. Keep 11.6 KiB of bounded headroom at 3920 KiB; the largest-
   // chunk and shared-runtime caps remain unchanged.
-  totalClientJsBytes: 4_014_080,
+  // Managed profile lifecycle and durable activity parsing measure 3934.1 KiB
+  // on Linux CI and macOS, with no new dependency. Keep 17.9 KiB of bounded
+  // headroom at 3952 KiB; largest-chunk and shared-runtime caps stay fixed.
+  totalClientJsBytes: 4_046_848,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

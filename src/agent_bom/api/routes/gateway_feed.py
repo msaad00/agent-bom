@@ -14,12 +14,13 @@ projection; cursor resume is ledger-only and server ordered.
       cost store (priced OTel GenAI spans)
 
 This module is read-only over those existing stores. It does NOT re-implement
-enforcement, DLP, audit, or streaming. Postgres/SQLite ledger data is primary;
+enforcement, DLP, or audit. Postgres/SQLite ledger data is primary;
 the in-process ring/JSONL path is labeled degraded and never satisfies a cursor
 resume when the ledger is unavailable.
 
 Endpoints:
     GET /v1/gateway/feed       normalized, time-ordered fused event list
+    GET /v1/gateway/feed/stream canonical ledger SSE with cursor handoff
     GET /v1/gateway/feed/kpis  KPI header rollup (calls / blocked / shadow-AI /
                                data filters)
 
@@ -33,19 +34,27 @@ records are sanitized by ``push_proxy_alert`` / ``redact_for_persistence``.
 
 from __future__ import annotations
 
+import threading
+import time
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sse_starlette.sse import EventSourceResponse
+from starlette.types import Receive, Scope, Send
 
 from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.gateway_activity_store import (
     GatewayActivityCursorError,
     GatewayActivityCursorExpiredError,
     GatewayActivityPage,
+    GatewayActivityRecord,
     GatewayActivityWindowSummary,
+    InMemoryGatewayActivityStore,
     get_gateway_activity_store,
 )
 from agent_bom.api.proxy_provenance import (
@@ -70,10 +79,53 @@ router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
 
 _FEED_SCHEMA_VERSION = "gateway.feed.v1"
 _FEED_STALE_AFTER_SECONDS = 120
+_STREAM_MAX_SECONDS = 30.0
+_STREAM_POLL_SECONDS = 1.0
+_stream_slots = threading.BoundedSemaphore(64)
 
 
 class GatewayFeedLedgerUnavailableError(RuntimeError):
     """The shared ledger cannot satisfy a cursor-backed read."""
+
+
+class GatewayActivityStreamPage(BaseModel):
+    """One atomic SSE data frame; its SSE id is the next ledger cursor.
+
+    Canonical records include profile/enforcement outcomes omitted by the
+    legacy dashboard projection. No process-local alerts or cost spans are
+    mixed into this ordered, resumable contract.
+    """
+
+    schema_version: Literal["gateway.activity.stream.v1"] = "gateway.activity.stream.v1"
+    source: Literal["gateway_activity_ledger"] = "gateway_activity_ledger"
+    scope: Literal["canonical_gateway_activity"] = "canonical_gateway_activity"
+    tenant_id: str
+    events: list[GatewayActivityRecord]
+    next_cursor: str
+    has_more: bool
+    retention_floor_ordinal: int = Field(ge=1)
+    latest_ordinal: int = Field(ge=0)
+    max_events_per_tenant: int = Field(ge=1)
+    dedupe_window_events: int = Field(ge=1)
+
+
+class GatewayActivityStreamResponse(EventSourceResponse):
+    """Bound active streams per worker and publish the SSE response schema."""
+
+    media_type = "text/event-stream"
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if not _stream_slots.acquire(blocking=False):
+            await JSONResponse(
+                {"detail": "Gateway activity stream capacity unavailable"},
+                status_code=503,
+                headers={"Retry-After": "5", "Cache-Control": "no-store"},
+            )(scope, receive, send)
+            return
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            _stream_slots.release()
 
 
 class ProducerAssuranceCountsModel(BaseModel):
@@ -948,6 +1000,134 @@ async def _gather_kpi_inputs_async(
         )
 
     return await anyio.to_thread.run_sync(_gather)
+
+
+def _read_stream_page(tenant_id: str, cursor: str | None, limit: int) -> GatewayActivityStreamPage:
+    """Read one bounded, atomic page; never fall back to local compatibility data."""
+    store = get_gateway_activity_store()
+    if isinstance(store, InMemoryGatewayActivityStore):
+        raise GatewayFeedLedgerUnavailableError("Gateway activity streaming requires durable storage")
+    page = store.list_activity(tenant_id, cursor=cursor, limit=limit)
+    # Even an initially empty ledger needs an explicit checkpoint. Derive it
+    # from this read's snapshot, never a second read that could skip an append.
+    next_cursor = page.next_cursor or store.encode_cursor(tenant_id, page.latest_ordinal)
+    payload = GatewayActivityStreamPage.model_validate(
+        {
+            "tenant_id": tenant_id,
+            "events": page.events,
+            "next_cursor": next_cursor,
+            "has_more": page.has_more,
+            "retention_floor_ordinal": page.retention_floor_ordinal,
+            "latest_ordinal": page.latest_ordinal,
+            "max_events_per_tenant": page.max_events_per_tenant,
+            "dedupe_window_events": page.dedupe_window_events,
+        }
+    )
+    if any(event.tenant_id != tenant_id or event.raw_payload_stored for event in payload.events):
+        raise GatewayFeedLedgerUnavailableError("Invalid gateway activity metadata")
+    return payload
+
+
+async def _stream_activity(
+    tenant_id: str, first_page: GatewayActivityStreamPage, limit: int, deadline: float
+) -> AsyncIterator[dict[str, Any]]:
+    """Follow one cursor through backfill and tailing, including across replicas.
+
+    Each data frame is an atomic batch: clients commit its id only after
+    processing the entire frame. Backpressure never buffers an unbounded queue;
+    retention overtaking a slow reader terminates with an explicit gap.
+    """
+    page = first_page
+    first = True
+    while time.monotonic() < deadline:
+        if first or page.events:
+            yield {
+                "event": "activity" if page.events else "checkpoint",
+                "id": page.next_cursor,
+                "retry": 1000,
+                "data": page.model_dump_json(),
+            }
+            first = False
+        # Drain history immediately; only idle/tailing reads wait. Every page
+        # read is off-loop and releases its DB connection before any SSE send.
+        if not page.has_more:
+            await anyio.sleep(min(_STREAM_POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+        if time.monotonic() >= deadline:
+            break
+        try:
+            page = await anyio.to_thread.run_sync(_read_stream_page, tenant_id, page.next_cursor, limit)
+        except GatewayActivityCursorExpiredError as exc:
+            yield {"event": "gap", "data": '{"reason":"cursor_expired","retention_floor_ordinal":' + str(exc.retention_floor_ordinal) + "}"}
+            return
+        except GatewayActivityCursorError:
+            # A restored/replaced ledger must not silently rewind the client.
+            yield {"event": "gap", "data": '{"reason":"cursor_invalid"}'}
+            return
+        except Exception:  # noqa: BLE001 - stream has started; only a safe terminal status can be sent
+            yield {"event": "unavailable", "data": '{"reason":"ledger_unavailable"}'}
+            return
+    # Reconnect through the auth middleware; do not renew authorization from
+    # the stale request.state. Revocation is rechecked at each new connection.
+    yield {"event": "reconnect", "data": '{"reason":"reauthenticate"}'}
+
+
+@router.get(
+    "/gateway/feed/stream",
+    tags=["gateway"],
+    dependencies=[_dep("read")],
+    response_class=GatewayActivityStreamResponse,
+    responses={
+        200: {
+            "model": GatewayActivityStreamPage,
+            # FastAPI otherwise adds type=string beside this object's $ref.
+            # Describe the JSON data envelope within each SSE activity frame.
+            "content": {"text/event-stream": {"schema": {"type": "object"}}},
+            "description": "SSE activity/checkpoint data frames; id is the resume cursor. Terminal events: gap, unavailable, reconnect.",
+        },
+        400: {"description": "Invalid or cross-tenant cursor"},
+        401: {"description": "Authentication required, including on loopback"},
+        410: {"description": "Cursor precedes retained history; explicit reset required"},
+        503: {"description": "Gateway activity ledger unavailable"},
+    },
+)
+async def gateway_activity_stream(
+    request: Request,
+    cursor: str | None = Query(default=None, min_length=1, max_length=1000, description="Resume after this tenant-bound ledger cursor"),
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID", min_length=1, max_length=1000),
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum canonical records per SSE frame"),
+) -> GatewayActivityStreamResponse:
+    """Backfill all retained canonical events, then follow new commits in order.
+
+    Last-Event-ID takes precedence over the initial query cursor on reconnect.
+    With neither, start at the retention floor. Connections last at most 30
+    seconds of iteration before reauthentication; blocked sends time out after
+    5 seconds. Heartbeats show transport liveness, not producer attestation.
+    Legacy alerts and LLM cost spans have no ledger ordinal and are excluded.
+    """
+    if str(getattr(request.state, "auth_method", "") or "") in {"", "anonymous", "no_auth"}:
+        raise HTTPException(status_code=401, detail="Authentication required for gateway activity streaming")
+    tenant_id = require_request_tenant_id(request)
+    deadline = time.monotonic() + _STREAM_MAX_SECONDS
+    try:
+        first_page = await anyio.to_thread.run_sync(_read_stream_page, tenant_id, last_event_id or cursor, limit)
+    except GatewayActivityCursorExpiredError as exc:
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "message": "Gateway activity cursor is older than retained history",
+                "retention_floor_ordinal": exc.retention_floor_ordinal,
+            },
+        ) from exc
+    except GatewayActivityCursorError as exc:
+        raise HTTPException(status_code=400, detail="Invalid gateway activity cursor") from exc
+    except Exception as exc:  # noqa: BLE001 - do not expose backend exception text
+        raise HTTPException(status_code=503, detail="Gateway activity storage unavailable") from exc
+    return GatewayActivityStreamResponse(
+        _stream_activity(tenant_id, first_page, limit, deadline),
+        ping=10,
+        send_timeout=5,
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get(

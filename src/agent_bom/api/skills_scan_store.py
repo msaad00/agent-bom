@@ -176,6 +176,8 @@ def get_skills_scan_store() -> SkillsScanStore:
     with _default_lock:
         if _default_store is None:
             db_path = os.environ.get("AGENT_BOM_DB", "").strip()
+            if db_path.lower().startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
+                raise SkillsPersistenceUnavailableError("Skills results require a SQLite companion store.")
             if db_path:
                 _default_store = SQLiteSkillsScanStore(db_path)
             elif os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("SNOWFLAKE_ACCOUNT"):

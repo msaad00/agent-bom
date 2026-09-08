@@ -3200,13 +3200,13 @@ export interface TrendsResponse {
 
 // ─── Cross-domain overview (landing page) ────────────────────────────────────
 
-export type OverviewDomainStatus = "ok" | "warn" | "critical" | "idle";
+export type OverviewDomainStatus = "ok" | "warn" | "critical" | "idle" | "unavailable";
 
 export interface OverviewDomain {
   label: string;
   href: string;
   graph_href?: string | undefined;
-  metric: number;
+  metric: number | null;
   metric_label: string;
   status: OverviewDomainStatus;
   detail: Record<string, unknown>;
@@ -4097,7 +4097,14 @@ export interface CostTagRollup {
 export interface CostReport {
   schema_version: string;
   tenant_id: string;
-  price_model_captured: Record<string, boolean>;
+  price_model_captured: string;
+  period?: "all_recorded";
+  basis?: "estimated_token_cost";
+  agents?: number;
+  first_recorded_at?: string | null;
+  last_recorded_at?: string | null;
+  history?: { limit: number; returned_calls: number; complete: boolean };
+  scope?: { agent: string | null; cost_center: string | null };
   total_cost_usd: number;
   total_calls: number;
   total_input_tokens: number;

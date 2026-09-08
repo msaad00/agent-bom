@@ -112,3 +112,10 @@ def test_explicit_sqlite_companion_wins_over_remote_tier(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "synthetic-configured-tier")
     monkeypatch.setenv("AGENT_BOM_DB", str(tmp_path / "skills.db"))
     assert isinstance(stores.get_skills_scan_store(), stores.SQLiteSkillsScanStore)
+
+
+@pytest.mark.parametrize("db", ["postgres://fixture/skills", "postgresql://fixture/skills", "postgresql+psycopg://fixture/skills"])
+def test_remote_db_url_never_becomes_sqlite_filename(monkeypatch, db):
+    monkeypatch.setenv("AGENT_BOM_DB", db)
+    with pytest.raises(stores.SkillsPersistenceUnavailableError):
+        stores.get_skills_scan_store()

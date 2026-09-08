@@ -13,6 +13,7 @@ for (const theme of ["light", "dark"]) {
       role_summary: { role: "admin", ui_role: "admin", display_name: "Admin", capabilities: ["policy.manage"] },
     } }));
     await page.route("**/v1/observability/costs", (route) => route.fulfill({ json: {
+      period: "all_recorded", history: { limit: 1, returned_calls: 1, complete: false },
       total_cost_usd: 12.5, total_calls: 2, total_input_tokens: 100, total_output_tokens: 50,
       unpriced_calls: 0, by_agent: [], by_model: [], by_provider: [], budget: { configured: false },
     } }));
@@ -26,6 +27,13 @@ for (const theme of ["light", "dark"]) {
     await expect(page.getByText("Anomaly analysis unavailable", { exact: true })).toBeVisible();
     await expect(page.getByText("Forecast unavailable. Refresh to retry.")).toBeVisible();
     await expect(page.getByTestId("cost-kpi-strip")).toContainText("$12.5");
+    await expect(page.getByText(/Breakdowns show the latest 1 of 2 recorded calls/)).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator("#main-content")).toHaveCSS("padding-left", "0px");
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`cost-scope-${theme}-mobile.png`), fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1000 });
     failed = false;
     await page.getByRole("button", { name: "Refresh cost data" }).click();
     await expect(page.getByText("Anomaly analysis unavailable", { exact: true })).toHaveCount(0);

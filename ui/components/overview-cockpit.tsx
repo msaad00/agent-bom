@@ -26,6 +26,7 @@ import type {
   ServiceEntry,
   ServiceId,
 } from "@/lib/api-types";
+import { AiSpendSummary } from "@/components/ai-spend-summary";
 import { Collapsible } from "@/components/collapsible";
 import { isNotEvaluated } from "@/components/compliance-status";
 import { FrameworkIcon } from "@/components/framework-icon";
@@ -329,6 +330,7 @@ export function OverviewCockpit({
           </Collapsible>
         </section>
       </div>
+      <AiSpendSummary domain={domains?.cost} loading={loading} />
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
           <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
@@ -531,13 +533,13 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
 // The genuinely-operational estate lanes — cloud / vuln / code are deliberately
 // excluded because the five security-coverage lanes above already own CSPM,
 // Vuln mgmt, and ASPM. Rendering them here too would double-count.
-const OPERATIONAL_DOMAIN_KEYS = ["runtime", "cost", "identity", "ops"] as const;
+const OPERATIONAL_DOMAIN_KEYS = ["runtime", "identity", "ops"] as const;
 type OperationalDomainKey = (typeof OPERATIONAL_DOMAIN_KEYS)[number];
 
 type OpsTile = {
   key: OperationalDomainKey;
   label: string;
-  metric: number;
+  metric: number | null;
   metricLabel: string;
   status: OverviewDomainStatus;
   href: string;
@@ -566,7 +568,6 @@ function buildOperationalTiles(domains: OverviewResponse["domains"] | null): Ops
 // Scope clarifiers keyed by the operational domain key, shown as tooltips only.
 const LANE_HINTS: Record<OperationalDomainKey, string> = {
   runtime: "Live runtime surfaces — gateway, proxy, traces, and agent mesh.",
-  cost: "LLM spend tracked across agents and providers.",
   identity: "Non-human identities and agents under governance.",
   ops: "Completed scan jobs feeding the estate rollup.",
 };
@@ -574,7 +575,7 @@ const LANE_HINTS: Record<OperationalDomainKey, string> = {
 /** A lane is "active" once it is reporting (status !== idle) or carries a
  *  non-zero metric — otherwise it's applicable-but-not-connected. */
 function opsLaneActive(tile: OpsTile): boolean {
-  return tile.status !== "idle" || tile.metric > 0;
+  return tile.status !== "idle" || (tile.metric ?? 0) > 0;
 }
 
 /**
@@ -633,7 +634,7 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
         <span className="truncate text-[11px] font-medium text-foreground">{tile.label}</span>
       </div>
       <div className="flex min-w-0 flex-wrap items-baseline justify-end gap-x-1">
-        <span className={`font-mono text-base font-semibold ${tone.text}`}>{tile.metric}</span>
+        <span className={`font-mono text-base font-semibold ${tone.text}`}>{tile.metric ?? "Unavailable"}</span>
         <span className="text-right text-[10px] text-ink-tertiary" title={tile.metricLabel}>
           {tile.metricLabel}
         </span>

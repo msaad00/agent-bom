@@ -19,7 +19,6 @@ export function InvestigationViewSwitch({ summary, onSummary, onGraph }: {
   return <div role="group" aria-label="Investigation view" className="flex flex-wrap items-center gap-2">
     <button type="button" aria-pressed={summary} onClick={onSummary} className={summary ? "graph-chip-emerald" : "graph-chip-neutral"}>Summary</button>
     <button type="button" aria-pressed={!summary} onClick={onGraph} className={!summary ? "graph-chip-emerald" : "graph-chip-neutral"}>Graph</button>
-    {!summary && <button type="button" onClick={onSummary} className="graph-page-action">Back to summary</button>}
   </div>;
 }
 

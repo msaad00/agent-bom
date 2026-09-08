@@ -2322,8 +2322,9 @@ function GraphPageInner() {
     [captureMode, displayEdges.length, displayNodes.length],
   );
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
-    // Capture mode deliberately frames the complete bounded topology.
-    if (captureMode) return viewportOptions;
+    // Whole-estate navigation starts with all returned scopes in frame.
+    // A selected finding or proposed change keeps its explicit close-up.
+    if (captureMode || (canvasLens === "estate" && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
     const difference = scenarioState !== "current" ? scenarioComparison?.difference : undefined;
     const proposedIds = [...(difference?.nodes_added ?? []), ...(difference?.nodes_changed ?? [])]
       .flatMap((item): string[] => {
@@ -2333,7 +2334,7 @@ function GraphPageInner() {
         return typeof id === "string" ? [id] : [];
       });
     return graphInitialFitViewOptions(displayNodes, viewportOptions, selectedNodeId, proposedIds);
-  }, [captureMode, displayNodes, viewportOptions, selectedNodeId, scenarioState, scenarioComparison]);
+  }, [captureMode, canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison]);
   const initialAnchorId = initialViewportRequest.nodes?.[0]?.id;
   // React Flow shares this prop with its queued imperative fit operation.
   // Hover/LOD node objects must not overwrite a user's pending Fit all request
@@ -2971,7 +2972,8 @@ function GraphPageInner() {
         </div>
 
         <div className="mt-3">
-          {scenarioState === "current" && !rollupUnavailable && (rollupView || investigationMode || selectedAttackPath) && <div className="mb-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {scenarioState === "current" && !rollupUnavailable && (rollupView || investigationMode || selectedAttackPath) && <div className="shrink-0">
             <InvestigationViewSwitch summary={rollupDecisionActive} onSummary={returnToSummary} onGraph={() => setRollupMapExpanded(true)} />
             {rollupStack.length > 0 && <nav aria-label="Investigation scope" className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <button type="button" onClick={resetRollupToRoot} className="graph-page-action">All scopes</button>
@@ -2983,7 +2985,7 @@ function GraphPageInner() {
               event.preventDefault();
               void runSearch();
             }}
-            className="flex flex-wrap items-center gap-2"
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
           >
             <input
               value={searchQuery}
@@ -3000,6 +3002,7 @@ function GraphPageInner() {
               {searching ? "Searching..." : "Search"}
             </button>
           </form>
+          </div>
 
           {searchResults.length > 0 && (
             <div className="mt-2 rounded-2xl border border-outline bg-background/90 p-2">
@@ -3084,14 +3087,14 @@ function GraphPageInner() {
 
           <details
             data-testid="graph-evidence-controls"
-            className="mt-3 rounded-2xl border border-outline bg-background/70 group"
+            className="mt-2 border-t border-outline group"
           >
-            <summary className="graph-drawer-summary">
-              <div>
+            <summary className="graph-drawer-summary !px-0">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
                   Filters and evidence
                 </span>
-                <p className="mt-1 text-xs text-ink-secondary">
+                <p className="text-xs text-ink-secondary">
                   {graphScopeLabelForFilters(filters)} ·{" "}
                   {activeSnapshot
                     ? `${activeSnapshot.node_count.toLocaleString()} nodes · ${activeSnapshot.edge_count.toLocaleString()} edges`
@@ -3714,7 +3717,7 @@ function GraphPageInner() {
         data-testid={selectedAttackPath ? "focused-path-surface" : undefined}
         className={selectedAttackPath
           ? "flex relative min-h-[540px]"
-          : "flex relative h-[clamp(18rem,calc(100dvh-33rem),36rem)] md:h-[clamp(22rem,calc(100dvh-23rem),48rem)]"}
+          : "flex relative h-[clamp(18rem,calc(100dvh-33rem),36rem)] md:h-[clamp(22rem,calc(100dvh-20rem),48rem)]"}
       >
         <div className="flex-1 relative min-h-0 flex flex-col">
           {selectedAttackPath && selectedPathDecision && (
@@ -3768,8 +3771,8 @@ function GraphPageInner() {
               </div>
             </section>
           )}
-          {!captureMode && initialViewportOptions.nodes && graphRenderer.kind === "react-flow" && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
+          {!captureMode && !rollupDecisionActive && (initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
+            <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
               <span>{graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length} graph nodes · {displayEdges.length} relationships</span>
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
             </div>
@@ -3842,7 +3845,7 @@ function GraphPageInner() {
               fitView={!presentation.hasSavedState && !presentation.restoredSavedState}
               fitViewOptions={initialViewportOptions}
               defaultViewport={presentation.restoredViewport ?? presentation.viewport}
-              minZoom={0.16}
+              minZoom={canvasLens === "estate" ? 0.05 : 0.16}
               maxZoom={2.5}
               zoomOnScroll={!captureMode}
               zoomOnPinch={!captureMode}
@@ -3882,7 +3885,7 @@ function GraphPageInner() {
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
               <Controls className={CONTROLS_CLASS} />
-              {showMiniMap && (
+              {showMiniMap && (canvasLens !== "estate" || graphViewport.zoom >= 1) && (
                 <MiniMap
                   style={narrowViewport ? { width: 96, height: 64 } : undefined}
                   nodeColor={minimapNodeColor}

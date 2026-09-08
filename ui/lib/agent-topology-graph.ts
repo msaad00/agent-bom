@@ -1,13 +1,10 @@
 import type { Edge, Node } from "@xyflow/react";
 
 import type { Agent } from "@/lib/api";
+import { credentialEnvKeys } from "@/lib/credential-key";
 
 export const MAX_TOPOLOGY_AGENTS = 75;
 export const MAX_TOPOLOGY_SERVERS = 220;
-export const MAX_PATH_AGENTS = 8;
-export const MAX_PATH_SERVERS = 12;
-
-export type TopologyLens = "path" | "full";
 export type TopologyFilter = "all" | "attention" | "credentialed" | "unlinked";
 
 type MCPServer = NonNullable<Agent["mcp_servers"]>[number];
@@ -22,14 +19,6 @@ export interface TopologyServiceSummary {
   vulnCount: number;
   warningCount: number;
   riskScore: number;
-}
-
-export interface TopologyEdgeInsight {
-  agentName: string;
-  serviceKey: string;
-  riskScore: number;
-  hasCredentials: boolean;
-  vulnCount: number;
 }
 
 export function topologyAgentTypeLabel(agentType: string): string {
@@ -69,7 +58,7 @@ export function serverVulnerabilityCount(server: MCPServer): number {
 export function serverHasCredentials(server: MCPServer): boolean {
   return Boolean(
     server.has_credentials ||
-      Object.keys(server.env ?? {}).length > 0 ||
+      credentialEnvKeys(server.env).length > 0 ||
       (server.credential_env_vars?.length ?? 0) > 0,
   );
 }
@@ -134,50 +123,31 @@ export function buildServiceSummaries(agents: Agent[]): Map<string, TopologyServ
   return summaries;
 }
 
-export function rankTopologyEdges(agents: Agent[]): TopologyEdgeInsight[] {
-  const edges: TopologyEdgeInsight[] = [];
-  for (const agent of agents) {
-    for (const server of agent.mcp_servers ?? []) {
-      edges.push({
-        agentName: agent.name,
-        serviceKey: serviceKey(server),
-        riskScore: edgeRiskScore(server),
-        hasCredentials: serverHasCredentials(server),
-        vulnCount: serverVulnerabilityCount(server),
-      });
-    }
-  }
-  return edges.sort(
-    (left, right) =>
-      right.riskScore - left.riskScore ||
-      right.vulnCount - left.vulnCount ||
-      left.agentName.localeCompare(right.agentName),
-  );
+export function filterTopologyAgents(agents: Agent[], filter: TopologyFilter): Agent[] {
+  if (filter === "all") return agents;
+  if (filter === "unlinked") return agents.filter((agent) => (agent.mcp_servers?.length ?? 0) === 0);
+  return agents.map((agent) => ({
+    ...agent,
+    mcp_servers: (agent.mcp_servers ?? []).filter((server) => serverMatchesFilter(server, filter)),
+  })).filter((agent) => agent.mcp_servers.length > 0);
 }
 
-export function selectAgentsForLens(agents: Agent[], lens: TopologyLens): Agent[] {
-  if (lens === "full" || agents.length <= MAX_PATH_AGENTS) return agents;
-
-  const rankedEdges = rankTopologyEdges(agents);
-  const agentNames = new Set<string>();
-  const serviceKeys = new Set<string>();
-
-  for (const edge of rankedEdges) {
-    if (agentNames.size >= MAX_PATH_AGENTS && !agentNames.has(edge.agentName)) continue;
-    agentNames.add(edge.agentName);
-    serviceKeys.add(edge.serviceKey);
-    if (agentNames.size >= MAX_PATH_AGENTS && serviceKeys.size >= Math.min(MAX_PATH_SERVERS, rankedEdges.length)) {
-      break;
-    }
+/** Bound the view without dropping a retained service's explicit memberships. */
+export function limitTopologyAgents(agents: Agent[]): Agent[] {
+  const services = new Set<string>();
+  const selected: Agent[] = [];
+  const ordered = [...agents].sort((a, b) => agentRiskScore(b) - agentRiskScore(a) || a.name.localeCompare(b.name));
+  for (const agent of ordered) {
+    if (selected.length >= MAX_TOPOLOGY_AGENTS) break;
+    const servers = (agent.mcp_servers ?? []).filter((server) => {
+      const key = serviceKey(server);
+      if (!services.has(key) && services.size >= MAX_TOPOLOGY_SERVERS) return false;
+      services.add(key);
+      return true;
+    });
+    if (servers.length > 0 || !agent.mcp_servers?.length) selected.push({ ...agent, mcp_servers: servers });
   }
-
-  return agents
-    .filter((agent) => agentNames.has(agent.name))
-    .map((agent) => ({
-      ...agent,
-      mcp_servers: (agent.mcp_servers ?? []).filter((server) => serviceKeys.has(serviceKey(server))),
-    }))
-    .filter((agent) => (agent.mcp_servers?.length ?? 0) > 0);
+  return selected;
 }
 
 export function buildTopologyGraph(agents: Agent[]): { nodes: Node[]; edges: Edge[] } {
@@ -276,8 +246,8 @@ export function topologySummary(agents: Agent[]) {
     uniqueServices: serviceSummaries.size,
     packages: servers.reduce((sum, server) => sum + (server.packages?.length ?? 0), 0),
     tools: servers.reduce((sum, server) => sum + (server.tools?.length ?? 0), 0),
-    vulnerableServers: servers.filter((server) => serverVulnerabilityCount(server) > 0).length,
-    credentialedServers: servers.filter(serverHasCredentials).length,
+    vulnerableServers: [...serviceSummaries.values()].filter((service) => service.vulnCount > 0).length,
+    credentialedServers: [...serviceSummaries.values()].filter((service) => service.hasCredentials).length,
     attentionServers,
     sharedServers,
     unlinkedAgents: agents.filter((agent) => (agent.mcp_servers?.length ?? 0) === 0).length,

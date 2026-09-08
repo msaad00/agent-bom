@@ -64,7 +64,7 @@ export function TopologyDetailDrawer({
   const subtitle =
     selection.kind === "agent"
       ? `${topologyAgentTypeLabel(agent?.agent_type ?? "agent")} · ${selection.name}`
-      : `${connectedAgents.length} agent${connectedAgents.length === 1 ? "" : "s"} share this service identity`;
+      : `${connectedAgents.length} agent${connectedAgents.length === 1 ? "" : "s"} in this display group`;
 
   const totalVulns = serverMatches.reduce((sum, match) => sum + serverVulnerabilityCount(match.server), 0);
   const totalTools = serverMatches.reduce((sum, match) => sum + (match.server.tools?.length ?? 0), 0);
@@ -80,7 +80,7 @@ export function TopologyDetailDrawer({
       closeLabel="Close topology details"
       backdropLabel="Dismiss topology details"
       bodyClassName="topology-detail-body"
-      eyebrow={selection.kind === "agent" ? "Agent runtime" : "Shared MCP service"}
+      eyebrow={selection.kind === "agent" ? "Agent runtime" : "Service display group"}
       title={title}
       subtitle={subtitle}
     >
@@ -125,17 +125,17 @@ export function TopologyDetailDrawer({
               {hasCredentials ? (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
                   <Lock className="mr-1.5 inline h-3.5 w-3.5" />
-                  Credential-backed env vars detected on this service path.
+                  Credential references are configured on this service connection.
                 </div>
               ) : (
                 <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-secondary)]">
-                  No credential-backed environment variables were observed on this service path.
+                  No credential references were observed on this service connection.
                 </div>
               )}
               {selection.kind === "server" && connectedAgents.length > 1 ? (
                 <div className="topology-detail-shared">
                   <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                    <Users className="h-3.5 w-3.5" /> Shared blast radius
+                    <Users className="h-3.5 w-3.5" /> Agents in this service group
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {connectedAgents.map((entry) => (

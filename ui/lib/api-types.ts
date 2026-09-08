@@ -2416,6 +2416,8 @@ export interface JobListItem {
 export type ScanJobStatus = JobListItem;
 
 export interface AgentsResponse {
+  scope?: string;
+  source?: string;
   agents: Agent[];
   count: number;
   warnings: string[];

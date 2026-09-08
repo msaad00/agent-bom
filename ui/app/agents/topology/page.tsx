@@ -13,11 +13,11 @@ import { api, type Agent } from "@/lib/api";
 import { AgentTopology } from "@/components/agent-topology";
 import { useAuthState } from "@/components/auth-provider";
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
-import { FIRST_SCAN_ACTIONS } from "@/lib/empty-state-actions";
 
 export default function AgentTopologyPage() {
   const { session } = useAuthState();
   const [agents, setAgents] = useState<Agent[] | null>(null);
+  const [sourceScope, setSourceScope] = useState<string>();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,7 +25,10 @@ export default function AgentTopologyPage() {
     api
       .listAgents()
       .then((res) => {
-        if (!cancelled) setAgents(Array.isArray(res?.agents) ? res.agents : []);
+        if (!cancelled) {
+          setAgents(Array.isArray(res?.agents) ? res.agents : []);
+          setSourceScope(res.scope);
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load agents");
@@ -42,16 +45,16 @@ export default function AgentTopologyPage() {
     return (
       <PageLoadingState
         title="Loading agent topology"
-        detail="Building the trust mesh from scanned AI runtimes and MCP services."
+        detail="Loading configured agent-to-service relationships."
       />
     );
   }
   if (agents.length === 0) {
     return (
       <PageEmptyState
-        title="No agents to map yet"
-        detail="Run a local or repo scan to inventory AI runtimes and MCP services, then open the trust mesh."
-        actions={FIRST_SCAN_ACTIONS}
+        title="No agent configurations to map"
+        detail="This view reads client configuration on the API host. Scanned-estate evidence is available in Asset Inventory."
+        actions={[{ label: "Open asset inventory", href: "/inventory", variant: "primary" }]}
       />
     );
   }
@@ -68,8 +71,7 @@ export default function AgentTopologyPage() {
           </Link>
           <h1 className="text-lg font-semibold text-[color:var(--foreground)]">Agent topology</h1>
           <p className="mt-1 max-w-2xl text-sm text-[color:var(--text-secondary)]">
-            Trust mesh of scanned AI runtimes and MCP services. Amber edges are credentials; red edges
-            are CVE evidence. Overview stays the exec briefing — this page is for engineer drill-down.
+            Explore configured agent-to-service relationships, review attention signals, and inspect the underlying inventory.
           </p>
         </div>
         <Link
@@ -79,7 +81,7 @@ export default function AgentTopologyPage() {
           Context map →
         </Link>
       </div>
-      <AgentTopology agents={agents} session={session} />
+      <AgentTopology agents={agents} session={session} sourceScope={sourceScope} />
     </div>
   );
 }

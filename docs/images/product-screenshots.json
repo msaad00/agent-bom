@@ -1,9 +1,9 @@
 {
   "release_version": "0.104.0",
-  "captured_at": "2026-09-08T02:36:10.236Z",
-  "source_commit": "9cc1732bb7a277351e0ade6a786f0687ecc9c579",
+  "captured_at": "2026-09-08T14:23:46.201Z",
+  "source_commit": "361ab578e0d2bb5cf6512c746002e7ceced759b3",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:79df3ccc37402130f2a641ed5d8200c82f1bc4c97dddd97eb5ca5fdfdb899f87",
+  "capture_inputs_sha256": "sha256:22d24f32353727d49e25718c802bffbfc284e5b999953f4a163ef66590ceb615",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -230,7 +230,7 @@
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
       "visible_version": "0.104.0",
-      "sha256": "sha256:0355f4191dda666297dd017ce3b6b081a5910ee325c7df418faef37091fdf1d9"
+      "sha256": "sha256:814981369d26db55ab7fefe5111a627295d4f6381a88500af47cc3306364f869"
     },
     {
       "presentation": "dark desktop",
@@ -262,7 +262,7 @@
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation workflow at a 390 by 844 viewport",
       "visible_version": "0.104.0",
-      "sha256": "sha256:56a9e5ec6e372b220c12e0cbd441b27294182a178d89ccce64a2731c3ee4fc5f"
+      "sha256": "sha256:11110c4d6ca7bef4c53e7e37259f4c80504881a1e6b4113f75aaac5c475251dc"
     }
   ]
 }

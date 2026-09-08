@@ -20,6 +20,8 @@ export interface EnrichedVuln extends Vulnerability {
   packages: string[];
   agents: string[];
   sources: string[];
+  /** Scanner/subsystem source, distinct from issue type and advisory providers. */
+  detection_source?: string | undefined;
   affected_servers: string[];
   exposed_credentials: string[];
   reachable_tools: string[];

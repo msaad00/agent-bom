@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, CircleAlert, Search } from "lucide-react";
 
+import { producerEvidenceLabel, PRODUCER_EVIDENCE_HINT } from "@/lib/gateway-feed";
 import { Drawer } from "@/components/drawer";
 import {
   api,
@@ -29,6 +30,7 @@ interface ActivityEvent {
   cost: string | null;
   traceId: string | null;
   provenance: string | null;
+  producerEvidence: string | null;
   detail: string | null;
   blocked: boolean;
 }
@@ -59,6 +61,7 @@ function normalizeGatewayEvent(event: GatewayFeedEvent, index: number): Activity
     cost: costUsd === null ? null : `$${costUsd.toFixed(4)}`,
     traceId: event.trace_id?.trim() || null,
     provenance: event.source?.trim() || null,
+    producerEvidence: producerEvidenceLabel(event.producer_assurance),
     detail: event.detail?.trim() || null,
     blocked: event.action_type === "tool_call_blocked",
   };
@@ -84,6 +87,7 @@ function normalizeObservabilityEvent(event: ObservabilityEvent): ActivityEvent {
     cost: null,
     traceId: event.trace_id?.trim() || null,
     provenance: event.trace_id?.trim() ? "Trace telemetry" : null,
+    producerEvidence: null,
     detail: null,
     blocked: event.status === "FAILED" || event.status === "DENIED",
   };
@@ -95,7 +99,7 @@ function timestampValue(value: string): number {
 }
 
 function healthLabel(health: GatewayFeedHealth | null): string {
-  if (health?.state === "live" && health.live === true) return "Live gateway";
+  if (health?.state === "live" && health.live === true) return "Live transport";
   if (health?.state === "sample") return "Sample gateway";
   if (health?.state === "stale") return "Stale gateway";
   return "Gateway unavailable";
@@ -194,6 +198,9 @@ export function ActivityEventStream({
             >
               {healthLabel(gatewayHealth)}
             </span>
+            <span className="text-xs text-[var(--text-tertiary)]" title={PRODUCER_EVIDENCE_HINT}>
+              {producerEvidenceLabel(gatewayHealth?.producer_assurance)}
+            </span>
           </div>
           <p className="mt-1 text-xs text-[var(--text-tertiary)]">
             Gateway decisions and AI telemetry ordered by recorded observation time. Gateway refreshes every 15 seconds; up to 100 recent gateway records.
@@ -241,6 +248,7 @@ export function ActivityEventStream({
                   </span>
                   <span className="mt-0.5 block truncate text-xs text-[var(--text-tertiary)]">
                     {event.source} · {event.kind} · {display(event.decision)}
+                    {event.producerEvidence ? <> · <span title={PRODUCER_EVIDENCE_HINT}>{event.producerEvidence}</span></> : null}
                   </span>
                 </span>
                 <time className="whitespace-nowrap text-[10px] tabular-nums text-[var(--text-tertiary)]">
@@ -287,6 +295,7 @@ export function ActivityEventStream({
               />
               <Detail label="Trace" value={selected.traceId} />
               <Detail label="Provenance" value={selected.provenance} />
+              {selected.producerEvidence ? <Detail label="Producer assurance" value={selected.producerEvidence} /> : null}
             </dl>
             {selected.detail ? (
               <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4">

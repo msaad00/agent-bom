@@ -39,6 +39,7 @@ import {
 
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { ProxyAlertDrawer } from "@/components/proxy-alert-drawer";
+import { producerEvidenceLabel, PRODUCER_EVIDENCE_HINT } from "@/lib/gateway-feed";
 import { proxyAlertKey, proxyAlertSummary } from "@/lib/proxy-alerts";
 import { useChartTheme } from "@/lib/theme-colors";
 
@@ -55,6 +56,8 @@ const SEVERITY_COLORS: Record<string, string> = {
 // ─── WebSocket metrics type ──────────────────────────────────────────────────
 
 interface LiveMetrics {
+  producer_assurance?: ProxyStatusResponse["producer_assurance"];
+  health?: ProxyStatusResponse["health"];
   ts: number;
   tool_calls: Record<string, number>;
   blocked: Record<string, number>;
@@ -184,6 +187,9 @@ export default function ProxyDashboard() {
   const alertCount = live?.alerts_last_60s ?? 0;
   const latencyP95 = live?.latency_p95_ms ?? status?.latency?.p95_ms ?? null;
   const isActive = status?.status !== "no_proxy_session";
+  const transportHealth = live ? live.health : status?.health;
+  const liveTransport = wsConnected && transportHealth?.state === "live" && transportHealth.live;
+  const producerAssurance = live ? live.producer_assurance : status?.producer_assurance;
 
   // Tool call chart data
   const toolCalls = live?.tool_calls ?? status?.calls_by_tool ?? {};
@@ -208,9 +214,8 @@ export default function ProxyDashboard() {
 
   return (
     <div className="space-y-6">
-      {!embedded ? (
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {!embedded ? <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <Shield className="w-6 h-6 text-emerald-400" />
             Proxy Dashboard
@@ -218,13 +223,13 @@ export default function ProxyDashboard() {
           <p className="text-[var(--text-secondary)] text-sm mt-1">
             Runtime MCP proxy metrics, detector activity, and security alerts
           </p>
-        </div>
-        <div className="flex items-center gap-3">
+        </div> : null}
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs">
             {wsConnected ? (
               <>
                 <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-400">Live</span>
+                <span className="text-emerald-400">{liveTransport ? "Live transport" : "Connected"}</span>
               </>
             ) : (
               <>
@@ -233,6 +238,9 @@ export default function ProxyDashboard() {
               </>
             )}
           </div>
+          <span className="text-xs text-[var(--text-tertiary)]" title={PRODUCER_EVIDENCE_HINT}>
+            {producerEvidenceLabel(producerAssurance)}
+          </span>
           <button
             onClick={load}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
@@ -242,7 +250,6 @@ export default function ProxyDashboard() {
           </button>
         </div>
       </div>
-      ) : null}
 
       {/* Loading */}
       {loading && (
@@ -530,7 +537,7 @@ export default function ProxyDashboard() {
                     onClick={() => setSelectedAlert(alert)}
                     className="flex w-full items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]/50 px-3 py-2 text-left transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)]"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                       <span
                         className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${
                           SEVERITY_COLORS[alert.severity] ?? SEVERITY_COLORS.info
@@ -543,6 +550,9 @@ export default function ProxyDashboard() {
                       </span>
                       <span className="shrink-0 font-mono text-xs text-[var(--text-secondary)]">
                         {alert.tool_name}
+                      </span>
+                      <span className="text-xs text-[var(--text-tertiary)]" title={PRODUCER_EVIDENCE_HINT}>
+                        {producerEvidenceLabel(alert.producer_assurance)}
                       </span>
                       <span className="truncate text-xs text-[var(--text-tertiary)]">
                         {proxyAlertSummary(alert)}

@@ -3028,7 +3028,16 @@ export type GatewayFeedActionType =
   | "data_filter_applied"
   | "llm_call";
 
+/** Producer identity is independent from receipt freshness and retention. */
+export type ProducerAssurance = "unknown" | "caller_asserted";
+export interface ProducerAssuranceSummary {
+  producer_assurance_count_basis?: "classified_events" | "submissions";
+  producer_assurance?: ProducerAssurance;
+  producer_assurance_counts?: { unknown: number; caller_asserted: number };
+}
+
 export interface GatewayFeedEvent {
+  producer_assurance?: ProducerAssurance;
   event_id?: string;
   decision_id?: string;
   ts: string;
@@ -3071,6 +3080,8 @@ export interface GatewayFeedCompleteness {
 export type GatewayFeedHealthState = "live" | "stale" | "unavailable" | "sample";
 
 export interface GatewayFeedHealth {
+  assurance_basis?: "transport_receipt";
+  producer_assurance?: ProducerAssurance;
   state: GatewayFeedHealthState;
   live: boolean;
   heartbeat_at: string | null;
@@ -3079,7 +3090,7 @@ export interface GatewayFeedHealth {
   reason: string;
 }
 
-export interface GatewayFeedResponse {
+export interface GatewayFeedResponse extends ProducerAssuranceSummary {
   schema_version: string;
   tenant_id: string;
   generated_at: string;
@@ -3092,7 +3103,15 @@ export interface GatewayFeedResponse {
   health: GatewayFeedHealth;
 }
 
-export interface GatewayFeedKpis {
+export interface GatewayFeedKpis extends ProducerAssuranceSummary {
+  source?: "gateway_activity_ledger" | "degraded_single_process";
+  completeness?: {
+    status: "complete" | "partial";
+    reasons: string[];
+    retention_floor_ordinal?: number;
+    latest_ordinal?: number;
+  };
+  window?: { start: string; end: string; timezone: "UTC"; exact: boolean };
   schema_version: string;
   tenant_id: string;
   generated_at: string;
@@ -3942,7 +3961,8 @@ export interface HitlApprovalQueueResponse {
   items: HitlApprovalQueueItem[];
 }
 
-export interface ProxyStatusResponse {
+export interface ProxyStatusResponse extends ProducerAssuranceSummary {
+  health?: GatewayFeedHealth;
   status: string;
   message?: string | undefined;
   total_tool_calls?: number | undefined;
@@ -3956,6 +3976,7 @@ export interface ProxyStatusResponse {
 }
 
 export interface ProxyAlert {
+  producer_assurance?: ProducerAssurance;
   /** ISO-8601 timestamp string (e.g. "2026-07-06T15:10:00+00:00"). */
   ts: string;
   severity: string;

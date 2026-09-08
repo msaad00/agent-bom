@@ -1,91 +1,99 @@
+# Routine updates share one Monday batch; security fixes remain event-driven.
 version: 2
+multi-ecosystem-groups:
+  weekly-maintenance:
+    schedule:
+      interval: weekly
+      day: monday
+      time: 09:00
+      timezone: America/New_York
+    labels:
+      - dependencies
+    open-pull-requests-limit: 1
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "daily"
+  - package-ecosystem: github-actions
+    directory: /
     labels:
-      - "dependencies"
-      - "github-actions"
-
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "daily"
-    labels:
-      - "dependencies"
-      - "docker"
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: "docker"
-    directory: "/ui"
-    schedule:
-      interval: "daily"
-    labels:
-      - "dependencies"
-      - "docker"
-    open-pull-requests-limit: 5
-    ignore:
-      # ui/package.json and ui/Dockerfile intentionally pin the supported UI
-      # runtime to Node 24 LTS (`engines.node`: >=22 <25). Dependabot should
-      # not keep opening Node 25/26 base-image PRs that CI is designed to
-      # reject.
-      - dependency-name: "node"
-        versions: [">=25"]
-
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "daily"
-    labels:
-      - "dependencies"
-      - "python"
-    open-pull-requests-limit: 10
+      - dependencies
+      - github-actions
+    patterns:
+      - '*'
+    multi-ecosystem-group: weekly-maintenance
     groups:
-      # Keep the BYOC cloud + AI provider SDKs current together, so new provider
-      # APIs land and deprecations are picked up without a swarm of individual
-      # PRs. boto3/botocore are data-driven (new AWS APIs arrive via bumps).
-      cloud-and-ai-sdks:
+      security-updates:
+        applies-to: security-updates
         patterns:
-          - "boto3"
-          - "botocore"
-          - "azure-*"
-          - "google-*"
-          - "snowflake-*"
-          - "huggingface*"
-          - "litellm"
-          - "ollama"
-
-  - package-ecosystem: "npm"
-    directory: "/ui"
-    schedule:
-      interval: "daily"
+          - '*'
+  - package-ecosystem: docker
+    directory: /
     labels:
-      - "dependencies"
-      - "javascript"
-    open-pull-requests-limit: 5
+      - dependencies
+      - docker
+    patterns:
+      - '*'
+    multi-ecosystem-group: weekly-maintenance
     groups:
-      next-stack:
+      security-updates:
+        applies-to: security-updates
         patterns:
-          - "next"
-          - "eslint-config-next"
-          - "@next/eslint-plugin-next"
-      react-stack:
-        patterns:
-          - "react"
-          - "react-dom"
+          - '*'
+  - package-ecosystem: docker
+    directory: /ui
+    labels:
+      - dependencies
+      - docker
     ignore:
-      # ESLint 10 is outside the declared peer ranges of the current React
-      # hooks and JSX accessibility plugins. Resume majors once both support it.
-      - dependency-name: "eslint"
+      - dependency-name: node
+        versions:
+          - '>=25'
+    patterns:
+      - '*'
+    multi-ecosystem-group: weekly-maintenance
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - '*'
+  - package-ecosystem: pip
+    directory: /
+    labels:
+      - dependencies
+      - python
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    patterns:
+      - '*'
+    multi-ecosystem-group: weekly-maintenance
+  - package-ecosystem: npm
+    directory: /ui
+    labels:
+      - dependencies
+      - javascript
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    ignore:
+      - dependency-name: eslint
         update-types:
-          - "version-update:semver-major"
-
-  - package-ecosystem: "npm"
-    directory: "/sdks/typescript"
-    schedule:
-      interval: "daily"
+          - version-update:semver-major
+    patterns:
+      - '*'
+    multi-ecosystem-group: weekly-maintenance
+  - package-ecosystem: npm
+    directory: /sdks/typescript
     labels:
-      - "dependencies"
-      - "javascript"
-    open-pull-requests-limit: 5
+      - dependencies
+      - javascript
+    patterns:
+      - '*'
+    multi-ecosystem-group: weekly-maintenance
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - '*'

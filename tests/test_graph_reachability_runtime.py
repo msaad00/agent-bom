@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -386,20 +387,23 @@ def test_runtime_facts_ignore_bidirectional_structural_hops() -> None:
 
 
 def test_bundle_hot_refresh_replaces_reachability_without_restart():
-    calls = 0
+    refresh_ready = threading.Event()
 
     async def _fetch():
-        nonlocal calls
-        calls += 1
-        return _signed_bundle(tool="read_secret" if calls == 1 else "rotate_keys")
+        return _signed_bundle(tool="rotate_keys" if refresh_ready.is_set() else "read_secret")
 
     with TestClient(create_gateway_app(_bundle_settings(_fetch, poll_seconds=0.01))) as client:
         assert _is_blocked(client.post("/mcp/filesystem", json=_call(tool="read_secret")))
-        deadline = time.monotonic() + 1
-        while calls < 2 and time.monotonic() < deadline:
+        # Advance the source only after the original policy has been exercised;
+        # a busy runner may poll repeatedly before it serves the first request.
+        refresh_ready.set()
+        deadline = time.monotonic() + 3
+        while True:
+            response = client.post("/mcp/filesystem", json=_call(tool="read_secret"))
+            if _is_allowed(response) or time.monotonic() >= deadline:
+                break
             time.sleep(0.01)
-        assert calls >= 2
-        assert _is_allowed(client.post("/mcp/filesystem", json=_call(tool="read_secret")))
+        assert _is_allowed(response), response.text
         assert _is_blocked(client.post("/mcp/filesystem", json=_call(tool="rotate_keys")))
 
 

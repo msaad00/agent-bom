@@ -16,6 +16,11 @@ producer assurance.
 
 ### Fixed
 
+- Preserve the imported report’s scan ID in finding links so investigation opens its persisted graph snapshot.
+- Keep AI spend visible within Overview coverage, with compliance and top risks directly below the main cards.
+
+- Keep advisory fixes scoped to their package and affected range; unknown fixes no longer inherit another package’s version.
+
 - Focused investigation graphs retain identity and data nodes that belong to the
   selected path, even when those layers are hidden in the broader estate view.
 - Scan caching honors `AGENT_BOM_STATE_DIR` in read-only containers while

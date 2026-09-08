@@ -42,6 +42,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 
 | Command | Description |
 |---------|-------------|
+| `runtime` | Manage identity-bound profiles with `profiles create/validate/list/test`; consume durable activity with `feed --cursor-file PATH --follow` |
 | `proxy` | Run an MCP server through the agent-bom security proxy |
 | `watch` | Watch MCP client configuration files for drift and alert on new risks |
 | `audit` | View and analyze a proxy audit JSONL log |

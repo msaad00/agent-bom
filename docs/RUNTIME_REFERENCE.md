@@ -253,3 +253,78 @@ The runtime production index counts alert and metrics submissions under
 many calls. Blueprint comparison reports `comparison_scope:
 reported_activity_only`: an aligned result covers submitted activity only,
 not producer identity, unreported activity, or an approval of the deployment.
+
+## Managed profile CLI and SDK
+
+Use the authenticated control-plane API with a tenant and an operator credential.
+`agent-bom runtime profiles` manages server-side MCP config assignments bound to
+managed agent identities. `agent-bom profiles` remains the local CLI configuration
+selector. The assignment `config_id` is the runtime profile ID; its creation
+`profile_id` selects the identity's role blueprint.
+
+```bash
+export AGENT_BOM_API_URL=https://control-plane.example.com
+export AGENT_BOM_TENANT_ID=tenant-a
+# Inject AGENT_BOM_API_TOKEN through the operator's secret mechanism.
+agent-bom runtime profiles create --file managed-profile.json
+agent-bom runtime profiles list
+agent-bom runtime profiles validate CONFIG_ID --environment prod --scope tools:read
+agent-bom runtime profiles test CONFIG_ID --environment prod --scope tools:read \
+  --upstream filesystem --tool read_file
+```
+
+The JSON creation file uses the existing `/v1/mcp-config/assignments` contract:
+`name`, role-blueprint `profile_id`, `connector_ids`, managed `identity_id`, and
+`environment`, plus optional tool, scope, policy and connection constraints.
+Create requires an identity already provisioned in this tenant and a matching
+blueprint. Creation needs config permission; listing and authenticated contract
+previews need read permission. Responses contain assignment IDs and revisions,
+which can be used in the next command without copying credentials.
+
+Validate and test call `POST /v1/runtime/profiles/evaluate` with hypothetical
+issuer, environment and granted scopes. The canonical relay profile resolver
+checks tenant/identity bindings, lifecycle, expiry and constraints. Test also
+checks the proposed upstream/tool. A denied preview exits nonzero. Every result
+is marked `scope: profile_contract_only` and `executed: false`: a successful
+preview neither verifies a caller token nor runs an upstream, firewall, policy,
+quota or DLP check. Storage failures deny evaluation; anonymous requests are
+rejected even in development no-auth mode. Evaluation is audited without tool
+arguments or credentials.
+
+Python `AgentBomClient` provides `runtime_profiles`, `create_runtime_profile`,
+`get_runtime_profile`, `update_runtime_profile`, `revoke_runtime_profile`,
+`validate_runtime_profile`, and `test_runtime_profile`. The TypeScript client
+provides the equivalent camelCase methods. Updates send `expected_revision` and
+retain the existing optimistic-concurrency contract. Revoke is the rollback for
+an unwanted assignment; a stale or revoked profile fails closed at relay.
+
+## Checkpointed activity command
+
+```bash
+agent-bom runtime feed --cursor-file ./prod-activity.cursor.json --follow \
+  > activity-batches.jsonl
+```
+
+Each JSON line contains an SSE event, cursor ID and a complete canonical activity
+batch. The cursor file is atomically replaced with owner-only permissions after
+the batch is printed and stdout is flushed. It is bound to the API URL and tenant;
+use a separate file for each consumer. A crash after output but before checkpoint
+can replay a batch: downstream consumers must deduplicate `event_id`. The cursor
+is an acknowledgement of local output, not proof that an external sink committed
+it. Do not share a cursor file between concurrently running consumers.
+
+The command reconnects from its last completed batch and reauthenticates on each
+connection. Five consecutive transport failures stop follow mode. A retention
+gap, invalid cursor, authentication failure or unavailable ledger stops with a
+nonzero exit and preserves the checkpoint. Inspect the outage/retention boundary
+before explicitly starting with a new cursor file; the CLI never silently resets
+it. Without `--follow`, it reads one bounded server connection and exits.
+
+Python `client.gateway_activity(cursor=...)` and TypeScript
+`client.gatewayActivity({ cursor, signal })` yield complete frames for one
+connection. Save an activity/checkpoint ID only after consuming its entire batch,
+then reconnect with that ID. Both clients expose terminal `gap`, `unavailable`
+and `reconnect` events, reject malformed batches, and discard partial frames on
+disconnect. Close/break the iterator to release the HTTP response. These commands
+require the durable SQLite/Postgres activity store and its configured retention;
+the process-local metrics socket cannot supply this history.

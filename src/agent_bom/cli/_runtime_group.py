@@ -12,17 +12,20 @@ from __future__ import annotations
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+from agent_bom.cli._runtime_profiles import runtime_feed, runtime_profiles
 
 
 @click.group("runtime", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def runtime_group(ctx: click.Context) -> None:
-    """Runtime enforcement — proxy and audit MCP traffic.
+    """Runtime enforcement, managed profiles and durable activity.
 
     \b
     Subcommands:
       proxy       Run MCP server through security proxy
       audit       View and analyze proxy audit log
+      profiles    Create and preview managed runtime profiles
+      feed        Read checkpointed gateway activity
 
     Hidden compatibility commands:
       protect     Runtime protection engine (8 behavioral detectors)
@@ -30,3 +33,7 @@ def runtime_group(ctx: click.Context) -> None:
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
+
+
+runtime_group.add_command(runtime_profiles)
+runtime_group.add_command(runtime_feed)

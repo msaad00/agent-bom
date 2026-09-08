@@ -142,3 +142,31 @@ def test_scan_requires_scan_permission(monkeypatch, tmp_path) -> None:
     # A viewer (read-only) may not trigger a scan.
     resp = client.post("/v1/skills/scan", json={"files": ["SKILL.md"]}, headers=_READ_ALPHA)
     assert resp.status_code == 403, resp.text
+
+
+def test_skill_audit_follows_authenticated_tenant_including_empty_scan(monkeypatch, tmp_path) -> None:
+    import agent_bom.api.audit_log as audit
+
+    store = audit.InMemoryAuditLog()
+    monkeypatch.setattr(audit, "_audit_log", store)
+    set_skills_scan_store(InMemorySkillsScanStore())
+    _seed_scan_root(tmp_path)
+    (tmp_path / "empty").mkdir()
+    _enable_local_scans(monkeypatch, tmp_path)
+    client = TestClient(app)
+
+    for tenant, target, expected in [("tenant-alpha", "SKILL.md", 1), ("tenant-beta", "empty", 0)]:
+        response = client.post("/v1/skills/scan", json={"files": [target]}, headers=proxy_headers(role="admin", tenant=tenant))
+        assert response.status_code == 200, response.text
+        assert response.json()["summary"]["files_scanned"] == expected
+        entries = store.list_entries(action="skills.scan_completed", tenant_id=tenant)
+        assert len(entries) == 1
+        assert entries[0].details["count"] == expected
+        verified, tampered = store.verify_integrity(tenant_id=tenant)
+        assert verified == len(store.list_entries(tenant_id=tenant))
+        assert tampered == 0
+
+    assert store.list_entries(action="skills.scan_completed", tenant_id="default") == []
+    denied = client.post("/v1/skills/scan", json={"files": ["SKILL.md"]}, headers=_READ_ALPHA)
+    assert denied.status_code == 403
+    assert len(store.list_entries(action="skills.scan_completed", tenant_id="tenant-alpha")) == 1

@@ -1208,7 +1208,7 @@ function overviewResponse() {
       ),
       code: domain("Code / repo", "/scan", 3, "repo scans", "ok", { repo_scans: 3, packages: 148 }),
       runtime: domain("Runtime", "/gateway", 247, "active surfaces", "critical", { active_surfaces: 247 }),
-      cost: domain("LLM Cost", "/cost", 18.4, "USD tracked", "ok", { total_cost_usd: 18.4, total_calls: 2106 }),
+      cost: domain("AI Spend", "/cost", 18.4, "USD estimated", "ok", { available: true, period: "all_recorded", basis: "estimated_token_cost", total_cost_usd: 18.4, total_calls: 2106, total_input_tokens: 1250000, total_output_tokens: 320000, agents: 6, unpriced_calls: 12 }),
       identity: domain("NHI / Identity", "/identity", 18, "identities + agents", "warn", { managed_identities: 3, fleet_agents: 15 }),
       ops: domain("Ops", "/jobs", 3, "completed scans", "ok", { done: 3, failed: 0, running: 0, packages: 148 }),
     },

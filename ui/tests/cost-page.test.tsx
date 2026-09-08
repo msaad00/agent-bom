@@ -26,7 +26,7 @@ const { report, anomalies, forecast } = vi.hoisted(() => {
     report: {
       schema_version: "1",
       tenant_id: "tenant-a",
-      price_model_captured: {},
+      price_model_captured: "2026-06-01",
       total_cost_usd: 12.5,
       total_calls: 100,
       total_input_tokens: 2000,
@@ -91,7 +91,7 @@ describe("CostPage (dense restyle)", () => {
     render(<CostPage />);
 
     const strip = await screen.findByTestId("cost-kpi-strip");
-    expect(within(strip).getByText("Total spend")).toBeInTheDocument();
+    expect(within(strip).getByText("Estimated spend")).toBeInTheDocument();
     expect(within(strip).getByText("LLM calls")).toBeInTheDocument();
 
     // Owner-scoped budget in enforce mode.

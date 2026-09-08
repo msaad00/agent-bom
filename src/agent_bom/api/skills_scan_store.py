@@ -18,11 +18,16 @@ skill body.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+
+
+class SkillsPersistenceUnavailableError(RuntimeError):
+    """The configured durable tier has no Skills result backend."""
 
 
 @dataclass
@@ -162,11 +167,26 @@ _default_lock = threading.Lock()
 
 
 def get_skills_scan_store() -> SkillsScanStore:
-    """Return the process default skills-scan store (in-memory until configured)."""
+    """Select the supported configured store; never silently downgrade a durable tier.
+
+    Explicit injection wins. AGENT_BOM_DB can be a SQLite companion for Skills
+    when the other control-plane stores use a different backend.
+    """
     global _default_store
     with _default_lock:
         if _default_store is None:
-            _default_store = InMemorySkillsScanStore()
+            db_path = os.environ.get("AGENT_BOM_DB", "").strip()
+            if db_path.lower().startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
+                raise SkillsPersistenceUnavailableError("Skills results require a SQLite companion store.")
+            if db_path:
+                _default_store = SQLiteSkillsScanStore(db_path)
+            elif os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("SNOWFLAKE_ACCOUNT"):
+                raise SkillsPersistenceUnavailableError(
+                    "Skills result persistence requires a configured SQLite AGENT_BOM_DB; "
+                    "the selected remote backend does not support Skills results."
+                )
+            else:
+                _default_store = InMemorySkillsScanStore()
         return _default_store
 
 

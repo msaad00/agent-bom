@@ -161,7 +161,7 @@ describe("OverviewCockpit", () => {
   it("keeps operational details closed until requested without hiding their summary", async () => {
     const user = userEvent.setup();
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
-    const toggle = screen.getByRole("button", { name: /Operational signals.*3 of 4 active/i });
+    const toggle = screen.getByRole("button", { name: /Operational signals.*3 of 3 active/i });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByText("Runtime")).not.toBeVisible();
     toggle.focus();
@@ -273,11 +273,10 @@ describe("OverviewCockpit", () => {
     expect(within(strip).getByText("Runtime")).toBeInTheDocument();
     expect(within(strip).getByText("NHI / Identity")).toBeInTheDocument();
     expect(within(strip).getByText("Ops")).toBeInTheDocument();
-    // 3 of 4 active — cost is idle, so it de-emphasizes into a Connect prompt
-    // instead of a loud zero tile.
-    expect(screen.getByText(/3 of 4 active/i)).toBeInTheDocument();
-    expect(within(strip).getByText("LLM Cost")).toBeInTheDocument();
-    expect(within(strip).getByText("Connect")).toBeInTheDocument();
+    // Spend has its own visible summary outside operational signals.
+    expect(screen.getByText(/3 of 3 active/i)).toBeInTheDocument();
+    expect(within(strip).queryByText("LLM Cost")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "AI spend & usage" })).toBeVisible();
   });
 
   it("renders the five security coverage lanes with reconciled severity counts", async () => {
@@ -344,7 +343,7 @@ describe("OverviewCockpit", () => {
     );
 
     expect(screen.queryByText("Data sources")).not.toBeInTheDocument();
-    expect(screen.getByText(/3 of 4 active/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 3 active/i)).toBeInTheDocument();
     expect(screen.getByText(/2 connected/i)).toBeInTheDocument();
   });
 

@@ -582,6 +582,14 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
             set_credential_ref_store(InMemoryCredentialRefStore())
 
+    # Skills results have a node-local SQLite implementation, not remote DB parity.
+    from agent_bom.api.skills_scan_store import SkillsPersistenceUnavailableError, get_skills_scan_store
+
+    try:
+        get_skills_scan_store()
+    except SkillsPersistenceUnavailableError:
+        _logger.warning("Skills result persistence unavailable: configure a SQLite AGENT_BOM_DB companion")
+
     # ── Schedule store ──
     if _stores._schedule_store is None:
         if os.environ.get("AGENT_BOM_POSTGRES_URL") and not snowflake_configured:

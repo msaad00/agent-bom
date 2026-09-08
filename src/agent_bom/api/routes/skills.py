@@ -37,6 +37,7 @@ import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_bom.api.skills_scan_store import SkillsPersistenceUnavailableError, SkillsScanStore, get_skills_scan_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 
@@ -57,6 +58,16 @@ class SkillsScanRequest(BaseModel):
 
     directories: list[str] = Field(default_factory=list, max_length=_MAX_TARGETS)
     files: list[str] = Field(default_factory=list, max_length=_MAX_TARGETS)
+
+
+def _configured_store() -> SkillsScanStore:
+    try:
+        return get_skills_scan_store()
+    except SkillsPersistenceUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail="Skills result persistence requires configured SQLite (AGENT_BOM_DB); this backend is unsupported.",
+        ) from None
 
 
 def _empty_payload() -> dict[str, Any]:
@@ -107,7 +118,7 @@ async def run_skills_scan(
     # Reuse the sibling scan family's confinement + offload helpers verbatim so
     # the skills scan inherits the exact same security posture and backpressure.
     from agent_bom.api.routes.scan import _ai_scan_call, _api_scan_path_or_400
-    from agent_bom.api.skills_scan_store import SkillsScanRun, get_skills_scan_store
+    from agent_bom.api.skills_scan_store import SkillsScanRun
     from agent_bom.skills_service import scan_skill_targets
 
     tenant_id = require_request_tenant_id(request)
@@ -119,12 +130,13 @@ async def run_skills_scan(
     if not targets:
         raise HTTPException(status_code=422, detail="At least one directory or file target is required.")
 
+    store = _configured_store()
     run_id = uuid.uuid4().hex
     created_at = datetime.now(timezone.utc).isoformat()
 
     # `catalog_path` is intentionally omitted: on a shared API host we must not
     # write a cross-tenant catalog file to disk. Persistence is per-tenant below.
-    report = await _ai_scan_call(scan_skill_targets, targets)
+    report = await _ai_scan_call(scan_skill_targets, targets, tenant_id=tenant_id)
     payload: dict[str, Any] = {
         "scan_type": "skills",
         "run_id": run_id,
@@ -133,7 +145,6 @@ async def run_skills_scan(
         **report.to_dict(),
     }
 
-    store = get_skills_scan_store()
     await anyio.to_thread.run_sync(
         lambda: store.put(SkillsScanRun(tenant_id=tenant_id, run_id=run_id, created_at=created_at, payload=payload))
     )
@@ -146,10 +157,8 @@ async def latest_skills_scan(
     _role: Any = _READ_DEP,
 ) -> dict[str, Any]:
     """Return this tenant's most recent persisted skills scan (honest empty when none)."""
-    from agent_bom.api.skills_scan_store import get_skills_scan_store
-
     tenant_id = require_request_tenant_id(request)
-    store = get_skills_scan_store()
+    store = _configured_store()
     latest = await anyio.to_thread.run_sync(lambda: store.latest_for_tenant(tenant_id))
     if latest is None:
         return _empty_payload()

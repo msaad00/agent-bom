@@ -86,6 +86,11 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
         r"\g<1>{v}",
     ),
     ("README.md", re.compile(r"(\brev:\s+v)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    (
+        "docs/DEPLOYMENT.md",
+        re.compile(r"(- repo: https://github\.com/msaad00/agent-bom\n[ \t]+rev:[ \t]+v)\d+\.\d+\.\d+"),
+        r"\g<1>{v}",
+    ),
     ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/archive/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),

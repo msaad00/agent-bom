@@ -7,7 +7,34 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.104.0] - 2026-09-07
+
+This release improves the path from a developer scan to shared findings,
+operator review, and opt-in runtime controls. AI spend remains an estimate of
+recorded token usage; runtime receipts distinguish reported behavior from
+producer assurance.
+
+### Fixed
+
+- Headline AI spend, call, token, and agent totals cover all retained matching
+  records across memory, SQLite, and Postgres. Detail history is bounded and
+  labeled; unavailable storage, unpriced calls, and unsupported forecasts stay
+  explicit. Tenant budget fallback uses tenant spend.
+- Runtime event retries preserve canonical identity across new HTTP request
+  traces. Submission origin, reported producer origin, receipt metadata, and
+  unknown or caller-asserted producer assurance remain distinct in persisted
+  records, feeds, metrics, and activity views.
+- Disk side-scan retries bind to the full request scope. Setup failures and
+  incomplete cleanup retain recovery evidence; failed unmounts preserve owned
+  temporary resources for inspection.
+- Skills scans retain the authenticated tenant in audit evidence and use
+  configured SQLite result storage. Unsupported remote result backends reject
+  scans before side effects; the UI clarifies mounted target scope, empty
+  results, and unavailable evidence.
+- Findings preserve observation anchors and SLA deadlines. Dashboard coverage,
+  framework marks, finding columns, graph framing, and mobile cost tables are
+  easier to inspect in light and dark themes. CLI help avoids duplicate commands.
+
 
 ### Changed
 
@@ -3530,7 +3557,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.103.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.104.0...HEAD
+[0.104.0]: https://github.com/msaad00/agent-bom/compare/v0.103.2...v0.104.0
 [0.103.2]: https://github.com/msaad00/agent-bom/compare/v0.103.1...v0.103.2
 [0.103.1]: https://github.com/msaad00/agent-bom/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/msaad00/agent-bom/compare/v0.102.0...v0.103.0

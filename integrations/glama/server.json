@@ -1,7 +1,7 @@
 {
   "name": "agent-bom",
   "description": "Security scanner and graph for agentic infrastructure — agents, MCP, runtime, and blast radius. Starts with 8 focused MCP tools for scanning, exposure analysis, and remediation.",
-  "version": "0.103.2",
+  "version": "0.104.0",
   "license": "Apache-2.0",
   "repository": "https://github.com/msaad00/agent-bom",
   "transport": "stdio",

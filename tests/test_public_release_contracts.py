@@ -144,8 +144,11 @@ def test_demo_uses_canonical_visible_scan_command() -> None:
     assert "agent-bom agents --demo" not in script
 
 
-def test_demo_tape_opens_on_the_public_command() -> None:
+def test_demo_tape_pages_real_output_and_displays_the_public_command() -> None:
     tape = _read("docs/demo.tape")
-    assert 'Type "agent-bom scan --demo --offline -f console"' in tape
-    assert 'Type "bash scripts/render_demo.sh"' not in tape
+    assert 'Type "bash scripts/render_demo.sh"' in tape
+    renderer = _read("scripts/render_demo.sh")
+    assert "agent-bom scan --demo --offline -f console" in renderer
+    assert "recorded CLI excerpt" in renderer
+    assert "no fix executed" in renderer
     assert "Sleep 32s" not in tape

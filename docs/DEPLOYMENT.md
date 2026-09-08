@@ -225,7 +225,7 @@ to your repository's `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/msaad00/agent-bom
-    rev: v0.90.0
+    rev: v0.103.2
     hooks:
       - id: agent-bom-secrets
       - id: agent-bom-scan
@@ -482,6 +482,7 @@ AWS scan via CodeBuild is also available for a no-infrastructure trial.
 ```python
 from concurrent.futures import ThreadPoolExecutor
 
+
 def scan_vm_fleet(vm_list):
     with ThreadPoolExecutor(max_workers=50) as executor:
         futures = [executor.submit(scan_vm, vm) for vm in vm_list]
@@ -535,23 +536,21 @@ failures, not scan time or cost.
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
+
 def scan_batch(vm_batch):
     # Scan VMs 1-100, 101-200, etc.
     pass
 
-dag = DAG('agent_bom_scan', schedule_interval='@daily')
+
+dag = DAG("agent_bom_scan", schedule_interval="@daily")
 
 tasks = []
 for i in range(0, 1000, 100):  # 10 batches of 100 VMs
-    task = PythonOperator(
-        task_id=f'scan_batch_{i}',
-        python_callable=scan_batch,
-        op_args=[vms[i:i+100]]
-    )
+    task = PythonOperator(task_id=f"scan_batch_{i}", python_callable=scan_batch, op_args=[vms[i : i + 100]])
     tasks.append(task)
 
 # Merge results
-merge = PythonOperator(task_id='merge', python_callable=merge_results)
+merge = PythonOperator(task_id="merge", python_callable=merge_results)
 tasks >> merge
 ```
 

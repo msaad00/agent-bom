@@ -12,7 +12,7 @@ import json
 import os
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +93,7 @@ def _gateway_evidence() -> dict[str, Any]:
         audit_sink=audit_sink,
         upstream_caller=fake_upstream,
         bearer_token=GATEWAY_TOKEN,
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
     )
 
     with TestClient(create_gateway_app(settings)) as client:

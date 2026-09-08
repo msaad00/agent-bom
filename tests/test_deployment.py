@@ -123,6 +123,7 @@ def test_procfile_exists():
     assert "mcp" in content and "server" in content
     assert "streamable-http" in content
     assert "AGENT_BOM_MCP_BEARER_TOKEN" in content
+    assert "AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT" in content
 
 
 def test_dockerfile_sse_does_not_opt_into_insecure_public_mode():
@@ -130,6 +131,7 @@ def test_dockerfile_sse_does_not_opt_into_insecure_public_mode():
     content = (ROOT / "deploy" / "docker" / "Dockerfile.sse").read_text()
     assert "--allow-insecure-no-auth" not in content
     assert "AGENT_BOM_MCP_BEARER_TOKEN" in content
+    assert "AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT" in content
 
 
 def test_clickhouse_grafana_compose_reads_admin_password_from_secret_file():
@@ -486,12 +488,15 @@ def test_server_card_metadata():
     assert card["authentication"] == {"required": False, "schemes": []}
 
 
-def test_live_server_card_exposes_exact_mcp_tool_schemas():
+def test_live_server_card_exposes_exact_mcp_tool_schemas(monkeypatch):
     """Marketplace metadata must use FastMCP's live schemas, not hand-written copies."""
+    from datetime import datetime, timedelta, timezone
+
     from starlette.testclient import TestClient
 
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
 
+    monkeypatch.setenv("AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT", (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat())
     server = create_mcp_server(bearer_token="test-token", profile="full")
     response = TestClient(server.streamable_http_app()).get("/.well-known/mcp/server-card.json")
 

@@ -42,12 +42,35 @@ agent-bom gateway serve \
   --from-control-plane https://agent-bom.example.com \
   --control-plane-token "$CP_TOKEN" \
   --policy-reload-seconds 30 \
-  --bearer-token "$GATEWAY_TOKEN"
+  --bearer-token "$GATEWAY_TOKEN" \
+  --bearer-token-expires-at "$AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT"
 ```
 
 The gateway pushes runtime audit events to the control plane when
 `--from-control-plane` is configured. `--response-sign-key` is a **proxy-only**
 option; it is not accepted by `gateway serve`.
+
+### Incoming credential lifetime
+
+Static incoming bearer tokens now require `--bearer-token-expires-at` (or
+`AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT`): an absolute timezone-aware
+ISO-8601 deadline later than startup and no more than one hour away. Provision
+the token and its deadline together through the deployment credential manager.
+Missing, malformed, expired or overlong deadlines stop startup; at the deadline,
+requests fail with 401. Restarting with the same values does not renew access.
+Python integrations supply `GatewaySettings.bearer_token_expires_at` explicitly.
+
+This changes existing static-token deployments: add the deadline and rotate the
+credential before it expires. Replace both configured values and restart the
+gateway; changing environment variables alone does not update a running process.
+There is no unlimited static-token fallback. Revoking a separately stored API key
+does not revoke the same value deliberately configured as a static credential.
+
+For managed rotation and revocation, leave the static bearer setting unset and
+use the shared API-key store. That path retains its existing expiry, revocation,
+tenant, analyst/admin role and `gateway:relay` scope checks. Its configured
+lifetime policy is independent of the one-hour static-token bound. Per-agent
+identity checks remain separate from incoming transport authentication.
 
 ### Canonical client-profile enforcement
 
@@ -65,6 +88,7 @@ agent-bom gateway serve \
   --bind 0.0.0.0:8090 \
   --upstreams upstreams.yaml \
   --bearer-token "$GATEWAY_TOKEN" \
+  --bearer-token-expires-at "$AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT" \
   --profile-enforcement enforce \
   --profile-environment prod
 ```

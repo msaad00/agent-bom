@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -572,7 +573,19 @@ def test_gateway_serve_allows_non_loopback_bind_with_bearer_token(tmp_path):
     upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
 
     with patch("uvicorn.run") as mock_run:
-        result = runner.invoke(gateway_serve_cmd, ["--bind", "0.0.0.0:8090", "--upstreams", str(upstreams), "--bearer-token", "gw-token"])
+        result = runner.invoke(
+            gateway_serve_cmd,
+            [
+                "--bind",
+                "0.0.0.0:8090",
+                "--upstreams",
+                str(upstreams),
+                "--bearer-token",
+                "gw-token",
+                "--bearer-token-expires-at",
+                (datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
+            ],
+        )
 
     assert result.exit_code == 0
     assert "token required" in result.output

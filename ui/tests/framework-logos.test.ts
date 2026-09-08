@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { frameworkLogoMeta, normalizeFrameworkLogoId } from "@/lib/framework-logos";
 
 describe("frameworkLogoMeta", () => {
+  it.each(["nist-800-53", "pci-dss", "fedramp", "cis-foundations", "aisvs"])(
+    "provides a visible mark for evaluated framework %s",
+    (id) => {
+      const meta = frameworkLogoMeta(id);
+      expect(meta).not.toBeNull();
+      expect(meta!.src || meta!.monogram).toBeTruthy();
+    },
+  );
   it("resolves canonical framework ids to distinct color tiles", () => {
     expect(frameworkLogoMeta("owasp-llm")?.src).toContain("/logos/frameworks/owasp.svg");
     expect(frameworkLogoMeta("atlas")?.src).toContain("mitre-atlas.svg");

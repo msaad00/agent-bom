@@ -180,6 +180,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_ACTIVATE_RUNTIME_EMITTER_PLUGINS` | `bool` | `False` | — |
 | `AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS` | `bool` | `False` | Disabled by default so third-party provider/connector/parser entry points never execute unless an operator explicitly opts in. |
 
+## Gateway transport credentials
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT` | `str` | `''` | Required absolute timezone-aware expiry within one hour when a static bearer is configured. |
+
 ## Graph Backend Selection
 | Env var | Type | Default | Description |
 |---|---|---|---|

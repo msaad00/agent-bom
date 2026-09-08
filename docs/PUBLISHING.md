@@ -22,12 +22,15 @@ publish URL or health endpoint.
 
 The primary SSE/streamable-http server is deployed on Railway at
 `https://agent-bom-mcp.up.railway.app` (automated via `deploy-mcp-sse.yml`).
-Secure remote deployments should set `AGENT_BOM_MCP_BEARER_TOKEN` in Railway
-service variables so the MCP transport starts with built-in authentication. The
-same protected origin publishes OAuth protected-resource/authorization-server
-discovery and a static MCP server card; Smithery uses that OAuth2 contract to
-index the catalog without receiving the deployment's bearer token. Keep TLS at
-your ingress or platform edge.
+Remote deployments require `AGENT_BOM_MCP_BEARER_TOKEN` and
+`AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT` in the service's secure environment. The
+expiry must include a timezone and fall within the next hour. Provision a new
+credential and deadline through your own credential-management workflow (Agent-Bom
+does not issue them), update the client through
+its supported secure credential settings, and restart to load the replacement.
+Do not generate a new expiry at boot for an unchanged token. The MCP server does
+not expose an embedded OAuth issuer; registry capability inspection must use an
+operator-provisioned credential. Keep TLS at your ingress or platform edge.
 
 The daily deployment-freshness workflow probes this protected Railway `/health`
 surface with the configured bearer token, and probes Smithery through

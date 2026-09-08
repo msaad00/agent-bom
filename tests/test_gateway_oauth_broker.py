@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -311,7 +312,13 @@ def test_gateway_refuses_embedded_issuer_before_opening_routes() -> None:
 def test_gateway_bearer_relay_still_works_without_issuer(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
     caller, captured = _echo_caller()
-    settings = GatewaySettings(registry=_registry(), policy={}, bearer_token="configured-token", upstream_caller=caller)
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        bearer_token="configured-token",
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
+        upstream_caller=caller,
+    )
     client = TestClient(create_gateway_app(settings))
     for path in ("/oauth/register", "/oauth/token"):
         assert client.post(path, json={}).status_code == 404
@@ -348,6 +355,7 @@ def test_external_identity_scope_mapping_remains_enforced(monkeypatch, tmp_path,
         registry=_registry(),
         policy={"oidc_issuer": "https://idp.example"},
         bearer_token="configured-token",
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
         upstream_caller=caller,
         tool_scope_map={"fs.write": ["tools:write"]},
         a2a_mutual_auth_enforcement_mode="enforce",

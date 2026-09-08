@@ -1,7 +1,7 @@
 /**
  * Compliance framework marks under `public/logos/frameworks/`.
  * `frameworkLogoMeta(id)` returns a vendored SVG path or a monogram fallback
- * when no mark is shipped (EU AI Act, SOC 2, CMMC).
+ * when no brand asset is shipped.
  */
 
 export type FrameworkLogoId =
@@ -15,7 +15,10 @@ export type FrameworkLogoId =
   | "iso27001"
   | "soc2"
   | "cis"
-  | "cmmc";
+  | "cmmc"
+  | "nist-800-53"
+  | "pci-dss"
+  | "fedramp";
 
 export type FrameworkLogoMeta = {
   id: FrameworkLogoId;
@@ -42,10 +45,23 @@ const LOGO_PATH: Partial<Record<FrameworkLogoId, string>> = {
   "eu-ai-act": `/logos/frameworks/eu-ai-act.svg?${LOGO_ASSET_REV}`,
   soc2: `/logos/frameworks/soc2.svg?${LOGO_ASSET_REV}`,
   cmmc: `/logos/frameworks/cmmc.svg?${LOGO_ASSET_REV}`,
+  "nist-800-53": `/logos/frameworks/nist.svg?${LOGO_ASSET_REV}`,
 };
 
 /** Theme-token badges — readable on both light and dark (no dark-only pastels). */
 const META: Record<FrameworkLogoId, Omit<FrameworkLogoMeta, "src">> = {
+  "nist-800-53": {
+    id: "nist-800-53", monogram: "NIST",
+    badgeClass: "border-sky-600/45 bg-sky-500/15 text-[color:var(--foreground)]",
+  },
+  "pci-dss": {
+    id: "pci-dss", monogram: "PCI",
+    badgeClass: "border-sky-600/45 bg-sky-500/15 text-[color:var(--foreground)]",
+  },
+  fedramp: {
+    id: "fedramp", monogram: "FR",
+    badgeClass: "border-indigo-600/45 bg-indigo-500/15 text-[color:var(--foreground)]",
+  },
   "owasp-llm": {
     id: "owasp-llm",
     monogram: "OW",
@@ -104,6 +120,13 @@ const META: Record<FrameworkLogoId, Omit<FrameworkLogoMeta, "src">> = {
 };
 
 const ALIASES: Record<string, FrameworkLogoId> = {
+  "nist sp 800-53": "nist-800-53",
+  "pci dss 4.0": "pci-dss",
+  "fedramp moderate": "fedramp",
+  "cis-foundations": "cis",
+  "cis foundations benchmark": "cis",
+  aisvs: "owasp-llm",
+  "owasp aisvs": "owasp-llm",
   owasp: "owasp-llm",
   "owasp llm": "owasp-llm",
   "owasp llm top 10": "owasp-llm",

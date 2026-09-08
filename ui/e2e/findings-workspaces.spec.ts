@@ -41,7 +41,7 @@ const finding = {
   },
 };
 
-async function routeFindings(page: Page) {
+async function routeFindings(page: Page, sample = finding) {
   await page.route("**/v1/**", (route) =>
     route.fulfill({ status: 503, json: { detail: "Unavailable outside focused fixture" } }),
   );
@@ -137,7 +137,7 @@ async function routeFindings(page: Page) {
     return route.fulfill({
       json: {
         schema_version: "v1",
-        findings: [finding],
+        findings: [sample],
         count: 1,
         total: 1,
         total_approximate: false,
@@ -245,4 +245,21 @@ for (const theme of ["light", "dark"] as const) {
       await expect(drawer.getByText("Compliance controls", { exact: true })).toBeVisible();
     });
   }
+}
+
+for (const theme of ["light", "dark"] as const) {
+  test(`long findings keep actions and observation dates in view ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+    const title = "Policy document grants unrestricted administrative access to a workload identity across every resource in the account";
+    await routeFindings(page, { ...finding, cve_id: "", title, asset: { ...finding.asset, name: "cloud:role:synthetic-account:clinical-analytics-reader-development-workload-identity" } });
+    await page.goto("/findings");
+    const action = page.getByRole("button", { name: "Investigate", exact: true });
+    await expect(action).toBeVisible();
+    expect((await action.boundingBox())!.x + (await action.boundingBox())!.width).toBeLessThanOrEqual(1440);
+    const table = page.getByRole("table", { name: "Findings and supporting evidence" });
+    expect(await table.evaluate((node) => node.parentElement!.scrollWidth <= node.parentElement!.clientWidth)).toBe(true);
+    expect((await table.locator("tbody > tr").first().boundingBox())!.height).toBeLessThan(150);
+    await expect(page.locator('time[datetime="2026-07-01T12:00:00Z"]')).toHaveAttribute("title", /2026/);
+  });
 }

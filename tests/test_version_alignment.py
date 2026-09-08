@@ -144,6 +144,7 @@ def test_public_release_pins_are_owned_by_the_release_bump() -> None:
     bump = _load_script("bump-version.py")
     cases = {
         "README.md": "    rev: v0.101.0\n",
+        "docs/DEPLOYMENT.md": "  - repo: https://github.com/msaad00/agent-bom\n    rev: v0.101.0\n",
         "docs/PUBLISHING.md": "  --expected 0.101.0 \\\n",
     }
     for path, payload in cases.items():

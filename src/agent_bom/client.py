@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any, TypeAlias
 from urllib.parse import quote
 
@@ -68,6 +68,78 @@ class AgentBomClient:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+    def runtime_profiles(self) -> JsonObject:
+        """List tenant-scoped assignments, including lifecycle status and revisions."""
+        return self._request("GET", "/v1/mcp-config/assignments")
+
+    def create_runtime_profile(self, profile: JsonObject) -> JsonObject:
+        """Create a managed assignment; profile_id is its role blueprint."""
+        if not profile.get("identity_id") or not profile.get("environment"):
+            raise ValueError("Managed runtime profiles require identity_id and environment")
+        return self._request("POST", "/v1/mcp-config/assignments", json=profile)
+
+    def get_runtime_profile(self, config_id: str) -> JsonObject:
+        return self._request("GET", f"/v1/mcp-config/assignments/{quote(config_id, safe='')}")
+
+    def update_runtime_profile(self, config_id: str, profile: JsonObject) -> JsonObject:
+        """Replace profile settings using the required expected_revision field."""
+        return self._request("PUT", f"/v1/mcp-config/assignments/{quote(config_id, safe='')}", json=profile)
+
+    def revoke_runtime_profile(self, config_id: str) -> JsonObject:
+        return self._request("POST", f"/v1/mcp-config/assignments/{quote(config_id, safe='')}/revoke")
+
+    def validate_runtime_profile(self, config_id: str, *, issuer: str, environment: str, granted_scopes: Sequence[str] = ()) -> JsonObject:
+        """Preview the profile contract; this neither verifies credentials nor grants access."""
+        return self._request(
+            "POST",
+            "/v1/runtime/profiles/evaluate",
+            json={
+                "config_id": config_id,
+                "issuer": issuer,
+                "environment": environment,
+                "granted_scopes": list(granted_scopes),
+            },
+        )
+
+    def test_runtime_profile(
+        self, config_id: str, *, issuer: str, environment: str, upstream: str, tool: str, granted_scopes: Sequence[str] = ()
+    ) -> JsonObject:
+        """Preview a target against the profile only; never executes a tool or its policies."""
+        return self._request(
+            "POST",
+            "/v1/runtime/profiles/evaluate",
+            json={
+                "config_id": config_id,
+                "issuer": issuer,
+                "environment": environment,
+                "granted_scopes": list(granted_scopes),
+                "upstream": upstream,
+                "tool": tool,
+            },
+        )
+
+    def gateway_activity(self, *, cursor: str | None = None, limit: int = 200) -> Iterator[dict[str, Any]]:
+        """Read one SSE connection. Commit frame ids after processing their entire batch.
+
+        Reconnect with the last committed id. Terminal gap/unavailable/reconnect
+        frames are surfaced to the caller; no implicit cursor reset or retry.
+        Closing the iterator closes the response.
+        """
+        from agent_bom.runtime.activity_stream import decode_activity_stream
+
+        headers = {**self._headers(False), "accept": "text/event-stream"}
+        if cursor:
+            headers["Last-Event-ID"] = cursor
+        with self._client.stream("GET", self._url("/v1/gateway/feed/stream"), headers=headers, params={"limit": limit}) as response:
+            if not response.is_success:
+                raise AgentBomApiError("Activity stream request failed", status_code=response.status_code, body="")
+            if "text/event-stream" not in response.headers.get("content-type", ""):
+                raise ValueError("Expected activity event stream")
+            for frame in decode_activity_stream(response.iter_bytes()):
+                yield frame
+                if frame["event"] in {"gap", "unavailable", "reconnect"}:
+                    return
 
     def health(self) -> JsonObject:
         """Return the control-plane health envelope."""

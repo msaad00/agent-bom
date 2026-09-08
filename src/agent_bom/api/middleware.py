@@ -1211,6 +1211,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # return no key material and were viewer-reachable before the mutating
         # admin fallback below; keep them explicitly viewer so the fallback
         # doesn't silently lock viewers/analysts out of read-only surfaces.
+        ("POST", "/v1/runtime/profiles/evaluate", "viewer"),
         ("POST", "/v1/graph/query", "viewer"),
         ("POST", "/v1/graph/should-i-deploy", "viewer"),
         ("GET", "/v1/graph/scenarios", "viewer"),

@@ -560,6 +560,86 @@ export class AgentBomClient {
     return this.request<Record<string, JsonValue>>("GET", "/v1/intel/sources");
   }
 
+  runtimeProfiles(): Promise<Record<string, JsonValue>> {
+    return this.request("GET", "/v1/mcp-config/assignments");
+  }
+
+  createRuntimeProfile(profile: Record<string, JsonValue>): Promise<Record<string, JsonValue>> {
+    if (!profile.identity_id || !profile.environment) {
+      throw new Error("Managed runtime profiles require identity_id and environment");
+    }
+    return this.request("POST", "/v1/mcp-config/assignments", profile);
+  }
+
+  getRuntimeProfile(configId: string): Promise<Record<string, JsonValue>> {
+    return this.request("GET", `/v1/mcp-config/assignments/${encodeURIComponent(configId)}`);
+  }
+
+  updateRuntimeProfile(configId: string, profile: Record<string, JsonValue>): Promise<Record<string, JsonValue>> {
+    return this.request("PUT", `/v1/mcp-config/assignments/${encodeURIComponent(configId)}`, profile);
+  }
+
+  revokeRuntimeProfile(configId: string): Promise<Record<string, JsonValue>> {
+    return this.request("POST", `/v1/mcp-config/assignments/${encodeURIComponent(configId)}/revoke`);
+  }
+
+  /** Profile-contract preview only: does not verify credentials or authorize a call. */
+  validateRuntimeProfile(configId: string, context: RuntimeProfileContext): Promise<Record<string, JsonValue>> {
+    return this.request("POST", "/v1/runtime/profiles/evaluate", { ...context, config_id: configId });
+  }
+
+  /** Simulate a tool target without executing the upstream or its policy/DLP checks. */
+  testRuntimeProfile(configId: string, context: RuntimeProfileContext & { upstream: string; tool: string }): Promise<Record<string, JsonValue>> {
+    return this.request("POST", "/v1/runtime/profiles/evaluate", { ...context, config_id: configId });
+  }
+
+  /** One SSE connection. Persist each id only after processing the complete batch.
+   * Terminal frames are returned; callers reconnect using their last committed id.
+   */
+  async *gatewayActivity(options: { cursor?: string; limit?: number; signal?: AbortSignal } = {}): AsyncGenerator<GatewayActivityFrame> {
+    const headers = { ...this.headers(false), accept: "text/event-stream", ...(options.cursor ? { "Last-Event-ID": options.cursor } : {}) };
+    const response = await this.fetchImpl(this.url(`/v1/gateway/feed/stream?limit=${options.limit ?? 200}`), { headers, ...(options.signal ? { signal: options.signal } : {}) });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new AgentBomApiError("Activity stream request failed", response.status, "");
+    }
+    if (!response.headers.get("content-type")?.includes("text/event-stream") || !response.body) {
+      await response.body?.cancel();
+      throw new Error("Expected activity event stream");
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    let buffer = "";
+    let lines: string[] = [];
+    let frameBytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) return; // A partial frame is never committed.
+        buffer += decoder.decode(value, { stream: true });
+        let end: number;
+        while ((end = buffer.indexOf("\n")) >= 0) {
+          const raw = buffer.slice(0, end);
+          buffer = buffer.slice(end + 1);
+          frameBytes += new TextEncoder().encode(raw).length + 1;
+          if (frameBytes > 32 * 1024 * 1024) throw new Error("Activity stream frame exceeds limit");
+          const line = raw.replace(/\r$/, "");
+          if (line) { lines.push(line); continue; }
+          const frame = parseActivityFrame(lines);
+          lines = [];
+          frameBytes = 0;
+          if (frame) {
+            yield frame;
+            if (["gap", "unavailable", "reconnect"].includes(frame.event)) return;
+          }
+        }
+        if (frameBytes + new TextEncoder().encode(buffer).length > 32 * 1024 * 1024) throw new Error("Activity stream frame exceeds limit");
+      }
+    } finally {
+      try { await reader.cancel(); } finally { reader.releaseLock(); }
+    }
+  }
+
   async request<T>(
     method: string,
     path: string,
@@ -632,4 +712,39 @@ function stripUndefined(
       return entry[1] !== undefined;
     }),
   );
+}
+
+export interface RuntimeProfileContext {
+  issuer: string;
+  environment: string;
+  granted_scopes?: string[];
+}
+
+export interface GatewayActivityFrame {
+  event: "activity" | "checkpoint" | "gap" | "unavailable" | "reconnect";
+  id: string;
+  data: Record<string, JsonValue>;
+}
+
+function parseActivityFrame(lines: string[]): GatewayActivityFrame | undefined {
+  let event = "message", id = "";
+  const data: string[] = [];
+  for (const line of lines) {
+    const colon = line.indexOf(":");
+    const key = colon < 0 ? line : line.slice(0, colon);
+    const value = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /, "");
+    if (key === "event") event = value;
+    else if (key === "id") id = value;
+    else if (key === "data") data.push(value);
+  }
+  if (!data.length) return undefined;
+  let payload: Record<string, JsonValue>;
+  try { payload = JSON.parse(data.join("\n")); } catch { throw new Error("Invalid activity stream JSON"); }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid activity stream payload");
+  if (event === "activity" || event === "checkpoint") {
+    if (payload.schema_version !== "gateway.activity.stream.v1" || !id || payload.next_cursor !== id || !Array.isArray(payload.events)) {
+      throw new Error("Invalid activity stream checkpoint");
+    }
+  } else if (!["gap", "unavailable", "reconnect"].includes(event)) throw new Error("Unknown activity stream event");
+  return { event: event as GatewayActivityFrame["event"], id, data: payload };
 }

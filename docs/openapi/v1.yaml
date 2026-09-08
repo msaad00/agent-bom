@@ -5489,6 +5489,94 @@ components:
           title: Window Days
       title: ReportJobRequest
       type: object
+    ResolvedRuntimeProfile:
+      description: Secret-free authorization view for a single managed identity.
+      properties:
+        agent_id:
+          title: Agent Id
+          type: string
+        allowed_tools:
+          items:
+            type: string
+          title: Allowed Tools
+          type: array
+        allowed_upstreams:
+          items:
+            type: string
+          title: Allowed Upstreams
+          type: array
+        blueprint_id:
+          title: Blueprint Id
+          type: string
+        blueprint_revision:
+          title: Blueprint Revision
+          type: integer
+        client_profile_id:
+          title: Client Profile Id
+          type: string
+        credential_references:
+          items:
+            type: string
+          title: Credential References
+          type: array
+        environment:
+          title: Environment
+          type: string
+        expires_at:
+          title: Expires At
+          type: string
+        identity_id:
+          title: Identity Id
+          type: string
+        issuer:
+          title: Issuer
+          type: string
+        owner:
+          title: Owner
+          type: string
+        policy_ids:
+          items:
+            type: string
+          title: Policy Ids
+          type: array
+        required_scopes:
+          items:
+            type: string
+          title: Required Scopes
+          type: array
+        revision:
+          title: Revision
+          type: integer
+        schema_version:
+          default: runtime.client.profile.v1
+          title: Schema Version
+          type: string
+        status:
+          title: Status
+          type: string
+        tenant_id:
+          title: Tenant Id
+          type: string
+      required:
+      - client_profile_id
+      - tenant_id
+      - revision
+      - blueprint_id
+      - blueprint_revision
+      - identity_id
+      - agent_id
+      - issuer
+      - environment
+      - allowed_upstreams
+      - allowed_tools
+      - required_scopes
+      - policy_ids
+      - credential_references
+      - owner
+      - status
+      - expires_at
+      title: ResolvedRuntimeProfile
+      type: object
     RotateKeyRequest:
       additionalProperties: false
       properties:
@@ -5598,6 +5686,88 @@ components:
       - dedup_key
       - observed_at
       title: RuntimeEvidenceSignalIn
+      type: object
+    RuntimeProfileEvaluationRequest:
+      additionalProperties: false
+      description: Operator-supplied simulation context; never caller credentials
+        or payloads.
+      properties:
+        config_id:
+          maxLength: 200
+          minLength: 1
+          title: Config Id
+          type: string
+        environment:
+          maxLength: 120
+          minLength: 1
+          title: Environment
+          type: string
+        granted_scopes:
+          items:
+            type: string
+          maxItems: 200
+          title: Granted Scopes
+          type: array
+        issuer:
+          maxLength: 500
+          minLength: 1
+          title: Issuer
+          type: string
+        tool:
+          anyOf:
+          - maxLength: 200
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Tool
+        upstream:
+          anyOf:
+          - maxLength: 200
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Upstream
+      required:
+      - config_id
+      - issuer
+      - environment
+      title: RuntimeProfileEvaluationRequest
+      type: object
+    RuntimeProfileEvaluationResponse:
+      properties:
+        executed:
+          const: false
+          default: false
+          title: Executed
+          type: boolean
+        profile:
+          anyOf:
+          - $ref: '#/components/schemas/ResolvedRuntimeProfile'
+          - type: 'null'
+        profile_allowed:
+          title: Profile Allowed
+          type: boolean
+        profile_id:
+          title: Profile Id
+          type: string
+        reason_code:
+          title: Reason Code
+          type: string
+        schema_version:
+          const: runtime.profile.evaluation.v1
+          default: runtime.profile.evaluation.v1
+          title: Schema Version
+          type: string
+        scope:
+          const: profile_contract_only
+          default: profile_contract_only
+          title: Scope
+          type: string
+      required:
+      - profile_allowed
+      - reason_code
+      - profile_id
+      title: RuntimeProfileEvaluationResponse
       type: object
     SAMLLoginRequest:
       additionalProperties: false
@@ -23588,6 +23758,63 @@ paths:
       tags:
       - runtime
       - proxy
+  /v1/runtime/profiles/evaluate:
+    post:
+      description: 'Preview the canonical profile contract without issuing a grant
+        or calling upstream.
+
+
+        Supplied issuer, environment and scopes are simulation inputs. Policy,
+
+        firewall, DLP, quotas and live credential verification still run at relay.'
+      operationId: evaluate_runtime_profile_v1_runtime_profiles_evaluate_post
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeProfileEvaluationRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeProfileEvaluationResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Evaluate Runtime Profile
+      tags:
+      - mcp-config
   /v1/runtime/sessions:
     get:
       description: List tenant-scoped runtime sessions derived from persisted observations.

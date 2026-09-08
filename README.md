@@ -30,8 +30,9 @@
 | **Developers & AI engineers** | Inspect repositories, dependencies and MCP configuration; bring findings into CI and coding assistants. |
 | **AppSec & cloud security** | Connect cloud accounts, trace findings through workloads and identities, and prioritize fixes by reachable impact. |
 | **Platform & DevOps** | Run a shared control plane, collect fleet evidence, and apply policy to MCP traffic through the proxy or gateway. |
-| **GRC & audit** | Review control mappings and export evidence with its source, freshness and assessment gaps. |
-| **Security & engineering leaders** | Review posture, remediation priorities and tracked AI spend across connected sources. |
+| **GRC & audit** | Open **Compliance** to review mappings and [export scan evidence](docs/GALLERY.md#scan-a-repository-before-shipping) with its source, freshness and assessment gaps. |
+| **Security & engineering leaders** | Open **Overview** to review posture, remediation priorities and tracked AI spend across connected sources. |
+| **AI assistants & automation** | Use [MCP workflows](docs/MCP_WORKFLOWS.md) to query evidence and inspect findings within the caller’s permissions. |
 
 ## Product tour
 
@@ -57,7 +58,7 @@ and carry the selected finding into remediation.
 ### Engineers and GRC: turn findings into a verifiable fix
 
 Compare available upgrades, affected workloads and mapped controls. Use the
-campaign workflow to assign owners, set SLAs and verify fixes with another scan.
+campaign workflow to assign owners, set SLAs and re-scan to verify fixes.
 
 <p align="center">
   <a href="docs/images/remediation-live.png"><img src="docs/images/remediation-live.png" alt="Actual remediation screen with sample package upgrades, affected controls and campaign verification workflow" width="920"></a>
@@ -69,7 +70,8 @@ a pinned advisory scan and authenticated gateway calls, with modeled infrastruct
 A blocked call does not establish that the underlying package was fixed.
 
 [Discover and scan](docs/GALLERY.md) · [Runtime policy and agent workflows](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) ·
-[Run the reference evidence lab](examples/reference-evidence-lab/README.md)
+[Run the reference evidence lab](examples/reference-evidence-lab/README.md) ·
+[Evidence workflow](docs/HOW_IT_WORKS.md) · [Control-plane architecture](docs/ARCHITECTURE.md)
 
 ## Self-host in your environment
 
@@ -79,13 +81,14 @@ Connect the sources you need and add fleet collection or runtime enforcement as
 teams adopt them. The deployment guides cover credentials, persistence and access
 controls for each supported path.
 
-For a workstation pilot, run from a release checkout:
+For a workstation pilot, run from a [published release checkout](https://github.com/msaad00/agent-bom/releases):
 
 ```bash
 docker compose up -d
 ```
 
 Open **http://localhost:3000**, then **Connections** or **New Scan**.
+For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
 The pilot binds to loopback and retains state in a Docker volume. Use the
 authenticated deployment guide below for a shared instance.
 
@@ -108,7 +111,8 @@ for downstream workflows. Cloud connectors and fleet sync feed the control
 plane; proxy and gateway deployments contribute runtime evidence.
 
 [Integration capability matrix](docs/INTEGRATIONS.md) · [MCP client setup](docs/MCP_CLIENT_GUIDES.md) ·
-[Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md)
+[Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) ·
+[Smithery setup and manifest](site-docs/integrations/smithery.md)
 
 ## Quick start
 
@@ -150,9 +154,9 @@ Use `uvx agent-bom scan .` without a global install, or
 For automatic dependency and secret gates, see
 [pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook).
 
-`agent-bom db update --osv-ecosystem PyPI` seeds advisories for Python;
+`agent-bom db update --osv-ecosystem PyPI` covers only the selected ecosystem;
 add the ecosystems you need before running `agent-bom scan . --offline`.
-The full `agent-bom db update --source osv` archive can exceed 1 GB.
+The full `agent-bom db update --source osv` archive can exceed 1 GB; the command shows live progress.
 A non-zero exit can mean a security gate or incomplete assessment: inspect the
 report and coverage. [Exit codes](site-docs/reference/exit-codes.md)
 
@@ -166,7 +170,8 @@ Missing evidence stays unavailable or partial. Control mappings are not audit ce
 
 [Product boundaries](docs/PRODUCT_BOUNDARIES.md) · [Permissions](docs/PERMISSIONS.md) ·
 [Threat model](docs/THREAT_MODEL.md) · [Security policy](SECURITY.md) ·
-[Release verification](docs/RELEASE_VERIFICATION.md)
+[Release verification](docs/RELEASE_VERIFICATION.md) ·
+[Measured matcher proof](site-docs/features/scanning.md#reproducible-matching-evidence)
 
 ## Contributing and support
 

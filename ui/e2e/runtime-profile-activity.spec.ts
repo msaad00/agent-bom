@@ -56,6 +56,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ fullPage: true, path: testInfo.outputPath(`activity-${theme}-desktop.png`) });
     await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator("#main-content")).toHaveCSS("padding-left", "0px");
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ fullPage: true, path: testInfo.outputPath(`activity-${theme}-mobile.png`) });
@@ -74,6 +75,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ fullPage: true, path: testInfo.outputPath(`profiles-${theme}-mobile.png`) });
     await page.setViewportSize({ width: 1280, height: 1000 });
+    await expect(page.locator("#main-content")).toHaveCSS("padding-left", "240px");
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ fullPage: true, path: testInfo.outputPath(`profiles-${theme}-desktop.png`) });
     await profiles.getByRole("button", { name: "Create managed profile" }).click();

@@ -179,7 +179,9 @@ CREATE TABLE IF NOT EXISTS runtime_events (
     session_id String DEFAULT '',
     trace_id String DEFAULT '',
     request_id String DEFAULT '',
-    source_id String DEFAULT ''
+    source_id String DEFAULT '',
+    producer_assurance LowCardinality(String) DEFAULT 'unknown',
+    submission_provenance String DEFAULT '{}'
 ) ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (tenant_id, event_id)
 PARTITION BY toYYYYMM(event_timestamp)""",
@@ -372,6 +374,8 @@ _TABLE_MIGRATIONS: list[str] = [
     "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS trace_id String DEFAULT ''",
     "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS request_id String DEFAULT ''",
     "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS source_id String DEFAULT ''",
+    "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS producer_assurance LowCardinality(String) DEFAULT 'unknown'",
+    "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS submission_provenance String DEFAULT '{}'",
     "ALTER TABLE posture_scores ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
     "ALTER TABLE scan_metadata ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
     "ALTER TABLE compliance_controls ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",

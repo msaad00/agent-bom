@@ -468,3 +468,43 @@ def test_one_durable_conflict_does_not_discard_valid_batch_members() -> None:
     by_id = {row["event_id"]: row for row in feed["events"]}
     assert set(by_id) == {"evt-conflict", *(f"evt-valid-{index}" for index in range(5))}
     assert by_id["evt-conflict"]["target"] == "read_file"
+
+
+def test_producer_assurance_survives_response_models_and_kpi_window() -> None:
+    from agent_bom.api.gateway_activity_store import gateway_activity_record_from_event, get_gateway_activity_store
+
+    client = TestClient(app)
+    tenant = "assurance-feed"
+    get_gateway_activity_store().append_batch(
+        [
+            gateway_activity_record_from_event(
+                _event("legacy-assurance", tool="read_file"), tenant_id=tenant, source_id="gateway-a", session_id="session-a"
+            )
+        ]
+    )
+    response = client.post(
+        "/v1/proxy/audit",
+        headers=_headers(tenant, role="analyst"),
+        json={
+            "source_id": "gateway-a",
+            "session_id": "session-a",
+            "alerts": [_event("current-assurance", tool="read_file")],
+            "summary": {"total_tool_calls": 1, "calls_by_tool": {"read_file": 1}},
+        },
+    )
+    assert response.status_code == 200
+    feed = client.get("/v1/gateway/feed", headers=_headers(tenant)).json()
+    assert feed["producer_assurance_counts"] == {"unknown": 1, "caller_asserted": 1}
+    assert feed["producer_assurance"] == "unknown"
+    assert feed["health"]["producer_assurance"] == "caller_asserted"
+    assert feed["health"]["live"] is True
+    assert feed["health"]["assurance_basis"] == "transport_receipt"
+    kpis = client.get("/v1/gateway/feed/kpis", headers=_headers(tenant)).json()
+    assert kpis["calls_today"] == 2
+    assert kpis["producer_assurance_counts"] == {"unknown": 1, "caller_asserted": 1}
+    status = client.get("/v1/proxy/status", headers=_headers(tenant)).json()
+    assert status["health"]["assurance_basis"] == "transport_receipt"
+    assert status["producer_assurance"] == "caller_asserted"
+    other = client.get("/v1/gateway/feed/kpis", headers=_headers("other-tenant")).json()
+    assert other["producer_assurance_counts"] == {"unknown": 0, "caller_asserted": 0}
+    assert other["health"]["live"] is False

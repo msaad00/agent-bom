@@ -218,7 +218,8 @@ def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in readme[workflow_heading:persona_heading]
     workflow = readme[workflow_heading:persona_heading]
     normalized_workflow = " ".join(workflow.split())
-    assert "runtime enforcement in your own environment" in normalized_workflow
+    assert "self-hosted control plane" in normalized_workflow
+    assert "runtime policy to MCP tool calls" in normalized_workflow
     assert "### See what needs fixing — and why" in workflow
     assert "Reference evidence lab — modeled local infrastructure" in normalized_workflow
     assert "correlation-receipts-live.png" in workflow
@@ -226,9 +227,11 @@ def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     assert "CVE-2023-4863" in workflow
 
 
-def test_readme_embeds_one_readable_workflow_and_moves_dense_detail_to_docs() -> None:
+def test_readme_embeds_cli_and_investigation_and_links_workflow_detail() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "workflow-dark.svg" in readme
+    assert "workflow-dark.svg" not in readme
+    assert readme.count("docs/images/demo-latest.gif") == 1
+    assert readme.count("correlation-receipts-live.png") == 1
     for diagram in ("architecture-dark.svg", "persona-value-dark.svg"):
         assert diagram not in readme
     assert "[Evidence workflow](docs/HOW_IT_WORKS.md)" in readme

@@ -256,3 +256,25 @@ and synthetic vulnerability captures remain UI regression fixtures. Keep them
 in the generated set, but do not present their synthetic identifiers as real
 advisory or customer evidence. New public scenarios need reproducible source
 artifacts before they become product proof.
+
+## CLI recording
+
+The visible README GIF pages three labeled excerpts of one real
+`agent-bom scan --demo --offline -f console` run. The bundled synthetic scan
+must return security-gate exit `1` and include every required output section.
+Upgrade and verification commands are displayed, never executed.
+
+Use a separate environment so the recording cannot silently switch to the
+editable checkout. Install the published version being demonstrated (the tape
+currently records `0.103.2`), plus Pillow, and put that environment first in PATH:
+
+```bash
+uv venv /tmp/agent-bom-cli-recording
+uv pip install --python /tmp/agent-bom-cli-recording/bin/python 'agent-bom==0.103.2' pillow
+PATH="/tmp/agent-bom-cli-recording/bin:$PATH" bash scripts/render_demo_gif.sh
+```
+
+VHS, ffmpeg and ttyd must be installed; gifsicle is optional. The renderer keeps
+the previous GIF if the scan or playback fails. Review all three scenes before
+committing `docs/images/demo-latest.gif`: complete rows and actions, readable
+text, the public command, and the synthetic-sample label must remain visible.

@@ -45,10 +45,11 @@ def test_readme_promotes_repository_scan_before_the_failing_demo() -> None:
     quick_start = readme.split("## Quick start", 1)[1].split("## Self-host", 1)[0]
 
     repository_scan = quick_start.index("agent-bom scan .")
-    demo_warning = quick_start.index("status `1` is the expected security verdict")
+    demo_warning = quick_start.index("security gate (exit `1`)")
     demo_scan = quick_start.index("agent-bom scan --demo --offline")
 
-    assert repository_scan < demo_warning < demo_scan
+    assert repository_scan < demo_scan < demo_warning
+    assert demo_warning < quick_start.index("docs/images/demo-latest.gif")
 
 
 def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
@@ -172,10 +173,10 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     markers = [
+        "## Quick start",
         "## From evidence source to verified action",
         "[Control-plane architecture](docs/ARCHITECTURE.md)",
         "## Value by role",
-        "## Quick start",
         "## Self-host",
         "## Trust",
     ]
@@ -224,11 +225,11 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     # Keep one source-to-action story before the role-specific entry points.
     intro = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
     normalized_intro = " ".join(intro.split())
-    assert "Finding + UnifiedGraph contracts" in normalized_intro
+    assert "| Scan | Centralize | Enforce |" in normalized_intro
     assert "no connection required" in normalized_intro
-    assert "Add a read-only connection" in normalized_intro
-    assert "Inventory is always the output" in normalized_intro
-    assert "workflow-dark.svg" in intro
+    assert "add a read-only connection" in normalized_intro
+    assert "Inventory is the output of a scan" in normalized_intro
+    assert "[Evidence workflow](docs/HOW_IT_WORKS.md)" in intro
     assert "### See what needs fixing — and why" in intro
 
     quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]
@@ -237,7 +238,10 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     commands = [line for line in primary_block.group(1).splitlines() if line.strip()]
     assert commands == ["pip install agent-bom", "agent-bom scan ."]
 
-    assert "<summary><b>Try without a repository</b></summary>" in readme
+    demo = readme.index("docs/images/demo-latest.gif")
+    assert readme[:demo].count("<details>") == readme[:demo].count("</details>")
+    assert demo < readme.index("## From evidence source to verified action")
+    assert len(readme.splitlines()) <= 210
     assert readme.count("correlation-receipts-live.png") == 1
     assert "correlation-receipts-light-live.png" in readme
     assert "correlation-path-live.png" not in readme  # drilldown belongs in the scenario guide
@@ -255,7 +259,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
 
     # The one high-level workflow is readable in place; denser architecture and
     # persona diagrams plus the full gallery remain in their owning docs.
-    assert "workflow-dark.svg" in readme
+    assert "workflow-dark.svg" not in readme
     assert "architecture-dark.svg" not in readme
     assert "persona-value-dark.svg" not in readme
     assert readme.count("-live.png") == 2

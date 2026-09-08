@@ -21,7 +21,7 @@ def test_product_entrypoints_share_a_graph_definition() -> None:
 
 def test_readme_explains_blast_radius_before_screenshots_without_exploit_claim() -> None:
     readme = (ROOT / "README.md").read_text()
-    assert readme.index("### Read the blast radius") < readme.index("correlation-receipts-live.png")
+    assert readme.index("Vulnerable package → advisory finding") < readme.index("correlation-receipts-live.png")
     assert "Vulnerable package → advisory finding" in readme
     assert "credential names alone" in readme
     assert "do not prove permission or exploitability" in readme

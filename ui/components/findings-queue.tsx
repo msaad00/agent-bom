@@ -181,13 +181,18 @@ export function FindingsQueueTable({
       </div>
       ) : (
       <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full table-fixed text-sm [&_td]:align-top" style={{ minWidth: `${23 + columns.reduce((total, key) => total + COLUMN_WIDTH_REM[key], 0)}rem` }}>
+        <colgroup>
+          <col />
+          {columns.map((key) => <col key={key} style={{ width: `${COLUMN_WIDTH_REM[key]}rem` }} />)}
+          <col style={{ width: "7rem" }} />
+        </colgroup>
         <caption className="sr-only">Findings and supporting evidence</caption>
         <thead className="bg-surface border-b border-outline">
           <tr>
             <ColumnHeader>Finding</ColumnHeader>
             {columns.map((key) => key === "priority" ? (
-              <th key={key} scope="col" aria-sort={ariaSort("severity", sortKey, sortDir)} className="text-left px-4 py-3">
+              <th key={key} scope="col" aria-sort={ariaSort("severity", sortKey, sortDir)} className="text-left px-3 py-3">
                 <SortButton label="Priority" field="severity" current={sortKey} dir={sortDir} onClick={handleSort} />
               </th>
             ) : <ColumnHeader key={key}>{FINDING_COLUMN_LABELS[key]}</ColumnHeader>)}
@@ -243,6 +248,11 @@ export function FindingsQueueTable({
     </div>
   );
 }
+
+const COLUMN_WIDTH_REM: Record<FindingColumnKey, number> = {
+  priority: 5.5, asset: 10, detection: 8, observed: 9.5, remediation: 10,
+  reach: 10, owner: 10, controls: 11, disposition: 12, scope: 12,
+};
 
 function useCompactFindingsLayout() {
   const [compact, setCompact] = useState(false);
@@ -380,7 +390,7 @@ function MobileDetail({ label, value }: { label: string; value: ReactNode }) {
 
 function ColumnHeader({ children }: { children: React.ReactNode }) {
   return (
-    <th scope="col" className="text-left px-4 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide">
+    <th scope="col" className="text-left px-3 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide">
       {children}
     </th>
   );
@@ -401,7 +411,7 @@ function FindingIdentity({
 }) {
   const secondary = findingSecondaryText(vuln);
   return (
-    <td className="px-4 py-3">
+    <td className="px-3 py-3">
       <div className="flex items-start gap-2">
         <button
           type="button"
@@ -423,7 +433,8 @@ function FindingIdentity({
                 event.stopPropagation();
                 onSelect(rowKey);
               }}
-              className="whitespace-nowrap font-mono text-xs text-foreground transition-colors hover:text-emerald-700 dark:hover:text-emerald-300"
+              title={vuln.id}
+              className="min-w-0 line-clamp-2 text-left text-xs font-medium text-foreground [overflow-wrap:anywhere] transition-colors hover:text-emerald-700 dark:hover:text-emerald-300"
             >
               {vuln.id}
             </button>
@@ -551,7 +562,7 @@ function EngineeringCells({
   const disposition = triage?.decision?.replaceAll("_", " ");
   const affectedScope = [...vuln.packages, ...vuln.agents, ...vuln.affected_servers];
   const cells: Record<FindingColumnKey | "action", ReactNode> = {
-    reach: (<td className="px-4 py-3">
+    reach: (<td className="px-3 py-3">
         <div className="flex flex-col items-start gap-1">
           <div className="flex flex-wrap items-center gap-1">
             <ReachabilityBadge reachable={vuln.graph_reachable} hops={vuln.graph_min_hop_distance} />
@@ -570,13 +581,14 @@ function EngineeringCells({
           ) : null}
         </div>
       </td>),
-    asset: (<td className="px-4 py-3">
+    asset: (<td className="px-3 py-3">
         <div className="flex flex-col gap-1 text-xs">
           {packageName ? (
             <a
               href={`/findings?q=${encodeURIComponent(packageName)}`}
               onClick={(event) => event.stopPropagation()}
-              className="font-mono text-ink-secondary underline decoration-dotted underline-offset-2 transition hover:text-foreground"
+              title={packageName}
+              className="line-clamp-2 font-mono text-ink-secondary underline decoration-dotted underline-offset-2 [overflow-wrap:anywhere] transition hover:text-foreground"
             >
               {packageName}
             </a>
@@ -603,18 +615,18 @@ function EngineeringCells({
           )}
         </div>
       </td>),
-    remediation: (<td className="px-4 py-3">
+    remediation: (<td className="px-3 py-3">
         <div className="flex flex-col gap-1 text-xs">
           <span className={vuln.fixed_version ? "font-mono text-emerald-700 dark:text-emerald-300" : "text-ink-tertiary"}>
             {vuln.fixed_version ? `Upgrade ${vuln.fixed_version}` : "Fix not provided"}
           </span>
           <span className="text-ink-secondary">{remediationLifecycle(vuln)}</span>
-          <span className="max-w-[14rem] truncate font-mono text-[11px] text-ink-tertiary" title={verifyCommand ?? undefined}>
+          <span className="max-w-[14rem] truncate font-mono text-[11px] text-ink-tertiary" title={verifyCommand ?? "No scanner-provided verification command"}>
             {verifyCommand ? `Verify: ${verifyCommand}` : "No scanner-provided verification command"}
           </span>
         </div>
       </td>),
-    owner: (<td className="px-4 py-3">
+    owner: (<td className="px-3 py-3">
         <div className="flex flex-col gap-1 text-xs">
           <span className="text-ink-secondary">{vuln.owner || triage?.assignee || "Unassigned"}</span>
           {sla ? (
@@ -629,8 +641,8 @@ function EngineeringCells({
           )}
         </div>
       </td>),
-    observed: (<td className="px-4 py-3 text-xs text-ink-secondary"><ObservedEvidence vuln={vuln} /></td>),
-    action: (<td className="px-4 py-3">
+    observed: (<td className="px-3 py-3 text-xs text-ink-secondary"><ObservedEvidence vuln={vuln} /></td>),
+    action: (<td className="px-3 py-3">
         {suppressed ? (
           <span className="text-xs font-medium px-2 py-0.5 rounded border bg-surface-elevated border-outline text-ink-secondary">
             Suppressed
@@ -662,9 +674,9 @@ function EngineeringCells({
           </div>
         )}
       </td>),
-    detection: (<td className="px-4 py-3 text-xs text-ink-secondary"><DetectionEvidence vuln={vuln} /></td>),
-    priority: (<td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(vuln.severity)}`}>{vuln.severity}</span></td>),
-    controls: (<td className="px-4 py-3">
+    detection: (<td className="px-3 py-3 text-xs text-ink-secondary"><DetectionEvidence vuln={vuln} /></td>),
+    priority: (<td className="px-3 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(vuln.severity)}`}>{vuln.severity}</span></td>),
+    controls: (<td className="px-3 py-3">
         {controlTags.length > 0 ? (
           <div className="flex max-w-[16rem] flex-wrap gap-1">
             {controlTags.slice(0, 2).map((tag) => (
@@ -686,7 +698,7 @@ function EngineeringCells({
           </a>
         )}
       </td>),
-    disposition: (<td className="px-4 py-3">
+    disposition: (<td className="px-3 py-3">
         <div className="flex flex-col items-start gap-1">
           <span className={`rounded border px-2 py-0.5 text-xs font-medium ${findingStatusClass(triage?.queue_state)}`}>
             {disposition || "Not reviewed"}
@@ -696,7 +708,7 @@ function EngineeringCells({
           ) : <span className="text-[11px] text-ink-tertiary">Attestation unavailable</span>}
         </div>
       </td>),
-    scope: (<td className="px-4 py-3 text-xs text-ink-secondary">
+    scope: (<td className="px-3 py-3 text-xs text-ink-secondary">
         {affectedScope.length > 0 ? (
           <span className="block max-w-[14rem] truncate" title={affectedScope.join(", ")}>
             {affectedScope.slice(0, 2).join(", ")}{affectedScope.length > 2 ? ` +${affectedScope.length - 2}` : ""}
@@ -718,7 +730,13 @@ function remediationLifecycle(vuln: EnrichedVuln): string {
 }
 function ObservedEvidence({ vuln }: { vuln: EnrichedVuln }) {
   const last = vuln.last_observed ?? vuln.last_seen;
-  return <span className="flex flex-col gap-1"><span>First: {vuln.first_seen ? formatFindingTimestamp(vuln.first_seen) : "Unavailable"}</span><span>Last: {last ? formatFindingTimestamp(last) : "Unavailable"}</span></span>;
+  return <span className="flex flex-col gap-1"><ObservationDate label="First" value={vuln.first_seen} /><ObservationDate label="Last" value={last} /></span>;
+}
+function ObservationDate({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value || Number.isNaN(Date.parse(value))) return <span>{label}: Unavailable</span>;
+  const exact = formatFindingTimestamp(value);
+  const date = new Date(value).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return <time dateTime={value} title={exact} aria-label={`${label}: ${exact}`} className="whitespace-nowrap">{label}: {date}</time>;
 }
 function DetectionEvidence({ vuln }: { vuln: EnrichedVuln }) {
   return <span className="flex flex-col gap-1 break-words"><span>Source: {vuln.detection_source || "Unavailable"}</span><span>Type: {vuln.finding_type || "Unavailable"}</span></span>;

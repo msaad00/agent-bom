@@ -9,6 +9,36 @@ import pytest
 from agent_bom.scan_cache import ScanCache
 
 
+@pytest.mark.parametrize("override", [None, "environment", "argument"])
+def test_cache_respects_writable_state_directory_and_explicit_overrides(tmp_path, monkeypatch, override):
+    """A read-only home must not prevent scans when a writable state dir is configured."""
+    from agent_bom import scan_cache
+
+    blocked_home = tmp_path / "unwritable-home"
+    blocked_home.write_text("not a directory")
+    monkeypatch.setattr(scan_cache, "DEFAULT_CACHE_DIR", blocked_home)
+    state = tmp_path / "state"
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(state))
+    monkeypatch.delenv("AGENT_BOM_SCAN_CACHE", raising=False)
+    expected = state / "scan_cache.db"
+    kwargs = {}
+    if override in {"environment", "argument"}:
+        expected = tmp_path / "custom" / "cache.db"
+        monkeypatch.setenv("AGENT_BOM_SCAN_CACHE", str(expected))
+    if override == "argument":
+        expected = tmp_path / "explicit" / "cache.db"
+        kwargs["db_path"] = expected
+    cache = ScanCache(**kwargs)
+    try:
+        cache.put("PyPI", "example", "1.0", [])
+        assert cache.get("PyPI", "example", "1.0") == []
+        assert expected.is_file()
+        if override:
+            assert not state.exists()
+    finally:
+        cache._conn.close()
+
+
 @pytest.fixture()
 def cache(tmp_path):
     """Provide a ScanCache backed by a temp SQLite DB."""

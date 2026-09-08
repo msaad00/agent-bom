@@ -24,7 +24,8 @@ Once the control plane is live **and** you connect at least one source:
 | **MCP runtime** | MCP server mode, gateway, proxy | Policy on tool calls; optional HITL approval queue |
 | **Exports** | CLI + API | SARIF, SBOM, CSV, compliance bundles |
 
-Nothing is mutated in your cloud. Connect modules mint **read-only** roles only.
+The standard discovery grant is **read-only**. Provisioning that grant changes
+IAM; optional disk side-scans need separate permissions for temporary resources.
 
 ---
 

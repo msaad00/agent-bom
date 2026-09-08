@@ -10,9 +10,9 @@ agent-bom is built on four security principles:
 
 | Principle | Implementation |
 |-----------|---------------|
-| **Read-only** | Only `List*`, `Describe*`, `Get*` APIs. Zero write calls to any target. |
+| **Read-only discovery** | Standard inventory scans use read-only grants. Explicit disk side-scans create temporary cloud resources and require separate lifecycle permissions; inspect cleanup evidence after failures. |
 | **Agentless cloud discovery** | Cloud and SaaS scans use read-only APIs and standard SDK credential chains. Endpoint fleet/runtime rollout is explicit and installs or schedules `agent-bom` on managed devices. |
-| **Zero-credential** | Never stores, logs, or transmits credential values. Only names (`ANTHROPIC_KEY`, never the key itself). |
+| **Credential boundaries** | Inventory reports redact credential values. Configured connectors use credentials to authenticate; the connection store encrypts stored secrets at rest under the operator's configured key provider. |
 | **Least privilege** | Each cloud provider tells you the exact read-only IAM policy on access denied. |
 
 ## Container images — do I need both?

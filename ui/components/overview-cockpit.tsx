@@ -328,9 +328,9 @@ export function OverviewCockpit({
               <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
             ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
           </Collapsible>
+          <AiSpendSummary domain={domains?.cost} loading={loading} />
         </section>
       </div>
-      <AiSpendSummary domain={domains?.cost} loading={loading} />
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
           <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen

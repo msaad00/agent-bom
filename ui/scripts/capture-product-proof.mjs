@@ -1473,9 +1473,9 @@ function auditEntries() {
   return [
     ["scan.completed", "api", "scan/" + SCAN_ID, { findings: 15, graph_nodes: graph.nodes.length }],
     ["gateway.policy.denied", "gateway", "tool/execute_command", { agent: "developer-copilot", rule: "block-shell" }],
-    ["agent_identity.issued", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
-    ["agent_identity.rotated", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
-    ["agent_identity.revoked", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
+    ["agent_identity.issued", "platform-admin", "identity/id_89c1a6f406bd7189", { tenant_id: "default", agent_id: "developer-copilot", owner: "platform-security", owner_type: "team", role: "analyst" }],
+    ["agent_identity.rotated", "platform-admin", "identity/id_89c1a6f406bd7189", { tenant_id: "default", agent_id: "developer-copilot", owner: "platform-security", owner_type: "team", rotated_from: "id_previous_copilot", overlap_seconds: 3600 }],
+    ["agent_identity.revoked", "security-operator", "identity/id_89c1a6f406bd7189", { tenant_id: "default", agent_id: "developer-copilot", owner: "platform-security", owner_type: "team", reason: "Contain unexpected shell access pending review" }],
     ["compliance.bundle.signed", "api", "compliance/soc2", { signer: "capture-key" }],
   ].map(([action, actor, resource, details], index) => ({
     entry_id: `entry-${index + 1}`,
@@ -2237,9 +2237,14 @@ async function installRoutes(page) {
   // Register the broad audit route before the specific integrity route.
   await page.route("**/v1/audit?**", (route) => {
     const url = new URL(route.request().url());
-    const resource = (url.searchParams.get("resource") ?? "").trim().toLowerCase();
-    const entries = auditEntries().filter((entry) => !resource || entry.resource.toLowerCase().includes(resource));
-    return fulfill(route, { entries, total: entries.length });
+    const resource = url.searchParams.get("resource") ?? "";
+    const action = url.searchParams.get("action") ?? "";
+    const since = url.searchParams.get("since") ?? "";
+    const entries = auditEntries().filter((entry) => (!resource || entry.resource.startsWith(resource))
+      && (!action || entry.action === action) && (!since || entry.timestamp >= since));
+    const offset = Number(url.searchParams.get("offset") ?? 0);
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    return fulfill(route, { entries: entries.slice(offset, offset + limit), total: entries.length });
   });
   await page.route("**/v1/audit/integrity?**", (route) => fulfill(route, {
     verified: 78,
@@ -2455,6 +2460,9 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
           .locator('[data-testid="exposure-path-sequence"]')
           .allInnerTexts();
         const pathDetail = pathSequence.length > 0 ? `; rendered path: ${pathSequence.join(" | ")}` : "";
+        const failurePath = path.join(os.tmpdir(), `agent-bom-capture-failure-${filename}`);
+        await page.screenshot({ path: failurePath, fullPage: false });
+        console.error(`Capture failure screenshot: ${failurePath}`);
         throw new Error(`Expected content ${String(expected)} is missing on ${urlPath}${pathDetail}`);
       }
     }
@@ -2754,6 +2762,15 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
+      path: "correlation-graph-live.png",
+      page: `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&path=top&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore`,
+      scope: "Reference evidence lab interactive graph linking the real advisory to the modeled service and data asset, with remediation context",
+      presentation: "dark desktop",
+      evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
+      evidence_sha256: referenceLabActualDigest,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+    },
+    {
       path: "correlation-receipts-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
       scope: "Reference evidence lab correlation outcome with affected assets, real advisory, runtime state, and remediation action; source receipts remain inspectable",
@@ -2893,7 +2910,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     captured_at: new Date().toISOString(),
     ...provenance,
     capture_note:
-      "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
+      "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
     screenshots,
   };
   await fs.writeFile(path.join(outputDir, path.basename(SCREENSHOT_MANIFEST)), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -3081,6 +3098,13 @@ async function main() {
     if (remediationUrl.searchParams.get("scan") !== REFERENCE_CORRELATION_ID || remediationUrl.searchParams.get("cve") !== "CVE-2023-4863") {
       throw new Error("Correlation drilldown lost its remediation context");
     }
+    await flowPage.getByTestId("selected-exposure-path").getByRole("button", { name: "Graph", exact: true }).click();
+    for (const hop of referenceGraph.attack_paths[0].hops) {
+      await flowPage.locator(`.react-flow__node[data-id="${hop}"]`).waitFor({ state: "visible" });
+    }
+    if (await flowPage.locator(".react-flow__edge").count() !== 7) {
+      throw new Error("Focused investigation omitted reference-lab path relationships");
+    }
     await flowPage.goBack();
     await flowPage.getByTestId("correlation-open-path").waitFor({ state: "visible" });
     if (await flowPage.getByTestId("selected-exposure-path").count()) {
@@ -3202,6 +3226,32 @@ async function main() {
       correlationPathAssertions,
     );
     await page.setViewportSize({ width: 1440, height: 980 });
+    const referenceGraphPage = await newCapturePage("dark", { width: 1568, height: 980 });
+    await capture(
+      referenceGraphPage,
+      `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&path=top&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore`,
+      "correlation-graph-live.png",
+      async (graphPage) => {
+        await graphPage.getByTestId("focused-path-decision").waitFor({ state: "visible" });
+        await fitReactFlow(graphPage);
+        await graphPage.getByTestId("focused-path-surface").scrollIntoViewIfNeeded();
+        await graphPage.evaluate(() => window.scrollBy({ top: -76, behavior: "instant" }));
+        await graphPage.waitForTimeout(350);
+      },
+      {
+        expectedText: ["CVE-2023-4863", "Open remediation plan", "Modeled customer records", "7/7 directed traversable relationships evidenced"],
+        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph"],
+        readySelector: ".react-flow__node",
+        minGraphNodes: 8,
+        maxGraphNodes: 8,
+        minGraphEdges: 7,
+        maxGraphEdges: 7,
+        minGraphNodeFontPx: 12,
+        assertEdgeLabelsClearOfNodes: true,
+        assertNoHorizontalOverflow: true,
+      },
+    );
+    await referenceGraphPage.close();
     const currentCanvasPage = await newCapturePage("dark", { width: 1512, height: 811 });
     await capture(
       currentCanvasPage,
@@ -3426,14 +3476,23 @@ async function main() {
       const resourceFilter = auditPage.getByPlaceholder("Filter by resource…");
       await resourceFilter.fill("identity");
       await filteredResponse;
-      const issuedEvent = auditPage.getByText("agent_identity.issued");
+      const issuedEvent = auditPage.getByRole("button", { name: /agent_identity.issued/ });
       await issuedEvent.waitFor({ state: "visible", timeout: 8_000 });
-      await issuedEvent.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+      await auditPage.getByRole("button", { name: /agent_identity.revoked/ }).click();
+      await auditPage.getByText("3 matching events").waitFor({ state: "visible" });
+      if (await auditPage.getByRole("button", { name: "Export and verify evidence" }).getAttribute("aria-expanded") !== "false") {
+        throw new Error("Audit export controls must start collapsed");
+      }
+      await scrollTo(auditPage, 0);
+      const actionCell = await issuedEvent.locator("span").first().boundingBox();
+      const row = await issuedEvent.boundingBox();
+      if (!actionCell || !row || actionCell.x > row.x + 16) throw new Error("Audit columns do not align with their headings");
       await auditPage.waitForTimeout(350);
     }, {
       expectedText: ["agent_identity.issued", "agent_identity.rotated", "agent_identity.revoked", "identity/id_89c1a6f406bd7189"],
       rejectedText: ["scan.completed", "gateway.policy.denied", "compliance.bundle.signed"],
       expectedApiPaths: ["/v1/audit", "/v1/audit/integrity"],
+      assertNoHorizontalOverflow: true,
     });
     await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, "/findings?capture=1", "dependency-map-live.png", async (findingsPage) => {

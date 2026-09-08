@@ -54,20 +54,9 @@ def test_readme_promotes_repository_scan_before_the_failing_demo() -> None:
 
 def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    first_run = readme.split("## From evidence source to verified action", 1)[1].split("## Self-host", 1)[0]
-    normalized = " ".join(first_run.lower().split())
-
-    for marker in (
-        "read-only connection",
-        "inventory",
-        "finding",
-        "graph",
-        "reachable risk",
-        "owner",
-        "fix",
-        "re-scan",
-        "verify",
-    ):
+    tour = readme.split("## Product tour", 1)[1].split("## Self-host", 1)[0]
+    normalized = " ".join(tour.lower().split())
+    for marker in ("finding", "source receipts", "graph", "reachable data asset", "owners", "fix", "re-scan", "verify"):
         assert marker in normalized
 
 
@@ -125,34 +114,40 @@ def test_cli_reference_lists_all_visible_root_commands() -> None:
 
 def test_public_docs_do_not_overclaim_smithery_catalog_liveness() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    smithery_doc = (ROOT / "site-docs" / "integrations" / "smithery.md").read_text(encoding="utf-8")
-
+    smithery_doc = (ROOT / "site-docs/integrations/smithery.md").read_text(encoding="utf-8")
     assert "agent-bom is published in the [Smithery]" not in smithery_doc
     assert "Also on [Glama]" not in readme
-    assert "Smithery manifest" in readme
+    assert "[Smithery setup and manifest](site-docs/integrations/smithery.md)" in readme
 
 
 def test_release_prep_does_not_call_unpublished_version_current() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     docker_hub = (ROOT / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
-
     assert "0.98.1` | Current stable" not in docker_hub
-    assert "confirm release availability before copying an" in readme
+    assert "[published release checkout](https://github.com/msaad00/agent-bom/releases)" in readme
     assert "verify registry availability before pinning" in docker_hub
 
 
 def test_readme_distinguishes_graph_relationship_provenance() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     normalized = " ".join(readme.lower().split())
-
     assert "Graph views use observed nodes and relationships" not in readme
-    assert "matching labels alone never prove a path" in normalized
-    assert "observed or modeled entities" in normalized
-    assert "source receipt" in normalized
-    assert "a gateway block can contain one tool call" in normalized
-    assert "deployed remediation and live-cloud validation are not claimed" in normalized
+    for claim in (
+        "source receipts",
+        "labeled sample data",
+        "modeled infrastructure",
+        "a blocked call does not establish that the underlying package was fixed",
+    ):
+        assert claim in normalized
+    assert "[Evidence workflow](docs/HOW_IT_WORKS.md)" in readme
     workflow = " ".join((ROOT / "docs/HOW_IT_WORKS.md").read_text().lower().split())
-    assert "they do not merge permission-bearing runtime occurrences" in workflow
+    for boundary in (
+        "they do not merge permission-bearing runtime occurrences",
+        "observed, inferred, or modeled",
+        "a drawn connection alone is not exploit proof",
+        "labels, similar names, and mutable image tags never create a cross-source join",
+    ):
+        assert boundary in workflow
     assert "observed graph evidence" not in readme
 
 
@@ -167,118 +162,46 @@ def test_release_verification_blocks_on_stale_registry_surfaces() -> None:
 
 
 def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
-    """README storefront keeps one clear story and a two-command first run."""
     import re
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-    markers = [
-        "## Quick start",
-        "## From evidence source to verified action",
-        "[Control-plane architecture](docs/ARCHITECTURE.md)",
-        "## Value by role",
-        "## Self-host",
-        "## Trust",
-    ]
+    markers = ["## Built for the teams", "## Product tour", "## Self-host in your environment", "## Quick start", "## Trust and evidence"]
     positions = [readme.index(marker) for marker in markers]
     assert positions == sorted(positions)
-
     hero = readme[: positions[0]]
-    badges = [
-        "label=Build",
-        "pypi/v/agent-bom",
-        "badge/Python-3.11%E2%80%933.14-blue",
-        "docker/pulls/agentbom/agent-bom",
-        "License-Apache%202.0",
-        "ossf-scorecard/github.com/msaad00/agent-bom",
-        "MCP-Glama",
-        "MCP-Smithery",
-    ]
-    assert hero.count("img.shields.io/") == len(badges)
-    for badge in badges:
-        assert hero.count(badge) == 1
-    assert "pypi/pyversions/agent-bom" not in hero
-
-    assert (
-        hero.count(
-            '<p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>'
-        )
-        == 1
-    )
-    # The hero is one claim plus stable calls to action. Volatile inventory
-    # counts belong on their owning capability surfaces, not in the header.
-    assert "Scan repositories, images, and cloud accounts" not in hero
-    assert "package ecosystems" not in hero
-    assert "compliance surfaces" not in hero
-    assert "MCP tools · no account required" not in hero
-    assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
-    assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
-    # Keep the hero stable and focused: the outcome-first proof section owns the
-    # live product evidence instead of duplicating a volatile service URL here.
-    assert "Live demo" not in hero
-    # `demo.agent-bom.com` is not currently mapped to that service. Until a Cloud
-    # Run domain mapping exists, the README must not send anyone to a hostname
-    # that resolves to nothing.
-    assert "demo.agent-bom.com" not in readme
-    assert "## How it works" not in readme
-
-    # Keep one source-to-action story before the role-specific entry points.
-    intro = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
-    normalized_intro = " ".join(intro.split())
-    assert "| Scan | Centralize | Enforce |" in normalized_intro
-    assert "no connection required" in normalized_intro
-    assert "add a read-only connection" in normalized_intro
-    assert "Inventory is the output of a scan" in normalized_intro
-    assert "[Evidence workflow](docs/HOW_IT_WORKS.md)" in intro
-    assert "### See what needs fixing — and why" in intro
-
+    assert hero.count("img.shields.io/") == 8
+    assert hero.count("Open security scanner and self-hosted control plane") == 1
+    for anchor in ("#product-tour", "#self-host-in-your-environment", "#quick-start"):
+        assert f'href="{anchor}"' in hero
+    assert "Scan your software and AI infrastructure" not in hero
+    for noise in ("package ecosystems", "compliance surfaces", "MCP tools · no account required", "demo.agent-bom.com"):
+        assert noise not in hero
     quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]
-    primary_block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
-    assert primary_block is not None
-    commands = [line for line in primary_block.group(1).splitlines() if line.strip()]
-    assert commands == ["pip install agent-bom", "agent-bom scan ."]
-
+    block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
+    assert block and block.group(1).splitlines() == ["pip install agent-bom", "agent-bom scan ."]
+    assert "agent-bom mcp server" in quick_start
     demo = readme.index("docs/images/demo-latest.gif")
     assert readme[:demo].count("<details>") == readme[:demo].count("</details>")
-    assert demo < readme.index("## From evidence source to verified action")
     assert len(readme.splitlines()) <= 210
-    assert readme.count("correlation-receipts-live.png") == 1
-    assert "correlation-receipts-light-live.png" in readme
-    assert "correlation-path-live.png" not in readme  # drilldown belongs in the scenario guide
-    assert "[Explore reproducible product scenarios](docs/GALLERY.md)" in readme
-    assert "gateway-policies-live.png" not in readme
-
-    # Persona surfaces keep security engineering and GRC as separate lanes
-    # (never one card) — findings and reachability are not audit certification.
-    assert "AppSec/GRC" not in readme
+    images = re.findall(r'<img src="docs/images/([^"]+-live.png)"', readme)
+    assert images == ["dashboard-live.png", "correlation-graph-live.png", "remediation-live.png"]
+    assert "correlation-path-live.png" not in readme
+    assert "docs/GALLERY.md" in readme
+    for diagram in ("workflow-dark.svg", "architecture-dark.svg", "persona-value-dark.svg", "blast-radius-dark.svg"):
+        assert diagram not in readme
     assert "AppSec / GRC" not in readme
-    assert "| Developer / AI engineer |" in readme
-    assert "| AppSec / product security |" in readme
-    assert "| Cloud security |" in readme
-    assert "| GRC / audit |" in readme
-
-    # The one high-level workflow is readable in place; denser architecture and
-    # persona diagrams plus the full gallery remain in their owning docs.
-    assert "workflow-dark.svg" not in readme
-    assert "architecture-dark.svg" not in readme
-    assert "persona-value-dark.svg" not in readme
-    assert readme.count("-live.png") == 2
-    assert 'width="920"' in readme
-    assert "blast-radius-dark.svg" not in readme
 
 
-def test_readme_grc_persona_row_teaches_the_real_compliance_command() -> None:
-    """The GRC row must give the same runnable entry point as the other four."""
+def test_readme_grc_persona_row_links_a_runnable_compliance_workflow() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-    assert "agent-bom report compliance-narrative" in readme
-    # No noun-phrase placeholder where a command belongs.
-    assert "| Compliance exports + control-plane evidence |" not in readme
-
+    row = next(line for line in readme.splitlines() if line.startswith("| **GRC & audit**"))
+    assert "Open **Compliance**" in row
+    assert "docs/GALLERY.md#scan-a-repository-before-shipping" in row
+    scenario = (ROOT / "docs/GALLERY.md").read_text().split("## Scan a repository before shipping", 1)[1].split("\n## ", 1)[0]
+    assert "agent-bom scan . -f json -o scan.json" in scenario
+    assert "agent-bom report compliance-narrative scan.json" in scenario
     result = CliRunner().invoke(main, ["report", "compliance-narrative", "--help"])
-    assert result.exit_code == 0, result.output
-    # The documented invocation passes a saved scan report positionally.
-    assert "SCAN_FILE" in result.output
+    assert result.exit_code == 0 and "SCAN_FILE" in result.output
 
 
 def test_permissions_doc_keeps_network_boundary_scoped() -> None:

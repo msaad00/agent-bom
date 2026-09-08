@@ -10,7 +10,6 @@ from scripts.render_social_preview_svg import render as render_social_preview
 
 ROOT = Path(__file__).resolve().parents[1]
 DURABLE_LOCAL_CONTROL_PLANE = "agent-bom serve --persist ~/.agent-bom/control-plane.db"
-LOCAL_ANALYST_CONTROL_PLANE = f"AGENT_BOM_NO_AUTH_ROLE=analyst {DURABLE_LOCAL_CONTROL_PLANE}"
 
 
 def test_social_preview_is_portable_and_evidence_focused() -> None:
@@ -95,28 +94,20 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
 
 
 def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    import re
 
-    journey = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
-    stages = ["read-only connection", "collect", "inventory", "findings", "graph", "owner", "re-scan", "verify"]
-    images = ["correlation-receipts-live.png"]
-    normalized = " ".join(journey.lower().split())
-    assert all(stage in normalized for stage in stages)
-    assert all(image in journey for image in images)
-    assert [journey.index(image) for image in images] == sorted(journey.index(image) for image in images)
-    assert 'width="920"' in journey
-    assert "[Explore reproducible product scenarios](docs/GALLERY.md)" in journey
-    assert "reference evidence lab — modeled local infrastructure" in normalized
-    assert "CVE-2023-4863" in journey
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    journey = readme.split("## Product tour", 1)[1].split("## Self-host", 1)[0]
+    images = re.findall(r'<img src="docs/images/([^"]+)"', journey)
+    assert images == ["dashboard-live.png", "correlation-graph-live.png", "remediation-live.png"]
+    assert journey.count('width="920"') == 3
+    for image in images:
+        assert (ROOT / "docs/images" / image).is_file()
+    for marker in ("source receipts", "owners", "re-scan", "verify", "labeled sample data", "modeled infrastructure", "CVE-2023-4863"):
+        assert marker in journey
+    assert "[Discover and scan](docs/GALLERY.md)" in journey
+    assert "A blocked call does not establish" in journey
     assert "DEMO-VULN" not in journey
-    for removed_thumbnail in (
-        "jobs-pipeline-live.png",
-        "security-graph-live.png",
-        "inventory-live.png",
-        "lineage-graph-live.png",
-        "remediation-live.png",
-    ):
-        assert removed_thumbnail not in journey
 
 
 def test_readme_leads_with_discover_scan_correlate_act_brand_header() -> None:
@@ -131,23 +122,11 @@ def test_readme_leads_with_discover_scan_correlate_act_brand_header() -> None:
 
 def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    frontdoor = readme.split("## From evidence source to verified action", 1)[1].split("## Value by role", 1)[0]
-    normalized = " ".join(frontdoor.split())
-
-    assert "Start with a repository" in frontdoor
-    for capability in ("repository", "image", "SBOM", "MCP config", "AWS", "Azure", "GCP", "Snowflake"):
-        assert capability in frontdoor
-    assert "no connection required" in frontdoor
-    assert "add a read-only connection" in frontdoor
-    assert "| Scan | Centralize | Enforce |" in normalized
-    assert "Inventory is the output of a scan" in normalized
-    assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in frontdoor
-
-    header_note = readme.split('<p align="center">', 2)[2].split("</p>", 1)[0]
-    assert "Supported backends vary by capability" in header_note
-    assert "Capability matrix" in header_note
-
-    matrix = (ROOT / "docs" / "INTEGRATIONS.md").read_text(encoding="utf-8")
+    integrations = readme.split("### Work with your existing tools", 1)[1].split("## Quick start", 1)[0]
+    for capability in ("CLI or GitHub Action", "REST API", "MCP", "SARIF", "CycloneDX", "SPDX", "fleet sync", "runtime evidence"):
+        assert capability in integrations
+    assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in integrations
+    matrix = (ROOT / "docs/INTEGRATIONS.md").read_text(encoding="utf-8")
     for role in ("Client discovery", "Read-only cloud connection", "Scan and deploy", "Identity", "Data platform", "Analytics backend"):
         assert role in matrix
     assert "agent-bom scan --databricks --databricks-security" in matrix
@@ -185,15 +164,21 @@ def test_docker_ui_first_run_has_a_result_and_preserves_local_auth_boundary() ->
 
 def test_persona_routes_start_with_their_actual_work() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
-
-    assert "| Developer / AI engineer | `agent-bom scan .`" in personas
-    assert "| AppSec / product security | Open **Overview**, then inspect a prioritized finding" in personas
-    assert "| Cloud security | Add a read-only connection, then run a scan" in personas
-    assert f"| Platform / DevOps | `pip install 'agent-bom[ui]' && {LOCAL_ANALYST_CONTROL_PLANE}`" in personas
-    assert "| CISO / engineering leader | Open **Overview** in the self-hosted control plane" in personas
-    assert "| AI assistant / automation | `agent-bom mcp server`" in personas
-    assert "owners and slas" in personas.lower()
+    personas = readme.split("## Built for the teams", 1)[1].split("## Product tour", 1)[0]
+    for marker in (
+        "Developers & AI engineers",
+        "AppSec & cloud security",
+        "Platform & DevOps",
+        "GRC & audit",
+        "Security & engineering leaders",
+        "AI assistants & automation",
+    ):
+        assert marker in personas
+    assert "Open **Compliance**" in personas
+    assert "Open **Overview**" in personas
+    assert "docs/GALLERY.md#scan-a-repository-before-shipping" in personas
+    assert "docs/MCP_WORKFLOWS.md" in personas
+    assert "caller’s permissions" in personas
 
 
 def test_public_first_run_surfaces_share_one_primary_command() -> None:
@@ -208,42 +193,41 @@ def test_public_first_run_surfaces_share_one_primary_command() -> None:
 
 
 def test_primary_local_control_plane_first_runs_use_one_durable_sqlite_path() -> None:
+    for filename, heading in (
+        ("PYPI_README.md", "## Recommended starting points"),
+        ("docs/START_HERE.md", "## Platform / SRE"),
+        ("docs/FIRST_RUN.md", "## 3. Open the Dashboard"),
+    ):
+        text = (ROOT / filename).read_text(encoding="utf-8")
+        section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+        assert DURABLE_LOCAL_CONTROL_PLANE in section
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    pypi = (ROOT / "PYPI_README.md").read_text(encoding="utf-8")
-    start_here = (ROOT / "docs" / "START_HERE.md").read_text(encoding="utf-8")
-    first_run = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
-
-    personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
-    path_b = readme.split("### Connect a source, then scan", 1)[1].split("\n### ", 1)[0]
-    self_host = readme.split("## Self-host", 1)[1].split("\n## ", 1)[0]
-    pypi_starts = pypi.split("## Recommended starting points", 1)[1].split("\n## ", 1)[0]
-    platform_start = start_here.split("## Platform / SRE", 1)[1].split("\n## ", 1)[0]
-    dashboard_start = first_run.split("## 3. Open the Dashboard", 1)[1].split("\n## ", 1)[0]
-
-    for surface in (personas, path_b, self_host, pypi_starts, platform_start, dashboard_start):
-        assert DURABLE_LOCAL_CONTROL_PLANE in surface
-
-    assert readme.count(DURABLE_LOCAL_CONTROL_PLANE) == 3
+    self_host = readme.split("## Self-host", 1)[1].split("## Quick start", 1)[0]
+    assert "docker compose up -d" in self_host
+    assert "retains state in a Docker volume" in self_host
+    assert "docs/DEPLOY_QUICKSTART.md" in self_host
 
 
 def test_readme_primary_local_operator_first_runs_grant_scan_role_explicitly() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    personas = readme.split("## Value by role", 1)[1].split("\n## ", 1)[0]
-    path_b = readme.split("### Connect a source, then scan", 1)[1].split("\n### ", 1)[0]
-    self_host = readme.split("## Self-host", 1)[1].split("\n## ", 1)[0]
-
-    for surface in (personas, path_b, self_host):
-        assert LOCAL_ANALYST_CONTROL_PLANE in surface
-
-    assert readme.count(LOCAL_ANALYST_CONTROL_PLANE) == 3
+    self_host = readme.split("## Self-host", 1)[1].split("## Quick start", 1)[0]
+    assert "docker compose up -d" in self_host
+    assert "loopback" in self_host
+    assert "authenticated deployment" in self_host
+    assert "site-docs/deployment/authenticated-hosted-instance.md" in self_host
+    entrypoint = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    assert "deploy/docker-compose.pilot.yml" in entrypoint
+    compose = (ROOT / "deploy/docker-compose.pilot.yml").read_text(encoding="utf-8")
+    assert "AGENT_BOM_NO_AUTH_ROLE" in compose
+    assert "analyst" in compose
+    assert "127.0.0.1" in compose
 
 
 def test_readme_connection_first_run_requires_an_explicit_scan_after_verification() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    path_b = readme.split("### Connect a source, then scan", 1)[1].split("\n### ", 1)[0]
-
-    assert "explicit first scan after verification" in path_b
-    assert "Connections default to auto-scan on creation" not in path_b
+    self_host = readme.split("## Self-host", 1)[1].split("## Quick start", 1)[0]
+    assert "read-only connection, verify access, then start a scan" in self_host
+    assert "Connections default to auto-scan on creation" not in readme
 
 
 def test_cloud_connect_leads_with_wheel_safe_emit_before_optional_terraform() -> None:
@@ -266,12 +250,11 @@ def test_readme_header_omits_volatile_metric_strip() -> None:
 
 def test_readme_offline_bootstrap_leads_with_truthful_ecosystem_scope() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    offline = readme.split("Need a disconnected scan?", 1)[1].split("**A non-zero exit", 1)[0]
-
+    offline = readme.split("<summary>Developer gates and offline scans</summary>", 1)[1].split("</details>", 1)[0]
     assert "agent-bom db update --osv-ecosystem PyPI" in offline
-    assert "covers only" in offline.lower()
-    assert "selected ecosystem" in offline.lower()
+    assert "covers only the selected ecosystem" in offline
     assert offline.index("--osv-ecosystem PyPI") < offline.index("--source osv")
+    assert "security gate or incomplete assessment" in offline
 
 
 def test_docs_home_leads_with_product_value_and_attack_path_proof() -> None:

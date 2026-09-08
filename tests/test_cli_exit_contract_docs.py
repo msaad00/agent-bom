@@ -88,8 +88,8 @@ def test_first_run_guide_covers_the_exit_codes_and_ci_use_readme_promises() -> N
     assert "site-docs/reference/exit-codes.md" in readme
     assert "[first-run guide](docs/first_run.md)" in readme.lower()
     # The front door must say what a non-zero exit means, not just link it.
-    assert "can indicate a security gate or incomplete assessment" in readme
-    assert "inspect the report and its coverage" in readme
+    assert "can mean a security gate or incomplete assessment" in readme
+    assert "inspect the report and coverage" in " ".join(readme.split())
 
     guide = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
     assert "../site-docs/reference/exit-codes.md" in guide

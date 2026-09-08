@@ -38,7 +38,7 @@ import {
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
 import { mergeGraphNodeDetail } from "@/lib/graph-entity-detail";
-import { buildFocusedGraphData, completeDirectedHopCount } from "@/lib/security-graph-focus";
+import { buildFocusedGraphData, completeDirectedHopCount, layersForFocusedPath } from "@/lib/security-graph-focus";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import { useGraphLayout } from "@/lib/use-graph-layout";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
@@ -279,13 +279,13 @@ export function SecurityGraphInvestigation({
       return { nodes: [] as Node<LineageNodeData>[], edges: [] as Edge[], legend: [] };
     }
     return buildUnifiedFlowGraph(activeGraph, {
-      layers: { ...INVESTIGATION_LAYERS },
+      layers: layersForFocusedPath(activeGraph, focusMode ? attackPath : null, INVESTIGATION_LAYERS),
       severity: null,
       agentName: null,
       vulnOnly: false,
       maxDepth: 12,
     });
-  }, [activeGraph]);
+  }, [activeGraph, attackPath, focusMode]);
 
   const layout = useGraphLayout("dagre-lr", flow.nodes, flow.edges, {
     dagreLr: { rankSep: 128, nodeSep: 48 },

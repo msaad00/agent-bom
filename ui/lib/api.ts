@@ -1880,7 +1880,7 @@ export const api = {
     const qs = params.toString();
     return get<AuditLogResponse>(`/v1/audit${qs ? `?${qs}` : ""}`);
   },
-  getAuditIntegrity: (limit = 1000) => get<AuditIntegrityResponse>(`/v1/audit/integrity?limit=${limit}`),
+  getAuditIntegrity: (limit = 1000, includeRuntime = true) => get<AuditIntegrityResponse>(`/v1/audit/integrity?limit=${limit}&include_runtime=${includeRuntime}`),
   getAuditLog: (limit?: number) => get<{ entries: AuditEntry[] }>(`/v1/audit?limit=${limit ?? 10}`),
 
   /**

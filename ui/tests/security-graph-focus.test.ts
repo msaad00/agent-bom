@@ -1,4 +1,8 @@
 import { resolveSecurityGraphSurface } from "@/lib/security-graph-route";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createFocusedGraphFilters } from "@/components/lineage-filter";
+import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,10 +13,32 @@ import {
   correlationOutcomeMatchesOutput,
   focusCorrelationPathTarget,
   latestCompletedCorrelation,
+  layersForFocusedPath,
   selectInitialGraphSnapshot,
 } from "@/lib/security-graph-focus";
 import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api-types";
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
+
+it("retains every reference-lab path hop even when estate identity and data layers are hidden", () => {
+  const proof = JSON.parse(readFileSync(join(process.cwd(), "../examples/reference-evidence-lab/generated/correlation-proof.json"), "utf8"));
+  const graph = proof.capture_fixture.graph as UnifiedGraphData;
+  const path = graph.attack_paths[0];
+  if (!path) throw new Error("Reference lab is missing its exposure path");
+  const focused = buildFocusedGraphData(graph, path)!;
+  const filters = createFocusedGraphFilters();
+  filters.layers.serviceAccount = false;
+  filters.layers.dataStore = false;
+  filters.vulnOnly = false;
+  filters.severity = null;
+  filters.agentName = null;
+  const layers = layersForFocusedPath(focused, path, filters.layers);
+  const flow = buildUnifiedFlowGraph(focused, { ...filters, layers });
+  expect(flow.nodes.map((node) => node.id).sort()).toEqual([...path.hops].sort());
+  expect(flow.edges).toHaveLength(path.hops.length - 1);
+  expect(filters.layers.serviceAccount).toBe(false);
+  expect(filters.layers.dataStore).toBe(false);
+  expect(layersForFocusedPath(graph, null, filters.layers)).toEqual(filters.layers);
+});
 
 function graphFixture(): UnifiedGraphData {
   return {

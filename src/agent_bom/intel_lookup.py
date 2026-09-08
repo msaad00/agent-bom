@@ -711,12 +711,18 @@ def lookup_advisory(advisory_id: str, *, db_path: Path | None = None) -> dict[st
                 "ecosystem": row["ecosystem"],
                 "package_name": row["package_name"],
                 "introduced": row["introduced"],
-                "fixed": row["fixed"] or row["fixed_version"],
+                "fixed": row["fixed"],
                 "last_affected": row["last_affected"],
             }
             for row in rows
             if row["ecosystem"] and row["package_name"]
         ]
+        # An advisory can span unrelated packages and release branches. Only
+        # summarize a fix when every affected range has the same known fix
+        # for one package coordinate; otherwise callers must inspect ranges.
+        coordinates = {(row["ecosystem"], row["package_name"]) for row in affected}
+        fixes = {row["fixed"] for row in affected}
+        fixed_version = next(iter(fixes)) if len(coordinates) == len(fixes) == 1 and all(fixes) else None
         advisory = {
             "id": first["id"],
             "canonical_ids": canonical_ids,
@@ -724,7 +730,7 @@ def lookup_advisory(advisory_id: str, *, db_path: Path | None = None) -> dict[st
             "severity": first["severity"],
             "cvss_score": first["cvss_score"],
             "cvss_vector": first["cvss_vector"],
-            "fixed_version": first["fixed_version"],
+            "fixed_version": fixed_version,
             "source": first["source"],
             "published_at": first["published"],
             "modified_at": first["modified"],

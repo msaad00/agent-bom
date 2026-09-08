@@ -1,5 +1,23 @@
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api-types";
+import type { LineageNodeType } from "@/lib/entity-icons";
+import { lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
+
+export function layersForFocusedPath(
+  graph: UnifiedGraphData,
+  path: AttackPath | null,
+  layers: Record<LineageNodeType, boolean>,
+): Record<LineageNodeType, boolean> {
+  const selected = { ...layers };
+  if (!path) return selected;
+  const hops = new Set(path.hops);
+  for (const node of graph.nodes) {
+    if (!hops.has(node.id)) continue;
+    const layer = lineageNodeTypeForEntity(node.entity_type);
+    if (layer) selected[layer] = true;
+  }
+  return selected;
+}
 
 const CORRELATION_PATH_TARGET_ID = "selected-investigation-path";
 

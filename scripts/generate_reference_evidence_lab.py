@@ -257,6 +257,7 @@ def _gateway_settings(*, mode: str, caller: Any, audit_sink: Any = None) -> Gate
         upstream_caller=caller,
         audit_sink=audit_sink,
         bearer_token="reference-gateway-token",
+        bearer_token_expires_at=(datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
         graph_reachability_enforcement_mode=mode,
         graph_reachability_failure_mode="deny",
     )

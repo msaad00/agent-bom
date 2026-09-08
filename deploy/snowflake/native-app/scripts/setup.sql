@@ -302,10 +302,11 @@ END;
 GRANT USAGE ON PROCEDURE core.enable_scanner_service() TO APPLICATION ROLE app_user;
 
 -- 13. Phase 4 optional MCP runtime service
--- The runtime is default-off and requires a caller-provided bearer token.
+-- The runtime is default-off and requires a caller-provided token and absolute expiry.
 -- No advisory-feed EAI is attached here; this service has Snowflake-only
 -- networking unless a future procedure deliberately adds bounded egress.
-CREATE OR REPLACE PROCEDURE core.enable_mcp_runtime_service(mcp_bearer_token VARCHAR)
+DROP PROCEDURE IF EXISTS core.enable_mcp_runtime_service(VARCHAR);
+CREATE OR REPLACE PROCEDURE core.enable_mcp_runtime_service(mcp_bearer_token VARCHAR, mcp_bearer_token_expires_at VARCHAR)
     RETURNS VARCHAR
     LANGUAGE SQL
 AS
@@ -314,19 +315,34 @@ BEGIN
         RETURN 'MCP runtime not created: provide a bearer token with at least 32 characters.';
     END IF;
 
+    IF (mcp_bearer_token_expires_at IS NULL
+        OR NOT REGEXP_LIKE(mcp_bearer_token_expires_at, '.*(Z|[+-][0-9]{2}:[0-9]{2})$')
+        OR TRY_TO_TIMESTAMP_TZ(mcp_bearer_token_expires_at) IS NULL
+        OR TRY_TO_TIMESTAMP_TZ(mcp_bearer_token_expires_at) <= CURRENT_TIMESTAMP()
+        OR TRY_TO_TIMESTAMP_TZ(mcp_bearer_token_expires_at) > DATEADD('hour', 1, CURRENT_TIMESTAMP())) THEN
+        RETURN 'MCP runtime not created: provide a timezone-aware ISO-8601 expiry in the next hour.';
+    END IF;
+
     CREATE SERVICE IF NOT EXISTS core.agent_bom_mcp_runtime
         IN COMPUTE POOL agent_bom_consumer_pool
         FROM SPECIFICATION_TEMPLATE_FILE = '/service-specs/mcp-runtime-service.yaml'
-        USING (mcp_bearer_token => :mcp_bearer_token)
+        USING (mcp_bearer_token => :mcp_bearer_token, mcp_bearer_token_expires_at => :mcp_bearer_token_expires_at)
         MIN_INSTANCES = 1
         MAX_INSTANCES = 1
         AUTO_RESUME = FALSE;
+
+    -- Apply replacement credentials even when the service already exists.
+    -- Leave resumption explicit after the specification update.
+    ALTER SERVICE core.agent_bom_mcp_runtime SUSPEND;
+    ALTER SERVICE core.agent_bom_mcp_runtime
+        FROM SPECIFICATION_TEMPLATE_FILE = '/service-specs/mcp-runtime-service.yaml'
+        USING (mcp_bearer_token => :mcp_bearer_token, mcp_bearer_token_expires_at => :mcp_bearer_token_expires_at);
 
     GRANT USAGE ON SERVICE core.agent_bom_mcp_runtime TO APPLICATION ROLE app_user;
     GRANT SERVICE ROLE core.agent_bom_mcp_runtime!mcp_runtime TO APPLICATION ROLE app_user;
 
     CALL core.set_config('enable_mcp_runtime_service', PARSE_JSON('true'));
-    RETURN 'MCP runtime service created. Resume explicitly with ALTER SERVICE core.agent_bom_mcp_runtime RESUME.';
+    RETURN 'MCP runtime service configured and suspended. Resume explicitly with ALTER SERVICE core.agent_bom_mcp_runtime RESUME.';
 END;
 
-GRANT USAGE ON PROCEDURE core.enable_mcp_runtime_service(VARCHAR) TO APPLICATION ROLE app_user;
+GRANT USAGE ON PROCEDURE core.enable_mcp_runtime_service(VARCHAR, VARCHAR) TO APPLICATION ROLE app_user;

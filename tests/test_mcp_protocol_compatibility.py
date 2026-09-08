@@ -297,7 +297,10 @@ def test_2026_server_discover_is_rejected_by_session_era_server(monkeypatch, tmp
     assert _features()["server.2026.server_discover"]["conformance_state"] == "nonconformant"
 
 
-def test_embedded_oauth_is_disabled_until_trusted_authorization_exists() -> None:
+def test_embedded_oauth_is_disabled_until_trusted_authorization_exists(monkeypatch) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT", (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat())
     server = create_mcp_server(bearer_token="test-read-token")
     assert server.settings.auth.resource_server_url is None
     assert not any(getattr(route, "path", "").startswith("/oauth/") for route in server.streamable_http_app().routes)

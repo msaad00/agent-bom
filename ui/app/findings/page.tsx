@@ -33,18 +33,9 @@ import {
   ISSUE_TYPE_FILTERS,
   type IssueTypeFilter,
 } from "@/lib/finding-issue-type";
-import {
-  findingsPageSubtitle,
-  findingsQueueDetail,
-  findingsQueueTitle,
-  findingsSearchPlaceholder,
-} from "@/lib/findings-lens";
-import { useFindingsLens } from "@/hooks/use-findings-lens";
 import { Bug, Loader2, ClipboardCheck, SlidersHorizontal, X } from "lucide-react";
 import { PageLaneHeader } from "@/components/page-lane";
 import {
-  buildComplianceMetrics,
-  buildEngineeringMetrics,
   findingTriageKey,
 } from "@/lib/findings-workspace";
 
@@ -169,6 +160,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       packages: [packageName],
       agents: finding.affected_agents ?? [],
       sources: sourceLabel.length > 0 ? sourceLabel : ["finding"],
+      detection_source: finding.source || undefined,
       affected_servers: uniqueStrings([...(finding.affected_servers ?? []), ...(serverAsset && assetName !== "Unavailable" ? [assetName] : [])]),
       exposed_credentials: finding.exposed_credentials ?? [],
       reachable_tools: finding.exposed_tools ?? [],
@@ -270,7 +262,6 @@ function FindingsPage() {
   const paramPage = searchParams.get("page");
   const paramScan = searchParams.get("scan") ?? searchParams.get("scan_id");
   const paramIssueType = searchParams.get("issue");
-  const paramLens = searchParams.get("lens");
   const paramWindow = searchParams.get("window");
   const paramScope = searchParams.get("scope");
   // First-class scope + taxonomy facets (issue #3946), URL-synced.
@@ -286,7 +277,7 @@ function FindingsPage() {
   // control code linked from the Compliance view's per-control finding count.
   const paramFramework = searchParams.get("framework");
   const paramControl = searchParams.get("control");
-  const { lens, selectLens, lenses, label: lensLabel, hint: lensHint } = useFindingsLens(paramLens);
+
 
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
   const [loading, setLoading] = useState(true);
@@ -470,7 +461,6 @@ function FindingsPage() {
     if (selectedId) params.set("finding", selectedId);
     if (filter !== "all") params.set("severity", filter);
     if (issueTypeFilter !== "all") params.set("issue", issueTypeFilter);
-    if (lens !== "ops") params.set("lens", lens);
     if (search.trim()) params.set("q", search.trim());
     if (domainFilter !== "all") params.set("domain", domainFilter);
     if (providerFilter.trim()) params.set("provider", providerFilter.trim());
@@ -491,7 +481,6 @@ function FindingsPage() {
   }, [
     filter,
     issueTypeFilter,
-    lens,
     search,
     domainFilter,
     providerFilter,
@@ -766,13 +755,6 @@ function FindingsPage() {
   );
   const vexEligibleCount = triageRows.filter((row) => row.vex_eligible).length;
 
-  const workspaceMetrics = useMemo(
-    () =>
-      lens === "trust"
-        ? buildComplianceMetrics(vulns, triageByKey, findingFacets, findingFacetsApproximate)
-        : buildEngineeringMetrics(vulns, triageByKey, findingFacets, findingFacetsApproximate),
-    [findingFacets, findingFacetsApproximate, lens, triageByKey, vulns],
-  );
 
   const findingsTotalLabel = findingsTotal == null
     ? "Total unavailable"
@@ -842,47 +824,26 @@ function FindingsPage() {
     setControlFilter("");
   };
 
-  const FILTERS = severityFilterDefinitions(findingFacets, findingsFilterTotalLabel);
+  const hasActiveFilters = Boolean(search.trim() || filter !== "all" || issueTypeFilter !== "all" || activeFilterCount || windowDays !== 90);
+  const clearFilters = () => {
+    clearAdvancedFilters();
+    setSearch("");
+    setFilter("all");
+    setIssueTypeFilter("all");
+    setWindowDays(90);
+  };
+
+  const FILTERS = severityFilterDefinitions(findingFacetsApproximate ? null : findingFacets, findingsFilterTotalLabel);
 
   return (
     <div className="space-y-6">
       <PageLaneHeader
         lane="command"
         title="Findings"
-        subtitle={findingsPageSubtitle(
-          lens,
-          `${findingsTotalLabel}${findingsTotal == null ? "" : " issues"}`,
-          paramScan
-            ? `from scan ${paramScan.slice(0, 8)}.`
-            : `current state across completed scans · ${findingsWindowLabel}.`,
-        )}
-        scopeChip={
-          <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-200">
-            {paramScan ? `Scan ${paramScan.slice(0, 8)}` : `Current state · ${findingsWindowLabel}`}
-          </span>
-        }
+        scopeChip={false}
+        subtitle={`${findingsTotalLabel}${findingsTotal == null ? "" : (findingsTotal === 1 ? " finding" : " findings")} · ${paramScan ? `Scan ${paramScan.slice(0, 8)} · ` : ""}${findingsWindowLabel}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <div
-              className="flex rounded-lg border border-outline bg-surface-muted p-0.5"
-              role="group"
-              aria-label="Findings altitude"
-            >
-              {lenses.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => selectLens(value)}
-                  className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
-                    lens === value
-                      ? "bg-surface text-foreground shadow-sm"
-                      : "text-ink-tertiary hover:text-ink-secondary"
-                  }`}
-                >
-                  {lensLabel(value)}
-                </button>
-              ))}
-            </div>
             {vulns.length > 0 ? (
               <>
                 <button
@@ -903,7 +864,6 @@ function FindingsPage() {
           </div>
         }
       />
-      <p className="text-xs text-ink-tertiary">{lensHint}</p>
 
       {triageError && (
         <div className="rounded-lg border border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
@@ -945,7 +905,7 @@ function FindingsPage() {
         </div>
       )}
 
-      {!loading && !error && vulns.length === 0 && scopeCompleteness?.status !== "partial" && (
+      {!loading && !error && vulns.length === 0 && !hasActiveFilters && scopeCompleteness?.status !== "partial" && (
         <PageEmptyState
           title="No findings found"
           detail="Run a scan or connect a cloud account to populate CVE, cloud posture, graph, and remediation evidence."
@@ -961,93 +921,21 @@ function FindingsPage() {
         />
       )}
 
-      {!error && vulns.length > 0 && (
+      {!error && (vulns.length > 0 || hasActiveFilters) && (
         <>
-          <section
-            aria-label={`${lensLabel(lens)} findings summary`}
-            data-testid="findings-workspace-summary"
-            className="grid gap-5 rounded-xl border border-outline bg-surface p-4 sm:grid-cols-2 xl:grid-cols-4"
-          >
-            {workspaceMetrics.map((metric) => (
-              <div
-                key={metric.label}
-                className="min-w-0"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-ink-secondary">
-                    {metric.label}
-                  </span>
-                  <span className="text-xs text-ink-tertiary">
-                    {metric.scope === "query" ? "Whole query" : "Current page"}
-                  </span>
-                </div>
-                <p className={`mt-1 text-sm font-semibold ${metric.unavailable ? "text-ink-tertiary" : "text-foreground"}`}>
-                  {metric.value}
-                </p>
-                <p className="mt-0.5 text-[11px] text-ink-tertiary">{metric.detail}</p>
-              </div>
-            ))}
-          </section>
-
-          {/* Controls — compact toolbar; advanced facets live behind a single
-              "Filters (n)" popover with removable active-filter chips. */}
           <div className="flex flex-col gap-3">
-            {/* One-line queue caption (verbose explainer moved to the title tooltip). */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-tertiary">
-                <span className="font-semibold text-ink-secondary" title={findingsQueueDetail(lens)}>
-                  {findingsQueueTitle(lens)}
-                </span>
-                <span aria-hidden="true">·</span>
-                <span>{displayed.length} issues on this page</span>
-                <span aria-hidden="true">·</span>
-                <span>{PAGE_SIZE} per page</span>
-              </p>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-ink-tertiary">
-                <span title="OpenVEX export is available after a finding is triaged as not_affected with justification">
-                  {vexEligibleCount} OpenVEX-ready
-                </span>
-                {lens === "trust" ? (
-                  <a
-                    href="/compliance"
-                    className="rounded-full border border-emerald-500/30 dark:border-emerald-900/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-2 py-1 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 dark:hover:bg-emerald-950/50"
-                  >
-                    Trust center
-                  </a>
-                ) : (
-                  <a
-                    href="/remediation"
-                    className="rounded-full border border-outline bg-surface px-2 py-1 hover:border-outline-strong hover:text-ink-secondary"
-                  >
-                    Remediation
-                  </a>
-                )}
-              </div>
-            </div>
-
             {/* Primary toolbar: search + issue type + severity, with
                 advanced filters tucked into the "Filters (n)" popover. */}
             <div className="flex flex-col gap-2.5 rounded-xl border border-outline bg-background/70 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
-                  placeholder={findingsSearchPlaceholder(lens)}
+                  placeholder="Search findings, assets, or controls…"
+                  aria-label="Search findings"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="min-w-[12rem] flex-1 rounded-lg border border-outline bg-surface px-3 py-1.5 text-sm text-foreground placeholder-[var(--text-tertiary)] focus:border-outline-strong focus:outline-none"
                 />
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(true)}
-                  data-testid="findings-window-chip"
-                  title="Findings are scoped to this time window. Open Filters to widen."
-                  className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface-muted px-2.5 py-1 text-[11px] font-medium text-ink-secondary transition-colors hover:border-outline-strong hover:text-foreground"
-                >
-                  <span className="text-ink-tertiary">Window</span>
-                  {appliedWindow?.label ??
-                    WINDOW_OPTIONS.find((o) => o.value === windowDays)?.label ??
-                    "Last 90 days"}
-                </button>
                 <div className="relative" ref={filtersRef}>
                   <button
                     type="button"
@@ -1279,6 +1167,8 @@ function FindingsPage() {
               </div>
             )}
 
+            {hasActiveFilters ? <button type="button" onClick={clearFilters} className="w-fit rounded border border-outline px-3 py-1.5 text-xs text-ink-secondary">Clear filters</button> : null}
+
             {detailLoading && vulns.length > 0 && (
               <div className="flex items-center gap-2 text-xs text-ink-tertiary">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1296,7 +1186,6 @@ function FindingsPage() {
             onMarkFP={handleMarkFP}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            lens={lens}
             triageByKey={triageByKey}
           />
 
@@ -1326,8 +1215,7 @@ function FindingsPage() {
               triageBusy={triageBusyKey === triageKey(selectedVuln.id, selectedVuln.packages[0] ?? "*")}
               onTriageDecision={handleTriageDecision}
               onClose={() => setSelectedId(null)}
-              lens={lens}
-            />
+              />
           )}
         </>
       )}

@@ -167,6 +167,7 @@ async function routeProductFixture(page: Page) {
         json: { schema_version: "v1", findings: [], count: 0, total: 0, limit: 25, offset: 0, sort: "severity", cursor: "", next_cursor: "", has_more: false, warnings: [], window: { days: 90, since: "2026-04-18T00:00:00Z", applied: true, label: "Last 90 days" } },
       });
     }
+    expect(url.searchParams.get("window_days")).toBe("90");
     const cursor = url.searchParams.get("cursor");
     const rows = cursor ? [finding(25)] : Array.from({ length: 25 }, (_, index) => finding(index));
     return route.fulfill({
@@ -213,7 +214,9 @@ for (const theme of ["light", "dark"] as const) {
     await expect.poll(() => new URL(page.url()).pathname).toBe("/findings");
     await expect.poll(() => new URL(page.url()).searchParams.get("scope")).toBe("all");
     await expect.poll(() => new URL(page.url()).searchParams.get("severity")).toBe("high");
-    await expect(page.getByText("Current state · Last 90 days")).toBeVisible();
+    await page.getByTestId("findings-filters-toggle").click();
+    await expect(page.getByTestId("findings-window-select")).toHaveValue("90");
+    await page.getByTestId("findings-filters-toggle").click();
     await expect(page.getByText(/26 issues/).first()).toBeVisible();
     await expect(page.getByText("Page 1 of 2 (26 issues)")).toBeVisible();
     const occurrences = page.getByRole("button", { name: "Show 3 affected asset occurrences" });
@@ -241,7 +244,8 @@ test("overview and current-state findings remain readable without mobile overflo
   await capture(page, testInfo, "overview-reconciled-mobile.png");
 
   await page.getByRole("link", { name: /^High 28/i }).click();
-  await expect(page.getByText("Current state · Last 90 days")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Findings", exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 of 2 (26 issues)")).toBeVisible();
   const overflow = await page.evaluate(() => {
     const viewportWidth = document.documentElement.clientWidth;
     return Array.from(document.querySelectorAll<HTMLElement>("body *"))

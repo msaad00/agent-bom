@@ -3437,15 +3437,17 @@ async function main() {
     });
     await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, "/findings?capture=1", "dependency-map-live.png", async (findingsPage) => {
-      await findingsPage.getByRole("heading", { name: /Findings|Issues|Vulnerabilit/i }).first().waitFor({
+      await findingsPage.getByRole("heading", { name: "Findings", exact: true }).waitFor({
         state: "visible",
         timeout: 10_000,
-      }).catch(async () => {
-        await findingsPage.getByText(/CVE|critical|high|package/i).first().waitFor({ state: "visible", timeout: 8_000 });
+      });
+      await findingsPage.getByRole("row").filter({ hasText: "DEMO-VULN-21441" }).first().waitFor({
+        state: "visible",
+        timeout: 10_000,
       });
       await scrollTo(findingsPage, 0);
     }, {
-      expectedText: ["Findings queue", "15 issues", "DEMO-VULN-21441", "DEMO-VULN-77881"],
+      expectedText: ["Findings", "15 findings", /Detection/i, /Observed/i, /Remediation/i, "DEMO-VULN-21441", "DEMO-VULN-77881"],
       expectedApiPaths: ["/v1/findings", "/v1/findings/triage"],
       rejectedText: ["17 findings"],
     });

@@ -3221,7 +3221,7 @@ async function main() {
       correlationPathAssertions,
     );
     await page.setViewportSize({ width: 1440, height: 980 });
-    const referenceGraphPage = await newCapturePage("dark", { width: 1440, height: 980 });
+    const referenceGraphPage = await newCapturePage("dark", { width: 1568, height: 980 });
     await capture(
       referenceGraphPage,
       `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&path=top&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore`,
@@ -3242,6 +3242,7 @@ async function main() {
         minGraphEdges: 7,
         maxGraphEdges: 7,
         minGraphNodeFontPx: 12,
+        assertEdgeLabelsClearOfNodes: true,
         assertNoHorizontalOverflow: true,
       },
     );

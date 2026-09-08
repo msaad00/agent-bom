@@ -1944,7 +1944,7 @@ function GraphPageInner() {
           return {
             ...node,
             position: {
-              x: serpentineColumn * 400,
+              x: serpentineColumn * 460,
               y: row * 220,
             },
             className: composeFocusClass(node.className, inPath, !inPath),

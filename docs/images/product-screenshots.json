@@ -1,10 +1,10 @@
 {
   "release_version": "0.104.0",
-  "captured_at": "2026-09-08T02:36:10.236Z",
-  "source_commit": "9cc1732bb7a277351e0ade6a786f0687ecc9c579",
+  "captured_at": "2026-09-08T03:48:16.528Z",
+  "source_commit": "1c2c071e8646804dcb4850d89ebe3dab1e47bcaf",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:79df3ccc37402130f2a641ed5d8200c82f1bc4c97dddd97eb5ca5fdfdb899f87",
-  "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
+  "capture_inputs_sha256": "sha256:81a829058cf8b5349c7bb283c351a1cb5adc7154ed9d531e17f8ff786f284d30",
+  "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
       "presentation": "dark desktop",
@@ -93,6 +93,17 @@
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.104.0",
       "sha256": "sha256:18413b568d9868fc4fac049a90fdc54f81f37bdea98a437f17b71860e56d41f0"
+    },
+    {
+      "presentation": "dark desktop",
+      "path": "correlation-graph-live.png",
+      "page": "/graph?capture=1&scan=reference-evidence-correlation-v1&path=top&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore",
+      "scope": "Reference evidence lab interactive graph linking the real advisory to the modeled service and data asset, with remediation context",
+      "evidence_artifact": "examples/reference-evidence-lab/generated/correlation-proof.json",
+      "evidence_sha256": "sha256:b7f7b30b5939a4efe71c9af5de5e2302d9f27eca4ca010a00d669bb5fc8a0652",
+      "correlation_manifest_sha256": "sha256:cc9f3fe5ed5e792bcd69e96a35c120b90aaf3d34ead006b130e1db2a7a8135ff",
+      "visible_version": "0.104.0",
+      "sha256": "sha256:22d178fd65cabbd74fa9ee7c6e4fcd7b93f8f93491531e577d5bf0044cf8f908"
     },
     {
       "presentation": "dark desktop",

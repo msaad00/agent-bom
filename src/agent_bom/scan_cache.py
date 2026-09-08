@@ -2,8 +2,8 @@
 
 Caches OSV query results by ``(ecosystem, name, version)`` with a
 configurable TTL (default 24 h).  Cache location defaults to
-``~/.agent-bom/scan_cache.db`` and can be overridden via the
-``AGENT_BOM_SCAN_CACHE`` environment variable.
+``$AGENT_BOM_STATE_DIR/scan_cache.db`` (``~/.agent-bom`` by default).
+``AGENT_BOM_SCAN_CACHE`` or an explicit path overrides that location.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class ScanCache:
         if db_path is None:
             db_path = os.environ.get(
                 "AGENT_BOM_SCAN_CACHE",
-                str(DEFAULT_CACHE_DIR / "scan_cache.db"),
+                str(Path(os.environ.get("AGENT_BOM_STATE_DIR", str(DEFAULT_CACHE_DIR))) / "scan_cache.db"),
             )
         self._db_path = str(db_path)
         self._ttl = ttl_seconds

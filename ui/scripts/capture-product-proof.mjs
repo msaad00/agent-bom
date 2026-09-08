@@ -2754,6 +2754,15 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
+      path: "correlation-graph-live.png",
+      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      scope: "Reference evidence lab interactive graph linking the real advisory to the modeled service and data asset, with remediation context",
+      presentation: "dark desktop",
+      evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
+      evidence_sha256: referenceLabActualDigest,
+      correlation_manifest_sha256: REFERENCE_LAB.correlation.manifest_sha256,
+    },
+    {
       path: "correlation-receipts-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
       scope: "Reference evidence lab correlation outcome with affected assets, real advisory, runtime state, and remediation action; source receipts remain inspectable",
@@ -2893,7 +2902,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     captured_at: new Date().toISOString(),
     ...provenance,
     capture_note:
-      "Deterministically captured from real Next.js dashboard routes in capture mode. The two correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
+      "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
     screenshots,
   };
   await fs.writeFile(path.join(outputDir, path.basename(SCREENSHOT_MANIFEST)), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -3202,6 +3211,26 @@ async function main() {
       correlationPathAssertions,
     );
     await page.setViewportSize({ width: 1440, height: 980 });
+    const referenceGraphPage = await newCapturePage("dark", { width: 1440, height: 1100 });
+    await capture(
+      referenceGraphPage,
+      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      "correlation-graph-live.png",
+      async (graphPage) => {
+        await graphPage.getByTestId("selected-exposure-path").waitFor({ state: "visible" });
+        await graphPage.getByTestId("selected-exposure-path").getByRole("button", { name: "Graph", exact: true }).click();
+        await graphPage.locator(".react-flow__node").first().waitFor({ state: "visible" });
+        await fitReactFlow(graphPage);
+      },
+      {
+        expectedText: ["CVE-2023-4863", "Open pillow@9.0.0 remediation", "Modeled customer records"],
+        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
+        readySelector: ".react-flow__node",
+        minGraphNodes: 8,
+        minGraphEdges: 7,
+      },
+    );
+    await referenceGraphPage.close();
     const currentCanvasPage = await newCapturePage("dark", { width: 1512, height: 811 });
     await capture(
       currentCanvasPage,

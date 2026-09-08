@@ -3276,6 +3276,207 @@ components:
           title: Tags
       title: FleetAgentUpdate
       type: object
+    GatewayActivityRecord:
+      properties:
+        agent_id:
+          title: Agent Id
+          type: string
+        blueprint_id:
+          default: ''
+          title: Blueprint Id
+          type: string
+        blueprint_revision:
+          default: 0
+          title: Blueprint Revision
+          type: integer
+        data_action:
+          default: ''
+          title: Data Action
+          type: string
+        decision:
+          title: Decision
+          type: string
+        decision_id:
+          title: Decision Id
+          type: string
+        development_mode:
+          default: false
+          title: Development Mode
+          type: boolean
+        event_digest:
+          default: ''
+          title: Event Digest
+          type: string
+        event_id:
+          title: Event Id
+          type: string
+        event_schema_version:
+          title: Event Schema Version
+          type: string
+        event_timestamp:
+          title: Event Timestamp
+          type: string
+        event_type:
+          title: Event Type
+          type: string
+        evidence_id:
+          default: ''
+          title: Evidence Id
+          type: string
+        identity_id:
+          default: ''
+          title: Identity Id
+          type: string
+        ingest_ordinal:
+          default: 0
+          title: Ingest Ordinal
+          type: integer
+        ingested_at:
+          title: Ingested At
+          type: string
+        policy_id:
+          default: ''
+          title: Policy Id
+          type: string
+        policy_ids:
+          default: []
+          items:
+            type: string
+          title: Policy Ids
+          type: array
+        policy_source:
+          title: Policy Source
+          type: string
+        profile_id:
+          default: ''
+          title: Profile Id
+          type: string
+        profile_revision:
+          default: 0
+          title: Profile Revision
+          type: integer
+        raw_payload_stored:
+          default: false
+          title: Raw Payload Stored
+          type: boolean
+        reason_code:
+          default: ''
+          title: Reason Code
+          type: string
+        receipt_trace_id:
+          default: ''
+          title: Receipt Trace Id
+          type: string
+        record_schema_version:
+          default: gateway.activity.record.v1
+          title: Record Schema Version
+          type: string
+        session_id:
+          title: Session Id
+          type: string
+        source_id:
+          title: Source Id
+          type: string
+        submission_provenance:
+          anyOf:
+          - $ref: '#/components/schemas/GatewaySubmissionProvenance'
+          - type: 'null'
+        tenant_id:
+          title: Tenant Id
+          type: string
+        tool:
+          title: Tool
+          type: string
+        trace_id:
+          title: Trace Id
+          type: string
+        upstream:
+          title: Upstream
+          type: string
+      required:
+      - tenant_id
+      - event_id
+      - decision_id
+      - event_type
+      - event_schema_version
+      - event_timestamp
+      - ingested_at
+      - source_id
+      - session_id
+      - agent_id
+      - upstream
+      - tool
+      - decision
+      - policy_source
+      - trace_id
+      title: GatewayActivityRecord
+      type: object
+    GatewayActivityStreamPage:
+      description: 'One atomic SSE data frame; its SSE id is the next ledger cursor.
+
+
+        Canonical records include profile/enforcement outcomes omitted by the
+
+        legacy dashboard projection. No process-local alerts or cost spans are
+
+        mixed into this ordered, resumable contract.'
+      properties:
+        dedupe_window_events:
+          minimum: 1.0
+          title: Dedupe Window Events
+          type: integer
+        events:
+          items:
+            $ref: '#/components/schemas/GatewayActivityRecord'
+          title: Events
+          type: array
+        has_more:
+          title: Has More
+          type: boolean
+        latest_ordinal:
+          minimum: 0.0
+          title: Latest Ordinal
+          type: integer
+        max_events_per_tenant:
+          minimum: 1.0
+          title: Max Events Per Tenant
+          type: integer
+        next_cursor:
+          title: Next Cursor
+          type: string
+        retention_floor_ordinal:
+          minimum: 1.0
+          title: Retention Floor Ordinal
+          type: integer
+        schema_version:
+          const: gateway.activity.stream.v1
+          default: gateway.activity.stream.v1
+          title: Schema Version
+          type: string
+        scope:
+          const: canonical_gateway_activity
+          default: canonical_gateway_activity
+          title: Scope
+          type: string
+        source:
+          const: gateway_activity_ledger
+          default: gateway_activity_ledger
+          title: Source
+          type: string
+        tenant_id:
+          title: Tenant Id
+          type: string
+      required:
+      - tenant_id
+      - events
+      - next_cursor
+      - has_more
+      - retention_floor_ordinal
+      - latest_ordinal
+      - max_events_per_tenant
+      - dedupe_window_events
+      title: GatewayActivityStreamPage
+      type: object
     GatewayFeedCompletenessModel:
       properties:
         dedupe_window_events:
@@ -3696,6 +3897,70 @@ components:
       - timezone
       - exact
       title: GatewayFeedWindowModel
+      type: object
+    GatewaySubmissionProvenance:
+      additionalProperties: false
+      description: 'Separate the submitting collector from its reported runtime origins.
+
+
+        No credential material is accepted. Submitter identity and authentication
+
+        method describe the first accepted submission, without storing a credential
+        ID.
+
+        A future authenticated-producer contract requires a separate trust boundary.'
+      properties:
+        authentication_method:
+          default: unknown
+          enum:
+          - unknown
+          - api_key
+          - oidc
+          - browser_session
+          - proxy_header
+          - saml
+          - in_process
+          title: Authentication Method
+          type: string
+        producer_assurance:
+          default: unknown
+          enum:
+          - unknown
+          - caller_asserted
+          title: Producer Assurance
+          type: string
+        reported_session_id:
+          default: ''
+          maxLength: 200
+          title: Reported Session Id
+          type: string
+        reported_source_id:
+          default: ''
+          maxLength: 200
+          title: Reported Source Id
+          type: string
+        schema_version:
+          const: gateway.submission.provenance.v1
+          default: gateway.submission.provenance.v1
+          title: Schema Version
+          type: string
+        submission_session_id:
+          maxLength: 200
+          title: Submission Session Id
+          type: string
+        submission_source_id:
+          maxLength: 200
+          title: Submission Source Id
+          type: string
+        submitter_principal_id:
+          default: ''
+          maxLength: 200
+          title: Submitter Principal Id
+          type: string
+      required:
+      - submission_source_id
+      - submission_session_id
+      title: GatewaySubmissionProvenance
       type: object
     GraphCompletenessResponse:
       properties:
@@ -14737,6 +15002,106 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Gateway Feed Kpis
+      tags:
+      - gateway
+  /v1/gateway/feed/stream:
+    get:
+      description: 'Backfill all retained canonical events, then follow new commits
+        in order.
+
+
+        Last-Event-ID takes precedence over the initial query cursor on reconnect.
+
+        With neither, start at the retention floor. Connections last at most 30
+
+        seconds of iteration before reauthentication; blocked sends time out after
+
+        5 seconds. Heartbeats show transport liveness, not producer attestation.
+
+        Legacy alerts and LLM cost spans have no ledger ordinal and are excluded.'
+      operationId: gateway_activity_stream_v1_gateway_feed_stream_get
+      parameters:
+      - description: Resume after this tenant-bound ledger cursor
+        in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 1000
+            minLength: 1
+            type: string
+          - type: 'null'
+          description: Resume after this tenant-bound ledger cursor
+          title: Cursor
+      - description: Maximum canonical records per SSE frame
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 100
+          description: Maximum canonical records per SSE frame
+          maximum: 500
+          minimum: 1
+          title: Limit
+          type: integer
+      - in: header
+        name: Last-Event-ID
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 1000
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Last-Event-Id
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/GatewayActivityStreamPage'
+                type: object
+          description: 'SSE activity/checkpoint data frames; id is the resume cursor.
+            Terminal events: gap, unavailable, reconnect.'
+        '400':
+          description: Invalid or cross-tenant cursor
+        '401':
+          description: Authentication required, including on loopback
+        '410':
+          description: Cursor precedes retained history; explicit reset required
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+        '503':
+          description: Gateway activity ledger unavailable
+      summary: Gateway Activity Stream
       tags:
       - gateway
   /v1/gateway/policies:

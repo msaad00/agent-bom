@@ -1,9 +1,9 @@
 {
   "release_version": "0.104.0",
-  "captured_at": "2026-09-08T04:18:15.238Z",
-  "source_commit": "296fa8ed4917e0b1b4aa16d5d095f6bb9c685bbb",
+  "captured_at": "2026-09-08T04:23:35.030Z",
+  "source_commit": "2ff7316be2543fa8e8e9c1d391c85fededdd42ff",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:d2cda0159b7922d5d24506628de1cbf87236f8d44403f07238686a30e4c4d4b6",
+  "capture_inputs_sha256": "sha256:7bdb77cc43299066f0818b18b6eaf15470d7a1cf8289035b064a5e35c70f0b33",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.104.0",
-      "sha256": "sha256:0cb2c540a2bcb3c56f2e1ade4693ea2fc795e12d4c187452009ec13667cce13e"
+      "sha256": "sha256:59f39b97458cf24f9de3f6f74b081f20affd38fcb1b735fe48151923fc1319d6"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center in the light theme",
       "visible_version": "0.104.0",
-      "sha256": "sha256:2ec0087bf8c91301bdabbbaa33bf56ab784b43b59755e6fd54def0baf480241d"
+      "sha256": "sha256:d8464941d6df825fc8eb753dc9d80efff0c34ac32a6d45dd954a0038e1bd3d34"
     },
     {
       "presentation": "dark mobile",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.104.0",
-      "sha256": "sha256:dd27e5cecff73d96fddb092b9dbdf0ed2716a11a55b080628205721f839451fa"
+      "sha256": "sha256:44c0a89f13c9465b5d8f8946a203a8d0219abe5b91e3df2eaade688069ede3d2"
     },
     {
       "presentation": "dark desktop",

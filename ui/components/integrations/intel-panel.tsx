@@ -130,7 +130,7 @@ export function IntelPanel() {
     <div className="space-y-5">
       <PanelIntro
         title="Threat intel"
-        description="Governed intel sources, advisory lookup, a local analyst daily brief, and inventory package matching — all served from the local intel database."
+        description="Query local advisories, match packages, and review source freshness."
       >
         <PanelButton tone="secondary" onClick={() => void load()} title="Refresh">
           <RefreshCw className="h-4 w-4" />
@@ -315,7 +315,7 @@ function DailyBrief() {
         </div>
       ) : (
         <p className="text-sm text-[color:var(--text-tertiary)]">
-          Generate a local analyst brief (KEV window, high-EPSS inventory) from governed intel sources.
+          Summarize KEV and high-EPSS inventory from local sources.
         </p>
       )}
     </div>

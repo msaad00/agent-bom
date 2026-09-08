@@ -3795,7 +3795,7 @@ function GraphPageInner() {
           ) : rollupCanvasPending ? (
             <GraphPanelSkeleton
               title="Loading scope navigation"
-              detail="Collapsing the containment hierarchy before rendering aggregate navigation cards."
+              detail="Grouping the containment hierarchy."
             />
           ) : rollupDecisionActive ? (
             <GraphRollupDecisionSurface
@@ -3809,11 +3809,11 @@ function GraphPageInner() {
           ) : displayNodes.length === 0 ? (
             <GraphEmptyState
               title="No nodes match the current graph scope"
-              detail="The current combination of layers, severity, agent, depth, and runtime scope filtered everything out."
+              detail="No results for these layers, severity and scope."
               suggestions={[
-                "Drop the severity threshold or turn off vulnerable-only.",
-                "Switch from Relevant paths to Expanded when you need broader topology.",
-                "Re-enable the package or server layers to recover the path context.",
+                "Lower severity or disable vulnerable-only.",
+                "Use Expanded for broader topology.",
+                "Enable package and server layers.",
               ]}
               command="agent-bom agents --demo --offline"
             />
@@ -3912,7 +3912,7 @@ function GraphPageInner() {
                     complete: false,
                     sampled: false,
                     returned: displayNodes.length,
-                    reason: `Interactive render budget is ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes, ranked by severity. Dense neighborhoods are aggregated — filter or focus here, or open the estate roll-up, which aggregates the complete graph. This canvas is not the full estate.`,
+                    reason: `Partial canvas: up to ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes ranked by severity. Filter or focus, or open the complete estate roll-up.`,
                   }
                 }
                 visibleCount={displayNodes.length}
@@ -4006,8 +4006,7 @@ function ReachabilityDrillInPanel({
             </p>
             {summary?.truncated && (
               <p className="mt-1 text-[11px] text-amber-200">
-                Traversal budget reached; narrow the graph or inspect a smaller
-                root.
+                Traversal limited. Narrow the scope.
               </p>
             )}
             {error && (

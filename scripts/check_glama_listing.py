@@ -362,16 +362,14 @@ def _extract_schema_tool_names(schema_page: str, listing_url: str) -> list[str]:
 
 def _check(page: str, version: str, tool_count: int) -> list[str]:
     page = _visible_text(page)
-    expected_tokens = [
-        f"v{version}",
-        # Accept either phrasing while Glama's rendered README catches up.
-        # Presence of the tool-count sentence is what matters for freshness.
-    ]
-    failures = [f"missing current Glama listing token: {token!r}" for token in expected_tokens if token not in page]
+    # Glama renders the version prefix and number in separate elements in its
+    # tool changelog. Match that visible whitespace, but never a version prefix
+    # (0.103.2 must not accept 0.103.20 or 0.103.2-dev).
+    version_present = re.search(rf"\bv\s*{re.escape(version)}(?![\w.+-])", page)
+    failures = [] if version_present else [f"missing current Glama listing token: {f'v{version}'!r}"]
     tool_count_ok = bool(
         re.search(rf"MCP server mode (?:exposes|advertises)\s+{re.escape(str(tool_count))}\s+MCP tools", page)
-        or f"MCP server mode exposes {tool_count} MCP tools" in page
-        or f"MCP server mode advertises {tool_count} MCP tools" in page
+        or re.search(rf"full compatibility catalog has\s+{re.escape(str(tool_count))}\s+MCP tools\b", page, re.IGNORECASE)
     )
     if not tool_count_ok:
         failures.append(f"missing current Glama listing token: 'MCP server mode exposes|advertises {tool_count} MCP tools'")
@@ -393,7 +391,7 @@ def _extract_listing_version(page: str) -> str:
     page = _visible_text(page)
     patterns = [
         r"uses:\s*msaad00/agent-bom@v([0-9]+\.[0-9]+\.[0-9]+)",
-        r"\bv([0-9]+\.[0-9]+\.[0-9]+)\b",
+        r"\bv\s*([0-9]+\.[0-9]+\.[0-9]+)(?![\w.+-])",
     ]
     for pattern in patterns:
         match = re.search(pattern, page)

@@ -3484,11 +3484,15 @@ async function main() {
         throw new Error("Audit export controls must start collapsed");
       }
       await scrollTo(auditPage, 0);
+      const actionCell = await issuedEvent.locator("span").first().boundingBox();
+      const row = await issuedEvent.boundingBox();
+      if (!actionCell || !row || actionCell.x > row.x + 16) throw new Error("Audit columns do not align with their headings");
       await auditPage.waitForTimeout(350);
     }, {
       expectedText: ["agent_identity.issued", "agent_identity.rotated", "agent_identity.revoked", "identity/id_89c1a6f406bd7189"],
       rejectedText: ["scan.completed", "gateway.policy.denied", "compliance.bundle.signed"],
       expectedApiPaths: ["/v1/audit", "/v1/audit/integrity"],
+      assertNoHorizontalOverflow: true,
     });
     await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, "/findings?capture=1", "dependency-map-live.png", async (findingsPage) => {

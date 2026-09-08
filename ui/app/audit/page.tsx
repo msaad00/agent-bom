@@ -196,7 +196,7 @@ export default function AuditLogPage() {
                 <span className="col-start-1 break-all text-[var(--text-secondary)] lg:col-auto">{entry.resource}</span>
                 <span className="col-start-1 text-[var(--text-secondary)] lg:col-auto"><span className="lg:hidden">Outcome: </span>{outcome}</span>
                 <time dateTime={entry.timestamp} className="col-start-1 text-xs text-[var(--text-tertiary)] lg:col-auto">{formatDate(entry.timestamp)}</time>
-                <Chevron className="col-start-2 row-start-1 h-4 w-4 self-center lg:col-auto" />
+                <Chevron className="col-start-2 row-start-1 h-4 w-4 self-center lg:col-start-6" />
               </button>
               {isExpanded && <div id={`evidence-${entry.entry_id}`} className="space-y-3 border-l-2 border-emerald-600 pb-4 pl-4 text-sm">
                 <p className="break-all text-xs text-[var(--text-secondary)]">Event ID: {entry.entry_id} · {entry.hmac_signature ? "Signature recorded; the aggregate check does not provide a per-event verdict." : "No signature recorded."}</p>

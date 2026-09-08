@@ -450,6 +450,7 @@ export default function Dashboard() {
         </p>
       )}
 
+      <p className="text-xs text-ink-secondary">Scope: {importedReport ? "Imported report" : "Current tenant"} · No environment filter · Includes unclassified resources</p>
       <OverviewCockpit
         loading={!importedReport && postureOverviewLoading}
         overviewUnavailable={!importedReport && overviewUnavailable && !overview}

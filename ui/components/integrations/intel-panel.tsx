@@ -246,9 +246,8 @@ function AdvisoryLookup() {
           ) : null}
           <div className="text-xs text-[color:var(--text-tertiary)]">
             source {advisory.source || "—"}
-            {advisory.fixed_version ? ` · fixed in ${advisory.fixed_version}` : ""}
             {advisory.published_at ? ` · published ${formatDate(advisory.published_at)}` : ""}
-            {` · ${advisory.affected?.length ?? 0} affected package(s)`}
+            {` · ${advisory.affected?.length ?? 0} affected package record(s). Fixes depend on package and ecosystem.`}
           </div>
         </div>
       ) : null}

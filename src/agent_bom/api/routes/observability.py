@@ -1859,12 +1859,13 @@ def _build_llm_costs_report_sync(
     from agent_bom.api.cost_store import budget_status, get_cost_store, summarize, summarize_by_tag
 
     store = get_cost_store()
-    records = store.list_records(tenant_id, limit=limit)
-    if agent:
-        records = [r for r in records if r.agent == agent]
-    if cost_center:
-        records = [r for r in records if (r.cost_center or "") == cost_center]
+    records = store.list_records(tenant_id, limit=limit, agent=agent, cost_center=cost_center)
     report = summarize(records)
+    totals = store.report_totals(tenant_id, agent=agent, cost_center=cost_center)
+    report.update(totals)
+    complete = len(records) == totals["total_calls"]
+    report["history"] = {"limit": limit, "returned_calls": len(records), "complete": complete}
+    report["scope"] = {"agent": agent, "cost_center": cost_center}
     # Owner-attributed rollup (#3909): spend grouped by the accountable owner
     # recorded on the blueprint governing each agent. Spend from an ungoverned
     # agent rolls up under "unattributed" so nothing is silently dropped.
@@ -1879,10 +1880,18 @@ def _build_llm_costs_report_sync(
         budget = store.get_budget(tenant_id, agent or "")
         if budget is None and agent:
             budget = store.get_budget(tenant_id, "")
+            spend = store.total_spend(tenant_id)
     report["budget"] = budget_status(spend, budget)
     # Forward-looking companion to the point-in-time budget posture: burn rate +
     # projected runway derived from the same records. Reference only.
-    report["forecast"] = forecast_spend(records, budget=budget)
+    from agent_bom.api.cost_forecast import unavailable_forecast
+
+    if not complete:
+        report["forecast"] = unavailable_forecast("incomplete_history", totals["total_cost_usd"], budget)
+    elif budget is not None and (budget.agent != (agent or "") or budget.cost_center != (cost_center or "")):
+        report["forecast"] = unavailable_forecast("budget_scope_mismatch", totals["total_cost_usd"], budget)
+    else:
+        report["forecast"] = forecast_spend(records, budget=budget)
     report["schema_version"] = "observability.costs.v1"
     report["tenant_id"] = tenant_id
     report["price_model_captured"] = __import__("agent_bom.cost_model", fromlist=["PRICE_TABLE_CAPTURED"]).PRICE_TABLE_CAPTURED
@@ -1998,7 +2007,7 @@ async def get_llm_cost_forecast(request: Request, agent: str | None = None, limi
 
     bounded_limit = max(1, min(limit, 10000))
     scoped_agent = _bounded(agent, max_len=120) if agent else None
-    return forecast_for_tenant(_tenant_id(request), agent=scoped_agent, limit=bounded_limit)
+    return await asyncio.to_thread(forecast_for_tenant, _tenant_id(request), agent=scoped_agent, limit=bounded_limit)
 
 
 @router.get("/observability/anomalies", tags=["observability", "finops"], dependencies=[_dep("read")])

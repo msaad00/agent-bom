@@ -2386,18 +2386,20 @@ function GraphPageInner() {
   const fitVisible = useCallback(() => {
     void reactFlow.fitView({ ...viewportOptions, duration: 240 });
   }, [reactFlow, viewportOptions]);
-  const fitSelection = useCallback(() => {
+  const fitSelection = useCallback(async () => {
     if (!selectedNodeId) return;
     const node = reactFlow.getNode(selectedNodeId);
-    if (node) {
-      void reactFlow.fitView({
-        nodes: [node],
-        padding: 0.7,
-        duration: 240,
-        maxZoom: 1.4,
-      });
+    if (!node) return;
+    await reactFlow.fitView({ nodes: [node], padding: 0.7, maxZoom: 1.4 });
+    const canvas = document.querySelector(".react-flow");
+    const drawer = document.querySelector('[data-testid="graph-entity-drawer"]');
+    const drawerWidth = drawer?.getBoundingClientRect().width ?? 0;
+    if (canvas && drawerWidth < canvas.getBoundingClientRect().width) {
+      const viewport = reactFlow.getViewport();
+      void reactFlow.setViewport({ ...viewport, x: viewport.x - drawerWidth / 2 });
     }
   }, [reactFlow, selectedNodeId]);
+
   const autoLayout = useCallback(() => {
     presentation.autoLayout();
     window.setTimeout(fitVisible, 0);

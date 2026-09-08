@@ -43,7 +43,7 @@ before replacing any published product image.
    Kubernetes, MCP, and identity source receipt before opening a browser. A
    stale, hand-edited, or source-divergent artifact stops capture.
 
-3. Inspect all 30 PNGs and the manifest at the final README display size. The
+3. Inspect all 31 PNGs and the manifest at the final README display size. The
    harness stages files and publishes them only after every page passes.
 
 Backend-connected release evidence is a separate end-to-end smoke. For that

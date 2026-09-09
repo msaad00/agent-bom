@@ -415,7 +415,19 @@ def probe_glama(
     **kw: Any,
 ) -> dict[str, Any]:
     """Delegate to check_glama_listing.py so the probe logic stays in one place."""
-    command = [sys.executable, str(GLAMA_SCRIPT), "--expected", expected, "--json"]
+    command = [
+        sys.executable,
+        str(GLAMA_SCRIPT),
+        "--expected",
+        expected,
+        "--json",
+        "--timeout",
+        str(kw.get("timeout", DEFAULT_TIMEOUT)),
+        "--retries",
+        str(kw.get("attempts", DEFAULT_ATTEMPTS)),
+        "--delay-seconds",
+        str(kw.get("backoff", DEFAULT_BACKOFF)),
+    ]
     if expected_tool_count is not None:
         command.extend(["--expected-tool-count", str(expected_tool_count)])
     if expected_tool_names_file is not None:

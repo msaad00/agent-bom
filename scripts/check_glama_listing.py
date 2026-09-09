@@ -318,13 +318,13 @@ def verify_build_manifest(git_ref: str | None = None) -> list[str]:
     return failures
 
 
-def _fetch(url: str, timeout: int) -> str:
+def _fetch(url: str, timeout: float) -> str:
     request = urllib.request.Request(url, headers={"User-Agent": "agent-bom-release-check/1.0"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
 
 
-def _fetch_json(url: str, timeout: int) -> dict[str, object]:
+def _fetch_json(url: str, timeout: float) -> dict[str, object]:
     payload = json.loads(_fetch(url, timeout))
     if not isinstance(payload, dict):
         raise ValueError("Glama public API returned a non-object payload")
@@ -425,9 +425,9 @@ def main(argv: list[str] | None = None) -> int:
         help="JSON list of name/inputSchema objects required from a reachable public machine inventory.",
     )
     parser.add_argument("--json", action="store_true", help="Emit a machine-readable freshness result.")
-    parser.add_argument("--timeout", type=int, default=20)
+    parser.add_argument("--timeout", type=float, default=20)
     parser.add_argument("--retries", type=int, default=1)
-    parser.add_argument("--delay-seconds", type=int, default=30)
+    parser.add_argument("--delay-seconds", type=float, default=30)
     parser.add_argument(
         "--verify-manifest",
         action="store_true",

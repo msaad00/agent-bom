@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import subprocess
 import urllib.error
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import ModuleType
 
@@ -544,6 +546,39 @@ def test_glama_probe_forwards_immutable_tool_name_contract(monkeypatch, tmp_path
 
     assert result["status"] == "fresh"
     assert seen[seen.index("--expected-tool-names-file") + 1] == str(names_file)
+
+
+@pytest.mark.parametrize("recover", [True, False])
+def test_glama_surface_probe_honors_retry_budget(monkeypatch, recover):
+    surface = _load_script("check_surface_freshness.py")
+    glama = _load_script("check_glama_listing.py")
+    attempts = []
+    delays = []
+
+    def fetch(url, timeout):
+        assert timeout == 2.5
+        if url == glama.DEFAULT_URL:
+            attempts.append(url)
+            if not recover or len(attempts) == 1:
+                raise TimeoutError("transient listing timeout")
+        return "v0.103.2 MCP server mode exposes 1 MCP tools"
+
+    def run(command, **_kwargs):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = glama.main(command[2:])
+        return subprocess.CompletedProcess(command, code, stdout=output.getvalue())
+
+    monkeypatch.setattr(glama, "_fetch", fetch)
+    monkeypatch.setattr(glama, "_fetch_json", lambda *_args: {"tools": [{"name": "scan"}]})
+    monkeypatch.setattr(glama.time, "sleep", delays.append)
+    monkeypatch.setattr(surface.subprocess, "run", run)
+
+    result = surface.probe_glama("0.103.2", expected_tool_count=1, timeout=2.5, attempts=3, backoff=0.25)
+
+    assert result["status"] == ("fresh" if recover else "unreachable")
+    assert len(attempts) == (2 if recover else 3)
+    assert delays == ([0.25] if recover else [0.25, 0.25])
 
 
 def test_surface_freshness_does_not_close_on_degraded_evidence(monkeypatch, tmp_path):

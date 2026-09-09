@@ -26,7 +26,7 @@ export function InventoryIndex() {
         <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
           Explore what exists across your environments, where it comes from, and how it connects.
         </p>
-        <p className="mt-1 text-xs text-ink-tertiary">Coverage reflects recorded assets from scans and connected sources.</p>
+        <p className="mt-1 text-xs text-ink-tertiary">Coverage reflects scanned and connected sources.</p>
       </div>
       <Link href="/connections" className="rounded-lg border border-outline px-3 py-2 text-sm hover:bg-surface-muted">Manage connections</Link>
     </header>

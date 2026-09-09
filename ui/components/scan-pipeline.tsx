@@ -305,7 +305,6 @@ function ScanPipelineInner({
   const { fitView, getNode, setCenter } = useReactFlow();
   const initialized = useNodesInitialized();
   useEffect(() => {
-    if (!initialized) return;
     const frame = requestAnimationFrame(() => {
       const selected = selectedStepId ? getNode(selectedStepId) : undefined;
       if (selected) {

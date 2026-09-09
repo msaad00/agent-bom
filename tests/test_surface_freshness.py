@@ -854,7 +854,7 @@ def test_ghcr_pagination_still_follows_a_same_origin_next_link(monkeypatch):
     assert result["status"] == "fresh"
 
 
-def _glama_schema_state(tools, *, namespace="msaad00", slug="agent-bom", null_reference=-5):
+def _glama_schema_state(tools, *, namespace="msaad00", slug="agent-bom", null_reference=-5, description=""):
     """Encode the public schema route's reference-table JSON, without JS execution."""
     values = []
 
@@ -875,7 +875,7 @@ def _glama_schema_state(tools, *, namespace="msaad00", slug="agent-bom", null_re
         {
             "loaderData": {
                 "routes/_public/mcp/servers/~namespace/~slug/_pages/schema/_route": {
-                    "mcpServer": {"namespace": {"slug": namespace}, "slug": slug},
+                    "mcpServer": {"namespace": {"slug": namespace}, "slug": slug, "descriptionMarkdown": description},
                     "schema": {"tools": tools},
                 }
             }
@@ -1395,3 +1395,35 @@ def test_glama_accepts_current_readme_catalog_sentence():
     readme = (ROOT / "README.md").read_text()
     sentence = next(line.strip() for line in readme.splitlines() if "The full catalog has" in line)
     assert script._check("<main>v0.103.2 " + sentence + "</main>", "0.103.2", 86) == []
+
+
+@pytest.mark.parametrize("invalid", [None, "schema", "version", "count", "identity", "no_contract", "stale_copy"])
+def test_glama_profile_metadata_requires_exact_released_schema(monkeypatch, capsys, tmp_path, invalid):
+    """Provider build labels and full-catalog prose are not runtime profile versions/counts."""
+    script = _load_script("check_glama_listing.py")
+    expected = [{"name": "scan", "inputSchema": {"type": "object", "additionalProperties": False}}]
+    tools = [{"name": "scan", "inputSchema": {"type": "object"}}] if invalid == "schema" else expected
+    version = "0.103.2" if invalid == "version" else "0.104.0"
+    count = 86 if invalid == "count" else 1
+    schema = _glama_schema_state(
+        tools,
+        slug="unrelated" if invalid == "identity" else "agent-bom",
+        description=f"agent-bom v{version} default profile MCP server mode exposes {count} MCP tools.",
+    )
+    page = "v1.0.5 Start with focused tools. The full catalog has 86 MCP tools."
+    if invalid == "stale_copy":
+        page += " uses: msaad00/agent-bom@v0.88.4"
+    monkeypatch.setattr(script, "_fetch", lambda url, timeout: schema if url.endswith("/schema") else page)
+    monkeypatch.setattr(script, "_fetch_json", lambda *args: (_ for _ in ()).throw(urllib.error.URLError("401")))
+    contract = tmp_path / "contract.json"
+    contract.write_text(json.dumps(expected))
+    args = ["--expected", "0.104.0", "--expected-tool-count", "1", "--json", "--retries", "1"]
+    if invalid != "no_contract":
+        args += ["--expected-tool-contract-file", str(contract)]
+    result = script.main(args)
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert result == int(invalid is not None)
+    if invalid is None:
+        assert payload["exact_input_schemas"] is True
+        assert payload["release_metadata_source"] == "schema-server-description"
+        assert payload["listing_version"] == "1.0.5"

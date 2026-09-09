@@ -547,6 +547,7 @@ jobs:
 
       - name: Verify Glama listing freshness
         env:
+          GLAMA_DIAGNOSTICS_DIR: ${{ runner.temp }}/glama-response
           EXPECTED_VERSION: ${{ needs.release.outputs.version }}
           EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
         run: |
@@ -562,6 +563,15 @@ jobs:
           fi
           echo "::error::Glama has not synchronized the exact released catalog yet. Glama syncs linked GitHub repositories automatically at least daily; this workflow retries every six hours. For an immediate provider-side refresh, use Sync Server in the Glama admin interface, then rerun this verification."
           exit 1
+
+      - name: Retain failed public Glama responses
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: glama-failure-evidence
+          path: ${{ runner.temp }}/glama-response/
+          retention-days: 7
+          if-no-files-found: ignore
 
   clawhub:
     name: Publish to ClawHub

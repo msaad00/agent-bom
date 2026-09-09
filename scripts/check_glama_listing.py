@@ -370,7 +370,7 @@ def _check(page: str, version: str, tool_count: int) -> list[str]:
     failures = [] if version_present else [f"missing current Glama listing token: {f'v{version}'!r}"]
     tool_count_ok = bool(
         re.search(rf"MCP server mode (?:exposes|advertises)\s+{re.escape(str(tool_count))}\s+MCP tools", page)
-        or re.search(rf"full compatibility catalog has\s+{re.escape(str(tool_count))}\s+MCP tools\b", page, re.IGNORECASE)
+        or re.search(rf"full (?:compatibility )?catalog has\s+{re.escape(str(tool_count))}\s+MCP tools\b", page, re.IGNORECASE)
     )
     if not tool_count_ok:
         failures.append(f"missing current Glama listing token: 'MCP server mode exposes|advertises {tool_count} MCP tools'")

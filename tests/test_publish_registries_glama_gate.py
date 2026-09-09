@@ -66,3 +66,12 @@ def test_stale_glama_directory_fails_with_supported_recovery_guidance() -> None:
     assert "Glama syncs linked GitHub repositories automatically at least daily" in job
     assert "Sync Server" in job
     assert "exit 1" in job
+
+
+def test_publisher_retains_actual_glama_failure_responses() -> None:
+    steps = _workflow()["jobs"]["glama"]["steps"]
+    verify = next(step for step in steps if step.get("name") == "Verify Glama listing freshness")
+    assert verify["env"]["GLAMA_DIAGNOSTICS_DIR"] == "${{ runner.temp }}/glama-response"
+    upload = next(step for step in steps if "upload-artifact@" in step.get("uses", ""))
+    assert upload["if"] == "always()"
+    assert upload["with"]["retention-days"] == 7

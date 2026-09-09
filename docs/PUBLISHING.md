@@ -274,6 +274,11 @@ and the `MCP default tools` metric. Older releases without that metadata retain
 their full-catalog contract. A smaller next-release default must not make the
 currently published full catalog appear stale. Custom full-profile deployments
 and the default marketplace endpoint have distinct expected catalogs.
+The Railway release gate uses the same default-profile count. During a rolling
+deployment, it retries old-version responses and incomplete contracts within the
+same bounded attempt budget as transport failures. An HTTP 200 alone does not
+pass the gate: the exact version, tool count, and schemas must match before the
+budget is exhausted.
 Smithery's catalog API omits some root schema fields. The checker verifies those
 constraints from the complete schemas embedded in Smithery's public page, while
 requiring its server identity, tool names, and shared schema fields to agree with

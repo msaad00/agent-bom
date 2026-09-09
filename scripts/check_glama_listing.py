@@ -171,7 +171,7 @@ def _api_inventory_result(
     return actual_tool_count, failures, exact_tool_set, exact_input_schemas
 
 
-def _extract_schema_tool_contract(page: str, listing_url: str) -> list[dict[str, object]]:
+def _extract_schema_evidence(page: str, listing_url: str) -> tuple[list[dict[str, object]], str]:
     """Read bounded reference-table JSON from Glama's public schema route.
 
     This decodes data only. Scripts are never evaluated, and unrelated route
@@ -242,9 +242,14 @@ def _extract_schema_tool_contract(page: str, listing_url: str) -> list[dict[str,
             or any(not isinstance(tool, dict) or not isinstance(tool.get("inputSchema"), dict) for tool in tools)
         ):
             raise ValueError("schema state has incomplete tool contracts")
-        return tools
+        description = server.get("descriptionMarkdown", "")
+        return tools, description if isinstance(description, str) else ""
     except (KeyError, IndexError, TypeError, RecursionError, ValueError) as exc:
         raise ValueError("Glama public schema state is unavailable or malformed") from exc
+
+
+def _extract_schema_tool_contract(page: str, listing_url: str) -> list[dict[str, object]]:
+    return _extract_schema_evidence(page, listing_url)[0]
 
 
 def _release_tool_names(git_ref: str | None) -> list[str]:
@@ -503,6 +508,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("expected Glama tool-name contract and tool count do not match")
     last_error = ""
     listing_version = "unknown"
+    release_metadata_source = "listing-text"
     actual_tool_count: int | None = None
     inventory_source: str | None = None
     exact_tool_set: bool | None = None
@@ -510,6 +516,7 @@ def main(argv: list[str] | None = None) -> int:
     degraded_reason: str | None = None
     last_probe_unreachable = False
     for attempt in range(1, max(1, args.retries) + 1):
+        release_metadata_source = "listing-text"
         actual_tool_count = None
         inventory_source = None
         exact_tool_set = None
@@ -587,6 +594,24 @@ def main(argv: list[str] | None = None) -> int:
                 inventory_source = "api"
                 failures.append(f"failed to verify Glama public API tool inventory: {api_error}")
                 last_probe_unreachable = True
+            # The schema changelog labels Glama builds, which can differ from
+            # package releases; full-catalog prose also differs from the selected
+            # runtime profile. Accept the bound server profile's release claim
+            # only alongside its independently matching complete tool contract.
+            if expected_tool_contract is not None and exact_input_schemas is True and schema_page:
+                try:
+                    indexed_tools, description = _extract_schema_evidence(schema_page, args.url)
+                    _, indexed_failures, _, indexed_exact = _api_inventory_result(
+                        indexed_tools,
+                        tool_count=tool_count,
+                        expected_tool_names=expected_tool_names,
+                        expected_tool_contract=expected_tool_contract,
+                    )
+                    if indexed_exact and not indexed_failures and not _check(html.escape(description), version, tool_count):
+                        failures = [failure for failure in failures if not failure.startswith("missing current Glama listing token:")]
+                        release_metadata_source = "schema-server-description"
+                except ValueError:
+                    pass  # Missing profile metadata cannot substitute for release proof.
             if expected_tool_contract is not None and exact_input_schemas is None:
                 failures.append("could not verify requested input schemas from Glama indexed evidence")
             if not failures:
@@ -599,6 +624,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "status": status,
                                 "expected": version,
                                 "listing_version": listing_version,
+                                "release_metadata_source": release_metadata_source,
                                 "tool_count": actual_tool_count,
                                 "expected_tool_count": tool_count,
                                 "inventory_source": inventory_source,
@@ -628,6 +654,7 @@ def main(argv: list[str] | None = None) -> int:
                     "status": "unreachable" if last_probe_unreachable else "stale",
                     "expected": version,
                     "listing_version": listing_version,
+                    "release_metadata_source": release_metadata_source,
                     "tool_count": actual_tool_count,
                     "expected_tool_count": tool_count,
                     "inventory_source": inventory_source,

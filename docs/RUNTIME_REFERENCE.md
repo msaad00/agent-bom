@@ -203,15 +203,17 @@ comments every 10 seconds maintain the transport without advancing the cursor.
 Backfill and tailing use the same ledger reads, with no process-local subscribe
 handoff; database work runs off the event loop and holds no DB connection while
 waiting to send. Configure ingress to permit streaming, disable response
-buffering, and allow idle periods longer than the heartbeat interval.
+buffering, and allow idle periods longer than the heartbeat interval. The stream
+sends `Cache-Control: no-store, no-transform` so intermediary compression does
+not buffer activity until connection renewal.
 
 Rollback is additive: stop stream consumers and use `/v1/gateway/feed` REST
 readback. This endpoint requires no schema migration and changes no gateway
-enforcement settings. The current dashboard continues to use its existing
-metrics-driven refresh until its stream integration is delivered.
+enforcement settings. The dashboard consumes this stream and retains its last
+complete batch and cursor across transport reconnects.
 
-Local SQLite restart/readback and API contracts do not establish deployed
-Helm/Postgres replica failover; that deployment acceptance remains separate.
+Local SQLite restart/readback and API contracts remain distinct from the
+Helm/Postgres deployment probe described below.
 
 ## Where to go for surface-specific detail
 
@@ -361,3 +363,57 @@ Results state that they are simulations: these actions do not execute tools,
 verify caller credentials, or exercise live firewall, DLP, policy or quota checks.
 Read-only users can inspect and preview; the API enforces permissions on every
 request. Browser writes use the existing session cookie and CSRF header boundary.
+
+## Reproduce gateway deployment acceptance
+
+The disposable-kind probe installs the actual Helm chart with two API replicas,
+one PVC-backed gateway, and TLS-enabled Postgres. It sends 205 real JSON-RPC
+calls to a synthetic upstream through enforced managed identity/profile checks,
+reads their authenticated durable activity, restarts an API pod and the gateway,
+and verifies seven further calls through the replacement API using the saved
+cursor. It checks contiguous ordinals, event uniqueness, profile attribution,
+foreign-tenant cursor rejection, and preservation of the gateway PVC.
+
+```bash
+docker build --build-arg AGENT_BOM_EXTRAS=api,postgres -t agent-bom:runtime-acceptance .
+kind create cluster --name runtime-acceptance --kubeconfig /tmp/runtime-kubeconfig
+kind load docker-image agent-bom:runtime-acceptance --name runtime-acceptance
+python3 scripts/demo/check_runtime_reconnect.py \
+  --kubeconfig /tmp/runtime-kubeconfig --output /tmp/runtime-helm-proof.json
+kind delete cluster --name runtime-acceptance
+```
+
+The probe removes its namespace and Helm release on success or failure; the
+caller removes the cluster. It requires Docker, kind, kubectl, Helm, OpenSSL,
+and Python. Its JSON artifact is written only after every assertion and cleanup
+succeeds. Record a clean source commit and the image identity before treating a
+run as release evidence. CI pins kind, Helm and the Kubernetes node image.
+
+For browser acceptance, build the production dashboard with Node 22, copy
+`.next/static` to `.next/standalone/.next/static` and `public` to
+`.next/standalone/public`, install Playwright Chromium, and add `--ui-root ui`.
+The browser uses a short-lived signed session verified by the real Helm API
+through the production Next proxy. It checks light/dark desktop/mobile layouts,
+persisted activity and profile presentation, retained rows during a real
+port-forward interruption, and reconnect with `Last-Event-ID`. Screenshots are
+written beside the JSON artifact. No API response fixtures replace this path.
+
+The `Runtime Helm Acceptance` workflow repeats this deployment and browser
+proof for affected changes. `tests/api/test_gateway_runtime_acceptance.py`
+separately exercises allow, profile/policy block, PII redaction, secret blocking
+and visual redaction through gateway emission, authenticated ingest, SQLite
+reopen and signed-session SSE resume. Its upstream and OCR detector are fixtures.
+
+Proof boundaries: the deployment probe uses a synthetic upstream and locally
+signed browser session, not an external identity-provider login. Its self-signed
+Postgres TLS checks do not certify a managed provider, ingress TLS, network-policy
+enforcement or multi-node failure. A single persistent gateway restart does not
+prove concurrent gateway replicas or audit delivery during a total control-plane
+outage. Missing/foreign auth and invalid tenant cursors fail closed; a transport
+failure preserves the last complete browser batch until authenticated reconnect.
+
+Managed identity lookup now requires schema component version 2. Run Alembic
+migrations before starting API/gateway replicas: the additive migration creates
+and backfills `agent_id`, then records readiness. A version-1 database fails
+closed at store initialization. Application rollback preserves the added column,
+index and identity/revocation data; the downgrade does not delete them.

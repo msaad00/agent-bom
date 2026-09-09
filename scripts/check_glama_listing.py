@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import html
 import json
 import os
@@ -400,6 +401,30 @@ def _extract_listing_version(page: str) -> str:
     return "unknown"
 
 
+def _retain_failed_response(attempt: int, listing_url: str, schema_url: str, page: str, schema_page: str, failures: list[str]) -> None:
+    """Keep bounded anonymous public responses from the actual failed attempt.
+
+    Custom endpoints and API payloads are never archived. Diagnostic I/O must
+    not change the gate result; retries still require all freshness evidence.
+    """
+    destination = (os.environ.get("GLAMA_DIAGNOSTICS_DIR") or "").strip()
+    if not destination or listing_url != DEFAULT_URL or schema_url != DEFAULT_SCHEMA_URL:
+        return
+    output = Path(destination)
+    evidence: dict[str, object] = {"listing_version": _extract_listing_version(page), "failures": failures}
+    try:
+        output.mkdir(parents=True, exist_ok=True)
+        for kind, content in (("listing", page), ("schema", schema_page)):
+            encoded = content.encode("utf-8")
+            retained = len(encoded) <= 2 * 1024 * 1024
+            evidence[kind] = {"bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest(), "retained": retained}
+            if retained:
+                (output / f"attempt-{attempt}-{kind}.html").write_bytes(encoded)
+        (output / f"attempt-{attempt}.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        print("Glama response diagnostics could not be saved", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=_env_or("GLAMA_LISTING_URL", DEFAULT_URL))
@@ -588,6 +613,7 @@ def main(argv: list[str] | None = None) -> int:
                 suffix = f" ({degraded_reason})" if degraded_reason else ""
                 print(f"Glama listing is {status} for agent-bom v{version} with {actual_tool_count} MCP tools{suffix}")
                 return 0
+            _retain_failed_response(attempt, args.url, args.schema_url, page, schema_page, _check(page, version, tool_count))
             last_error = "\n".join(failures)
 
         if attempt < args.retries:

@@ -74,46 +74,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Expected version from published release $TAG at ${RELEASE_SHA:0:12}: $VERSION with $TOOL_COUNT MCP tools"
 
-      - name: Capture anonymous public listing responses
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import hashlib, importlib.util, json, os, pathlib, time
-          spec = importlib.util.spec_from_file_location('glama', 'scripts/check_glama_listing.py')
-          glama = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(glama)
-          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'glama-response'
-          output.mkdir()
-          evidence = []
-          for attempt in range(1, 4):
-              for kind, url in [('listing', glama.DEFAULT_URL), ('schema', glama.DEFAULT_SCHEMA_URL)]:
-                  try:
-                      page = glama._fetch(url, 20)
-                      (output / f'{kind}-{attempt}.html').write_text(page)
-                      evidence.append({'kind': kind, 'attempt': attempt, 'bytes': len(page.encode()),
-                          'sha256': hashlib.sha256(page.encode()).hexdigest(),
-                          'version': glama._extract_listing_version(page),
-                          'visible_prefix': glama._visible_text(page)[:1500]})
-                  except Exception as exc:
-                      evidence.append({'kind': kind, 'attempt': attempt, 'error_type': type(exc).__name__})
-              if attempt < 3:
-                  time.sleep(5)
-          (output / 'summary.json').write_text(json.dumps(evidence, indent=2))
-          print(json.dumps(evidence, indent=2))
-          PY
-      - name: Upload public response evidence
-        if: always() && github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: glama-public-response
-          path: ${{ runner.temp }}/glama-response/
-          retention-days: 7
-          if-no-files-found: error
-
       - name: Probe every distribution surface
         id: probe
         env:
+          GLAMA_DIAGNOSTICS_DIR: ${{ runner.temp }}/glama-response
           EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
           SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
@@ -144,6 +108,17 @@ jobs:
             cat surface-freshness.json
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Upload freshness and failed public response evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: surface-freshness-evidence
+          path: |
+            surface-freshness.json
+            ${{ runner.temp }}/glama-response/
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Open, refresh, or close consolidated freshness issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -176,8 +151,10 @@ jobs:
               "|---------|-----------|----------|--------|--------|",
               rows,
               "",
+              `Probe evidence: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId} (surface-freshness-evidence artifact; retained for 7 days).`,
+              "",
               "**Statuses**",
-              "- `stale` — surface published a different version; use that provider's supported publish or sync path, then re-run verification.",
+              "- `stale` — surface version, visible release copy, or indexed tool contract differs; use that provider's supported publish or sync path, then re-run verification.",
               "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
               "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
               "- `partial evidence` — the visible listing matches, but exact machine-readable verification is unavailable; the issue remains open.",
@@ -206,7 +183,7 @@ jobs:
               if (match) {
                 await github.rest.issues.createComment({
                   owner, repo, issue_number: match.number,
-                  body: "All distribution surfaces are fresh and monitored again; closing.",
+                  body: `All distribution surfaces are fresh and monitored again; closing. Evidence: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
                 });
                 await github.rest.issues.update({ owner, repo, issue_number: match.number, state: "closed" });
               }

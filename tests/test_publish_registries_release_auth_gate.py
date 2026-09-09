@@ -1,11 +1,69 @@
 """Registry repair must evaluate Smithery auth from the published release."""
 
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
+
+import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "publish-registries.yml"
+
+
+@pytest.mark.parametrize("schema_failures,expected_attempts,expected_status", [(1, 2, 0), (12, 12, 1)])
+def test_smithery_catalog_retries_schema_fetch_and_fails_closed(tmp_path, schema_failures, expected_attempts, expected_status):
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    step = next(step for step in workflow["jobs"]["smithery"]["steps"] if step.get("name") == "Verify Smithery catalog inventory")
+    script = step["run"].replace("/tmp/", f"{tmp_path}/")
+    catalog = {"description": "Released scanner", "tools": [{"name": "scan", "inputSchema": {"type": "object"}}]}
+    (tmp_path / "catalog.json").write_text(json.dumps(catalog))
+    contract = [{"name": "scan", "inputSchema": {"type": "object"}}]
+    (tmp_path / "contract.json").write_text(json.dumps(contract))
+    for query, name in [("[.tools[].name] | sort", "tool-names"), ("{description}", "listing-metadata")]:
+        result = subprocess.run(["jq", "-S", query], input=json.dumps(catalog), text=True, capture_output=True, check=True)
+        (tmp_path / f"smithery-expected-{name}.json").write_text(result.stdout)
+    (tmp_path / "smithery-expected-tool-contract.json").write_text(json.dumps(contract))
+    # Existing successful artifacts must not make a later failed fetch pass.
+    (tmp_path / "smithery-actual-tool-contract.json").write_text(json.dumps(contract))
+    harness = r"""
+curl() { cp "$PROBE_DIR/catalog.json" "$PROBE_DIR/smithery-catalog.json"; }
+sleep() { :; }
+python3() {
+  if [ "$2" = "--smithery-server" ]; then
+    count=0
+    if [ -f "$PROBE_DIR/attempts" ]; then count=$(cat "$PROBE_DIR/attempts"); fi
+    count=$((count + 1))
+    echo "$count" > "$PROBE_DIR/attempts"
+    if [ "$count" -le "$SCHEMA_FAILURES" ]; then return 1; fi
+    cp "$PROBE_DIR/contract.json" "$5"
+  else
+    "$TEST_PYTHON" "$@"
+  fi
+}
+"""
+    result = subprocess.run(
+        ["bash", "-c", harness + script],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "PROBE_DIR": str(tmp_path),
+            "SCHEMA_FAILURES": str(schema_failures),
+            "TEST_PYTHON": sys.executable,
+            "EXPECTED_TOOL_COUNT": "1",
+            "VERSION": "0.104.0",
+        },
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert result.returncode == expected_status, result.stdout + result.stderr
+    assert int((tmp_path / "attempts").read_text()) == expected_attempts
+    if expected_status:
+        assert "did not converge" in result.stdout
+        assert "exposes the released" not in result.stdout
 
 
 def test_smithery_publish_waits_for_oauth_capable_forward_release() -> None:

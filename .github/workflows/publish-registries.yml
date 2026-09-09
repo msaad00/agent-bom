@@ -459,13 +459,13 @@ jobs:
           for ATTEMPT in $(seq 1 12); do
             if curl -fsS --connect-timeout 10 --max-time 30 \
                 "https://api.smithery.ai/servers/agentbom/agent-bom" \
-                -o /tmp/smithery-catalog.json; then
-              jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
+                -o /tmp/smithery-catalog.json && \
+              jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json && \
               python3 scripts/check_surface_freshness.py \
                 --smithery-server agentbom/agent-bom \
-                --write-smithery-tool-contract /tmp/smithery-actual-tool-contract.json
+                --write-smithery-tool-contract /tmp/smithery-actual-tool-contract.json && \
               jq -S '{description}' \
-                /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json
+                /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json; then
               ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
             else
               ACTUAL=unavailable

@@ -55,16 +55,26 @@ and carry the selected finding into remediation.
   <a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab application graph connecting a real Pillow advisory to modeled infrastructure and its remediation action" width="920"></a>
 </p>
 
-### Engineers and GRC: turn findings into a verifiable fix
+### Engineers and GRC: prioritize findings and verify fixes
 
-Compare available upgrades, affected workloads and mapped controls. Use the
-campaign workflow to assign owners, set SLAs and re-scan to verify fixes.
+Review findings by priority, affected asset, detection evidence and available
+fix. Open remediation to compare package upgrades and mapped controls, assign
+owners, set SLAs and re-scan to verify fixes.
+
+<p align="center">
+  <a href="docs/images/dependency-map-live.png"><img src="docs/images/dependency-map-live.png" alt="Actual Findings screen with labeled sample findings, priority, affected assets, detection evidence and remediation actions" width="920"></a>
+</p>
+
+<details>
+<summary>See package remediation and verification</summary>
 
 <p align="center">
   <a href="docs/images/remediation-live.png"><img src="docs/images/remediation-live.png" alt="Actual remediation screen with sample package upgrades, affected controls and campaign verification workflow" width="920"></a>
 </p>
 
-These are application captures, not mockups. Overview and remediation use
+</details>
+
+These are application captures, not mockups. Overview, Findings and remediation use
 labeled sample data. The graph uses the reproducible reference lab: real parsers,
 a pinned advisory scan and authenticated gateway calls, with modeled infrastructure.
 A blocked call does not establish that the underlying package was fixed.

@@ -87,9 +87,10 @@ def test_glama_listing_accepts_exact_public_api_tool_inventory(monkeypatch, caps
     assert payload["expected_tool_count"] == 77
 
 
-def test_glama_listing_accepts_split_version_and_profile_aware_copy(monkeypatch, capsys, tmp_path):
+@pytest.mark.parametrize("catalog", ["full compatibility catalog", "full catalog"])
+def test_glama_listing_accepts_split_version_and_profile_aware_copy(monkeypatch, capsys, tmp_path, catalog):
     script = _load_script("check_glama_listing.py")
-    page = """<main>The full compatibility catalog has <strong>2 MCP tools</strong>.
+    page = f"""<main>The {catalog} has <strong>2 MCP tools</strong>.
     <section>Tool changes <span>v</span><span>0.103.2</span></section></main>"""
     contract = [{"name": name, "inputSchema": {"type": "object", "properties": {}}} for name in ["check", "scan"]]
     expected = tmp_path / "contract.json"
@@ -1381,3 +1382,16 @@ def test_glama_diagnostics_bound_raw_response_artifacts(monkeypatch, tmp_path):
     assert evidence["listing"]["retained"] is False
     assert not (tmp_path / "attempt-1-listing.html").exists()
     assert (tmp_path / "attempt-1-schema.html").read_text() == "schema"
+
+
+@pytest.mark.parametrize("count", [8, 85, 87, 860])
+def test_glama_full_catalog_copy_requires_exact_count(count):
+    script = _load_script("check_glama_listing.py")
+    assert script._check(f"v0.103.2 The full catalog has {count} MCP tools.", "0.103.2", 86)
+
+
+def test_glama_accepts_current_readme_catalog_sentence():
+    script = _load_script("check_glama_listing.py")
+    readme = (ROOT / "README.md").read_text()
+    sentence = next(line.strip() for line in readme.splitlines() if "The full catalog has" in line)
+    assert script._check("<main>v0.103.2 " + sentence + "</main>", "0.103.2", 86) == []

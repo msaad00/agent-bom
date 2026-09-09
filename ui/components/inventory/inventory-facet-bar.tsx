@@ -82,19 +82,19 @@ export function InventoryFacetBar({
           </span>
         </label>
         {select("type", "Type", typeBuckets)}
-        {select("severity", "Finding severity", facets?.severity.buckets ?? [])}
+        {select("environment", "Environment", facets?.environment.buckets ?? [])}
+        {select("source", "Source", facets?.source.buckets ?? [])}
         {hasActive ? <button type="button" onClick={() => { clearFilters(); onSeverityFilterChange?.("all"); }}
           className="h-9 px-2 text-xs text-ink-secondary underline">Clear</button> : null}
       </div>
       <details>
         <summary className="cursor-pointer text-xs text-ink-secondary">
-          Advanced filters{[filters.source, filters.provider, filters.environment].filter(Boolean).length > 0
-            ? ` · ${[filters.source, filters.provider, filters.environment].filter(Boolean).length} active` : ""}
+          Advanced filters{[filters.provider, filters.severity].filter(Boolean).length > 0
+            ? ` · ${[filters.provider, filters.severity].filter(Boolean).length} active` : ""}
         </summary>
         <div className="mt-2 flex flex-wrap gap-2">
-          {select("source", "Source", facets?.source.buckets ?? [])}
+          {select("severity", "Finding severity", facets?.severity.buckets ?? [])}
           {select("provider", "Provider", facets?.provider.buckets ?? [])}
-          {select("environment", "Environment", facets?.environment.buckets ?? [])}
         </div>
       </details>
     </section>

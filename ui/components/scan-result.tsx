@@ -4,16 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
 import { useScanStream } from "@/lib/use-scan-stream";
-import { mergePipelineSteps, parsePipelineStepsFromProgress } from "@/lib/scan-pipeline-progress";
-import { domainFindingsForScan } from "@/lib/scan-domain-findings";
-import { ScanPipeline } from "@/components/scan-pipeline";
+import { JobPipelinePanel } from "@/components/job-pipeline-panel";
 import { RepoScanOverviewPanel } from "@/components/repo-scan-overview-panel";
 import { FrameworkTagChips } from "@/components/framework-tag-chips";
 import { SeverityBadge } from "@/components/severity-badge";
 import { StatCard } from "@/components/stat-card";
 import { PaginationBar } from "@/components/pagination-bar";
 import {
-  ArrowLeft, Loader2, CheckCircle, Clock, Zap, Key, Wrench,
+  ArrowLeft, Loader2, Clock, Zap, Key, Wrench,
   ArrowUpCircle, AlertTriangle, ChevronDown, ChevronRight, Download, GitBranch, Server,
   Cloud, Database, ShieldCheck,
 } from "lucide-react";
@@ -90,11 +88,6 @@ export function ScanResultView({ id }: { id: string }) {
     onEvent: handleStreamUpdate,
   });
 
-  const replayedSteps = useMemo(
-    () => mergePipelineSteps(parsePipelineStepsFromProgress(job?.progress ?? []), pipelineSteps),
-    [job?.progress, pipelineSteps],
-  );
-
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [messages]);
@@ -114,13 +107,6 @@ export function ScanResultView({ id }: { id: string }) {
 
   const result = job?.result as ScanResult | undefined;
   const summary = result?.summary;
-  const pipelineLanes = useMemo(
-    () =>
-      job?.status === "done"
-        ? domainFindingsForScan({ result, summary }).lanes
-        : undefined,
-    [job?.status, result, summary],
-  );
   const blastRadius = useMemo(() => result?.blast_radius ?? [], [result]);
   const filteredBlastRadius = useMemo(
     () =>
@@ -216,25 +202,15 @@ export function ScanResultView({ id }: { id: string }) {
         </div>
       ) : null}
 
-      {/* Scan Pipeline DAG */}
-      {(streaming || replayedSteps.size > 0) && (
-        <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            {streaming ? (
-              <Loader2 className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-            ) : (
-              <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-            )}
-            <span className="text-xs font-semibold text-[color:var(--text-secondary)]">
-              {streaming ? "Scanning..." : "Complete"}
-            </span>
-          </div>
-          {replayedSteps.size > 0 ? (
-            <ScanPipeline steps={replayedSteps} lanes={pipelineLanes} className="h-[300px]" />
-          ) : (
-            <p className="text-xs font-mono text-[color:var(--text-tertiary)] animate-pulse">Waiting for scan to start...</p>
-          )}
-        </div>
+      {job && (
+        <JobPipelinePanel
+          jobId={id}
+          status={job.status}
+          createdAt={job.created_at}
+          completedAt={job.completed_at}
+          loadedJob={job}
+          liveEvidence={{ pipelineSteps, messages, streaming }}
+        />
       )}
 
       {/* Collapsible raw log */}

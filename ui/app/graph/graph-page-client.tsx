@@ -2324,7 +2324,7 @@ function GraphPageInner() {
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
     // Whole-estate navigation starts with all returned scopes in frame.
     // A selected finding or proposed change keeps its explicit close-up.
-    if (captureMode || (canvasLens === "estate" && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
+    if (captureMode || (canvasLens === "estate" && displayNodes.length <= 6 && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
     const difference = scenarioState !== "current" ? scenarioComparison?.difference : undefined;
     const proposedIds = [...(difference?.nodes_added ?? []), ...(difference?.nodes_changed ?? [])]
       .flatMap((item): string[] => {
@@ -3775,7 +3775,7 @@ function GraphPageInner() {
           )}
           {!captureMode && !rollupDecisionActive && (initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
             <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
-              <span>{graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length} graph nodes · {displayEdges.length} relationships</span>
+              <span>{graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
               {selectedNodeId && <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4">Focus selection</button>}
             </div>

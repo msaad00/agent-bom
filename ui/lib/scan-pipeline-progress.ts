@@ -26,7 +26,13 @@ export function mergePipelineSteps(
   live: Map<string, StepEvent>,
 ): Map<string, StepEvent> {
   const merged = new Map(persisted);
-  for (const [stepId, step] of live) merged.set(stepId, step);
+  for (const [stepId, step] of live) {
+    const recorded = merged.get(stepId);
+    // A late SSE snapshot must not undo a persisted completion for the same run.
+    const terminal = (status: StepStatus) => ["done", "failed", "skipped"].includes(status);
+    if (recorded && terminal(recorded.status) && !terminal(step.status)) continue;
+    merged.set(stepId, step);
+  }
   return merged;
 }
 

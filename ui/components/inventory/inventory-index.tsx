@@ -6,12 +6,9 @@ import { useMemo, useState } from "react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
-import { PageLaneHeader } from "@/components/page-lane";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { AssetDetail } from "@/components/inventory/asset-detail";
-import { SeverityBadge } from "@/components/severity-badge";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
-import { ICON_SIZE } from "@/lib/icon-sizes";
 import { useInventory } from "@/lib/inventory-context";
 import { ASSET_KINDS, ASSET_KIND_BY_ID, type AssetRow } from "@/lib/inventory";
 
@@ -23,11 +20,16 @@ export function InventoryIndex() {
   const selected = rows.find((row) => row.id === selectedId) ?? null;
 
   const header = (
-    <PageLaneHeader
-      lane="command"
-      title="Asset inventory"
-      subtitle="Explore discovered assets and their findings. Coverage reflects scanned and connected sources."
-    />
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Asset inventory</h1>
+        <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
+          Explore what exists across your environments, where it comes from, and how it connects.
+        </p>
+        <p className="mt-1 text-xs text-ink-tertiary">Coverage reflects recorded assets from scans and connected sources.</p>
+      </div>
+      <Link href="/connections" className="rounded-lg border border-outline px-3 py-2 text-sm hover:bg-surface-muted">Manage connections</Link>
+    </header>
   );
 
   const cards = useMemo(() => {
@@ -102,16 +104,15 @@ export function InventoryIndex() {
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-secondary" aria-label="Snapshot summary">
         <span><strong className="text-foreground">{totals.assets.toLocaleString()}</strong> snapshot assets</span>
-        <span><strong className="text-foreground">{totals.findings.toLocaleString()}</strong> snapshot findings</span>
         <span>{totals.sources.toLocaleString()} evidence sources</span>
       </div>
 
-      <nav aria-label="Asset types" className="flex flex-wrap gap-2">
+      <nav aria-label="Asset types" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
         {cards.map(({ kind, total }) => {
           const Icon = kind.icon;
-          return <Link key={kind.id} href={`/inventory/${kind.id}`} className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-xs text-ink-secondary hover:bg-surface-muted">
-            <Icon className={ICON_SIZE.sm} aria-hidden="true" />
-            <span>{kind.label}</span>{" "}<strong className="tabular-nums text-foreground">{total.toLocaleString()}</strong>
+          return <Link key={kind.id} aria-label={`${kind.label} ${total.toLocaleString()}`} href={`/inventory/${kind.id}`} className="flex min-h-24 items-center gap-3 rounded-xl border border-outline bg-surface p-4 text-ink-secondary transition-colors hover:border-outline-strong hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2">
+            <Icon className="h-6 w-6 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden="true" />
+            <span className="min-w-0"><strong className="block text-2xl font-semibold tabular-nums text-foreground">{total.toLocaleString()}</strong><span className="text-sm">{kind.label}</span></span>
           </Link>;
         })}
       </nav>
@@ -161,7 +162,9 @@ const columns: DataTableColumn<AssetRow>[] = [
     <p className="font-medium text-foreground">{row.label}</p>
     <p className="text-xs text-ink-tertiary">{[row.entityType, row.version].filter(Boolean).join(" · ")}</p>
   </div> },
-  { key: "severity", header: "Finding severity", cell: row => <SeverityBadge severity={row.topFindingSeverity} /> },
-  { key: "findings", header: "Findings", align: "right", cell: row => row.findingCount.toLocaleString() },
-  { key: "source", header: "Sources", className: "hidden md:table-cell", cell: row => row.dataSources.join(", ") || "—" },
+  { key: "environment", header: "Environment", cell: row => row.environment || "Not recorded" },
+  { key: "source", header: "Evidence sources", cell: row => row.dataSources.join(", ") || "Not recorded" },
+  { key: "provider", header: "Provider", className: "hidden lg:table-cell", cell: row => row.provider || "Not recorded" },
+  { key: "lastSeen", header: "Last observed", className: "hidden lg:table-cell", cell: row => row.lastSeen ? <time dateTime={row.lastSeen}>{new Date(row.lastSeen).toLocaleString()}</time> : "Not recorded" },
+  { key: "findings", header: "Related findings", align: "right", cell: row => <span className="text-xs text-ink-secondary">{row.findingCount.toLocaleString()}</span> },
 ];

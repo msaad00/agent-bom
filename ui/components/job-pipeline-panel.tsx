@@ -19,6 +19,7 @@ import {
   type JobStatus,
   type ScanJob,
   type Summary,
+  type StepEvent,
 } from "@/lib/api";
 import { useScanStream } from "@/lib/use-scan-stream";
 import {
@@ -209,6 +210,8 @@ export function JobPipelinePanel({
   completedAt,
   summary: listSummary,
   className,
+  loadedJob,
+  liveEvidence,
 }: {
   jobId: string;
   status: JobStatus;
@@ -216,19 +219,27 @@ export function JobPipelinePanel({
   completedAt?: string | undefined;
   summary?: Summary | undefined;
   className?: string;
+  loadedJob?: ScanJob;
+  liveEvidence?: { pipelineSteps: Map<string, StepEvent>; streaming: boolean; messages: string[] };
 }) {
-  const [job, setJob] = useState<ScanJob | null>(null);
+  const [fetchedJob, setJob] = useState<ScanJob | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(!loadedJob);
 
+  const job = loadedJob ?? fetchedJob;
   const isActive = status === "pending" || status === "running";
-  const { pipelineSteps: liveSteps, streaming, messages } = useScanStream(jobId, {
-    enabled: isActive,
+  const ownStream = useScanStream(jobId, {
+    enabled: isActive && !liveEvidence,
   });
+  const { pipelineSteps: liveSteps, streaming, messages } = liveEvidence ?? ownStream;
 
   useEffect(() => {
+    if (loadedJob) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -248,7 +259,7 @@ export function JobPipelinePanel({
     return () => {
       cancelled = true;
     };
-  }, [jobId]);
+  }, [jobId, loadedJob]);
 
   const { steps, state: telemetryState } = useMemo(() => {
     const persisted = parsePipelineStepsFromProgress(job?.progress ?? []);
@@ -295,6 +306,7 @@ export function JobPipelinePanel({
   const selectedMeta = selectedStepId
     ? PIPELINE_GRAPH.find((node) => node.id === selectedStepId)
     : undefined;
+  const selectedLane = selectedMeta?.domain ? lanes?.[selectedMeta.domain] : undefined;
   const selectedIssues = useMemo(
     () =>
       (job?.result?.scan_run?.issues ?? []).filter(
@@ -332,7 +344,7 @@ export function JobPipelinePanel({
                     : `${summary.completedSteps}/${summary.totalSteps} stages complete${summary.skippedSteps > 0 ? ` · ${summary.skippedSteps} skipped` : ""}`}
             </span>
           </div>
-          {resultStats.length > 0 ? (
+          {!loadedJob && resultStats.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {resultStats.map((stat) => (
                 <span
@@ -385,13 +397,13 @@ export function JobPipelinePanel({
               })}
             </span>
           </span>
-          <Link
+          {!loadedJob && <Link
             href={`/scan?id=${encodeURIComponent(jobId)}`}
             className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
           >
             Full scan
             <ExternalLink className="h-3 w-3" />
-          </Link>
+          </Link>}
         </div>
       </div>
 
@@ -403,18 +415,25 @@ export function JobPipelinePanel({
       ) : null}
       {error ? <p className="mt-3 text-sm text-amber-300">{error}</p> : null}
 
+      {steps.size > 0 && <nav aria-label="Scan stages" className="mt-3 flex flex-wrap gap-1">
+        {PIPELINE_GRAPH.map((node) => <button key={node.id} type="button"
+          aria-pressed={selectedStepId === node.id}
+          onClick={() => setSelectedStepId(current => current === node.id ? null : node.id)}
+          className={`rounded-md px-2 py-1.5 text-xs ${selectedStepId === node.id ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"}`}>
+          {node.label}
+        </button>)}
+      </nav>}
+
       {/* DAG + drill-in detail side panel */}
       <div className="mt-4 flex flex-col gap-3 lg:flex-row">
-        {telemetryState !== "observed" && !loading && !isActive ? (
+        {telemetryState === "unavailable" && !loading && !isActive ? (
           <div className="flex h-[160px] flex-1 items-center justify-center rounded-lg border border-dashed border-[var(--border-subtle)] px-6 text-center">
             <div>
               <p className="text-sm font-medium text-[var(--text-secondary)]">
-                {telemetryState === "partial" ? "Partial stage telemetry" : "Per-stage telemetry unavailable"}
+                Per-stage telemetry unavailable
               </p>
               <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-                {telemetryState === "partial"
-                  ? `${steps.size} of ${summary.totalSteps} stages emitted events. Missing stages are not inferred.`
-                  : "The scan result is available, but this executor did not emit stage events or stage timestamps."}
+                The scan result is available, but this executor did not emit stage events or stage timestamps.
               </p>
             </div>
           </div>
@@ -422,7 +441,7 @@ export function JobPipelinePanel({
           <ScanPipeline
             steps={steps}
             lanes={lanes}
-            className="h-[300px] flex-1 rounded-lg border border-[var(--border-subtle)]"
+            className="h-[420px] min-w-0 flex-1 rounded-lg border border-[var(--border-subtle)]"
             selectedStepId={selectedStepId}
             onStepClick={(nodeId) =>
               setSelectedStepId((current) => (current === nodeId ? null : nodeId))
@@ -430,7 +449,7 @@ export function JobPipelinePanel({
           />
         )}
         {selectedStepId ? (
-          <aside className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] p-3 lg:w-64">
+          <aside aria-label="Stage details" className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] p-3 lg:w-64">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
@@ -446,11 +465,15 @@ export function JobPipelinePanel({
                 className="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
                 aria-label="Close stage detail"
               >
-                <XCircle className="h-4 w-4" />
+                <span className="text-xs">All stages</span>
               </button>
             </div>
+            {selectedMeta?.kind === "scanner" && <p className="mt-2 text-xs text-[var(--text-secondary)]">
+              {selectedLane?.findings != null ? `${selectedLane.findings} domain findings` : "Domain finding count not recorded"}
+              <span className="mt-1 block text-[var(--text-tertiary)]">The status, timing, and statistics below describe the shared scanning stage.</span>
+            </p>}
             <p className="mt-2 text-[11px] capitalize text-[var(--text-secondary)]">
-              Status: {selectedStep?.status ?? "pending"}
+              Status: {selectedStep?.status ?? "Not recorded"}
             </p>
             {selectedStep?.message ? (
               <p className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">

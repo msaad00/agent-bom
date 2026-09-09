@@ -1338,3 +1338,46 @@ def test_invalid_released_profile_fails_closed(monkeypatch, default):
     monkeypatch.setattr(script, "_read_repo_file", lambda *args, **kwargs: source)
     with pytest.raises(ValueError, match="invalid default MCP profile"):
         script._release_tool_names("immutable-release-sha")
+
+
+def test_glama_retains_failed_response_before_successful_retry(monkeypatch, capsys, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    monkeypatch.setenv("GLAMA_DIAGNOSTICS_DIR", str(tmp_path))
+    pages = iter(["<main>Listing temporarily unavailable</main>", "v0.103.2 MCP server mode exposes 1 MCP tools"])
+    monkeypatch.setattr(script, "_fetch", lambda url, _: next(pages) if url == script.DEFAULT_URL else "schema response")
+    monkeypatch.setattr(script, "_fetch_json", lambda *_: {"tools": [{"name": "scan"}]})
+    monkeypatch.setattr(script.time, "sleep", lambda _: None)
+    assert script.main(["--expected", "0.103.2", "--expected-tool-count", "1", "--retries", "2", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["status"] == "fresh"
+    assert (tmp_path / "attempt-1-listing.html").read_text() == "<main>Listing temporarily unavailable</main>"
+    summary = json.loads((tmp_path / "attempt-1.json").read_text())
+    assert summary["listing_version"] == "unknown"
+    assert "missing current Glama listing token" in summary["failures"][0]
+    assert not (tmp_path / "attempt-2.json").exists()
+
+
+@pytest.mark.parametrize("custom", [True, False])
+def test_glama_diagnostics_never_archive_custom_endpoints_or_change_failures(monkeypatch, capsys, tmp_path, custom):
+    script = _load_script("check_glama_listing.py")
+    output = tmp_path / "diagnostics"
+    if not custom:
+        output.write_text("not a directory")
+    monkeypatch.setenv("GLAMA_DIAGNOSTICS_DIR", str(output))
+    monkeypatch.setattr(script, "_fetch", lambda *_: "private response")
+    monkeypatch.setattr(script, "_fetch_json", lambda *_: {"tools": [{"name": "scan"}]})
+    args = ["--expected", "0.103.2", "--expected-tool-count", "1", "--json"]
+    if custom:
+        args += ["--url", "https://private.example/listing"]
+    assert script.main(args) == 1
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["status"] == "stale"
+    assert not output.is_dir()
+
+
+def test_glama_diagnostics_bound_raw_response_artifacts(monkeypatch, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    monkeypatch.setenv("GLAMA_DIAGNOSTICS_DIR", str(tmp_path))
+    script._retain_failed_response(1, script.DEFAULT_URL, script.DEFAULT_SCHEMA_URL, "x" * (2 * 1024 * 1024 + 1), "schema", [])
+    evidence = json.loads((tmp_path / "attempt-1.json").read_text())
+    assert evidence["listing"]["retained"] is False
+    assert not (tmp_path / "attempt-1-listing.html").exists()
+    assert (tmp_path / "attempt-1-schema.html").read_text() == "schema"

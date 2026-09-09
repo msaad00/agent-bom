@@ -77,6 +77,7 @@ jobs:
       - name: Probe every distribution surface
         id: probe
         env:
+          GLAMA_DIAGNOSTICS_DIR: ${{ runner.temp }}/glama-response
           EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
           SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
@@ -107,6 +108,17 @@ jobs:
             cat surface-freshness.json
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Upload freshness and failed public response evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: surface-freshness-evidence
+          path: |
+            surface-freshness.json
+            ${{ runner.temp }}/glama-response/
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Open, refresh, or close consolidated freshness issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -139,8 +151,10 @@ jobs:
               "|---------|-----------|----------|--------|--------|",
               rows,
               "",
+              `Probe evidence: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId} (surface-freshness-evidence artifact; retained for 7 days).`,
+              "",
               "**Statuses**",
-              "- `stale` — surface published a different version; use that provider's supported publish or sync path, then re-run verification.",
+              "- `stale` — surface version, visible release copy, or indexed tool contract differs; use that provider's supported publish or sync path, then re-run verification.",
               "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
               "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
               "- `partial evidence` — the visible listing matches, but exact machine-readable verification is unavailable; the issue remains open.",
@@ -169,7 +183,7 @@ jobs:
               if (match) {
                 await github.rest.issues.createComment({
                   owner, repo, issue_number: match.number,
-                  body: "All distribution surfaces are fresh and monitored again; closing.",
+                  body: `All distribution surfaces are fresh and monitored again; closing. Evidence: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
                 });
                 await github.rest.issues.update({ owner, repo, issue_number: match.number, state: "closed" });
               }

@@ -1126,7 +1126,7 @@ async def gateway_activity_stream(
         _stream_activity(tenant_id, first_page, limit, deadline),
         ping=10,
         send_timeout=5,
-        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"},
     )
 
 

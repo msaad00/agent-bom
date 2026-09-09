@@ -56,10 +56,13 @@ CREATE INDEX IF NOT EXISTS idx_access_review_campaigns_tenant ON access_review_c
 CREATE INDEX IF NOT EXISTS idx_access_review_items_campaign ON access_review_items(tenant_id,campaign_id);
 
 CREATE TABLE IF NOT EXISTS agent_identities (identity_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, status TEXT NOT NULL, issued_at TEXT NOT NULL, data TEXT NOT NULL);
+ALTER TABLE agent_identities ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT '';
+UPDATE agent_identities SET agent_id = TRIM(data::jsonb ->> 'agent_id') WHERE agent_id = '' AND data::jsonb ->> 'agent_id' IS NOT NULL;
 CREATE TABLE IF NOT EXISTS agent_identity_jit_grants (grant_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, identity_id TEXT NOT NULL, tool_name TEXT NOT NULL, status TEXT NOT NULL, requested_at TEXT NOT NULL, expires_at TEXT NOT NULL, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS agent_conditional_access_policies (policy_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, status TEXT NOT NULL, priority INTEGER NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_agent_identities_tenant ON agent_identities(tenant_id,status);
 CREATE INDEX IF NOT EXISTS idx_agent_identities_hash ON agent_identities(token_hash);
+CREATE INDEX IF NOT EXISTS idx_agent_identities_agent ON agent_identities(tenant_id,agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_identity_jit_lookup ON agent_identity_jit_grants(tenant_id,identity_id,tool_name,status,expires_at);
 CREATE INDEX IF NOT EXISTS idx_agent_conditional_access_tenant ON agent_conditional_access_policies(tenant_id,status,priority);
 
@@ -360,7 +363,7 @@ INSERT INTO control_plane_schema_versions(component,version,updated_at)
 SELECT component,1,now() FROM unnest(ARRAY[
  'scan_jobs','api_keys','exceptions','audit_log','trend_history','gateway_policies','schedules','sources','credential_refs','llm_costs',
  'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
- 'agent_identities','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
+ 'tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
  'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','model_provider_keys','tenant_score_config',
  'ticketing_connections','graph_scenarios'
 ]) component
@@ -377,3 +380,6 @@ ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=exclude
 INSERT INTO control_plane_schema_versions(component,version,updated_at)
 VALUES ('mcp_client_configs',2,now())
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
+INSERT INTO control_plane_schema_versions(component,version,updated_at)
+VALUES ('agent_identities',2,now())
+ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,excluded.version),updated_at=excluded.updated_at;

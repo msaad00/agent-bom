@@ -443,3 +443,19 @@ def test_migration_authority_declares_every_column_the_postgres_stores_use() -> 
     migrated = _migration_authority_columns()
     missing = {f"{label}:{table.name}": sorted(set(table.columns) - migrated.get(table.name, set())) for label, table in declared}
     assert {key: value for key, value in missing.items() if value} == {}
+
+
+def test_managed_identity_agent_lookup_is_in_migration_authority() -> None:
+    assert "agent_id" in _migration_authority_columns()["agent_identities"]
+
+
+def test_managed_identity_store_rejects_stale_migrated_schema(monkeypatch) -> None:
+    import pytest
+
+    from agent_bom.api.postgres_agent_identity import PostgresAgentIdentityStore
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app@postgres/agent_bom")
+    connection = _Connection()
+    with pytest.raises(RuntimeError, match="version 2 is required"):
+        PostgresAgentIdentityStore(pool=_Pool(connection))
+    assert len(connection.statements) == 1

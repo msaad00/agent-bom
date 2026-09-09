@@ -54,7 +54,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260903_01"
+ALEMBIC_HEAD = "20260908_01"
 
 
 def _canonical_sql(text: str) -> str:
@@ -836,3 +836,32 @@ def test_hub_partition_migration_uses_the_psycopg_driver_connection(monkeypatch)
     module.upgrade()
 
     assert seen == [driver_connection, driver_connection]
+
+
+def test_identity_lookup_migration_skips_absent_legacy_component(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace()))
+    migration = _load_module(VERSIONS_DIR / "20260908_01_agent_identity_agent_lookup.py", "identity_lookup_absent")
+    statements = []
+    migration.op = SimpleNamespace(
+        get_bind=lambda: SimpleNamespace(exec_driver_sql=lambda _sql: SimpleNamespace(scalar=lambda: None)),
+        execute=statements.append,
+    )
+    migration.upgrade()
+    # An absent optional component must neither fail the legacy upgrade nor
+    # receive a readiness marker for a table that was never provisioned.
+    assert statements == []
+
+
+def test_identity_lookup_migration_marks_ready_after_backfill(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace()))
+    migration = _load_module(VERSIONS_DIR / "20260908_01_agent_identity_agent_lookup.py", "identity_lookup_existing")
+    statements = []
+    migration.op = SimpleNamespace(
+        get_bind=lambda: SimpleNamespace(exec_driver_sql=lambda _sql: SimpleNamespace(scalar=lambda: "agent_identities")),
+        execute=statements.append,
+    )
+    migration.upgrade()
+    assert statements[0].startswith("ALTER TABLE agent_identities")
+    assert statements[1].startswith("UPDATE agent_identities")
+    assert statements[2].startswith("CREATE INDEX IF NOT EXISTS idx_agent_identities_agent")
+    assert "('agent_identities', 2, NOW())" in statements[-1]

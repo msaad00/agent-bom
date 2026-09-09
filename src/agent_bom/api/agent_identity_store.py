@@ -511,7 +511,7 @@ class SQLiteAgentIdentityStore:
         return conn
 
     def _init_db(self) -> None:
-        ensure_sqlite_schema_version(self._conn, "agent_identities")
+        ensure_sqlite_schema_version(self._conn, "agent_identities", version=2)
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS agent_identities (

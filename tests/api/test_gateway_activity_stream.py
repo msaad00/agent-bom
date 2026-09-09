@@ -98,6 +98,7 @@ def test_stream_backfills_beyond_latest_200_and_preserves_every_event_class(stor
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["x-accel-buffering"] == "no"
+    assert "no-transform" in response.headers["cache-control"]
     received = frames(response)
     events = [event for frame in received if frame["event"] == "activity" for event in frame["data"]["events"]]
     assert [event["event_id"] for event in events] == [f"evt-{i}" for i in range(232)]

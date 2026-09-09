@@ -184,7 +184,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert readme[:demo].count("<details>") == readme[:demo].count("</details>")
     assert len(readme.splitlines()) <= 210
     images = re.findall(r'<img src="docs/images/([^"]+-live.png)"', readme)
-    assert images == ["dashboard-live.png", "correlation-graph-live.png", "remediation-live.png"]
+    assert images == ["dashboard-live.png", "correlation-graph-live.png", "dependency-map-live.png", "remediation-live.png"]
     assert "correlation-path-live.png" not in readme
     assert "docs/GALLERY.md" in readme
     for diagram in ("workflow-dark.svg", "architecture-dark.svg", "persona-value-dark.svg", "blast-radius-dark.svg"):

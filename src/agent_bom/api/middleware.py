@@ -967,7 +967,10 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         # Standard security headers
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Cache-Control"] = "no-store"
+        # SSE must reach clients before connection renewal. Keep the security
+        # no-store policy while disabling intermediary compression/buffering.
+        is_event_stream = response.headers.get("content-type", "").split(";", 1)[0].strip().lower() == "text/event-stream"
+        response.headers["Cache-Control"] = "no-store, no-transform" if is_event_stream else "no-store"
         response.headers["Content-Security-Policy"] = _content_security_policy(
             request.url.path,
             response.headers.get("content-type", ""),

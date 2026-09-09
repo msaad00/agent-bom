@@ -74,6 +74,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
         "agent_identities",
         "sqlite/postgres",
         ("agent_identities", "agent_identity_jit_grants", "agent_conditional_access_policies"),
+        version=2,
     ),
     # Runtime session/observation timeline and typed gateway ledger are durable
     # by default (same tiering). Gateway activity adds server-owned ordinals and

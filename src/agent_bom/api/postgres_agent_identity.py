@@ -54,7 +54,7 @@ class PostgresAgentIdentityStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "agent_identities"):
+            if not ensure_postgres_schema_version(conn, "agent_identities", version=2):
                 return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS agent_identities (

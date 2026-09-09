@@ -71,7 +71,7 @@ jobs:
           fi
           METRICS_JSON=$(git show "HEAD:docs/PRODUCT_METRICS.json")
           METRICS_VERSION=$(echo "$METRICS_JSON" | jq -er '.version')
-          TOOL_COUNT=$(echo "$METRICS_JSON" | jq -er 'first(.metrics[] | select(.name == "MCP tools") | .value)')
+          TOOL_COUNT=$(echo "$METRICS_JSON" | jq -er '(first(.metrics[] | select(.name == "MCP default tools") | .value) // first(.metrics[] | select(.name == "MCP tools") | .value))')
           if [ "$METRICS_VERSION" != "$REPO_VERSION" ]; then
             echo "::error::Release metrics version $METRICS_VERSION does not match $REPO_VERSION"
             exit 1

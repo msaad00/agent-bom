@@ -898,6 +898,22 @@ def test_deploy_mcp_sse_fails_closed_on_exact_release_server_card_drift():
     assert "Could not verify deployed version" not in workflow
 
 
+@pytest.mark.parametrize("legacy_release", [False, True])
+def test_deploy_mcp_gate_matches_published_profile(legacy_release):
+    from agent_bom.mcp_server_metadata import build_server_card
+
+    metrics = json.loads((ROOT / "docs/PRODUCT_METRICS.json").read_text())
+    if legacy_release:
+        metrics["metrics"] = [metric for metric in metrics["metrics"] if metric["name"] != "MCP default tools"]
+    workflow = (ROOT / ".github/workflows/deploy-mcp-sse.yml").read_text()
+    count_line = next(line for line in workflow.splitlines() if "TOOL_COUNT=$(" in line)
+    query = count_line.split("jq -er '", 1)[1].rsplit("'", 1)[0]
+    result = subprocess.run(["jq", "-er", query], input=json.dumps(metrics), text=True, capture_output=True, check=True)
+
+    profile = "full" if legacy_release else "scan"
+    assert int(result.stdout) == len(build_server_card(profile=profile)["tools"])
+
+
 def test_dockerfiles_support_proxy_and_ca_contract():
     """Maintained Docker images should support standard proxy and CA env vars."""
     dockerfiles = [

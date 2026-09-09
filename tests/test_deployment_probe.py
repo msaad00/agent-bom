@@ -8,11 +8,70 @@ import pytest
 
 from agent_bom.deployment_probe import (
     fetch_health,
+    main,
     resolve_health_url,
     resolve_server_card_url,
     validate_health_payload,
     validate_server_card_release,
 )
+
+
+@pytest.mark.parametrize(
+    "initial_payload",
+    [
+        b'{"serverInfo":{"version":"0.103.2"},"tools":[]}',
+        b'{"serverInfo":{"version":"0.104.0"},"tools":[]}',
+        b'{"serverInfo":{"version":"0.104.0"},"tools":[{"name":"scan"}]}',
+    ],
+)
+def test_server_card_cli_retries_until_exact_release_contract(monkeypatch, capsys, initial_payload):
+    replies = iter([initial_payload, b'{"serverInfo":{"version":"0.104.0"},"tools":[{"name":"scan","inputSchema":{"type":"object"}}]}'])
+    delays = []
+    monkeypatch.setattr("agent_bom.deployment_probe.urllib.request.urlopen", lambda *_args, **_kwargs: _Response(next(replies)))
+    monkeypatch.setattr("agent_bom.deployment_probe.time.sleep", delays.append)
+
+    assert (
+        main(["--server-card", "--expected-version", "0.104.0", "--expected-tool-count", "1", "--attempts", "2", "--backoff-seconds", "3"])
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert '"version":"0.104.0"' in captured.out
+    assert delays == [3]
+
+
+def test_server_card_cli_still_fails_when_release_never_arrives(monkeypatch, capsys):
+    calls = []
+
+    def old_release(*_args, **_kwargs):
+        calls.append(True)
+        return _Response(b'{"serverInfo":{"version":"0.103.2"},"tools":[]}')
+
+    monkeypatch.setattr("agent_bom.deployment_probe.urllib.request.urlopen", old_release)
+
+    assert (
+        main(["--server-card", "--expected-version", "0.104.0", "--expected-tool-count", "1", "--attempts", "3", "--backoff-seconds", "0"])
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "version mismatch" in captured.err
+    assert len(calls) == 3
+
+
+def test_server_card_network_and_contract_errors_share_attempt_budget(monkeypatch, capsys):
+    calls = []
+
+    def changing_failure(*_args, **_kwargs):
+        calls.append(True)
+        if len(calls) == 1:
+            raise urllib.error.URLError("temporarily unavailable")
+        return _Response(b'{"serverInfo":{"version":"0.103.2"},"tools":[]}')
+
+    monkeypatch.setattr("agent_bom.deployment_probe.urllib.request.urlopen", changing_failure)
+
+    assert main(["--server-card", "--expected-version", "0.104.0", "--expected-tool-count", "1", "--attempts", "2"]) == 1
+    assert len(calls) == 2
+    assert "version mismatch" in capsys.readouterr().err
 
 
 class _Response:

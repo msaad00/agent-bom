@@ -8,6 +8,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -65,6 +67,7 @@ def _fetch_json(
     attempts: int,
     backoff_seconds: float,
     timeout: float,
+    validate_payload: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if attempts < 1:
         raise ValueError("attempts must be >= 1")
@@ -81,6 +84,8 @@ def _fetch_json(
                 payload = json.loads(response.read())
             if not isinstance(payload, dict):
                 raise ValueError("deployment response must be a JSON object")
+            if validate_payload is not None:
+                payload = validate_payload(payload)
             return payload
         except (ValueError, json.JSONDecodeError, OSError, urllib.error.URLError) as exc:
             last_error = exc
@@ -122,8 +127,25 @@ def fetch_server_card(
     attempts: int = 1,
     backoff_seconds: float = 0.0,
     timeout: float = 15.0,
+    expected_version: str | None = None,
+    expected_tool_count: int | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Fetch the public MCP server card with bounded retries."""
+    """Fetch the card, retrying until the optional exact release contract matches.
+
+    A rolling deployment can serve valid JSON from the previous release while
+    its replacement starts. Transport errors and contract mismatches share one
+    attempt budget; exhaustion still fails closed.
+    """
+
+    if (expected_version is None) != (expected_tool_count is None):
+        raise ValueError("expected_version and expected_tool_count must be supplied together")
+    validate_payload = None
+    if expected_version is not None and expected_tool_count is not None:
+        validate_payload = partial(
+            validate_server_card_release,
+            expected_version=expected_version,
+            expected_tool_count=expected_tool_count,
+        )
 
     server_card_url = resolve_server_card_url(base_url)
     payload = _fetch_json(
@@ -132,6 +154,7 @@ def fetch_server_card(
         attempts=attempts,
         backoff_seconds=backoff_seconds,
         timeout=timeout,
+        validate_payload=validate_payload,
     )
     return server_card_url, payload
 
@@ -230,9 +253,6 @@ def main(argv: list[str] | None = None) -> int:
                 attempts=args.attempts,
                 backoff_seconds=args.backoff_seconds,
                 timeout=args.timeout,
-            )
-            payload = validate_server_card_release(
-                payload,
                 expected_version=args.expected_version,
                 expected_tool_count=args.expected_tool_count,
             )

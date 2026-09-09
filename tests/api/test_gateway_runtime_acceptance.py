@@ -36,6 +36,13 @@ def _frames(response):
     return frames
 
 
+@pytest.fixture(autouse=True)
+def _reset_managed_profile_state():
+    yield
+    set_mcp_config_store(None)
+    agent_identity.set_local_identity_verifier(None)
+
+
 @pytest.mark.parametrize("outcome", ["allow", "profile_block", "policy_block", "pii", "secret", "visual"])
 def test_gateway_call_survives_ingest_restart_and_authenticated_reconnect(tmp_path, monkeypatch, outcome):
     secret = "runtime-acceptance-proxy-secret-32-bytes"

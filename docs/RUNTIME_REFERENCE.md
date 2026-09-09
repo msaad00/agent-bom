@@ -415,5 +415,7 @@ failure preserves the last complete browser batch until authenticated reconnect.
 Managed identity lookup now requires schema component version 2. Run Alembic
 migrations before starting API/gateway replicas: the additive migration creates
 and backfills `agent_id`, then records readiness. A version-1 database fails
-closed at store initialization. Application rollback preserves the added column,
+closed at store initialization. Legacy databases without identity tables receive
+no readiness marker; provision the runtime schema before enabling profiles.
+Application rollback preserves the added column,
 index and identity/revocation data; the downgrade does not delete them.

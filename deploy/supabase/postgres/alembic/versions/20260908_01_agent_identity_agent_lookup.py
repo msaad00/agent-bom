@@ -13,6 +13,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Legacy deployments can omit this optional component. Do not advertise
+    # readiness for a table they never provisioned.
+    if op.get_bind().exec_driver_sql("SELECT to_regclass('public.agent_identities')").scalar() is None:
+        return
     op.execute("ALTER TABLE agent_identities ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT ''")
     op.execute(
         "UPDATE agent_identities SET agent_id = TRIM(data::jsonb ->> 'agent_id') "

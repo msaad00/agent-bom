@@ -56,11 +56,9 @@ jobs:
           echo '70b2c30a19da4db264dfd68c8a3664e05093a361cefd89572ffb36f8abfa3d09  /tmp/helm.tar.gz' | sha256sum -c -
           tar -xzf /tmp/helm.tar.gz -C /tmp
           sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: ./.github/actions/setup-ui
         with:
           node-version: '22.22.2'
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
       - name: Install and build production dashboard
         working-directory: ui
         run: |

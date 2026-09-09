@@ -11,6 +11,10 @@ on:
       - "Deploy MCP SSE"
     types: [completed]
 
+concurrency:
+  group: main-failure-alert-${{ github.event.workflow_run.workflow_id }}
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:
@@ -53,10 +57,12 @@ jobs:
             if (!match) {
               return;
             }
-            await github.rest.issues.createComment({
+            await github.rest.issues.update({
               owner,
               repo,
               issue_number: match.number,
+              state: "closed",
+              state_reason: "completed",
               body: [
                 `**${workflow}** is green on \`main\` again.`,
                 "",
@@ -65,13 +71,6 @@ jobs:
                 "",
                 "Closed automatically. Reopens on the next failure.",
               ].join("\n"),
-            });
-            await github.rest.issues.update({
-              owner,
-              repo,
-              issue_number: match.number,
-              state: "closed",
-              state_reason: "completed",
             });
 
   alert:
@@ -107,16 +106,21 @@ jobs:
             const existing = await github.paginate(github.rest.issues.listForRepo, {
               owner,
               repo,
-              state: "open",
+              state: "all",
+              sort: "created",
+              direction: "desc",
               labels: "ci-regression",
               per_page: 100,
             });
-            const match = existing.find((issue) => issue.title === title);
+            const candidates = existing.filter((issue) => issue.title === title && !issue.pull_request);
+            const match = candidates.find((issue) => issue.state === "open") || candidates[0];
             if (match) {
-              await github.rest.issues.createComment({
+              if (match.state === "open" && match.body === body) return;
+              await github.rest.issues.update({
                 owner,
                 repo,
                 issue_number: match.number,
+                state: "open",
                 body,
               });
               return;

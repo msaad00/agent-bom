@@ -328,3 +328,36 @@ and `reconnect` events, reject malformed batches, and discard partial frames on
 disconnect. Close/break the iterator to release the HTTP response. These commands
 require the durable SQLite/Postgres activity store and its configured retention;
 the process-local metrics socket cannot supply this history.
+
+## Dashboard profile lifecycle and resumable activity
+
+Open `/runtime?tab=gateway`. **Live Feed** reads canonical gateway activity over
+an authenticated SSE connection. Complete batches advance the in-memory resume
+cursor; connection loss reconnects from that cursor. The metrics socket no longer
+drives this panel. The view shows the newest 1,000 received records. **Browse
+retained history** pages the same canonical contract from the oldest retained
+record, including profile/enforcement outcomes and their policy/evidence IDs.
+Historical paging uses its own cursor and does not interrupt the live cursor.
+Reloading the page starts at the retained floor; no cursor or activity is persisted
+in browser storage.
+
+An expired or invalid cursor stops with an explicit gap. **Start a new retained
+window** is the operator's explicit reset; ordinary **Reconnect** retains the
+cursor. Authentication, unavailable-store and malformed-response errors never
+fall back to a latest-200 metrics refresh. Subject or tenant changes clear the local
+view and cursors. Receipt time, reported time and producer assurance remain
+separate evidence; a connected transport does not authenticate the producer.
+
+Use **Runtime profiles** to inspect assignment status, environment, identity,
+blueprint, revision and constraints. Administrators can create a profile from an
+active managed identity, update it with the displayed expected revision, or revoke
+it after explicit confirmation. A revision conflict keeps the editor open and asks
+for a reload. The list includes revoked assignments and explicitly reports its
+1,000-assignment display limit when reached.
+
+**Validate profile** previews its stored issuer, environment and required scopes.
+**Test saved profile** adds a proposed upstream/tool and excludes unsaved edits.
+Results state that they are simulations: these actions do not execute tools,
+verify caller credentials, or exercise live firewall, DLP, policy or quota checks.
+Read-only users can inspect and preview; the API enforces permissions on every
+request. Browser writes use the existing session cookie and CSRF header boundary.

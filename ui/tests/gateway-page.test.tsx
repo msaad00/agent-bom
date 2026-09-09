@@ -1,6 +1,11 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/gateway-activity", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/gateway-activity")>("@/lib/gateway-activity");
+  return { ...actual, streamGatewayActivity: async function* () { throw new actual.ActivityStreamError("invalid"); } };
+});
+
 import GatewayPage from "@/app/gateway/GatewayDashboard";
 
 const { apiMock } = vi.hoisted(() => ({
@@ -124,13 +129,13 @@ describe("GatewayPage", () => {
 
     render(<GatewayPage />);
 
-    await waitFor(() => expect(apiMock.getGatewayFeed).toHaveBeenCalled());
+
     await waitFor(() => {
       expect(
-        screen.getByText("No gateway activity yet. Events appear as agents call tools through the gateway/proxy."),
+        screen.getByText("No verified activity loaded."),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(await screen.findByText(/Activity response could not be verified/)).toBeInTheDocument();
     expect(screen.getByText("Calls today")).toBeInTheDocument();
   });
 });

@@ -6,6 +6,11 @@ import { producerEvidenceLabel } from "@/lib/gateway-feed";
 import ProxyDashboard from "@/app/proxy/ProxyDashboard";
 
 const presentation = vi.hoisted(() => ({ embedded: false }));
+const stream = vi.hoisted(() => ({ rows: [] as unknown[] }));
+vi.mock("@/lib/gateway-activity", async () => ({ ...await vi.importActual("@/lib/gateway-activity"), streamGatewayActivity: async function* (_cursor: unknown, signal: AbortSignal) {
+  yield { schema_version: "gateway.activity.stream.v1", tenant_id: "t", events: stream.rows, next_cursor: "one", latest_ordinal: 1, has_more: false, retention_floor_ordinal: 1 };
+  await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true }));
+} }));
 const apiMock = vi.hoisted(() => ({ getGatewayFeed: vi.fn(), getGatewayFeedKpis: vi.fn(), getProxyStatus: vi.fn(), getProxyAlerts: vi.fn() }));
 vi.mock("@/lib/api", async () => ({ ...await vi.importActual("@/lib/api"), api: apiMock }));
 vi.mock("@/lib/auth", () => ({ getSessionWebSocketToken: () => "" }));
@@ -27,6 +32,7 @@ const event = { event_id: "receipt", ts: "2026-09-07T03:00:00Z", agent: "assista
 const kpis = { calls_today: 8, blocked_today: 2, shadow_ai_blocked: 0, data_filters_applied: 1, uptime_seconds: 120, producer_assurance: "caller_asserted", producer_assurance_counts: { unknown: 0, caller_asserted: 8 }, completeness: { status: "partial", reasons: ["retention_floor_advanced"] }, window: { start: "2026-09-07T00:00:00Z", end: "2026-09-07T03:00:00Z", timezone: "UTC", exact: false } };
 beforeEach(() => {
   presentation.embedded = false;
+  stream.rows = [{ tenant_id: "t", event_id: "receipt", ingest_ordinal: 1, event_type: "gateway.tool_call.blocked", decision: "deny", agent_id: "assistant", upstream: "filesystem", tool: "read_file", profile_id: "profile-a", profile_revision: 1, blueprint_id: "finance", blueprint_revision: 1, policy_ids: [], ingested_at: new Date().toISOString(), submission_provenance: { producer_assurance: "caller_asserted" } }];
   Socket.instances = []; vi.stubGlobal("WebSocket", Socket);
   Object.values(apiMock).forEach(fn => fn.mockReset());
   apiMock.getGatewayFeed.mockResolvedValue({ events: [event], health, completeness: { status: "complete" }, source: "gateway_activity_ledger" });
@@ -45,21 +51,21 @@ describe("runtime receipt assurance", () => {
     expect(producerEvidenceLabel("caller_asserted")).toBe("Reported producer");
   });
   it("separates fresh live transport from reported producer evidence", async () => {
-    render(<GatewayFeedPanel />); await screen.findByText("read_file"); await connect();
-    expect(screen.getByText("Live transport")).toBeInTheDocument();
+    render(<GatewayFeedPanel />); await screen.findByText(/filesystem \/ read_file/);
+    expect(screen.getByText("Connected to durable activity")).toBeInTheDocument();
     expect(screen.getAllByText("Reported producer").length).toBeGreaterThan(0);
     expect(screen.queryByText(/^Live$|Verified/i)).not.toBeInTheDocument();
   });
   it("keeps legacy producer identity unknown despite durable storage and fresh transport", async () => {
-    apiMock.getGatewayFeed.mockResolvedValue({ events: [{ ...event, producer_assurance: undefined }], health: { ...health, producer_assurance: undefined }, completeness: { status: "complete" }, source: "gateway_activity_ledger" });
-    render(<GatewayFeedPanel />); await screen.findByText("read_file"); await connect();
+    stream.rows = [( { ...stream.rows[0] as object, submission_provenance: undefined } )];
+    render(<GatewayFeedPanel />); await screen.findByText(/filesystem \/ read_file/);
     expect(screen.getAllByText("Producer unknown").length).toBeGreaterThan(0);
     expect(screen.queryByText("Reported producer")).not.toBeInTheDocument();
   });
   it("retains stale receipt state independently of producer assurance", async () => {
-    apiMock.getGatewayFeed.mockResolvedValue({ events: [event], health: { ...health, state: "stale", live: false, age_seconds: 121 } });
-    render(<GatewayFeedPanel />); await screen.findByText("read_file"); await connect();
-    expect(screen.getByText("Stale")).toBeInTheDocument();
+    stream.rows = [{ ...stream.rows[0] as object, ingested_at: "2020-01-01T00:00:00Z" }];
+    render(<GatewayFeedPanel />); await screen.findByText(/filesystem \/ read_file/);
+    expect(screen.getByText(/Latest receipt is older than 2 minutes/)).toBeInTheDocument();
     expect(screen.queryByText("Live transport")).not.toBeInTheDocument();
     expect(screen.getAllByText("Reported producer").length).toBeGreaterThan(0);
   });

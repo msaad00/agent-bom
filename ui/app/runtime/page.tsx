@@ -21,7 +21,7 @@ const TABS: { key: RuntimeTab; label: string; icon: typeof Shield; description: 
     key: "gateway",
     label: "Gateway",
     icon: Lock,
-    description: "Gateway policy, fused live feed, audit trail, and evaluate sandbox.",
+    description: "Managed profiles, resumable gateway activity, policy and audit evidence.",
   },
 ];
 

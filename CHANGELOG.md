@@ -16,6 +16,13 @@ producer assurance.
 
 ### Fixed
 
+- Preserve live gateway activity through the production dashboard proxy and
+  resume from the last event cursor after reconnect. Postgres identity upgrades
+  add the managed-profile lookup while preserving legacy installations that
+  have not provisioned identity storage.
+- Upgrade the dashboard's YAML parser and image-processing dependencies to
+  js-yaml 4.3.2 and sharp 0.35.4. Distribution freshness checks now pass their
+  configured timeout and retry budget to the Glama probe.
 - Preserve the imported report’s scan ID in finding links so investigation opens its persisted graph snapshot.
 - Keep AI spend visible within Overview coverage, with compliance and top risks directly below the main cards.
 - Keep advisory fixes scoped to their package and affected range; unknown fixes no longer inherit another package’s version.
@@ -45,6 +52,14 @@ producer assurance.
 
 ### Changed
 
+- Manage server-side runtime profiles with `agent-bom runtime profiles`
+  create/list/validate/test commands, the API clients, and the dashboard.
+  Validation and test previews evaluate configured bindings; they do not
+  authenticate a caller or authorize a live tool call.
+- Follow persisted gateway activity with `agent-bom runtime feed --follow
+  --cursor-file ./activity.cursor.json`. The dashboard uses authenticated SSE
+  with cursor backfill and explicit disconnected or degraded states. See
+  `docs/RUNTIME_REFERENCE.md` for retention and deployment proof boundaries.
 - Runtime evidence ingestion now requires an expiring, source-scoped API key
   or verified OIDC credential. API bodies, MCP arguments and CLI flags no longer
   accept source secrets. CLI/MCP producers use the configured control-plane API;

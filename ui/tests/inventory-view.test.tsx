@@ -206,6 +206,13 @@ describe("InventoryIndex whole-query truth", () => {
     const table = await screen.findByRole("table", {name:"Asset inventory"});
     expect(within(table).getByText("requests")).toBeVisible();
     expect(screen.getByLabelText("Filter by provider")).not.toBeVisible();
+    expect(screen.getByLabelText("Filter by environment")).toBeVisible();
+    expect(screen.getByLabelText("Filter by source")).toBeVisible();
+    expect(screen.getByLabelText("Filter by finding severity")).not.toBeVisible();
+    expect(within(table).getByRole("columnheader", { name: "Environment" })).toBeVisible();
+    expect(within(table).getByRole("columnheader", { name: "Evidence sources" })).toBeVisible();
+    expect(within(table).queryByRole("columnheader", { name: "Finding severity" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage connections" })).toHaveAttribute("href", "/connections");
     fireEvent.click(screen.getByText(/Advanced filters/));
     expect(screen.getByLabelText("Filter by provider")).toBeVisible();
     expect(screen.queryByText(/whole-query facet|API metadata/)).not.toBeInTheDocument();
@@ -273,8 +280,10 @@ describe("InventoryIndex whole-query truth", () => {
     );
 
     const identities = await screen.findByRole("link", { name: /^Identities & credentials/ });
-    expect(within(identities).getByText(count.toLocaleString())).toBeInTheDocument();
-    expect(identities).toHaveAccessibleName(`Identities & credentials ${count.toLocaleString()}`);
+    await waitFor(() => {
+      const current = screen.getByRole("link", { name: `Identities & credentials ${count.toLocaleString()}` });
+      expect(within(current).getByText(count.toLocaleString())).toBeInTheDocument();
+    });
     expect(within(identities).queryByText("identitys")).not.toBeInTheDocument();
     delete document.documentElement.dataset.theme;
   });

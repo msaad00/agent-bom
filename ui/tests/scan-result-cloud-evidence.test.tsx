@@ -28,6 +28,12 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("@/components/scan-pipeline", () => ({
+  ScanPipeline: ({ onStepClick }: { onStepClick?: (id: string) => void }) => (
+    <button onClick={() => onStepClick?.("extraction")}>Inspect extraction</button>
+  ),
+}));
+
 vi.mock("@/lib/use-scan-stream", () => ({
   useScanStream: () => ({
     messages: [],
@@ -179,4 +185,30 @@ describe("ScanResultView cloud evidence", () => {
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
   });
+});
+
+
+it("opens recorded stage details from the full scan and rolls up without another fetch", async () => {
+  const user = userEvent.setup();
+  const full = {
+    job_id: "scan-interactive", status: "done", created_at: "2026-09-09T12:00:00Z",
+    completed_at: "2026-09-09T12:00:10Z", request: {},
+    progress: ["discovery", "extraction", "scanning", "enrichment", "analysis", "output"].map(step_id => JSON.stringify({
+      type: "step", step_id, status: "done", message: `${step_id} complete`,
+      started_at: "2026-09-09T12:00:00Z", completed_at: "2026-09-09T12:00:02Z",
+      stats: step_id === "extraction" ? { packages: 1095 } : {},
+    })), result: { agents: [], blast_radius: [], summary: { total_packages: 1095, total_vulnerabilities: 2 } },
+  };
+  apiMock.getScan.mockReset();
+  apiMock.getScan.mockResolvedValue(full);
+  apiMock.getScanStatus.mockResolvedValue(full);
+  render(<ScanResultView id="scan-interactive" />);
+  await user.click(await screen.findByRole("button", { name: "Inspect extraction" }));
+  const detail = screen.getByRole("complementary", { name: "Stage details" });
+  expect(detail).toHaveTextContent("extraction complete");
+  expect(detail).toHaveTextContent("1095 packages");
+  expect(detail).toHaveTextContent("2.0s");
+  await user.click(screen.getByRole("button", { name: "Close stage detail" }));
+  expect(screen.queryByRole("complementary", { name: "Stage details" })).not.toBeInTheDocument();
+  expect(apiMock.getScan).toHaveBeenCalledTimes(1);
 });

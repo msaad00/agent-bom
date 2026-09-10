@@ -1,9 +1,9 @@
 {
   "release_version": "0.104.0",
-  "captured_at": "2026-09-09T02:54:48.009Z",
-  "source_commit": "3778eaef5bcda35751ed006e3fa7c87440c5017f",
+  "captured_at": "2026-09-10T03:59:53.585Z",
+  "source_commit": "961417a2cd2703355649ff809d2f6caf3e27d615",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:fad1980fe7a3d5e9a0c166833eb86939eceda3d84a0f87294346fb54f387c410",
+  "capture_inputs_sha256": "sha256:3678ae4242fe9767508b1c1ba54c6912a497891aed4365af86573141edc5aeff",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -60,7 +60,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.104.0",
-      "sha256": "sha256:07afe774bf37c45b391d160ea99800bdd75fc38c9da7c4904bef933de6bce01b"
+      "sha256": "sha256:5ff5e614116092ac5d002780731aced74e2f71a96b6e7d45e0ecc48dd71ae29c"
     },
     {
       "presentation": "dark desktop",
@@ -225,7 +225,7 @@
       "page": "/inventory?capture=1",
       "scope": "Unified asset-kind roll-up across discovered packages, MCP servers, agents, cloud, identities, containers, and code",
       "visible_version": "0.104.0",
-      "sha256": "sha256:5c516e61cd92b3a26d20c7f7ad653aaf9085e8ff82c7727f9702099eaa2d4eeb"
+      "sha256": "sha256:8653238bfc52b7682117772e6781a0df292eb09742f212d8b38462c9da8691b6"
     },
     {
       "presentation": "dark desktop",

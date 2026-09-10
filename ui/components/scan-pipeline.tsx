@@ -11,7 +11,7 @@
  * on any node.
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -19,6 +19,8 @@ import {
   Handle,
   Position,
   ReactFlowProvider,
+  useReactFlow,
+  useNodesInitialized,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -72,6 +74,7 @@ interface PipelineNodeData {
   detail?: string | undefined;
   summarized?: boolean | undefined;
   selected?: boolean | undefined;
+  onActivate?: (() => void) | undefined;
 }
 
 // Icons keyed by DAG node id, falling back to the backend stage id.
@@ -170,6 +173,17 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
 
   return (
     <div
+      role={data.onActivate ? "button" : undefined}
+      tabIndex={data.onActivate ? 0 : undefined}
+      aria-label={data.onActivate ? `Inspect ${data.label}` : undefined}
+      aria-pressed={data.onActivate ? Boolean(data.selected) : undefined}
+      onKeyDown={(event) => {
+        if (data.onActivate && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          event.stopPropagation();
+          data.onActivate();
+        }
+      }}
       className={`rounded-2xl border-2 ${style.border} ${style.bg} ${
         isScanner ? "min-w-[150px] max-w-[178px]" : "min-w-[176px] max-w-[208px]"
       } cursor-pointer overflow-hidden shadow-lg shadow-[var(--shadow-color)] transition-shadow ${
@@ -265,13 +279,13 @@ function ScanPipelineInner({
 }: ScanPipelineProps) {
   const { rawNodes, rawEdges } = useMemo(() => {
     const built = buildPipelineGraph({ steps, lanes, selectedNodeId: selectedStepId });
-    return { rawNodes: built.nodes, rawEdges: built.edges };
-  }, [steps, lanes, selectedStepId]);
+    return { rawNodes: built.nodes.map(node => ({ ...node, data: { ...node.data, onActivate: onStepClick ? () => onStepClick(node.id) : undefined } })), rawEdges: built.edges };
+  }, [steps, lanes, selectedStepId, onStepClick]);
 
   const { nodes, edges } = useGraphLayout("sankey", rawNodes, rawEdges, {
     sankey: {
       nodeWidth: 180,
-      nodeHeight: 78,
+      nodeHeight: 130,
       columnGap: 64,
       rowGap: 16,
     },
@@ -284,6 +298,24 @@ function ScanPipelineInner({
       }),
     [edges, nodes],
   );
+
+  const fitOptions = useMemo(() => selectedStepId
+    ? { nodes: [{ id: selectedStepId }], minZoom: 1, maxZoom: 1.2, padding: 0.3, duration: 200 }
+    : { padding: 0.16, maxZoom: 1, duration: 200 }, [selectedStepId]);
+  const { fitView, getNode, setCenter } = useReactFlow();
+  const initialized = useNodesInitialized();
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const selected = selectedStepId ? getNode(selectedStepId) : undefined;
+      if (selected) {
+        void setCenter(selected.position.x + (selected.measured?.width ?? 180) / 2,
+          selected.position.y + (selected.measured?.height ?? 130) / 2, { zoom: 1.1, duration: 200 });
+      } else {
+        void fitView(fitOptions);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fitView, getNode, setCenter, initialized, fitOptions, selectedStepId]);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -302,12 +334,12 @@ function ScanPipelineInner({
         // Re-fit whenever the node set changes so a live pipeline that grows
         // scanner lanes mid-run always frames the whole DAG in the container
         // instead of clipping the tail off-screen.
-        fitViewOptions={{ padding: 0.16, maxZoom: 1 }}
+        fitViewOptions={fitOptions}
         minZoom={0.25}
         maxZoom={1.5}
         panOnDrag={interactive}
         zoomOnScroll={interactive}
-        nodesDraggable={interactive}
+        nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={interactive}
         onNodeClick={handleNodeClick}
@@ -324,7 +356,7 @@ function ScanPipelineInner({
       {interactive ? (
         <div className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-2.5 py-1 text-[10px] font-medium text-[var(--text-tertiary)] backdrop-blur">
           <Move className="h-3 w-3" aria-hidden="true" />
-          Drag to pan · scroll to zoom · click a stage
+          Drag to pan · scroll to zoom{onStepClick ? " · select a stage for details" : ""}
         </div>
       ) : null}
     </div>

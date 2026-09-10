@@ -591,7 +591,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(overlapWidth * overlapHeight).toBe(0);
       await page.screenshot({ path: testInfo.outputPath(`initial-focus-${width}-${theme}.png`) });
       await page.getByRole("button", { name: "Fit all", exact: true }).click();
-      await expect(page.getByTestId("graph-viewport-scope")).toContainText(`${graph.nodes.length} graph nodes · ${graph.edges.length} relationships`);
+      await expect(page.getByTestId("graph-viewport-scope")).toContainText(`${graph.nodes.length} displayed nodes · ${graph.edges.length} displayed relationships`);
       const zoom = await settledViewportZoom(page);
       await page.reload();
       await expect.poll(async () => flow.locator(".react-flow__viewport").evaluate((element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a)).toBeCloseTo(zoom, 2);

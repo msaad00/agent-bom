@@ -970,7 +970,7 @@ test("URL-selected path returns to summary without reopening the path", async ({
 });
 
 for (const theme of ["light", "dark"] as const) {
-  test(`estate topology opens fully framed with compact controls in ${theme}`, async ({ page }, testInfo) => {
+  test(`estate topology starts readable and fits all on request with compact controls in ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await routeCockpit(page, 200, { rollupItemCount: 30 });
     await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
@@ -980,6 +980,12 @@ for (const theme of ["light", "dark"] as const) {
     await views.getByRole("button", { name: "Graph", exact: true }).click();
     const canvas = page.locator(".react-flow").first();
     await expect(canvas.locator(".react-flow__node")).toHaveCount(30);
+    await expect(page.getByTestId("graph-viewport-scope")).toContainText("Focused view");
+    await expect.poll(() => canvas.locator(".react-flow__viewport").evaluate(element =>
+      new DOMMatrixReadOnly(getComputedStyle(element).transform).a,
+    )).toBeGreaterThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath(`estate-readable-${theme}.png`), fullPage: false });
+    await page.getByRole("button", { name: "Fit all", exact: true }).click();
     await expect.poll(() => canvas.evaluate((element) => {
       const frame = element.getBoundingClientRect();
       return [...element.querySelectorAll(".react-flow__node")].every((node) => {

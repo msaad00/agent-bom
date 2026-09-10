@@ -68,6 +68,12 @@ describe("scan-pipeline-progress", () => {
     expect(merged.get("scanning")?.status).toBe("done");
   });
 
+  it("preserves persisted completion when the last streamed event is still running", () => {
+    const done = parsePipelineStepsFromProgress([JSON.stringify({ type: "step", step_id: "output", status: "done", message: "Report ready" })]);
+    const running = parsePipelineStepsFromProgress([JSON.stringify({ type: "step", step_id: "output", status: "running", message: "Persisting graph" })]);
+    expect(mergePipelineSteps(done, running).get("output")?.message).toBe("Report ready");
+  });
+
   it("summarizes wall clock and per-step durations", () => {
     const steps = parsePipelineStepsFromProgress([
       JSON.stringify({

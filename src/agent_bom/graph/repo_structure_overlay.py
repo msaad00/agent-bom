@@ -197,13 +197,15 @@ def apply_repo_structure_overlay(
                 directory_records[_norm_path(record.get("path"))] = record
 
     # ── Index existing graph state we stitch onto ───────────────────────────
-    # Project SERVER nodes are keyed in the graph by their directory-path label
+    # Manifest inventory directories (and legacy SERVER nodes) are keyed by path
     # for a local/repo scan (label "" == repo root). Map dir path → packages it
     # depends on so a manifest file can be linked to the deps it declares.
     server_by_dir: dict[str, str] = {}
     for node in graph.nodes.values():
-        if node.entity_type == EntityType.SERVER:
-            server_by_dir.setdefault(_norm_path(node.label), node.id)
+        if node.entity_type == EntityType.SERVER or (
+            node.entity_type == EntityType.DIRECTORY and node.attributes.get("inventory_role") == "manifest_dependencies"
+        ):
+            server_by_dir.setdefault(_norm_path(node.attributes.get("manifest_directory", node.label)), node.id)
     deps_by_server: dict[str, list[str]] = defaultdict(list)
     for edge in graph.edges:
         if edge.relationship == RelationshipType.DEPENDS_ON and edge.source in graph.nodes:

@@ -36,6 +36,16 @@ async function fixture(page: Page) {
     pagination: { total: 4, offset: 0, limit: 100, next_cursor: null, has_more: false, facet_filtered: false },
     assets: ["critical", "high", "medium", "low"].map(severity => ({ id: `pkg:${severity}`, type: "package", name: `fixture-${severity}`, severity, sources: ["fixture"], source: "fixture", attributes: {}, compliance_tags: [], relationship_count: 0, finding_summary: { total: 1, top_severity: severity, by_severity: { [severity]: 1 }, ids: [] } })),
   } }));
+  await page.route("**/v1/inventory/assets/*", route => {
+    const id = decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-1)!);
+    const severity = id.replace("pkg:", "");
+    return route.fulfill({ json: {
+      schema_version: "inventory.asset.v1", tenant_id: "contrast-fixture",
+      asset: { id, type: "package", name: `fixture-${severity}`, severity, attributes: {} },
+      node: { id, entity_type: "package", label: `fixture-${severity}`, attributes: {} },
+      edges_in: [], edges_out: [], neighbors: [], sources: [], impact: {}, completeness,
+    } });
+  });
   const keys = ["owasp_llm_top10", "owasp_mcp_top10", "mitre_atlas", "nist_ai_rmf", "owasp_agentic_top10", "eu_ai_act", "nist_csf", "iso_27001", "soc2", "cis_controls", "cmmc", "nist_800_53", "fedramp", "pci_dss"];
   await page.route("**/v1/compliance", route => route.fulfill({ json: { overall_score: 25, overall_status: "fail", evaluated_controls: 4, total_controls: 4, coverage_pct: 100, scan_count: 1, framework_kinds: {}, summary: {}, ...Object.fromEntries(keys.map(key => [key, []])), aisvs_benchmark: { checks: [], summary: {} } } }));
   await page.route("**/v1/compliance/nist-800-53**", route => route.fulfill({ json: { framework: "nist-800-53", framework_key: "nist_800_53_catalog", framework_label: "NIST SP 800-53 Rev 5", representation: "catalog", source: "fixture", vendor_asserted: true, status: "fail", score: 25, summary: { pass: 1, fail: 1, warning: 1, error: 1, evaluated: 4, not_evaluated: 0, catalog_size: 4, coverage_pct: 100, score: 25 }, families: [], controls: [], iso_27001_derived: { source: "fixture", note: "Synthetic contrast fixture", controls: [] } } }));
@@ -64,13 +74,19 @@ for (const theme of ["light", "dark"] as const) test.describe(theme, () => {
     await expect(action).toBeFocused();
     await readable(action);
   });
-  test("inventory severity text contrast", async ({ page }) => {
+  test("inventory asset context and selected severity text contrast", async ({ page }) => {
     await page.goto("/inventory");
     for (const severity of ["critical", "high", "medium", "low"]) {
       const row = page.getByRole("button", { name: new RegExp(`^fixture-${severity}`) });
-      await readable(row.getByText(severity, { exact: true }));
+      await readable(row.getByText(`fixture-${severity}`, { exact: true }));
+      await readable(row.getByText("fixture", { exact: true }));
       await row.hover();
-      await readable(row.getByText(severity, { exact: true }));
+      await readable(row.getByText(`fixture-${severity}`, { exact: true }));
+      await row.click();
+      const details = page.getByRole("region", { name: "Selected asset details" });
+      await expect(details.getByRole("heading", { name: `fixture-${severity}`, exact: true })).toBeVisible();
+      await readable(details.getByText(severity, { exact: true }));
+      await details.getByRole("button", { name: "Close asset details" }).click();
     }
   });
   test("compliance evaluated count contrast", async ({ page }) => {

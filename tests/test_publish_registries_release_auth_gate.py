@@ -66,6 +66,72 @@ python3() {
         assert "exposes the released" not in result.stdout
 
 
+@pytest.mark.parametrize("schema_failures,expected_attempts,expected_status", [(0, 1, 0), (1, 2, 0), (6, 6, 1)])
+def test_smithery_prepublication_parity_retries_without_publishing(tmp_path, schema_failures, expected_attempts, expected_status):
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    step = next(step for step in workflow["jobs"]["smithery"]["steps"] if step.get("name") == "Check Smithery catalog parity")
+    script = step["run"].replace("/tmp/", f"{tmp_path}/")
+    catalog = {"description": "Released scanner", "tools": [{"name": "scan", "inputSchema": {"type": "object"}}]}
+    (tmp_path / "catalog.json").write_text(json.dumps(catalog))
+    contract = catalog["tools"]
+    (tmp_path / "contract.json").write_text(json.dumps(contract))
+    for query, name in [("[.tools[].name] | sort", "tool-names"), ("{description}", "listing-metadata")]:
+        result = subprocess.run(["jq", "-S", query], input=json.dumps(catalog), text=True, capture_output=True, check=True)
+        (tmp_path / f"smithery-expected-{name}.json").write_text(result.stdout)
+    (tmp_path / "smithery-expected-tool-contract.json").write_text(json.dumps(contract))
+    (tmp_path / "smithery-actual-tool-contract.json").write_text(json.dumps(contract))
+    (tmp_path / "releases.json").write_text(
+        json.dumps(
+            {
+                "releases": [{"type": "external_shttp", "status": "SUCCESS", "upstreamUrl": "https://mcp.example.test/mcp"}],
+                "pagination": {"currentPage": 1, "totalPages": 1},
+            }
+        )
+    )
+    harness = r"""
+curl() {
+  case "$*" in
+    *releases?page*) cp "$PROBE_DIR/releases.json" "$PROBE_DIR/smithery-latest-releases.json" ;;
+    *) cp "$PROBE_DIR/catalog.json" "$PROBE_DIR/smithery-catalog.json" ;;
+  esac
+}
+sleep() { :; }
+python3() {
+  if [ "$2" = "--smithery-server" ]; then
+    count=0
+    if [ -f "$PROBE_DIR/attempts" ]; then count=$(cat "$PROBE_DIR/attempts"); fi
+    count=$((count + 1))
+    echo "$count" > "$PROBE_DIR/attempts"
+    if [ "$count" -le "$SCHEMA_FAILURES" ]; then return 1; fi
+    cp "$PROBE_DIR/contract.json" "$5"
+  else
+    "$TEST_PYTHON" "$@"
+  fi
+}
+"""
+    result = subprocess.run(
+        ["bash", "-c", harness + script],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "PROBE_DIR": str(tmp_path),
+            "SCHEMA_FAILURES": str(schema_failures),
+            "TEST_PYTHON": sys.executable,
+            "GITHUB_OUTPUT": str(tmp_path / "outputs"),
+            "SMITHERY_API_TOKEN": "test-only",
+            "SMITHERY_MCP_URL": "https://mcp.example.test/mcp",
+        },
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert result.returncode == expected_status, result.stdout + result.stderr
+    assert int((tmp_path / "attempts").read_text()) == expected_attempts
+    outputs = (tmp_path / "outputs").read_text()
+    assert ("fresh=true" in outputs) is (expected_status == 0)
+    assert "publishing a new deployment" not in result.stdout
+
+
 def test_smithery_publish_waits_for_oauth_capable_forward_release() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 

@@ -271,9 +271,22 @@ jobs:
           done
           LATEST_SUCCESS_UPSTREAM=$(jq -sr 'first | .upstreamUrl // empty' /tmp/smithery-success-releases.jsonl)
           jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
-          python3 scripts/check_surface_freshness.py \
-            --smithery-server agentbom/agent-bom \
-            --write-smithery-tool-contract /tmp/smithery-actual-tool-contract.json
+          SCHEMA_READY=false
+          for ATTEMPT in $(seq 1 6); do
+            rm -f /tmp/smithery-actual-tool-contract.json
+            if python3 scripts/check_surface_freshness.py \
+              --smithery-server agentbom/agent-bom \
+              --write-smithery-tool-contract /tmp/smithery-actual-tool-contract.json; then
+              SCHEMA_READY=true
+              break
+            fi
+            echo "Smithery complete schema evidence unavailable (parity attempt ${ATTEMPT}/6)"
+            if [ "$ATTEMPT" -lt 6 ]; then sleep 10; fi
+          done
+          if [ "$SCHEMA_READY" != "true" ]; then
+            echo "::error::Smithery schema evidence remained unavailable; refusing to create a potentially duplicate release"
+            exit 1
+          fi
           jq -S '{description}' \
             /tmp/smithery-catalog.json > /tmp/smithery-actual-listing-metadata.json
           if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json && \

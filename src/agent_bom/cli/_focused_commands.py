@@ -409,11 +409,18 @@ def secrets_cmd(
             click.echo(output)
         if _has_finding_at_or_above(result.findings):
             raise click.exceptions.Exit(1)
+        if result.warnings:
+            raise click.exceptions.Exit(2)
         return
 
     # Console output
     report_con.print(f"\n[bold]Secret scan:[/bold] {result.files_scanned} files scanned\n")
+    for warning in result.warnings:
+        diagnostic_con.print(f"[yellow]Coverage incomplete:[/yellow] {warning}")
     if not result.findings:
+        if result.warnings:
+            report_con.print("No secrets or PII detected in inspected files; coverage is incomplete.")
+            raise click.exceptions.Exit(2)
         report_con.print("[green]No secrets or PII found.[/green]")
         return
 
@@ -424,6 +431,8 @@ def secrets_cmd(
     report_con.print(f"\n[bold]{result.total} findings[/bold] ({result.critical_count} critical)")
     if _has_finding_at_or_above(result.findings):
         raise click.exceptions.Exit(1)
+    if result.warnings:
+        raise click.exceptions.Exit(2)
 
 
 # ── Source code analysis ─────────────────────────────────────────────────────

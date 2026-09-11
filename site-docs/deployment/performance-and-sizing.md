@@ -366,3 +366,39 @@ defaults. What it still does not claim is:
 - a managed control plane that hides storage or scaling choices from the buyer
 
 Those choices stay explicit, which is why the self-hosted story remains honest.
+
+## Large collector reports
+
+`POST /v1/results/push` accepts complete scan reports up to 64 MiB by default.
+Set `AGENT_BOM_API_RESULT_PUSH_MAX_BYTES` on the receiving API to a positive
+byte budget appropriate for the pod's memory and concurrent uploads. Other
+API requests retain their 10 MiB budget. Configure the ingress or reverse
+proxy to permit the same wire size; an upstream 413 never reaches the API.
+
+After upgrading the receiver, enable fast gzip on collectors:
+
+```bash
+AGENT_BOM_PUSH_GZIP=1 agent-bom scan -p . --push-url https://agent-bom.example.com
+```
+
+Use the scan command's existing API-key environment/file configuration for
+authentication. Compression is opt-in so collectors remain compatible with
+older receivers. JSON is serialized and compressed once per push; retries
+reuse the same bytes and idempotency identity. Standard HTTP clients can also
+send `Content-Encoding: gzip` to the report-push endpoint.
+
+Authentication runs before buffering/inflation. Both wire and decoded bytes
+must fit the report budget. Invalid/truncated gzip returns 400, unsupported
+encoding returns 415, and over-budget requests return 413 with `max_bytes`.
+The API checks actual streamed bytes even when Content-Length is present and
+applies the existing 30-second body-read deadline and throughput floor. These
+failures do not create a scan job or truncate the report.
+
+A full JSON report is still materialized for validation and graph projection;
+compression reduces transfer size, not that working set. Size memory using
+concurrent decoded reports plus graph construction and database work. Large
+finding streams can use `/v1/findings/bulk` in bounded, idempotent batches;
+those rows are normalized findings, not fragments of a complete graph snapshot.
+Async report exports currently use process-local job state and require a
+single API replica for job polling/download continuity even with shared
+artifact storage. The distributed scan queue does not make export jobs durable.

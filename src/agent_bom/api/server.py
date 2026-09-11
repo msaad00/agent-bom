@@ -1071,8 +1071,9 @@ def configure_api(
 
     # Refresh runtime-configurable middleware. _replace_middleware inserts at
     # the front; this call order keeps the coarse per-IP limiter outermost
-    # (capping unauthenticated floods before auth), then body-size, then auth
-    # before the tenant-scoped rate limiter, which needs tenant/auth state.
+    # (capping unauthenticated floods before auth), then auth, then body-size
+    # before the tenant-scoped rate limiter. Large report bodies are only
+    # buffered and inflated after the caller passes authentication.
     # The authenticated read budget keeps the same 2x relationship to the
     # anonymous one that the defaults have, so an operator override of
     # rate_limit_rpm still controls both.
@@ -1089,8 +1090,12 @@ def configure_api(
     # used to let a no-auth viewer mutate sources, schedules, and scan jobs
     # directly.  The anonymous resolver preserves local self-hosted operation,
     # while DEMO_ESTATE still clamps the effective role to viewer.
+    from agent_bom.config import API_RESULT_PUSH_MAX_BYTES
+
+    if API_RESULT_PUSH_MAX_BYTES <= 0:
+        raise ValueError("AGENT_BOM_API_RESULT_PUSH_MAX_BYTES must be positive")
+    _replace_middleware(MaxBodySizeMiddleware, path_limits={"/v1/results/push": API_RESULT_PUSH_MAX_BYTES})
     _replace_middleware(APIKeyMiddleware, api_key=api_key, allow_unauthenticated=allow_unauthenticated)
-    _replace_middleware(MaxBodySizeMiddleware)
     _replace_middleware(GlobalRateLimitMiddleware, rpm=global_ip_rate_limit_rpm())
     if app.middleware_stack is not None:
         app.middleware_stack = app.build_middleware_stack()

@@ -600,6 +600,11 @@ FINDINGS_APPROXIMATE_TOTAL_THRESHOLD = _int("AGENT_BOM_FINDINGS_APPROXIMATE_TOTA
 # MaxBodySizeMiddleware. 0 disables the floor entirely (escape hatch
 # for legitimate slow clients in restricted networks).
 API_BODY_MIN_BPS = _int("AGENT_BOM_BODY_MIN_BPS", 256)
+# Per-report upload budget for POST /v1/results/push, measured after gzip decoding.
+# Both wire and decoded bytes are bounded; other API bodies retain their 10 MiB limit.
+API_RESULT_PUSH_MAX_BYTES = _int("AGENT_BOM_API_RESULT_PUSH_MAX_BYTES", 64 * 1024 * 1024)
+# Compress collector report pushes after upgrading the receiving control plane.
+PUSH_GZIP = _bool("AGENT_BOM_PUSH_GZIP", False)
 
 
 # ── PostgreSQL Control Plane Tuning ──────────────────────────────────────

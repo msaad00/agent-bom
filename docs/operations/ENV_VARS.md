@@ -38,6 +38,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT` | `int` | `500` | — |
 | `AGENT_BOM_API_MAX_SCAN_CREDITS_24H_PER_TENANT` | `int` | `0` | — |
 | `AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT` | `int` | `100` | — |
+| `AGENT_BOM_API_RESULT_PUSH_MAX_BYTES` | `int` | `64 * 1024 * 1024` | Per-report upload budget for POST /v1/results/push, measured after gzip decoding. Both wire and decoded bytes are bounded; other API bodies retain their 10 MiB limit. |
 | `AGENT_BOM_API_SCAN_CLAIM_POLL_SECONDS` | `int` | `3` | — |
 | `AGENT_BOM_API_SCAN_LEASE_SECONDS` | `int` | `600` | Distributed scan dispatch (multi-replica work-stealing). When enabled, scan jobs are enqueued to a shared Postgres dispatch queue and any control-plane replica claims them via FOR UPDATE SKIP LOCKED, so scan throughput scales with replicas  |
 | `AGENT_BOM_API_SCAN_WORKERS` | `int` | `min(4, os.cpu_count() or 2)` | — |
@@ -60,6 +61,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_NO_AUTH_ROLE` | `str` | `'viewer'` | Role granted when unauthenticated API access is explicitly enabled. Default preserves local/dev compatibility; demo-estate mode clamps this to viewer. |
 | `AGENT_BOM_NO_UI` | `bool` | `False` | Hide the bundled browser UI when serving an API-only/local control-plane process. Some CLI paths set this immediately before loading the API server, so the server still reads the live environment value at request time. |
 | `AGENT_BOM_PLATFORM_OPERATOR_TENANT_ID` | `str` | `'default'` | Reserved tenant that may perform cross-tenant trial lifecycle operations. The route guard re-reads the environment so test and deployment overrides are applied without weakening the default operator boundary. |
+| `AGENT_BOM_PUSH_GZIP` | `bool` | `False` | Compress collector report pushes after upgrading the receiving control plane. |
 | `AGENT_BOM_SIDESCAN_SCHEDULER_MAX_CONCURRENCY` | `int` | `2` | — |
 | `AGENT_BOM_SIDESCAN_SCHEDULER_POLL_SECONDS` | `int` | `3600` | Cross-cloud (Azure/GCP) agentless disk side-scan scheduler (#4158 Stage 4). The background loop re-runs the shipped ``run_provider_side_scan`` executor for each configured target on a cadence, so a CWPP side-scan keeps evaluating without a  |
 

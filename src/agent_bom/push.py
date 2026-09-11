@@ -9,8 +9,9 @@ Sanitizes results before push:
 from __future__ import annotations
 
 import asyncio
-import copy
+import gzip
 import hashlib
+import json
 import logging
 import os
 import platform
@@ -103,8 +104,9 @@ def sanitize_results(results: dict) -> dict:
     - Redacts env var patterns in metadata
     - Adds source_id
     """
-    sanitized = copy.deepcopy(results)
-    sanitized = _redact_nested_secrets(sanitized)
+    # The recursive redactor builds new containers; a preliminary deep copy
+    # duplicated the entire report without adding isolation.
+    sanitized = _redact_nested_secrets(results)
 
     endpoint_identity = _endpoint_identity_from_env()
 
@@ -234,7 +236,7 @@ async def _push_async(
     from agent_bom.http_client import create_client
     from agent_bom.security import SecurityError
 
-    sanitized = sanitize_results(results)
+    sanitized = await asyncio.to_thread(sanitize_results, results)
     try:
         _validate_push_destination_url(push_url)
     except SecurityError as exc:
@@ -245,6 +247,18 @@ async def _push_async(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
+    from agent_bom.config import PUSH_GZIP
+
+    def encode_payload() -> bytes:
+        payload = json.dumps(sanitized, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+        return gzip.compress(payload, compresslevel=1, mtime=0) if PUSH_GZIP else payload
+
+    # Serialize once and reuse exactly the same bytes and idempotency identity
+    # for every retry. Opt-in compression preserves older receiver compatibility.
+    payload = await asyncio.to_thread(encode_payload)
+    if PUSH_GZIP:
+        headers["Content-Encoding"] = "gzip"
+
     retryable_status = {408, 425, 429, 500, 502, 503, 504}
     last_status: int | None = None
     last_error: str | None = None
@@ -252,7 +266,7 @@ async def _push_async(
     async with create_client(timeout=30.0, cert=_push_tls_cert(), verify=_push_tls_verify()) as client:
         for attempt in range(1, max_attempts + 1):
             try:
-                resp = await client.post(push_url, json=sanitized, headers=headers)
+                resp = await client.post(push_url, content=payload, headers=headers)
             except (httpx.HTTPError, ValueError, OSError) as exc:
                 from agent_bom.security import sanitize_error
 

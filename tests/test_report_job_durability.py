@@ -71,10 +71,15 @@ def test_abandoned_exports_have_bounded_attempts(tmp_path, monkeypatch):
     assert second.enqueue(job("replacement"), 1)
 
 
-def test_store_selection_fails_closed(monkeypatch):
+@pytest.mark.parametrize("snowflake_account", [None, "configured-account"])
+def test_store_selection_fails_closed(monkeypatch, snowflake_account):
     from agent_bom.api import report_job_store
 
     report_job_store.reset_report_job_store()
+    if snowflake_account:
+        monkeypatch.setenv("SNOWFLAKE_ACCOUNT", snowflake_account)
+    else:
+        monkeypatch.delenv("SNOWFLAKE_ACCOUNT", raising=False)
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://unavailable/reports")
     monkeypatch.setattr(
         "agent_bom.api.postgres_report_jobs.PostgresReportJobStore", lambda: (_ for _ in ()).throw(RuntimeError("unavailable"))

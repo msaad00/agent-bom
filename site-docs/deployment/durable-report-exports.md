@@ -25,6 +25,11 @@ on restart. Configured Postgres takes precedence over ephemeral mode. Run the
 Alembic migration through revision `20260911_01` before starting upgraded
 Postgres replicas; runtime credentials perform no schema changes.
 
+Report queue storage is independent of scan storage. Configuring Snowflake
+for scans does not move export jobs into Snowflake: queues still use SQLite
+or configured Postgres. An unavailable configured Postgres backend prevents
+startup; it never silently falls back to local job state.
+
 | Setting | Default | Effect |
 |---|---|---|
 | `AGENT_BOM_API_REPORT_WORKERS` | `2` | Concurrent exports per replica, separate from scan workers; `0` accepts queued jobs without executing them locally |

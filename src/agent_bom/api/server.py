@@ -771,6 +771,9 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         except Exception:  # noqa: BLE001
             _logger.warning("demo estate bootstrap skipped", exc_info=False)
 
+    from agent_bom.api.report_queue import start_report_worker
+
+    _report_worker = await start_report_worker()
     yield
 
     # ── Graceful shutdown ──
@@ -779,6 +782,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     # _shutting_down under the same module; see meta_routes.
     global _shutting_down
     _shutting_down = True
+    await _report_worker.stop(float(os.environ.get("AGENT_BOM_SHUTDOWN_DRAIN_SECONDS", "25")))
     # Stop claiming new distributed work before draining in-flight scans.
     if _scan_worker is not None:
         try:

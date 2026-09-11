@@ -1019,6 +1019,12 @@ class TestServerLifespanAutoDetect:
 
         import agent_bom.api.server as srv
         import agent_bom.api.stores as st
+        from agent_bom.api.report_job_store import InMemoryReportJobStore
+
+        # Report queues have their own durable backend selection. Keep this
+        # Snowflake scan-store test isolated from the deliberately fake DSN.
+        report_store = InMemoryReportJobStore()
+        monkeypatch.setattr("agent_bom.api.report_job_store.get_report_job_store", lambda: report_store)
 
         # Reset global stores
         st._store = None
@@ -1036,6 +1042,7 @@ class TestServerLifespanAutoDetect:
                 pass
 
         asyncio.run(_run())
+        report_store.close()
 
         from agent_bom.api.snowflake_store import (
             SnowflakeExceptionStore,

@@ -1438,6 +1438,7 @@ jobs:
         run: |
           uv run pytest -q --tb=short \
             tests/test_postgres_integration.py \
+            tests/test_report_jobs_postgres.py \
             tests/test_postgres_gateway_activity.py \
             tests/test_postgres_schema.py \
             tests/test_postgres_governance_audit.py \

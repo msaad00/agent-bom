@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -46,24 +45,21 @@ def test_submit_tenant_bound_does_not_inherit_or_leak_pool_context() -> None:
         assert second.result(timeout=2) == "default"
 
 
-def test_report_submission_runs_with_explicit_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_report_submission_runs_with_explicit_tenant(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from agent_bom.api import report_worker
+    from agent_bom.api.models import ReportJob
+    from agent_bom.api.report_job_store import SQLiteReportJobStore
+    from agent_bom.api.report_queue import ReportWorker
 
     observed: list[str] = []
-
-    class _ImmediateExecutor:
-        def submit(self, function: Any, /, *args: Any, **kwargs: Any) -> None:
-            function(*args, **kwargs)
-
-    monkeypatch.setattr(report_worker, "get_executor", _ImmediateExecutor)
-    monkeypatch.setattr(
-        report_worker,
-        "_run_report_job_sync",
-        lambda _job_id, _tenant_id: observed.append(_current_tenant.get()),
-    )
-
-    report_worker.submit_report_job("job-1", "tenant-report")
-
+    store = SQLiteReportJobStore(str(tmp_path / "reports.db"))
+    store.enqueue(ReportJob(job_id="job-1", tenant_id="tenant-report", created_at="2026-09-11"), 5)
+    monkeypatch.setattr(report_worker, "run_claimed_report", lambda *_args: observed.append(_current_tenant.get()))
+    worker = ReportWorker(store, max_workers=1)
+    worker.tick()
+    for future in worker._inflight:
+        future.result(timeout=2)
+    worker._executor.shutdown()
     assert observed == ["tenant-report"]
     assert _current_tenant.get() == "default"
 
@@ -71,7 +67,7 @@ def test_report_submission_runs_with_explicit_tenant(monkeypatch: pytest.MonkeyP
 def test_background_export_submit_sites_use_tenant_wrapper() -> None:
     repo_root = Path(__file__).resolve().parent.parent
     for relative_path in (
-        "src/agent_bom/api/report_worker.py",
+        "src/agent_bom/api/report_queue.py",
         "src/agent_bom/api/routes/exports.py",
     ):
         source = (repo_root / relative_path).read_text(encoding="utf-8")

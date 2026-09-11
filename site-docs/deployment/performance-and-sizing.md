@@ -399,6 +399,8 @@ compression reduces transfer size, not that working set. Size memory using
 concurrent decoded reports plus graph construction and database work. Large
 finding streams can use `/v1/findings/bulk` in bounded, idempotent batches;
 those rows are normalized findings, not fragments of a complete graph snapshot.
-Async report exports currently use process-local job state and require a
-single API replica for job polling/download continuity even with shared
-artifact storage. The distributed scan queue does not make export jobs durable.
+Async report exports use durable SQLite job state by default, or tenant-scoped
+Postgres when configured. A separate bounded worker pool claims queued exports,
+renews leases, and recovers expired claims after a restart. See
+[Durable report exports](durable-report-exports.md) for shared artifact storage,
+worker sizing, and failure behavior.

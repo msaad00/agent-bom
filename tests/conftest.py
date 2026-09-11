@@ -375,6 +375,9 @@ def _reset_proxy_route_state() -> None:
 
 
 def _reset_durable_store_singletons() -> None:
+    from agent_bom.api.report_job_store import reset_report_job_store
+
+    reset_report_job_store()
     # The agent-identity, JIT-grant, and runtime session/event stores are now
     # durable by default (SQLite under AGENT_BOM_STATE_DIR — the isolated temp
     # dir set above — instead of in-memory). Their selectors memoize a

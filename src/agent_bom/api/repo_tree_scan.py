@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from agent_bom.evidence.scan_run import ScanIssue
 from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
 from agent_bom.traversal import iter_discovery_files
 
@@ -51,6 +52,7 @@ class RepoTreeScanResult:
     ai_inventory_data: dict[str, Any] | None = None
     sast_data: dict[str, Any] | None = None
     codeowners: dict[str, str] = field(default_factory=dict)
+    scan_issues: list[ScanIssue] = field(default_factory=list)
 
 
 @dataclass
@@ -303,8 +305,20 @@ def scan_cloned_repo_tree(
     if update_progress is not None:
         update_progress("Scanning for hardcoded secrets and credentials")
     secret_result = scan_secrets(root)
+    # A zero-finding result still records whether discovery actually covered
+    # the requested tree. Preserve it through both API report assembly paths.
+    ai_inventory["secrets"] = secret_result.to_dict()
+    result.scan_issues.extend(
+        ScanIssue(
+            code="scanner_coverage_gap",
+            stage="scanning",
+            source="secret-scan",
+            message=f"Secret scan incomplete: {warning}",
+            affects_coverage=True,
+        )
+        for warning in secret_result.warnings
+    )
     if secret_result.total > 0:
-        ai_inventory["secrets"] = secret_result.to_dict()
         warnings.append(f"{secret_result.total} hardcoded secret(s) or credential pattern(s) found in repository files")
 
     if update_progress is not None:

@@ -110,3 +110,57 @@ jobs:
     assert [(package["name"], package["version"]) for package in action_packages] == [
         ("actions/checkout", "0123456789abcdef0123456789abcdef01234567")
     ]
+
+
+@pytest.mark.parametrize("with_packages", [False, True])
+@pytest.mark.parametrize("pruned", [False, True])
+@pytest.mark.parametrize("visible_secret", [False, True])
+def test_repo_secret_coverage_survives_report_assembly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, with_packages: bool, pruned: bool, visible_secret: bool
+) -> None:
+    """Finding-only and dependency reports must retain secret discovery gaps."""
+    from agent_bom.sast import SASTExecutionStatus, SASTResult
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    if pruned:
+        (root / "build").mkdir()
+        (root / "build" / ".env").write_text('PASSWORD="regression-fixture-password"\n')
+    if visible_secret:
+        (root / ".env").write_text('PASSWORD="regression-fixture-password"\n')
+    if with_packages:
+        (root / "requirements.txt").write_text("requests==2.31.0\n")
+
+    @contextmanager
+    def clone(*_args, **_kwargs):
+        yield root
+
+    monkeypatch.setattr("agent_bom.repo_scan.clone_repository", clone)
+    monkeypatch.setattr("agent_bom.repo_scan.fetch_repo_trust", lambda *_a, **_k: {})
+    monkeypatch.setattr("agent_bom.sast.scan_code", lambda *_a, **_k: ([], SASTResult(execution_status=SASTExecutionStatus.CLEAN)))
+    monkeypatch.setattr("agent_bom.python_agents.scan_python_agents", lambda *_a, **_k: ([], []))
+    monkeypatch.setattr("agent_bom.terraform.scan_terraform_dir", lambda *_a, **_k: ([], []))
+    monkeypatch.setattr("agent_bom.github_actions.scan_github_actions", lambda *_a, **_k: ([], []))
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda **_kwargs: [])
+
+    job = ScanJob(
+        job_id=f"repo-coverage-{with_packages}-{pruned}-{visible_secret}",
+        created_at="2026-09-11T00:00:00Z",
+        request=ScanRequest(repo_url="https://github.com/org/repo", no_scan=True),
+    )
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    assert job.result is not None
+    secret_scan = job.result["ai_inventory"]["secrets"]
+    assert secret_scan["complete"] is (not pruned)
+    assert secret_scan["pruned_directories"] == int(pruned)
+    assert (secret_scan["total"] > 0) is visible_secret
+    assert job.result["scan_run"]["outcome"] == ("partial" if pruned else "complete")
+    issues = [issue for issue in job.result["scan_run"]["issues"] if issue["source"] == "secret-scan"]
+    assert len(issues) == int(pruned)
+    if pruned:
+        assert issues[0]["code"] == "scanner_coverage_gap"
+        assert issues[0]["affects_coverage"] is True
+        assert issues[0]["message"] in job.result["warnings"]
+    assert "regression-fixture-password" not in str(job.result)

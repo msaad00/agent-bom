@@ -3,6 +3,8 @@
 import asyncio
 import io
 import json
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -103,6 +105,24 @@ def test_normalized_pii_that_literal_redaction_misses_fails_closed():
     safe, _ = scan_jsonrpc_response(_response("ａｌｉｃｅ＠ｅｘａｍｐｌｅ．ｃｏｍ"), ScanConfig(enabled=True))
     assert "result" not in safe
     assert safe["error"]["code"] == -32600
+
+
+def test_long_ordinary_response_does_not_backtrack_quadratically():
+    # Use a child process so a regression terminates instead of hanging the
+    # suite. The old unanchored email pattern exceeds this generous deadline.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from agent_bom.proxy_scanner import ScanConfig, scan_jsonrpc_response; "
+            "message = {'jsonrpc': '2.0', 'id': 1, 'result': 'a' * 200_000}; "
+            "safe, findings = scan_jsonrpc_response(message, ScanConfig(enabled=True)); "
+            "assert safe == message and findings == []",
+        ],
+        check=True,
+        timeout=10,
+        capture_output=True,
+    )
 
 
 def test_sse_upstream_error_does_not_echo_connection_secrets(monkeypatch):

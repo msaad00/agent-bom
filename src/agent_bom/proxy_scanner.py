@@ -61,7 +61,9 @@ class ScanConfig:
 
 _PII_PATTERNS: list[tuple[re.Pattern, str, str]] = [
     (
-        re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"),
+        # Start once per candidate local part. Without this boundary, a long
+        # ordinary token with no @ retries every suffix (quadratic work).
+        re.compile(r"(?<![a-zA-Z0-9._%+\-])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"),
         "email",
         "medium",
     ),

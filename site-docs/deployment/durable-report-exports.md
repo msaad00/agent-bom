@@ -55,8 +55,8 @@ fallback. HTTP 429 means the tenant's active-job quota is full.
 
 Poll `/v1/reports/{job_id}` to distinguish pending, running, done, and failed
 work. `/metrics` exposes `agent_bom_report_exports_total` with bounded outcomes
-`claimed`, `lease_lost`, `completed`, and `failed`. Completed and failed jobs
-also append audit events. Lost database access stops lease renewal and blocks
+`claimed`, `lease_lost`, `completed`, and `failed`. Completed attempts and renderer/storage failures
+also append audit events. Lease exhaustion is recorded in durable job status. Lost database access stops lease renewal and blocks
 publication. After lease expiry another replica can claim the job; exhausted
 claims become failed rather than retrying forever. Renderer or object-storage
 errors mark the attempt failed; clients can submit a new job after remediation.

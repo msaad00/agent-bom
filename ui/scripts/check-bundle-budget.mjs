@@ -120,7 +120,10 @@ const BUDGETS = {
   // Managed profile lifecycle and durable activity parsing measure 3934.1 KiB
   // on Linux CI and macOS, with no new dependency. Keep 17.9 KiB of bounded
   // headroom at 3952 KiB; largest-chunk and shared-runtime caps stay fixed.
-  totalClientJsBytes: 4_046_848,
+  // The September dependency batch (including Lucide 1.42 icon data) measures
+  // 3981.1 KiB versus 3936.5 KiB on main (+1.13%). Keep 18.9 KiB of headroom
+  // at 4000 KiB; the largest-chunk and shared-runtime caps remain unchanged.
+  totalClientJsBytes: 4_096_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

@@ -887,7 +887,7 @@ def test_configure_api_orders_auth_before_rate_limit_for_tenant_scoping(monkeypa
         monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
         configure_api(api_key="test-key-123", rate_limit_rpm=10)
         order = [middleware.cls for middleware in app.user_middleware]
-        assert order.index(MaxBodySizeMiddleware) < order.index(APIKeyMiddleware) < order.index(RateLimitMiddleware)
+        assert order.index(APIKeyMiddleware) < order.index(MaxBodySizeMiddleware) < order.index(RateLimitMiddleware)
     finally:
         app.user_middleware = original
         if app.middleware_stack is not None:

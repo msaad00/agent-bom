@@ -5008,6 +5008,8 @@ export interface ReportJobRecord {
   download_url?: string;
   download_token?: string;
   download_token_header?: string;
+  artifact_backend?: "local" | "s3" | null;
+  artifact_uri?: string | null;
 }
 
 export interface ReportCreateRequest {

@@ -59,9 +59,14 @@ class ScanConfig:
 # PII patterns (new — not in prompt_scanner.py)
 # ---------------------------------------------------------------------------
 
+_EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+_EMAIL_CANDIDATE_PATTERN = re.compile(r"(?<![a-zA-Z0-9._%+\-])" + _EMAIL_PATTERN.pattern)
+
 _PII_PATTERNS: list[tuple[re.Pattern, str, str]] = [
     (
-        re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"),
+        # Start once per candidate local part. Without this boundary, a long
+        # ordinary token with no @ retries every suffix (quadratic work).
+        _EMAIL_CANDIDATE_PATTERN,
         "email",
         "medium",
     ),
@@ -404,11 +409,64 @@ def scan_tool_response(response_text: str, config: ScanConfig) -> list[ScanResul
 # ---------------------------------------------------------------------------
 
 
+def _redact_emails(text: str) -> str:
+    """Replace email matches without retrying every suffix of ordinary tokens."""
+    parts: list[str] = []
+    offset = 0
+    while offset < len(text):
+        # After a match, another address can begin immediately (e.g. with an
+        # underscore). Check that position without looking behind into the
+        # previous match, then search only at subsequent candidate starts.
+        match = _EMAIL_PATTERN.match(text, offset) or _EMAIL_CANDIDATE_PATTERN.search(text, offset + 1)
+        if match is None:
+            break
+        parts.extend((text[offset : match.start()], "[REDACTED:email]"))
+        offset = match.end()
+    return "".join(parts) + text[offset:] if parts else text
+
+
 def redact_pii(text: str) -> str:
     """Replace PII matches with ``[REDACTED:<type>]`` placeholders."""
     for regex, pii_type, _severity in _PII_PATTERNS:
-        text = regex.sub(f"[REDACTED:{pii_type}]", text)
+        text = _redact_emails(text) if pii_type == "email" else regex.sub(f"[REDACTED:{pii_type}]", text)
     return text
+
+
+def scan_jsonrpc_response(message: dict, config: ScanConfig) -> tuple[dict, list[ScanResult]]:
+    """Apply the same response policy to stdio and SSE/HTTP JSON-RPC results.
+
+    Audit mode leaves the response unchanged. Enforce mode replaces blocked
+    content with a protocol error or redacts PII while preserving JSON shape.
+    Failed redaction fails closed; the original result is never a fallback.
+    """
+    if not config.enabled or "result" not in message:
+        return message, []
+    response_text = json.dumps(message["result"], ensure_ascii=False)
+    findings = scan_tool_response(response_text, config)
+    if config.mode != "enforce" or not findings:
+        return message, findings
+
+    blocked = any(finding.blocked for finding in findings)
+    if not blocked and config.pii_action == "redact" and any(finding.scanner == "pii" for finding in findings):
+        try:
+            redacted = json.loads(redact_pii(response_text))
+            # Detection normalizes Unicode; literal redaction can miss an
+            # obfuscated match. Never forward PII that remains detectable.
+            remaining = scan_tool_response(json.dumps(redacted, ensure_ascii=False), config)
+            blocked = any(finding.blocked or finding.scanner == "pii" for finding in remaining)
+            if not blocked:
+                return {**message, "result": redacted}, findings
+        except (TypeError, ValueError):
+            blocked = True
+
+    if blocked:
+        safe_message = {key: value for key, value in message.items() if key != "result"}
+        safe_message["error"] = {
+            "code": -32600,
+            "message": "[BLOCKED] Security scanner detected sensitive content in response",
+        }
+        return safe_message, findings
+    return message, findings
 
 
 # ---------------------------------------------------------------------------

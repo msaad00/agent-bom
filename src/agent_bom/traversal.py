@@ -101,9 +101,23 @@ def _relative_posix(root: Path, path: Path) -> str:
     return "" if rel == Path(".") else rel.as_posix()
 
 
-def _prune_dirnames(dirpath: Path, dirnames: list[str], skip: frozenset[str]) -> None:
-    """Filter *dirnames* in place, removing skip dirs and nested worktrees."""
-    dirnames[:] = [name for name in dirnames if name not in skip and not is_nested_worktree_root(dirpath / name)]
+def _prune_dirnames(
+    dirpath: Path,
+    dirnames: list[str],
+    skip: frozenset[str],
+    on_prune: Callable[[Path, str], None] | None = None,
+) -> None:
+    """Prune ancestors without enumerating their children; report exclusions."""
+    kept = []
+    for name in dirnames:
+        child = dirpath / name
+        reason = "directory_policy" if name in skip else ("nested_worktree" if is_nested_worktree_root(child) else "")
+        if reason:
+            if on_prune is not None:
+                on_prune(child, reason)
+        else:
+            kept.append(name)
+    dirnames[:] = kept
 
 
 def iter_discovery_files(
@@ -112,6 +126,8 @@ def iter_discovery_files(
     extra_skip_dirs: frozenset[str] = frozenset(),
     max_files: int | None = DEFAULT_MAX_FILES,
     on_error: Callable[[OSError], None] | None = None,
+    on_prune: Callable[[Path, str], None] | None = None,
+    on_limit: Callable[[int], None] | None = None,
     ignore: "RepositoryIgnore | None" = None,
 ) -> Iterator[Path]:
     """Yield files under *root*, pruning vendored/worktree subtrees while walking.
@@ -127,6 +143,10 @@ def iter_discovery_files(
     memory therefore improve rather than regress. *root* itself is never
     self-ignored, since the caller named it explicitly.
 
+    ``on_prune`` observes directory-policy and linked-worktree exclusions once
+    per skipped ancestor. ``on_limit`` reports file-budget exhaustion. Neither
+    callback descends excluded trees or enumerates their file counts.
+
     Yields files in ``os.walk`` order; callers that need determinism should sort
     the (already filtered, typically small) result.
     """
@@ -137,7 +157,7 @@ def iter_discovery_files(
     yielded = 0
     for dirpath_str, dirnames, filenames in os.walk(root, followlinks=False, onerror=on_error):
         dirpath = Path(dirpath_str)
-        _prune_dirnames(dirpath, dirnames, skip)
+        _prune_dirnames(dirpath, dirnames, skip, on_prune)
         if ignore is not None:
             rel_dir = _relative_posix(root, dirpath)
             ignore.enter_directory(rel_dir)
@@ -160,4 +180,6 @@ def iter_discovery_files(
             yield dirpath / name
             yielded += 1
             if max_files is not None and yielded >= max_files:
+                if on_limit is not None:
+                    on_limit(max_files)
                 return

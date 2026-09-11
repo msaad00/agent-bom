@@ -285,6 +285,7 @@ class SecretScanResult:
     # Paths excluded by repository ignore rules. Skipping is a coverage claim,
     # so it is counted and reported rather than silently dropped.
     ignored_paths: int = 0
+    pruned_directories: int = 0
 
     @property
     def total(self) -> int:
@@ -299,6 +300,7 @@ class SecretScanResult:
             "findings": [f.to_dict() for f in self.findings],
             "files_scanned": self.files_scanned,
             "ignored_paths": self.ignored_paths,
+            "pruned_directories": self.pruned_directories,
             "total": self.total,
             "critical": self.critical_count,
             "by_type": _group_by(self.findings, "secret_type"),
@@ -557,7 +559,21 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
 
     ignore = RepositoryIgnore.for_root(project)
 
-    for f in sorted(iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS, on_error=traversal_error, ignore=ignore)):
+    def note_pruned(_path: Path, _reason: str) -> None:
+        result.pruned_directories += 1
+
+    def traversal_limit(limit: int) -> None:
+        result.warnings.append(f"Directory traversal stopped at {limit} discovered files")
+
+    # Consume lazily so our scan budget also bounds traversal work and memory.
+    for f in iter_discovery_files(
+        project,
+        extra_skip_dirs=_SKIP_DIRS,
+        on_error=traversal_error,
+        on_prune=note_pruned,
+        on_limit=traversal_limit,
+        ignore=ignore,
+    ):
         if not f.is_file():
             continue
         if not _should_scan(f.relative_to(project)):
@@ -579,6 +595,11 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
 
     result.files_scanned = file_count
     result.ignored_paths = ignore.ignored_count
+    if result.pruned_directories:
+        result.warnings.append(
+            f"Skipped {result.pruned_directories} directory subtree(s) by scanner policy or nested-worktree exclusion; "
+            "their contents were not inspected. Scan an excluded directory explicitly to inspect it."
+        )
     if ignore.ignored_count:
         result.warnings.append(
             f"Skipped {ignore.ignored_count} path(s) excluded by repository ignore rules ({GITIGNORE_FILENAME} / {SCANNER_IGNORE_FILENAME})"

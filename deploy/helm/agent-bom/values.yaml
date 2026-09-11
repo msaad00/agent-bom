@@ -645,6 +645,14 @@ controlPlane:
       #   value: "250000"
       # - name: AGENT_BOM_ANALYTICS_MAX_PACKAGES
       #   value: "500000"
+      # Durable export workers use a separate bounded pool (0 makes an API-only producer).
+      # - name: AGENT_BOM_API_REPORT_WORKERS
+      #   value: "2"
+      # Local artifacts across replicas require a shared mount plus an explicit acknowledgement:
+      # - name: AGENT_BOM_REPORT_ARTIFACT_DIR
+      #   value: "/mnt/shared/report-artifacts"
+      # - name: AGENT_BOM_REPORT_ARTIFACT_SHARED
+      #   value: "1"
       # Async findings exports: upload completed artifacts to customer S3 (IRSA recommended).
       # - name: AGENT_BOM_REPORT_S3_BUCKET
       #   value: "my-org-agent-bom-reports"

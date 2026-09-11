@@ -68,6 +68,7 @@ class _Gauge:
 
 _auth_failures = _LabelledCounter()  # labelled by reason (missing_key, invalid_key, ...)
 _rate_limit_hits = _LabelledCounter()  # labelled by bucket name (global, tenant, ...)
+_report_exports = _LabelledCounter()  # bounded labels; no job or tenant identifiers
 _compliance_exports = _LabelledCounter()  # labelled by algorithm (Ed25519, HMAC-SHA256)
 _compliance_export_bytes = _LabelledCounter()  # labelled by framework key
 _scan_completions = _LabelledCounter()  # labelled by status (done, failed, cancelled)
@@ -206,9 +207,19 @@ def record_auto_correlation(*, outcome: str, reason: str) -> None:
     _auto_correlations.inc(f"{safe_outcome}|{safe_reason}")
 
 
+def record_report_export(outcome: str) -> None:
+    if outcome in {"claimed", "lease_lost", "completed", "failed"}:
+        _report_exports.inc(outcome)
+
+
 def render_prometheus_lines() -> list[str]:
     """Return Prometheus text-format lines for all in-process counters."""
     lines: list[str] = []
+
+    lines.append("# HELP agent_bom_report_exports_total Report worker claim and terminal events")
+    lines.append("# TYPE agent_bom_report_exports_total counter")
+    for outcome in ("claimed", "lease_lost", "completed", "failed"):
+        lines.append(f'agent_bom_report_exports_total{{outcome="{outcome}"}} {_report_exports.snapshot().get(outcome, 0)}')
 
     auth = _auth_failures.snapshot()
     lines.append("# HELP agent_bom_auth_failures_total API authentication failures by reason")
@@ -299,6 +310,7 @@ def reset_for_tests() -> None:
     for counter in (
         _auth_failures,
         _rate_limit_hits,
+        _report_exports,
         _compliance_exports,
         _compliance_export_bytes,
         _scan_completions,

@@ -339,7 +339,11 @@ so they cannot regress silently, but they are not part of this reference.
 | Env var | Type | Default | Description |
 |---|---|---|---|
 | `AGENT_BOM_API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT` | `int` | `5` | — |
+| `AGENT_BOM_API_REPORT_LEASE_SECONDS` | `int` | `60` | — |
+| `AGENT_BOM_API_REPORT_MAX_ATTEMPTS` | `int` | `3` | — |
+| `AGENT_BOM_API_REPORT_WORKERS` | `int` | `2` | Zero creates an API-only report queue producer. |
 | `AGENT_BOM_REPORT_ARTIFACT_DIR` | `str` | `''` | Async findings report exports are written to a local artifact directory and downloaded through job-scoped tokens. Empty string means use the per-user default ~/.agent-bom/report-artifacts. The worker re-reads the env var at runtime so tests |
+| `AGENT_BOM_REPORT_ARTIFACT_SHARED` | `bool` | `False` | Explicit acknowledgement of a shared mounted artifact directory. |
 | `AGENT_BOM_REPORT_S3_BUCKET` | `str` | `''` | When REPORT_S3_BUCKET is set, completed exports are uploaded to customer S3 and job status returns a presigned GET URL. Credentials follow the standard AWS SDK chain (IRSA, instance profile, env keys). Requires boto3 (``[aws]`` extra). |
 | `AGENT_BOM_REPORT_S3_PREFIX` | `str` | `'report-artifacts'` | — |
 | `AGENT_BOM_REPORT_S3_PRESIGN_SECONDS` | `int` | `3600` | — |

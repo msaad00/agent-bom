@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import secrets
 import uuid
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, ParamSpec, TypeVar
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
@@ -15,7 +17,23 @@ from agent_bom.api.pipeline import _now
 from agent_bom.api.report_job_store import get_report_job_store
 from agent_bom.api.report_worker import resolve_report_artifact, submit_report_job
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.time_window import normalize_window_days
 from agent_bom.config import API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+async def _report_call(function: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
+    try:
+        return await asyncio.to_thread(function, *args, **kwargs)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        from agent_bom.security import sanitize_error
+
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+
 
 router = APIRouter()
 
@@ -34,8 +52,10 @@ def _job_payload(job: ReportJob, *, request: Request) -> dict:
     payload.pop("download_token", None)
     payload.pop("presigned_download_url", None)
     if job.status == JobStatus.DONE:
-        if job.presigned_download_url:
-            payload["download_url"] = job.presigned_download_url
+        if job.artifact_backend == "s3":
+            from agent_bom.api.report_artifact_store import presign_report_artifact
+
+            payload["download_url"] = presign_report_artifact(job.artifact_uri or "")
         elif job.download_token:
             # Return the download URL WITHOUT the token in the query string.
             # The caller presents the token via the DOWNLOAD_TOKEN_HEADER header
@@ -54,23 +74,13 @@ def _active_report_jobs_limit() -> int:
     return API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT
 
 
-def _enforce_active_report_quota(tenant_id: str) -> None:
-    limit = _active_report_jobs_limit()
-    if limit <= 0:
-        return
-    active = sum(1 for job in get_report_job_store().list_for_tenant(tenant_id) if job.status in (JobStatus.PENDING, JobStatus.RUNNING))
-    if active >= limit:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Active report export limit reached ({limit} pending or running jobs)",
-        )
-
-
 @router.post("/reports", tags=["reports"], status_code=202)
 async def create_report_job(request: Request, body: ReportJobRequest) -> dict:
     """Enqueue an async findings export (gzipped NDJSON) instead of a synchronous body."""
     tenant_id = _tenant_id(request)
-    _enforce_active_report_quota(tenant_id)
+    from agent_bom.api.report_artifact_store import validate_report_artifact_sharing
+
+    await _report_call(validate_report_artifact_sharing)
     job = ReportJob(
         job_id=str(uuid.uuid4()),
         tenant_id=tenant_id,
@@ -88,22 +98,24 @@ async def create_report_job(request: Request, body: ReportJobRequest) -> dict:
         sla=body.sla,
         finding_class=body.finding_class,
         finding_status=body.status,
-        window_days=body.window_days,
+        window_days=normalize_window_days(body.window_days),
         created_at=_now(),
     )
-    get_report_job_store().put(job)
+    accepted = await _report_call(lambda: get_report_job_store().enqueue(job, _active_report_jobs_limit()))
+    if not accepted:
+        raise HTTPException(status_code=429, detail="Active report export limit reached")
     submit_report_job(job.job_id, tenant_id)
-    return _job_payload(job, request=request)
+    return await _report_call(_job_payload, job, request=request)
 
 
 @router.get("/reports/{job_id}", tags=["reports"])
 async def get_report_job(request: Request, job_id: str) -> dict:
     """Return async report job status and download URL when complete."""
     tenant_id = _tenant_id(request)
-    job = get_report_job_store().get(job_id, tenant_id)
+    job = await _report_call(lambda: get_report_job_store().get(job_id, tenant_id))
     if job is None:
         raise HTTPException(status_code=404, detail="Report job not found")
-    return _job_payload(job, request=request)
+    return await _report_call(_job_payload, job, request=request)
 
 
 @router.get("/reports/{job_id}/download", tags=["reports"], name="download_report_artifact")
@@ -119,7 +131,7 @@ async def download_report_artifact(
     (preferred, keeps it out of logs) or the legacy ``?token=`` query param.
     """
     tenant_id = _tenant_id(request)
-    job = get_report_job_store().get(job_id, tenant_id)
+    job = await _report_call(lambda: get_report_job_store().get(job_id, tenant_id))
     if job is None:
         raise HTTPException(status_code=404, detail="Report job not found")
     if job.status != JobStatus.DONE or not job.download_token:

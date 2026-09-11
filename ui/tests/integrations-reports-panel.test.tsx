@@ -91,4 +91,21 @@ describe("ReportsPanel", () => {
       expect(apiMock.downloadReportArtifact).toHaveBeenCalledWith("job-abcdef12", "test"),
     );
   });
+  it("refreshes an S3 download without forwarding application credentials", async () => {
+    apiMock.createReportJob.mockResolvedValue({ ...DONE, artifact_backend: "s3", download_token: undefined, download_url: "https://old.example/expired" });
+    apiMock.getReportJob.mockResolvedValue({ ...DONE, artifact_backend: "s3", download_url: "https://bucket.s3.amazonaws.com/report?signature=fresh" });
+    const navigations: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { navigations.push(this.href); });
+    try {
+      render(<ReportsPanel />);
+      fireEvent.click(screen.getByTestId("report-create-submit"));
+      fireEvent.click(await screen.findByTestId("report-download-job-abcd"));
+      await waitFor(() => expect(navigations).toEqual(["https://bucket.s3.amazonaws.com/report?signature=fresh"]));
+      expect(apiMock.getReportJob).toHaveBeenCalledWith("job-abcdef12");
+      expect(apiMock.downloadReportArtifact).not.toHaveBeenCalled();
+    } finally {
+      click.mockRestore();
+    }
+  });
+
 });

@@ -286,6 +286,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
             "idempotency_store.py",
             "middleware.py",
             "proxy_replay_store.py",
+            "report_job_store.py",
             "shared_auth_state.py",
         )
     )
@@ -293,16 +294,22 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
     runtime_paths.append(ROOT / "src" / "agent_bom" / "ticketing" / "postgres_store.py")
     runtime_source = "\n".join(path.read_text() for path in runtime_paths)
     migration_sql = (ROOT / "deploy" / "supabase" / "postgres" / "runtime-schema.sql").read_text()
-    baseline_sql = (ROOT / "deploy" / "supabase" / "postgres" / "init.sql").read_text()
+    authority_sql = _schema_authority_sql()
 
     runtime_tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS\s+([a-z_]+)", runtime_source, re.IGNORECASE))
-    migrated_tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS\s+([a-z_]+)", baseline_sql + migration_sql, re.IGNORECASE))
+    migrated_tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS\s+([a-z_]+)", authority_sql, re.IGNORECASE))
     assert runtime_tables - migrated_tables == set()
 
     components = set(re.findall(r'ensure_postgres_schema_version\(conn,\s*"([^"]+)"', runtime_source))
     components.add("proxy_replay_log")
-    marker_section = migration_sql.split("-- Readiness markers: deliberately last.", 1)[1]
-    assert components == set(re.findall(r"'([a-z_]+)'", marker_section))
+    # Additive revisions own new components; replaying or modifying the old
+    # baseline must not be required just to make this guard recognize them.
+    marker_sections = re.findall(
+        r"INSERT INTO control_plane_schema_versions\s*\([^)]*\)(.*?)ON CONFLICT",
+        authority_sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    assert components == set(re.findall(r"'([a-z_]+)'", "\n".join(marker_sections)))
     assert migration_sql.rfind("INSERT INTO control_plane_schema_versions") > migration_sql.rfind("CREATE TABLE")
 
 

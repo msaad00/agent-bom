@@ -82,14 +82,29 @@ export function ReportsPanel() {
   };
 
   const download = async (job: ReportJobRecord) => {
-    if (!job.download_token) {
+    if (job.artifact_backend !== "s3" && !job.download_token) {
       setNotice({ tone: "error", text: "Download token unavailable for this report." });
       return;
     }
     setDownloadingId(job.job_id);
     setNotice(null);
     try {
-      const blob = await api.downloadReportArtifact(job.job_id, job.download_token);
+      if (job.artifact_backend === "s3") {
+        // Refresh the signed URL on click: terminal jobs are no longer polled.
+        // Navigate without forwarding API credentials or token headers to S3.
+        const fresh = await api.getReportJob(job.job_id);
+        const url = new URL(fresh.download_url ?? "");
+        if (url.protocol !== "https:") throw new Error("Secure report download URL unavailable.");
+        const anchor = document.createElement("a");
+        anchor.href = url.href;
+        anchor.rel = "noreferrer noopener";
+        anchor.download = `findings-${job.job_id.slice(0, 8)}.ndjson.gz`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        return;
+      }
+      const blob = await api.downloadReportArtifact(job.job_id, job.download_token!);
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;

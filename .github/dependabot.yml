@@ -59,6 +59,11 @@ updates:
     labels:
       - dependencies
       - python
+    # MCP 2 removes imported server APIs; migrate before widening pyproject.toml.
+    ignore:
+      - dependency-name: mcp
+        update-types:
+          - version-update:semver-major
     groups:
       security-updates:
         applies-to: security-updates

@@ -43,7 +43,7 @@ from agent_bom.api.tracing import (
 from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_line
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
-from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
+from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_jsonrpc_response, scan_tool_call
 from agent_bom.security import (
     redact_secret_url,
     require_recognized_launcher,
@@ -809,6 +809,23 @@ async def _send_webhook(url: str, payload: dict) -> None:
         logger.debug("Failed to send webhook to %s", redact_secret_url(url))
 
 
+def _response_scan_alerts(findings, subject: str):
+    """Convert shared response detections to transport-specific alert sinks."""
+    from agent_bom.runtime.detectors import Alert, AlertSeverity
+
+    return [
+        Alert(
+            detector=f"scanner:{finding.scanner}",
+            severity=AlertSeverity.CRITICAL
+            if finding.severity == "critical"
+            else (AlertSeverity.HIGH if finding.severity == "high" else AlertSeverity.MEDIUM),
+            message=f"Inline scan (response): {finding.scanner}/{finding.rule_id} from '{subject}'",
+            details={"rule_id": finding.rule_id, "excerpt": finding.excerpt, "confidence": finding.confidence},
+        )
+        for finding in findings
+    ]
+
+
 async def _proxy_sse_server(
     url: str,
     policy_path: Optional[str] = None,
@@ -860,19 +877,22 @@ async def _proxy_sse_server(
     seq_analyzer = SequenceAnalyzer()
     replay_detector = ReplayDetector()
     scan_config = load_scan_config(policy) if policy else ScanConfig()
-    runtime_alerts: list[dict] = []
     control_plane_tenant_id = (os.environ.get("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
 
     def _handle_alerts_sse(alerts, log_f=None):
         for alert in alerts:
             alert_dict = alert.to_dict()
-            runtime_alerts.append(alert_dict)
             logger.warning("Runtime alert: %s", sanitize_text(alert_dict.get("message", "runtime alert")))
             if log_f:
                 write_audit_record(log_f, alert_dict)
                 log_f.flush()
             if alert_webhook:
                 _fire_webhook(alert_webhook, alert_dict)
+
+    def _scan_response_sse(response: dict, subject: str) -> dict:
+        safe_response, findings = scan_jsonrpc_response(response, scan_config)
+        _handle_alerts_sse(_response_scan_alerts(findings, subject), log_file)
+        return safe_response
 
     declared_tools: set[str] = set()
 
@@ -931,7 +951,8 @@ async def _proxy_sse_server(
                             timeout=30,
                             headers=_proxy_request_headers(),
                         )
-                        sys.stdout.buffer.write((json.dumps(fwd.json()) + "\n").encode())
+                        response_data = _scan_response_sse(fwd.json(), str((msg or {}).get("method", "unknown")))
+                        sys.stdout.buffer.write((json.dumps(response_data) + "\n").encode())
                         sys.stdout.buffer.flush()
                     except Exception as exc:  # noqa: BLE001
                         logger.debug("SSE proxy: pass-through failed: %s", sanitize_text(exc))
@@ -1146,7 +1167,7 @@ async def _proxy_sse_server(
                     continue
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("SSE proxy: connection error for %s: %s", tool_name, sanitize_text(exc))
-                    error_resp = make_error_response(msg_id, -32603, f"Upstream connection error: {exc}")
+                    error_resp = make_error_response(msg_id, -32603, "Upstream connection error")
                     sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                     sys.stdout.buffer.flush()
                     continue
@@ -1160,6 +1181,7 @@ async def _proxy_sse_server(
                 ri_alerts = ResponseInspector().check(tool_name, resp_text)
                 _handle_alerts_sse(ri_alerts, log_file)
 
+                response_data = _scan_response_sse(response_data, tool_name)
                 response_data = _stitch_jsonrpc_trace_meta(response_data, request_trace_meta)
                 sys.stdout.buffer.write((json.dumps(response_data) + "\n").encode())
                 sys.stdout.buffer.flush()
@@ -2061,50 +2083,12 @@ async def run_proxy(
 
                 # Inline response scanning (PII, secrets, payload vuln)
                 if scan_config.enabled and "result" in msg:
-                    resp_text = json.dumps(msg.get("result", ""))
                     resp_id_scan = msg.get("id")
                     tool_for_scan = ""
                     if resp_id_scan is not None and resp_id_scan in pending_calls:
                         tool_for_scan = pending_calls[resp_id_scan][0]
-
-                    from agent_bom.runtime.detectors import Alert, AlertSeverity
-
-                    resp_results = scan_tool_response(resp_text, scan_config)
-                    for sr in resp_results:
-                        alert = Alert(
-                            detector=f"scanner:{sr.scanner}",
-                            severity=AlertSeverity.CRITICAL
-                            if sr.severity == "critical"
-                            else (AlertSeverity.HIGH if sr.severity == "high" else AlertSeverity.MEDIUM),
-                            message=f"Inline scan (response): {sr.scanner}/{sr.rule_id} from '{tool_for_scan or 'unknown'}'",
-                            details={"rule_id": sr.rule_id, "excerpt": sr.excerpt, "confidence": sr.confidence},
-                        )
-                        await _handle_alerts([alert], log_file)
-                    if scan_config.mode == "enforce" and any(sr.blocked for sr in resp_results):
-                        # Return a JSON-RPC error instead of modifying the result structure,
-                        # which preserves protocol compatibility with all MCP clients.
-                        msg.pop("result", None)
-                        msg["error"] = {
-                            "code": -32600,
-                            "message": "[BLOCKED] Security scanner detected sensitive content in response",
-                        }
-                        line = (json.dumps(msg) + "\n").encode()
-                    elif (
-                        scan_config.mode == "enforce"
-                        and scan_config.pii_action == "redact"
-                        and any(sr.scanner == "pii" for sr in resp_results)
-                    ):
-                        from agent_bom.proxy_scanner import redact_pii
-
-                        if isinstance(msg.get("result"), str):
-                            msg["result"] = redact_pii(msg["result"])
-                        elif isinstance(msg.get("result"), dict):
-                            redacted_text = redact_pii(json.dumps(msg["result"]))
-                            try:
-                                msg["result"] = json.loads(redacted_text)
-                            except json.JSONDecodeError:
-                                pass
-                        line = (json.dumps(msg) + "\n").encode()
+                    msg, resp_results = scan_jsonrpc_response(msg, scan_config)
+                    await _handle_alerts(_response_scan_alerts(resp_results, tool_for_scan or "unknown"), log_file)
 
                 # Complete latency tracking for tool call responses
                 resp_id = msg.get("id")

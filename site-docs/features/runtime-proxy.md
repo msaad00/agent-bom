@@ -75,6 +75,40 @@ Important containment limits:
 - `--url` SSE/HTTP proxy mode and the shared gateway govern remote MCP traffic
   but do not containerize the upstream server.
 
+## Inline response DLP
+
+Save this policy as `policy.json`, then connect a remote MCP server:
+
+```json
+{
+  "inline_scanning": {
+    "enabled": true,
+    "mode": "enforce",
+    "scanners": ["injection", "pii", "secrets", "payload_vuln"],
+    "pii_action": "redact"
+  }
+}
+```
+
+```bash
+agent-bom proxy --url https://mcp.example.com --policy policy.json --log audit.jsonl
+```
+
+The same `inline_scanning` policy applies to stdio and the SSE/HTTP proxy.
+Before returning a JSON-RPC result, enforcement replaces blocked content with
+an error (`-32600`) and preserves the request ID. PII redaction preserves the
+JSON result shape; if redaction fails or leaves detectable PII, the proxy blocks
+the result. Use `pii_action: "block"` to reject detected PII immediately.
+Resource and discovery responses pass through the same response checks.
+
+The artifact is the client's redacted result or protocol error, plus sanitized
+scanner alerts in `audit.jsonl`. Verify this with controlled sample content
+before connecting a production client. `mode: "audit"` reports detections and
+forwards the original result; disabled inline scanning also forwards it.
+These are result-content checks, not a guarantee that every possible secret
+format or image is detected. The gateway's `dlp_*` settings are configured
+separately; this policy belongs to `agent-bom proxy`.
+
 ## Audit JSONL example
 
 The proxy writes one sanitized JSON object per line. Durable records keep the

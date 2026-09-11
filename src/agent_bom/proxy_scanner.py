@@ -411,6 +411,43 @@ def redact_pii(text: str) -> str:
     return text
 
 
+def scan_jsonrpc_response(message: dict, config: ScanConfig) -> tuple[dict, list[ScanResult]]:
+    """Apply the same response policy to stdio and SSE/HTTP JSON-RPC results.
+
+    Audit mode leaves the response unchanged. Enforce mode replaces blocked
+    content with a protocol error or redacts PII while preserving JSON shape.
+    Failed redaction fails closed; the original result is never a fallback.
+    """
+    if not config.enabled or "result" not in message:
+        return message, []
+    response_text = json.dumps(message["result"], ensure_ascii=False)
+    findings = scan_tool_response(response_text, config)
+    if config.mode != "enforce" or not findings:
+        return message, findings
+
+    blocked = any(finding.blocked for finding in findings)
+    if not blocked and config.pii_action == "redact" and any(finding.scanner == "pii" for finding in findings):
+        try:
+            redacted = json.loads(redact_pii(response_text))
+            # Detection normalizes Unicode; literal redaction can miss an
+            # obfuscated match. Never forward PII that remains detectable.
+            remaining = scan_tool_response(json.dumps(redacted, ensure_ascii=False), config)
+            blocked = any(finding.blocked or finding.scanner == "pii" for finding in remaining)
+            if not blocked:
+                return {**message, "result": redacted}, findings
+        except (TypeError, ValueError):
+            blocked = True
+
+    if blocked:
+        safe_message = {key: value for key, value in message.items() if key != "result"}
+        safe_message["error"] = {
+            "code": -32600,
+            "message": "[BLOCKED] Security scanner detected sensitive content in response",
+        }
+        return safe_message, findings
+    return message, findings
+
+
 # ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------

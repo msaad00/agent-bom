@@ -123,15 +123,20 @@ class SQLReportJobStore:
             raise ValueError("A targeted claim requires both job and tenant")
         with self._connection(tenant_id, write=True) as conn:
             now = self._clock(conn)
-            scope = " AND job_id = ? AND tenant_id = ?" if job_id else ""
             args: tuple = (now,)
-            if job_id:
-                args += (job_id, tenant_id)
             # Bounded maintenance: retire at most 32 exhausted claims each tick.
             sql = (
                 "SELECT job_id, tenant_id, attempts FROM report_jobs WHERE "
-                "(status = 'pending' OR (status = 'running' AND lease_expires_at <= ?))" + scope + " ORDER BY created_at, job_id LIMIT 32"
+                "(status = 'pending' OR (status = 'running' AND lease_expires_at <= ?)) "
+                "ORDER BY created_at, job_id LIMIT 32"
             )
+            if job_id:
+                args += (job_id, tenant_id)
+                sql = (
+                    "SELECT job_id, tenant_id, attempts FROM report_jobs WHERE "
+                    "(status = 'pending' OR (status = 'running' AND lease_expires_at <= ?)) "
+                    "AND job_id = ? AND tenant_id = ? ORDER BY created_at, job_id LIMIT 32"
+                )
             if self.postgres:
                 sql += " FOR UPDATE SKIP LOCKED"
             rows = self._execute(conn, sql, args).fetchall()

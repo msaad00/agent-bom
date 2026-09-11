@@ -49,6 +49,34 @@ def _is_sbom_import(agent: Mapping[str, Any]) -> bool:
     )
 
 
+def _is_repository_inventory(agent: Mapping[str, Any]) -> bool:
+    """Recognize the explicit manifest-collector wrappers, not arbitrary agents."""
+    servers = agent.get("mcp_servers", [])
+    if not servers:
+        return False
+    if agent.get("source") == "repo-lockfiles":
+        return all(srv.get("surface") == "filesystem" and not srv.get("command") for srv in servers)
+    if agent.get("source") == "project":
+        return all(srv.get("surface") == "other" and srv.get("command") in {"project", "github-actions"} for srv in servers)
+    return False
+
+
+def _repository_manifest_directory(agent: Mapping[str, Any], server: Mapping[str, Any]) -> str:
+    if agent.get("source") == "repo-lockfiles":
+        label = str(server.get("name") or "").removeprefix("repo-deps:")
+        return "" if label == "root" else label
+    args = server.get("args") or []
+    root = str(agent.get("config_path") or "")
+    if args and root:
+        try:
+            relative = str(PurePath(str(args[0])).relative_to(PurePath(root)))
+            return "" if relative == "." else relative
+        except ValueError:
+            pass
+    label = str(server.get("name") or "")
+    return "" if label == str(agent.get("name") or "").removeprefix("project:") else label
+
+
 def build_unified_graph_from_report(
     report_json: dict[str, Any],
     *,
@@ -85,7 +113,11 @@ def build_unified_graph_from_report(
     blast_data = report_json.get("blast_radius", report_json.get("blast_radii", []))
     scan_sources = report_json.get("scan_sources", [])
     inferred_source = "sbom" if agents_data and all(_is_sbom_import(agent) for agent in agents_data) else "mcp-scan"
+    if agents_data and all(_is_repository_inventory(agent) for agent in agents_data):
+        inferred_source = str(agents_data[0]["source"])
     data_source_tag = scan_sources[0] if scan_sources else inferred_source
+
+    report_data_source = data_source_tag
 
     # Track shared resources for lateral movement edges
     server_to_agents: dict[str, list[str]] = defaultdict(list)
@@ -106,14 +138,20 @@ def build_unified_graph_from_report(
         agent_name = agent_dict.get("name", "unknown")
         agent_scope = _agent_identity_scope(agent_dict)
         sbom_import = _is_sbom_import(agent_dict)
+        repository_inventory = _is_repository_inventory(agent_dict)
+        static_inventory = sbom_import or repository_inventory
+        data_source_tag = str(agent_dict["source"]) if repository_inventory else report_data_source
+        inventory_type = EntityType.DIRECTORY if repository_inventory else EntityType.SOURCE_FILE
         agent_id = _agent_node_id(agent_name, agent_scope)
         if sbom_import:
             agent_id = f"source_file:sbom:{agent_id.removeprefix('agent:')}"
+        if repository_inventory:
+            agent_id = f"directory:repository:{agent_id.removeprefix('agent:')}"
         agent_node_key = agent_id.removeprefix("agent:")
         agent_type = agent_dict.get("type", agent_dict.get("agent_type", ""))
         provider_name = str(agent_dict.get("source") or "local").strip() or "local"
         # Import wrappers share the legacy Agent/MCPServer serialization shape.
-        # An SBOM documents packages; it does not establish a running agent.
+        # Static imports document packages; they do not establish running agents.
         if sbom_import:
             provider_name = "sbom"
         provider_id = f"provider:{provider_name}"
@@ -122,7 +160,7 @@ def build_unified_graph_from_report(
             agent_metadata = {}
         agent_discovery_provenance = sanitize_discovery_provenance(agent_dict.get("discovery_provenance"))
 
-        if not sbom_import:
+        if not static_inventory:
             graph.add_node(
                 UnifiedNode(
                     id=provider_id,
@@ -140,13 +178,15 @@ def build_unified_graph_from_report(
         graph.add_node(
             UnifiedNode(
                 id=agent_id,
-                entity_type=EntityType.SOURCE_FILE if sbom_import else EntityType.AGENT,
-                label=agent_name.removeprefix("sbom:") if sbom_import else agent_name,
+                entity_type=inventory_type if static_inventory else EntityType.AGENT,
+                label=agent_name.removeprefix("sbom:").removeprefix("project:").removeprefix("repo-deps:")
+                if static_inventory
+                else agent_name,
                 first_seen=str(agent_dict.get("discovered_at") or ""),
                 last_seen=str(agent_dict.get("last_seen") or agent_dict.get("discovered_at") or ""),
                 attributes={
                     "agent_type": agent_type,
-                    "canonical_id": (canonical_graph_node_id(EntityType.SOURCE_FILE.value, agent_id) if sbom_import else None)
+                    "canonical_id": (canonical_graph_node_id(inventory_type.value, agent_id) if static_inventory else None)
                     or agent_dict.get("canonical_id")
                     or (
                         canonical_agent_id(agent_type, agent_name, source_id=agent_scope)
@@ -174,8 +214,8 @@ def build_unified_graph_from_report(
                     "cloud_principal": agent_metadata.get("cloud_principal"),
                 },
                 dimensions=NodeDimensions(
-                    agent_type="" if sbom_import else agent_type,
-                    surface="sbom" if sbom_import else "",
+                    agent_type="" if static_inventory else agent_type,
+                    surface="code" if repository_inventory else "sbom" if sbom_import else "",
                     environment=agent_env,
                 ),
                 data_sources=[data_source_tag],
@@ -185,7 +225,7 @@ def build_unified_graph_from_report(
         config_path = str(agent_dict.get("config_path", "") or "").strip()
         if config_path:
             agent_config_path_to_id[config_path] = agent_id
-        if not sbom_import:
+        if not static_inventory:
             graph.add_edge(
                 UnifiedEdge(
                     source=provider_id,
@@ -205,8 +245,27 @@ def build_unified_graph_from_report(
             srv_name = srv_dict.get("name", "unknown")
             srv_id = agent_id if sbom_import else f"server:{agent_node_key}:{srv_name}"
             surface = srv_dict.get("surface", "mcp-server")
+            if repository_inventory:
+                srv_id = f"directory:manifest:{agent_node_key}:{srv_name}"
+                graph.add_node(
+                    UnifiedNode(
+                        id=srv_id,
+                        entity_type=EntityType.DIRECTORY,
+                        label=srv_name,
+                        attributes={
+                            "source": data_source_tag,
+                            "inventory_role": "manifest_dependencies",
+                            "manifest_directory": _repository_manifest_directory(agent_dict, srv_dict),
+                            "canonical_id": canonical_graph_node_id(EntityType.DIRECTORY.value, srv_id),
+                            "environment": agent_env,
+                        },
+                        dimensions=NodeDimensions(surface="code", environment=agent_env),
+                        data_sources=[data_source_tag],
+                    )
+                )
+                graph.add_edge(UnifiedEdge(source=agent_id, target=srv_id, relationship=RelationshipType.CONTAINS))
 
-            if not sbom_import:
+            if not static_inventory:
                 graph.add_node(
                     UnifiedNode(
                         id=srv_id,
@@ -241,7 +300,7 @@ def build_unified_graph_from_report(
                     )
                 )
             server_name_to_ids[srv_name].append(srv_id)
-            if not sbom_import:
+            if not static_inventory:
                 graph.add_edge(
                     UnifiedEdge(
                         source=agent_id,
@@ -324,7 +383,7 @@ def build_unified_graph_from_report(
                             )
                         )
 
-            if sbom_import:
+            if static_inventory:
                 # Runtime capability/credential assertions require runtime sources.
                 continue
 
@@ -456,6 +515,7 @@ def build_unified_graph_from_report(
                         )
                     )
 
+    data_source_tag = report_data_source
     for vuln_node_id, srv_id, pkg_id, package_evidence, severity in pending_exploitable_edges:
         _add_exploitable_via_edges(
             graph,

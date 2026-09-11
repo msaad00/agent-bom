@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from agent_bom.graph.builder import build_unified_graph_from_report
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.repo_structure_overlay import apply_repo_structure_overlay
@@ -98,8 +100,22 @@ def _repo_report() -> dict:
     }
 
 
-def test_repo_scan_emits_directory_tree_and_file_dependency_vuln_paths() -> None:
-    graph = build_unified_graph_from_report(_repo_report())
+@pytest.mark.parametrize("source", ["local", "project", "repo-lockfiles"])
+def test_repo_scan_emits_directory_tree_and_file_dependency_vuln_paths(source) -> None:
+    report = _repo_report()
+    agent = report["agents"][0]
+    if source != "local":
+        agent.update(source=source, name="project:repo", config_path="/repo")
+        for server in agent["mcp_servers"]:
+            directory = server["name"]
+            if source == "project":
+                server.update(command="project", surface="other", args=[f"/repo/{directory}"])
+                server["name"] = directory or "repo"
+            else:
+                server.update(command="", surface="filesystem", name=f"repo-deps:{directory or 'root'}")
+    graph = build_unified_graph_from_report(report)
+    if source != "local":
+        assert not any(n.entity_type in {EntityType.AGENT, EntityType.SERVER} for n in graph.nodes.values())
 
     # Directory nodes: repo root + the nested ui/ directory, both CODE layer.
     dir_ids = {n.id for n in graph.nodes.values() if n.entity_type == EntityType.DIRECTORY}

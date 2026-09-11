@@ -660,29 +660,33 @@ def _row_vuln_id(finding: dict[str, Any]) -> str:
     return str(finding.get("cve_id") or finding.get("vulnerability_id") or "").strip()
 
 
-def _package_base_name(finding: dict[str, Any]) -> str:
-    """Return the bare package name (no version) shared across representations.
-
-    Blast-radius rows carry ``pkg@version`` while package-vulnerability rows
-    carry a bare ``package`` + separate ``package_version``; the unified stream
-    encodes it only in the ``"CVE-…: pkg@version"`` title. Strip all three to a
-    common lowercase base so the same vuln+package folds to one canonical group.
-    """
-    package = str(finding.get("package") or finding.get("package_name") or "").strip()
+def _package_identity(finding: dict[str, Any]) -> tuple[str, str, str]:
+    """Read package identity across unified, blast-radius and nested projections."""
+    evidence = finding.get("evidence")
+    evidence = evidence if isinstance(evidence, dict) else {}
+    package = str(finding.get("package") or finding.get("package_name") or evidence.get("package_name") or "").strip()
     if not package:
         title = str(finding.get("title") or "")
         if ": " in title:
             package = title.split(": ", 1)[1].strip()
-    if "@" in package:
-        package = package.split("@", 1)[0]
-    return package.strip().lower()
+    version = str(finding.get("package_version") or evidence.get("package_version") or "").strip()
+    # npm scoped names start with @; only a later @ separates the version.
+    if "@" in package[1:]:
+        package, suffix = package.rsplit("@", 1)
+        version = version or suffix
+    ecosystem = str(finding.get("ecosystem") or evidence.get("ecosystem") or "").strip().lower()
+    return package.lower(), version, ecosystem
+
+
+def _package_base_name(finding: dict[str, Any]) -> str:
+    return _package_identity(finding)[0]
 
 
 def _canonical_group_key(finding: dict[str, Any]) -> str:
     """Collapse the three per-CVE representations onto one grouping key.
 
     Findings that carry a CVE/advisory id group by
-    ``(vuln_id, package_base, asset)`` so the ``MCP_SCAN`` (unified),
+    ``(vuln_id, package_name, version, ecosystem, asset)`` so the unified,
     ``blast_radius`` and ``package_vulnerability`` rows for the *same
     vulnerability on the same asset* merge into a single list row. Non-CVE
     findings (posture, malicious-package, etc.) fall back to their stable
@@ -702,7 +706,8 @@ def _canonical_group_key(finding: dict[str, Any]) -> str:
     """
     vuln = _row_vuln_id(finding)
     if vuln:
-        return f"vuln:{vuln.lower()}:{_package_base_name(finding)}:{_row_asset_key(finding)}"
+        name, version, ecosystem = _package_identity(finding)
+        return f"vuln:{vuln.lower()}:{name}:{version}:{ecosystem}:{_row_asset_key(finding)}"
     return f"id:{_finding_identity(finding)}"
 
 
@@ -1112,23 +1117,37 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     # step with the overview count instead of emitting one row per representation.
     grouped: dict[str, dict[str, Any]] = {}
     order: list[str] = []
+    package_groups: dict[tuple[str, str], list[str]] = {}
 
     def _absorb(row: dict[str, Any]) -> None:
         key = _canonical_group_key(row)
         # Older persisted blast/package projections did not carry ``asset``.
-        # If exactly one authoritative row already exists for this
-        # vulnerability+package, fold the anonymous compatibility row into it.
-        # Never guess when multiple assets match: preserving a separate row is
-        # safer than silently combining distinct estate assets.
-        if _row_vuln_id(row) and not _row_asset_key(row):
-            prefix = f"vuln:{_row_vuln_id(row).lower()}:{_package_base_name(row)}:"
-            candidates = [candidate for candidate in order if candidate.startswith(prefix)]
+        # Match known version/ecosystem fields before backfilling. A missing
+        # field can match one unambiguous representation; conflicting known
+        # versions cannot. Never guess when multiple assets match. Index by
+        # vulnerability/package rather than rescanning every estate finding.
+        if _row_vuln_id(row) and key not in grouped:
+            name, version, ecosystem = _package_identity(row)
+            candidates = []
+            for candidate in package_groups.get((_row_vuln_id(row).lower(), name), []):
+                if _row_asset_key(row) and _row_asset_key(row) != _row_asset_key(grouped[candidate]):
+                    continue
+                _, candidate_version, candidate_ecosystem = _package_identity(grouped[candidate])
+                if version and candidate_version and version != candidate_version:
+                    continue
+                if ecosystem and candidate_ecosystem and ecosystem != candidate_ecosystem:
+                    continue
+                candidates.append(candidate)
+                if len(candidates) > 1:
+                    break  # Ambiguous asset identity; never merge distinct assets.
             if len(candidates) == 1:
                 key = candidates[0]
         existing = grouped.get(key)
         if existing is None:
             grouped[key] = row
             order.append(key)
+            if _row_vuln_id(row):
+                package_groups.setdefault((_row_vuln_id(row).lower(), _package_base_name(row)), []).append(key)
             return
         _backfill_supplementary_fields(existing, row)
 

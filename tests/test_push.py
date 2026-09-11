@@ -476,3 +476,33 @@ class TestNormalizeScanPushUrl:
 
         once = normalize_scan_push_url("http://127.0.0.1:8422")
         assert normalize_scan_push_url(once) == once
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+def test_push_serializes_once_and_retries_identical_sanitized_bytes(monkeypatch, compressed):
+    import gzip
+    import json
+
+    from agent_bom import config
+
+    monkeypatch.setattr(config, "PUSH_GZIP", compressed)
+    responses = [AsyncMock(status_code=503), AsyncMock(status_code=201)]
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=responses)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    original = {
+        "agents": [{"name": "repo", "config_path": "/private/config", "metadata": {"api_token": "private-value"}}],
+        "packages": [{"name": f"package-{i}"} for i in range(1000)],
+    }
+    with patch("agent_bom.http_client.create_client", return_value=mock_client), patch("agent_bom.security.validate_url"):
+        assert asyncio.run(_push_async("http://localhost:8422/v1/results/push", original, max_attempts=2, base_delay_seconds=0))
+    first, second = mock_client.post.call_args_list
+    assert first.kwargs["content"] is second.kwargs["content"]
+    raw = gzip.decompress(first.kwargs["content"]) if compressed else first.kwargs["content"]
+    decoded = json.loads(raw)
+    assert len(decoded["packages"]) == 1000
+    assert decoded["agents"][0]["metadata"]["api_token"] == "***REDACTED***"
+    assert "config_path" not in decoded["agents"][0]
+    assert original["agents"][0]["config_path"] == "/private/config"
+    assert original["agents"][0]["metadata"]["api_token"] == "private-value"
+    assert first.kwargs["headers"].get("Content-Encoding") == ("gzip" if compressed else None)

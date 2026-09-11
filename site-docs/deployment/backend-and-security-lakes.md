@@ -124,6 +124,17 @@ leaves the Parquet file available for retry. Catalog credentials remain in
 `AGENT_BOM_ICEBERG_CREDENTIAL` or `AGENT_BOM_ICEBERG_TOKEN`; they are never CLI
 arguments or output fields.
 
+### Lake schema evolution
+
+Parquet schema version 5 appends nullable `sla_due_at_source` after the original
+40 columns, retaining their names and types. Read the
+`agent_bom.parquet_schema_version` metadata and select columns by name.
+Version 0.104.0 emitted that extra field inside the version-4 column block;
+its positional layout must not be assumed to match the earlier 40-column v4
+layout. Iceberg evolution matches names and retains existing field IDs, so
+existing catalog tables keep their original column identity and row values.
+The new field is nullable for older snapshots; it does not infer SLA provenance.
+
 ## Snowflake and Databricks
 
 Both are valid security-lake destinations in real customer environments.

@@ -26,10 +26,10 @@ from agent_bom.security import sanitize_sensitive_payload
 # Lake/Parquet schema version. v1 = the CVE+malicious 28-column table; v2 added
 # unified finding identity; v3 appends scan provenance, source/asset identity,
 # and persisted workflow context; v4 appends transitive runtime reach
-# provenance. Every evolution is additive: no prior column
+# provenance; v5 appends SLA deadline provenance. Every evolution is additive: no prior column
 # is renamed, retyped, or reordered, so existing Iceberg/lake consumers keep
 # reading their original projection unchanged.
-PARQUET_SCHEMA_VERSION = "4"
+PARQUET_SCHEMA_VERSION = "5"
 
 _COLUMNS = [
     "cve_id",
@@ -211,10 +211,10 @@ def _schema(pa):
             ("asset_identifier", pa.string()),
             ("owner", pa.string()),
             ("sla_due_at", pa.string()),
-            ("sla_due_at_source", pa.string()),
             ("lifecycle_status", pa.string()),
             ("symbol_reachability_reason", pa.string()),
             ("runtime_dependency_chain", pa.string()),
+            ("sla_due_at_source", pa.string()),
         ],
         metadata={b"agent_bom.parquet_schema_version": PARQUET_SCHEMA_VERSION.encode()},
     )

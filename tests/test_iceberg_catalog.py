@@ -207,9 +207,9 @@ def test_round_trip_against_fake_catalog() -> None:
     table = fake.tables["lake.cves"]
     # Schema handed to Iceberg is the same additively versioned schema emitted
     # by the flat Parquet artifact.
-    assert len(table.schema()) == 40
+    assert len(table.schema()) == 41
     assert table.schema().names[0] == "cve_id"
-    assert table.schema().names[-3:] == ["lifecycle_status", "symbol_reachability_reason", "runtime_dependency_chain"]
+    assert table.schema().names[-4:] == ["lifecycle_status", "symbol_reachability_reason", "runtime_dependency_chain", "sla_due_at_source"]
     assert len(table.appended) == 1
     assert table.appended[0].num_rows == 1
     assert result == {
@@ -259,7 +259,7 @@ def test_existing_additive_table_schema_is_evolved_before_append() -> None:
     assert len(legacy.appended) == 1
 
 
-def test_real_pyiceberg_catalog_evolves_v2_and_commits_v4_snapshot(tmp_path) -> None:
+def test_real_pyiceberg_catalog_evolves_v2_and_commits_v5_snapshot(tmp_path) -> None:
     pytest.importorskip("pyiceberg")
     from pyiceberg.catalog.memory import InMemoryCatalog
 
@@ -280,7 +280,7 @@ def test_real_pyiceberg_catalog_evolves_v2_and_commits_v4_snapshot(tmp_path) -> 
     )
 
     table = catalog.load_table(f"{DEFAULT_NAMESPACE}.{DEFAULT_TABLE}")
-    assert len(table.schema().fields) == 40
+    assert len(table.schema().fields) == 41
     assert table.scan().to_arrow().num_rows == 1
     assert result["rows"] == 1
     assert result["snapshot_id"] is not None
@@ -296,3 +296,26 @@ def test_maybe_register_uses_env(monkeypatch) -> None:
     assert result is not None
     assert result["identifier"] == f"{DEFAULT_NAMESPACE}.{DEFAULT_TABLE}"
     assert fake.tables[result["identifier"]].appended[0].num_rows == 1
+
+
+def test_v4_field_ids_and_rows_survive_v5_sla_provenance_append(tmp_path):
+    pytest.importorskip("pyiceberg")
+    from pyiceberg.catalog.memory import InMemoryCatalog
+
+    report, br = _report()
+    current = iceberg_catalog.to_arrow_table(report, [br])
+    legacy = current.drop(["sla_due_at_source"])
+    catalog = InMemoryCatalog("v4-upgrade", warehouse=f"file://{tmp_path.resolve()}")
+    catalog.create_namespace((DEFAULT_NAMESPACE,))
+    table = catalog.create_table(f"{DEFAULT_NAMESPACE}.{DEFAULT_TABLE}", schema=legacy.schema)
+    table.append(legacy)
+    old_ids = {field.name: field.field_id for field in table.schema().fields}
+    register_findings(report, IcebergCatalogConfig(catalog_url="memory://"), [br], catalog=catalog)
+    after = catalog.load_table(f"{DEFAULT_NAMESPACE}.{DEFAULT_TABLE}")
+    assert after.scan().to_arrow().num_rows == 2
+    for field in after.schema().fields:
+        if field.name in old_ids:
+            assert field.field_id == old_ids[field.name]
+    assert [field.name for field in after.schema().fields][-1] == "sla_due_at_source"
+    rows = after.scan().to_arrow().to_pylist()
+    assert sorted(row["cve_id"] for row in rows) == [legacy["cve_id"][0].as_py()] * 2

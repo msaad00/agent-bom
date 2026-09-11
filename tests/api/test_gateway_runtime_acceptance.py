@@ -7,7 +7,10 @@ DLP text scanning, delivery, ingest, persistence and stream routing execute.
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
+from itertools import count
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -43,8 +46,11 @@ def _reset_managed_profile_state():
     agent_identity.set_local_identity_verifier(None)
 
 
-@pytest.mark.parametrize("outcome", ["allow", "profile_block", "policy_block", "pii", "secret", "visual"])
-def test_gateway_call_survives_ingest_restart_and_authenticated_reconnect(tmp_path, monkeypatch, outcome):
+@pytest.mark.parametrize(
+    ("outcome", "read_delay"),
+    [(outcome, 0) for outcome in ["allow", "profile_block", "policy_block", "pii", "secret", "visual"]] + [("pii", 0.06)],
+)
+def test_gateway_call_survives_ingest_restart_and_authenticated_reconnect(tmp_path, monkeypatch, outcome, read_delay):
     secret = "runtime-acceptance-proxy-secret-32-bytes"
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
@@ -52,6 +58,19 @@ def test_gateway_call_survives_ingest_restart_and_authenticated_reconnect(tmp_pa
     monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "runtime-acceptance-browser-signing-key")
     monkeypatch.setattr(gateway_feed, "_STREAM_MAX_SECONDS", 0.04)
     monkeypatch.setattr(gateway_feed, "_STREAM_POLL_SECONDS", 0.001)
+    # This exercises ledger/auth/reconnect behavior, not runner scheduling.
+    # A real 40 ms deadline can expire before the first SQLite read finishes.
+    # Isolate the stream clock without changing the event loop's real clock.
+    stream_clock = count(0.0, 0.005)
+    monkeypatch.setattr(gateway_feed, "time", SimpleNamespace(monotonic=lambda: next(stream_clock)))
+    if read_delay:
+        read_page = gateway_feed._read_stream_page
+
+        def delayed_read(*args):
+            time.sleep(read_delay)
+            return read_page(*args)
+
+        monkeypatch.setattr(gateway_feed, "_read_stream_page", delayed_read)
     configure_api(api_key=None)
     database = str(tmp_path / "activity.db")
     ledger = SQLiteGatewayActivityStore(database)

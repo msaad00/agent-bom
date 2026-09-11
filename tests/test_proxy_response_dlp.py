@@ -101,6 +101,11 @@ def test_redaction_failure_blocks_instead_of_forwarding_original(monkeypatch):
     assert safe["error"]["code"] == -32600
 
 
+def test_adjacent_email_matches_are_both_redacted():
+    safe, _ = scan_jsonrpc_response(_response("alice@example.com_bob@example.net"), ScanConfig(enabled=True))
+    assert safe["result"]["content"][0]["text"] == "[REDACTED:email][REDACTED:email]"
+
+
 def test_normalized_pii_that_literal_redaction_misses_fails_closed():
     safe, _ = scan_jsonrpc_response(_response("ａｌｉｃｅ＠ｅｘａｍｐｌｅ．ｃｏｍ"), ScanConfig(enabled=True))
     assert "result" not in safe
@@ -117,7 +122,10 @@ def test_long_ordinary_response_does_not_backtrack_quadratically():
             "from agent_bom.proxy_scanner import ScanConfig, scan_jsonrpc_response; "
             "message = {'jsonrpc': '2.0', 'id': 1, 'result': 'a' * 200_000}; "
             "safe, findings = scan_jsonrpc_response(message, ScanConfig(enabled=True)); "
-            "assert safe == message and findings == []",
+            "assert safe == message and findings == []; "
+            "message['result'] = 'alice@example.com ' + message['result']; "
+            "safe, findings = scan_jsonrpc_response(message, ScanConfig(enabled=True)); "
+            "assert safe['result'] == '[REDACTED:email] ' + 'a' * 200_000 and findings",
         ],
         check=True,
         timeout=10,

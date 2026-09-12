@@ -165,3 +165,36 @@ def test_stdio_response_policy_uses_shared_enforcement(tmp_path, monkeypatch, te
         assert written["error"]["code"] == -32600
     else:
         assert written["result"]["content"][0]["text"] == "[REDACTED:email]"
+
+
+@pytest.mark.parametrize("exit_status", [0, 17])
+def test_stdio_eof_waits_for_child_watcher_before_signaling(tmp_path, monkeypatch, exit_status):
+    """EOF is observable before asyncio publishes the child's exit status."""
+    process = MagicMock()
+    process.returncode = None
+    process.stdout.readline = AsyncMock(return_value=b"")
+    process.stderr.readline = AsyncMock(return_value=b"")
+
+    async def collect_exit():
+        await asyncio.sleep(0)
+        process.returncode = exit_status
+        return exit_status
+
+    process.wait = AsyncMock(side_effect=collect_exit)
+    process.terminate.side_effect = AssertionError("signaled before the child watcher collected normal exit")
+    monkeypatch.setattr(proxy.asyncio, "create_subprocess_exec", AsyncMock(return_value=process))
+    monkeypatch.setattr(proxy, "create_async_stdin_reader", AsyncMock(return_value=object()))
+    monkeypatch.setattr(proxy, "read_async_stdin_line", AsyncMock(return_value=b""))
+    assert asyncio.run(proxy.run_proxy(["python3", "-c", "pass"], metrics_port=0)) == exit_status
+    process.wait.assert_awaited_once()
+    process.terminate.assert_not_called()
+    process.kill.assert_not_called()
+
+
+def test_server_cleanup_escalates_and_reaps_after_kill(monkeypatch):
+    process = MagicMock(returncode=None)
+    process.wait = AsyncMock(side_effect=[asyncio.TimeoutError, asyncio.TimeoutError, -9])
+    asyncio.run(proxy._reap_server(process, grace_seconds=0.1))
+    process.terminate.assert_called_once()
+    process.kill.assert_called_once()
+    assert process.wait.await_count == 3

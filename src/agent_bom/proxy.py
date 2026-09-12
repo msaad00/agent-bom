@@ -1193,6 +1193,34 @@ async def _proxy_sse_server(
     return 0
 
 
+async def _reap_server(process: asyncio.subprocess.Process, *, grace_seconds: float = 1.0) -> None:
+    """Allow the child watcher to observe normal exit before signaling a server.
+
+    Stream EOF can precede the watcher callback. Signaling during that window
+    races Python 3.11's waitpid ownership and can replace the real status with
+    255 (CPython issue 87744). Unresponsive servers still receive TERM/KILL.
+    """
+    try:
+        await asyncio.wait_for(process.wait(), timeout=grace_seconds)
+        return
+    except asyncio.TimeoutError:
+        pass
+    if process.returncode is None:
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass  # The watcher still owns collecting the exit status.
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5.0)
+    except asyncio.TimeoutError:
+        if process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        await process.wait()
+
+
 async def run_proxy(
     server_cmd: list[str],
     policy_path: Optional[str] = None,
@@ -2172,11 +2200,6 @@ async def run_proxy(
         clear_firewall_evaluator()
         if firewall_client is not None:
             await firewall_client.aclose()
-        if process.returncode is None:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                process.kill()
+        await _reap_server(process)
 
     return process.returncode or 0

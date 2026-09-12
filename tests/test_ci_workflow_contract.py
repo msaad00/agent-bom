@@ -433,3 +433,22 @@ def test_alpine_installs_jq_for_registry_selector_contracts() -> None:
     commands = [line for line in install["run"].splitlines() if "apk add --no-cache" in line]
     assert commands
     assert all("jq" in command.replace(";", " ").split() for command in commands)
+
+
+def test_pip_audit_reuses_only_proven_identical_dependency_inputs() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/pr-security-gate.yml").read_text())
+    jobs = workflow["jobs"]
+    assert "python_dependencies" in jobs["changes"]["outputs"]
+    steps = jobs["pip-audit-pr"]["steps"]
+    reuse = next(step for step in steps if step.get("name") == "Reuse audit for unchanged Python dependency inputs")
+    base = next(step for step in steps if step.get("name") == "Run pip-audit on PR base for delta comparison")
+    assert "github.event_name == 'pull_request'" in reuse["if"]
+    assert "needs.changes.result == 'success'" in reuse["if"]
+    assert "needs.changes.outputs.python_dependencies == 'false'" in reuse["if"]
+    assert reuse["run"] == "cp audit.json base-audit.json"
+    assert "needs.changes.result != 'success'" in base["if"]
+    assert "needs.changes.outputs.python_dependencies != 'false'" in base["if"]
+    assert "github.event.pull_request.base.sha" in base["run"]
+    assert "github.base_ref" not in base["run"]
+    evaluate = next(step for step in steps if step.get("name") == "Evaluate pip-audit gate")
+    assert "--mode delta" in evaluate["run"] and "--mode strict" in evaluate["run"]

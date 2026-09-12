@@ -110,6 +110,23 @@ class TestSelfScanInventory:
 class TestSelfScanCLI:
     """Integration tests for --self-scan via CLI runner."""
 
+    def test_self_scan_does_not_discover_unrequested_cwd_skills(self, tmp_path, monkeypatch):
+        """Installed-distribution scans must not inherit unrelated CWD gaps."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "node_modules").mkdir()
+        with patch("agent_bom.parsers.skills.discover_skill_files", return_value=[]) as discover:
+            result = CliRunner().invoke(main, ["scan", "--self-scan", "--no-scan", "--quiet"])
+        assert result.exit_code == 0, result.output
+        discover.assert_not_called()
+
+    def test_self_scan_preserves_explicit_skill_directory(self, tmp_path, monkeypatch):
+        """Suppress only implicit discovery, not the user's explicit target."""
+        monkeypatch.chdir(tmp_path)
+        with patch("agent_bom.parsers.skills.discover_skill_files", return_value=[]) as discover:
+            result = CliRunner().invoke(main, ["scan", "--self-scan", "--no-scan", "--quiet", "--skill", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        discover.assert_called_once_with(tmp_path)
+
     def test_self_scan_flag_runs(self):
         """--self-scan executes without crashing."""
         runner = CliRunner()

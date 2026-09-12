@@ -323,6 +323,11 @@ def test_sarif_result_taxa_use_compact_resolvable_index_references(sarif_doc: di
     for result in tagged_results:
         resolved: set[tuple[str, str]] = set()
         for reference in result["taxa"]:
+            if reference.get("toolComponent", {}).get("name") == "CWE":
+                taxonomy = next(t for t in run["taxonomies"] if t.get("guid") == reference["toolComponent"]["guid"])
+                assert any(t["guid"] == reference["guid"] and t["id"] == reference["id"] for t in taxonomy["taxa"])
+                assert f"CWE-{reference['id']}" in result["properties"]["cwe_ids"]
+                continue
             assert set(reference) == {"index", "toolComponent"}
             assert set(reference["toolComponent"]) == {"index"}
             extension = extensions[reference["toolComponent"]["index"]]

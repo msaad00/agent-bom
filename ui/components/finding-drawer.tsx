@@ -234,8 +234,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
   const scope = findingWorkloadScope(vuln);
   const references = officialAdvisoryLinks(vuln.references);
   const whyItMatters = buildWhyItMatters(vuln);
-  const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "";
-  const cweMatches = [...new Set(summary.match(/CWE-\d+/gi) ?? [])];
+  const cweIds = uniqueStrings(vuln.cwe_ids ?? []);
   const investigationSources = uniqueStrings([...vuln.sources, ...vuln.advisory_sources]);
   const complianceControls = uniqueStrings([
     ...(vuln.framework_tags ?? []),
@@ -263,7 +262,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
         <div className="space-y-3">
           <TagList label="Signals" values={investigationSources} />
           <TagList label="Aliases" values={vuln.aliases ?? []} mono />
-          <TagList label="Weaknesses" values={cweMatches} mono />
+          <TagList label="Weaknesses" values={cweIds} mono />
           {references.length > 0 ? (
             <div className="space-y-2">
               <div className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">Advisories</div>

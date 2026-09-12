@@ -335,6 +335,7 @@ describe("FindingsPage", () => {
           cvss_severity: "high",
           cve_id: "CVE-2026-4242",
           title: "PyYAML unsafe deserialization",
+          cwe_ids: ["CWE-502"],
           asset: { name: "pyyaml", asset_type: "package" },
           source: "osv",
           scan_id: "scan-intel-1",
@@ -401,6 +402,7 @@ describe("FindingsPage", () => {
     expect(within(drawer).getByText("package-owner")).toBeInTheDocument();
     expect(within(drawer).getByLabelText(/^SLA:/)).toBeInTheDocument();
     fireEvent.click(within(drawer).getByRole("tab", { name: "Evidence" }));
+    expect(within(drawer).getByText("CWE-502")).toBeInTheDocument();
     expect(within(drawer).getByText("v3.1 · high")).toBeInTheDocument();
     expect(within(drawer).getByText("97.5th percentile")).toBeInTheDocument();
     expect(within(drawer).getByText("Known exploited")).toBeInTheDocument();

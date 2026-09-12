@@ -135,6 +135,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       description: finding.description ?? finding.title,
       references,
       advisory_sources: advisorySources,
+      cwe_ids: uniqueStrings(finding.cwe_ids ?? []),
       aliases: uniqueStrings([
         ...(finding.aliases ?? []),
         ...(finding.advisory_aliases ?? []),

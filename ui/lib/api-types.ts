@@ -1330,6 +1330,7 @@ export interface Vulnerability {
   /** API v2 field — same as description */
   summary?: string | undefined;
   description?: string | undefined;
+  cwe_ids?: string[] | undefined;
   references?: string[] | undefined;
   advisory_sources?: string[] | undefined;
   aliases?: string[] | undefined;

@@ -1,9 +1,9 @@
 {
   "release_version": "0.104.0",
-  "captured_at": "2026-09-11T14:40:51.842Z",
-  "source_commit": "17ce55c25ea6b4967f0ea7d2f37dcb8a8450b09e",
+  "captured_at": "2026-09-12T18:15:49.021Z",
+  "source_commit": "310d359ad29139094dcc142c079d9aba46f801c6",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:0f13e95cbc8156d658102d1a5568318e8e4f94da93f346d4b1da693fba311920",
+  "capture_inputs_sha256": "sha256:85a370d94337a5389c2157318a87136235daaf1776b7ce302360f64bb06bd549",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -60,7 +60,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.104.0",
-      "sha256": "sha256:12d1cafac7bc0f60c5ef28776873931b0a6e01a90ad43a3f1c16e49f20c5a892"
+      "sha256": "sha256:df42e0fe597036bc4ae9612c6071342882ccd5450dd0784ddc517cb0a72c2c09"
     },
     {
       "presentation": "dark desktop",
@@ -201,7 +201,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.104.0",
-      "sha256": "sha256:6994f9b79ef82722dec6a3b82d5dd7cc53b929e7662dd54767c8ff5166f8be8b"
+      "sha256": "sha256:4e9d5f632c4ec31c7e109a4e8af6b575ebdaa30e565d624fa19efcbae95085f9"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability",
       "scope": "Focused highest-risk directed path from identity source through agent, MCP, package, and finding",
       "visible_version": "0.104.0",
-      "sha256": "sha256:0acbaf927cf78d6b20ecb4ca178a7154a19b9b077cbef3aadca57bbfa71cb9ba"
+      "sha256": "sha256:b1fe78696b6cee6559f051cf502c4b976684debd45d0b6d3d9e302ca5997120c"
     },
     {
       "presentation": "dark desktop",

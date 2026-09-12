@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
@@ -342,6 +343,64 @@ def _build_run_taxonomies(results: list[dict]) -> list[dict]:
             }
         )
     return taxonomies
+
+
+def _attach_cwe_taxonomy(results: list[dict], rules: list[dict]) -> dict | None:
+    """Link structured finding CWEs to SARIF's standard CWE taxonomy.
+
+    GUIDs resolve taxonomy descriptors per SARIF 2.1.0 sections 3.52-3.54;
+    names are display labels only. Rule mappings are relevant associations:
+    a shared rule must not assign every observed CWE to all of its results.
+    """
+    taxonomy_guid = str(uuid.uuid5(uuid.NAMESPACE_URL, "https://cwe.mitre.org/"))
+
+    def taxon_guid(value: str) -> str:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"https://cwe.mitre.org/data/definitions/{value}.html"))
+
+    def reference(value: str) -> dict:
+        return {"id": value, "guid": taxon_guid(value), "toolComponent": {"name": "CWE", "guid": taxonomy_guid}}
+
+    by_rule: dict[str, set[str]] = {}
+    all_ids: set[str] = set()
+    for result in results:
+        cwes = sorted(
+            {
+                value[4:]
+                for value in result.get("properties", {}).get("cwe_ids", [])
+                if isinstance(value, str) and re.fullmatch(r"CWE-[1-9][0-9]{0,8}", value)
+            },
+            key=int,
+        )
+        if not cwes:
+            continue
+        all_ids.update(cwes)
+        by_rule.setdefault(result["ruleId"], set()).update(cwes)
+        result.setdefault("taxa", []).extend(reference(value) for value in cwes)
+    if not all_ids:
+        return None
+    for rule in rules:
+        rule_cwes = by_rule.get(rule["id"], set())
+        if rule_cwes:
+            rule.setdefault("relationships", []).extend(
+                {"target": reference(value), "kinds": ["relevant"]} for value in sorted(rule_cwes, key=int)
+            )
+    return {
+        "name": "CWE",
+        "guid": taxonomy_guid,
+        "fullName": "Common Weakness Enumeration",
+        "informationUri": "https://cwe.mitre.org/",
+        "organization": "MITRE",
+        "isComprehensive": False,
+        "taxa": [
+            {
+                "id": value,
+                "guid": taxon_guid(value),
+                "name": f"CWE-{value}",
+                "helpUri": f"https://cwe.mitre.org/data/definitions/{value}.html",
+            }
+            for value in sorted(all_ids, key=int)
+        ],
+    }
 
 
 def _taxonomies_as_tool_extensions(taxonomies: list[dict]) -> list[dict]:
@@ -738,6 +797,7 @@ def _cve_sarif_result(
         "blast_score": finding.risk_score,
         "match_confidence_tier": evidence(finding, "match_confidence_tier"),
         "cve_ids": _cve_ids_for_finding(finding),
+        "cwe_ids": list(finding.cwe_ids),
         "exposure_path": exposure_path,
         "exposure_chain": exposure_chain or None,
         "epss_score": finding.epss_score,
@@ -975,6 +1035,7 @@ def to_sarif(
             **fingerprint_fields,
             "properties": {
                 "advisory_id": rule_id,
+                "cwe_ids": list(finding.cwe_ids),
                 "asset_canonical_id": finding.asset.stable_id,
                 "occurrence_id": finding.id,
                 "canonical_id": finding.id,
@@ -1282,6 +1343,7 @@ def to_sarif(
 
     taxonomies = _build_run_taxonomies(results)
     _compact_taxa_references(results, taxonomies)
+    cwe_taxonomy = _attach_cwe_taxonomy(results, rules)
     run: dict = {
         "tool": {
             "driver": {
@@ -1319,6 +1381,10 @@ def to_sarif(
     if taxonomies:
         run["taxonomies"] = taxonomies
         run["tool"]["extensions"] = _taxonomies_as_tool_extensions(taxonomies)
+
+    if cwe_taxonomy:
+        run.setdefault("taxonomies", []).append(cwe_taxonomy)
+        run["tool"]["driver"]["supportedTaxonomies"] = [{"name": "CWE", "guid": cwe_taxonomy["guid"]}]
 
     document = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",

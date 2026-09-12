@@ -101,6 +101,22 @@ describe("GraphScenarioAuthoring", () => {
     );
   });
 
+  it("shows modeled impact and opens differences without claiming risk is resolved", () => {
+    const onStateChange = vi.fn();
+    const withChanges = { ...comparison, difference: { ...comparison.difference,
+      nodes_removed: ["node:retired"], edges_added: ["edge:new"], touched_observed_path_count: 2,
+    } };
+    render(<GraphScenarioComparisonPanel scenario={{ ...savedScenario, description: "Replace public access with a private endpoint." }} comparison={withChanges} state="proposed" loading={false} error={null} attackPathLens={false} baseSnapshotAvailable onStateChange={onStateChange} onSwitchBase={vi.fn()} />);
+    const impact = screen.getByTestId("scenario-impact-summary");
+    expect(impact).toHaveTextContent("Nodes removed1");
+    expect(impact).toHaveTextContent("Relationships added1");
+    expect(impact).toHaveTextContent("Observed paths touched2");
+    expect(screen.getByText("Replace public access with a private endpoint.")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("Rescan after deployment to verify");
+    fireEvent.click(screen.getByRole("button", { name: "Review modeled changes" }));
+    expect(onStateChange).toHaveBeenCalledWith("difference");
+  });
+
   it("creates a typed snapshot-pinned scenario without a raw JSON editor", async () => {
     createGraphScenario.mockResolvedValue({ schema: "graph.scenarios.v1", scenario: savedScenario });
     const onSaved = vi.fn();

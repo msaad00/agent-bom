@@ -3341,6 +3341,11 @@ async function main() {
           state: "visible",
           timeout: 30_000,
         });
+        await canvasPage.waitForFunction((scenarioId) => {
+          const frame = document.querySelector(".react-flow")?.getBoundingClientRect();
+          const proposal = document.querySelector(`[data-id="proposal:${scenarioId}:private-endpoint"]`)?.getBoundingClientRect();
+          return frame && proposal && proposal.left >= frame.left && proposal.right <= frame.right && proposal.top >= frame.top && proposal.bottom <= frame.bottom;
+        }, SCENARIO_ID, { timeout: 10_000 });
       },
       {
         awaitResponses: [

@@ -1100,7 +1100,9 @@ def scan(
         config_dir=config_dir,
         inventory=inventory,
         skill_only=skill_only,
-        no_discover=no_discover,
+        # Self-scan targets installed distributions, not incidental CWD skills.
+        # Explicit --skill inputs remain handled by local discovery.
+        no_discover=no_discover or self_scan,
         follow_symlinks=follow_symlinks,
         dynamic_discovery=dynamic_discovery,
         dynamic_max_depth=dynamic_max_depth,

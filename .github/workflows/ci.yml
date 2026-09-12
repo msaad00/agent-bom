@@ -329,29 +329,18 @@ jobs:
           echo "${OSV_SCANNER_SHA256}  /tmp/osv-scanner" | sha256sum -c -
           install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
 
-          # Pass only when every remaining CVE is unfixable (FIXED VERSION = --).
-          # Status is captured explicitly rather than inferred from a pipeline so
-          # the branch cannot silently stop being taken again.
+          # Preserve the unfixable-advisory policy using structured output.
+          # Scanner errors and malformed reports always fail closed.
           osv_gate() {
-            lockfile="$1"; label="$2"; report="$3"
+            lockfile="$1"; report="$2"
             status=0
-            osv-scanner scan --config osv-scanner.toml --lockfile="$lockfile" 2>&1 | tee "$report" || status=$?
-            if [ "$status" -eq 0 ]; then
-              return 0
-            fi
-            fixable=$(grep -E "^\|" "$report" | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5 || true)
-            if [ -n "$fixable" ]; then
-              echo "::error::osv-scanner found ${label} vulnerabilities with available fixes:"
-              echo "$fixable"
-              return 1
-            fi
-            echo "::warning::osv-scanner found only unfixable ${label} CVEs (no upstream fix) — passing"
-            return 0
+            osv-scanner scan --format json --config osv-scanner.toml --lockfile="$lockfile" > "$report" || status=$?
+            python scripts/check_osv_report.py "$report" "$status"
           }
 
-          osv_gate uv.lock "uv.lock" /tmp/osv-uv.txt
-          osv_gate ui/package-lock.json "UI lockfile" /tmp/osv-ui.txt
-          osv_gate sdks/typescript/package-lock.json "TypeScript SDK lockfile" /tmp/osv-sdk.txt
+          osv_gate uv.lock /tmp/osv-uv.json
+          osv_gate ui/package-lock.json /tmp/osv-ui.json
+          osv_gate sdks/typescript/package-lock.json /tmp/osv-sdk.json
           # Scan dashboard deps — no unfixable-CVE carve-out, any finding fails.
           osv-scanner scan --config osv-scanner.toml --lockfile=dashboard/requirements.txt
 

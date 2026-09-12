@@ -234,7 +234,6 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
   const scope = findingWorkloadScope(vuln);
   const references = officialAdvisoryLinks(vuln.references);
   const whyItMatters = buildWhyItMatters(vuln);
-  const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "";
   const cweIds = uniqueStrings(vuln.cwe_ids ?? []);
   const investigationSources = uniqueStrings([...vuln.sources, ...vuln.advisory_sources]);
   const complianceControls = uniqueStrings([

@@ -344,6 +344,50 @@ def _build_run_taxonomies(results: list[dict]) -> list[dict]:
     return taxonomies
 
 
+def _attach_cwe_taxonomy(results: list[dict], rules: list[dict]) -> dict | None:
+    """Link structured finding CWEs to SARIF's standard CWE taxonomy.
+
+    SARIF 2.1.0 sections 3.19.3 and 3.53: the target CWE is a superset
+    of the concrete vulnerability rule. IDs are numeric within CWE's catalog.
+    Do not infer weaknesses from advisory prose or opaque rule tags.
+    """
+    by_rule: dict[str, set[str]] = {}
+    all_ids: set[str] = set()
+    for result in results:
+        cwes = sorted(
+            {
+                str(int(value[4:]))
+                for value in result.get("properties", {}).get("cwe_ids", [])
+                if isinstance(value, str) and re.fullmatch(r"CWE-[1-9][0-9]*", value)
+            },
+            key=int,
+        )
+        if not cwes:
+            continue
+        all_ids.update(cwes)
+        by_rule.setdefault(result["ruleId"], set()).update(cwes)
+        result.setdefault("taxa", []).extend({"id": value, "toolComponent": {"name": "CWE"}} for value in cwes)
+    if not all_ids:
+        return None
+    for rule in rules:
+        cwes = by_rule.get(rule["id"], set())
+        if cwes:
+            rule.setdefault("relationships", []).extend(
+                {"target": {"id": value, "toolComponent": {"name": "CWE"}}, "kinds": ["superset"]} for value in sorted(cwes, key=int)
+            )
+    return {
+        "name": "CWE",
+        "fullName": "Common Weakness Enumeration",
+        "informationUri": "https://cwe.mitre.org/",
+        "organization": "MITRE",
+        "isComprehensive": False,
+        "taxa": [
+            {"id": value, "name": f"CWE-{value}", "helpUri": f"https://cwe.mitre.org/data/definitions/{value}.html"}
+            for value in sorted(all_ids, key=int)
+        ],
+    }
+
+
 def _taxonomies_as_tool_extensions(taxonomies: list[dict]) -> list[dict]:
     """Expose framework catalogs as SARIF tool extensions for catalog readers."""
     extensions: list[dict] = []
@@ -738,6 +782,7 @@ def _cve_sarif_result(
         "blast_score": finding.risk_score,
         "match_confidence_tier": evidence(finding, "match_confidence_tier"),
         "cve_ids": _cve_ids_for_finding(finding),
+        "cwe_ids": list(finding.cwe_ids),
         "exposure_path": exposure_path,
         "exposure_chain": exposure_chain or None,
         "epss_score": finding.epss_score,
@@ -975,6 +1020,7 @@ def to_sarif(
             **fingerprint_fields,
             "properties": {
                 "advisory_id": rule_id,
+                "cwe_ids": list(finding.cwe_ids),
                 "asset_canonical_id": finding.asset.stable_id,
                 "occurrence_id": finding.id,
                 "canonical_id": finding.id,
@@ -1282,6 +1328,7 @@ def to_sarif(
 
     taxonomies = _build_run_taxonomies(results)
     _compact_taxa_references(results, taxonomies)
+    cwe_taxonomy = _attach_cwe_taxonomy(results, rules)
     run: dict = {
         "tool": {
             "driver": {
@@ -1319,6 +1366,10 @@ def to_sarif(
     if taxonomies:
         run["taxonomies"] = taxonomies
         run["tool"]["extensions"] = _taxonomies_as_tool_extensions(taxonomies)
+
+    if cwe_taxonomy:
+        run.setdefault("taxonomies", []).append(cwe_taxonomy)
+        run["tool"]["driver"]["supportedTaxonomies"] = [{"name": "CWE"}]
 
     document = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",

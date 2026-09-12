@@ -40,3 +40,14 @@ it("keeps real agents and servers alongside separately labeled SBOM evidence", a
   expect(screen.getByText(source)).toBeVisible();
   expect(screen.getByText(/1 agent surface/)).toBeVisible();
 });
+
+
+it("renders structured CWEs without mining summary prose", async () => {
+  const user = userEvent.setup();
+  render(<FindingDrawer vuln={{ ...base, cwe_ids: ["CWE-79", "CWE-79", "CWE-89"], summary: "An unrelated CWE-999 label in advisory prose" }} triage={undefined} triageBusy={false} onTriageDecision={vi.fn()} onClose={vi.fn()} />);
+  await user.click(screen.getByRole("tab", { name: "Evidence" }));
+  expect(screen.getByText("Weaknesses")).toBeVisible();
+  expect(screen.getAllByText("CWE-79")).toHaveLength(1);
+  expect(screen.getByText("CWE-89")).toBeVisible();
+  expect(screen.queryByText("CWE-999", { exact: true })).not.toBeInTheDocument();
+});

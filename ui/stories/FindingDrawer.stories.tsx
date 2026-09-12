@@ -55,3 +55,7 @@ export const UnreachableMedium: Story = {
     triage: undefined,
   },
 };
+
+export const StructuredWeaknesses: Story = {
+  args: { vuln: makeVuln({ cwe_ids: ["CWE-79", "CWE-89"], summary: "Unsafe user input reaches an interpreter." }) },
+};

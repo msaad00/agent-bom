@@ -1551,10 +1551,19 @@ function GraphPageInner() {
           };
         })()
       : filters;
-    return buildUnifiedFlowGraph(projectedGraphData, presentationFilters);
+    // A scenario can add a standalone resource or remove its last relationship.
+    // Preserve those explicit changes after filtering, without inventing edges.
+    const changedNodeIds = selectedScenarioId && scenarioComparison?.available && !attackPathLens
+      ? graphScenarioContextIds(projectedGraphData.nodes, [], scenarioComparison.difference, [...(mergedGraphData?.edges ?? []), ...projectedGraphData.edges])
+      : undefined;
+    return buildUnifiedFlowGraph(projectedGraphData, presentationFilters, changedNodeIds);
   }, [
     projectedGraphData,
     filters,
+    selectedScenarioId,
+    scenarioComparison,
+    attackPathLens,
+    mergedGraphData?.edges,
     selectedAttackPath,
     rollupNavigationActive,
     rollupCanvasPending,
@@ -3858,7 +3867,7 @@ function GraphPageInner() {
             />
           ) : (
             <ReactFlow
-              key={captureMode ? `lineage-capture:${scenarioExpanded ? "full" : "context"}` : `${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "initial"}`}
+              key={captureMode ? `lineage-capture:${scenarioExpanded ? "full" : "context"}` : `${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "initial"}:${scenarioExpanded ? "full" : "context"}`}
               nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}

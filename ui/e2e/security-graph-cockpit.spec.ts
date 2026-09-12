@@ -503,6 +503,7 @@ for (const proof of [
     await expect(page.getByText("Current · observed")).toBeVisible();
     await expect(page.getByText("Proposed · modeled")).toBeVisible();
     const canvas = page.locator(".react-flow");
+    await expect(canvas.locator('[data-id="proposal:scenario-private-endpoint:private-endpoint"]')).toBeAttached();
     await expect.poll(() => canvas.locator(".react-flow__viewport").evaluate(
       (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a,
     )).toBeGreaterThanOrEqual(1);

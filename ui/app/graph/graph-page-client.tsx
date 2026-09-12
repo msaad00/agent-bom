@@ -1922,7 +1922,7 @@ function GraphPageInner() {
   // returns "cluster" | "summary" | "detail". The chosen render band
   // keeps dense graphs readable without changing node positions or data.
   const lodBand = useLodBand();
-  const effectiveLodBand = compactGroupedTopology ? "detail" : effectiveLodBandForGraph(lodBand, {
+  const effectiveLodBand = compactGroupedTopology || (scenarioContextIds && graphViewport.zoom >= 0.85) ? "detail" : effectiveLodBandForGraph(lodBand, {
     sourceNodeCount: flow.nodes.length,
     renderedNodeCount: aggregated.nodes.length,
     clusterCount: aggregated.clusters.size,
@@ -2340,7 +2340,7 @@ function GraphPageInner() {
     [captureMode, displayEdges.length, displayNodes.length],
   );
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
-    if (scenarioExpanded) return viewportOptions;
+    if (scenarioExpanded || scenarioContextIds) return viewportOptions;
     // Whole-estate navigation starts with all returned scopes in frame.
     // A selected finding or proposed change keeps its explicit close-up.
     if ((canvasLens === "estate" && displayNodes.length <= 6 && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
@@ -2353,7 +2353,7 @@ function GraphPageInner() {
         return typeof id === "string" ? [id] : [];
       });
     return graphInitialFitViewOptions(displayNodes, viewportOptions, selectedNodeId, proposedIds);
-  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison, scenarioExpanded]);
+  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison, scenarioExpanded, scenarioContextIds]);
   const initialAnchorId = initialViewportRequest.nodes?.[0]?.id;
   // React Flow shares this prop with its queued imperative fit operation.
   // Hover/LOD node objects must not overwrite a user's pending Fit all request
@@ -2364,8 +2364,8 @@ function GraphPageInner() {
         ? graphInitialFitViewOptions([{ id: initialAnchorId, data: {} }], viewportOptions, initialAnchorId)
         : viewportOptions;
       // Scenario views share width with the decision panel and app navigation.
-      // At 1:1, full card labels remain readable and adjacent hops fit together.
-      return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 1, maxZoom: 1 } : options;
+      // A small fit adjustment keeps 18px card labels at least 16px wide-screen.
+      return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 0.9, maxZoom: 1 } : options;
     },
     [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded],
   );

@@ -324,10 +324,10 @@ async function routeCockpit(
         current: { scan_id: scanId, node_count: graph.nodes.length, edge_count: graph.edges.length },
         proposed: {
           node_count: graph.nodes.length + 1,
-          edge_count: graph.edges.length,
+          edge_count: graph.edges.length - 1,
           modeled: true,
           nodes: [...graph.nodes, proposedNode],
-          edges: graph.edges,
+          edges: graph.edges.filter((item) => item.id !== "server:github->cred:gh-token:exposes_cred"),
           completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: graph.nodes.length + 1, total: graph.nodes.length + 1 },
         },
         difference: {
@@ -504,9 +504,10 @@ for (const proof of [
     await expect(page.getByText("Proposed · modeled")).toBeVisible();
     const canvas = page.locator(".react-flow");
     await expect(canvas.locator('[data-id="proposal:scenario-private-endpoint:private-endpoint"]')).toBeAttached();
+    await expect(canvas.locator('.react-flow__edge[data-id="server:github->cred:gh-token:exposes_cred"]')).toHaveCount(0);
     await expect.poll(() => canvas.locator(".react-flow__viewport").evaluate(
       (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a,
-    )).toBeGreaterThanOrEqual(1);
+    )).toBeGreaterThanOrEqual(0.9);
     const canvasBox = await canvas.boundingBox();
     expect(canvasBox).not.toBeNull();
     expect(canvasBox!.height).toBeGreaterThanOrEqual(400);

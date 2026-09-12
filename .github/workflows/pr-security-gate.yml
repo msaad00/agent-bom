@@ -30,6 +30,7 @@ jobs:
       contents: read
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
+      python_dependencies: ${{ steps.classify.outputs.python_dependencies }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,8 +155,15 @@ jobs:
 
           run_pip_audit audit.json
 
+      # With identical frozen dependency inputs, the current audit is also the
+      # base dependency audit. Keep the current network check, skip the second
+      # install/lookup, and retain the same PR delta policy.
+      - name: Reuse audit for unchanged Python dependency inputs
+        if: github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.python_dependencies == 'false'
+        run: cp audit.json base-audit.json
+
       - name: Run pip-audit on PR base for delta comparison
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && (needs.changes.result != 'success' || needs.changes.outputs.python_dependencies != 'false')
         run: |
           run_pip_audit() {
             local output="$1"
@@ -192,8 +200,8 @@ jobs:
 
           current_dir="$PWD"
           base_dir="$RUNNER_TEMP/agent-bom-base"
-          git fetch --depth=1 origin "+${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
-          git worktree add "$base_dir" "origin/${{ github.base_ref }}"
+          git fetch --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+          git worktree add "$base_dir" "${{ github.event.pull_request.base.sha }}"
           (
             cd "$base_dir"
             uv sync --frozen --extra api --extra postgres --extra mcp-server --extra oidc

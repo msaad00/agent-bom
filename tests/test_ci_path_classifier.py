@@ -51,3 +51,33 @@ def test_workflow_dependency_and_ui_changes_are_not_docs_only() -> None:
 def test_empty_or_malformed_path_input_fails_closed() -> None:
     assert classify_paths([]).docs_only is False
     assert classify_paths(["", "../README.md"]).docs_only is False
+
+
+def test_source_edits_do_not_change_frozen_python_dependency_inputs() -> None:
+    for path in ["README.md", "docs/images/graph.png", "ui/app/page.tsx"]:
+        result = classify_paths([path])
+        assert result.python_dependencies is False
+    assert classify_paths(["src/agent_bom/output/sarif.py"]).python_dependencies is False
+
+
+def test_dependency_routing_includes_lockfiles_packaging_and_install_tooling() -> None:
+    for path in [
+        "uv.lock",
+        "pyproject.toml",
+        "setup.py",
+        "dashboard/requirements.txt",
+        "requirements/test.in",
+        "constraints-prod.txt",
+        ".python-version",
+        ".github/actions/setup-python/action.yml",
+        ".github/workflows/pr-security-gate.yml",
+        "scripts/classify_ci_changes.py",
+    ]:
+        result = classify_paths([path])
+        assert result.python_dependencies is True, path
+
+
+def test_security_routing_fails_closed_on_unknown_or_ambiguous_paths() -> None:
+    for paths in [[], ["../README.md"], ["README.md", ""], ["new-surface/unknown.data"]]:
+        result = classify_paths(paths)
+        assert result.python_dependencies is True

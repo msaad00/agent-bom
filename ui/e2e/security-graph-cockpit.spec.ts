@@ -512,6 +512,12 @@ for (const proof of [
     expect(canvasBox).not.toBeNull();
     expect(canvasBox!.height).toBeGreaterThanOrEqual(400);
     expect(canvasBox!.y + canvasBox!.height).toBeLessThanOrEqual(proof.height + 16);
+    const proposedBox = await canvas.locator('[data-id="proposal:scenario-private-endpoint:private-endpoint"]').boundingBox();
+    expect(proposedBox).not.toBeNull();
+    expect(proposedBox!.x).toBeGreaterThanOrEqual(canvasBox!.x);
+    expect(proposedBox!.y).toBeGreaterThanOrEqual(canvasBox!.y);
+    expect(proposedBox!.x + proposedBox!.width).toBeLessThanOrEqual(canvasBox!.x + canvasBox!.width);
+    expect(proposedBox!.y + proposedBox!.height).toBeLessThanOrEqual(canvasBox!.y + canvasBox!.height);
     await page.screenshot({ path: testInfo.outputPath(`scenario-first-view-${proof.theme}-${capture}.png`) });
     await expect.poll(() => canvas.locator(".react-flow__node").evaluateAll((nodes) => {
       const frame = nodes[0]?.closest(".react-flow")?.getBoundingClientRect();

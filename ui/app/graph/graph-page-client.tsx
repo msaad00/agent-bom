@@ -1827,7 +1827,7 @@ function GraphPageInner() {
         selectedAttackPath
           ? { rankSep: 72, nodeSep: 40, nodeWidth: 224, nodeHeight: 128, fitAspect: 2.65 }
           : selectedScenarioId
-            ? { rankSep: 48, nodeSep: 40, nodeWidth: 260, minSeparation: { width: 260, height: 140, gap: 32 } }
+            ? { rankSep: 48, nodeSep: 12, nodeWidth: 260, minSeparation: { width: 260, height: 140, gap: 12 } }
             : filters.agentName
               ? { rankSep: 152, nodeSep: 52 }
               : {},

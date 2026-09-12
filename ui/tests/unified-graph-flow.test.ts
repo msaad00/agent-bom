@@ -50,6 +50,21 @@ function edge(source: string, target: string, relationship: RelationshipType): U
 }
 
 describe("buildUnifiedFlowGraph", () => {
+  it("retains explicitly changed standalone resources without bypassing layer filters", () => {
+    const graph = {
+      scan_id: "scenario", tenant_id: "default", created_at: createdAt,
+      nodes: [node("endpoint", EntityType.CLOUD_RESOURCE, "Private endpoint")],
+      edges: [], attack_paths: [], interaction_risks: [],
+    } as unknown as UnifiedGraphData;
+    const filters = createFocusedGraphFilters();
+    filters.layers.cloudResource = true;
+    expect(buildUnifiedFlowGraph(graph, filters).nodes).toHaveLength(0);
+    const retained = new Set(["endpoint"]);
+    expect(buildUnifiedFlowGraph(graph, filters, retained).nodes.map((item) => item.id)).toEqual(["endpoint"]);
+    expect(buildUnifiedFlowGraph(graph, filters, retained).edges).toHaveLength(0);
+    filters.layers.cloudResource = false;
+    expect(buildUnifiedFlowGraph(graph, filters, retained).nodes).toHaveLength(0);
+  });
   it("keeps agent and finding endpoints in focused relevant-path windows", () => {
     const graph: UnifiedGraphData = {
       scan_id: "scan-path",

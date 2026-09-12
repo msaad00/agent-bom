@@ -253,6 +253,7 @@ const DASHED_RELATIONSHIPS = new Set<string>([
 export function buildUnifiedFlowGraph(
   graph: UnifiedGraphData,
   filters: UnifiedGraphFlowFilters,
+  retainedNodeIds?: ReadonlySet<string>,
 ): UnifiedGraphFlowResult {
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const outgoing = buildAdjacency(graph.edges, "source");
@@ -307,7 +308,7 @@ export function buildUnifiedFlowGraph(
       .map((node) => node.id),
   );
   const prunedNodes = nodes.filter(
-    (node) => connectedNodeIds.has(node.id) || anchorNodeIds.has(node.id),
+    (node) => connectedNodeIds.has(node.id) || anchorNodeIds.has(node.id) || retainedNodeIds?.has(node.id),
   );
   const visibleNodeIds = new Set(prunedNodes.map((node) => node.id));
   const edges = prePrunedEdges.filter(

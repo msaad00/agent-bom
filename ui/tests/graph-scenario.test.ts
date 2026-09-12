@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { GraphScenarioComparisonResponse } from "@/lib/api-types";
 import type { UnifiedGraphResponse } from "@/lib/api";
-import { proposedGraphFromComparison } from "@/lib/graph-scenario";
+import { graphScenarioContextIds, proposedGraphFromComparison } from "@/lib/graph-scenario";
 import type { UnifiedNode } from "@/lib/graph-schema";
 
 const node = (id: string): UnifiedNode => ({
@@ -106,5 +106,32 @@ describe("proposedGraphFromComparison", () => {
         unavailable_reason: "base snapshot mismatch",
       }),
     ).toBeNull();
+  });
+});
+
+
+describe("graphScenarioContextIds", () => {
+  const nodes = ["a", "b", "c", "d", "isolated"].map((id) => ({ id }));
+  const edges = [
+    { id: "ab", source: "a", target: "b" },
+    { id: "bc", source: "b", target: "c" },
+    { id: "cd", source: "c", target: "d" },
+  ];
+  it("keeps changes and immediate neighbors without following the entire estate", () => {
+    const difference = { ...comparison.difference, nodes_added: [], nodes_changed: [{ node_id: "b", label: "wrong-id" }] };
+    expect([...graphScenarioContextIds(nodes, edges, difference)!].sort()).toEqual(["a", "b", "c"]);
+    expect(difference.nodes_changed).toEqual([{ node_id: "b", label: "wrong-id" }]);
+    expect(nodes).toHaveLength(5);
+    expect(edges).toHaveLength(3);
+  });
+  it("resolves edge-only changes including removed observed relationships", () => {
+    const difference = { ...comparison.difference, nodes_added: [], edges_removed: ["removed"] };
+    const references = [{ id: "removed", source: "a", target: "isolated" }];
+    expect([...graphScenarioContextIds(nodes, edges, difference, references)!].sort()).toEqual(["a", "b", "isolated"]);
+  });
+  it("resolves structured edge endpoints and ignores unknown node identities", () => {
+    const difference = { ...comparison.difference, edges_added: [{ source: "isolated", target: "missing" }] };
+    expect([...graphScenarioContextIds(nodes, edges, difference)!]).toEqual(["isolated"]);
+    expect(graphScenarioContextIds(nodes, edges, comparison.difference)).toBeUndefined();
   });
 });

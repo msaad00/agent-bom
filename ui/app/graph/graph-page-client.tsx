@@ -179,6 +179,7 @@ import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation";
 import { roleCanConnect } from "@/lib/roles";
 import {
+  graphScenarioContextIds,
   parseGraphScenarioViewState,
   proposedGraphFromComparison,
   type GraphScenarioViewState,
@@ -745,6 +746,8 @@ function GraphPageInner() {
       ? new URLSearchParams(window.location.search).get("scenario") ?? ""
       : "",
   );
+  const [expandedScenarioId, setExpandedScenarioId] = useState<string | null>(null);
+  const scenarioExpanded = Boolean(selectedScenarioId && expandedScenarioId === selectedScenarioId);
   const [scenarioState, setScenarioState] = useState<GraphScenarioViewState>(() =>
     typeof window !== "undefined"
       ? parseGraphScenarioViewState(
@@ -1548,10 +1551,19 @@ function GraphPageInner() {
           };
         })()
       : filters;
-    return buildUnifiedFlowGraph(projectedGraphData, presentationFilters);
+    // A scenario can add a standalone resource or remove its last relationship.
+    // Preserve those explicit changes after filtering, without inventing edges.
+    const changedNodeIds = selectedScenarioId && scenarioComparison?.available && !attackPathLens
+      ? graphScenarioContextIds(projectedGraphData.nodes, [], scenarioComparison.difference, [...(mergedGraphData?.edges ?? []), ...projectedGraphData.edges])
+      : undefined;
+    return buildUnifiedFlowGraph(projectedGraphData, presentationFilters, changedNodeIds);
   }, [
     projectedGraphData,
     filters,
+    selectedScenarioId,
+    scenarioComparison,
+    attackPathLens,
+    mergedGraphData?.edges,
     selectedAttackPath,
     rollupNavigationActive,
     rollupCanvasPending,
@@ -1787,9 +1799,13 @@ function GraphPageInner() {
   const compactMobileTopology = narrowViewport && !selectedAttackPath &&
     !rollupNavigationActive && compactGroupedTopology;
   const graphLayoutKind = compactMobileTopology ? "dagre" : "dagre-lr";
+  const scenarioContextIds = useMemo(() => {
+    if (!selectedScenarioId || !scenarioComparison?.available || scenarioExpanded || attackPathLens || selectedAttackPath || investigationMode) return undefined;
+    return graphScenarioContextIds(aggregated.nodes, aggregated.edges, scenarioComparison.difference, mergedGraphData?.edges);
+  }, [selectedScenarioId, scenarioComparison, scenarioExpanded, attackPathLens, selectedAttackPath, investigationMode, aggregated.nodes, aggregated.edges, mergedGraphData?.edges]);
   const layoutInput = useMemo(
-    () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds),
-    [aggregated.edges, aggregated.nodes, attackPathNodeIds],
+    () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds),
+    [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds],
   );
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(
     graphLayoutKind,
@@ -1810,9 +1826,11 @@ function GraphPageInner() {
       dagreLr: readableLineageDagreLr(
         selectedAttackPath
           ? { rankSep: 72, nodeSep: 40, nodeWidth: 224, nodeHeight: 128, fitAspect: 2.65 }
-          : filters.agentName
-            ? { rankSep: 152, nodeSep: 52 }
-            : {},
+          : selectedScenarioId
+            ? { rankSep: 48, nodeSep: 12, nodeWidth: 260, minSeparation: { width: 260, height: 140, gap: 12 } }
+            : filters.agentName
+              ? { rankSep: 152, nodeSep: 52 }
+              : {},
       ),
     },
   );
@@ -1904,7 +1922,7 @@ function GraphPageInner() {
   // returns "cluster" | "summary" | "detail". The chosen render band
   // keeps dense graphs readable without changing node positions or data.
   const lodBand = useLodBand();
-  const effectiveLodBand = compactGroupedTopology ? "detail" : effectiveLodBandForGraph(lodBand, {
+  const effectiveLodBand = compactGroupedTopology || (scenarioContextIds && graphViewport.zoom >= 0.85) ? "detail" : effectiveLodBandForGraph(lodBand, {
     sourceNodeCount: flow.nodes.length,
     renderedNodeCount: aggregated.nodes.length,
     clusterCount: aggregated.clusters.size,
@@ -2322,9 +2340,10 @@ function GraphPageInner() {
     [captureMode, displayEdges.length, displayNodes.length],
   );
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
+    if (scenarioExpanded || scenarioContextIds) return viewportOptions;
     // Whole-estate navigation starts with all returned scopes in frame.
     // A selected finding or proposed change keeps its explicit close-up.
-    if (captureMode || (canvasLens === "estate" && displayNodes.length <= 6 && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
+    if ((canvasLens === "estate" && displayNodes.length <= 6 && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
     const difference = scenarioState !== "current" ? scenarioComparison?.difference : undefined;
     const proposedIds = [...(difference?.nodes_added ?? []), ...(difference?.nodes_changed ?? [])]
       .flatMap((item): string[] => {
@@ -2334,16 +2353,21 @@ function GraphPageInner() {
         return typeof id === "string" ? [id] : [];
       });
     return graphInitialFitViewOptions(displayNodes, viewportOptions, selectedNodeId, proposedIds);
-  }, [captureMode, canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison]);
+  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison, scenarioExpanded, scenarioContextIds]);
   const initialAnchorId = initialViewportRequest.nodes?.[0]?.id;
   // React Flow shares this prop with its queued imperative fit operation.
   // Hover/LOD node objects must not overwrite a user's pending Fit all request
   // with an equivalent-but-new initial anchor options object.
   const initialViewportOptions = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(
-    () => initialAnchorId
-      ? graphInitialFitViewOptions([{ id: initialAnchorId, data: {} }], viewportOptions, initialAnchorId)
-      : viewportOptions,
-    [initialAnchorId, viewportOptions],
+    () => {
+      const options = initialAnchorId
+        ? graphInitialFitViewOptions([{ id: initialAnchorId, data: {} }], viewportOptions, initialAnchorId)
+        : viewportOptions;
+      // Scenario views share width with the decision panel and app navigation.
+      // A small fit adjustment keeps 18px card labels at least 16px wide-screen.
+      return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 0.9, maxZoom: 1 } : options;
+    },
+    [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded],
   );
   const showMiniMap = useMemo(
     () =>
@@ -3043,7 +3067,6 @@ function GraphPageInner() {
             </div>
           )}
 
-          {selectedScenario && scenarioComparisonPanel}
 
           {investigationMode && (
             <div className="graph-callout-sky">
@@ -3717,11 +3740,13 @@ function GraphPageInner() {
           focused-path content can still scroll without hiding the controls. */}
       <div
         data-testid={selectedAttackPath ? "focused-path-surface" : undefined}
-        className={selectedAttackPath
-          ? "flex relative min-h-[540px]"
-          : "flex relative h-[clamp(18rem,calc(100dvh-33rem),36rem)] md:h-[clamp(22rem,calc(100dvh-20rem),48rem)]"}
+        className={selectedScenario
+          ? "relative grid gap-4 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:h-[max(28rem,calc(100dvh-18rem))]"
+          : selectedAttackPath
+            ? "flex relative min-h-[540px]"
+            : "flex relative h-[clamp(18rem,calc(100dvh-33rem),36rem)] md:h-[clamp(22rem,calc(100dvh-20rem),48rem)]"}
       >
-        <div className="flex-1 relative min-h-0 flex flex-col">
+        <div className={`flex-1 relative min-w-0 flex flex-col ${selectedScenario ? "min-h-[26rem] lg:min-h-0" : "min-h-0"}`} data-testid="investigation-graph-workspace">
           {selectedAttackPath && selectedPathDecision && (
             <section
               aria-label="Focused attack path decision"
@@ -3773,9 +3798,10 @@ function GraphPageInner() {
               </div>
             </section>
           )}
-          {!captureMode && !rollupDecisionActive && (initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
+          {!rollupDecisionActive && (selectedScenarioId || initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
             <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
-              <span>{graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>
+              <span>{scenarioContextIds ? `Changes and neighbors · ${displayNodes.length} of ${aggregated.nodes.length} nodes` : graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>
+              {selectedScenarioId && !attackPathLens && !selectedAttackPath && !investigationMode && <button type="button" onClick={() => setExpandedScenarioId(scenarioExpanded ? null : selectedScenarioId)} className="text-foreground underline underline-offset-4">{scenarioExpanded ? "Focus changes" : "Show full graph"}</button>}
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
               {selectedNodeId && <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4">Focus selection</button>}
             </div>
@@ -3841,7 +3867,7 @@ function GraphPageInner() {
             />
           ) : (
             <ReactFlow
-              key={captureMode ? "lineage-capture" : `${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "initial"}`}
+              key={captureMode ? `lineage-capture:${scenarioExpanded ? "full" : "context"}` : `${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "initial"}:${scenarioExpanded ? "full" : "context"}`}
               nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}
@@ -3955,6 +3981,11 @@ function GraphPageInner() {
           )}
           </div>
         </div>
+        {selectedScenario && (
+          <aside aria-label="Scenario decision" className="min-w-0 lg:min-h-0 lg:overflow-y-auto">
+            {scenarioComparisonPanel}
+          </aside>
+        )}
       </div>
     </div>
   );

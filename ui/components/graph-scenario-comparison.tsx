@@ -431,16 +431,17 @@ export function GraphScenarioComparisonPanel({
     <section
       aria-label="Scenario comparison"
       data-testid="graph-scenario-comparison"
-      className="mt-3 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/75"
+      className="overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]"
     >
-      <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] p-4">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-700 dark:text-violet-300">
             Architecture scenario · revision {scenario.revision}
           </p>
-          <p className="mt-1 truncate text-sm font-medium text-[var(--foreground)]">
+          <h2 className="mt-1 text-lg font-semibold leading-snug text-[var(--foreground)]">
             {scenario.name}
-          </p>
+          </h2>
+          {scenario.description && <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{scenario.description}</p>}
           <p className="mt-0.5 text-xs text-[var(--text-tertiary)]">
             Pinned to observed snapshot {scenario.base_scan_id.slice(0, 12)}
             {comparison?.stale || comparison?.base_status === "stale"
@@ -507,12 +508,23 @@ export function GraphScenarioComparisonPanel({
                 <FlaskConical className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
                   <strong>Proposed scenario — not observed or deployed.</strong>{" "}
-                  Modeled changes use the server-authored overlay and the same
-                  lens filters as the current estate.
+                  Rescan after deployment to verify the outcome.
                 </span>
               </div>
             )}
-            <div className="grid gap-2 sm:grid-cols-2">
+            {proposedVisible && (
+              <div className="mb-4" data-testid="scenario-impact-summary">
+                {state === "proposed" && <button type="button" onClick={() => onStateChange("difference")} className="mb-3 w-full rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800">Review modeled changes</button>}
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">What changes</h3>
+                <dl className="mt-2 grid grid-cols-2 gap-3">
+                  {differenceGroups.filter((group) => group.items.length > 0).map((group) => (
+                    <div key={group.id}><dt className="text-xs text-[var(--text-secondary)]">{group.label}</dt><dd className="text-xl font-semibold text-[var(--foreground)]">{group.items.length}</dd></div>
+                  ))}
+                  <div><dt className="text-xs text-[var(--text-secondary)]">Observed paths touched</dt><dd className="text-xl font-semibold text-[var(--foreground)]">{comparison.difference.touched_observed_path_count}</dd></div>
+                </dl>
+              </div>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
               <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-3">
                 <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
                   Current · observed

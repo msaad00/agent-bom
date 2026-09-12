@@ -486,14 +486,15 @@ for (const proof of [
   { theme: "dark", width: 1512, height: 811 },
   { theme: "light", width: 1568, height: 780 },
 ] as const) {
-  test(`scenario comparison stays truthful at ${proof.width}x${proof.height} ${proof.theme}`, async ({ page }, testInfo) => {
+  for (const capture of [false, true]) {
+  test(`scenario comparison stays truthful at ${proof.width}x${proof.height} ${proof.theme} capture=${capture}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: proof.width, height: proof.height });
     await routeCockpit(page, 36);
     await page.addInitScript((selectedTheme) => {
       window.localStorage.setItem("agent-bom-theme", selectedTheme);
     }, proof.theme);
 
-    await page.goto(`/security-graph?lens=estate&rollup=0&scenario=scenario-private-endpoint&state=proposed`);
+    await page.goto(`/security-graph?lens=estate&rollup=0&scenario=scenario-private-endpoint&state=proposed${capture ? "&capture=1" : ""}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("status")).toContainText(
       "Proposed scenario — not observed or deployed",
@@ -501,7 +502,26 @@ for (const proof of [
     await expect(page.getByRole("group", { name: "Investigation view" })).toBeHidden();
     await expect(page.getByText("Current · observed")).toBeVisible();
     await expect(page.getByText("Proposed · modeled")).toBeVisible();
-    await page.getByRole("tab", { name: "Difference" }).click();
+    const canvas = page.locator(".react-flow");
+    await expect.poll(() => canvas.locator(".react-flow__viewport").evaluate(
+      (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a,
+    )).toBeGreaterThanOrEqual(1);
+    const canvasBox = await canvas.boundingBox();
+    expect(canvasBox).not.toBeNull();
+    expect(canvasBox!.height).toBeGreaterThanOrEqual(400);
+    expect(canvasBox!.y + canvasBox!.height).toBeLessThanOrEqual(proof.height + 16);
+    await page.screenshot({ path: testInfo.outputPath(`scenario-first-view-${proof.theme}-${capture}.png`) });
+    await expect.poll(() => canvas.locator(".react-flow__node").evaluateAll((nodes) => {
+      const frame = nodes[0]?.closest(".react-flow")?.getBoundingClientRect();
+      if (!frame) return 0;
+      return nodes.filter((node) => {
+        const box = node.getBoundingClientRect();
+        return box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom;
+      }).length;
+    })).toBeGreaterThanOrEqual(3);
+    await expect(page.getByTestId("scenario-impact-summary")).toContainText("Observed paths touched");
+    await expect(page.getByTestId("graph-viewport-scope")).toContainText("Fit all");
+    await page.getByRole("button", { name: "Review modeled changes" }).click();
     await expect(page).toHaveURL(/state=difference/);
     await expect(page.getByTestId("graph-scenario-difference")).toContainText(
       "1 touched observed paths",
@@ -515,6 +535,7 @@ for (const proof of [
       fullPage: true,
     });
   });
+  }
 }
 
 test("Attack Paths keeps scenario state observed-only", async ({ page }) => {

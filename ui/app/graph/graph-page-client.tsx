@@ -2166,9 +2166,7 @@ function GraphPageInner() {
             },
             labelStyle: {
               fill: "#f4f4f5",
-              fontSize: captureMode && selectedAttackPath
-                ? 24
-                : Math.max(10, Math.min(24, 12 / Math.max(graphViewport.zoom, 0.2))),
+              fontSize: Math.max(12, Math.min(20, 13 / Math.max(graphViewport.zoom, 0.2))),
               fontWeight: 650,
             },
             animated: captureMode ? false : Boolean(inPath || edge.animated),
@@ -2272,7 +2270,6 @@ function GraphPageInner() {
     captureMode,
     graphViewport.zoom,
     displayNodes,
-    selectedAttackPath,
   ]);
 
   const accessibleBaseDisplayEdges = useMemo(
@@ -3762,12 +3759,12 @@ function GraphPageInner() {
                     {selectedPathDecision.sourceLabel} → {selectedPathDecision.targetLabel}
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm text-ink-secondary">
-                    {selectedAttackPath.summary || `${selectedPathDecision.findingLabel} is reachable across the selected directed path.`}
+                    Review {selectedPathDecision.findingLabel} across {selectedEvidenceHopCount} evidence hops, then {selectedPathDecision.nextAction.charAt(0).toLowerCase() + selectedPathDecision.nextAction.slice(1)}.
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                   <span className="rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-700 dark:text-red-200">
-                    Risk {selectedAttackPath.composite_risk.toFixed(1)}
+                    Path risk {selectedAttackPath.composite_risk.toFixed(1)}/100
                   </span>
                   <a
                     href={selectedPathDecision.remediationHref}
@@ -3777,7 +3774,12 @@ function GraphPageInner() {
                   </a>
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-secondary">
+              <details className="mt-3 rounded-lg border border-outline bg-surface/60 px-3 py-2 text-sm text-ink-secondary">
+                <summary className="cursor-pointer font-medium text-foreground">Path explanation and scoring</summary>
+                <p className="mt-2 leading-relaxed [overflow-wrap:anywhere]">{selectedAttackPath.summary || "No additional path explanation recorded."}</p>
+                <p className="mt-2">Path risk uses a 0–100 scale; higher means more risk. This is a composite ranking score, not a CVSS score or a probability.</p>
+              </details>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-secondary">
                 <span>{selectedEvidenceHopCount} evidence hops</span>
                 <span>{selectedPathDecision.hasHopReceipts
                   ? `${selectedPathDecision.directedTraversable === null ? "Unavailable" : `${selectedPathDecision.directedTraversable}/${selectedEvidenceHopCount}`} directed traversable relationships evidenced`

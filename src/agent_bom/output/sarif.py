@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
@@ -347,18 +348,26 @@ def _build_run_taxonomies(results: list[dict]) -> list[dict]:
 def _attach_cwe_taxonomy(results: list[dict], rules: list[dict]) -> dict | None:
     """Link structured finding CWEs to SARIF's standard CWE taxonomy.
 
-    SARIF 2.1.0 sections 3.19.3 and 3.53: the target CWE is a superset
-    of the concrete vulnerability rule. IDs are numeric within CWE's catalog.
-    Do not infer weaknesses from advisory prose or opaque rule tags.
+    GUIDs resolve taxonomy descriptors per SARIF 2.1.0 sections 3.52-3.54;
+    names are display labels only. Rule mappings are relevant associations:
+    a shared rule must not assign every observed CWE to all of its results.
     """
+    taxonomy_guid = str(uuid.uuid5(uuid.NAMESPACE_URL, "https://cwe.mitre.org/"))
+
+    def taxon_guid(value: str) -> str:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"https://cwe.mitre.org/data/definitions/{value}.html"))
+
+    def reference(value: str) -> dict:
+        return {"id": value, "guid": taxon_guid(value), "toolComponent": {"name": "CWE", "guid": taxonomy_guid}}
+
     by_rule: dict[str, set[str]] = {}
     all_ids: set[str] = set()
     for result in results:
         cwes = sorted(
             {
-                str(int(value[4:]))
+                value[4:]
                 for value in result.get("properties", {}).get("cwe_ids", [])
-                if isinstance(value, str) and re.fullmatch(r"CWE-[1-9][0-9]*", value)
+                if isinstance(value, str) and re.fullmatch(r"CWE-[1-9][0-9]{0,8}", value)
             },
             key=int,
         )
@@ -366,23 +375,29 @@ def _attach_cwe_taxonomy(results: list[dict], rules: list[dict]) -> dict | None:
             continue
         all_ids.update(cwes)
         by_rule.setdefault(result["ruleId"], set()).update(cwes)
-        result.setdefault("taxa", []).extend({"id": value, "toolComponent": {"name": "CWE"}} for value in cwes)
+        result.setdefault("taxa", []).extend(reference(value) for value in cwes)
     if not all_ids:
         return None
     for rule in rules:
         rule_cwes = by_rule.get(rule["id"], set())
         if rule_cwes:
             rule.setdefault("relationships", []).extend(
-                {"target": {"id": value, "toolComponent": {"name": "CWE"}}, "kinds": ["superset"]} for value in sorted(rule_cwes, key=int)
+                {"target": reference(value), "kinds": ["relevant"]} for value in sorted(rule_cwes, key=int)
             )
     return {
         "name": "CWE",
+        "guid": taxonomy_guid,
         "fullName": "Common Weakness Enumeration",
         "informationUri": "https://cwe.mitre.org/",
         "organization": "MITRE",
         "isComprehensive": False,
         "taxa": [
-            {"id": value, "name": f"CWE-{value}", "helpUri": f"https://cwe.mitre.org/data/definitions/{value}.html"}
+            {
+                "id": value,
+                "guid": taxon_guid(value),
+                "name": f"CWE-{value}",
+                "helpUri": f"https://cwe.mitre.org/data/definitions/{value}.html",
+            }
             for value in sorted(all_ids, key=int)
         ],
     }
@@ -1369,7 +1384,7 @@ def to_sarif(
 
     if cwe_taxonomy:
         run.setdefault("taxonomies", []).append(cwe_taxonomy)
-        run["tool"]["driver"]["supportedTaxonomies"] = [{"name": "CWE"}]
+        run["tool"]["driver"]["supportedTaxonomies"] = [{"name": "CWE", "guid": cwe_taxonomy["guid"]}]
 
     document = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",

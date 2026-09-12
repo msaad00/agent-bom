@@ -224,6 +224,8 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_ICEBERG_CATALOG_URL` | `str` | `''` | Optional findings-lake side-write. Disabled unless a REST catalog URL is set. Credentials are deliberately not mirrored here; they stay env/KMS-only and are allowlisted as secret material in scripts/env_var_allowlist.txt. |
 | `AGENT_BOM_ICEBERG_NAMESPACE` | `str` | `'agent_bom'` | — |
+| `AGENT_BOM_ICEBERG_OAUTH2_SERVER_URI` | `str` | `''` | — |
+| `AGENT_BOM_ICEBERG_SCOPE` | `str` | `''` | — |
 | `AGENT_BOM_ICEBERG_TABLE` | `str` | `'findings'` | — |
 | `AGENT_BOM_ICEBERG_WAREHOUSE` | `str` | `''` | — |
 

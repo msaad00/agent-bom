@@ -319,3 +319,30 @@ def test_v4_field_ids_and_rows_survive_v5_sla_provenance_append(tmp_path):
     assert [field.name for field in after.schema().fields][-1] == "sla_due_at_source"
     rows = after.scan().to_arrow().to_pylist()
     assert sorted(row["cve_id"] for row in rows) == [legacy["cve_id"][0].as_py()] * 2
+
+
+def test_polaris_oauth_properties_reach_rest_catalog(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_ICEBERG_CATALOG_URL", "https://polaris.example/api/catalog")
+    monkeypatch.setenv("AGENT_BOM_ICEBERG_CREDENTIAL", "test-id:test-secret")
+    monkeypatch.setenv("AGENT_BOM_ICEBERG_WAREHOUSE", "evidence")
+    monkeypatch.setenv("AGENT_BOM_ICEBERG_SCOPE", "PRINCIPAL_ROLE:ALL")
+    monkeypatch.setenv("AGENT_BOM_ICEBERG_OAUTH2_SERVER_URI", "https://polaris.example/api/catalog/v1/oauth/tokens")
+    captured = {}
+
+    def rest_catalog(name, **props):
+        captured.update(props)
+        return object()
+
+    monkeypatch.setattr(iceberg_catalog, "_require_pyiceberg", lambda: rest_catalog)
+    iceberg_catalog._build_catalog(IcebergCatalogConfig.from_env())
+    assert captured == {
+        "uri": "https://polaris.example/api/catalog",
+        "credential": "test-id:test-secret",
+        "warehouse": "evidence",
+        "scope": "PRINCIPAL_ROLE:ALL",
+        "oauth2-server-uri": "https://polaris.example/api/catalog/v1/oauth/tokens",
+    }
+
+
+def test_generic_catalog_does_not_assume_polaris_scope() -> None:
+    assert IcebergCatalogConfig(catalog_url="https://catalog.example").catalog_properties() == {"uri": "https://catalog.example"}

@@ -124,6 +124,32 @@ leaves the Parquet file available for retry. Catalog credentials remain in
 `AGENT_BOM_ICEBERG_CREDENTIAL` or `AGENT_BOM_ICEBERG_TOKEN`; they are never CLI
 arguments or output fields.
 
+### Apache Polaris authentication
+
+For Polaris, set the warehouse to the catalog name and activate the principal's
+assigned roles with an explicit OAuth scope. Supply the credential through the
+existing secret environment variable:
+
+```bash
+export AGENT_BOM_ICEBERG_CATALOG_URL="https://polaris.example/api/catalog"
+export AGENT_BOM_ICEBERG_WAREHOUSE="security_evidence"
+export AGENT_BOM_ICEBERG_SCOPE="PRINCIPAL_ROLE:ALL"
+export AGENT_BOM_ICEBERG_OAUTH2_SERVER_URI="https://polaris.example/api/catalog/v1/oauth/tokens"
+agent-bom scan . --format parquet --output findings.parquet
+```
+
+The principal needs permission to create the namespace/table, write table data,
+and commit snapshots. Authentication alone does not grant catalog or storage
+access. Scope and token-endpoint settings are optional for other REST catalogs;
+no Polaris-specific scope is imposed by default. A pre-issued bearer token can
+still be supplied through `AGENT_BOM_ICEBERG_TOKEN`.
+
+See the [Polaris PyIceberg connection guide](https://polaris.apache.org/releases/1.7.0/getting-started/using-polaris/)
+for role assignment and catalog storage configuration. After export, load the
+configured `agent_bom.findings` table with an Iceberg client and inspect its
+current snapshot and rows. Hosted catalog and cloud-storage permissions must be
+verified in the target environment.
+
 ### Lake schema evolution
 
 Parquet schema version 5 appends nullable `sla_due_at_source` after the original

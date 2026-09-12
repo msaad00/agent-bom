@@ -370,10 +370,10 @@ def _attach_cwe_taxonomy(results: list[dict], rules: list[dict]) -> dict | None:
     if not all_ids:
         return None
     for rule in rules:
-        cwes = by_rule.get(rule["id"], set())
-        if cwes:
+        rule_cwes = by_rule.get(rule["id"], set())
+        if rule_cwes:
             rule.setdefault("relationships", []).extend(
-                {"target": {"id": value, "toolComponent": {"name": "CWE"}}, "kinds": ["superset"]} for value in sorted(cwes, key=int)
+                {"target": {"id": value, "toolComponent": {"name": "CWE"}}, "kinds": ["superset"]} for value in sorted(rule_cwes, key=int)
             )
     return {
         "name": "CWE",

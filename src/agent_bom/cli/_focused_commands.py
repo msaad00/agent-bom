@@ -351,9 +351,18 @@ def sbom_cmd(
     help="Also flag high-entropy values assigned to secret-named keys (catches novel secrets; higher recall, some false positives).",
 )
 @click.option(
+    "--validate-credentials",
+    is_flag=True,
+    default=False,
+    help=(
+        "Use found GitHub user tokens and Stripe keys in read-only provider requests. "
+        "Explicit opt-in; results may be valid, invalid, or unknown."
+    ),
+)
+@click.option(
     "--offline",
     is_flag=True,
-    help="No-op — secret scanning is always local and never makes network calls. Accepted for parity with `scan`.",
+    help="Keep scanning local; cannot be combined with --validate-credentials.",
 )
 @click.option("--quiet", "-q", is_flag=True)
 def secrets_cmd(
@@ -364,6 +373,7 @@ def secrets_cmd(
     log_json: bool,
     log_file: Optional[str],
     detect_entropy: bool,
+    validate_credentials: bool,
     offline: bool,
     quiet: bool,
 ) -> None:
@@ -378,12 +388,11 @@ def secrets_cmd(
       agent-bom secrets .                   # scan current directory
       agent-bom secrets /path/to/project    # scan specific project
       agent-bom secrets . --format json     # JSON output
-      agent-bom secrets . --offline         # --offline is a no-op (always local)
+      agent-bom secrets . --offline         # no provider requests
+      agent-bom secrets . --validate-credentials --format json
     """
-    # --offline is accepted for parity with `scan` (shared CI invocations) but is
-    # inherently a no-op: secret scanning reads local files and never touches the
-    # network. Referenced here so its acceptance is explicit.
-    _ = offline
+    if offline and validate_credentials:
+        raise click.UsageError("--validate-credentials cannot be combined with --offline")
     import json as _json
 
     from rich.console import Console
@@ -396,7 +405,10 @@ def secrets_cmd(
 
     report_con = Console(file=sys.stdout, quiet=quiet, no_color=no_color)
     diagnostic_con = Console(stderr=True, quiet=quiet, no_color=no_color)
-    result = scan_secrets(path, detect_entropy=detect_entropy)
+    if validate_credentials:
+        result = scan_secrets(path, detect_entropy=detect_entropy, validate_credentials=True)
+    else:
+        result = scan_secrets(path, detect_entropy=detect_entropy)
 
     if output_format == "json":
         output = _json.dumps(result.to_dict(), indent=2)
@@ -426,7 +438,8 @@ def secrets_cmd(
 
     for f in result.findings:
         sev_color = {"critical": "red", "high": "yellow", "medium": "blue"}.get(f.severity, "white")
-        report_con.print(f"  [{sev_color}]{f.severity.upper()}[/{sev_color}]  {f.file_path}:{f.line_number}  {f.secret_type}")
+        validation = f"  (validation: {f.validation_status})" if f.validation_status is not None else ""
+        report_con.print(f"  [{sev_color}]{f.severity.upper()}[/{sev_color}]  {f.file_path}:{f.line_number}  {f.secret_type}{validation}")
 
     report_con.print(f"\n[bold]{result.total} findings[/bold] ({result.critical_count} critical)")
     if _has_finding_at_or_above(result.findings):

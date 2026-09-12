@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.runtime.patterns import CODE_CALL_ASSIGNMENT, CREDENTIAL_PATTERNS, PII_PATTERNS
+from agent_bom.scanners.credential_validation import CredentialValidator, ValidationStatus
 from agent_bom.scanners.repo_ignore import GITIGNORE_FILENAME, SCANNER_IGNORE_FILENAME, RepositoryIgnore
 from agent_bom.traversal import iter_discovery_files
 
@@ -263,6 +264,7 @@ class SecretFinding:
     severity: str  # "critical", "high", "medium"
     matched_preview: str  # redacted evidence label; never includes matched bytes
     category: str  # "credential", "pii", "secret"
+    validation_status: ValidationStatus | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -272,6 +274,7 @@ class SecretFinding:
             "severity": self.severity,
             "preview": self.matched_preview,
             "category": self.category,
+            **({"validation_status": self.validation_status} if self.validation_status is not None else {}),
         }
 
 
@@ -369,7 +372,9 @@ class FileNotScannedError(Exception):
     """
 
 
-def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) -> list[SecretFinding]:
+def _scan_file(
+    file_path: Path, rel_path: str, *, detect_entropy: bool = False, validator: CredentialValidator | None = None
+) -> list[SecretFinding]:
     """Scan a single file for secrets.
 
     Raises:
@@ -426,6 +431,7 @@ def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) 
                         severity="critical",
                         matched_preview="[CREDENTIAL_REDACTED]",
                         category="credential",
+                        validation_status=validator.validate(name, match.group(0)) if validator is not None else None,
                     )
                 )
                 break  # One finding per line for credentials
@@ -529,7 +535,7 @@ def _should_scan_pii_line(file_path: Path, line: str) -> bool:
     return suffix in _PII_CODE_EXTENSIONS and bool(_PII_CONTEXT_RE.search(line))
 
 
-def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> SecretScanResult:
+def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False, validate_credentials: bool = False) -> SecretScanResult:
     """Scan a project directory for hardcoded secrets and PII.
 
     Uses the same 31 credential + 11 PII patterns from the runtime
@@ -538,6 +544,8 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
 
     Args:
         project_path: Root directory to scan.
+        validate_credentials: Explicit opt-in to bounded read-only authentication
+            checks of supported credentials. Default makes no outbound calls.
         detect_entropy: Also flag high-entropy values assigned to
             secret-suggesting keys (novel/unknown secrets no fixed pattern
             names). Opt-in — higher recall, some false positives.
@@ -551,6 +559,7 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
 
     result = SecretScanResult()
     file_count = 0
+    validator = CredentialValidator() if validate_credentials else None
 
     def traversal_error(_exc: OSError) -> None:
         warning = "Directory traversal incomplete; one or more paths could not be read"
@@ -584,7 +593,13 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
 
         rel = str(f.relative_to(project))
         try:
-            findings = _scan_file(f, rel, detect_entropy=detect_entropy)
+            if validator is None:
+                findings = _scan_file(f, rel, detect_entropy=detect_entropy)
+            else:
+                findings = _scan_file(f, rel, detect_entropy=detect_entropy, validator=validator)
+                for finding in findings:
+                    if finding.category != "pii" and finding.validation_status is None:
+                        finding.validation_status = "unknown"
         except FileNotScannedError as skipped:
             # Named, and deliberately not counted: `files_scanned` is a coverage
             # claim, and a file nobody opened is not coverage.

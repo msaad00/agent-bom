@@ -1198,6 +1198,11 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
             "file": file_path,
             "line": line,
             "secret_type": secret_type,
+            **(
+                {"validation_status": secret["validation_status"]}
+                if isinstance(secret.get("validation_status"), str) and secret["validation_status"] in {"valid", "invalid", "unknown"}
+                else {}
+            ),
             "category": category,
             "redacted_preview": _safe_secret_preview(secret.get("preview")),
         },

@@ -55,18 +55,19 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
-  it("separates posture and coverage from the compliance and risk decision row", () => {
+  it("puts actionable risks beside posture, ahead of supporting evidence", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
     const posture = screen.getByRole("region", { name: "Command center" });
     const coverage = screen.getByRole("region", { name: /^Coverage$/ });
     const risks = screen.getByRole("region", { name: "Top risks" });
-    expect(posture.parentElement).toBe(coverage.parentElement);
+    expect(posture.parentElement).toBe(risks.parentElement);
+    expect(within(posture).getByText("Posture score · 0–100, higher is better")).toBeVisible();
     const compliance = screen.getByRole("region", { name: "Compliance & frameworks" });
-    expect(risks.parentElement).toBe(compliance.parentElement);
-    expect(risks.parentElement).not.toBe(posture.parentElement);
+    expect(coverage.parentElement).toBe(compliance.parentElement);
+    expect(coverage.parentElement).not.toBe(posture.parentElement);
     expect(within(coverage).queryByText(/Control evaluation unavailable/i)).not.toBeInTheDocument();
     expect(within(compliance).getByText(/Control evaluation unavailable/i)).toBeVisible();
-    expect(coverage.compareDocumentPosition(risks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(risks.compareDocumentPosition(coverage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(coverage).getByText("Operational signals")).toBeVisible();
 
     expect(within(coverage).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
@@ -539,7 +540,7 @@ describe("OverviewCockpit", () => {
   it("labels the grade as a current snapshot and points to ranked remediation evidence", () => {
     render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
 
-    expect(screen.getByText(/current evidence snapshot.*what to fix first/i)).toBeInTheDocument();
+    expect(screen.getByText(/current evidence snapshot.*prioritize remediation/i)).toBeInTheDocument();
     expect(screen.queryByText(/improved|declined/i)).not.toBeInTheDocument();
   });
 

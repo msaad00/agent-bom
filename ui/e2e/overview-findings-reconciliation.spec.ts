@@ -338,13 +338,13 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto("/");
       await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
       await page.waitForTimeout(350);
-      const panels = await Promise.all(["Command center", "Coverage", "Compliance & frameworks", "Top risks"].map((name) => page.getByRole("region", { name, exact: true }).boundingBox()));
-      const [command, coverage, compliance, risks] = panels;
+      const panels = await Promise.all(["Command center", "Top risks", "Compliance & frameworks", "Coverage"].map((name) => page.getByRole("region", { name, exact: true }).boundingBox()));
+      const [command, risks, compliance, coverage] = panels;
       if (width === 1440) {
-        expect(Math.abs(command!.y - coverage!.y)).toBeLessThan(2);
-        expect(Math.abs(compliance!.y - risks!.y)).toBeLessThan(2);
+        expect(Math.abs(command!.y - risks!.y)).toBeLessThan(2);
+        expect(Math.abs(compliance!.y - coverage!.y)).toBeLessThan(2);
         expect(compliance!.y).toBeGreaterThan(command!.y + command!.height);
-        expect(risks!.x).toBeGreaterThan(compliance!.x + compliance!.width);
+        expect(coverage!.x).toBeGreaterThan(compliance!.x + compliance!.width);
       } else {
         for (let index = 1; index < panels.length; index++) {
           expect(panels[index]!.y).toBeGreaterThanOrEqual(panels[index - 1]!.y + panels[index - 1]!.height);

@@ -166,3 +166,58 @@ def test_discover_skill_files_skips_worktree_copies(tmp_path):
 def test_vendor_skip_dirs_cover_common_generated_trees():
     for name in {".git", ".venv", "node_modules", "__pycache__", "site-packages"}:
         assert name in VENDOR_SKIP_DIRS
+
+
+def test_all_consumers_record_ancestor_pruning(tmp_path, caplog):
+    from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
+
+    reset_scan_warnings()
+    try:
+        for directory in ("env", "testing", "build/output"):
+            path = tmp_path / directory
+            path.mkdir(parents=True)
+            (path / "rules.prompt").write_text("secret prompt")
+        # This list-returning consumer has no on_prune callback of its own.
+        discover_prompt_files(tmp_path)
+        warnings = consume_coverage_warnings()
+        assert warnings
+        assert sum(w["excluded_count"] for w in warnings) >= 1
+        assert "contents were not inspected" in caplog.text
+        assert str(tmp_path) not in caplog.text
+    finally:
+        reset_scan_warnings()
+
+
+def test_traversal_limit_requires_an_actual_uninspected_file(tmp_path):
+    from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
+
+    reset_scan_warnings()
+    try:
+        (tmp_path / "one.txt").write_text("one")
+        limits = []
+        assert len(list(iter_discovery_files(tmp_path, max_files=1, on_limit=limits.append))) == 1
+        assert limits == []
+        assert consume_coverage_warnings() == []
+        (tmp_path / "two.txt").write_text("two")
+        assert len(list(iter_discovery_files(tmp_path, max_files=1, on_limit=limits.append))) == 1
+        assert limits == [1]
+        assert consume_coverage_warnings()[0]["reason"] == "discovery_file_limit"
+        assert list(iter_discovery_files(tmp_path, max_files=0)) == []
+    finally:
+        reset_scan_warnings()
+
+
+def test_pruning_counts_ancestors_without_exposing_paths(tmp_path):
+    from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
+
+    reset_scan_warnings()
+    try:
+        for directory in ("build", "dist", "node_modules"):
+            (tmp_path / directory).mkdir()
+        list(iter_discovery_files(tmp_path))
+        warnings = consume_coverage_warnings()
+        assert len(warnings) == 1
+        assert warnings[0]["excluded_count"] == 3
+        assert str(tmp_path) not in str(warnings)
+    finally:
+        reset_scan_warnings()

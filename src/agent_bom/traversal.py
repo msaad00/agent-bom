@@ -20,6 +20,8 @@ never entered) and enforces a file-count budget as a safety valve.
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
@@ -151,13 +153,55 @@ def iter_discovery_files(
     the (already filtered, typically small) result.
     """
     root = Path(root)
+    # Every consumer contributes to the existing CLI/API coverage channel,
+    # including discovery helpers whose return type is only a list of paths.
+    # Aggregate within the walk to bound diagnostics independently of tree size.
+    from agent_bom.scanners.state import record_coverage_warning
+
+    warnings_by_reason: dict[str, dict] = {}
+    root_id = hashlib.sha256(os.fsencode(root.absolute())).hexdigest()[:16]
+
+    def report_gap(reason: str, detail: str, count: int = 1) -> None:
+        warning = warnings_by_reason.get(reason)
+        if warning is None:
+            warning = {
+                "ecosystem": "filesystem-discovery",
+                "release": f"filesystem-discovery:{root_id}:{reason}",
+                "reason": reason,
+                "detail": detail,
+                "package_count": 0,
+                "advisory_rows": 0,
+                "excluded_count": 0,
+            }
+            warnings_by_reason[reason] = warning
+            record_coverage_warning(warning)
+            logging.getLogger(__name__).warning("Directory traversal incomplete: %s", detail)
+        warning["excluded_count"] += count
+
+    def note_pruned(path: Path, reason: str) -> None:
+        report_gap(
+            reason, "Directory subtrees were excluded by scanner policy, linked-worktree or symlink rules; contents were not inspected."
+        )
+        if on_prune is not None:
+            on_prune(path, reason)
+
+    def note_error(exc: OSError) -> None:
+        report_gap("directory_read_error", "One or more directories could not be read.")
+        if on_error is not None:
+            on_error(exc)
+
     if not root.is_dir():
+        report_gap("invalid_directory", "The requested scan root is not a readable directory.")
         return
     skip = VENDOR_SKIP_DIRS | extra_skip_dirs
     yielded = 0
-    for dirpath_str, dirnames, filenames in os.walk(root, followlinks=False, onerror=on_error):
+    for dirpath_str, dirnames, filenames in os.walk(root, followlinks=False, onerror=note_error):
         dirpath = Path(dirpath_str)
-        _prune_dirnames(dirpath, dirnames, skip, on_prune)
+        _prune_dirnames(dirpath, dirnames, skip, note_pruned)
+        for name in list(dirnames):
+            if (dirpath / name).is_symlink():
+                note_pruned(dirpath / name, "directory_symlink")
+                dirnames.remove(name)
         if ignore is not None:
             rel_dir = _relative_posix(root, dirpath)
             ignore.enter_directory(rel_dir)
@@ -168,6 +212,7 @@ def iter_discovery_files(
                 child = f"{rel_dir}/{name}" if rel_dir else name
                 if ignore.is_ignored_dir(child):
                     ignore.note_ignored()
+                    report_gap("repository_ignore", "Directory subtrees were excluded by repository ignore rules.")
                 else:
                     kept.append(name)
             dirnames[:] = kept
@@ -177,9 +222,13 @@ def iter_discovery_files(
                 if ignore.is_ignored_file(rel_file):
                     ignore.note_ignored()
                     continue
-            yield dirpath / name
-            yielded += 1
             if max_files is not None and yielded >= max_files:
+                report_gap(
+                    "discovery_file_limit",
+                    f"Directory traversal stopped at {max_files} discovered files; additional files were not inspected.",
+                )
                 if on_limit is not None:
                     on_limit(max_files)
                 return
+            yield dirpath / name
+            yielded += 1

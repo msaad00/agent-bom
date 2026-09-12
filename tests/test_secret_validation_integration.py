@@ -55,3 +55,9 @@ def test_unsupported_credentials_stay_unknown_and_pii_is_unset(tmp_path):
     result = scan_secrets(tmp_path, validate_credentials=True)
     assert next(f for f in result.findings if f.secret_type == "AWS Access Key").validation_status == "unknown"
     assert all(f.validation_status is None for f in result.findings if f.category == "pii")
+
+
+@pytest.mark.parametrize("status", [[], {}, 1, "untrusted"])
+def test_untrusted_validation_status_is_not_imported(status):
+    finding = secret_dict_to_finding({"type": "GitHub Token", "validation_status": status})
+    assert "validation_status" not in finding.evidence

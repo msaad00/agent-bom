@@ -1200,7 +1200,7 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
             "secret_type": secret_type,
             **(
                 {"validation_status": secret["validation_status"]}
-                if secret.get("validation_status") in {"valid", "invalid", "unknown"}
+                if isinstance(secret.get("validation_status"), str) and secret["validation_status"] in {"valid", "invalid", "unknown"}
                 else {}
             ),
             "category": category,

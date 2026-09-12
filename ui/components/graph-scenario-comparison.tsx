@@ -514,6 +514,7 @@ export function GraphScenarioComparisonPanel({
             )}
             {proposedVisible && (
               <div className="mb-4" data-testid="scenario-impact-summary">
+                {state === "proposed" && <button type="button" onClick={() => onStateChange("difference")} className="mb-3 w-full rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800">Review modeled changes</button>}
                 <h3 className="text-sm font-semibold text-[var(--foreground)]">What changes</h3>
                 <dl className="mt-2 grid grid-cols-2 gap-3">
                   {differenceGroups.filter((group) => group.items.length > 0).map((group) => (
@@ -521,7 +522,6 @@ export function GraphScenarioComparisonPanel({
                   ))}
                   <div><dt className="text-xs text-[var(--text-secondary)]">Observed paths touched</dt><dd className="text-xl font-semibold text-[var(--foreground)]">{comparison.difference.touched_observed_path_count}</dd></div>
                 </dl>
-                {state === "proposed" && <button type="button" onClick={() => onStateChange("difference")} className="mt-3 w-full rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800">Review modeled changes</button>}
               </div>
             )}
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">

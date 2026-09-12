@@ -91,6 +91,44 @@ export function proposedGraphFromComparison(
   };
 }
 
+/** One-hop context around explicit changes; never expands transitively. */
+export function graphScenarioContextIds(
+  nodes: readonly { id: string }[],
+  edges: readonly { id: string; source: string; target: string }[],
+  difference: GraphScenarioDifference,
+  referenceEdges: readonly { id: string; source: string; target: string }[] = [],
+): Set<string> | undefined {
+  const visible = new Set(nodes.map((node) => node.id));
+  const anchors = new Set<string>();
+  const add = (id: unknown) => {
+    if (typeof id === "string" && visible.has(id)) anchors.add(id);
+  };
+  for (const item of [...difference.nodes_added, ...difference.nodes_removed, ...difference.nodes_changed]) {
+    if (typeof item === "string") add(item);
+    else if (item && typeof item === "object") {
+      const record = item as Record<string, unknown>;
+      add(record.node_id ?? record.id);
+    }
+  }
+  const edgeIndex = new Map([...referenceEdges, ...edges].map((edge) => [edge.id, edge]));
+  for (const item of [...difference.edges_added, ...difference.edges_removed]) {
+    const record = item && typeof item === "object" ? item as Record<string, unknown> : undefined;
+    const id = typeof item === "string" ? item : record?.edge_id ?? record?.id;
+    const edge = typeof id === "string" ? edgeIndex.get(id) : undefined;
+    add(edge?.source ?? (Array.isArray(item) ? item[0] : record?.source));
+    add(edge?.target ?? (Array.isArray(item) ? item[1] : record?.target));
+  }
+  if (!anchors.size) return undefined;
+  const context = new Set(anchors);
+  for (const edge of edges) {
+    if (anchors.has(edge.source) || anchors.has(edge.target)) {
+      if (visible.has(edge.source)) context.add(edge.source);
+      if (visible.has(edge.target)) context.add(edge.target);
+    }
+  }
+  return context;
+}
+
 function differenceItemLabel(item: unknown): string {
   if (typeof item === "string") return item;
   if (Array.isArray(item)) return item.map(differenceItemLabel).join(" → ");

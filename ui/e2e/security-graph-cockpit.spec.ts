@@ -521,6 +521,12 @@ for (const proof of [
     })).toBeGreaterThanOrEqual(3);
     await expect(page.getByTestId("scenario-impact-summary")).toContainText("Observed paths touched");
     await expect(page.getByTestId("graph-viewport-scope")).toContainText("Fit all");
+    await expect(page.getByTestId("graph-viewport-scope")).toContainText("Changes and neighbors");
+    await page.getByRole("button", { name: "Show full graph" }).click();
+    await expect(page.getByRole("button", { name: "Focus changes" })).toBeVisible();
+    await expect(page.getByTestId("graph-viewport-scope")).not.toContainText("Changes and neighbors");
+    await page.getByRole("button", { name: "Focus changes" }).click();
+    await expect(page.getByTestId("graph-viewport-scope")).toContainText("Changes and neighbors");
     await page.getByRole("button", { name: "Review modeled changes" }).click();
     await expect(page).toHaveURL(/state=difference/);
     await expect(page.getByTestId("graph-scenario-difference")).toContainText(

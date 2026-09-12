@@ -179,6 +179,7 @@ import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation";
 import { roleCanConnect } from "@/lib/roles";
 import {
+  graphScenarioContextIds,
   parseGraphScenarioViewState,
   proposedGraphFromComparison,
   type GraphScenarioViewState,
@@ -745,6 +746,8 @@ function GraphPageInner() {
       ? new URLSearchParams(window.location.search).get("scenario") ?? ""
       : "",
   );
+  const [expandedScenarioId, setExpandedScenarioId] = useState<string | null>(null);
+  const scenarioExpanded = Boolean(selectedScenarioId && expandedScenarioId === selectedScenarioId);
   const [scenarioState, setScenarioState] = useState<GraphScenarioViewState>(() =>
     typeof window !== "undefined"
       ? parseGraphScenarioViewState(
@@ -1787,9 +1790,13 @@ function GraphPageInner() {
   const compactMobileTopology = narrowViewport && !selectedAttackPath &&
     !rollupNavigationActive && compactGroupedTopology;
   const graphLayoutKind = compactMobileTopology ? "dagre" : "dagre-lr";
+  const scenarioContextIds = useMemo(() => {
+    if (!selectedScenarioId || !scenarioComparison?.available || scenarioExpanded || attackPathLens || selectedAttackPath || investigationMode) return undefined;
+    return graphScenarioContextIds(aggregated.nodes, aggregated.edges, scenarioComparison.difference, mergedGraphData?.edges);
+  }, [selectedScenarioId, scenarioComparison, scenarioExpanded, attackPathLens, selectedAttackPath, investigationMode, aggregated.nodes, aggregated.edges, mergedGraphData?.edges]);
   const layoutInput = useMemo(
-    () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds),
-    [aggregated.edges, aggregated.nodes, attackPathNodeIds],
+    () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds),
+    [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds],
   );
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(
     graphLayoutKind,
@@ -2324,6 +2331,7 @@ function GraphPageInner() {
     [captureMode, displayEdges.length, displayNodes.length],
   );
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
+    if (scenarioExpanded) return viewportOptions;
     // Whole-estate navigation starts with all returned scopes in frame.
     // A selected finding or proposed change keeps its explicit close-up.
     if ((canvasLens === "estate" && displayNodes.length <= 6 && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
@@ -2336,7 +2344,7 @@ function GraphPageInner() {
         return typeof id === "string" ? [id] : [];
       });
     return graphInitialFitViewOptions(displayNodes, viewportOptions, selectedNodeId, proposedIds);
-  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison]);
+  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison, scenarioExpanded]);
   const initialAnchorId = initialViewportRequest.nodes?.[0]?.id;
   // React Flow shares this prop with its queued imperative fit operation.
   // Hover/LOD node objects must not overwrite a user's pending Fit all request
@@ -2348,9 +2356,9 @@ function GraphPageInner() {
         : viewportOptions;
       // Scenario views share width with the decision panel and app navigation.
       // At 1:1, full card labels remain readable and adjacent hops fit together.
-      return selectedScenarioId ? { ...options, minZoom: 1, maxZoom: 1 } : options;
+      return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 1, maxZoom: 1 } : options;
     },
-    [initialAnchorId, viewportOptions, selectedScenarioId],
+    [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded],
   );
   const showMiniMap = useMemo(
     () =>
@@ -3781,9 +3789,10 @@ function GraphPageInner() {
               </div>
             </section>
           )}
-          {!rollupDecisionActive && (initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
+          {!rollupDecisionActive && (selectedScenarioId || initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
             <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
-              <span>{graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>
+              <span>{scenarioContextIds ? `Changes and neighbors · ${displayNodes.length} of ${aggregated.nodes.length} nodes` : graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>
+              {selectedScenarioId && !attackPathLens && !selectedAttackPath && !investigationMode && <button type="button" onClick={() => setExpandedScenarioId(scenarioExpanded ? null : selectedScenarioId)} className="text-foreground underline underline-offset-4">{scenarioExpanded ? "Focus changes" : "Show full graph"}</button>}
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
               {selectedNodeId && <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4">Focus selection</button>}
             </div>
@@ -3849,7 +3858,7 @@ function GraphPageInner() {
             />
           ) : (
             <ReactFlow
-              key={captureMode ? "lineage-capture" : `${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "initial"}`}
+              key={captureMode ? `lineage-capture:${scenarioExpanded ? "full" : "context"}` : `${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "initial"}`}
               nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}

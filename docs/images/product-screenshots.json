@@ -1,9 +1,9 @@
 {
   "release_version": "0.104.0",
-  "captured_at": "2026-09-12T19:37:36.676Z",
-  "source_commit": "3ce3594e301476e9f3fcb341e5a8f9a8e9c2fc69",
+  "captured_at": "2026-09-12T23:31:11.791Z",
+  "source_commit": "75b5007cae27fe8797bd941e0b15506cc1b9de75",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:acb688e640e1c24ed34d42239ccd35cbb9277ebc502394b5f79b4466ca847bf5",
+  "capture_inputs_sha256": "sha256:f323b238f063b8368cb5ac79ab47b7be359c5e855fdff48f26526f8b5178caae",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.104.0",
-      "sha256": "sha256:59f39b97458cf24f9de3f6f74b081f20affd38fcb1b735fe48151923fc1319d6"
+      "sha256": "sha256:6537954b84b8c000a7493f2872b7a76008c5078eda73ee38d4f84f2c0e99580c"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center in the light theme",
       "visible_version": "0.104.0",
-      "sha256": "sha256:d8464941d6df825fc8eb753dc9d80efff0c34ac32a6d45dd954a0038e1bd3d34"
+      "sha256": "sha256:0e4a12fb21fd6b579463f5a4d3b445edc827b1cb394bf12503afbe951f0005dc"
     },
     {
       "presentation": "dark mobile",
@@ -28,7 +28,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center at a 390 by 844 viewport",
       "visible_version": "0.104.0",
-      "sha256": "sha256:5fcb52a46cd5859f8c0275f96770198cd8128410eeffe3d0fb60ba396145c50b"
+      "sha256": "sha256:0c1aaffabe697d916bc590200dca886f8cfb4957a934e4163916b418e49990f8"
     },
     {
       "presentation": "dark desktop",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.104.0",
-      "sha256": "sha256:44c0a89f13c9465b5d8f8946a203a8d0219abe5b91e3df2eaade688069ede3d2"
+      "sha256": "sha256:8b1136c0bef50e55ba896e6d684164bfaa2acbe836481eff3bef36b7fe0871cd"
     },
     {
       "presentation": "dark desktop",
@@ -60,7 +60,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.104.0",
-      "sha256": "sha256:df42e0fe597036bc4ae9612c6071342882ccd5450dd0784ddc517cb0a72c2c09"
+      "sha256": "sha256:5ff5e614116092ac5d002780731aced74e2f71a96b6e7d45e0ecc48dd71ae29c"
     },
     {
       "presentation": "dark desktop",
@@ -103,7 +103,7 @@
       "evidence_sha256": "sha256:b7f7b30b5939a4efe71c9af5de5e2302d9f27eca4ca010a00d669bb5fc8a0652",
       "correlation_manifest_sha256": "sha256:cc9f3fe5ed5e792bcd69e96a35c120b90aaf3d34ead006b130e1db2a7a8135ff",
       "visible_version": "0.104.0",
-      "sha256": "sha256:756aebad1dd19839ae6c2a7ffd52cbaf7fef2bd1967c4bcbc16fd967cf58f782"
+      "sha256": "sha256:4b8e8e94cd8f58706a219a889327e9cdbca7a709958896e780a7006ac7e9cae4"
     },
     {
       "presentation": "dark desktop",
@@ -201,7 +201,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.104.0",
-      "sha256": "sha256:9918f889dd6484a5533dfdf95087d4871045ea9e35f1081872aeff919d36286c"
+      "sha256": "sha256:8554ec5b04764d39b55dcdb919578f40843043244b019bb437abfbe6db0a1843"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability",
       "scope": "Focused highest-risk directed path from identity source through agent, MCP, package, and finding",
       "visible_version": "0.104.0",
-      "sha256": "sha256:5ea0aad51f7309b714788a10dacffbb95abc79ff2caaa51f0e0805b8cbaac3ea"
+      "sha256": "sha256:af34b6718789d14a1c78c663b9d986d60c443d1b116cc7e2a869c39b8899490e"
     },
     {
       "presentation": "dark desktop",

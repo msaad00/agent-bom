@@ -37,6 +37,7 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
+from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
 from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
@@ -1057,6 +1058,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             require_host_discovery_for_tenant(job.tenant_id)
         agents: list[Any] = []
         warnings_all: list[str] = []
+        repo_scan_issues: list[ScanIssue] = []
         coverage_warning_messages: set[str] = set()
         side_effects_enabled = not (req.dry_run or req.no_scan)
         effective_agent_projects = list(req.agent_projects)
@@ -1100,6 +1102,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             repo_ai_inventory_data = repo_tree_result.ai_inventory_data
             repo_sast_data = repo_tree_result.sast_data
             repo_codeowners = repo_tree_result.codeowners
+            repo_scan_issues = repo_tree_result.scan_issues
         path_fields = (
             ([req.inventory] if req.inventory else [])
             + req.tf_dirs
@@ -1420,8 +1423,6 @@ def _run_scan_sync(job: ScanJob) -> None:
             if filtered_count:
                 pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
 
-        from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
-
         def _build_scan_run(*, has_usable_evidence: bool) -> ScanRun:
             issues = [
                 ScanIssue(
@@ -1435,7 +1436,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 for warning in warnings_all
             ]
             outcome = ScanOutcome.FAILED if coverage_warning_messages and not has_usable_evidence else ScanOutcome.COMPLETE
-            return ScanRun(outcome=outcome, issues=issues)
+            return ScanRun(outcome=outcome, issues=[*repo_scan_issues, *issues])
 
         _ast_only_result = None
         if not agents:

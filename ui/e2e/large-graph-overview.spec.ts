@@ -492,6 +492,8 @@ test("scope summary does not inherit the unrelated node-page warning", async ({ 
     completeness: { status: "complete", returned: 1, total: 1, truncated: false, reasons: [] },
   } }));
   await page.goto("/security-graph");
+  await expect(page.getByRole("group", { name: "Complete estate scope, org", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Summary", exact: true }).click();
   await expect(page.getByRole("region", { name: "Risk-prioritized estate scopes" })).toContainText("Complete estate scope");
   await expect(page.getByText(/This node view includes only part/)).toHaveCount(0);
   await expect(page.getByText("node_page_limit", { exact: true })).toHaveCount(0);

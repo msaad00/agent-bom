@@ -38,11 +38,23 @@
 
 ### Security and engineering leaders: decide what needs attention
 
-See the current risk posture, critical findings, assessment coverage and tracked
-AI spend together. Open the underlying evidence before assigning a priority.
+See the current risk posture and critical findings first. Open the underlying
+evidence before assigning a priority.
 
 <p align="center">
-  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview screen with sample posture, finding counts, coverage and qualified AI spend" width="920"></a>
+  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview screen with sample posture, finding counts and prioritized risks" width="920"></a>
+</p>
+
+### GRC and audit: see framework mappings and assessment gaps
+
+Review **OWASP LLM, OWASP MCP, OWASP Agentic and MITRE ATLAS** risk mappings
+alongside assessment coverage, recorded activity and estimated AI spend.
+Open **Compliance** for the [framework catalog and control evidence](site-docs/features/compliance.md).
+The sample below has no evaluated controls; mappings and framework icons do not
+establish a compliance pass or certification.
+
+<p align="center">
+  <a href="docs/images/dashboard-paths-live.png"><img src="docs/images/dashboard-paths-live.png" alt="Actual Overview compliance and coverage panels with OWASP and MITRE framework icons, unavailable control evaluation, assessment gaps and estimated AI spend in a labeled sample environment" width="920"></a>
 </p>
 
 ### AppSec and cloud teams: explain why a finding matters

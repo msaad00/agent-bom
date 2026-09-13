@@ -434,3 +434,31 @@ test("retired renderer=webgl opt-in still lands on the WebGL overview", async ({
   await expectSigmaCanvases(page);
   await captureRenderedRegion(page, sigma, testInfo.outputPath("sigma-webgl-overview.png"));
 });
+
+
+test("identity investigation links preserve the selected root during client navigation", async ({ page }) => {
+  // App Router can render the destination before its history update commits.
+  // Make that ordering deterministic instead of relying on machine speed.
+  await page.addInitScript(() => {
+    const push = history.pushState.bind(history);
+    history.pushState = (data, unused, url) => {
+      if (String(url).startsWith("/security-graph")) {
+        setTimeout(() => push(data, unused, url), 500);
+      } else push(data, unused, url);
+    };
+  });
+  await page.route("**/v1/**", (route) => route.fulfill({ status: 404, json: { detail: "Unavailable in fixture" } }));
+  await routeLargeGraphPage(page);
+  await page.route("**/v1/graph/nhi/governance", (route) => route.fulfill({ json: {
+    scan_id: scanId, counts: { over_granted: 1 },
+    identities: [{ node_id: "pkg:42", name: "Investigated identity", risk_score: 86 }],
+  } }));
+  await page.goto("/identity");
+  await page.getByRole("tab", { name: "Discovered identity risk" }).click();
+  const query = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.method() === "POST");
+  await page.getByRole("link", { name: "Investigated identity 86" }).click();
+  expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_nodes: 80, max_edges: 320 });
+  await expect(page.getByRole("textbox", { name: "Search nodes, tags, severities, or attributes" })).toHaveValue("Investigated identity");
+  await expect(page).toHaveURL(/root=pkg%3A42/);
+  await expect(page.getByTestId("sigma-graph-overview")).toBeHidden();
+});

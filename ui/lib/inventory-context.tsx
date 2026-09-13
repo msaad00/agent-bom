@@ -115,6 +115,9 @@ export function InventoryProvider({
   // Continuations are query-scoped; details remain valid across filters but not refreshes.
   const pageGeneration = useRef(0);
   const snapshotGeneration = useRef(0);
+  // Cursor responses report the request offset (normally zero), not a row
+  // ordinal. Keep position and prior cursors locally for bounded navigation.
+  const pageCursors = useRef(new Map<number, string>());
 
   const reload = useCallback(() => setNonce((value) => value + 1), []);
   const entityTypesKey = (entityTypes ?? []).join(",");
@@ -173,6 +176,7 @@ export function InventoryProvider({
 
   useEffect(() => {
     if (!summary) return;
+    pageCursors.current.clear();
     pageGeneration.current += 1;
     setLoadingMore(false);
     let cancelled = false;
@@ -212,16 +216,19 @@ export function InventoryProvider({
   const navigatePage = useCallback(async (previous: boolean) => {
     if (!summary || !page || loadingPage || loadingMore || (previous ? page.pagination.offset === 0 : !page.pagination.has_more)) return;
     const generation = pageGeneration.current;
+    const targetOffset = previous ? Math.max(0, page.pagination.offset - pageSize) : page.pagination.offset + pageSize;
+    const cursor = previous ? pageCursors.current.get(targetOffset) : page.pagination.next_cursor;
     setLoadingMore(true);
     try {
       const next = await api.getInventoryAssets({
         ...requestScope,
         scanId: summary.scan_id,
         limit: pageSize,
-        ...(previous ? { offset: Math.max(0, page.pagination.offset - pageSize) } : { cursor: page.pagination.next_cursor }),
+        ...(cursor ? { cursor } : { offset: targetOffset }),
       });
       if (generation !== pageGeneration.current) return;
-      setPage(next);
+      if (cursor) pageCursors.current.set(targetOffset, cursor);
+      setPage({ ...next, pagination: { ...next.pagination, offset: targetOffset } });
     } catch (err: unknown) {
       if (generation !== pageGeneration.current) return;
       const classified = classifyError(err);

@@ -917,12 +917,10 @@ function GraphPageInner() {
           ""
       : "",
   );
+  // The destination route is available before App Router commits browser
+  // history. Reading window here can lose an Identity/Inventory drill-in.
   const requestedInvestigationRef = useRef<GraphInvestigationRequest | null>(
-    typeof window !== "undefined"
-      ? decodeGraphInvestigationParams(
-          new URLSearchParams(window.location.search),
-        )
-      : null,
+    decodeGraphInvestigationParams(searchParams),
   );
   const rollupPreferenceRef = useRef(
     typeof window !== "undefined"

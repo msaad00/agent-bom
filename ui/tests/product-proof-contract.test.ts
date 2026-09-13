@@ -157,7 +157,7 @@ describe("product proof capture contract", () => {
     expect(source).toContain("node.offsetWidth");
     expect(graphPage).toContain('renderBand: "detail"');
     expect(graphPage).toContain("serpentineColumn * 460");
-    expect(graphPage).toContain("? 24");
+    expect(graphPage).toContain("Math.max(12, Math.min(20, 13 / Math.max(graphViewport.zoom, 0.2)))");
     expect(source).toContain('minGraphWidthFillRatio: 0.65');
     expect(source).toContain('assertEdgeLabelsClearOfNodes: true');
     expect(source).toContain('/Focused attack path/i');

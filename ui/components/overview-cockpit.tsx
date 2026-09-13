@@ -96,7 +96,7 @@ function hasEvaluatedCompliance(compliance: OverviewComplianceSnapshot | null | 
 // coverage, Open issues, Compliance) — larger + normal-case so exec section
 // titles read as headings, not micro-labels (issue #3940 / #3931 item G).
 const SECTION_TITLE_CLASS =
-  "text-sm font-semibold normal-case tracking-normal text-foreground";
+  "text-lg font-semibold normal-case tracking-normal text-foreground";
 
 /**
  * How the posture score is rendered. Display-only groundwork for a future
@@ -277,9 +277,9 @@ export function OverviewCockpit({
     : "Security findings and operational context";
 
   return (
-    <div className="space-y-4">
-      <div className="grid items-start gap-4 xl:grid-cols-2">
-        <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
+    <div className="space-y-7">
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline-strong bg-surface p-5 sm:p-6">
           <Collapsible
             bare
             title="Command center"
@@ -320,26 +320,7 @@ export function OverviewCockpit({
           </Collapsible>
         </section>
 
-        <section aria-label="Coverage" className="min-w-0 rounded-2xl border border-sky-700/20 bg-gradient-to-br from-sky-500/5 via-surface to-surface p-4 dark:border-sky-400/20">
-          <Collapsible bare title="Coverage" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
-            {loading && !domains ? (
-              <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
-            ) : overviewUnavailable && !domains ? (
-              <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
-            ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
-          </Collapsible>
-          <AiSpendSummary domain={domains?.cost} loading={loading} />
-        </section>
-      </div>
-      <div className="grid items-start gap-4 xl:grid-cols-2">
-        <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-4">
-          <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
-            actions={<Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">Trust center <ArrowRight className="h-3 w-3" /></Link>}>
-            <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
-              loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
-          </Collapsible>
-        </section>
-        <section aria-label="Top risks" className="min-w-0">
+        <section aria-label="Top risks" className="min-w-0 rounded-2xl border border-orange-500/30 bg-surface p-5 sm:p-6">
           <TopRisksPanel
             loading={loading}
             unavailable={overviewUnavailable}
@@ -348,6 +329,25 @@ export function OverviewCockpit({
             exposurePaths={exposurePaths}
             agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
           />
+        </section>
+      </div>
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
+          <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
+            actions={<Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">Trust center <ArrowRight className="h-3 w-3" /></Link>}>
+            <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
+              loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
+          </Collapsible>
+        </section>
+        <section aria-label="Coverage" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
+          <Collapsible bare title="Coverage" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
+            {loading && !domains ? (
+              <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
+            ) : overviewUnavailable && !domains ? (
+              <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
+            ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
+          </Collapsible>
+          <AiSpendSummary domain={domains?.cost} loading={loading} />
         </section>
       </div>
     </div>
@@ -385,7 +385,7 @@ function FreshnessStatus({
         <span className="text-xs font-semibold text-foreground">{label}</span>
       </div>
       {loading ? (
-        <span className="text-[11px] text-ink-tertiary">
+        <span className="text-xs text-ink-secondary">
           Refreshing current evidence.
         </span>
       ) : latestScan ? (
@@ -393,7 +393,7 @@ function FreshnessStatus({
           {latestScan}
         </time>
       ) : (
-        <span className="text-[11px] text-ink-tertiary">
+        <span className="text-xs text-ink-secondary">
           {scans === 0 ? "Run a scan to establish freshness." : "The current evidence has no observed scan timestamp."}
         </span>
       )}
@@ -466,7 +466,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
   if (!coverage || coverage.length === 0) return null;
   return (
     <div className="@container pt-1" data-testid="overview-security-coverage">
-      <p className="mb-2 text-[11px] leading-4 text-ink-tertiary">
+      <p className="mb-3 rounded-lg border border-outline bg-surface-muted px-3 py-2 text-sm leading-relaxed text-ink-secondary">
         Overlapping finding counts, not additive. Zero findings does not establish assessment coverage.
       </p>
       <div className="grid grid-cols-1 gap-2 @min-[30rem]:grid-cols-2">
@@ -483,10 +483,10 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className={`min-w-0 rounded-r-lg border-l-2 px-3 py-2 transition-colors hover:bg-surface-muted ${discipline?.tile ?? "border-outline"}`}
+              className="min-w-0 rounded-xl border border-outline bg-surface px-3 py-3 transition-colors hover:border-outline-strong hover:bg-surface-muted"
             >
               <div className="flex flex-col gap-0.5">
-                <span className="flex items-start gap-2 text-xs font-semibold text-foreground"><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${discipline?.accent ?? "text-ink-secondary"}`} aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
+                <span className="flex items-start gap-2 text-sm font-semibold text-foreground"><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${discipline?.accent ?? "text-ink-secondary"}`} aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
                 {/* The unit is not decoration. A bare "1610" under a heading
                     called CSPM reads as assets, accounts, VMs or data stores
                     depending on the reader — every one of which is wrong. These
@@ -497,7 +497,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                     {known && total > 0 ? `${exact ? "" : "≥"}${lane.count.toLocaleString()}` : "—"}
                   </span>
                   {known && total > 0 ? (
-                    <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
+                    <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
                       {lane.count === 1 ? "finding" : "findings"}
                     </span>
                   ) : null}
@@ -505,16 +505,16 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               </div>
               <div className="ml-6 mt-1 min-w-0">
                 {!exact && known && total > 0 ? (
-                  <p className="mb-1 text-[11px] text-ink-tertiary">{statusLabel} · at least this many</p>
+                  <p className="mb-1 text-xs text-ink-secondary">{statusLabel} · at least this many</p>
                 ) : null}
               <div className="flex flex-wrap gap-1">
                 {!known || total === 0 ? (
-                  <span className="text-[11px] text-ink-tertiary">{exact ? "No open findings" : statusLabel}</span>
+                  <span className="text-xs text-ink-secondary">{exact ? "No open findings" : statusLabel}</span>
                 ) : (
                   bands.map((band) => (
                     <span
                       key={band.key}
-                      className="text-[11px] font-medium tabular-nums text-ink-secondary"
+                      className="text-xs font-medium tabular-nums text-ink-secondary"
                     >
                       {band.label} {lane.severity[band.key]}
                     </span>
@@ -612,9 +612,9 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
       <Link
         href={tile.href}
         title={tile.hint ?? tile.label}
-        className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-outline bg-transparent px-3 py-2 text-ink-tertiary transition hover:border-outline-strong hover:text-foreground"
+        className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-outline bg-transparent px-3 py-2 text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
       >
-        <span className="truncate text-[11px] font-medium">{tile.label}</span>
+        <span className="truncate text-xs font-medium">{tile.label}</span>
         <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium">
           Connect <ArrowRight className="h-3 w-3" />
         </span>
@@ -631,11 +631,11 @@ function OpsTileCard({ tile }: { tile: OpsTile }) {
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
-        <span className="truncate text-[11px] font-medium text-foreground">{tile.label}</span>
+        <span className="truncate text-xs font-medium text-foreground">{tile.label}</span>
       </div>
       <div className="flex min-w-0 flex-wrap items-baseline justify-end gap-x-1">
         <span className={`font-mono text-base font-semibold ${tone.text}`}>{tile.metric ?? "Unavailable"}</span>
-        <span className="text-right text-[10px] text-ink-tertiary" title={tile.metricLabel}>
+        <span className="text-right text-[10px] text-ink-secondary" title={tile.metricLabel}>
           {tile.metricLabel}
         </span>
       </div>
@@ -722,7 +722,7 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
                   <p className="text-xs font-semibold leading-tight text-foreground">
                     {framework.label}
                   </p>
-                  <p className="mt-0.5 text-[11px] leading-tight text-ink-secondary">
+                  <p className="mt-0.5 text-xs leading-tight text-ink-secondary">
                     {isApplicability
                       ? `${framework.applicable ?? 0}/${framework.total} risks applicable`
                       : evaluated === 0
@@ -740,7 +740,7 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
                         ? "text-yellow-700 dark:text-yellow-200"
                         : tone === "pass"
                           ? "text-emerald-700 dark:text-emerald-300"
-                          : "text-ink-tertiary"
+                          : "text-ink-secondary"
                   }`}
                 >
                   {tone === "applicability" ? "Risks mapped" : tone === "not_applicable" ? "none" : tone === "not_evaluated" ? "n/a" : tone}
@@ -773,7 +773,7 @@ function TopRisksPanel({
   const moreCount = ranked.length - shown.length;
 
   return (
-    <Collapsible title="Top risks"
+    <Collapsible bare title="Top risks" subtitle="Review these findings first" titleClassName={SECTION_TITLE_CLASS}
       count={ranked.length || undefined} defaultOpen>
       {loading ? (
         <p role="status" className="text-sm text-ink-secondary">Loading prioritized findings…</p>
@@ -818,7 +818,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
       : "border-outline bg-surface-muted text-ink-secondary";
 
   return (
-    <article className="@container border-b border-outline last:border-b-0">
+    <article className="@container rounded-xl border border-outline bg-surface-muted/40 px-3 first:border-orange-500/35">
       <Link href={path.href} className="group block rounded-md px-1 py-3 transition hover:bg-surface-muted">
         <div className="flex items-start gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
@@ -829,7 +829,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
             <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere] @min-[42rem]:col-start-1">
               {sbomSource ? `SBOM source: ${sbomSource}` : workload ? `Affected workload: ${workload.label}` : "Workload not identified"}
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-secondary @min-[42rem]:col-start-2 @min-[42rem]:row-start-1 @min-[42rem]:row-span-2 @min-[42rem]:mt-0">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-secondary @min-[42rem]:col-start-2 @min-[42rem]:row-start-1 @min-[42rem]:row-span-2 @min-[42rem]:mt-0">
               <span className={`rounded-md border px-2 py-0.5 font-semibold capitalize ${severityTone}`}>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
               <span>Path priority <strong className="font-semibold tabular-nums text-foreground">{Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "unavailable"}</strong></span>
               <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">Inspect finding <ArrowRight className="h-3 w-3" aria-hidden="true" /></span>
@@ -838,11 +838,11 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
         </div>
       </Link>
       <details className="pb-3 pl-9 text-xs">
-        <summary className="cursor-pointer text-ink-tertiary">Technical details</summary>
+        <summary className="cursor-pointer text-ink-secondary">Technical details</summary>
         <dl className="mt-2 space-y-2">
           {path.nodes.map((node, index) => (
             <div key={`${node.type}-${index}`} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
-              <dt className="capitalize text-ink-tertiary">{node.type === "cve" ? "Finding" : (node.type === "agent" || node.type === "server") && sbomSourceName(node.label) !== null ? "SBOM source" : node.type}</dt>
+              <dt className="capitalize text-ink-secondary">{node.type === "cve" ? "Finding" : (node.type === "agent" || node.type === "server") && sbomSourceName(node.label) !== null ? "SBOM source" : node.type}</dt>
               <dd className="text-ink-secondary [overflow-wrap:anywhere]">{node.label}</dd>
             </div>
           ))}
@@ -895,7 +895,7 @@ function ScoreExplainer({
                 <span className="text-right font-mono text-xs font-semibold tabular-nums text-foreground">
                   {row.contribution.toFixed(1)}
                 </span>
-                <span className="col-span-2 font-mono text-[11px] tabular-nums text-ink-tertiary">
+                <span className="col-span-2 font-mono text-xs tabular-nums text-ink-secondary">
                   {row.count} × {row.weight}
                 </span>
               </div>
@@ -911,7 +911,7 @@ function ScoreExplainer({
         })}
       </div>
       <p className="mt-3 text-xs font-medium text-ink-secondary">Total weighted pressure: {totalPressure.toFixed(1)}</p>
-      <p className="mt-2 text-xs leading-relaxed text-ink-tertiary">
+      <p className="mt-2 text-xs leading-relaxed text-ink-secondary">
         Bars show each input’s share of weighted pressure (count × weight). The server converts combined pressure to a score using a nonlinear curve;
         these values are not points deducted from 100.
         {floored === true ? " The worse recorded scan posture limits the displayed score." : ""}
@@ -952,7 +952,7 @@ function ScoreFormatToggle({
             className={`px-1.5 py-0.5 text-[10px] font-semibold transition ${
               active
                 ? "bg-surface-elevated text-foreground"
-                : "bg-surface-muted text-ink-tertiary hover:text-foreground"
+                : "bg-surface-muted text-ink-secondary hover:text-foreground"
             }`}
           >
             {option.label}
@@ -1002,7 +1002,7 @@ function PostureHero({
     <div className="flex items-center gap-4">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-tertiary">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-secondary">
             Risk posture
           </p>
           {graded && onScoreFormatChange ? (
@@ -1018,19 +1018,20 @@ function PostureHero({
                   chosen primary format, so the number is never ambiguous. */}
               <span className="text-4xl leading-none tracking-tight tabular-nums">{scoreDisplay}</span>
               {scoreFormat !== "grade" ? (
-                <span className="text-xs font-medium text-ink-tertiary">Grade {grade}</span>
+                <span className="text-xs font-medium text-ink-secondary">Grade {grade}</span>
               ) : typeof score === "number" ? (
-                <span className="text-xs font-medium text-ink-tertiary">{Math.round(score)}%</span>
+                <span className="text-xs font-medium text-ink-secondary">{Math.round(score)}%</span>
               ) : null}
             </>
           ) : (
             "Awaiting scan"
           )}
         </p>
+        {graded && <p className="mt-2 text-sm font-medium text-foreground">Posture score · 0–100, higher is better</p>}
         {graded ? (
           trend && trend.points >= 2 ? (
             <p
-              className="mt-1 text-[10px] text-ink-tertiary"
+              className="mt-1 text-[10px] text-ink-secondary"
               data-testid="overview-posture-trend"
               title={`Previous posture score: ${Math.round(trend.previousScore)}%`}
             >
@@ -1039,12 +1040,12 @@ function PostureHero({
                 : `${trend.direction === "improved" ? "Improved" : "Worsened"} ${Math.abs(Math.round(trend.delta))} points since the previous scan`}
             </p>
           ) : (
-            <p className="mt-1 text-[10px] text-ink-tertiary">
-              Current evidence snapshot · ranked exposure paths below show what to fix first
+            <p className="mt-1 text-[10px] text-ink-secondary">
+              Current evidence snapshot · use Top risks to prioritize remediation
             </p>
           )
         ) : null}
-        <p className="mt-1 text-xs text-ink-secondary">{blurb}</p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-secondary">{blurb}</p>
       </div>
     </div>
   );
@@ -1096,7 +1097,7 @@ function CategoryChip({
       title={title}
       className="inline-flex items-center gap-1 rounded-full border border-outline bg-surface-muted px-2 py-0.5 text-[10px] font-semibold text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
     >
-      <Icon className="h-3 w-3 text-ink-tertiary" aria-hidden="true" />
+      <Icon className="h-3 w-3 text-ink-secondary" aria-hidden="true" />
       {label} {value}
     </Link>
   );
@@ -1261,7 +1262,7 @@ function SeverityIssueStrip({
                     );
                   })}
                 </div>
-                <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] text-ink-tertiary">
+                <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] text-ink-secondary">
                   {issueTypes.map((issue) => {
                     const count = resolved[issue][band.key];
                     if (count <= 0) return null;
@@ -1292,7 +1293,7 @@ function SeverityIssueStrip({
                 href={findingsHref({ scope: "all", issue })}
                 className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface px-2 py-0.5 text-[10px] text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
               >
-                <Glyph className="h-3 w-3 text-ink-tertiary" aria-hidden="true" />
+                <Glyph className="h-3 w-3 text-ink-secondary" aria-hidden="true" />
                 {ISSUE_TYPE_SHORT[issue]} {total}
               </Link>
             );
@@ -1313,6 +1314,6 @@ function domainStatusTone(status: OverviewDomainStatus): { dot: string; text: st
     case "ok":
       return { dot: "bg-emerald-500", text: "text-emerald-800 dark:text-emerald-300" };
     default:
-      return { dot: "bg-ink-tertiary", text: "text-ink-tertiary" };
+      return { dot: "bg-ink-tertiary", text: "text-ink-secondary" };
   }
 }

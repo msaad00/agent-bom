@@ -3397,7 +3397,7 @@ async function main() {
       {
         expectedText: [
           /Focused attack path/i,
-          "Risk 9.8",
+          "Path risk 9.8/100",
           "6 evidence hops",
           "Developer Copilot",
           "github-enterprise MCP",

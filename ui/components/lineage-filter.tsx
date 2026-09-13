@@ -188,6 +188,11 @@ export function createExpandedGraphFilters(
   };
 }
 
+/** Explicit traversal starts from the selected asset, independent of a previous finding lens. */
+export function createInvestigationGraphFilters(current: FilterState): FilterState {
+  return { ...createExpandedGraphFilters(), maxDepth: current.maxDepth, runtimeMode: current.runtimeMode };
+}
+
 function selectObservedLayers(
   enabled: LineageNodeType[],
 ): Record<LineageNodeType, boolean> {

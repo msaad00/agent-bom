@@ -59,6 +59,7 @@ import {
   createCanvasLensGraphFilters,
   createEnvironmentGraphFilters,
   createExpandedGraphFilters,
+  createInvestigationGraphFilters,
   createFocusedGraphFilters,
   createImmediateGraphFilters,
   createRepositoryGraphFilters,
@@ -1491,6 +1492,7 @@ function GraphPageInner() {
     rollupDismissed,
     rollupStack,
     filters.severity,
+    graphRetry,
   ]);
 
   const flow = useMemo(() => {
@@ -1557,9 +1559,10 @@ function GraphPageInner() {
     const changedNodeIds = selectedScenarioId && scenarioComparison?.available && !attackPathLens
       ? graphScenarioContextIds(projectedGraphData.nodes, [], scenarioComparison.difference, [...(mergedGraphData?.edges ?? []), ...projectedGraphData.edges])
       : undefined;
-    return buildUnifiedFlowGraph(projectedGraphData, presentationFilters, changedNodeIds);
+    return buildUnifiedFlowGraph(projectedGraphData, presentationFilters, changedNodeIds ?? (investigationMode ? new Set([investigationMode.rootId]) : undefined));
   }, [
     projectedGraphData,
+    investigationMode,
     filters,
     selectedScenarioId,
     scenarioComparison,
@@ -2594,6 +2597,15 @@ function GraphPageInner() {
       if (!selectedScanId) return;
       const requestId = ++investigationRequestId.current;
       const direction = request.direction ?? initialInvestigationDirection(request.rootId);
+      const queryFilters = investigationMode?.rootId === request.rootId
+        ? filters : createInvestigationGraphFilters(filters);
+      if (queryFilters !== filters) {
+        // This request already uses the reset scope; avoid a duplicate fetch from the filter effect.
+        lastInvestigationFilterKey.current = JSON.stringify({ scanId: selectedScanId,
+          entityTypes: entityTypesForLayers(queryFilters.layers), relationships: RELATIONSHIP_SCOPE_MAP[queryFilters.relationshipScope],
+          runtimeMode: queryFilters.runtimeMode, maxDepth: queryFilters.maxDepth, severity: queryFilters.severity });
+        setFilters(queryFilters);
+      }
       setInvestigationDirection(direction);
 
       const fallback = request.node
@@ -2632,17 +2644,17 @@ function GraphPageInner() {
           roots: [request.rootId],
           scan_id: selectedScanId,
           direction,
-          max_depth: filters.maxDepth,
+          max_depth: queryFilters.maxDepth,
           max_nodes: 80,
           max_edges: 320,
           timeout_ms: 2500,
           traversable_only: false,
-          static_only: filters.runtimeMode === "static",
-          dynamic_only: filters.runtimeMode === "dynamic",
+          static_only: queryFilters.runtimeMode === "static",
+          dynamic_only: queryFilters.runtimeMode === "dynamic",
           include_roots: true,
           include_attack_paths: true,
-          entity_types: serverEntityTypes,
-          relationship_types: serverRelationships,
+          entity_types: entityTypesForLayers(queryFilters.layers),
+          relationship_types: RELATIONSHIP_SCOPE_MAP[queryFilters.relationshipScope],
         });
         if (requestId !== investigationRequestId.current) return;
         const rootNode =
@@ -2682,12 +2694,10 @@ function GraphPageInner() {
       }
     },
     [
-      filters.runtimeMode,
-      filters.maxDepth,
+      filters,
+      investigationMode?.rootId,
       flowNodeDataById,
       selectedScanId,
-      serverEntityTypes,
-      serverRelationships,
     ],
   );
 
@@ -2771,6 +2781,8 @@ function GraphPageInner() {
 
   const drillIntoRollup = useCallback((item: GraphRollupContainer) => {
     if (!item.has_children) return;
+    setRollupSummaryRequested(true);
+    setRollupMapExpanded(false);
     setRollupStack((current) => {
       if (current.at(-1)?.id === item.id) return current;
       return [...current, { id: item.id, label: item.label }];
@@ -2836,7 +2848,7 @@ function GraphPageInner() {
 
   const retryGraph = () => {
     if (investigationMode) {
-      void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel });
+      void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel, direction: investigationDirection });
     } else {
       setGraphRetry((value) => value + 1);
     }
@@ -3262,6 +3274,7 @@ function GraphPageInner() {
                 decisionAvailable={rollupDecisionAvailable}
                 decisionActive={rollupDecisionActive}
                 onDismiss={dismissRollup}
+                onRetry={retryGraph}
                 onReset={resetRollupToRoot}
                 onBreadcrumb={navigateRollupBreadcrumb}
                 onDecisionMode={() => setRollupMapExpanded(false)}
@@ -3901,13 +3914,13 @@ function GraphPageInner() {
           ) : displayNodes.length === 0 ? (
             <GraphEmptyState
               title="No nodes match the current graph scope"
-              detail="No results for these layers, severity and scope."
+              detail={investigationMode && investigationMode.nodeCount > 0 ? `${investigationMode.nodeCount} nodes were returned, but the active display filters hide them. This does not establish an absence of risk.` : "No results for these layers, severity and scope."}
               suggestions={[
                 "Lower severity or disable vulnerable-only.",
                 "Use Expanded for broader topology.",
                 "Enable package and server layers.",
               ]}
-              command="agent-bom agents --demo --offline"
+              actions={[{ label: "Show all returned context", onClick: () => setFilters(createExpandedGraphFilters()) }, { label: "Return to summary", onClick: returnToSummary }]}
             />
           ) : layoutPending && graphRenderer.kind === "react-flow" ? (
             <p role="status" className="p-6 text-sm text-ink-secondary">Arranging the selected graph…</p>
@@ -4300,6 +4313,7 @@ function RollupNavigationPanel({
   onReset,
   onBreadcrumb,
   onDecisionMode,
+  onRetry,
 }: {
   summary: GraphRollupResponse | null;
   estateNodeCount: number;
@@ -4314,6 +4328,7 @@ function RollupNavigationPanel({
   onReset: () => void;
   onBreadcrumb: (index: number) => void;
   onDecisionMode: () => void;
+  onRetry: () => void;
 }) {
   const visibleCount =
     summary?.mode === "drilldown"
@@ -4332,6 +4347,8 @@ function RollupNavigationPanel({
             <p className="mt-1 text-sm font-medium text-emerald-950 dark:text-emerald-50">
               {active
                 ? `${visibleCount} nodes and scopes at this level · ${estateNodeCount} nodes in snapshot`
+                : error
+                  ? "Could not load this scope"
                 : unavailable
                   ? `Roll-up unavailable · ${estateNodeCount} nodes in snapshot`
                 : `Loading CONTAINS roll-up · ${estateNodeCount} nodes in snapshot`}
@@ -4355,6 +4372,7 @@ function RollupNavigationPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {error ? <button type="button" onClick={onRetry} className="graph-chip-emerald">Retry scope</button> : null}
           {decisionAvailable && !decisionActive ? (
             <button type="button" onClick={onDecisionMode} className="graph-chip-emerald">
               Risk rollup

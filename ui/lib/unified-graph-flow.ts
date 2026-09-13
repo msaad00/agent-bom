@@ -330,7 +330,8 @@ function deriveVisibleNodeIds(
   filters: UnifiedGraphFlowFilters,
   undirected: Map<string, Set<string>>,
 ): Set<string> {
-  let visible = new Set(graph.nodes.map((node) => node.id));
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  let visible = new Set(nodeById.keys());
 
   if (filters.agentName) {
     const seeds = graph.nodes
@@ -385,7 +386,7 @@ function deriveVisibleNodeIds(
 
   visible = new Set(
     [...visible].filter((nodeId) => {
-      const node = graph.nodes.find((entry) => entry.id === nodeId);
+      const node = nodeById.get(nodeId);
       if (!node) return false;
       const nodeType = mapNodeType(node);
       if (!nodeType) return false;

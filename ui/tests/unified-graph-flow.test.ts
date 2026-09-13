@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
-import { createFocusedGraphFilters } from "@/components/lineage-filter";
+import { createFocusedGraphFilters, createInvestigationGraphFilters } from "@/components/lineage-filter";
 import {
   EntityType,
   RelationshipType,
@@ -227,5 +227,22 @@ describe("cost summary", () => {
       createFocusedGraphFilters(""),
     );
     expect(flow.summary.costUsd30d).toBe(5);
+  });
+});
+
+
+describe("explicit investigation context", () => {
+  it("shows the returned containment chain after leaving a finding-only lens", () => {
+    const graph = { scan_id: "bounded", tenant_id: "default", created_at: createdAt,
+      nodes: [node("account:root", EntityType.ACCOUNT, "Account"), node("env:prod", EntityType.ENVIRONMENT, "Production")],
+      edges: [edge("account:root", "env:prod", RelationshipType.CONTAINS)], attack_paths: [], interaction_risks: [],
+    } as unknown as UnifiedGraphData;
+    const previous = { ...createFocusedGraphFilters(), vulnOnly: true, severity: "critical" };
+    expect(buildUnifiedFlowGraph(graph, previous).nodes).toHaveLength(0);
+    const context = createInvestigationGraphFilters(previous);
+    expect(buildUnifiedFlowGraph(graph, context).nodes.map(n => n.id)).toEqual(["account:root", "env:prod"]);
+    expect(previous.vulnOnly).toBe(true);
+    // A subsequent deliberate filter still takes effect; no invisible bypass.
+    expect(buildUnifiedFlowGraph(graph, { ...context, vulnOnly: true }).nodes).toHaveLength(0);
   });
 });

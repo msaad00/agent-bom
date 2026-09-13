@@ -107,9 +107,9 @@ describe("OverviewCockpit", () => {
       expect(card).toHaveAttribute("href", "/compliance");
       expect(card.children[0]).toHaveAttribute("aria-hidden", "true");
       expect(card.children[1]).toContainElement(title);
-      expect(card.children[2]).toHaveTextContent(label === "CIS Controls" ? "n/a" : "fail");
+      expect(card).toHaveTextContent(label === "CIS Controls" ? "Not evaluated" : "1 failed");
     }
-    expect(screen.getByText("1/2 pass · 1 fail")).toBeVisible();
+    expect(screen.getByText("1/2 evaluated controls pass · 1 failed")).toBeVisible();
     expect(screen.getByText("Not evaluated · 0/0 controls")).toBeVisible();
   });
 
@@ -314,7 +314,10 @@ describe("OverviewCockpit", () => {
     // Each lane links to its domain-filtered findings view.
     expect(screen.getByTestId("coverage-lane-cspm")).toHaveAttribute("href", "/findings?domain=cspm");
     // Unrated is surfaced as its own chip when present.
-    expect(screen.getByText(/Unrated 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Unrated 1/)).not.toBeVisible();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Show severity breakdown" }));
+    expect(screen.getByText(/Unrated 1/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Hide severity breakdown" })).toHaveAttribute("aria-expanded", "true");
     // Empty lanes still render (DSPM at zero), but never present missing evidence
     // as a factual zero.
     expect(screen.getByTestId("coverage-lane-dspm")).toBeInTheDocument();
@@ -680,7 +683,8 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/0\/65 pass/i)).not.toBeInTheDocument();
   });
 
-  it("shows all framework details by default", () => {
+  it("shows three frameworks with the largest control gaps and expands the rest", async () => {
+    const user = userEvent.setup();
     const frameworks = Array.from({ length: 9 }, (_, index) => ({
       id: `framework-${index + 1}`,
       label: `Framework ${index + 1}`,
@@ -706,8 +710,14 @@ describe("OverviewCockpit", () => {
 
     expect(screen.getByText(/1 framework needs attention/i)).toBeInTheDocument();
     expect(screen.getByText("8/9 evaluated controls pass")).toBeVisible();
-    expect(screen.getByText("Framework 8")).toBeInTheDocument();
+    expect(screen.getByText("Framework 8")).not.toBeVisible();
     expect(screen.getByText("Framework 9")).toBeVisible();
+    const summary = screen.getByTestId("overview-evaluated-frameworks");
+    expect(within(summary).getAllByRole("link")).toHaveLength(3);
+    expect(within(summary).queryByText(/^fail$/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "More frameworks (6)" }));
+    expect(screen.getByText("Framework 8")).toBeVisible();
+    expect(within(summary).getAllByRole("link")).toHaveLength(9);
   });
 
   it("explains nonlinear pressure and the worse scan posture without subtracting the inputs", async () => {

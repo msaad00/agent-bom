@@ -1162,3 +1162,22 @@ def test_db_freshness_days_uses_readonly_open_when_writable_open_is_not_availabl
     age = db_freshness_days(db_file)
     assert age is not None
     assert age >= 0
+
+
+@pytest.mark.parametrize("with_ecosystem_range", [False, True])
+def test_osv_explicit_versions_union_commit_and_reintroduction_ranges(tmp_db, with_ecosystem_range):
+    # Shape of PYSEC-2022-42980: the commit span covers early Pillow releases,
+    # while the ecosystem span covers a separate 9.2 -> 9.3 reintroduction.
+    data = _make_osv_entry(pkg="pillow")
+    affected = data["affected"][0]
+    affected["versions"] = ["8.4.0", "9.0.0", "9.0.0", "", None]
+    affected["ranges"] = [{"type": "GIT", "events": [{"introduced": "0"}, {"fixed": "a" * 40}]}]
+    if with_ecosystem_range:
+        affected["ranges"].append({"type": "ECOSYSTEM", "events": [{"introduced": "9.2.0"}, {"fixed": "9.3.0"}]})
+    _ingest_osv_file(tmp_db, json.dumps(data).encode(), "test.json")
+    tmp_db.commit()
+    assert len(lookup_package(tmp_db, "pypi", "pillow", "9.0.0")) == 1
+    assert len(lookup_package(tmp_db, "pypi", "pillow", "9.2.1")) == int(with_ecosystem_range)
+    assert not lookup_package(tmp_db, "pypi", "pillow", "9.1.0")
+    assert not lookup_package(tmp_db, "pypi", "pillow", "9.3.0")
+    assert not lookup_package(tmp_db, "pypi", "unrelated-package", "9.0.0")

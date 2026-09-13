@@ -501,3 +501,25 @@ test("scope summary does not inherit the unrelated node-page warning", async ({ 
   await expect(page.getByText("node_page_limit", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Drill in", exact: true })).toBeVisible();
 });
+
+
+test("blast radius distinguishes related nodes from assets and keeps the type breakdown optional", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  const root = node("pkg:42", "package", "large-package-42", "high", 7.2);
+  await page.route("**/v1/graph/node/**", (route) => route.fulfill({ json: {
+    node: root, edges_in: [], edges_out: [], neighbors: [], sources: [],
+    impact: { affected_count: 3, affected_by_type: { package: 1, agent: 1, vulnerability: 1 }, max_depth_reached: 2 },
+  } }));
+  await page.route("**/v1/graph/impact?**", (route) => route.fulfill({ json: {
+    node_id: root.id, affected_count: 3, affected_nodes: ["pkg:41", "agent:large", "cve:41"],
+    affected_by_type: { package: 1, agent: 1, vulnerability: 1 }, max_depth_reached: 2,
+  } }));
+  await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+  await page.getByRole("button", { name: "Show blast radius", exact: true }).click();
+  await expect(page.getByText("3 upstream related nodes connected to large-package-42", { exact: true })).toBeVisible();
+  const breakdown = page.locator("details").filter({ has: page.locator("summary", { hasText: "Related nodes by type (3)" }) });
+  await expect(breakdown).not.toHaveAttribute("open", "");
+  await breakdown.locator("summary").click();
+  await expect(breakdown.getByText("Vulnerability: 1", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Graph relationships do not establish compromise/)).toBeVisible();
+});

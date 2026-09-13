@@ -1,5 +1,7 @@
 "use client";
 
+import { DetailTabs } from "@/components/detail-tabs";
+
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   api,
@@ -132,10 +134,9 @@ export default function AuditLogPage() {
         </button>}
       />
 
-      {canManageKeys && <div role="group" aria-label="Audit view" className="flex gap-2">
-        <button type="button" className="graph-chip" aria-pressed={!showAdmin} onClick={() => setView("events")}>Events</button>
-        <button type="button" className="graph-chip" aria-pressed={showAdmin} onClick={() => setView("admin")}>Access administration</button>
-      </div>}
+      {canManageKeys && <DetailTabs ariaLabel="Audit view" value={view} onChange={setView}
+        tabs={[{ key: "events", label: "Events" }, { key: "admin", label: "Access administration" }]} />}
+
       {!showAdmin && <>
       <section aria-label="Control-plane integrity" className="border-y border-[var(--border-subtle)] py-3 text-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

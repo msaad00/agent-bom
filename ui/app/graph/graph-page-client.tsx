@@ -2875,7 +2875,7 @@ function GraphPageInner() {
     return (
       <div className="flex flex-col items-center justify-center h-[80vh] text-ink-secondary gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
-        <button type="button" className="graph-chip" onClick={() => setSnapshotRetry((value) => value + 1)}>Retry loading snapshots</button>
+        <button type="button" className="graph-chip-neutral" onClick={() => setSnapshotRetry((value) => value + 1)}>Retry loading snapshots</button>
         {rateLimited ? (
           <>
             <p className="text-sm">Graph temporarily rate-limited</p>
@@ -3882,7 +3882,7 @@ function GraphPageInner() {
           {graphPanelError && graphData && !loadingGraph && (
             <div role="status" className="flex items-center justify-between gap-3 border-b border-outline px-4 py-2 text-sm">
               <span>Refresh failed. Showing the last loaded graph for this scope.</span>
-              <button type="button" className="graph-chip" onClick={retryGraph}>Retry graph</button>
+              <button type="button" className="graph-chip-neutral" onClick={retryGraph}>Retry graph</button>
             </div>
           )}
           {(loadingGraph && !graphData) || loadingBlast ? (
@@ -4137,7 +4137,7 @@ function ReachabilityDrillInPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
-        <select aria-label="Traversal direction" value={direction} onChange={(event) => onDirectionChange(event.target.value as "forward" | "reverse" | "both")} className="graph-chip">
+        <select aria-label="Traversal direction" value={direction} onChange={(event) => onDirectionChange(event.target.value as "forward" | "reverse" | "both")} className="graph-chip-neutral">
           <option value="forward">Outgoing connections</option>
           <option value="reverse">Incoming connections</option>
           <option value="both">Both directions</option>

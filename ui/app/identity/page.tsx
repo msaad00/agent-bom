@@ -1,5 +1,7 @@
 "use client";
 
+import { DetailTabs } from "@/components/detail-tabs";
+
 import { useEffect, useState } from "react";
 import {
   Fingerprint,
@@ -570,10 +572,11 @@ export default function IdentityPage() {
         />
       )}
 
-      <div role="group" aria-label="Identity view" className="flex flex-wrap gap-2">
-        {([['managed', 'Managed identities'], ['access', 'Access grants and policies'], ['discovered', 'Discovered identity risk']] as const).map(([id, label]) =>
-          <button key={id} type="button" aria-pressed={view === id} className="graph-chip" onClick={() => setView(id)}>{label}</button>)}
-      </div>
+      <DetailTabs ariaLabel="Identity view" value={view} onChange={setView} tabs={[
+        { key: "managed", label: "Managed identities" },
+        { key: "access", label: "Access grants and policies" },
+        { key: "discovered", label: "Discovered identity risk" },
+      ]} />
       <div hidden={view !== "managed"} className="space-y-4">
       {!failures.identities && identities.length > 0 && (
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">

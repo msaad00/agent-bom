@@ -340,8 +340,8 @@ test("broad graph defaults to the WebGL overview above threshold", async ({ page
   // hand-rolled 2D canvas is retired.
   const sigma = page.getByTestId("sigma-graph-overview");
   await expect(sigma).toBeVisible({ timeout: 30_000 });
-  await expect(sigma.getByText("WebGL graph overview", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Draw budget:/)).toBeVisible();
+  await expect(sigma.getByText("Estate map", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Displayed:/)).toBeVisible();
   await expectSigmaCanvases(page);
   expect(failedGraphResponses).toEqual([]);
   await captureRenderedRegion(
@@ -429,8 +429,8 @@ test("retired renderer=webgl opt-in still lands on the WebGL overview", async ({
   const sigma = page.getByTestId("sigma-graph-overview");
   await expect(sigma).toBeVisible({ timeout: 30_000 });
   // Exact: the surface's screen-reader text equivalent names the renderer too.
-  await expect(sigma.getByText("WebGL graph overview", { exact: true })).toBeVisible();
-  await expect(sigma.getByText(/Sigma\.js renderer for broad estate scans/)).toBeVisible();
+  await expect(sigma.getByText("Estate map", { exact: true })).toBeVisible();
+  await expect(sigma.getByText(/Select an asset to investigate its related evidence/)).toBeVisible();
   await expectSigmaCanvases(page);
   await captureRenderedRegion(page, sigma, testInfo.outputPath("sigma-webgl-overview.png"));
 });

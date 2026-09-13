@@ -42,11 +42,11 @@ describe("Audit trail", () => {
   it("loads access administration only when explicitly selected and keeps it separate from events", async () => {
     render(<AuditLogPage />);
     await screen.findByRole("button", { name: /gateway.policy.denied/ });
-    fireEvent.click(screen.getByRole("button", { name: "Access administration" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Access administration" }));
     await waitFor(() => expect(apiMock.listKeys).toHaveBeenCalledTimes(1));
     expect(screen.getByText("Key controls")).toBeVisible();
     expect(screen.queryByRole("region", { name: "Audit trail" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /^Events$/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Events$/ }));
     expect(screen.getByRole("region", { name: "Audit trail" })).toBeVisible();
   });
 

@@ -2981,11 +2981,11 @@ function GraphPageInner() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            <GraphAnalysisStatusBanner
+            {!investigationMode && <GraphAnalysisStatusBanner
               status={graphData?.stats.analysis_status?.attack_path_fusion}
               compact
-            />
-            {flow.summary && (
+            />}
+            {!investigationMode && flow.summary && (
               <div
                 data-testid="graph-headline-metrics"
                 className="rounded-xl border border-outline bg-surface/80 px-3 py-1.5 text-xs text-ink-secondary"

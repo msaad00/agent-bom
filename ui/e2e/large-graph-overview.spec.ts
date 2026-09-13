@@ -471,6 +471,8 @@ test("root investigations expose depth and direction controls with bounded reque
   await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
   expect((await initial).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 1, max_nodes: 80 });
   await expect(page.getByRole("combobox", { name: "Traversal depth" })).toHaveValue("1");
+  await expect(page.getByTestId("graph-headline-metrics")).toHaveCount(0);
+  await expect(page.getByText("Analysis status unavailable", { exact: true })).toHaveCount(0);
   const deeper = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().max_depth === 2);
   await page.getByRole("combobox", { name: "Traversal depth" }).selectOption("2");
   expect((await deeper).postDataJSON()).toMatchObject({ roots: ["pkg:42"], scan_id: scanId, max_nodes: 80, max_edges: 320 });

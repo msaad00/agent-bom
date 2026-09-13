@@ -73,6 +73,8 @@ export function GraphCompletenessBanner({
   const reason = completeness?.reason?.trim();
   const explanation = reason === "node_page_limit"
     ? "This node view includes only part of the snapshot. Use the scope summary or search for a specific asset."
+    : reason === "depth_limit"
+      ? "This view stops at the selected hop count. Increase traversal depth to explore further connections."
     : reason === "traversal_budget"
       ? "Traversal reached its limit. Narrow the scope or reduce the traversal depth; further impact remains unknown."
       : reason === "node_budget"

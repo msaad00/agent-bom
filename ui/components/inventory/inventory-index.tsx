@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { InventoryPagination } from "@/components/inventory/inventory-pagination";
 import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { AssetDetail } from "@/components/inventory/asset-detail";
@@ -13,7 +14,7 @@ import { useInventory } from "@/lib/inventory-context";
 import { ASSET_KINDS, ASSET_KIND_BY_ID, type AssetRow } from "@/lib/inventory";
 
 export function InventoryIndex() {
-  const { model, summary, loading, error, errorKind, hasMore, loadingMore, loadMore,
+  const { model, summary, loading, error, errorKind,
     details, detailLoadingId, detailError, loadAssetDetail } = useInventory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const rows = useMemo(() => Object.values(model?.rowsByKind ?? {}).flat(), [model]);
@@ -119,13 +120,13 @@ export function InventoryIndex() {
 
       <InventoryFacetBar />
 
-      {model?.completeness && !model.completeness.complete ? (
+      {summary?.completeness && !summary.completeness.complete ? (
         <div
           data-testid="inventory-coverage"
           className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs leading-5 text-ink-secondary"
         >
           <span className="font-medium text-foreground">Evidence coverage:</span>{" "}
-          {model.completeness.status}. More assets may be available beyond the rows shown.
+          {summary.completeness.status}. Collection coverage is incomplete for this snapshot.
         </div>
       ) : null}
 
@@ -137,13 +138,7 @@ export function InventoryIndex() {
       ) : null}
 
       {model && model.matchingTotal > 0 ? <>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-secondary">
-          <span>Showing {rows.length.toLocaleString()} of {totals.matching.toLocaleString()} matching assets</span>
-          {hasMore ? <button type="button" disabled={loadingMore} onClick={() => { void loadMore(); }}
-            className="rounded-lg border border-outline px-3 py-2 text-foreground disabled:opacity-50">
-            {loadingMore ? "Loading…" : "Load more"}
-          </button> : null}
-        </div>
+        <InventoryPagination />
         <DataTable<AssetRow> columns={columns} rows={rows} rowKey={row => row.id} caption="Asset inventory"
           selectedKey={selected?.id} maxHeight="32rem" onRowClick={row => { setSelectedId(row.id); void loadAssetDetail(row.id); }} />
         {selected && model ? <section aria-label="Selected asset details">

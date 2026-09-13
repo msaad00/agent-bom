@@ -20,7 +20,6 @@ import type {
 import { ApiAuthError, ApiError, ApiForbiddenError } from "@/lib/api-errors";
 import {
   buildInventoryFromApi,
-  mergeInventoryAssetPages,
   type InventoryModel,
 } from "@/lib/inventory";
 
@@ -65,6 +64,9 @@ export interface InventoryState {
   clearFilters: () => void;
   reload: () => void;
   loadMore: () => Promise<void>;
+  previousPage: () => Promise<void>;
+  pageSize: number;
+  setPageSize: (size: number) => void;
   loadAssetDetail: (assetId: string) => Promise<void>;
 }
 
@@ -98,6 +100,8 @@ export function InventoryProvider({
 }) {
   const [summary, setSummary] = useState<InventorySummaryResponse | null>(null);
   const [page, setPage] = useState<InventoryAssetsResponse | null>(null);
+  const [pageSize, setPageSizeState] = useState(INVENTORY_PAGE_SIZE);
+  const setPageSize = useCallback((size: number) => { if ([25, 50, 100].includes(size)) setPageSizeState(size); }, []);
   const [filters, setFilters] = useState<InventoryFilters>({ ...EMPTY_FILTERS, severity: minSeverity ?? "" });
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingPage, setLoadingPage] = useState(false);
@@ -177,7 +181,7 @@ export function InventoryProvider({
     api.getInventoryAssets({
       ...requestScope,
       scanId: summary.scan_id,
-      limit: INVENTORY_PAGE_SIZE,
+      limit: pageSize,
       offset: 0,
     })
       .then((response) => {
@@ -196,7 +200,7 @@ export function InventoryProvider({
       cancelled = true;
       pageGeneration.current += 1;
     };
-  }, [summary, requestScope]);
+  }, [summary, requestScope, pageSize]);
 
   const model = useMemo(() => (summary && page ? buildInventoryFromApi(summary, page) : null), [summary, page]);
   const hasMore = !loadingPage && Boolean(page?.pagination.has_more);
@@ -205,19 +209,19 @@ export function InventoryProvider({
   }, []);
   const clearFilters = useCallback(() => setFilters({ ...EMPTY_FILTERS, severity: minSeverity ?? "" }), [minSeverity]);
 
-  const loadMore = useCallback(async () => {
-    if (!summary || !page || !page.pagination.has_more || loadingPage || loadingMore) return;
+  const navigatePage = useCallback(async (previous: boolean) => {
+    if (!summary || !page || loadingPage || loadingMore || (previous ? page.pagination.offset === 0 : !page.pagination.has_more)) return;
     const generation = pageGeneration.current;
     setLoadingMore(true);
     try {
       const next = await api.getInventoryAssets({
         ...requestScope,
         scanId: summary.scan_id,
-        limit: INVENTORY_PAGE_SIZE,
-        cursor: page.pagination.next_cursor,
+        limit: pageSize,
+        ...(previous ? { offset: Math.max(0, page.pagination.offset - pageSize) } : { cursor: page.pagination.next_cursor }),
       });
       if (generation !== pageGeneration.current) return;
-      setPage((current) => (current ? mergeInventoryAssetPages(current, next) : next));
+      setPage(next);
     } catch (err: unknown) {
       if (generation !== pageGeneration.current) return;
       const classified = classifyError(err);
@@ -226,7 +230,9 @@ export function InventoryProvider({
     } finally {
       if (generation === pageGeneration.current) setLoadingMore(false);
     }
-  }, [summary, page, loadingPage, loadingMore, requestScope]);
+  }, [summary, page, loadingPage, loadingMore, requestScope, pageSize]);
+  const loadMore = useCallback(() => navigatePage(false), [navigatePage]);
+  const previousPage = useCallback(() => navigatePage(true), [navigatePage]);
 
   const loadAssetDetail = useCallback(async (assetId: string) => {
     if (!summary || details[assetId] || detailLoadingId === assetId) return;
@@ -265,8 +271,9 @@ export function InventoryProvider({
     clearFilters,
     reload,
     loadMore,
+    previousPage, pageSize, setPageSize,
     loadAssetDetail,
-  }), [model, summary, page, filters, fixedEntityTypes, loadingSummary, loadingPage, loadingMore, hasMore, error, errorKind, details, detailLoadingId, detailError, setFilter, clearFilters, reload, loadMore, loadAssetDetail]);
+  }), [model, summary, page, filters, fixedEntityTypes, loadingSummary, loadingPage, loadingMore, hasMore, error, errorKind, details, detailLoadingId, detailError, setFilter, clearFilters, reload, loadMore, previousPage, pageSize, setPageSize, loadAssetDetail]);
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>;
 }

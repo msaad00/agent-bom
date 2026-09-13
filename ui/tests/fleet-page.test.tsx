@@ -77,6 +77,8 @@ describe("FleetPage protected actions", () => {
 
   it("keeps sync, lifecycle, and quarantine controls disabled for viewers", async () => {
     render(<FleetPage />);
+    expect(screen.getByText("Developer endpoint evidence").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText(/Policy threshold ·/).closest("details")).not.toHaveAttribute("open");
     expect(screen.getByRole("button", { name: "Sync Now" })).toBeDisabled();
     const row = await screen.findByRole("button", { name: /Developer laptop/ });
     fireEvent.click(row);

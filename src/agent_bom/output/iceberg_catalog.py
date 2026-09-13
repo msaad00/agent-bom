@@ -21,6 +21,8 @@ Configuration is env-driven and disabled by default:
 - ``AGENT_BOM_ICEBERG_CREDENTIAL`` — OAuth2 ``client_id:client_secret``
 - ``AGENT_BOM_ICEBERG_TOKEN`` — bearer token
 - ``AGENT_BOM_ICEBERG_WAREHOUSE`` — warehouse location / identifier
+- ``AGENT_BOM_ICEBERG_SCOPE`` — OAuth2 scope (e.g. ``PRINCIPAL_ROLE:ALL``)
+- ``AGENT_BOM_ICEBERG_OAUTH2_SERVER_URI`` — explicit OAuth2 token endpoint
 """
 
 from __future__ import annotations
@@ -56,6 +58,8 @@ class IcebergCatalogConfig:
     credential: str | None = None
     token: str | None = None
     warehouse: str | None = None
+    scope: str | None = None
+    oauth2_server_uri: str | None = None
 
     @property
     def enabled(self) -> bool:
@@ -81,6 +85,8 @@ class IcebergCatalogConfig:
             credential=os.environ.get("AGENT_BOM_ICEBERG_CREDENTIAL") or None,
             token=os.environ.get("AGENT_BOM_ICEBERG_TOKEN") or None,
             warehouse=os.environ.get("AGENT_BOM_ICEBERG_WAREHOUSE") or app_config.ICEBERG_WAREHOUSE or None,
+            scope=os.environ.get("AGENT_BOM_ICEBERG_SCOPE") or app_config.ICEBERG_SCOPE or None,
+            oauth2_server_uri=os.environ.get("AGENT_BOM_ICEBERG_OAUTH2_SERVER_URI") or app_config.ICEBERG_OAUTH2_SERVER_URI or None,
         )
 
     def catalog_properties(self) -> dict[str, str]:
@@ -94,6 +100,10 @@ class IcebergCatalogConfig:
             props["token"] = self.token
         if self.warehouse:
             props["warehouse"] = self.warehouse
+        if self.scope:
+            props["scope"] = self.scope
+        if self.oauth2_server_uri:
+            props["oauth2-server-uri"] = self.oauth2_server_uri
         return props
 
 

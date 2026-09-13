@@ -42,7 +42,7 @@ See the current risk posture and critical findings first. Open the underlying
 evidence before assigning a priority.
 
 <p align="center">
-  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview screen with sample posture, finding counts and prioritized risks" width="920"></a>
+  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview screen with prioritized sample risks and a tab for posture details" width="920"></a>
 </p>
 
 ### GRC and audit: see framework mappings and assessment gaps

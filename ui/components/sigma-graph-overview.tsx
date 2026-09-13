@@ -25,10 +25,8 @@ import {
 import type { UnifiedGraphFlowFilters } from "@/lib/unified-graph-flow";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
-  LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
-  LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
 } from "@/lib/large-graph-overview";
 import {
   buildSigmaGraphOverviewModel,
@@ -320,19 +318,15 @@ export function SigmaGraphOverview({
         <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
           <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-200">
             <Sparkles className="h-3.5 w-3.5" />
-            WebGL graph overview
+            Estate map
           </span>
           <span className="min-w-0 text-xs leading-snug text-[var(--text-tertiary)] sm:min-w-[12rem] sm:flex-1">
-            Sigma.js renderer for broad estate scans; focused investigations still use React Flow.
+            Select an asset to investigate its related evidence. Use Summary to drill into groups.
           </span>
         </div>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--text-tertiary)]">
           <span>
-            Renders broad estates at {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes or{" "}
-            {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges; labels resolve on zoom and hover.
-          </span>
-          <span>
-            Draw budget: {model.overview.nodes.length.toLocaleString()}/{model.overview.sourceNodeCount.toLocaleString()} nodes,{" "}
+            Displayed: {model.overview.nodes.length.toLocaleString()}/{model.overview.sourceNodeCount.toLocaleString()} nodes,{" "}
             {model.overview.edges.length.toLocaleString()}/{model.overview.sourceEdgeCount.toLocaleString()} edges.
           </span>
           {isBudgeted && (
@@ -364,7 +358,7 @@ export function SigmaGraphOverview({
         />
         <GraphTextAlternative
           id="sigma-graph-overview-text"
-          renderer="WebGL graph overview"
+          renderer="Estate map"
           model={model.overview}
           summary={model.summary}
         />
@@ -385,10 +379,7 @@ export function SigmaGraphOverview({
         </div>
         {!captureMode && (
         <div className="pointer-events-none absolute bottom-3 left-3 max-w-[min(34rem,calc(100vw-2rem))] rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/90 px-3 py-2 text-xs text-[color:var(--text-secondary)] backdrop-blur">
-          WebGL mode supports pan, zoom, node selection, server-side search, filters, and selected-node detail.
-          React Flow-only affordances return after narrowing the graph below{" "}
-          {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes / {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges
-          or entering a bounded drill-in.
+          Pan or zoom to explore. Search for an exact asset, or use Summary to narrow the estate.
           <span className="sr-only">
             Maximum overview draw budget is {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES.toLocaleString()} nodes and{" "}
             {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES.toLocaleString()} edges.

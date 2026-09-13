@@ -274,3 +274,15 @@ def test_baseline_snapshot_carries_inventory_without_the_collection_window() -> 
     assert current_summary["assets"] == summary["assets"]
     assert current_summary["findings"] > 0
     assert len(current.nodes) > len(baseline.nodes)
+
+
+def test_showcase_axios_advisory_explains_effect_without_inventing_exploitation():
+    from agent_bom.demo_estate.showcase_graph import build_showcase_graph
+
+    graph, _, _ = build_showcase_graph()
+    attrs = graph.nodes["vuln:CVE-2023-45857"].attributes
+    assert "XSRF" in attrs["summary"]
+    assert "SSRF" not in attrs["summary"]
+    assert attrs["cwe_ids"] == ["CWE-352"]
+    assert attrs["fixed_version"] == "1.6.0"
+    assert attrs["cvss_score"] == 6.5

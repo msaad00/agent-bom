@@ -349,6 +349,11 @@ export function LineageDetailPanel({
 
       {data.nodeType === "vulnerability" && (
         <div className="space-y-3">
+          <div className="space-y-2 text-sm text-ink-secondary" data-testid="vulnerability-context">
+            <Label>What the advisory describes</Label>
+            <p>{data.description || "Advisory description is not available in this graph snapshot."}</p>
+            <p className="text-xs">Dependency connections identify potentially affected assets. They do not by themselves prove exploitation or access to customer data.</p>
+          </div>
           {data.severity && (
             <span
               className={`inline-block text-xs px-2 py-1 rounded border font-mono uppercase ${severityColor(data.severity)}`}

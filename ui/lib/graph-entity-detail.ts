@@ -48,7 +48,7 @@ export function mergeGraphNodeDetail(
   base: LineageNodeData,
   detail: GraphNodeDetailResponse,
 ): LineageNodeData {
-  const mergedAttributes = {
+  const mergedAttributes: Record<string, unknown> = {
     ...(base.attributes ?? {}),
     ...(detail.node.attributes ?? {}),
     node_id: detail.node.id,
@@ -68,6 +68,13 @@ export function mergeGraphNodeDetail(
       ? detail.node.compliance_tags
       : base.complianceTags,
     attributes: mergedAttributes,
+    ...(base.nodeType === "vulnerability" ? {
+      description: typeof mergedAttributes.summary === "string" && mergedAttributes.summary ? mergedAttributes.summary : typeof mergedAttributes.description === "string" ? mergedAttributes.description : base.description,
+      cvssScore: typeof mergedAttributes.cvss_score === "number" ? mergedAttributes.cvss_score : base.cvssScore,
+      epssScore: typeof mergedAttributes.epss_score === "number" ? mergedAttributes.epss_score : base.epssScore,
+      fixedVersion: typeof mergedAttributes.fixed_version === "string" ? mergedAttributes.fixed_version : base.fixedVersion,
+      isKev: typeof mergedAttributes.is_kev === "boolean" ? mergedAttributes.is_kev : base.isKev,
+    } : {}),
     neighborCount: detail.neighbors.length,
     sourceCount: detail.sources.length,
     incomingEdgeCount: detail.edges_in.length,

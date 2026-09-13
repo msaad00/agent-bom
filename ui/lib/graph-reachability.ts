@@ -27,6 +27,8 @@ type SummarizeReachabilityInput = {
   depthByNode?: Record<string, number> | undefined;
   truncated?: boolean | undefined;
   maxPaths?: number | undefined;
+  direction?: "outgoing" | "both";
+  includeNonTraversable?: boolean;
 };
 
 export function summarizeReachability({
@@ -34,18 +36,19 @@ export function summarizeReachability({
   rootLabel,
   nodes,
   edges,
-  depthByNode = {},
+  direction = "outgoing",
+  includeNonTraversable = false,
   truncated = false,
   maxPaths = 8,
 }: SummarizeReachabilityInput): ReachabilitySummary {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const adjacency = buildReachabilityAdjacency(edges);
-  const { reached, previous, depth } = walkReachable(rootId, adjacency, depthByNode);
+  const adjacency = buildReachabilityAdjacency(edges, direction, includeNonTraversable);
+  const { reached, previous, depth } = walkReachable(rootId, adjacency);
   const nodeIds = new Set([rootId, ...nodes.filter((node) => reached.has(node.id)).map((node) => node.id)]);
   const edgeKeys = new Set<string>();
 
   for (const edge of edges) {
-    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
+    if ((!includeNonTraversable && edge.traversable === false) || !nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
     edgeKeys.add(`${edge.source}=>${edge.target}`);
     if (edge.direction === "bidirectional") {
       edgeKeys.add(`${edge.target}=>${edge.source}`);
@@ -90,12 +93,12 @@ export function summarizeReachability({
   };
 }
 
-function buildReachabilityAdjacency(edges: UnifiedEdge[]): Map<string, string[]> {
+function buildReachabilityAdjacency(edges: UnifiedEdge[], direction: "outgoing" | "both", includeNonTraversable: boolean): Map<string, string[]> {
   const adjacency = new Map<string, string[]>();
   for (const edge of edges) {
-    if (edge.traversable === false) continue;
+    if (!includeNonTraversable && edge.traversable === false) continue;
     addDirectedNeighbor(adjacency, edge.source, edge.target);
-    if (edge.direction === "bidirectional") {
+    if (direction === "both" || edge.direction === "bidirectional") {
       addDirectedNeighbor(adjacency, edge.target, edge.source);
     }
   }
@@ -114,15 +117,14 @@ function addDirectedNeighbor(adjacency: Map<string, string[]>, source: string, t
 function walkReachable(
   rootId: string,
   adjacency: Map<string, string[]>,
-  depthByNode: Record<string, number>,
 ): { reached: Set<string>; previous: Map<string, string>; depth: Map<string, number> } {
   const reached = new Set<string>([rootId]);
   const previous = new Map<string, string>();
   const depth = new Map<string, number>([[rootId, 0]]);
   const queue = [rootId];
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const current = queue[cursor]!;
     for (const next of adjacency.get(current) ?? []) {
       if (reached.has(next)) continue;
       reached.add(next);
@@ -132,13 +134,8 @@ function walkReachable(
     }
   }
 
-  for (const [nodeId, value] of Object.entries(depthByNode)) {
-    if (value >= 0) {
-      reached.add(nodeId);
-      depth.set(nodeId, value);
-    }
-  }
-
+  // Server depths can include reverse or non-traversable neighbors. They
+  // cannot prove a directed path or justify fabricating a root-to-target hop.
   return { reached, previous, depth };
 }
 

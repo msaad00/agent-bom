@@ -16,6 +16,7 @@ import {
   mapAttackPathNodeType,
   matchesAttackPathFocus,
   mergeAttackPathGraphPages,
+  mergeGraphQueueContext,
   moveAttackPathSelection,
   rankedAttackPathRows,
   recommendedInteractionRiskActions,
@@ -1088,5 +1089,17 @@ describe("graphPathQueueCounts", () => {
       renderedRows: 2,
       truncated: true,
     });
+  });
+});
+
+
+describe("bounded root context", () => {
+  it("cannot import unrelated global queue nodes into a root investigation", () => {
+    const graph = { nodes: [{ id: "root" }], edges: [], attack_paths: [], completeness: { truncated: true, returned: 1 } } as unknown as import("@/lib/api-types").UnifiedGraphResponse;
+    const queue = { nodes: Array.from({ length: 6802 }, (_, i) => ({ id: `unrelated-${i}` })), edges: [], attack_paths: [] } as unknown as import("@/lib/api-types").UnifiedGraphResponse;
+    const result = mergeGraphQueueContext(graph, queue, true, false);
+    expect(result.nodes.map((node) => node.id)).toEqual(["root"]);
+    expect(result.completeness).toEqual(graph.completeness);
+    expect(mergeGraphQueueContext(graph, queue, false, false).nodes).toHaveLength(6803);
   });
 });

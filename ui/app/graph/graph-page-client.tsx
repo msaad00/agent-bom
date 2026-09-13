@@ -92,6 +92,7 @@ import {
 import {
   attackPathKey,
   decodeGraphInvestigationParams,
+  mergeGraphQueueContext,
   toAttackCardNodes,
   type GraphInvestigationRequest,
 } from "@/lib/attack-paths";
@@ -808,6 +809,7 @@ function GraphPageInner() {
   const [reachabilitySummary, setReachabilitySummary] =
     useState<ReachabilitySummary | null>(null);
   const loadingReachability = false;
+  const investigationRequestId = useRef(0);
   const [reachabilityError, setReachabilityError] = useState<string | null>(
     null,
   );
@@ -1196,23 +1198,8 @@ function GraphPageInner() {
   }, [selectedScanId]);
 
   const mergedGraphData = useMemo(() => {
-    if (!graphData) return null;
-    if (!attackPathQueue) return graphData;
-    const nodeById = new Map(graphData.nodes.map((node) => [node.id, node]));
-    for (const node of attackPathQueue.nodes) nodeById.set(node.id, node);
-    const edgeById = new Map(graphData.edges.map((edge) => [edge.id, edge]));
-    for (const edge of attackPathQueue.edges) edgeById.set(edge.id, edge);
-    const attack_paths =
-      attackPathQueue.attack_paths.length > 0
-        ? attackPathQueue.attack_paths
-        : graphData.attack_paths;
-    return {
-      ...graphData,
-      nodes: [...nodeById.values()],
-      edges: [...edgeById.values()],
-      attack_paths,
-    };
-  }, [attackPathQueue, graphData]);
+    return graphData ? mergeGraphQueueContext(graphData, attackPathQueue, Boolean(investigationMode), Boolean(selectedAttackPathKey)) : null;
+  }, [attackPathQueue, graphData, investigationMode, selectedAttackPathKey]);
 
   const proposedGraphData = useMemo(
     () =>
@@ -1807,7 +1794,7 @@ function GraphPageInner() {
     () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds),
     [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds],
   );
-  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(
+  const { nodes: layoutNodes, edges: layoutEdges, pending: layoutPending } = useGraphLayout(
     graphLayoutKind,
     layoutInput.nodes,
     layoutInput.edges,
@@ -2591,6 +2578,7 @@ function GraphPageInner() {
       request: GraphInvestigationRequest & { node?: UnifiedNode | undefined },
     ) => {
       if (!selectedScanId) return;
+      const requestId = ++investigationRequestId.current;
 
       const fallback = request.node
         ? (flowNodeDataById.get(request.node.id) ??
@@ -2618,14 +2606,16 @@ function GraphPageInner() {
         request.rootLabel ?? request.node?.label ?? request.rootId,
       );
       setLoadingGraph(true);
+      setInvestigationMode({ rootId: request.rootId, rootLabel: request.rootLabel ?? request.rootId,
+        truncated: false, nodeCount: 0, edgeCount: 0 });
       try {
         const response = await api.queryGraph({
           roots: [request.rootId],
           scan_id: selectedScanId,
           direction: "both",
           max_depth: filters.vulnOnly ? 3 : 4,
-          max_nodes: filters.vulnOnly ? 400 : 800,
-          max_edges: filters.vulnOnly ? 3000 : 8000,
+          max_nodes: 80,
+          max_edges: 320,
           timeout_ms: 2500,
           traversable_only: false,
           static_only: filters.runtimeMode === "static",
@@ -2635,6 +2625,7 @@ function GraphPageInner() {
           entity_types: serverEntityTypes,
           relationship_types: serverRelationships,
         });
+        if (requestId !== investigationRequestId.current) return;
         const rootNode =
           response.nodes.find((node) => node.id === request.rootId) ??
           request.node;
@@ -2656,16 +2647,19 @@ function GraphPageInner() {
             nodes: response.nodes,
             edges: response.edges,
             depthByNode: response.depth_by_node,
+            direction: "both",
+            includeNonTraversable: true,
             truncated: response.truncated,
           }),
         );
         setError(null);
       } catch (e) {
+        if (requestId !== investigationRequestId.current) return;
         setError(
           e instanceof Error ? e.message : "Failed to load root-centered graph",
         );
       } finally {
-        setLoadingGraph(false);
+        if (requestId === investigationRequestId.current) setLoadingGraph(false);
       }
     },
     [
@@ -2697,6 +2691,9 @@ function GraphPageInner() {
   );
 
   const clearInvestigationMode = useCallback(() => {
+    investigationRequestId.current++;
+    setLoadingGraph(false);
+    setLoadingBlast(false);
     setInvestigationMode(null);
     setPinnedFocusId(null);
     setHoveredNodeId(null);
@@ -2758,6 +2755,7 @@ function GraphPageInner() {
   const loadBlastRadius = useCallback(
     async (nodeId: string, nodeLabel: string) => {
       if (!nodeId) return;
+      const requestId = ++investigationRequestId.current;
       // Blast radius takes over the canvas; drop any competing overlays so the
       // impacted set is the only thing highlighted.
       setSelectedAttackPathKey(null);
@@ -2766,11 +2764,19 @@ function GraphPageInner() {
       setLoadingBlast(true);
       setBlastError(null);
       try {
-        const impact = await api.getGraphImpact(
-          nodeId,
-          selectedScanId || undefined,
-          4,
-        );
+        // Impact IDs alone cannot populate a canvas that was loaded for a
+        // different scope. Fetch a bounded reverse neighborhood as well.
+        const [impact, context] = await Promise.all([
+          api.getGraphImpact(nodeId, selectedScanId || undefined, 4),
+          api.queryGraph({ roots: [nodeId], scan_id: selectedScanId || undefined,
+            direction: "reverse", max_depth: 4, max_nodes: 80, max_edges: 320,
+            timeout_ms: 2500, traversable_only: true, include_roots: true,
+            include_attack_paths: false }),
+        ]);
+        if (requestId !== investigationRequestId.current) return;
+        setGraphData(queryResponseToGraphResponse(context));
+        setInvestigationMode({ rootId: nodeId, rootLabel: nodeLabel || nodeId,
+          truncated: context.truncated, nodeCount: context.nodes.length, edgeCount: context.edges.length });
         setBlastRadius({
           rootId: impact.node_id,
           rootLabel: nodeLabel || impact.node_id,
@@ -2780,12 +2786,13 @@ function GraphPageInner() {
           maxDepthReached: impact.max_depth_reached,
         });
       } catch (e) {
+        if (requestId !== investigationRequestId.current) return;
         setBlastRadius(null);
         setBlastError(
           e instanceof Error ? e.message : "Failed to compute blast radius",
         );
       } finally {
-        setLoadingBlast(false);
+        if (requestId === investigationRequestId.current) setLoadingBlast(false);
       }
     },
     [selectedScanId],
@@ -3065,7 +3072,7 @@ function GraphPageInner() {
           )}
 
 
-          {investigationMode && (
+          {investigationMode && !reachabilitySummary && (
             <div className="graph-callout-sky">
               <span>
                 Focused on:{" "}
@@ -3114,7 +3121,7 @@ function GraphPageInner() {
             <summary className="graph-drawer-summary !px-0">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
-                  Filters and evidence
+                  Graph settings
                 </span>
                 <p className="text-xs text-ink-secondary">
                   {graphScopeLabelForFilters(filters)} ·{" "}
@@ -3809,7 +3816,7 @@ function GraphPageInner() {
             </div>
           )}
           <div className="relative min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
-          {loadingGraph && !graphData ? (
+          {loadingGraph || loadingBlast ? (
             <GraphPanelSkeleton
               title="Loading graph window"
               detail={`Fetching the selected snapshot with the ${graphScopeLabelForFilters(filters).toLowerCase()} scope and active layer filters.`}
@@ -3845,6 +3852,8 @@ function GraphPageInner() {
               ]}
               command="agent-bom agents --demo --offline"
             />
+          ) : layoutPending && graphRenderer.kind === "react-flow" ? (
+            <p role="status" className="p-6 text-sm text-ink-secondary">Arranging the selected graph…</p>
           ) : graphOnlyFindings ? (
             <GraphFindingsFallback
               nodes={findingNodes}
@@ -3960,7 +3969,7 @@ function GraphPageInner() {
             <GraphEntityDrawer
               data={selectedNode}
               scanId={selectedScanId || undefined}
-              enrich={false}
+              enrich={Boolean(investigationMode)}
               onClose={() => {
                 setSelectedNode(null);
                 setSelectedNodeId(null);
@@ -4030,16 +4039,16 @@ function ReachabilityDrillInPanel({
           <Route className="mt-0.5 h-4 w-4 text-rose-700 dark:text-rose-300" />
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-rose-700 dark:text-rose-300">
-              Reachability drill-in
+              Related graph context
             </p>
             <p className="mt-1 text-sm font-medium text-foreground">
               {summary
-                ? `${summary.rootLabel} reaches ${affectedCount} node${affectedCount === 1 ? "" : "s"} in this graph`
+                ? `${summary.rootLabel} · ${affectedCount} related node${affectedCount === 1 ? "" : "s"} returned`
                 : "Loading reachable graph"}
             </p>
             {summary?.truncated && (
               <p className="mt-1 text-[11px] text-amber-200">
-                Traversal limited. Narrow the scope.
+                Partial context. Narrow the scope or return to Summary to drill into a smaller group.
               </p>
             )}
             {error && (

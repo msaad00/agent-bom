@@ -77,8 +77,8 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "CVE-2023-45857",
         "high",
         6.5,
-        "axios SSRF and credential leak via follow-redirects proxy handling",
-        cwe="CWE-918",
+        "Axios can disclose the XSRF cookie token to another host through the X-XSRF-TOKEN request header",
+        cwe="CWE-352",
     ),
     DemoAdvisory(
         "npm",

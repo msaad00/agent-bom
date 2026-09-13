@@ -543,6 +543,7 @@ function toLineageData(
       );
       break;
     case "vulnerability":
+      data.description = stringAttr(node, "summary") || stringAttr(node, "description");
       data.cvssScore = numberAttr(node, "cvss_score");
       data.epssScore = numberAttr(node, "epss_score");
       data.isKev = booleanAttr(node, "is_kev");

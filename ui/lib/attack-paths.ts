@@ -824,3 +824,20 @@ export function graphPathQueueCounts(
     truncated: Boolean(graph?.completeness?.truncated ?? graph?.pagination?.has_more),
   };
 }
+
+
+/** Keep the global queue from widening a bounded root investigation. */
+export function mergeGraphQueueContext(
+  graph: UnifiedGraphResponse,
+  queue: UnifiedGraphResponse | null,
+  rootFocused: boolean,
+  pathSelected: boolean,
+): UnifiedGraphResponse {
+  if (!queue || (rootFocused && !pathSelected)) return graph;
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  const edges = new Map(graph.edges.map((edge) => [edge.id, edge]));
+  for (const node of queue.nodes) nodes.set(node.id, node);
+  for (const edge of queue.edges) edges.set(edge.id, edge);
+  return { ...graph, nodes: [...nodes.values()], edges: [...edges.values()],
+    attack_paths: queue.attack_paths.length ? queue.attack_paths : graph.attack_paths };
+}

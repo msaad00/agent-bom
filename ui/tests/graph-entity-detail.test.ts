@@ -38,7 +38,7 @@ describe("graph-entity-detail", () => {
         last_seen: "2026-01-02T00:00:00Z",
         data_sources: ["scan"],
         compliance_tags: [],
-        attributes: { evidence_tier: "static_scan" },
+        attributes: { evidence_tier: "static_scan", summary: "Cross-host token disclosure", cvss_score: 6.5, fixed_version: "1.6.0", is_kev: false },
       },
       edges_out: [{ id: "e1" }],
       edges_in: [{ id: "e2" }, { id: "e3" }],
@@ -58,6 +58,9 @@ describe("graph-entity-detail", () => {
     expect(merged.outgoingEdgeCount).toBe(1);
     expect(merged.neighborCount).toBe(2);
     expect(merged.impactCount).toBe(3);
+    expect(merged.description).toBe("Cross-host token disclosure");
+    expect(merged.fixedVersion).toBe("1.6.0");
+    expect(merged.cvssScore).toBe(6.5);
     expect(merged.attributes?.node_id).toBe("vuln::cve-2024-1234");
     expect(evidenceTierLabel(merged)).toBe("static scan");
   });

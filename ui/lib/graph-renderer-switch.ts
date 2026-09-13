@@ -66,7 +66,7 @@ export function decideGraphRenderer({
       supportsInvestigation: true,
     };
   }
-  if (reachabilityActive) {
+  if (reachabilityActive && nodeCount < LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD && edgeCount < LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD) {
     return {
       kind: "react-flow",
       reason: "reachability-drill-in",

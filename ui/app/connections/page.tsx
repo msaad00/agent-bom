@@ -1677,8 +1677,6 @@ function HubTabs({
 
 function ConnectSegment({
   session,
-  counts,
-  cloudService,
   connections,
   connectionsCount,
   canManage,
@@ -1714,14 +1712,7 @@ function ConnectSegment({
         onConnect={onConnect}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <ServiceStateChip
-          serviceId="cloud_accounts"
-          entry={cloudService}
-          registry={counts?.services}
-          showUnlock={false}
-        />
-      </div>
+      <p className="text-xs text-ink-secondary">{connectionsCount} configured · {verifiedConnectionsCount} access verified · {scannedConnectionsCount} scanned</p>
 
       <Section
         label="Connect a source"

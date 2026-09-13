@@ -2082,6 +2082,7 @@ def _add_vuln_node(
                     if isinstance(vuln_dict.get("finding_id"), str) and str(vuln_dict.get("finding_id") or "").strip()
                     else {}
                 ),
+                "summary": sanitize_text(str(vuln_dict.get("summary") or ""), max_len=2_000),
                 "cvss_score": vuln_dict.get("cvss_score"),
                 "cvss_vector": vuln_dict.get("cvss_vector"),
                 "attack_vector": vuln_dict.get("attack_vector"),

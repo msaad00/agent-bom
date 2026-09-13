@@ -180,6 +180,7 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
       "source_file",
       "code_module",
       "config_file",
+      "blueprint",
       "external_import",
       "directory",
       "ci_job",

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ManifestPage from "@/app/manifest/page";
 const { getManifest } = vi.hoisted(() => ({ getManifest: vi.fn() }));
@@ -29,4 +29,14 @@ describe("AI BOM evidence scope",()=>{
  await waitFor(()=>expect(screen.getByText("Inventory unavailable")).toBeInTheDocument());
  expect(screen.queryByText("0")).not.toBeInTheDocument();
  });
+ it("labels inventory warnings without claiming blueprint drift and expands their reasons", async()=>{
+ getManifest.mockResolvedValue({...manifest,blueprint_drift:{status:"needs_review",signal_count:1,signals:[{kind:"unowned_agent",entity_id:"agent:demo",severity:"info",message:"Agent has no owner metadata."}]}});
+ render(<ManifestPage/>);
+ const toggle=await screen.findByText("Inventory items needing review · 1");
+ expect(toggle.closest("details")).not.toHaveAttribute("open");
+ expect(screen.queryByText(/Observation-only drift review|blueprint needs review/)).not.toBeInTheDocument();
+ fireEvent.click(toggle);
+ expect(screen.getByText(/Agent has no owner metadata/)).toBeVisible();
+ });
+
 });

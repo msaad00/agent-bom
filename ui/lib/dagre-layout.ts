@@ -3,7 +3,7 @@
  * Automatically positions nodes using a directed graph layout.
  */
 
-import dagre from "@dagrejs/dagre";
+import { Graph, layout } from "@dagrejs/dagre";
 import { type Edge, type Node, type Position } from "@xyflow/react";
 
 /**
@@ -234,7 +234,7 @@ export function applyDagreLayout(
     fitAspect,
   } = options;
 
-  const g = new dagre.graphlib.Graph();
+  const g = new Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: direction, ranksep: rankSep, nodesep: nodeSep });
 
@@ -246,7 +246,7 @@ export function applyDagreLayout(
     g.setEdge(edge.source, edge.target);
   }
 
-  dagre.layout(g);
+  layout(g);
 
   const isHorizontal = direction === "LR";
 

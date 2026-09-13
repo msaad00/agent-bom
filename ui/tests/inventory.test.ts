@@ -5,6 +5,7 @@ import {
   ASSET_KINDS,
   assetKindForEntityType,
   buildInventory,
+  inventoryAssetToRow,
   dataSourceOptions,
   filterAssetRows,
   mergeGraphPages,
@@ -296,4 +297,9 @@ describe("mergeGraphPages", () => {
     expect(merged.edges.map((e) => e.id)).toEqual(["CVE-1->a", "CVE-2->c"]);
     expect(merged.pagination).toEqual(second.pagination);
   });
+});
+
+it("preserves blueprint assets returned by the inventory API", () => {
+  const row = inventoryAssetToRow({ id: "blueprint-1", name: "Approved service blueprint", type: "blueprint" } as Parameters<typeof inventoryAssetToRow>[0]);
+  expect(row).toMatchObject({ id: "blueprint-1", kind: "code", label: "Approved service blueprint" });
 });

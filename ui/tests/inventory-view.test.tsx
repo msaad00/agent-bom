@@ -165,7 +165,7 @@ describe("AssetInventoryView inventory projection", () => {
 
     await screen.findByTestId("inventory-table-packages");
     expect(screen.getAllByText("700").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/Showing 2 of 700 matching assets/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1–2 of 700 matching assets/i)).toBeInTheDocument();
     expect(api.getGraph).not.toHaveBeenCalled();
   });
 
@@ -224,12 +224,41 @@ describe("InventoryIndex whole-query truth", () => {
     fireEvent.click(within(table).getByText("requests"));
     await waitFor(() => expect(api.getInventoryAsset).toHaveBeenCalledWith("pkg:requests", SNAPSHOT));
     vi.mocked(api.getInventoryAssets).mockResolvedValueOnce(page([asset("pkg:fastapi")], {
-      pagination: { total:700, offset:100, limit:100, next_cursor:"", has_more:false, facet_filtered:false },
+      pagination: { total:700, offset:0, limit:100, next_cursor:"", has_more:false, facet_filtered:false },
     }));
-    fireEvent.click(screen.getByRole("button", {name:"Load more"}));
+    fireEvent.click(screen.getByRole("button", {name:"Next"}));
     await waitFor(() => expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({scanId:SNAPSHOT,cursor:"cursor-2"})));
     expect(await within(table).findByText("fastapi")).toBeVisible();
-    expect(within(table).getByText("requests")).toBeVisible();
+    expect(within(table).queryByText("requests")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 101–101 of 700 matching assets")).toBeVisible();
+    vi.mocked(api.getInventoryAssets).mockResolvedValueOnce(page());
+    fireEvent.click(screen.getByRole("button", {name:"Previous"}));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({scanId:SNAPSHOT,offset:0,limit:100})));
+    expect(await within(table).findByText("requests")).toBeVisible();
+    expect(within(table).queryByText("fastapi")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Rows per page"), {target:{value:"25"}});
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({scanId:SNAPSHOT,offset:0,limit:25})));
+  });
+
+  it("returns to an intermediate page with its cursor instead of a deep offset", async () => {
+    render(<InventoryProvider><InventoryIndex /></InventoryProvider>);
+    const table = await screen.findByRole("table", { name: "Asset inventory" });
+    const second = page([asset("pkg:second")], {
+      pagination: { total: 700, offset: 0, limit: 100, next_cursor: "cursor-3", has_more: true, facet_filtered: false },
+    });
+    vi.mocked(api.getInventoryAssets).mockResolvedValueOnce(second);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await within(table).findByText("second")).toBeVisible();
+    vi.mocked(api.getInventoryAssets).mockResolvedValueOnce(page([asset("pkg:third")]));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await within(table).findByText("third")).toBeVisible();
+    expect(screen.getByText("Showing 201–201 of 700 matching assets")).toBeVisible();
+    vi.mocked(api.getInventoryAssets).mockResolvedValueOnce(second);
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(await within(table).findByText("second")).toBeVisible();
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "cursor-2" }));
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.not.objectContaining({ offset: expect.anything() }));
+    expect(screen.getByText("Showing 101–101 of 700 matching assets")).toBeVisible();
   });
 
   it("renders authoritative snapshot and kind totals despite a bounded first page", async () => {

@@ -118,7 +118,7 @@ export default function GovernancePage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-[var(--foreground)] flex items-center gap-2">
             <Eye className="w-6 h-6 text-emerald-400" />
-            Governance Posture
+            Cloud Governance
           </h1>
           <p className="mt-1 break-words text-sm text-[var(--text-tertiary)]">
             Account: {report.account} | Discovered: {formatDate(report.discovered_at)}

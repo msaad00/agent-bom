@@ -70,4 +70,25 @@ describe("graph reachability", () => {
     expect(summary.nodeIds).toEqual(new Set(["agent-1"]));
     expect(summary.pathPreviews).toEqual([]);
   });
+  it("does not turn server depth hints into nonexistent attack paths", () => {
+    const summary = summarizeReachability({
+      rootId: "root",
+      nodes: [node("root", EntityType.AGENT, "Root"), node("blocked", EntityType.TOOL, "Blocked"), node("reverse", EntityType.PACKAGE, "Dependency")],
+      edges: [edge("blocked-edge", "root", "blocked", false), edge("reverse-edge", "reverse", "root")],
+      depthByNode: { root: 0, blocked: 1, reverse: 1 },
+    });
+    expect([...summary.nodeIds]).toEqual(["root"]);
+    expect(summary.pathPreviews).toEqual([]);
+    expect([...summary.edgeKeys]).toEqual([]);
+  });
+
+  it("retains reverse relationships in an explicitly related-context view", () => {
+    const summary = summarizeReachability({
+      rootId: "finding", direction: "both", includeNonTraversable: true,
+      nodes: [node("finding", EntityType.VULNERABILITY, "Finding"), node("package", EntityType.PACKAGE, "Package"), node("server", EntityType.SERVER, "Server")],
+      edges: [edge("e1", "package", "finding", false), edge("e2", "server", "package")],
+    });
+    expect(summary.pathPreviews.find((path) => path.targetId === "server")?.hops).toEqual(["finding", "package", "server"]);
+  });
+
 });

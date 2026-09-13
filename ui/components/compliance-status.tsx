@@ -50,11 +50,11 @@ export function statusColor(status: string): string {
 export function postureLabel(status: string): string {
   switch (status) {
     case "pass":
-      return "Compliant";
+      return "Evaluated checks pass";
     case "warning":
       return "Needs attention";
     case "fail":
-      return "Non-compliant";
+      return "Failing checks need review";
     case "not_evaluated":
     case "no_data":
       return "Not evaluated";

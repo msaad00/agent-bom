@@ -32,8 +32,8 @@ describe("graph renderer switch", () => {
       supportsInvestigation: true,
     });
     expect(decideGraphRenderer({ ...broadGraph, reachabilityActive: true })).toMatchObject({
-      kind: "react-flow",
-      reason: "reachability-drill-in",
+      kind: "webgl",
+      reason: "large-graph-webgl-overview",
       supportsInvestigation: true,
     });
     expect(decideGraphRenderer({ ...broadGraph, rollupActive: true })).toMatchObject({

@@ -36,7 +36,7 @@ SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
 # ``Remediation`` object frozen to its Python repr, and a running demo would have
 # served that snapshot forever. The seven-day gap is the drift lens's window and
 # is preserved on every bump.
-_SHOWCASE_CURRENT_TARGET = datetime(2026, 8, 15, 12, 0, 0, tzinfo=timezone.utc)
+_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 12, 12, 0, 0, tzinfo=timezone.utc)
 _SHOWCASE_IMPORT_NOW = datetime.now(timezone.utc)
 # Preserve the deterministic target once it is in the past. Before then, clamp
 # to the current UTC day's start so a release candidate never presents a
@@ -81,7 +81,7 @@ SHOWCASE_PACKAGES: dict[str, tuple[str, str, str, float]] = {
     "langchain@0.0.150": ("llm-orchestrator-server", "CVE-2023-36258", "critical", 9.8),
     "pillow@9.0.0": ("etl-server", "CVE-2023-4863", "high", 8.8),
     "jsonwebtoken@8.5.1": ("helpdesk-server", "CVE-2022-23529", "high", 7.6),
-    "axios@1.4.0": ("helpdesk-server", "CVE-2023-45857", "high", 6.5),
+    "axios@1.4.0": ("helpdesk-server", "CVE-2023-45857", "medium", 6.5),
     "cryptography@39.0.0": ("warehouse-server", "CVE-2023-50782", "high", 7.5),
     "ws@8.5.0": ("filesystem-server", "CVE-2024-37890", "high", 7.5),
     "flask@2.2.0": ("team-chat-server", "CVE-2023-30861", "high", 7.5),
@@ -450,12 +450,16 @@ def build_showcase_graph(
             edge(f"server:{sid}", tid, RelationshipType.PROVIDES_TOOL)
 
     # Real CVEs on real package@versions — mirrors the demo advisory catalog.
+    from agent_bom.demo_advisories import DEMO_ADVISORIES
+
+    advisory_by_id = {advisory.vuln_id: advisory for advisory in DEMO_ADVISORIES}
     kev_cves = {"CVE-2023-4863"}
     for purl, (sid, cve, sev, score) in SHOWCASE_PACKAGES.items():
         pid = f"pkg:{purl}"
         node(pid, EntityType.PACKAGE, purl)
         edge(f"server:{sid}", pid, RelationshipType.DEPENDS_ON)
         vid = f"vuln:{cve}"
+        advisory = advisory_by_id.get(cve)
         node(
             vid,
             EntityType.VULNERABILITY,
@@ -463,6 +467,10 @@ def build_showcase_graph(
             severity=sev,
             risk_score=score,
             is_kev=cve in kev_cves,
+            summary=advisory.summary if advisory else "",
+            cvss_score=advisory.cvss_score if advisory else score,
+            fixed_version=advisory.fixed if advisory else "",
+            cwe_ids=[advisory.cwe] if advisory and advisory.cwe else [],
             reachability="confirmed",
             reachability_basis=["graph_path"],
             graph_reachable=True,

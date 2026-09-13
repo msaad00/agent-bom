@@ -33,10 +33,21 @@ describe("Audit trail", () => {
     expect(screen.getByRole("region", { name: "Control-plane integrity" })).toHaveTextContent("78 verified / 78 checked");
     expect(apiMock.getAuditIntegrity).toHaveBeenCalledWith(1000, false);
     expect(screen.getByRole("button", { name: "Export and verify evidence" })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("button", { name: "Key management and revocation" })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("Key controls")).not.toBeVisible();
+    expect(screen.queryByText("Key controls")).not.toBeInTheDocument();
+    expect(apiMock.listKeys).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Export and verify evidence" }));
     expect(screen.getByText("Export controls")).toBeVisible();
+  });
+
+  it("loads access administration only when explicitly selected and keeps it separate from events", async () => {
+    render(<AuditLogPage />);
+    await screen.findByRole("button", { name: /gateway.policy.denied/ });
+    fireEvent.click(screen.getByRole("tab", { name: "Access administration" }));
+    await waitFor(() => expect(apiMock.listKeys).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Key controls")).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Audit trail" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /^Events$/ }));
+    expect(screen.getByRole("region", { name: "Audit trail" })).toBeVisible();
   });
 
   it("keeps events available when integrity verification fails", async () => {

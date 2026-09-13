@@ -53,8 +53,9 @@ describe("FirstRunJourney", () => {
     );
 
     expect(screen.getByTestId("first-run-journey")).toBeInTheDocument();
-    expect(screen.getByText("0 of 3 complete")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Cloud connection setup progress" })).toBeInTheDocument();
+    expect(screen.getByText("Setup guide · 0 of 3 complete").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("Setup guide · 0 of 3 complete")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Cloud connection setup progress", hidden: true })).toBeInTheDocument();
     expect(screen.getByTestId("journey-step-connect")).toHaveAttribute(
       "data-status",
       "current",
@@ -77,7 +78,7 @@ describe("FirstRunJourney", () => {
       />,
     );
     // A stored connection alone is not a verified credential or a completed scan.
-    expect(screen.getByText("1 of 3 complete")).toBeInTheDocument();
+    expect(screen.getByText("Setup guide · 1 of 3 complete")).toBeInTheDocument();
     expect(screen.getByTestId("journey-step-connect")).toHaveAttribute("data-status", "done");
     expect(screen.getByTestId("journey-step-verify")).toHaveAttribute("data-status", "current");
     expect(screen.getByTestId("journey-step-scan")).toHaveAttribute("data-status", "todo");
@@ -99,7 +100,7 @@ describe("FirstRunJourney", () => {
       />,
     );
 
-    expect(screen.getByText("2 of 3 complete")).toBeInTheDocument();
+    expect(screen.getByText("Setup guide · 2 of 3 complete")).toBeInTheDocument();
     expect(screen.getByTestId("journey-step-verify")).toHaveAttribute("data-status", "done");
     expect(screen.getByTestId("journey-step-scan")).toHaveAttribute("data-status", "current");
     expect(screen.getByRole("link", { name: /Open connection to run scan/i })).toHaveAttribute(

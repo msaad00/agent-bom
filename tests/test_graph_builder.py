@@ -1688,3 +1688,11 @@ def test_attack_path_analysis_failure_is_recorded_without_exception_text(monkeyp
     assert status["status"] == "failed"
     assert status["reason_codes"] == ["analysis_error"]
     assert "secret-bearing" not in str(status)
+
+
+def test_vulnerability_summary_survives_graph_projection():
+    report = _minimal_report()
+    vulnerability = report["agents"][0]["mcp_servers"][0]["packages"][0]["vulnerabilities"][0]
+    vulnerability["summary"] = "Cross-host token disclosure in browser requests"
+    graph = build_unified_graph_from_report(report)
+    assert graph.nodes["vuln:CVE-2024-1234"].attributes["summary"] == vulnerability["summary"]

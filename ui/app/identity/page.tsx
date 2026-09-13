@@ -1,5 +1,7 @@
 "use client";
 
+import { DetailTabs } from "@/components/detail-tabs";
+
 import { useEffect, useState } from "react";
 import {
   Fingerprint,
@@ -235,7 +237,7 @@ function CredentialExpiryPanel({ report }: { report: CredentialExpiryReport }) {
           All evaluated credentials are within rotation and expiry bounds.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="max-h-96 overflow-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
@@ -302,7 +304,7 @@ function AccessReviewPanel({
           permissions.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="max-h-96 overflow-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
@@ -412,6 +414,7 @@ function NhiDiscoveryPanel({
 }
 
 export default function IdentityPage() {
+  const [view, setView] = useState<"managed" | "access" | "discovered">("managed");
   const [identities, setIdentities] = useState<AgentIdentitySummary[]>([]);
   const [grants, setGrants] = useState<JITGrant[]>([]);
   const [policies, setPolicies] = useState<ConditionalAccessPolicy[]>([]);
@@ -569,14 +572,12 @@ export default function IdentityPage() {
         />
       )}
 
-      {failures.credentials ? <UnavailableSection title="Credential expiry unavailable" detail={failures.credentials} /> : credExpiry && <CredentialExpiryPanel report={credExpiry} />}
-
-      <NhiGovernancePanel refreshKey={refreshKey} />
-
-      {failures.reviews ? <UnavailableSection title="Access reviews unavailable" detail={failures.reviews} /> : <AccessReviewPanel campaigns={campaigns} />}
-
-      {failures.discovery ? <UnavailableSection title="Identity discovery unavailable" detail={failures.discovery} /> : <NhiDiscoveryPanel discovery={discovery} />}
-
+      <DetailTabs ariaLabel="Identity view" value={view} onChange={setView} tabs={[
+        { key: "managed", label: "Managed identities" },
+        { key: "access", label: "Access grants and policies" },
+        { key: "discovered", label: "Discovered identity risk" },
+      ]} />
+      <div hidden={view !== "managed"} className="space-y-4">
       {!failures.identities && identities.length > 0 && (
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
           <div className="mb-3 flex items-center gap-2">
@@ -585,7 +586,7 @@ export default function IdentityPage() {
               Managed identities
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="max-h-96 overflow-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
@@ -593,7 +594,6 @@ export default function IdentityPage() {
                   <th className="pb-2 font-medium">Role</th>
                   <th className="pb-2 font-medium">Status</th>
                   <th className="pb-2 font-medium">Tool scope</th>
-                  <th className="pb-2 font-medium">Token</th>
                   <th className="pb-2 font-medium">Expires</th>
                 </tr>
               </thead>
@@ -619,9 +619,6 @@ export default function IdentityPage() {
                         </span>
                       )}
                     </td>
-                    <td className="py-2 font-mono text-xs text-[var(--text-tertiary)]">
-                      abi_{i.token_prefix}…
-                    </td>
                     <td className="py-2 text-[var(--text-tertiary)]">
                       {i.expires_at ? formatDate(i.expires_at) : "—"}
                     </td>
@@ -633,6 +630,23 @@ export default function IdentityPage() {
         </div>
       )}
 
+      <details className="rounded-xl border border-outline p-3">
+        <summary className="cursor-pointer text-sm font-medium">Credential expiry and rotation · {failures.credentials ? "Unavailable" : credExpiry?.status?.replaceAll("_", " ") ?? "No evidence"}</summary>
+      {failures.credentials ? <UnavailableSection title="Credential expiry unavailable" detail={failures.credentials} /> : credExpiry && <CredentialExpiryPanel report={credExpiry} />}
+
+      </details>
+      </div>
+      <div hidden={view !== "discovered"} className="space-y-4">
+      <NhiGovernancePanel refreshKey={refreshKey} />
+
+      {failures.reviews ? <UnavailableSection title="Access reviews unavailable" detail={failures.reviews} /> : <AccessReviewPanel campaigns={campaigns} />}
+
+      {failures.discovery ? <UnavailableSection title="Identity discovery unavailable" detail={failures.discovery} /> : <NhiDiscoveryPanel discovery={discovery} />}
+
+      </div>
+      <div hidden={view !== "access"} className="space-y-4">
+        {!failures.grants && grants.length === 0 && <p className="text-sm text-ink-secondary">No access grants recorded.</p>}
+        {!failures.policies && policies.length === 0 && <p className="text-sm text-ink-secondary">No conditional policies recorded.</p>}
       {!failures.grants && grants.length > 0 && (
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
           <div className="mb-3 flex items-center gap-2">
@@ -641,7 +655,7 @@ export default function IdentityPage() {
               JIT access grants
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="max-h-96 overflow-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
@@ -726,6 +740,7 @@ export default function IdentityPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

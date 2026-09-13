@@ -22,6 +22,20 @@ beforeEach(() => {
 });
 
 describe("Identity evidence source states", () => {
+  it("starts with managed identities and never renders credential prefixes", async () => {
+    apiMock.listIdentities.mockResolvedValue({ identities: [{
+      identity_id: "identity-1", agent_id: "Support agent", role: "reader", status: "active",
+      allowed_tools: ["read_file"], token_prefix: "private-prefix", expires_at: null,
+    }] });
+    render(<IdentityPage />);
+    expect(await screen.findByText("Support agent")).toBeVisible();
+    expect(screen.queryByText(/private-prefix/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Token" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Managed identities" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Access grants and policies" }));
+    expect(screen.getByText("Support agent")).not.toBeVisible();
+    expect(screen.getByRole("tab", { name: "Access grants and policies" })).toHaveAttribute("aria-selected", "true");
+  });
   it("does not convert unavailable JIT and policies into zero", async () => {
     apiMock.listJitGrants.mockRejectedValue(new Error("private failure"));
     apiMock.listConditionalAccessPolicies.mockRejectedValue(new Error("private failure"));
@@ -37,6 +51,7 @@ describe("Identity evidence source states", () => {
     await screen.findByRole("heading", { name: "Identity" });
     expect(tile("Active identities").getByText("Unavailable")).toBeVisible();
     expect(tile("Active JIT grants").getByText("0")).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", {name:"Discovered identity risk"}));
     expect(screen.getByText("Discovered non-human identities")).toBeVisible();
   });
   it("does not call failed discovery disabled or failed reviews empty", async () => {
@@ -46,6 +61,7 @@ describe("Identity evidence source states", () => {
     await screen.findByText("Identity discovery unavailable");
     expect(screen.queryByText(/NHI discovery is disabled/)).not.toBeInTheDocument();
     expect(screen.queryByText(/No recertification campaigns/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", {name:"Discovered identity risk"}));
     expect(screen.getByText("Access reviews unavailable")).toBeVisible();
   });
   it("shows provider failure instead of claiming discovery is disabled", async () => {
@@ -91,6 +107,7 @@ describe("Identity evidence source states", () => {
   it("links graph identities by canonical node and returned snapshot", async () => {
     apiMock.getNhiGovernance.mockResolvedValue({ scan_id: "snapshot-evidence", counts: { total: 1 }, identities: [{ node_id: "identity:billing", label: "Billing service identity", risk_score: 4 }] });
     render(<IdentityPage />);
+    fireEvent.click(await screen.findByRole("tab", {name:"Discovered identity risk"}));
     const link = await screen.findByRole("link", { name: /Billing service identity/ });
     const url = new URL(link.getAttribute("href")!, "http://localhost");
     expect(url.searchParams.get("scan")).toBe("snapshot-evidence");

@@ -75,7 +75,7 @@ function BoundaryBadge({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function DriftStatusBadge({ status }: { status: string }) {
+function InventoryReviewBadge({ status }: { status: string }) {
   const needsReview = status === "needs_review";
   const aligned = status === "aligned";
   return (
@@ -89,7 +89,7 @@ function DriftStatusBadge({ status }: { status: string }) {
       }`}
     >
       {needsReview ? <AlertTriangle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
-      blueprint {status.replaceAll("_", " ")}
+      {needsReview ? "inventory needs review" : aligned ? "no review warnings" : "review unavailable"}
     </span>
   );
 }
@@ -348,7 +348,7 @@ export default function AgentBomManifestPage() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <BoundaryBadge ok={!manifest.boundaries.stores_credential_values} label="creds redacted" />
                 <BoundaryBadge ok={!manifest.boundaries.stores_raw_prompts} label="no raw prompts" />
-                <DriftStatusBadge status={manifest.blueprint_drift.status} />
+                <InventoryReviewBadge status={manifest.blueprint_drift.status} />
               </div>
             ) : null}
           </div>
@@ -374,19 +374,16 @@ export default function AgentBomManifestPage() {
         </section>
       </div>
 
-      {manifest?.blueprint_drift.status === "needs_review" ? (
-        <Card className="border-amber-500/30 bg-amber-500/10 !p-3">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
-            <div>
-              <h2 className="text-sm font-semibold text-amber-50">Observation-only drift review</h2>
-              <p className="mt-0.5 text-xs text-amber-100/85">
-                {manifest.blueprint_drift.signal_count} signal(s) from manifest/runtime evidence. This view
-                reports drift candidates; enforcement policy is unchanged.
-              </p>
-            </div>
-          </div>
-        </Card>
+      {(manifest?.blueprint_drift.signal_count ?? 0) > 0 ? (
+        <details className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
+          <summary className="cursor-pointer text-sm font-semibold">Inventory items needing review · {manifest!.blueprint_drift.signal_count}</summary>
+          <p className="mt-2 text-xs">Ownership, registration, and server warnings from the current inventory. These checks do not establish a change against an approved baseline.</p>
+          <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto text-xs">
+            {(manifest!.blueprint_drift.signals ?? []).map((signal, index) => <li key={`${signal.kind}:${signal.entity_id}:${index}`}>
+              <span className="font-medium">{signal.kind.replaceAll("_", " ")}</span> · {signal.message}
+            </li>)}
+          </ul>
+        </details>
       ) : null}
 
       {manifest ? (

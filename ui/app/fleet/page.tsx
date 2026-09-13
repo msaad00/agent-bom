@@ -22,9 +22,6 @@ import {
   Users,
   RefreshCw,
   Loader2,
-  ShieldCheck,
-  ShieldAlert,
-  ShieldX,
   ChevronDown,
   ChevronRight,
   Server,
@@ -266,11 +263,15 @@ export default function FleetPage() {
         </div>
       </div>
 
-      <EndpointFleetPanel />
+      <details className="rounded-xl border border-outline bg-surface p-3">
+        <summary className="cursor-pointer text-sm font-semibold">Developer endpoint evidence</summary>
+        <div className="mt-3"><EndpointFleetPanel /></div>
+      </details>
 
       {/* Trust Threshold Settings */}
-      <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
+      <details className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-3">
+        <summary className="cursor-pointer text-sm font-semibold">Policy threshold · {trustThreshold}</summary>
+        <div className="flex items-center gap-2 my-3">
           <Settings className="w-4 h-4 text-[var(--text-secondary)]" />
           <h3 className="text-sm font-semibold text-[var(--text-secondary)]">Policy threshold</h3>
         </div>
@@ -295,23 +296,14 @@ export default function FleetPage() {
             </span>
           </div>
         </div>
-      </div>
+      </details>
 
-      {/* Stats */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Total Agents" value={stats.total} icon={Users} color="text-[var(--text-secondary)]" />
-          <StatCard label="Approved" value={stats.by_state.approved ?? 0} icon={ShieldCheck} color="text-emerald-400" />
-          <StatCard label="Low Trust" value={stats.low_trust_count} icon={ShieldAlert} color="text-yellow-400" />
-          <StatCard
-            label="Avg Trust"
-            value={stats.avg_trust_score}
-            icon={ShieldX}
-            color={trustTextColor(stats.avg_trust_score)}
-            suffix="%"
-          />
-        </div>
-      )}
+      {stats && <div aria-label="Fleet summary" className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-secondary">
+        <span><strong className="text-foreground">{stats.total}</strong> agents</span>
+        <span><strong className="text-foreground">{stats.by_state.approved ?? 0}</strong> approved</span>
+        <span><strong className="text-foreground">{stats.low_trust_count}</strong> low trust</span>
+        <span><strong className="text-foreground">{stats.avg_trust_score}%</strong> average trust</span>
+      </div>}
 
       {/* Fleet state distribution chart */}
       {stats && stats.total > 0 && (() => {
@@ -326,8 +318,8 @@ export default function FleetPage() {
           .filter(([, v]) => v > 0)
           .map(([state, count]) => ({ state: STATE_LABELS[state as FleetLifecycleState] ?? state, count, fill: STATE_CHART_COLORS[state] ?? chart.severity.unrated }));
         return (
-          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-1">Lifecycle Distribution</h3>
+          <details className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-3">
+            <summary className="cursor-pointer text-sm font-semibold">Lifecycle distribution</summary>
             <p className="text-[10px] text-[var(--text-tertiary)] mb-4">Agent count by lifecycle state</p>
             <div className="h-36">
               <ResponsiveContainer width="100%" height="100%">
@@ -341,7 +333,7 @@ export default function FleetPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </details>
         );
       })()}
 
@@ -589,32 +581,6 @@ export default function FleetPage() {
           className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-3"
         />
       )}
-    </div>
-  );
-}
-
-// ─── Components ──────────────────────────────────────────────────────────────
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-  suffix,
-}: {
-  label: string;
-  value: number;
-  icon: React.ElementType;
-  color: string;
-  suffix?: string;
-}) {
-  return (
-    <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
-      <Icon className={`w-4 h-4 mb-2 ${color}`} />
-      <div className="text-2xl font-bold font-mono">
-        {Math.round(value)}{suffix}
-      </div>
-      <div className="text-xs text-[var(--text-tertiary)] mt-0.5">{label}</div>
     </div>
   );
 }

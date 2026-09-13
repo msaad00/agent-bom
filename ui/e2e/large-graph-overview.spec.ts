@@ -340,8 +340,8 @@ test("broad graph defaults to the WebGL overview above threshold", async ({ page
   // hand-rolled 2D canvas is retired.
   const sigma = page.getByTestId("sigma-graph-overview");
   await expect(sigma).toBeVisible({ timeout: 30_000 });
-  await expect(sigma.getByText("WebGL graph overview", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Draw budget:/)).toBeVisible();
+  await expect(sigma.getByText("Estate map", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Displayed:/)).toBeVisible();
   await expectSigmaCanvases(page);
   expect(failedGraphResponses).toEqual([]);
   await captureRenderedRegion(
@@ -429,8 +429,97 @@ test("retired renderer=webgl opt-in still lands on the WebGL overview", async ({
   const sigma = page.getByTestId("sigma-graph-overview");
   await expect(sigma).toBeVisible({ timeout: 30_000 });
   // Exact: the surface's screen-reader text equivalent names the renderer too.
-  await expect(sigma.getByText("WebGL graph overview", { exact: true })).toBeVisible();
-  await expect(sigma.getByText(/Sigma\.js renderer for broad estate scans/)).toBeVisible();
+  await expect(sigma.getByText("Estate map", { exact: true })).toBeVisible();
+  await expect(sigma.getByText(/Select an asset to investigate its related evidence/)).toBeVisible();
   await expectSigmaCanvases(page);
   await captureRenderedRegion(page, sigma, testInfo.outputPath("sigma-webgl-overview.png"));
+});
+
+
+test("identity investigation links preserve the selected root during client navigation", async ({ page }) => {
+  // App Router can render the destination before its history update commits.
+  // Make that ordering deterministic instead of relying on machine speed.
+  await page.addInitScript(() => {
+    const push = history.pushState.bind(history);
+    history.pushState = (data, unused, url) => {
+      if (String(url).startsWith("/security-graph")) {
+        setTimeout(() => push(data, unused, url), 500);
+      } else push(data, unused, url);
+    };
+  });
+  await page.route("**/v1/**", (route) => route.fulfill({ status: 404, json: { detail: "Unavailable in fixture" } }));
+  await routeLargeGraphPage(page);
+  await page.route("**/v1/graph/nhi/governance", (route) => route.fulfill({ json: {
+    scan_id: scanId, counts: { over_granted: 1 },
+    identities: [{ node_id: "pkg:42", name: "Investigated identity", risk_score: 86 }],
+  } }));
+  await page.goto("/identity");
+  await page.getByRole("tab", { name: "Discovered identity risk" }).click();
+  const query = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.method() === "POST");
+  await page.getByRole("link", { name: "Investigated identity 86" }).click();
+  expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_depth: 1, max_nodes: 80, max_edges: 320 });
+  await expect(page.getByRole("textbox", { name: "Search nodes, tags, severities, or attributes" })).toHaveValue("Investigated identity");
+  await expect(page).toHaveURL(/root=pkg%3A42/);
+  await expect(page.getByTestId("sigma-graph-overview")).toBeHidden();
+});
+
+
+test("root investigations expose depth and direction controls with bounded requests", async ({ page }) => {
+  await page.route("**/v1/**", (route) => route.fulfill({ status: 404, json: { detail: "Fixture unavailable" } }));
+  await routeLargeGraphPage(page);
+  const initial = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query"));
+  await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+  expect((await initial).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 1, max_nodes: 80 });
+  await expect(page.getByRole("combobox", { name: "Traversal depth" })).toHaveValue("1");
+  await expect(page.getByTestId("graph-headline-metrics")).toHaveCount(0);
+  await expect(page.getByText("Analysis status unavailable", { exact: true })).toHaveCount(0);
+  const deeper = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().max_depth === 2);
+  await page.getByRole("combobox", { name: "Traversal depth" }).selectOption("2");
+  expect((await deeper).postDataJSON()).toMatchObject({ roots: ["pkg:42"], scan_id: scanId, max_nodes: 80, max_edges: 320 });
+  const reverse = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().direction === "reverse");
+  await page.getByRole("combobox", { name: "Traversal direction" }).selectOption("reverse");
+  expect((await reverse).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 2 });
+});
+
+test("scope summary does not inherit the unrelated node-page warning", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  await page.route("**/v1/graph/rollup?**", (route) => route.fulfill({ json: {
+    scan_id: scanId, tenant_id: "default", created_at: createdAt, mode: "rollup", filters: {},
+    top_level: [{ id: "org:estate", label: "Complete estate scope", entity_type: "org", severity: "high",
+      is_container: true, has_children: true, direct_child_count: 620,
+      aggregate: { descendant_count: 1240, by_type: { package: 620, vulnerability: 620 },
+        severity_counts: { high: 1240 }, worst_severity: "high", worst_severity_rank: 3,
+        internet_exposed: false, toxic_combo: false, exposed_count: 0, toxic_count: 0 } }],
+    edges: [], summary: { total_nodes: 1241, total_edges: 1860, top_level_count: 1, container_count: 1 },
+    completeness: { status: "complete", returned: 1, total: 1, truncated: false, reasons: [] },
+  } }));
+  await page.goto("/security-graph");
+  await expect(page.getByRole("group", { name: "Complete estate scope, org", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Summary", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Risk-prioritized estate scopes" })).toContainText("Complete estate scope");
+  await expect(page.getByText(/This node view includes only part/)).toHaveCount(0);
+  await expect(page.getByText("node_page_limit", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Drill in", exact: true })).toBeVisible();
+});
+
+
+test("blast radius distinguishes related nodes from assets and keeps the type breakdown optional", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  const root = node("pkg:42", "package", "large-package-42", "high", 7.2);
+  await page.route("**/v1/graph/node/**", (route) => route.fulfill({ json: {
+    node: root, edges_in: [], edges_out: [], neighbors: [], sources: [],
+    impact: { affected_count: 3, affected_by_type: { package: 1, agent: 1, vulnerability: 1 }, max_depth_reached: 2 },
+  } }));
+  await page.route("**/v1/graph/impact?**", (route) => route.fulfill({ json: {
+    node_id: root.id, affected_count: 3, affected_nodes: ["pkg:41", "agent:large", "cve:41"],
+    affected_by_type: { package: 1, agent: 1, vulnerability: 1 }, max_depth_reached: 2,
+  } }));
+  await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+  await page.getByRole("button", { name: "Show blast radius", exact: true }).click();
+  await expect(page.getByText("3 upstream related nodes connected to large-package-42", { exact: true })).toBeVisible();
+  const breakdown = page.locator("details").filter({ has: page.locator("summary", { hasText: "Related nodes by type (3)" }) });
+  await expect(breakdown).not.toHaveAttribute("open", "");
+  await breakdown.locator("summary").click();
+  await expect(breakdown.getByText("Vulnerability: 1", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Graph relationships do not establish compromise/)).toBeVisible();
 });

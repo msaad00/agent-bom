@@ -148,15 +148,15 @@ const NAV_GROUPS: NavGroup[] = [
         icon: Boxes,
         desc: "Repos, packages, images, cloud, identities, MCP, agents — one section",
       },
-      { href: "/agents", label: "Agents", icon: Bot },
+      { href: "/agents", label: "Agents", icon: Bot, desc: "Discovered agent configurations and scan evidence" },
       {
         href: "/skills",
         label: "Skills",
         icon: ScrollText,
-        desc: "Scan agent skill/instruction files for trust verdict + provenance",
+        desc: "Review instruction files for behavioral risk and signing provenance",
       },
-      { href: "/manifest", label: "AI BOM", icon: ClipboardList },
-      { href: "/fleet", label: "Fleet", icon: Users },
+      { href: "/manifest", label: "AI BOM", icon: ClipboardList, desc: "Registered agents, MCP inventory, and runtime observations" },
+      { href: "/fleet", label: "Fleet", icon: Users, desc: "Enrollment, review, and lifecycle management" },
     ],
   },
   {
@@ -165,7 +165,7 @@ const NAV_GROUPS: NavGroup[] = [
     desc: "Compliance, policy, and audit",
     links: [
       { href: "/compliance", label: "Compliance", icon: FileCheck },
-      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
+      { href: "/governance", label: "Cloud Governance", icon: Eye, capability: "policy.manage" },
       { href: "/drift", label: "Drift", icon: Radar, desc: "Config drift from approved baselines" },
       { href: "/audit", label: "Audit Log", icon: FileText },
     ],
@@ -201,7 +201,7 @@ const NAV_GROUPS: NavGroup[] = [
     links: [
       { href: "/cost", label: "AI Spend", icon: DollarSign },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
-      { href: "/activity", label: "Activity", icon: Activity },
+      { href: "/activity", label: "Agent Activity", icon: Activity },
       { href: "/integrations", label: "Integrations", icon: Plug, desc: "Webhooks, SIEM, threat intel, and report exports" },
       {
         href: "/self-posture",

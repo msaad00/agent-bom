@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { InventoryPagination } from "@/components/inventory/inventory-pagination";
 import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
 import { PageLaneHeader } from "@/components/page-lane";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -33,8 +34,6 @@ export function AssetInventoryView({
   const {
     model,
     loading,
-    loadingMore,
-    hasMore,
     error,
     errorKind,
     details,
@@ -42,7 +41,6 @@ export function AssetInventoryView({
     detailError,
     clearFilters,
     reload,
-    loadMore,
     loadAssetDetail,
   } = useInventory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -129,33 +127,10 @@ export function AssetInventoryView({
 
       <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]">
         <span className="font-medium text-[color:var(--text-secondary)]">Coverage:</span> {config.coverageNote}
-        {model.completeness && !model.completeness.complete ? (
-          <span className="ml-1 text-[color:var(--status-warn)]">
-            Exact totals and facets cover the whole filtered snapshot; displayed rows and their direct correlations are {model.completeness.status}.
-          </span>
-        ) : null}
-        {model.matchingTotal > loadedCount || hasMore ? (
-          <span className="text-[color:var(--text-tertiary)]">
-            {" "}
-            Showing {loadedCount.toLocaleString()}
-            {model.matchingTotal > loadedCount ? ` of ${model.matchingTotal.toLocaleString()} matching assets` : " matching assets"}
-            {hasMore ? " — more rows are available from the pinned snapshot." : "."}
-          </span>
-        ) : null}
-        {hasMore ? (
-          <button
-            type="button"
-            data-testid="inventory-load-more"
-            onClick={() => {
-              void loadMore();
-            }}
-            disabled={loadingMore}
-            className="ml-2 inline-flex rounded-md border border-[color:var(--border-subtle)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:opacity-60"
-          >
-            {loadingMore ? "Loading…" : "Load more"}
-          </button>
-        ) : null}
+
       </div>
+
+      <InventoryPagination />
 
       {model.matchingTotal === 0 ? (
         <PageEmptyState

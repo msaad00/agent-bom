@@ -63,12 +63,12 @@ function jobsToEvents(jobs: JobListItem[]): ActivityEvent[] {
       meta: { job_id: job.job_id },
     });
     if (job.status === "done" && job.completed_at) {
-      const findingCount = job.summary?.total_vulnerabilities;
+      const vulnerabilityCount = job.summary?.total_vulnerabilities;
       const critCount = job.summary?.critical_findings;
       const message =
-        findingCount == null
+        vulnerabilityCount == null
           ? "Scan completed · finding metrics unavailable"
-          : `Scan completed: ${findingCount} findings${critCount != null && critCount > 0 ? `, ${critCount} critical` : ""}`;
+          : `Scan completed: ${vulnerabilityCount} vulnerabilities${critCount != null && critCount > 0 ? ` · ${critCount} critical findings` : ""}`;
       events.push({
         id: `${job.job_id}-done`,
         type: "scan_completed",
@@ -76,7 +76,7 @@ function jobsToEvents(jobs: JobListItem[]): ActivityEvent[] {
         timestamp: job.completed_at,
         meta: {
           job_id: job.job_id,
-          ...(findingCount == null ? {} : { cve_count: findingCount }),
+          ...(vulnerabilityCount == null ? {} : { cve_count: vulnerabilityCount }),
           ...(critCount == null ? {} : { critical_count: critCount }),
         },
       });

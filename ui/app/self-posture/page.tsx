@@ -18,7 +18,7 @@ import type {
   SelfPostureReport,
   SelfPostureStatus,
 } from "@/lib/api";
-import { userFacingApiErrorMessage } from "@/lib/api-errors";
+import { ApiError, userFacingApiErrorMessage } from "@/lib/api-errors";
 import { Collapsible } from "@/components/collapsible";
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
 import { useDemoMode } from "@/hooks/use-demo-mode";
@@ -167,6 +167,7 @@ export default function SelfPosturePage() {
   const [report, setReport] = useState<SelfPostureReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
 
   const load = useCallback(() => {
     if (demoModeLoading || isDemoMode) {
@@ -175,10 +176,17 @@ export default function SelfPosturePage() {
     }
     setLoading(true);
     setError(null);
+    setUnavailable(false);
     api
       .getSelfPosture()
       .then(setReport)
-      .catch((e) => setError(userFacingApiErrorMessage(e, "Self-posture could not be evaluated")))
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 404) {
+          setUnavailable(true);
+          return;
+        }
+        setError(userFacingApiErrorMessage(e, "Self-posture could not be evaluated"));
+      })
       .finally(() => setLoading(false));
   }, [demoModeLoading, isDemoMode]);
 
@@ -204,6 +212,18 @@ export default function SelfPosturePage() {
         data-testid="self-posture-loading"
         title="Evaluating control-plane posture…"
         detail="Reading this instance's own security and governance configuration."
+      />
+    );
+  }
+
+  if (unavailable) {
+    return (
+      <PageEmptyState
+        data-testid="self-posture-unavailable"
+        title="Control-plane self-checks are unavailable here"
+        detail="This instance does not expose deployment security checks. On your own deployment, run the self-audit command to evaluate its configuration."
+        command={HEADLESS_CLI}
+        action={{ label: "Explore findings", href: "/findings" }}
       />
     );
   }

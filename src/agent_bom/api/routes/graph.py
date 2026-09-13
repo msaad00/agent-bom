@@ -33,11 +33,14 @@ import json
 import logging
 import os
 import time
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypeVar, cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.responses import Response
 
 from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, containment_drilldown_graph
 from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationError
@@ -69,7 +72,37 @@ if TYPE_CHECKING:
 _GraphCallResult = TypeVar("_GraphCallResult")
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+_graph_request_admitted: ContextVar[bool] = ContextVar("graph_request_admitted", default=False)
+
+
+class _GraphAdmissionRoute(APIRoute):
+    """Reserve capacity for the whole request, before any graph work starts.
+
+    Per-operation admission could reject serialization after a slow store read
+    had already consumed the expensive work. Nested store/compute calls reuse
+    this request's reservation; subsequent requests are rejected before reads.
+    Authentication and tenant enforcement remain in the existing middleware
+    and route dependencies.
+    """
+
+    def get_route_handler(self) -> Callable[[Request], Any]:
+        handler = super().get_route_handler()
+
+        async def admitted_handler(request: Request) -> Response:
+            try:
+                async with adaptive_backpressure("graph"):
+                    token = _graph_request_admitted.set(True)
+                    try:
+                        return await handler(request)
+                    finally:
+                        _graph_request_admitted.reset(token)
+            except BackpressureRejectedError as exc:
+                raise HTTPException(status_code=429, detail=exc.to_dict(), headers={"Retry-After": str(exc.retry_after_seconds)}) from exc
+
+        return admitted_handler
+
+
+router = APIRouter(route_class=_GraphAdmissionRoute)
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
 _GRAPH_QUERY_ABSOLUTE_LIMITS = {
     "max_depth": 10,
@@ -1836,6 +1869,8 @@ def _enforce_graph_query_budget(body: GraphQueryRequest) -> dict[str, int]:
 async def _graph_store_call(fn: Callable[..., _GraphCallResult], /, *args: Any, **kwargs: Any) -> _GraphCallResult:
     """Run sync graph store methods off the event loop."""
     try:
+        if _graph_request_admitted.get():
+            return await asyncio.to_thread(fn, *args, **kwargs)
         async with adaptive_backpressure("graph"):
             return await asyncio.to_thread(fn, *args, **kwargs)
     except BackpressureRejectedError as exc:
@@ -1884,6 +1919,8 @@ async def _load_graph_for_investigation(
 async def _graph_compute_call(fn: Callable[..., _GraphCallResult], /, *args: Any, **kwargs: Any) -> _GraphCallResult:
     """Run CPU-heavy graph derivation and serialization off the event loop."""
     try:
+        if _graph_request_admitted.get():
+            return await asyncio.to_thread(fn, *args, **kwargs)
         async with adaptive_backpressure("graph"):
             return await asyncio.to_thread(fn, *args, **kwargs)
     except BackpressureRejectedError as exc:

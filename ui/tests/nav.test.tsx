@@ -467,7 +467,7 @@ describe('Nav', () => {
   it('contains Governance link', () => {
     renderExpandedNav()
     fireEvent.click(screen.getByRole('button', { name: /governance/i }))
-    const links = screen.getAllByRole('link', { name: /^governance$/i })
+    const links = screen.getAllByRole('link', { name: /^cloud governance$/i })
     expect(links.some((l) => l.getAttribute('href') === '/governance')).toBe(true)
   })
 

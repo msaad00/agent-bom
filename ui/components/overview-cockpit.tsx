@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ElementType } from "react";
+import { useId, useState, type ElementType } from "react";
 import {
   ArrowRight,
   Bug,
@@ -27,6 +27,7 @@ import type {
   ServiceId,
 } from "@/lib/api-types";
 import { AiSpendSummary } from "@/components/ai-spend-summary";
+import { DetailTabs } from "@/components/detail-tabs";
 import { Collapsible } from "@/components/collapsible";
 import { isNotEvaluated } from "@/components/compliance-status";
 import { FrameworkIcon } from "@/components/framework-icon";
@@ -259,6 +260,7 @@ export function OverviewCockpit({
   compliance = null,
   services = null,
 }: OverviewCockpitProps) {
+  const [riskTab, setRiskTab] = useState<"risks" | "posture">("risks");
   const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
   // Once scans exist the chip always renders, but an unevidenced score reads as
   // an em dash — the SAME treatment the Trust Center gives this status. Hiding
@@ -278,16 +280,19 @@ export function OverviewCockpit({
 
   return (
     <div className="space-y-7">
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline-strong bg-surface p-5 sm:p-6">
-          <Collapsible
-            bare
-            title="Command center"
-            titleClassName={SECTION_TITLE_CLASS}
-            defaultOpen
-          >
-            <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
-
+      <section aria-label="Risk overview" className="min-w-0 rounded-2xl border border-outline-strong bg-surface p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className={SECTION_TITLE_CLASS}>Risk overview</h2>
+          <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
+        </div>
+        <DetailTabs ariaLabel="Risk overview views" value={riskTab} onChange={setRiskTab}
+          tabs={[{ key: "risks", label: "Top risks" }, { key: "posture", label: "Posture details" }]} />
+        <div role="tabpanel" aria-label="Top risks" hidden={riskTab !== "risks"}>
+          <TopRisksPanel loading={loading} unavailable={overviewUnavailable} scans={scans}
+            topPath={topPath} exposurePaths={exposurePaths}
+            agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null} />
+        </div>
+        <div role="tabpanel" aria-label="Posture details" hidden={riskTab !== "posture"}>
             <div className="mt-2 grid gap-3">
               <PostureHero
                 loading={loading}
@@ -317,24 +322,12 @@ export function OverviewCockpit({
             {/* 1b — What influences the score: read-only weighted-input breakdown
                 so the grade is legible, not opaque (#3940). */}
             <ScoreExplainer breakdown={scoreBreakdown} grade={grade} floored={scoreFloored} />
-          </Collapsible>
-        </section>
-
-        <section aria-label="Top risks" className="min-w-0 rounded-2xl border border-orange-500/30 bg-surface p-5 sm:p-6">
-          <TopRisksPanel
-            loading={loading}
-            unavailable={overviewUnavailable}
-            scans={scans}
-            topPath={topPath}
-            exposurePaths={exposurePaths}
-            agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
-          />
-        </section>
-      </div>
+        </div>
+      </section>
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
           <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
-            actions={<Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">Trust center <ArrowRight className="h-3 w-3" /></Link>}>
+            actions={<Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">View all frameworks <ArrowRight className="h-3 w-3" /></Link>}>
             <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
               loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
           </Collapsible>
@@ -463,13 +456,18 @@ const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; o
 };
 
 function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
+  const [showSeverity, setShowSeverity] = useState(false);
+  const lanesId = useId();
   if (!coverage || coverage.length === 0) return null;
   return (
     <div className="@container pt-1" data-testid="overview-security-coverage">
-      <p className="mb-3 rounded-lg border border-outline bg-surface-muted px-3 py-2 text-sm leading-relaxed text-ink-secondary">
+      <p className="mb-3 text-xs leading-relaxed text-ink-secondary">
         Overlapping finding counts, not additive. Zero findings does not establish assessment coverage.
       </p>
-      <div className="grid grid-cols-1 gap-2 @min-[30rem]:grid-cols-2">
+      <button type="button" aria-expanded={showSeverity} aria-controls={lanesId} onClick={() => setShowSeverity(!showSeverity)} className="mb-2 rounded-md py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+        {showSeverity ? "Hide severity breakdown" : "Show severity breakdown"}
+      </button>
+      <div id={lanesId} className="grid grid-cols-1 divide-y divide-outline">
         {[...coverage].sort((left, right) => (SECURITY_DISCIPLINES[left.domain]?.order ?? 5) - (SECURITY_DISCIPLINES[right.domain]?.order ?? 5)).map((lane) => {
           const discipline = SECURITY_DISCIPLINES[lane.domain];
           const Icon = discipline?.icon ?? ShieldCheck;
@@ -483,9 +481,9 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="min-w-0 rounded-xl border border-outline bg-surface px-3 py-3 transition-colors hover:border-outline-strong hover:bg-surface-muted"
+              className="min-w-0 rounded-md px-1 py-2.5 transition-colors hover:bg-surface-muted"
             >
-              <div className="flex flex-col gap-0.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <span className="flex items-start gap-2 text-sm font-semibold text-foreground"><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${discipline?.accent ?? "text-ink-secondary"}`} aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
                 {/* The unit is not decoration. A bare "1610" under a heading
                     called CSPM reads as assets, accounts, VMs or data stores
@@ -515,6 +513,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
                     <span
                       key={band.key}
                       className="text-xs font-medium tabular-nums text-ink-secondary"
+                      hidden={!showSeverity}
                     >
                       {band.label} {lane.severity[band.key]}
                     </span>
@@ -654,8 +653,11 @@ function ComplianceSnapshotPanel({
   loading?: boolean | undefined;
   scanScopeKnown?: boolean | undefined;
 }) {
+  const [showAllFrameworks, setShowAllFrameworks] = useState(false);
   const allFrameworks = compliance?.frameworks ?? [];
-  const scored = allFrameworks.filter((item) => item.kind === "scored");
+  // Show the largest observed control gaps first; never infer certification status.
+  const scored = allFrameworks.filter((item) => item.kind === "scored")
+    .sort((a, b) => (b.fail + b.warn) - (a.fail + a.warn));
   const mappings = allFrameworks.filter((item) => item.kind === "applicability");
   const evidenceReady = hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance);
   const attention = scored.filter((item) => item.fail > 0 || item.warn > 0).length;
@@ -669,9 +671,7 @@ function ComplianceSnapshotPanel({
         <>
           <p className="mt-2 text-base font-semibold tabular-nums text-foreground">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
           <p className="mt-1 text-xs text-ink-secondary">{Math.round(compliance.overallScore)}% of {compliance.evaluatedControls} evaluated controls · {attention} framework{attention === 1 ? " needs" : "s need"} attention</p>
-          <Collapsible bare title="Evaluated frameworks" defaultOpen data-testid="overview-evaluated-frameworks">
-            <FrameworkCards frameworks={scored} />
-          </Collapsible>
+
         </>
       ) : (
         <p className="mt-2 text-xs text-ink-secondary">
@@ -682,9 +682,30 @@ function ComplianceSnapshotPanel({
             : "Framework coverage appears after the first completed scan. Empty estates do not show pass tiles."}
         </p>
       )}
+      {!loading && hasScanEvidence && scored.length > 0 ? (
+          <Collapsible bare title="Control frameworks" subtitle={`${scored.length} frameworks · ordered by failing and warning checks`} defaultOpen data-testid="overview-evaluated-frameworks">
+            <FrameworkCards frameworks={showAllFrameworks ? scored : scored.slice(0, 3)} />
+            {scored.length > 3 ? (
+              <button type="button" className="mt-2 text-xs text-emerald-700 dark:text-emerald-300"
+                aria-expanded={showAllFrameworks} onClick={() => setShowAllFrameworks(!showAllFrameworks)}>
+                {showAllFrameworks ? "Show priority frameworks" : `Show all ${scored.length} control frameworks`}
+              </button>
+            ) : null}
+          </Collapsible>
+      ) : null}
       {hasScanEvidence && mappings.length > 0 ? (
         <Collapsible bare title="Risk mappings" subtitle="Applicable risks, separate from control pass/fail" defaultOpen data-testid="overview-risk-mappings">
-          <FrameworkCards frameworks={mappings} />
+          <div className="grid gap-2 sm:grid-cols-2">
+            {mappings.slice(0, 4).map((framework) => (
+              <Link key={framework.id} href="/compliance" className="flex min-w-0 items-center gap-2 rounded-md py-2 hover:bg-surface-muted">
+                <span aria-hidden="true"><FrameworkIcon frameworkId={framework.id} size={24} /></span>
+                <span className="min-w-0 text-xs font-semibold text-foreground">{framework.label}
+                  <span className="mt-1 block font-normal text-ink-secondary">{framework.applicable ?? 0}/{framework.total} risks applicable</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+          {mappings.length > 4 ? <Collapsible bare title={`More risk mappings (${mappings.length - 4})`} defaultOpen={false}><FrameworkCards frameworks={mappings.slice(4)} /></Collapsible> : null}
         </Collapsible>
       ) : null}
     </div>
@@ -693,27 +714,17 @@ function ComplianceSnapshotPanel({
 
 function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot["frameworks"] }) {
   return (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
           {frameworks.map((framework) => {
             const evaluated = frameworkEvaluated(framework);
             const isApplicability = framework.kind === "applicability";
             // 0 evaluated controls is NOT a pass — surface a neutral
             // "not evaluated" state so an unscored framework never reads green.
-            const tone =
-              isApplicability
-                ? (framework.applicable ?? 0) > 0 ? "applicability" : "not_applicable"
-                : evaluated === 0
-                ? "not_evaluated"
-                : framework.fail > 0
-                  ? "fail"
-                  : framework.warn > 0
-                    ? "warn"
-                    : "pass";
             return (
               <Link
                 key={framework.id}
                 href="/compliance"
-                className="grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-outline px-1.5 py-2 transition hover:bg-surface-muted"
+                className="grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 border-b border-outline px-1.5 py-2 transition hover:bg-surface-muted"
               >
                 <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center">
                   <FrameworkIcon frameworkId={framework.id} size={28} />
@@ -727,24 +738,10 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
                       ? `${framework.applicable ?? 0}/${framework.total} risks applicable`
                       : evaluated === 0
                       ? `Not evaluated · 0/${framework.total} controls`
-                      : `${framework.pass}/${evaluated} pass${framework.fail > 0 ? ` · ${framework.fail} fail` : ""}`}
+                      : `${framework.pass}/${evaluated} evaluated controls pass${framework.fail > 0 ? ` · ${framework.fail} failed` : ""}${framework.warn > 0 ? ` · ${framework.warn} need review` : ""}`}
                   </p>
                 </div>
-                <span
-                  className={`justify-self-end text-[10px] font-semibold uppercase tracking-wide ${
-                    tone === "applicability"
-                      ? "text-sky-700 dark:text-sky-300"
-                      : tone === "fail"
-                      ? "text-red-700 dark:text-red-300"
-                      : tone === "warn"
-                        ? "text-yellow-700 dark:text-yellow-200"
-                        : tone === "pass"
-                          ? "text-emerald-700 dark:text-emerald-300"
-                          : "text-ink-secondary"
-                  }`}
-                >
-                  {tone === "applicability" ? "Risks mapped" : tone === "not_applicable" ? "none" : tone === "not_evaluated" ? "n/a" : tone}
-                </span>
+
               </Link>
             );
           })}
@@ -773,8 +770,8 @@ function TopRisksPanel({
   const moreCount = ranked.length - shown.length;
 
   return (
-    <Collapsible bare title="Top risks" subtitle="Review these findings first" titleClassName={SECTION_TITLE_CLASS}
-      count={ranked.length || undefined} defaultOpen>
+    <section aria-label="Prioritized findings">
+      <p className="mb-3 text-xs text-ink-secondary">Review these findings first · {ranked.length} prioritized risks</p>
       {loading ? (
         <p role="status" className="text-sm text-ink-secondary">Loading prioritized findings…</p>
       ) : shown.length > 0 ? (
@@ -798,7 +795,7 @@ function TopRisksPanel({
         <Link href="/findings?scope=all&severity=critical" className="text-ink-secondary">Critical findings</Link>
         <Link href="/compliance" className="text-ink-secondary">Compliance evidence</Link>
       </div>
-    </Collapsible>
+    </section>
   );
 }
 
@@ -818,7 +815,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
       : "border-outline bg-surface-muted text-ink-secondary";
 
   return (
-    <article className="@container rounded-xl border border-outline bg-surface-muted/40 px-3 first:border-orange-500/35">
+    <article className="@container border-b border-outline py-1 last:border-b-0">
       <Link href={path.href} className="group block rounded-md px-1 py-3 transition hover:bg-surface-muted">
         <div className="flex items-start gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>

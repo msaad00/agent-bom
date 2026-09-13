@@ -6,7 +6,7 @@ This appendix is the canonical home for volatile product counts.
 Keep counts out of public positioning copy and update this file from the repo instead of hand-editing numbers.
 
 - Generated on: `2026-09-12`
-- Version: `0.104.0`
+- Version: `0.105.0`
 
 | Metric | Value | Source | Notes |
 | --- | ---: | --- | --- |

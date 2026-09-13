@@ -7,6 +7,44 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.105.0] - 2026-09-12
+
+This release makes scan coverage and finding evidence clearer, adds explicit
+credential validation, and improves the path from findings to investigation.
+
+### Added
+
+- Opt-in `agent-bom secrets --validate-credentials` checks for supported GitHub
+  and Stripe credentials, with bounded read-only requests and
+  `valid`/`invalid`/`unknown` verdicts. Default scans make no validation requests;
+  unsupported credentials remain unknown and finding severity is preserved.
+- Optional Iceberg REST OAuth scope and token-endpoint configuration for Apache
+  Polaris, alongside existing credential and bearer-token authentication.
+
+### Fixed
+
+- Report excluded ancestor directories through shared scanner coverage and API
+  outcomes so an uninspected scope cannot silently appear complete.
+- Preserve structured CWE identifiers in the finding drawer and standard SARIF
+  taxonomy relationships, including findings without CWE text in their prose.
+- Enforce response DLP consistently across MCP proxy transports and wait for
+  normal server exits before sending shutdown signals.
+- Accept bounded compressed report uploads, reconcile package versions without
+  merging ambiguous findings, and evolve the additive Parquet/Iceberg schema
+  while preserving existing field identifiers and rows.
+- Lead Overview with posture and actionable risks; improve section separation,
+  text contrast, focused-path explanations, and proposed-change graph framing.
+- Preserve repository inventory as code assets in graphs and retain durable
+  report-export work across replica recovery.
+
+### Changed
+
+- Reuse the dependency-audit baseline only when its frozen Python inputs are
+  unchanged; fail the OSV gate on scanner errors or invalid reports.
+- Skip redundant CodeQL analysis on prose/image-only main pushes while retaining
+  pull-request, merge-queue, scheduled, and manual analysis.
+- Refresh supported dependency pins and release-registry verification checks.
+
 ## [0.104.0] - 2026-09-08
 
 This release improves the path from scoped scans to shared findings,

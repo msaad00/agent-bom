@@ -17,6 +17,7 @@ import {
   matchesAttackPathFocus,
   mergeAttackPathGraphPages,
   mergeGraphQueueContext,
+  initialInvestigationDirection,
   moveAttackPathSelection,
   rankedAttackPathRows,
   recommendedInteractionRiskActions,
@@ -1101,5 +1102,15 @@ describe("bounded root context", () => {
     expect(result.nodes.map((node) => node.id)).toEqual(["root"]);
     expect(result.completeness).toEqual(graph.completeness);
     expect(mergeGraphQueueContext(graph, queue, false, false).nodes).toHaveLength(6803);
+  });
+});
+
+
+describe("initial investigation direction", () => {
+  it("keeps account traversal inside outgoing context and finds CVE dependents in reverse", () => {
+    expect(initialInvestigationDirection("account:gcp:northstar-001")).toBe("forward");
+    expect(initialInvestigationDirection("organization:example")).toBe("forward");
+    expect(initialInvestigationDirection("vuln:CVE-2023-45857")).toBe("reverse");
+    expect(initialInvestigationDirection("package:axios")).toBe("both");
   });
 });

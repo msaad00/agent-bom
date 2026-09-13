@@ -38,9 +38,17 @@ export type AttackPathFocus = {
   findingId?: string | undefined;
 };
 
+export function initialInvestigationDirection(rootId: string): "forward" | "reverse" | "both" {
+  const kind = rootId.split(":", 1)[0];
+  if (["account", "organization", "org", "environment", "fleet", "cluster", "provider"].includes(kind ?? "")) return "forward";
+  if (["vuln", "vulnerability"].includes(kind ?? "")) return "reverse";
+  return "both";
+}
+
 export type GraphInvestigationRequest = {
   rootId: string;
   rootLabel?: string | undefined;
+  direction?: "forward" | "reverse" | "both";
 };
 
 export type AttackPathAction = {

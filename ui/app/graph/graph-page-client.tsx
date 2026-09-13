@@ -93,6 +93,7 @@ import {
   attackPathKey,
   decodeGraphInvestigationParams,
   mergeGraphQueueContext,
+  initialInvestigationDirection,
   toAttackCardNodes,
   type GraphInvestigationRequest,
 } from "@/lib/attack-paths";
@@ -814,6 +815,7 @@ function GraphPageInner() {
     useState<ReachabilitySummary | null>(null);
   const loadingReachability = false;
   const investigationRequestId = useRef(0);
+  const [investigationDirection, setInvestigationDirection] = useState<"forward" | "reverse" | "both">("both");
   const [reachabilityError, setReachabilityError] = useState<string | null>(
     null,
   );
@@ -2591,6 +2593,8 @@ function GraphPageInner() {
     ) => {
       if (!selectedScanId) return;
       const requestId = ++investigationRequestId.current;
+      const direction = request.direction ?? initialInvestigationDirection(request.rootId);
+      setInvestigationDirection(direction);
 
       const fallback = request.node
         ? (flowNodeDataById.get(request.node.id) ??
@@ -2627,8 +2631,8 @@ function GraphPageInner() {
         const response = await api.queryGraph({
           roots: [request.rootId],
           scan_id: selectedScanId,
-          direction: "both",
-          max_depth: filters.vulnOnly ? 3 : 4,
+          direction,
+          max_depth: filters.maxDepth,
           max_nodes: 80,
           max_edges: 320,
           timeout_ms: 2500,
@@ -2679,13 +2683,22 @@ function GraphPageInner() {
     },
     [
       filters.runtimeMode,
-      filters.vulnOnly,
+      filters.maxDepth,
       flowNodeDataById,
       selectedScanId,
       serverEntityTypes,
       serverRelationships,
     ],
   );
+
+  const lastInvestigationFilterKey = useRef(serverFilterKey);
+  useEffect(() => {
+    if (lastInvestigationFilterKey.current === serverFilterKey) return;
+    lastInvestigationFilterKey.current = serverFilterKey;
+    if (investigationMode) {
+      void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel, direction: investigationDirection });
+    }
+  }, [serverFilterKey, investigationMode, investigationDirection, loadRootInvestigation]);
 
   useEffect(() => {
     const requested = requestedInvestigationRef.current;
@@ -2707,6 +2720,8 @@ function GraphPageInner() {
 
   const clearInvestigationMode = useCallback(() => {
     investigationRequestId.current++;
+    setSelectedNode(null);
+    setSelectedNodeId(null);
     setLoadingGraph(false);
     setLoadingBlast(false);
     setInvestigationMode(null);
@@ -3128,6 +3143,10 @@ function GraphPageInner() {
               summary={reachabilitySummary}
               loading={loadingReachability}
               error={reachabilityError}
+              direction={investigationDirection}
+              onDirectionChange={(direction) => {
+                if (investigationMode) void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel, direction });
+              }}
               onClear={() => {
                 setReachabilitySummary(null);
                 setReachabilityError(null);
@@ -4063,11 +4082,15 @@ function ReachabilityDrillInPanel({
   loading,
   error,
   onClear,
+  direction,
+  onDirectionChange,
 }: {
   summary: ReachabilitySummary | null;
   loading: boolean;
   error: string | null;
   onClear: () => void;
+  direction: "forward" | "reverse" | "both";
+  onDirectionChange: (direction: "forward" | "reverse" | "both") => void;
 }) {
   const affectedCount = summary ? Math.max(0, summary.nodeIds.size - 1) : 0;
   return (
@@ -4100,13 +4123,20 @@ function ReachabilityDrillInPanel({
             )}
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        <select aria-label="Traversal direction" value={direction} onChange={(event) => onDirectionChange(event.target.value as "forward" | "reverse" | "both")} className="graph-chip">
+          <option value="forward">Outgoing connections</option>
+          <option value="reverse">Incoming connections</option>
+          <option value="both">Both directions</option>
+        </select>
         <button
           type="button"
           onClick={onClear}
           className="graph-chip-rose"
         >
-          Clear reachability
+          Clear context
         </button>
+        </div>
       </div>
 
       {summary && (
@@ -4115,7 +4145,7 @@ function ReachabilityDrillInPanel({
           <div className="mt-2 space-y-3">
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">
-                Affected by type
+                Related by type
               </p>
               {Object.keys(summary.countsByType).length === 0 ? (
                 <p className="mt-2 text-ink-secondary">
@@ -4198,13 +4228,13 @@ function BlastRadiusPanel({
             </p>
             <p className="mt-1 text-sm font-medium text-violet-50">
               {summary
-                ? `${summary.affectedCount} asset${summary.affectedCount === 1 ? "" : "s"} impacted if ${summary.rootLabel} is compromised`
+                ? `${summary.affectedCount} upstream asset${summary.affectedCount === 1 ? "" : "s"} connected to ${summary.rootLabel}`
                 : "Computing blast radius"}
             </p>
             {summary && (
               <p className="mt-1 text-[11px] text-violet-200/80">
                 Reverse-dependency reach · up to {summary.maxDepthReached} hop
-                {summary.maxDepthReached === 1 ? "" : "s"}
+                {summary.maxDepthReached === 1 ? "" : "s"}. Graph relationships do not establish compromise.
               </p>
             )}
             {error && (

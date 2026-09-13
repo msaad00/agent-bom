@@ -1,9 +1,9 @@
 {
   "release_version": "0.105.0",
-  "captured_at": "2026-09-13T16:28:16.779Z",
-  "source_commit": "72142c407959e134c795d69a3ec966a8e8f769cd",
+  "captured_at": "2026-09-13T20:10:58.373Z",
+  "source_commit": "c0970c56a41615b9b04a7e4d9350ef30b6204451",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:8e143ced90d0c582b66378325a3a7baa66d6afe35f92528da82deaf7044095d9",
+  "capture_inputs_sha256": "sha256:2c5f902c288cabefb208349e4bf2edd44d15d3ffaf2f0dd4dad7c9619a6387ce",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.105.0",
-      "sha256": "sha256:dfa36b5552b70b9f7e0c5efc5fda74142ceb97b666f2d4ba42700c4ecd7e1b02"
+      "sha256": "sha256:333f62f9741f06067cd169197ca353b586569cc107655b6a025f3b138746830c"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center in the light theme",
       "visible_version": "0.105.0",
-      "sha256": "sha256:ebce9a4ee9e0cb47493510cde2af18437f7720bdec19f5dc517682e29b438294"
+      "sha256": "sha256:3472269afdd965e97bb960c3ddf0bd01c793492c3d79f569310e79a184b60932"
     },
     {
       "presentation": "dark mobile",
@@ -28,7 +28,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center at a 390 by 844 viewport",
       "visible_version": "0.105.0",
-      "sha256": "sha256:aaaae9ab470f46c965abfc4233153fdb02cd5e84273cf6b4b0f38f28eace66cc"
+      "sha256": "sha256:d0d71dc2986a3fad1fe7d6af045bafe2871bf21d9afbf476e2c798725090e543"
     },
     {
       "presentation": "dark desktop",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Expanded Overview compliance framework catalog and risk mappings, with explicit unevaluated status",
       "visible_version": "0.105.0",
-      "sha256": "sha256:21927c173c4c489696323e1ad325c2aba923dec22fb20d69fd55f81a951c9c63"
+      "sha256": "sha256:d4f8aeb251c025f4dcbcaafd2615e10b607a578663b376820dac9629de10d3a4"
     },
     {
       "presentation": "dark desktop",
@@ -60,7 +60,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.105.0",
-      "sha256": "sha256:83cfa04cce5f54d1bdb7132e7dfc0b32dce0bc68fbfc1330b8fe9fe7f0084720"
+      "sha256": "sha256:50a3b422a31c437e993a967a3730718bba7092935c49bae68735da7a1b470fa8"
     },
     {
       "presentation": "dark desktop",

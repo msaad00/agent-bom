@@ -32,11 +32,18 @@ describe("GraphCompletenessBanner", () => {
       />,
     );
     expect(screen.getByTestId("graph-completeness-banner")).toHaveTextContent(
-      "Showing 12 of 52",
+      "Loaded 12 of 52",
     );
-    expect(screen.getByText(/40 omitted/i)).toBeInTheDocument();
+    expect(screen.getByText(/40 not loaded/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Load more/i }));
     expect(onLoadMore).toHaveBeenCalled();
+  });
+
+  it("explains a node page limit without implying every loaded node is drawn", () => {
+    render(<GraphCompletenessBanner completeness={{ returned: 5261, total: 6807, truncated: true, reason: "node_page_limit" }} />);
+    expect(screen.getByText(/Loaded 5,261 of 6,807/)).toBeVisible();
+    expect(screen.getByText(/Use the scope summary/)).toBeVisible();
+    expect(screen.queryByText("node_page_limit")).not.toBeInTheDocument();
   });
 
   it("does not invent an exhaustive total for traversal-budget truncation", () => {
@@ -54,16 +61,16 @@ describe("GraphCompletenessBanner", () => {
     );
 
     expect(screen.getByTestId("graph-completeness-banner")).toHaveTextContent(
-      "Showing 2 items",
+      "Loaded 2 items",
     );
-    expect(screen.getByText("traversal_budget")).toBeInTheDocument();
+    expect(screen.getByText(/Traversal reached its limit/)).toBeInTheDocument();
     expect(screen.queryByText(/2 of 2/i)).not.toBeInTheDocument();
   });
 });
 
 describe("counts always reconcile", () => {
   it("never claims to show more than the total", () => {
-    // Observed live: "Showing 5,264 of 4,904 · 4,798 omitted".
+    // Observed live: "Loaded 5,264 of 4,904 · 4,798 not loaded".
     // `returned` and `total` came from the API envelope while `omitted` came
     // from the local prop, so three numbers from two derivations landed in one
     // sentence and none of them added up. Shown > total is arithmetically
@@ -77,7 +84,7 @@ describe("counts always reconcile", () => {
     );
 
     const text = screen.getByTestId("graph-completeness-banner").textContent ?? "";
-    const shown = Number((text.match(/Showing ([\d,]+)/)?.[1] ?? "0").replace(/,/g, ""));
+    const shown = Number((text.match(/Loaded ([\d,]+)/)?.[1] ?? "0").replace(/,/g, ""));
     const total = Number((text.match(/of ([\d,]+)/)?.[1] ?? "0").replace(/,/g, ""));
 
     expect(shown).toBeLessThanOrEqual(total);
@@ -93,9 +100,9 @@ describe("counts always reconcile", () => {
     );
 
     const text = screen.getByTestId("graph-completeness-banner").textContent ?? "";
-    const shown = Number((text.match(/Showing ([\d,]+)/)?.[1] ?? "0").replace(/,/g, ""));
+    const shown = Number((text.match(/Loaded ([\d,]+)/)?.[1] ?? "0").replace(/,/g, ""));
     const total = Number((text.match(/of ([\d,]+)/)?.[1] ?? "0").replace(/,/g, ""));
-    const omitted = Number((text.match(/([\d,]+) omitted/)?.[1] ?? "0").replace(/,/g, ""));
+    const omitted = Number((text.match(/([\d,]+) not loaded/)?.[1] ?? "0").replace(/,/g, ""));
 
     expect(shown + omitted).toBe(total);
   });

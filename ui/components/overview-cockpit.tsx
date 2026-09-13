@@ -27,6 +27,7 @@ import type {
   ServiceId,
 } from "@/lib/api-types";
 import { AiSpendSummary } from "@/components/ai-spend-summary";
+import { DetailTabs } from "@/components/detail-tabs";
 import { Collapsible } from "@/components/collapsible";
 import { isNotEvaluated } from "@/components/compliance-status";
 import { FrameworkIcon } from "@/components/framework-icon";
@@ -259,6 +260,7 @@ export function OverviewCockpit({
   compliance = null,
   services = null,
 }: OverviewCockpitProps) {
+  const [riskTab, setRiskTab] = useState<"risks" | "posture">("risks");
   const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
   // Once scans exist the chip always renders, but an unevidenced score reads as
   // an em dash — the SAME treatment the Trust Center gives this status. Hiding
@@ -278,16 +280,19 @@ export function OverviewCockpit({
 
   return (
     <div className="space-y-7">
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <section aria-label="Command center" className="min-w-0 rounded-2xl border border-outline-strong bg-surface p-5 sm:p-6">
-          <Collapsible
-            bare
-            title="Command center"
-            titleClassName={SECTION_TITLE_CLASS}
-            defaultOpen
-          >
-            <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
-
+      <section aria-label="Risk overview" className="min-w-0 rounded-2xl border border-outline-strong bg-surface p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className={SECTION_TITLE_CLASS}>Risk overview</h2>
+          <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
+        </div>
+        <DetailTabs ariaLabel="Risk overview views" value={riskTab} onChange={setRiskTab}
+          tabs={[{ key: "risks", label: "Top risks" }, { key: "posture", label: "Posture details" }]} />
+        <div role="tabpanel" aria-label="Top risks" hidden={riskTab !== "risks"}>
+          <TopRisksPanel loading={loading} unavailable={overviewUnavailable} scans={scans}
+            topPath={topPath} exposurePaths={exposurePaths}
+            agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null} />
+        </div>
+        <div role="tabpanel" aria-label="Posture details" hidden={riskTab !== "posture"}>
             <div className="mt-2 grid gap-3">
               <PostureHero
                 loading={loading}
@@ -317,20 +322,8 @@ export function OverviewCockpit({
             {/* 1b — What influences the score: read-only weighted-input breakdown
                 so the grade is legible, not opaque (#3940). */}
             <ScoreExplainer breakdown={scoreBreakdown} grade={grade} floored={scoreFloored} />
-          </Collapsible>
-        </section>
-
-        <section aria-label="Top risks" className="min-w-0 rounded-2xl border border-orange-500/30 bg-surface p-5 sm:p-6">
-          <TopRisksPanel
-            loading={loading}
-            unavailable={overviewUnavailable}
-            scans={scans}
-            topPath={topPath}
-            exposurePaths={exposurePaths}
-            agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
-          />
-        </section>
-      </div>
+        </div>
+      </section>
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
           <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
@@ -660,6 +653,7 @@ function ComplianceSnapshotPanel({
   loading?: boolean | undefined;
   scanScopeKnown?: boolean | undefined;
 }) {
+  const [showAllFrameworks, setShowAllFrameworks] = useState(false);
   const allFrameworks = compliance?.frameworks ?? [];
   // Show the largest observed control gaps first; never infer certification status.
   const scored = allFrameworks.filter((item) => item.kind === "scored")
@@ -689,12 +683,13 @@ function ComplianceSnapshotPanel({
         </p>
       )}
       {!loading && hasScanEvidence && scored.length > 0 ? (
-          <Collapsible bare title={evidenceReady ? "Evaluated frameworks" : "Compliance frameworks"} defaultOpen data-testid="overview-evaluated-frameworks">
-            <FrameworkCards frameworks={scored.slice(0, 3)} />
+          <Collapsible bare title="Control frameworks" subtitle={`${scored.length} frameworks · ordered by failing and warning checks`} defaultOpen data-testid="overview-evaluated-frameworks">
+            <FrameworkCards frameworks={showAllFrameworks ? scored : scored.slice(0, 3)} />
             {scored.length > 3 ? (
-              <Collapsible bare title={`More frameworks (${scored.length - 3})`} defaultOpen={false}>
-                <FrameworkCards frameworks={scored.slice(3)} />
-              </Collapsible>
+              <button type="button" className="mt-2 text-xs text-emerald-700 dark:text-emerald-300"
+                aria-expanded={showAllFrameworks} onClick={() => setShowAllFrameworks(!showAllFrameworks)}>
+                {showAllFrameworks ? "Show priority frameworks" : `Show all ${scored.length} control frameworks`}
+              </button>
             ) : null}
           </Collapsible>
       ) : null}
@@ -775,8 +770,8 @@ function TopRisksPanel({
   const moreCount = ranked.length - shown.length;
 
   return (
-    <Collapsible bare title="Top risks" subtitle="Review these findings first" titleClassName={SECTION_TITLE_CLASS}
-      count={ranked.length || undefined} defaultOpen>
+    <section aria-label="Prioritized findings">
+      <p className="mb-3 text-xs text-ink-secondary">Review these findings first · {ranked.length} prioritized risks</p>
       {loading ? (
         <p role="status" className="text-sm text-ink-secondary">Loading prioritized findings…</p>
       ) : shown.length > 0 ? (
@@ -800,7 +795,7 @@ function TopRisksPanel({
         <Link href="/findings?scope=all&severity=critical" className="text-ink-secondary">Critical findings</Link>
         <Link href="/compliance" className="text-ink-secondary">Compliance evidence</Link>
       </div>
-    </Collapsible>
+    </section>
   );
 }
 

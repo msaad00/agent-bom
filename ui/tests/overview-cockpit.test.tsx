@@ -55,16 +55,21 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
-  it("puts actionable risks beside posture, ahead of supporting evidence", () => {
+  it("opens risks first and switches to posture in one overview", async () => {
+    const user = userEvent.setup();
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
-    const posture = screen.getByRole("region", { name: "Command center" });
+    const posture = screen.getByRole("region", { name: "Risk overview" });
     const coverage = screen.getByRole("region", { name: /^Coverage$/ });
-    const risks = screen.getByRole("region", { name: "Top risks" });
-    expect(posture.parentElement).toBe(risks.parentElement);
+    const risks = screen.getByRole("tabpanel", { name: "Top risks" });
+    expect(posture).toContainElement(risks);
+    expect(risks).toBeVisible();
+    expect(within(posture).getByText("Posture score · 0–100, higher is better")).not.toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "Posture details" }));
     expect(within(posture).getByText("Posture score · 0–100, higher is better")).toBeVisible();
+    expect(risks).not.toBeVisible();
     const compliance = screen.getByRole("region", { name: "Compliance & frameworks" });
     expect(coverage.parentElement).toBe(compliance.parentElement);
-    expect(coverage.parentElement).not.toBe(posture.parentElement);
+    expect(posture).not.toContainElement(coverage);
     expect(within(coverage).queryByText(/Control evaluation unavailable/i)).not.toBeInTheDocument();
     expect(within(compliance).getByText(/Control evaluation unavailable/i)).toBeVisible();
     expect(risks.compareDocumentPosition(coverage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -94,7 +99,7 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/Control evaluation unavailable for completed scans/i)).toBeVisible();
     expect(screen.getByText("MITRE ATLAS")).toBeVisible();
     expect(screen.getByText("3/10 risks applicable")).toBeVisible();
-    expect(screen.getByText("Compliance frameworks")).toBeVisible();
+    expect(screen.getByText("Control frameworks")).toBeVisible();
     expect(screen.getByText("NIST AI RMF")).toBeVisible();
     expect(screen.getByText("Not evaluated · 0/0 controls")).toBeVisible();
   });
@@ -146,7 +151,7 @@ describe("OverviewCockpit", () => {
     expect(toggle).toHaveFocus();
     await user.keyboard(" ");
     expect(lanes).toBeVisible();
-    expect(screen.getByRole("region", { name: "Command center" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Risk overview" })).toBeVisible();
   });
 
   it("collapses compliance independently from coverage and risks", async () => {
@@ -159,7 +164,7 @@ describe("OverviewCockpit", () => {
     expect(toggle).toHaveFocus();
     expect(screen.getByText(/Control evaluation unavailable/i)).not.toBeVisible();
     expect(screen.getByRole("button", { name: /^Coverage/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: /^Top risks/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("tab", { name: "Top risks" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("keeps operational details closed until requested without hiding their summary", async () => {
@@ -232,14 +237,14 @@ describe("OverviewCockpit", () => {
       key: advisory, href: "/findings", riskScore: 9,
       nodes: [{ type: "cve", label: advisory, severity: "high" }, { type: "package", label: "requests@2.0.0" }],
     }} />);
-    const risks = screen.getByRole("region", { name: "Top risks" });
+    const risks = screen.getByRole("tabpanel", { name: "Top risks" });
     expect(within(risks).getByRole("link", { name: new RegExp(`requests@2.0.0 · ${advisory}`) })).toBeVisible();
   });
 
   it("renders a single exec overview without altitude lenses or next-steps farm", () => {
     render(<OverviewCockpit {...baseProps} />);
 
-    expect(screen.getByText("Command center")).toBeInTheDocument();
+    expect(screen.getByText("Risk overview")).toBeInTheDocument();
     expect(screen.getByText("Top risks")).toBeInTheDocument();
     expect(screen.queryByText("Next steps")).not.toBeInTheDocument();
     expect(screen.queryByText("Severity roll-up")).not.toBeInTheDocument();
@@ -713,12 +718,12 @@ describe("OverviewCockpit", () => {
 
     expect(screen.getByText(/1 framework needs attention/i)).toBeInTheDocument();
     expect(screen.getByText("8/9 evaluated controls pass")).toBeVisible();
-    expect(screen.getByText("Framework 8")).not.toBeVisible();
+    expect(screen.queryByText("Framework 8")).not.toBeInTheDocument();
     expect(screen.getByText("Framework 9")).toBeVisible();
     const summary = screen.getByTestId("overview-evaluated-frameworks");
     expect(within(summary).getAllByRole("link")).toHaveLength(3);
     expect(within(summary).queryByText(/^fail$/i)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "More frameworks (6)" }));
+    await user.click(screen.getByRole("button", { name: "Show all 9 control frameworks" }));
     expect(screen.getByText("Framework 8")).toBeVisible();
     expect(within(summary).getAllByRole("link")).toHaveLength(9);
   });
@@ -730,6 +735,7 @@ describe("OverviewCockpit", () => {
       { driver: "high", label: "High findings", count: 10, weight: 6, contribution: 60 },
       { driver: "other", label: "Other findings", count: 61, weight: 2, contribution: 122 },
     ]} />);
+    await user.click(screen.getByRole("tab", { name: "Posture details" }));
     await user.click(screen.getByRole("button", { name: /What influences this score/ }));
     expect(screen.getByText("Total weighted pressure: 206.0")).toBeVisible();
     expect(screen.getByText(/nonlinear/i)).toBeVisible();
@@ -776,6 +782,7 @@ describe("OverviewCockpit", () => {
       />,
     );
 
+    await user.click(screen.getByRole("tab", { name: "Posture details" }));
     const toggle = screen.getByTestId("score-format-toggle");
     await user.click(within(toggle).getByRole("button", { name: "Grade" }));
     expect(onScoreFormatChange).toHaveBeenCalledWith("grade");
@@ -797,7 +804,7 @@ describe("OverviewCockpit", () => {
     );
 
     expect(screen.getByText("CIS Controls v8")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: /Evaluated frameworks/i }));
+    await user.click(screen.getByRole("button", { name: /Control frameworks/i }));
     expect(screen.getByText("CIS Controls v8")).not.toBeVisible();
   });
 });

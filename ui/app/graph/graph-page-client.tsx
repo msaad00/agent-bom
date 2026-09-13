@@ -3127,7 +3127,7 @@ function GraphPageInner() {
           )}
 
 
-          {investigationMode && !reachabilitySummary && (
+          {investigationMode && !reachabilitySummary && !blastRadius && !loadingBlast && (
             <div className="graph-callout-sky">
               <span>
                 Focused on:{" "}
@@ -3153,6 +3153,8 @@ function GraphPageInner() {
               summary={reachabilitySummary}
               loading={loadingReachability}
               error={reachabilityError}
+              depth={filters.maxDepth}
+              onDepthChange={(maxDepth) => setFilters((current) => ({ ...current, maxDepth }))}
               direction={investigationDirection}
               onDirectionChange={(direction) => {
                 if (investigationMode) void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel, direction });
@@ -4007,7 +4009,7 @@ function GraphPageInner() {
 
           {loadingGraph && graphData && <GraphRefreshOverlay />}
 
-          {graphTruncated && (
+          {graphTruncated && !rollupCanvasOwnsPresentation && (
             <div className="mt-2 border-t border-outline/80 px-1 pt-2">
               <GraphCompletenessBanner
                 completeness={
@@ -4020,6 +4022,8 @@ function GraphPageInner() {
                     reason: `Partial canvas: up to ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes ranked by severity. Filter or focus, or open the complete estate roll-up.`,
                   }
                 }
+                onLoadMore={returnToSummary}
+                loadMoreLabel="Browse scopes"
                 visibleCount={displayNodes.length}
                 omittedCount={
                   graphData?.completeness?.total == null
@@ -4036,6 +4040,7 @@ function GraphPageInner() {
           {selectedNode && (
             <GraphEntityDrawer
               data={selectedNode}
+              onInspectNode={(rootId) => void loadRootInvestigation({ rootId })}
               scanId={selectedScanId || undefined}
               enrich={Boolean(investigationMode)}
               onClose={() => {
@@ -4095,11 +4100,15 @@ function ReachabilityDrillInPanel({
   onClear,
   direction,
   onDirectionChange,
+  depth,
+  onDepthChange,
 }: {
   summary: ReachabilitySummary | null;
   loading: boolean;
   error: string | null;
   onClear: () => void;
+  depth: number;
+  onDepthChange: (depth: number) => void;
   direction: "forward" | "reverse" | "both";
   onDirectionChange: (direction: "forward" | "reverse" | "both") => void;
 }) {
@@ -4135,6 +4144,9 @@ function ReachabilityDrillInPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
+        <select aria-label="Traversal depth" value={depth} onChange={(event) => onDepthChange(Number(event.target.value))} className="graph-chip-neutral">
+          {[1, 2, 3, 4].map((hops) => <option key={hops} value={hops}>{hops} hop{hops === 1 ? "" : "s"}</option>)}
+        </select>
         <select aria-label="Traversal direction" value={direction} onChange={(event) => onDirectionChange(event.target.value as "forward" | "reverse" | "both")} className="graph-chip-neutral">
           <option value="forward">Outgoing connections</option>
           <option value="reverse">Incoming connections</option>
@@ -4229,21 +4241,21 @@ function BlastRadiusPanel({
   onClear: () => void;
 }) {
   return (
-    <div className="mt-3 rounded-2xl border border-violet-500/30 bg-violet-500/10 p-3 text-xs text-violet-100">
+    <div className="mt-3 rounded-2xl border border-violet-500/30 bg-violet-500/10 p-3 text-xs text-foreground">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-2">
-          <Radar className="mt-0.5 h-4 w-4 text-violet-300" />
+          <Radar className="mt-0.5 h-4 w-4 text-violet-700 dark:text-violet-300" />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-violet-300">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-violet-700 dark:text-violet-300">
               Blast radius
             </p>
-            <p className="mt-1 text-sm font-medium text-violet-50">
+            <p className="mt-1 text-sm font-medium text-foreground">
               {summary
                 ? `${summary.affectedCount} upstream asset${summary.affectedCount === 1 ? "" : "s"} connected to ${summary.rootLabel}`
                 : "Computing blast radius"}
             </p>
             {summary && (
-              <p className="mt-1 text-[11px] text-violet-200/80">
+              <p className="mt-1 text-[11px] text-ink-secondary">
                 Reverse-dependency reach · up to {summary.maxDepthReached} hop
                 {summary.maxDepthReached === 1 ? "" : "s"}. Graph relationships do not establish compromise.
               </p>
@@ -4269,23 +4281,21 @@ function BlastRadiusPanel({
       </div>
 
       {summary && Object.keys(summary.countsByType).length > 0 && (
-        <div className="mt-3 rounded-xl border border-violet-400/20 bg-background/45 p-2">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-violet-300">
-            Impacted by type
-          </p>
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs text-ink-secondary">Connected assets by type ({Object.keys(summary.countsByType).length})</summary>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {Object.entries(summary.countsByType)
               .sort((left, right) => right[1] - left[1])
               .map(([type, count]) => (
                 <span
                   key={type}
-                  className="rounded border border-violet-400/20 bg-violet-950/60 px-1.5 py-0.5 text-[10px] text-violet-100"
+                  className="rounded border border-violet-400/20 bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-foreground"
                 >
                   {prettifyReachabilityType(type)}: {count}
                 </span>
               ))}
           </div>
-        </div>
+        </details>
       )}
 
       {summary && summary.affectedCount === 0 && (

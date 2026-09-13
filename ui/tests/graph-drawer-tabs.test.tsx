@@ -1,10 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { api } from "@/lib/api";
+import type { GraphNodeDetailResponse } from "@/lib/api-types";
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import type { LineageNodeData } from "@/components/lineage-nodes";
 
 const noop = () => {};
+afterEach(() => vi.restoreAllMocks());
 
 // A vulnerability node rich enough to populate every tab: Overview (severity /
 // CVSS / identifier), Relationships (edge + neighbor counts), Impact
@@ -58,7 +61,7 @@ describe("graph entity drawer tabs", () => {
     expect(screen.getByTestId("graph-drawer-panel-relationships")).toBeTruthy();
     expect(screen.getByText("Neighbors")).toBeTruthy();
     expect(screen.getByText("Incoming edges")).toBeTruthy();
-    expect(screen.getByText("Affected nodes")).toBeTruthy();
+    expect(screen.getByText("Upstream connections")).toBeTruthy();
     // Overview-only content is gone once we leave that tab.
     expect(screen.queryByText("CVSS")).toBeNull();
   });
@@ -75,6 +78,21 @@ describe("graph entity drawer tabs", () => {
     expect(screen.getByText("Data Sources")).toBeTruthy();
     expect(screen.getByText("Compliance Tags")).toBeTruthy();
     expect(screen.getByText("Blast Scope")).toBeTruthy();
+  });
+
+  it("drills a direct relationship without losing its direction or selected neighbor", async () => {
+    vi.spyOn(api, "getGraphNode").mockResolvedValue({
+      node: { id: "vuln:cve-2024-9999", attributes: {} },
+      edges_in: [{ id: "e1", source: "package:sample", target: "vuln:cve-2024-9999", relationship: "vulnerable_to" }],
+      edges_out: [], neighbors: ["package:sample"], sources: ["scan"],
+      impact: { affected_count: 1, affected_by_type: { package: 1 }, max_depth_reached: 1 },
+    } as unknown as GraphNodeDetailResponse);
+    const inspect = vi.fn();
+    render(<GraphEntityDrawer data={richNode()} scanId="scan-proof" onClose={noop} onInspectNode={inspect} />);
+    fireEvent.click(screen.getByTestId("graph-drawer-tab-relationships"));
+    fireEvent.click(await screen.findByRole("button", { name: "Incoming · vulnerable to · package:sample" }));
+    expect(inspect).toHaveBeenCalledWith("package:sample");
+    expect(api.getGraphNode).toHaveBeenCalledWith("vuln:cve-2024-9999", "scan-proof");
   });
 
   it("exposes a keyboard/pointer resize handle in overlay mode", () => {

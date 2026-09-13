@@ -3140,12 +3140,12 @@ async function main() {
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
     await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
+      expectedText: [/Overview/i, /Risk overview/i, /Review these findings first/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
-      await frameworks.getByRole("button", { name: /More frameworks/ }).click();
+      await frameworks.getByRole("button", { name: /Show all .* control frameworks/ }).click();
       await frameworks.scrollIntoViewIfNeeded();
       const top = await frameworks.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
       await scrollTo(dashboardPage, top - 100);
@@ -3153,7 +3153,7 @@ async function main() {
         await frameworks.getByText(label, { exact: false }).first().waitFor({ state: "visible" });
       }
     }, {
-      expectedText: [/Compliance frameworks/i, "NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", /Risk mappings/i, "MITRE ATLAS"],
+      expectedText: [/Control frameworks/i, "NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", /Risk mappings/i, "MITRE ATLAS"],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
     });
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {
@@ -3555,7 +3555,7 @@ async function main() {
 
     const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
     await capture(lightPage, "/?capture=1", "dashboard-light-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
+      expectedText: [/Overview/i, /Risk overview/i, /Review these findings first/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await lightPage.setViewportSize({ width: 1120, height: 900 });
@@ -3593,7 +3593,7 @@ async function main() {
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
     await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
+      expectedText: [/Overview/i, /Risk overview/i, /Review these findings first/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await capture(

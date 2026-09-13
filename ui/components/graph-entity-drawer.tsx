@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { GraphNodeDetailResponse } from "@/lib/api-types";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Loader2, Network, Radar, ShieldAlert } from "lucide-react";
 
@@ -29,6 +31,7 @@ export function GraphEntityDrawer({
   onShowBlastRadius,
   blastRadiusActive = false,
   blastRadiusLoading = false,
+  onInspectNode,
   onExpandNeighbors,
   onShowImpact,
   onQuarantine,
@@ -44,6 +47,7 @@ export function GraphEntityDrawer({
   onShowBlastRadius?: (() => void) | undefined;
   blastRadiusActive?: boolean;
   blastRadiusLoading?: boolean;
+  onInspectNode?: ((nodeId: string) => void) | undefined;
   onExpandNeighbors?: (() => void) | undefined;
   onShowImpact?: (() => void) | undefined;
   /** Contain this agent at the gateway. Agent nodes only; drawer stays presentational. */
@@ -58,11 +62,16 @@ export function GraphEntityDrawer({
   const [loading, setLoading] = useState(false);
   const nodeId = nodeIdFromLineageData(data) ?? nodeIdFromLineageData(enriched);
 
+  const [detail, setDetail] = useState<GraphNodeDetailResponse | null>(null);
+  const pathname = usePathname();
+  const [showAllRelationships, setShowAllRelationships] = useState(false);
   useEffect(() => {
     setEnriched(data);
   }, [data]);
 
   useEffect(() => {
+    setDetail(null);
+    setShowAllRelationships(false);
     if (!enrich || !scanId || !nodeId) return;
     let cancelled = false;
     setLoading(true);
@@ -70,6 +79,7 @@ export function GraphEntityDrawer({
       .getGraphNode(nodeId, scanId)
       .then((detail) => {
         if (cancelled) return;
+        setDetail(detail);
         setEnriched((current) => mergeGraphNodeDetail(current, detail));
       })
       .catch(() => {
@@ -97,6 +107,30 @@ export function GraphEntityDrawer({
   );
   const evidenceLabel = evidenceTierLabel(enriched);
 
+  const relationships = detail && detail.node.id === nodeId
+    ? [...new Map([...detail.edges_in, ...detail.edges_out].map((edge) => [edge.id, edge])).values()] : [];
+  const relationshipSlot = relationships.length > 0 ? (
+    <div className="space-y-2 border-t border-outline pt-3">
+      <p className="text-xs text-ink-secondary">Direct relationships · {relationships.length} returned</p>
+      {(showAllRelationships ? relationships : relationships.slice(0, 8)).map((edge) => {
+        const incoming = edge.target === nodeId;
+        const neighbor = incoming ? edge.source : edge.target;
+        const label = `${incoming ? "Incoming" : "Outgoing"} · ${edge.relationship.replaceAll("_", " ")} · ${neighbor}`;
+        return onInspectNode ? (
+          <button key={edge.id} type="button" onClick={() => onInspectNode(neighbor)}
+            className="block w-full break-words rounded-lg border border-outline p-2 text-left text-xs text-foreground hover:bg-surface-muted">
+            {label}
+          </button>
+        ) : <p key={edge.id} className="break-words text-xs text-ink-secondary">{label}</p>;
+      })}
+      {relationships.length > 8 && <button type="button" aria-expanded={showAllRelationships}
+        className="text-xs text-emerald-700 dark:text-emerald-300" onClick={() => setShowAllRelationships(!showAllRelationships)}>
+        {showAllRelationships ? "Show fewer relationships" : `Show all ${relationships.length} relationships`}
+      </button>}
+    </div>
+  ) : undefined;
+  const showNextAction = !(pathname === "/graph" && nextAction.label === "Inspect in lineage");
+
   const headerSlot = (
     <div className="space-y-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -122,23 +156,21 @@ export function GraphEntityDrawer({
         <span>in {enriched.incomingEdgeCount ?? "—"}</span>
         <span>out {enriched.outgoingEdgeCount ?? "—"}</span>
         <span>neighbors {enriched.neighborCount ?? "—"}</span>
-        <span>impact {enriched.impactCount ?? "—"}</span>
+        <span title="Upstream graph connections within the reported hop limit; not confirmed compromise">upstream connections {enriched.impactCount ?? "—"}</span>
       </div>
     </div>
   );
 
   const footerSlot = (
     <div className="space-y-2 border-t border-[color:var(--border-subtle)] pt-3">
-      <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
-        Next action
-      </p>
-      <Link
+      {showNextAction && <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Next action</p>}
+      {showNextAction && <Link
         href={nextAction.href}
         className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-800 transition hover:border-emerald-500/60 dark:text-emerald-200"
       >
         {nextAction.label}
         <ArrowRight className="h-3.5 w-3.5" />
-      </Link>
+      </Link>}
       {(onExpandNeighbors || onShowImpact) && (
         <div className="grid grid-cols-2 gap-2">
           {onExpandNeighbors ? (
@@ -203,6 +235,7 @@ export function GraphEntityDrawer({
       onShowBlastRadius={onShowBlastRadius}
       blastRadiusActive={blastRadiusActive}
       blastRadiusLoading={blastRadiusLoading}
+      relationshipSlot={relationshipSlot}
       headerSlot={headerSlot}
       footerSlot={footerSlot}
     />

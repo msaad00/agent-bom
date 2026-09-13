@@ -66,11 +66,18 @@ export function GraphCompletenessBanner({
   const shown = returned ?? visibleCount;
   const detail =
     shown != null && total != null
-      ? `Showing ${shown.toLocaleString()} of ${total.toLocaleString()}`
+      ? `Loaded ${shown.toLocaleString()} of ${total.toLocaleString()}`
       : shown != null
-        ? `Showing ${shown.toLocaleString()} items`
+        ? `Loaded ${shown.toLocaleString()} items`
         : "Result set is bounded";
   const reason = completeness?.reason?.trim();
+  const explanation = reason === "node_page_limit"
+    ? "This node view includes only part of the snapshot. Use the scope summary or search for a specific asset."
+    : reason === "traversal_budget"
+      ? "Traversal reached its limit. Narrow the scope or reduce the traversal depth; further impact remains unknown."
+      : reason === "node_budget"
+        ? "The snapshot exceeded the graph loading limit. Narrow the scope to investigate additional assets."
+        : reason?.replaceAll("_", " ");
 
   return (
     <div
@@ -81,10 +88,10 @@ export function GraphCompletenessBanner({
       <div className="min-w-0 space-y-0.5">
         <p className="font-medium">
           {detail}
-          {omitted > 0 ? ` · ${omitted.toLocaleString()} omitted` : ""}
+          {omitted > 0 ? ` · ${omitted.toLocaleString()} not loaded` : ""}
         </p>
         <p className="text-[11px] opacity-90">
-          {reason ||
+          {explanation ||
             (completeness?.status === "sampled"
               ? "Sampled for readability — expand, filter, or page to see more."
               : "Truncated for the interactive render budget — filter or page rather than treating this as the full estate.")}

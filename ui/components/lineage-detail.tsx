@@ -34,7 +34,6 @@ import {
 
 import { severityColor } from "@/lib/api";
 import { useDrawerWidth } from "@/lib/use-drawer-width";
-import { graphLayerHref } from "@/lib/page-links";
 import {
   reachColorClass,
   reachFormula,
@@ -179,6 +178,7 @@ export function LineageDetailPanel({
   blastRadiusActive = false,
   blastRadiusLoading = false,
   variant = "overlay",
+  relationshipSlot,
   headerSlot,
   footerSlot,
 }: {
@@ -189,6 +189,7 @@ export function LineageDetailPanel({
   blastRadiusLoading?: boolean;
   /** overlay = absolute side panel (mesh/lineage); inline = stacked under canvas */
   variant?: "overlay" | "inline";
+  relationshipSlot?: ReactNode;
   headerSlot?: ReactNode;
   footerSlot?: ReactNode;
 }) {
@@ -569,6 +570,7 @@ export function LineageDetailPanel({
 
   // ---- Relationships: structural graph context -----------------------------
   const hasRelationships =
+    !!relationshipSlot ||
     data.neighborCount != null ||
     data.sourceCount != null ||
     data.incomingEdgeCount != null ||
@@ -592,7 +594,7 @@ export function LineageDetailPanel({
       )}
       {data.impactCount != null && (
         <Row
-          label="Affected nodes"
+          label="Upstream connections"
           value={data.impactCount}
           className="text-orange-300"
         />
@@ -600,6 +602,7 @@ export function LineageDetailPanel({
       {data.maxImpactDepth != null && (
         <Row label="Impact depth" value={data.maxImpactDepth} />
       )}
+      {relationshipSlot}
     </div>
   ) : null;
 
@@ -612,13 +615,12 @@ export function LineageDetailPanel({
       {Object.entries(data.impactByType ?? {})
         .sort((left, right) => right[1] - left[1])
         .map(([key, value]) => (
-          <Link
+          <span
             key={key}
-            href={graphLayerHref(key)}
             className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300 transition-colors hover:bg-orange-900"
           >
             {prettifyKey(key)}: {value}
-          </Link>
+          </span>
         ))}
     </div>
   ) : null;

@@ -34,6 +34,8 @@ credential validation, and improves the path from findings to investigation.
   while preserving existing field identifiers and rows.
 - Lead Overview with posture and actionable risks; improve section separation,
   text contrast, focused-path explanations, and proposed-change graph framing.
+- Identify top risks by affected package and advisory instead of generic finding
+  titles; give framework mappings and coverage a separate README view.
 - Preserve repository inventory as code assets in graphs and retain durable
   report-export work across replica recovery.
 
@@ -3617,7 +3619,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.104.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.105.0...HEAD
+[0.105.0]: https://github.com/msaad00/agent-bom/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/msaad00/agent-bom/compare/v0.103.2...v0.104.0
 [0.103.2]: https://github.com/msaad00/agent-bom/compare/v0.103.1...v0.103.2
 [0.103.1]: https://github.com/msaad00/agent-bom/compare/v0.103.0...v0.103.1

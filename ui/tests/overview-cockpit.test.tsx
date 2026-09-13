@@ -89,11 +89,14 @@ describe("OverviewCockpit", () => {
   it("shows available risk mappings when control evaluation is unavailable", () => {
     render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 0, overallStatus: "no_data", evaluatedControls: 0, totalControls: 10, frameworks: [
       { id: "atlas", label: "MITRE ATLAS", kind: "applicability", applicable: 3, pass: 0, fail: 0, warn: 0, total: 10 },
+      { id: "nist-ai-rmf", label: "NIST AI RMF", kind: "scored", pass: 0, fail: 0, warn: 0, total: 0 },
     ] }} />);
     expect(screen.getByText(/Control evaluation unavailable for completed scans/i)).toBeVisible();
     expect(screen.getByText("MITRE ATLAS")).toBeVisible();
     expect(screen.getByText("3/10 risks applicable")).toBeVisible();
-    expect(screen.queryByTestId("overview-evaluated-frameworks")).not.toBeInTheDocument();
+    expect(screen.getByText("Compliance frameworks")).toBeVisible();
+    expect(screen.getByText("NIST AI RMF")).toBeVisible();
+    expect(screen.getByText("Not evaluated · 0/0 controls")).toBeVisible();
   });
 
   it("keeps the label in the flexible column when a framework has no logo", () => {

@@ -2748,7 +2748,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
-      scope: "Overview lower frame with unique exposure paths, recent scans, and activity",
+      scope: "Expanded Overview compliance framework catalog and risk mappings, with explicit unevaluated status",
     },
     {
       path: "cloud-accounts-live.png",
@@ -3144,9 +3144,16 @@ async function main() {
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
-      await scrollTo(dashboardPage, 720);
+      const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
+      await frameworks.getByRole("button", { name: /More frameworks/ }).click();
+      await frameworks.scrollIntoViewIfNeeded();
+      const top = await frameworks.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
+      await scrollTo(dashboardPage, top - 100);
+      for (const label of ["NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", "CIS Controls v8", "MITRE ATLAS"]) {
+        await frameworks.getByText(label, { exact: true }).waitFor({ state: "visible" });
+      }
     }, {
-      expectedText: ["Top risks", "Recent scans", "Activity", "next · DEMO-VULN-21441", "developer-copilot"],
+      expectedText: ["Compliance frameworks", "NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", "Risk mappings", "MITRE ATLAS"],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
     });
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {

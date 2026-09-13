@@ -677,14 +677,7 @@ function ComplianceSnapshotPanel({
         <>
           <p className="mt-2 text-base font-semibold tabular-nums text-foreground">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
           <p className="mt-1 text-xs text-ink-secondary">{Math.round(compliance.overallScore)}% of {compliance.evaluatedControls} evaluated controls · {attention} framework{attention === 1 ? " needs" : "s need"} attention</p>
-          <Collapsible bare title="Evaluated frameworks" defaultOpen data-testid="overview-evaluated-frameworks">
-            <FrameworkCards frameworks={scored.slice(0, 3)} />
-            {scored.length > 3 ? (
-              <Collapsible bare title={`More frameworks (${scored.length - 3})`} defaultOpen={false}>
-                <FrameworkCards frameworks={scored.slice(3)} />
-              </Collapsible>
-            ) : null}
-          </Collapsible>
+
         </>
       ) : (
         <p className="mt-2 text-xs text-ink-secondary">
@@ -695,6 +688,16 @@ function ComplianceSnapshotPanel({
             : "Framework coverage appears after the first completed scan. Empty estates do not show pass tiles."}
         </p>
       )}
+      {!loading && hasScanEvidence && scored.length > 0 ? (
+          <Collapsible bare title={evidenceReady ? "Evaluated frameworks" : "Compliance frameworks"} defaultOpen data-testid="overview-evaluated-frameworks">
+            <FrameworkCards frameworks={scored.slice(0, 3)} />
+            {scored.length > 3 ? (
+              <Collapsible bare title={`More frameworks (${scored.length - 3})`} defaultOpen={false}>
+                <FrameworkCards frameworks={scored.slice(3)} />
+              </Collapsible>
+            ) : null}
+          </Collapsible>
+      ) : null}
       {hasScanEvidence && mappings.length > 0 ? (
         <Collapsible bare title="Risk mappings" subtitle="Applicable risks, separate from control pass/fail" defaultOpen data-testid="overview-risk-mappings">
           <div className="grid gap-2 sm:grid-cols-2">
@@ -716,7 +719,7 @@ function ComplianceSnapshotPanel({
 
 function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot["frameworks"] }) {
   return (
-        <div className="grid gap-1">
+        <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
           {frameworks.map((framework) => {
             const evaluated = frameworkEvaluated(framework);
             const isApplicability = framework.kind === "applicability";

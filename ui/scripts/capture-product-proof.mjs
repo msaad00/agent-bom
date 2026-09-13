@@ -3153,7 +3153,7 @@ async function main() {
         await frameworks.getByText(label, { exact: false }).first().waitFor({ state: "visible" });
       }
     }, {
-      expectedText: ["Compliance frameworks", "NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", "Risk mappings", "MITRE ATLAS"],
+      expectedText: [/Compliance frameworks/i, "NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", /Risk mappings/i, "MITRE ATLAS"],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
     });
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {

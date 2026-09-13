@@ -25,6 +25,7 @@ const textDetail = (entry: AuditEntry, key: string) => typeof entry.details?.[ke
 
 export default function AuditLogPage() {
   const { session, loading: authSessionLoading, hasCapability } = useAuthState();
+  const [view, setView] = useState<"events" | "admin">("events");
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [integrity, setIntegrity] = useState<AuditIntegrityResponse | null>(null);
@@ -46,6 +47,7 @@ export default function AuditLogPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const roleLabel = session?.role_summary?.display_name ?? session?.role ?? "Unknown";
   const canManageKeys = hasCapability("keys.manage");
+  const showAdmin = view === "admin" && canManageKeys;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -105,10 +107,10 @@ export default function AuditLogPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (!authSessionLoading && canManageKeys) void loadAdmin();
+      if (!authSessionLoading && showAdmin) void loadAdmin();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [authSessionLoading, canManageKeys, loadAdmin]);
+  }, [authSessionLoading, showAdmin, loadAdmin]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -125,11 +127,16 @@ export default function AuditLogPage() {
     <div className="space-y-5">
       <PageLaneHeader lane="governance" title="Audit Log"
         subtitle="Trace human and agent actions to their recorded evidence."
-        actions={<button onClick={() => { void load(); }} className={`${FIELD} flex items-center gap-2`}>
+        actions={<button onClick={() => { void (showAdmin ? loadAdmin() : load()); }} className={`${FIELD} flex items-center gap-2`}>
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>}
       />
 
+      {canManageKeys && <div role="group" aria-label="Audit view" className="flex gap-2">
+        <button type="button" className="graph-chip" aria-pressed={!showAdmin} onClick={() => setView("events")}>Events</button>
+        <button type="button" className="graph-chip" aria-pressed={showAdmin} onClick={() => setView("admin")}>Access administration</button>
+      </div>}
+      {!showAdmin && <>
       <section aria-label="Control-plane integrity" className="border-y border-[var(--border-subtle)] py-3 text-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <strong className={integrity?.tampered ? "text-red-600 dark:text-red-400" : ""}>
@@ -231,10 +238,12 @@ export default function AuditLogPage() {
         <Collapsible bare title="Export and verify evidence" defaultOpen={false} titleClassName="text-sm font-medium">
           <AuditEvidencePanel />
         </Collapsible>
-        {canManageKeys && <Collapsible bare title="Key management and revocation" defaultOpen={false} titleClassName="text-sm font-medium">
-          <KeyLifecyclePanel loading={adminLoading} error={adminError} policy={authPolicy} keys={keys} onRefresh={loadAdmin} roleLabel={roleLabel} />
-        </Collapsible>}
+
       </div>
+      </>}
+      {showAdmin && <section aria-label="Access administration">
+        <KeyLifecyclePanel loading={adminLoading} error={adminError} policy={authPolicy} keys={keys} onRefresh={loadAdmin} roleLabel={roleLabel} />
+      </section>}
     </div>
   );
 }

@@ -415,7 +415,7 @@ export default function SkillsPage() {
       <PageLaneHeader
         lane="ai-estate"
         title="Skills"
-        subtitle="Scan agent skill/instruction files for behavioural risk and signing provenance. Same shared scanner as the CLI and MCP."
+        subtitle="Review agent instruction files for behavioral risk and signing provenance."
         actions={scanForm}
       />
 

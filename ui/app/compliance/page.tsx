@@ -390,7 +390,7 @@ function CompliancePageContent() {
 
   const kpis: StatStripItem[] = [
     {
-      label: "Overall",
+      label: "Evaluated pass rate",
       value: overallNotEvaluated ? "—" : `${Math.round(data.overall_score)}%`,
       accent: statusToAccent(data.overall_status),
       // The score is a percentage of EVALUATED controls, so it always ships its
@@ -675,7 +675,7 @@ function CompliancePageContent() {
               {data.scan_count} scan{data.scan_count !== 1 ? "s" : ""} analyzed
             </span>
             {data.latest_scan ? <span>Latest {formatDate(data.latest_scan)}</span> : null}
-            <span>{totalFail} failing controls</span>
+            <span>{totalFail} evaluated controls with failing checks</span>
           </div>
           <p
             className="mt-2 max-w-3xl text-xs leading-relaxed text-[color:var(--text-secondary)]"

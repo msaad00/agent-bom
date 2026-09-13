@@ -87,7 +87,7 @@ describe("ComplianceNistCatalog", () => {
     // Vendor-asserted must be labeled — never implied "official".
     expect(within(panel).getByText(/vendor-asserted/i)).toBeInTheDocument();
     // Failing estate -> Non-compliant, never a green/100%.
-    expect(within(panel).getByText("Non-compliant")).toBeInTheDocument();
+    expect(within(panel).getByText("Failing checks need review")).toBeInTheDocument();
     expect(within(panel).queryByText(/100%/)).not.toBeInTheDocument();
 
     const strip = within(panel).getByTestId("nist-catalog-buckets");

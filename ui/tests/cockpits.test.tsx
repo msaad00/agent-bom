@@ -329,10 +329,12 @@ describe("IdentityPage", () => {
     render(<IdentityPage />);
 
     await waitFor(() =>
-      expect(screen.getByText("Managed identities")).toBeInTheDocument(),
+      expect(screen.getByRole("heading", { name: "Managed identities" })).toBeVisible(),
     );
-    expect(screen.getByText("NHI governance posture")).toBeInTheDocument();
-    expect(screen.getByText("JIT access grants")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Discovered identity risk" }));
+    expect(screen.getByText("NHI governance posture")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Access grants and policies" }));
+    expect(screen.getByText("JIT access grants")).toBeVisible();
     expect(screen.getByText("Conditional-access policies")).toBeInTheDocument();
     expect(screen.getByText("prod-only")).toBeInTheDocument();
     expect(screen.getByText(/env ∈ \{prod\}/)).toBeInTheDocument();

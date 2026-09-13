@@ -84,24 +84,14 @@ export function FirstRunJourney({
       aria-labelledby="first-run-journey-title"
       className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-4 py-3"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 id="first-run-journey-title" className="text-sm font-semibold text-[var(--foreground)]">
-            Connect → verify → scan
-          </h2>
-          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-            Progress reflects this cloud connection path, not unrelated scans.
-          </p>
-        </div>
-        <span
-          role="status"
-          aria-live="polite"
-          className="shrink-0 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]"
-        >
-          {completed} of {steps.length} complete
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="first-run-journey-title" className="text-sm font-medium">
+          {currentId === "connect" ? "Add a cloud account to begin" : currentId === "verify" ? "Access verification pending" : "Verified connection ready to scan"}
+        </h2>
+        {canManage || showPermissionNotice ? <JourneyAction step={currentStep.id} canManage={canManage} session={session} onConnect={onConnect} /> : null}
       </div>
-
+      <details className="mt-2 text-xs text-ink-secondary">
+        <summary className="cursor-pointer">Setup guide · {completed} of {steps.length} complete</summary>
       <ol aria-label="Cloud connection setup progress" className="mt-3 grid gap-2 sm:grid-cols-3">
         {steps.map((step, index) => {
           const Icon = step.icon;
@@ -137,12 +127,8 @@ export function FirstRunJourney({
         })}
       </ol>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border-subtle)] pt-3">
-        <p className="text-xs text-[var(--text-secondary)]">{currentStep.detail}</p>
-        {canManage || showPermissionNotice ? (
-          <JourneyAction step={currentStep.id} canManage={canManage} session={session} onConnect={onConnect} />
-        ) : null}
-      </div>
+      <p className="mt-2 text-xs text-ink-secondary">{currentStep.detail}</p>
+      </details>
     </section>
   );
 }

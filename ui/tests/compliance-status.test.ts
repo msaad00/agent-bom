@@ -20,8 +20,8 @@ describe("compliance status honesty", () => {
   it("labels no-evidence statuses as 'Not evaluated', never Compliant/Non-compliant", () => {
     expect(postureLabel("no_data")).toBe("Not evaluated");
     expect(postureLabel("not_evaluated")).toBe("Not evaluated");
-    expect(postureLabel("pass")).toBe("Compliant");
-    expect(postureLabel("fail")).toBe("Non-compliant");
+    expect(postureLabel("pass")).toBe("Evaluated checks pass");
+    expect(postureLabel("fail")).toBe("Failing checks need review");
   });
 });
 

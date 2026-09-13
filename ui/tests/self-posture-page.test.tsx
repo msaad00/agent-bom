@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/lib/api-errors";
 import SelfPosturePage from "@/app/self-posture/page";
 import type { SelfPostureReport } from "@/lib/api";
 
@@ -64,6 +65,27 @@ describe("SelfPosturePage", () => {
     expect(screen.getByTestId("self-posture-public-demo")).toHaveTextContent(/not exposed/i);
     expect(screen.queryByText(/AGENT_BOM_/)).not.toBeInTheDocument();
     expect(apiMock.getSelfPosture).not.toHaveBeenCalled();
+  });
+
+  it("treats an unavailable endpoint as unavailable rather than a failed evaluation", async () => {
+    apiMock.getSelfPosture.mockRejectedValue(new ApiError("Operator self-posture is not exposed on the public demo.", {
+      status: 404, statusText: "Not Found", url: "/v1/self-posture", method: "GET",
+    }));
+    render(<SelfPosturePage />);
+    expect(await screen.findByTestId("self-posture-unavailable")).toHaveTextContent("agent-bom self-audit");
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Confirm you are signed in/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("self-posture-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps permission failures distinct from an unavailable endpoint", async () => {
+    apiMock.getSelfPosture.mockRejectedValue(new ApiError("Forbidden", {
+      status: 403, statusText: "Forbidden", url: "/v1/self-posture", method: "GET",
+    }));
+    render(<SelfPosturePage />);
+    expect(await screen.findByTestId("self-posture-error")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
+    expect(screen.queryByTestId("self-posture-unavailable")).not.toBeInTheDocument();
   });
 
   it("shows a loading state while the report resolves", () => {

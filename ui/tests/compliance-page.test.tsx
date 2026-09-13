@@ -154,7 +154,7 @@ describe("CompliancePage (dense restyle)", () => {
     render(<CompliancePage />);
 
     const strip = await screen.findByTestId("compliance-kpi-strip");
-    expect(within(strip).getByText("Overall")).toBeInTheDocument();
+    expect(within(strip).getByText("Evaluated pass rate")).toBeInTheDocument();
     expect(within(strip).getByText("Passing")).toBeInTheDocument();
     expect(within(strip).getByText("Failing")).toBeInTheDocument();
 

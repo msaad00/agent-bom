@@ -2891,7 +2891,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "fleet-state-live.png",
       page: "/fleet?capture=1",
-      scope: "Expanded quarantined fleet row showing lifecycle distribution, owner metadata, environment label, and enforcement state",
+      scope: "Expanded quarantined fleet row showing owner metadata, environment label, and enforcement state",
     },
     {
       path: "identity-audit-live.png",
@@ -3493,7 +3493,7 @@ async function main() {
       await enforcementAction.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
       await fleetPage.waitForTimeout(350);
     }, {
-      expectedText: ["Lifecycle Distribution", "developer-copilot", "Quarantined", "Re-enforce gateway deny"],
+      expectedText: ["developer-copilot", "Quarantined", "Re-enforce gateway deny"],
       expectedApiPaths: ["/v1/fleet", "/v1/fleet/stats"],
     });
     await capture(page, "/runtime?tab=gateway&capture=1", "gateway-policies-live.png", async (gatewayPage) => {

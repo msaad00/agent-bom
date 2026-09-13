@@ -240,7 +240,7 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
   await expect(page.getByText("Advanced controls", { exact: true })).toBeHidden();
   const evidenceControls = page.getByTestId("graph-evidence-controls");
   await expect(evidenceControls).not.toHaveAttribute("open", "");
-  await expect(evidenceControls.getByText("Filters and evidence", { exact: true })).toBeVisible();
+  await expect(evidenceControls.getByText("Graph settings", { exact: true })).toBeVisible();
 
   const largeOverview = page.getByTestId("large-graph-overview");
   const application = page.getByRole("application");
@@ -382,6 +382,8 @@ test("graph minimap mask follows light and dark themes without remounting", asyn
   await routeGraphPage(page);
   await page.goto("/graph?view=investigation", { waitUntil: "domcontentloaded" });
   const mask = page.locator(".react-flow__minimap-mask");
+  await expect(mask).toBeHidden();
+  await page.getByRole("button", { name: "Show minimap", exact: true }).click();
   await expect(mask).toBeVisible();
   for (const theme of ["light", "dark"] as const) {
     await page.evaluate((value) => {
@@ -582,6 +584,8 @@ for (const theme of ["light", "dark"] as const) {
       })).toBeGreaterThanOrEqual(12);
       await expect(page.getByTestId("graph-viewport-scope")).toContainText("Focused view");
       await flow.scrollIntoViewIfNeeded();
+      await expect(flow.locator(".react-flow__minimap")).toBeHidden();
+      await page.getByRole("button", { name: "Show minimap", exact: true }).click();
       const titleBox = await anchor.getByText("Desktop Agent", { exact: true }).boundingBox();
       const mapBox = await flow.locator(".react-flow__minimap").boundingBox();
       expect(titleBox).not.toBeNull();

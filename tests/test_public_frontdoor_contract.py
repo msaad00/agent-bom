@@ -99,8 +99,14 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     journey = readme.split("## Product tour", 1)[1].split("## Self-host", 1)[0]
     images = re.findall(r'<img src="docs/images/([^"]+)"', journey)
-    assert images == ["dashboard-live.png", "correlation-graph-live.png", "dependency-map-live.png", "remediation-live.png"]
-    assert journey.count('width="920"') == 4
+    assert images == [
+        "dashboard-live.png",
+        "dashboard-paths-live.png",
+        "correlation-graph-live.png",
+        "dependency-map-live.png",
+        "remediation-live.png",
+    ]
+    assert journey.count('width="920"') == 5
     follow_up = re.search(r"<details>\s*<summary>See package remediation and verification</summary>(.*?)</details>", journey, re.S)
     assert follow_up and "remediation-live.png" in follow_up.group(1)
     assert "dependency-map-live.png" not in follow_up.group(1)

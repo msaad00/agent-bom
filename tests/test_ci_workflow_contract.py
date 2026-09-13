@@ -452,3 +452,22 @@ def test_pip_audit_reuses_only_proven_identical_dependency_inputs() -> None:
     assert "github.base_ref" not in base["run"]
     evaluate = next(step for step in steps if step.get("name") == "Evaluate pip-audit gate")
     assert "--mode delta" in evaluate["run"] and "--mode strict" in evaluate["run"]
+
+
+def test_codeql_skips_only_prose_image_pushes_and_preserves_required_pr_checks() -> None:
+    from fnmatch import fnmatch
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/codeql.yml").read_text())
+    triggers = workflow.get(True, workflow.get("on", {}))
+    ignores = triggers["push"]["paths-ignore"]
+    for path in ("README.md", "docs/operator.md", "docs/images/dashboard.png"):
+        assert any(fnmatch(path, pattern) for pattern in ignores)
+    # Mixed changes still trigger: code, dependency inputs and unknown files
+    # must never match the prose/image-only exclusion list.
+    for path in ("src/agent_bom/proxy.py", "docs/example.py", ".github/workflows/ci.yml", "uv.lock", "pyproject.toml", "new-input"):
+        assert not any(fnmatch(path, pattern) for pattern in ignores)
+    for event in ("pull_request", "merge_group"):
+        assert "paths" not in triggers[event]
+        assert "paths-ignore" not in triggers[event]
+    assert "schedule" in triggers and "workflow_dispatch" in triggers
+    assert set(workflow["jobs"]) == {"analyze-python", "analyze-actions"}

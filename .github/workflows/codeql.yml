@@ -7,6 +7,16 @@ concurrency:
 on:
   push:
     branches: [main]
+    # PRs retain the required GitHub Advanced Security CodeQL context. Avoid a
+    # second analysis after prose/image-only merges; scheduled runs stay full.
+    paths-ignore:
+      - '**.md'
+      - '**.rst'
+      - '**.png'
+      - '**.jpg'
+      - '**.jpeg'
+      - '**.svg'
+      - '**.webp'
   pull_request:
     branches: [main]
   merge_group:

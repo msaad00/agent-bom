@@ -61,6 +61,14 @@ describe('GraphFindingsFallback', () => {
 })
 
 describe('Graph loading states', () => {
+  it('offers an actual retry action after an unavailable graph response', () => {
+    const retry = vi.fn()
+    render(<GraphEmptyState title="Graph temporarily unavailable" detail="Try again shortly."
+      suggestions={[]} actions={[{ label: "Retry graph", onClick: retry }]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry graph' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+  })
+
   it('renders first command guidance in graph empty states', () => {
     render(
       <GraphEmptyState

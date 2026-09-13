@@ -738,6 +738,10 @@ function GraphPageInner() {
     return () => query.removeEventListener("change", update);
   }, []);
   const { session, loading: authLoading } = useAuthState();
+  const [snapshotRetry, setSnapshotRetry] = useState(0);
+  const [graphRetry, setGraphRetry] = useState(0);
+  const loadedGraphScope = useRef<string | null>(null);
+  const [minimapExpanded, setMinimapExpanded] = useState(false);
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
@@ -1053,7 +1057,7 @@ function GraphPageInner() {
         setError(e.message);
       })
       .finally(() => setLoadingSnapshots(false));
-  }, []);
+  }, [snapshotRetry]);
 
   const serverEntityTypes = useMemo(
     () => entityTypesForLayers(filters.layers),
@@ -1087,6 +1091,9 @@ function GraphPageInner() {
   }, [serverFilterKey]);
 
   useEffect(() => {
+    investigationRequestId.current++;
+    setLoadingBlast(false);
+    setBlastRadius(null);
     setSearchResults([]);
     setSearchQuery("");
     setSelectedAttackPathKey(null);
@@ -1133,8 +1140,11 @@ function GraphPageInner() {
     }
 
     let cancelled = false;
+    if (loadedGraphScope.current !== serverFilterKey) {
+      setGraphData(null);
+      setSelectedNode(null);
+    }
     setLoadingGraph(true);
-    setSelectedNode(null);
     api
       .getGraph({
         scanId: selectedScanId,
@@ -1154,13 +1164,13 @@ function GraphPageInner() {
       })
       .then((result) => {
         if (cancelled) return;
+        loadedGraphScope.current = serverFilterKey;
         setGraphData(result);
         setError(null);
       })
       .catch((e) => {
         if (cancelled) return;
         setError(e.message);
-        setGraphData(null);
       })
       .finally(() => {
         if (!cancelled) setLoadingGraph(false);
@@ -1176,6 +1186,8 @@ function GraphPageInner() {
     filters.maxDepth,
     filters.severity,
     investigationMode,
+    graphRetry,
+    serverFilterKey,
   ]);
 
   useEffect(() => {
@@ -2606,6 +2618,9 @@ function GraphPageInner() {
         request.rootLabel ?? request.node?.label ?? request.rootId,
       );
       setLoadingGraph(true);
+      setGraphData(null);
+      setLoadingBlast(false);
+      setBlastRadius(null);
       setInvestigationMode({ rootId: request.rootId, rootLabel: request.rootLabel ?? request.rootId,
         truncated: false, nodeCount: 0, edgeCount: 0 });
       try {
@@ -2705,6 +2720,8 @@ function GraphPageInner() {
   }, []);
 
   const clearBlastRadius = useCallback(() => {
+    investigationRequestId.current++;
+    setLoadingBlast(false);
     setBlastRadius(null);
     setBlastError(null);
   }, []);
@@ -2762,6 +2779,10 @@ function GraphPageInner() {
       setReachabilitySummary(null);
       setReachabilityError(null);
       setLoadingBlast(true);
+      setLoadingGraph(false);
+      setGraphData(null);
+      setInvestigationMode({ rootId: nodeId, rootLabel: nodeLabel || nodeId,
+        truncated: false, nodeCount: 0, edgeCount: 0 });
       setBlastError(null);
       try {
         // Impact IDs alone cannot populate a canvas that was loaded for a
@@ -2798,6 +2819,14 @@ function GraphPageInner() {
     [selectedScanId],
   );
 
+  const retryGraph = () => {
+    if (investigationMode) {
+      void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel });
+    } else {
+      setGraphRetry((value) => value + 1);
+    }
+  };
+
   // No numbered pagination — the full current-scan graph loads at once (see the
   // fetch effect). Two independent cuts can still make that partial: the render
   // budget (surfaces as `pagination.has_more`) and the API's load-time node
@@ -2819,6 +2848,7 @@ function GraphPageInner() {
     return (
       <div className="flex flex-col items-center justify-center h-[80vh] text-ink-secondary gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
+        <button type="button" className="graph-chip" onClick={() => setSnapshotRetry((value) => value + 1)}>Retry loading snapshots</button>
         {rateLimited ? (
           <>
             <p className="text-sm">Graph temporarily rate-limited</p>
@@ -3811,21 +3841,29 @@ function GraphPageInner() {
             <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
               <span>{scenarioContextIds ? `Changes and neighbors · ${displayNodes.length} of ${aggregated.nodes.length} nodes` : graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>
               {selectedScenarioId && !attackPathLens && !selectedAttackPath && !investigationMode && <button type="button" onClick={() => setExpandedScenarioId(scenarioExpanded ? null : selectedScenarioId)} className="text-foreground underline underline-offset-4">{scenarioExpanded ? "Focus changes" : "Show full graph"}</button>}
+              {showMiniMap && <button type="button" aria-pressed={minimapExpanded} onClick={() => setMinimapExpanded((value) => !value)} className="text-foreground underline underline-offset-4">{minimapExpanded ? "Hide minimap" : "Show minimap"}</button>}
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
               {selectedNodeId && <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4">Focus selection</button>}
             </div>
           )}
           <div className="relative min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
-          {loadingGraph || loadingBlast ? (
+          {graphPanelError && graphData && !loadingGraph && (
+            <div role="status" className="flex items-center justify-between gap-3 border-b border-outline px-4 py-2 text-sm">
+              <span>Refresh failed. Showing the last loaded graph for this scope.</span>
+              <button type="button" className="graph-chip" onClick={retryGraph}>Retry graph</button>
+            </div>
+          )}
+          {(loadingGraph && !graphData) || loadingBlast ? (
             <GraphPanelSkeleton
               title="Loading graph window"
               detail={`Fetching the selected snapshot with the ${graphScopeLabelForFilters(filters).toLowerCase()} scope and active layer filters.`}
             />
-          ) : graphPanelError ? (
+          ) : graphPanelError && !graphData ? (
             <GraphEmptyState
               title={graphPanelError.title}
               detail={graphPanelError.detail}
               suggestions={graphPanelError.suggestions}
+              actions={[{ label: "Retry graph", onClick: retryGraph }, { label: "Return to summary", onClick: returnToSummary }]}
             />
           ) : rollupCanvasPending ? (
             <GraphPanelSkeleton
@@ -3925,7 +3963,7 @@ function GraphPageInner() {
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
               <Controls className={CONTROLS_CLASS} />
-              {showMiniMap && (canvasLens !== "estate" || graphViewport.zoom >= 1) && (
+              {minimapExpanded && showMiniMap && (canvasLens !== "estate" || graphViewport.zoom >= 1) && (
                 <MiniMap
                   style={narrowViewport ? { width: 96, height: 64 } : undefined}
                   nodeColor={minimapNodeColor}

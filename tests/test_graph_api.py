@@ -2450,7 +2450,8 @@ class TestGraphStoreBackendSelection:
         assert "_serialize_attack_path_queue" in compute_calls
         assert "_graph_rollup_payload" in compute_calls
 
-    def test_graph_route_returns_429_when_backpressure_opens(self, recording_graph_store, monkeypatch):
+    @pytest.mark.parametrize("route", ["/v1/graph", "/v1/graph/rollup"])
+    def test_graph_route_returns_429_when_backpressure_opens(self, recording_graph_store, monkeypatch, route):
         from agent_bom.backpressure import reset_backpressure_for_tests
 
         monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_GRAPH_P99_MS", "1")
@@ -2468,8 +2469,17 @@ class TestGraphStoreBackendSelection:
         client = TestClient(app)
 
         try:
-            response = client.get("/v1/graph")
+            # An admitted request must finish, even when its latency opens the
+            # breaker. The next request is rejected before calling the store.
+            response = client.get(route)
+            assert response.status_code == 200
+            from unittest.mock import Mock
+
+            blocked_read = Mock(side_effect=AssertionError("rejected request performed graph IO"))
+            monkeypatch.setattr(recording_graph_store, "latest_snapshot_id", blocked_read)
+            response = client.get(route)
             assert response.status_code == 429
+            blocked_read.assert_not_called()
             body = response.json()["detail"]
             assert body["path"] == "graph"
             assert body["reason"] == "p99_latency_threshold"

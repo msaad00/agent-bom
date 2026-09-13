@@ -3150,7 +3150,7 @@ async function main() {
       const top = await frameworks.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
       await scrollTo(dashboardPage, top - 100);
       for (const label of ["NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", "CIS Controls v8", "MITRE ATLAS"]) {
-        await frameworks.getByText(label, { exact: true }).waitFor({ state: "visible" });
+        await frameworks.getByText(label, { exact: false }).first().waitFor({ state: "visible" });
       }
     }, {
       expectedText: ["Compliance frameworks", "NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", "Risk mappings", "MITRE ATLAS"],

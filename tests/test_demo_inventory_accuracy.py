@@ -231,3 +231,18 @@ def test_typosquat_package_is_flagged() -> None:
 
     assert ("pypi", "reqeusts", "2.99.0") in _all_demo_packages(), "typosquat sample missing from demo inventory"
     assert check_typosquat("reqeusts", "pypi") == "requests"
+
+
+@pytest.mark.parametrize(
+    "version,affected",
+    [("0.8.0", False), ("0.8.1", True), ("0.27.2", True), ("0.28.0", False), ("1.0.0", True), ("1.4.0", True), ("1.6.0", False)],
+)
+def test_axios_demo_respects_both_published_patch_branches(tmp_path, version, affected):
+    conn = init_db(tmp_path / "demo.db")
+    seed_demo_advisories(conn)
+    seed_demo_advisories(conn)  # Refresh must preserve both affected ranges.
+    matches = [v for v in lookup_package(conn, "npm", "axios", version) if v.id == "CVE-2023-45857"]
+    assert bool(matches) is affected
+    if matches:
+        assert matches[0].severity == "medium"
+    conn.close()

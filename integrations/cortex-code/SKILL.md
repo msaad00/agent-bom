@@ -98,7 +98,7 @@ agent-bom proxy "npx @modelcontextprotocol/server-filesystem /workspace" --polic
 When a user asks to install a new MCP server or package:
 1. Run `agent-bom check <package> --ecosystem <ecosystem>`
 2. If vulnerabilities found, show severity and suggest fixed versions
-3. If clean, confirm safe to proceed
+3. If no vulnerabilities are reported, state the checked package version, data sources, and scan coverage. Do not describe the package as safe; missing findings do not prove absence of risk.
 
 ### Full security audit
 When a user asks for a security review:

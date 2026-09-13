@@ -72,10 +72,21 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
     DemoAdvisory(
         "npm",
         "axios",
-        "0",
+        "0.8.1",
+        "0.28.0",
+        "CVE-2023-45857",
+        "medium",
+        6.5,
+        "Axios can disclose the XSRF cookie token to another host through the X-XSRF-TOKEN request header",
+        cwe="CWE-352",
+    ),
+    DemoAdvisory(
+        "npm",
+        "axios",
+        "1.0.0",
         "1.6.0",
         "CVE-2023-45857",
-        "high",
+        "medium",
         6.5,
         "Axios can disclose the XSRF cookie token to another host through the X-XSRF-TOKEN request header",
         cwe="CWE-352",
@@ -229,9 +240,12 @@ def seed_demo_advisories(conn: sqlite3.Connection) -> None:
     for advisory in (*DEMO_ADVISORIES, *DEMO_CLEAN_COVERAGE_SENTINELS):
         conn.execute(
             """
-            INSERT OR REPLACE INTO vulns(
+            INSERT INTO vulns(
                 id, summary, severity, cvss_score, fixed_version, cwe_ids, source
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET summary=excluded.summary, severity=excluded.severity,
+                cvss_score=excluded.cvss_score, fixed_version=excluded.fixed_version,
+                cwe_ids=excluded.cwe_ids, source=excluded.source
             """,
             (
                 advisory.vuln_id,

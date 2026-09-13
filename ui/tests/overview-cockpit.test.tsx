@@ -216,11 +216,21 @@ describe("OverviewCockpit", () => {
       ],
     }} />);
     expect(screen.getByText(findingId)).not.toBeVisible();
-    expect(screen.getByRole("link", { name: /Finding.*requests.*data-pipeline/i })).toHaveAttribute("href", "/findings?severity=high");
+    expect(screen.getByRole("link", { name: /requests.*data-pipeline/i })).toHaveAttribute("href", "/findings?severity=high");
+    expect(screen.queryByText("Finding in")).not.toBeInTheDocument();
     expect(screen.queryByText(/exposes a credential/i)).not.toBeInTheDocument();
     await user.click(screen.getByText("Technical details"));
     expect(screen.getByText(findingId)).toBeVisible();
     expect(screen.getByText("SERVICE_KEY")).toBeVisible();
+  });
+
+  it.each(["CVE-2020-14343", "GHSA-8q59-q68h-6hv4", "DEMO-VULN-21441"])("identifies the package and %s without generic finding titles", (advisory) => {
+    render(<OverviewCockpit {...baseProps} topPath={{
+      key: advisory, href: "/findings", riskScore: 9,
+      nodes: [{ type: "cve", label: advisory, severity: "high" }, { type: "package", label: "requests@2.0.0" }],
+    }} />);
+    const risks = screen.getByRole("region", { name: "Top risks" });
+    expect(within(risks).getByRole("link", { name: new RegExp(`requests@2.0.0 · ${advisory}`) })).toBeVisible();
   });
 
   it("renders a single exec overview without altitude lenses or next-steps farm", () => {

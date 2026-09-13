@@ -807,7 +807,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
   const pkg = path.nodes.find((node) => node.type === "package");
   const workload = path.nodes.find((node) => node.type === "agent") ?? path.nodes.find((node) => node.type === "server");
   const sbomSource = workload ? sbomSourceName(workload.label) : null;
-  const findingLabel = finding && /^(CVE-\d{4}-\d+|GHSA-[\w-]+)$/i.test(finding.label) ? finding.label : "Finding";
+  const findingLabel = finding && /^(CVE-\d{4}-\d+|GHSA-[\w-]+|DEMO-VULN-[\w-]+)$/i.test(finding.label) ? finding.label : null;
   const severity = finding?.severity?.toLowerCase();
   const knownSeverity = severity && ["critical", "high", "medium", "low"].includes(severity) ? severity : null;
 
@@ -824,7 +824,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
           <div className="grid min-w-0 flex-1 gap-x-4 @min-[42rem]:grid-cols-[minmax(0,1fr)_auto]">
             <p className="text-base font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
-              <span>{findingLabel}</span>{pkg ? <> in <span>{pkg.label}</span></> : null}
+              <span>{pkg?.label || findingLabel || "Unidentified risk"}</span>{pkg && findingLabel ? <> · <span>{findingLabel}</span></> : null}
             </p>
             <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere] @min-[42rem]:col-start-1">
               {sbomSource ? `SBOM source: ${sbomSource}` : workload ? `Affected workload: ${workload.label}` : "Workload not identified"}

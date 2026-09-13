@@ -3146,7 +3146,7 @@ async function main() {
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       await scrollTo(dashboardPage, 720);
     }, {
-      expectedText: ["Top risks", "Recent scans", "Activity", "Finding in next", "developer-copilot"],
+      expectedText: ["Top risks", "Recent scans", "Activity", "next · DEMO-VULN-21441", "developer-copilot"],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
     });
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {

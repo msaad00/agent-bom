@@ -450,13 +450,12 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
 
         norm_name = normalize_package_name(pkg_name, ecosystem)
 
-        if not aff.get("ranges") and aff.get("versions"):
-            # A block can state its affected releases as a bare ``versions``
-            # list with no range at all. Walking only ``ranges`` produced no row
-            # for it, so the advisory landed in the DB with nothing to match
-            # against and was invisible to every local-DB scan. Persist each
-            # listed version as its own exact pin so the row can never widen
-            # beyond the release the advisory actually named.
+        if aff.get("versions"):
+            # OSV defines the affected set as the union of versions and ranges.
+            # GIT bounds cannot place a package release; even a usable ECOSYSTEM
+            # range may describe only a later reintroduction window. Preserve
+            # explicit releases as exact pins in both cases without widening
+            # either the pins or the independently evaluated ranges.
             for version in aff["versions"]:
                 if not isinstance(version, str) or not version.strip():
                     continue
@@ -470,7 +469,6 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
                         "last_affected": version.strip(),
                     }
                 )
-            continue
 
         for rng in aff.get("ranges", []):
             # OSV encodes per-branch fixes as alternating introduced/fixed

@@ -81,3 +81,33 @@ def test_transport_error_is_unknown_and_secret_free(monkeypatch, caplog):
     validator = validation.CredentialValidator()
     assert validator.validate("GitHub Token", token()) == "unknown"
     assert token() not in caplog.text
+
+
+def test_response_body_is_never_read(monkeypatch):
+    class UnreadableBody(httpx.SyncByteStream):
+        def __iter__(self):
+            raise AssertionError("Provider account data must not be read")
+            yield b""  # pragma: no cover
+
+    transport(monkeypatch, lambda request: httpx.Response(200, stream=UnreadableBody()))
+    assert validation.CredentialValidator().validate("GitHub Token", token()) == "valid"
+
+
+@pytest.mark.parametrize("status", [403, 429, 503])
+def test_provider_circuit_stops_additional_checks_but_not_other_provider(monkeypatch, status):
+    requests = []
+    transport(monkeypatch, lambda request: requests.append(request) or httpx.Response(status))
+    validator = validation.CredentialValidator()
+    assert validator.validate("GitHub Token", token()) == "unknown"
+    assert validator.validate("GitHub Token", token(suffix="B")) == "unknown"
+    assert len(requests) == 1
+    assert validator.validate("Stripe Key", token("sk_test_")) == "unknown"
+    assert len(requests) == 2
+
+
+def test_validator_instances_do_not_share_credential_state(monkeypatch):
+    requests = []
+    transport(monkeypatch, lambda request: requests.append(request) or httpx.Response(200))
+    for _ in range(2):
+        assert validation.CredentialValidator().validate("GitHub Token", token()) == "valid"
+    assert len(requests) == 2

@@ -84,6 +84,12 @@ describe("buildExposurePathView", () => {
 });
 
 describe("buildTopRiskExposurePath", () => {
+  it("uses the current overview impact without joining historical scans", () => {
+    const view = buildTopRiskExposurePath(makeTopRisk({ impact_category: "availability", fixed_version: "2.31.0" }));
+    expect(view.impactCategory).toBe("availability");
+    expect(view.fixedVersion).toBe("2.31.0");
+    expect(buildTopRiskExposurePath(makeTopRisk()).impactCategory).toBeUndefined();
+  });
   it("maps an OverviewTopRisk into a CVE→package→agent chain (#4063)", () => {
     const view = buildTopRiskExposurePath(makeTopRisk(), 0);
     expect(view.riskScore).toBe(9.4);

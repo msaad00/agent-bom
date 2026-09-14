@@ -1465,3 +1465,25 @@ def test_overview_disciplines_exclude_resolved_hub_findings() -> None:
     lane = next(row for row in overview["coverage"] if row["domain"] == "aispm")
     assert lane["count"] == overview["headline"]["critical"] == 0
     assert lane["evidence_status"] == "complete"
+
+
+def test_overview_preserves_impact_and_fix_from_its_authoritative_finding():
+    from agent_bom.api.routes.overview import _finding_top_risk, _rollup_from_blast_radius
+
+    evidence = {
+        "cve_id": "CVE-2023-36258",
+        "vulnerability_id": "CVE-2023-36258",
+        "severity": "critical",
+        "impact_category": "code-execution",
+        "fixed_version": "0.0.247",
+        "affected_agents": ["claims-assistant", "support-assistant"],
+        "affected_servers": ["reasoning-service"],
+    }
+    for projected in [_finding_top_risk(evidence), _rollup_from_blast_radius([evidence])["top_risks"][0]]:
+        assert projected["impact_category"] == "code-execution"
+        assert projected["fixed_version"] == "0.0.247"
+        assert projected["affected_agents"] == evidence["affected_agents"]
+        assert projected["affected_servers"] == ["reasoning-service"]
+    # No severity- or CVE-based fallback may invent an effect or a fix.
+    assert _finding_top_risk({"severity": "critical"})["impact_category"] is None
+    assert _finding_top_risk({"severity": "critical"})["fixed_version"] is None

@@ -363,6 +363,8 @@ export function buildTopRiskExposurePath(
         + `::package:${encodeURIComponent(risk.package ?? "")}::agents:${encodeURIComponent(occurrenceNames(risk.affected_agents))}::servers:${encodeURIComponent(occurrenceNames(risk.affected_servers))}` : ""),
     nodes,
     riskScore: risk.risk_score ?? 0,
+    ...(risk.impact_category ? { impactCategory: risk.impact_category } : {}),
+    ...(risk.fixed_version ? { fixedVersion: risk.fixed_version } : {}),
     affectedWorkloads: risk.affected_agents ?? [],
     affectedServices: risk.affected_servers ?? [],
     href,

@@ -32,10 +32,24 @@ credential validation, and improves the path from findings to investigation.
 - Accept bounded compressed report uploads, reconcile package versions without
   merging ambiguous findings, and evolve the additive Parquet/Iceberg schema
   while preserving existing field identifiers and rows.
-- Lead Overview with posture and actionable risks; improve section separation,
-  text contrast, focused-path explanations, and proposed-change graph framing.
-- Identify top risks by affected package and advisory instead of generic finding
-  titles; give framework mappings and coverage a separate README view.
+- Keep the full posture Overview first and Top risks in a second tab. Lead risk
+  summaries with affected workloads and conditional impact, with package,
+  advisory, and path details available on expansion.
+- Admit graph requests before expensive reads, preserve the canvas during
+  background refresh failures, and restore bounded drill-in, direction/depth
+  controls, relationship navigation, and actionable empty states.
+- Reduce concurrent SQLite roll-up latency with batched topology reads while
+  retaining complete counts, tenant scope, and consistent snapshots. Attack-path
+  investigations continue to load full evidence.
+- Preserve OSV enumerated affected versions alongside ranges, including mixed
+  GIT and ecosystem advisories such as Pillow's CVE-2022-45199. Existing local
+  databases need an OSV refresh after upgrading: `agent-bom db update --source
+  osv --osv-ecosystem PyPI` (repeat for other ecosystems in use).
+- Paginate asset inventory and organize Identity and Audit tasks into tabs;
+  simplify Fleet and Connections, remove displayed identity token prefixes,
+  and distinguish evaluated controls, risk mappings, and unavailable checks.
+- Use published package versions and real advisories in clearly simulated demo
+  scenarios; refresh Overview and framework screenshots to match the application.
 - Preserve repository inventory as code assets in graphs and retain durable
   report-export work across replica recovery.
 

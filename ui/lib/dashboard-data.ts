@@ -307,6 +307,10 @@ export function buildExposurePathView(
       + `::package:${encodeURIComponent(blast.package ?? "")}::agents:${encodeURIComponent(occurrenceNames(agents))}::servers:${encodeURIComponent(occurrenceNames(blast.affected_servers))}`,
     nodes,
     riskScore: blast.risk_score ?? blast.blast_score / 10,
+    ...(blast.impact_category ? { impactCategory: blast.impact_category } : {}),
+    affectedWorkloads: agents,
+    affectedServices: blast.affected_servers ?? [],
+    ...(blast.fixed_version ? { fixedVersion: blast.fixed_version } : {}),
     href: buildSecurityGraphHref({
       scanId,
       cve: blast.vulnerability_id,
@@ -345,6 +349,7 @@ export function buildTopRiskExposurePath(
   if (risk.package) nodes.push({ type: "package", label: risk.package });
   const agent = risk.affected_agents?.[0];
   if (agent) nodes.push({ type: "agent", label: agent });
+  else if (risk.affected_servers?.[0]) nodes.push({ type: "server", label: risk.affected_servers[0] });
 
   const href = CVE_ID_PATTERN.test(risk.vulnerability_id)
     ? buildFindingsHref({ cve: risk.vulnerability_id })
@@ -358,6 +363,8 @@ export function buildTopRiskExposurePath(
         + `::package:${encodeURIComponent(risk.package ?? "")}::agents:${encodeURIComponent(occurrenceNames(risk.affected_agents))}::servers:${encodeURIComponent(occurrenceNames(risk.affected_servers))}` : ""),
     nodes,
     riskScore: risk.risk_score ?? 0,
+    affectedWorkloads: risk.affected_agents ?? [],
+    affectedServices: risk.affected_servers ?? [],
     href,
   };
 }

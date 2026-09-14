@@ -36,13 +36,8 @@ from agent_bom.scan_contract import ScanConfig
 # - semver@7.5.2: paired with vulnerable axios@1.4.0 in the demo to show
 #   that not every dependency is on fire.
 #
-# Intentional malicious/typosquat sample (flagged by the typosquat heuristic,
-# not by a CVE advisory — so it correctly resolves to no advisory row):
-# - reqeusts@2.99.0: typosquat of "requests"; demonstrates the
-#   malicious-package differentiator. See test_typosquat_package_is_flagged.
 NO_KNOWN_VULNS_ALLOWLIST: set[tuple[str, str, str]] = {
     ("npm", "semver", "7.5.2"),
-    ("pypi", "reqeusts", "2.99.0"),
 }
 
 
@@ -225,12 +220,24 @@ def test_demo_inventory_has_at_least_two_criticals() -> None:
     assert len(criticals) >= 2, f"expected >=2 critical advisories on demo packages, got {criticals}"
 
 
-def test_typosquat_package_is_flagged() -> None:
-    """The intentional typosquat sample must trip the malicious-package heuristic."""
-    from agent_bom.malicious import check_typosquat
+def test_demo_etl_uses_a_published_requests_release() -> None:
+    """Published demos use real package releases rather than invented malware IDs."""
+    assert ("pypi", "requests", "2.28.0") in _all_demo_packages()
+    assert not any(name == "reqeusts" for _, name, _ in _all_demo_packages())
 
-    assert ("pypi", "reqeusts", "2.99.0") in _all_demo_packages(), "typosquat sample missing from demo inventory"
-    assert check_typosquat("reqeusts", "pypi") == "requests"
+
+def test_enterprise_demo_pins_explicit_affected_releases():
+    from packaging.version import Version
+
+    from agent_bom.demo_advisories import DEMO_ADVISORIES
+    from agent_bom.demo_estate.enterprise_risk import vulnerable_version_for
+
+    for advisory in DEMO_ADVISORIES:
+        assert advisory.sample_version
+        sample = vulnerable_version_for(advisory)
+        assert Version(advisory.introduced) <= Version(sample) < Version(advisory.fixed)
+    certifi = next(row for row in DEMO_ADVISORIES if row.package == "certifi")
+    assert vulnerable_version_for(certifi) == "2023.5.7"  # 2023.7.21 was never released.
 
 
 @pytest.mark.parametrize(

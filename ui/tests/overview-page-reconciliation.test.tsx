@@ -352,7 +352,7 @@ describe("Overview canonical finding counts", () => {
     expect(screen.getByText("Overview refresh unavailable. Showing the last loaded snapshot.")).toHaveAttribute("role", "status");
     expect(screen.getByRole("link", { name: /^Critical 3/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
-    expect(screen.getByRole("link", { name: /requests · CVE-2025-1234/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: /Affected workload not identified/ })).toBeVisible();
     expect(screen.queryByText("Prioritized findings unavailable.")).not.toBeInTheDocument();
     expect(screen.queryByText("Loading prioritized findings…")).not.toBeInTheDocument();
     expect(screen.queryByText("private upstream details")).not.toBeInTheDocument();

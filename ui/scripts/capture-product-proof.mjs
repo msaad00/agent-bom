@@ -36,6 +36,13 @@ const REFERENCE_LAB_DIGEST_PATH = path.join(
   "generated",
   "correlation-proof.sha256",
 );
+const galleryAdvisories = JSON.parse(await fs.readFile(path.join(UI_ROOT, "fixtures/gallery-advisories.json"), "utf8")).advisories;
+const advisoryById = new Map(galleryAdvisories.map((item) => [item.id, item]));
+function advisory(id) {
+  const item = advisoryById.get(id);
+  if (!item) throw new Error(`Gallery advisory is not verified: ${id}`);
+  return item;
+}
 const overviewProof = JSON.parse(gunzipSync(await fs.readFile(path.join(UI_ROOT, "fixtures/overview-proof.json.gz"))).toString());
 const UI_PACKAGE = JSON.parse(await fs.readFile(path.join(UI_ROOT, "package.json"), "utf8"));
 const RELEASE_VERSION = UI_PACKAGE.version;
@@ -214,13 +221,13 @@ function buildGraph() {
     node("cred:github", "credential", "DEMO_CRED_REF", "critical", 9.1, { safe_to_store: false }),
     node("cred:snowflake", "credential", "SNOWFLAKE_PROD_KEY", "critical", 9.3, { safe_to_store: false }),
     node("cred:aws", "credential", "AWS_ROLE_SESSION", "high", 8.1, { safe_to_store: false }),
-    node("pkg:next", "package", "next@16.2.6", "critical", 9.2, { ecosystem: "npm", version: "16.2.6" }),
-    node("pkg:urllib3", "package", "urllib3@2.4.0", "high", 8.5, { ecosystem: "pypi", version: "2.4.0" }),
-    node("pkg:protobuf", "package", "protobuf@6.33.2", "high", 8.0, { ecosystem: "pypi", version: "6.33.2" }),
+    node("pkg:next", "package", "next@15.2.2", "critical", 9.2, { ecosystem: "npm", version: "15.2.2" }),
+    node("pkg:urllib3", "package", "urllib3@2.2.1", "high", 8.5, { ecosystem: "pypi", version: "2.2.1" }),
+    node("pkg:protobuf", "package", "protobuf@6.31.0", "high", 8.0, { ecosystem: "pypi", version: "6.31.0" }),
     node("pkg:langchain", "package", "langchain@0.3.21", "medium", 5.8, { ecosystem: "pypi", version: "0.3.21" }),
-    node("cve:next", "vulnerability", "DEMO-VULN-21441", "critical", 9.8, { cvss_score: 9.8, fixed_version: "16.2.7" }),
-    node("cve:urllib3", "vulnerability", "DEMO-VULN-32597", "high", 8.8, { cvss_score: 8.8 }),
-    node("cve:protobuf", "vulnerability", "DEMO-VULN-0994", "high", 8.1, { cvss_score: 8.1 }),
+    node("cve:next", "vulnerability", "CVE-2025-29927", advisory("CVE-2025-29927").severity, advisory("CVE-2025-29927").cvss_score, { ...advisory("CVE-2025-29927"), simulated: true }),
+    node("cve:urllib3", "vulnerability", "CVE-2024-37891", advisory("CVE-2024-37891").severity, advisory("CVE-2024-37891").cvss_score, { ...advisory("CVE-2024-37891"), simulated: true }),
+    node("cve:protobuf", "vulnerability", "CVE-2025-4565", advisory("CVE-2025-4565").severity, advisory("CVE-2025-4565").cvss_score, { ...advisory("CVE-2025-4565"), simulated: true }),
     node("dataset:finance-docs", "dataset", "finance-board-rag-index", "high", 8.0, { data_classification: "confidential" }),
     node("model:gpt-prod", "model", "prod-reasoning-model", "medium", 4.8, { provider: "customer-managed" }),
   ];
@@ -299,7 +306,7 @@ function buildGraph() {
       summary: "JIT reviewer identity can reach a critical Next.js exposure through developer-copilot and GitHub MCP.",
       credential_exposure: ["DEMO_CRED_REF"],
       tool_exposure: ["create_pull_request"],
-      vuln_ids: ["DEMO-VULN-21441"],
+      vuln_ids: ["CVE-2025-29927"],
     },
     {
       source: "agent:sre-runbook",
@@ -310,7 +317,7 @@ function buildGraph() {
       summary: "SRE runbook agent reaches filesystem MCP command tooling through vulnerable urllib3.",
       credential_exposure: ["AWS_ROLE_SESSION"],
       tool_exposure: ["execute_command"],
-      vuln_ids: ["DEMO-VULN-32597"],
+      vuln_ids: ["CVE-2024-37891"],
     },
     {
       source: "agent:finance-rag",
@@ -321,7 +328,7 @@ function buildGraph() {
       summary: "Finance RAG agent can query confidential board material through Snowflake MCP and a production key reference.",
       credential_exposure: ["SNOWFLAKE_PROD_KEY"],
       tool_exposure: ["run_sql"],
-      vuln_ids: ["DEMO-VULN-0994"],
+      vuln_ids: ["CVE-2025-4565"],
     },
   ];
 
@@ -469,8 +476,8 @@ function contextGraph() {
     { id: "tool:repo-write", kind: "tool", label: "create_pull_request", metadata: { severity: "high" } },
     { id: "tool:exec", kind: "tool", label: "execute_command", metadata: { severity: "critical" } },
     { id: "tool:query", kind: "tool", label: "run_sql", metadata: { severity: "high" } },
-    { id: "cve:next", kind: "vulnerability", label: "DEMO-VULN-21441", metadata: { severity: "critical", cvss_score: 9.8 } },
-    { id: "cve:urllib3", kind: "vulnerability", label: "DEMO-VULN-32597", metadata: { severity: "high", cvss_score: 8.8 } },
+    { id: "cve:next", kind: "vulnerability", label: "CVE-2025-29927", metadata: { severity: "critical", cvss_score: 9.8 } },
+    { id: "cve:urllib3", kind: "vulnerability", label: "CVE-2024-37891", metadata: { severity: "high", cvss_score: 8.8 } },
   ];
   const edges = [
     { source: "iam:jit-review", target: "agent:developer-copilot", kind: "member_of", relationship: "member_of", weight: 1, metadata: {} },
@@ -501,7 +508,7 @@ function contextGraph() {
         summary: "developer-copilot reaches GitHub MCP, a repo-write tool, a credential reference, and a critical CVE in one bounded path.",
         credential_exposure: ["DEMO_CRED_REF"],
         tool_exposure: ["create_pull_request"],
-        vuln_ids: ["DEMO-VULN-21441"],
+        vuln_ids: ["CVE-2025-29927"],
       },
       {
         source: "agent:developer-copilot",
@@ -512,7 +519,7 @@ function contextGraph() {
         summary: "Shared filesystem MCP creates a lateral path from IDE agent scope to SRE runbook automation.",
         credential_exposure: ["AWS_ROLE_SESSION"],
         tool_exposure: ["execute_command"],
-        vuln_ids: ["DEMO-VULN-32597"],
+        vuln_ids: ["CVE-2024-37891"],
       },
     ],
     interaction_risks: [
@@ -545,41 +552,38 @@ function contextGraph() {
   };
 }
 
-function vuln(id, severity, cvss, fixedVersion) {
+function vuln(id) {
+  const item = advisory(id);
   return {
-    id,
-    severity,
-    summary: `${id} reachable from an MCP-backed runtime path`,
-    description: `${id} is present in a package reachable from agent tooling.`,
-    references: [`urn:agent-bom:demo:${id}`],
-    advisory_sources: ["demo-fixture"],
-    cvss_score: cvss,
-    fixed_version: fixedVersion,
-    confidence: 0.98,
+    id, severity: item.severity, summary: item.summary,
+    description: `${item.summary}. Simulated exposure condition: ${item.precondition}`,
+    references: [item.reference], advisory_sources: ["github-advisory-database"],
+    cvss_score: item.cvss_score, cvss_vector: item.cvss_vector,
+    fixed_version: item.fixed_version,
   };
 }
 
 const DEMO_AGENT_SPECS = [
-  { name: "data-pipeline-agent", agent_type: "etl", owner: "data-platform", environment: "prod-analytics", server: "warehouse MCP", pkg: "pandas", version: "2.2.3", ecosystem: "pypi", cve: ["DEMO-VULN-44102", "high", 7.9, "2.2.4"] },
-  { name: "customer-support-bot", agent_type: "support", owner: "cx-ops", environment: "prod-support", server: "zendesk MCP", pkg: "requests", version: "2.32.3", ecosystem: "pypi", cve: ["DEMO-VULN-11880", "medium", 6.4, "2.32.4"] },
-  { name: "legal-review-agent", agent_type: "review", owner: "legal", environment: "prod-legal", server: "docusign MCP", pkg: "cryptography", version: "43.0.3", ecosystem: "pypi", cve: ["DEMO-VULN-55210", "high", 8.2, "44.0.1"] },
+  { name: "data-pipeline-agent", agent_type: "etl", owner: "data-platform", environment: "prod-analytics", server: "warehouse MCP", pkg: "pyyaml", version: "5.3", ecosystem: "pypi", cve: ["CVE-2020-14343"] },
+  { name: "customer-support-bot", agent_type: "support", owner: "cx-ops", environment: "prod-support", server: "zendesk MCP", pkg: "requests", version: "2.30.0", ecosystem: "pypi", cve: ["CVE-2023-32681"] },
+  { name: "legal-review-agent", agent_type: "review", owner: "legal", environment: "prod-legal", server: "docusign MCP", pkg: "cryptography", version: "41.0.7", ecosystem: "pypi", cve: ["CVE-2023-50782"] },
   { name: "hr-onboarding-agent", agent_type: "hr", owner: "people-ops", environment: "prod-hr", server: "workday MCP", pkg: "pillow", version: "11.1.0", ecosystem: "pypi", cve: null },
-  { name: "marketing-copilot", agent_type: "marketing", owner: "growth", environment: "staging", server: "hubspot MCP", pkg: "react", version: "19.0.0", ecosystem: "npm", cve: ["DEMO-VULN-33011", "high", 8.0, "19.0.1"] },
-  { name: "incident-commander", agent_type: "runbook", owner: "sre", environment: "prod-ai-control-plane", server: "pagerduty MCP", pkg: "aiohttp", version: "3.11.12", ecosystem: "pypi", cve: ["DEMO-VULN-77881", "critical", 9.1, "3.11.14"] },
-  { name: "platform-ops-agent", agent_type: "ops", owner: "platform", environment: "prod-ai-control-plane", server: "kubernetes MCP", pkg: "kubernetes", version: "32.0.0", ecosystem: "pypi", cve: ["DEMO-VULN-90221", "high", 7.6, "32.0.2"] },
-  { name: "ml-training-agent", agent_type: "ml", owner: "ml-platform", environment: "prod-ml", server: "wandb MCP", pkg: "torch", version: "2.6.0", ecosystem: "pypi", cve: ["DEMO-VULN-66110", "high", 8.4, "2.6.1"] },
+  { name: "marketing-copilot", agent_type: "marketing", owner: "growth", environment: "staging", server: "hubspot MCP", pkg: "axios", version: "1.4.0", ecosystem: "npm", cve: ["CVE-2023-45857"] },
+  { name: "incident-commander", agent_type: "runbook", owner: "sre", environment: "prod-ai-control-plane", server: "pagerduty MCP", pkg: "aiohttp", version: "3.9.1", ecosystem: "pypi", cve: ["CVE-2024-23334"] },
+  { name: "platform-ops-agent", agent_type: "ops", owner: "platform", environment: "prod-ai-control-plane", server: "kubernetes MCP", pkg: "urllib3", version: "2.0.5", ecosystem: "pypi", cve: ["CVE-2023-43804"] },
+  { name: "ml-training-agent", agent_type: "ml", owner: "ml-platform", environment: "prod-ml", server: "wandb MCP", pkg: "torch", version: "2.5.1", ecosystem: "pypi", cve: ["CVE-2025-32434"] },
   { name: "code-review-bot", agent_type: "ide", owner: "engineering", environment: "prod-ai-control-plane", server: "gitlab MCP", pkg: "eslint", version: "9.21.0", ecosystem: "npm", cve: null },
-  { name: "compliance-auditor", agent_type: "audit", owner: "grc", environment: "prod-grc", server: "grc MCP", pkg: "pydantic", version: "2.10.6", ecosystem: "pypi", cve: ["DEMO-VULN-22001", "medium", 5.9, "2.10.7"] },
-  { name: "vendor-risk-agent", agent_type: "risk", owner: "security", environment: "staging", server: "vendor MCP", pkg: "starlette", version: "0.45.3", ecosystem: "pypi", cve: ["DEMO-VULN-44190", "high", 7.8, "0.46.0"] },
-  { name: "research-assistant", agent_type: "rag", owner: "research", environment: "staging", server: "arxiv MCP", pkg: "transformers", version: "4.49.0", ecosystem: "pypi", cve: ["DEMO-VULN-99120", "medium", 6.1, "4.49.2"] },
+  { name: "compliance-auditor", agent_type: "audit", owner: "grc", environment: "prod-grc", server: "grc MCP", pkg: "idna", version: "3.6", ecosystem: "pypi", cve: ["CVE-2024-3651"] },
+  { name: "vendor-risk-agent", agent_type: "risk", owner: "security", environment: "staging", server: "vendor MCP", pkg: "starlette", version: "0.39.2", ecosystem: "pypi", cve: ["CVE-2024-47874"] },
+  { name: "research-assistant", agent_type: "rag", owner: "research", environment: "staging", server: "arxiv MCP", pkg: "pillow", version: "9.2.0", ecosystem: "pypi", cve: ["CVE-2022-45199"] },
   { name: "sales-enablement-bot", agent_type: "sales", owner: "revenue", environment: "prod-sales", server: "salesforce MCP", pkg: "simple-salesforce", version: "1.12.6", ecosystem: "pypi", cve: null },
-  { name: "devops-release-agent", agent_type: "release", owner: "devops", environment: "prod-ai-control-plane", server: "argocd MCP", pkg: "helm", version: "3.17.0", ecosystem: "pypi", cve: ["DEMO-VULN-55001", "high", 7.5, "3.17.1"] },
-  { name: "shadow-copilot", agent_type: "shadow", owner: "unknown", environment: "unmanaged", server: "openai MCP", pkg: "openai", version: "1.66.3", ecosystem: "pypi", cve: ["DEMO-VULN-88001", "critical", 9.0, "1.66.5"] },
+  { name: "devops-release-agent", agent_type: "release", owner: "devops", environment: "prod-ai-control-plane", server: "argocd MCP", pkg: "jinja2", version: "3.1.4", ecosystem: "pypi", cve: ["CVE-2024-56326"] },
+  { name: "shadow-copilot", agent_type: "shadow", owner: "unknown", environment: "unmanaged", server: "openai MCP", pkg: "langchain", version: "0.0.150", ecosystem: "pypi", cve: ["CVE-2023-36258"] },
 ];
 
 function demoScanAgent(spec) {
   const vulnerabilities = spec.cve
-    ? [vuln(spec.cve[0], spec.cve[1], spec.cve[2], spec.cve[3])]
+    ? [vuln(spec.cve[0])]
     : [];
   return {
     name: spec.name,
@@ -612,7 +616,7 @@ function demoScanAgent(spec) {
 function buildBlastRadius() {
   const entries = [
     {
-      vulnerability_id: "DEMO-VULN-21441",
+      vulnerability_id: "CVE-2025-29927",
       severity: "critical",
       package: "next",
       ecosystem: "npm",
@@ -623,10 +627,10 @@ function buildBlastRadius() {
       blast_score: 98,
       risk_score: 9.8,
       cvss_score: 9.8,
-      fixed_version: "16.2.7",
+      fixed_version: "15.2.3",
     },
     {
-      vulnerability_id: "DEMO-VULN-32597",
+      vulnerability_id: "CVE-2024-37891",
       severity: "high",
       package: "urllib3",
       ecosystem: "pypi",
@@ -637,10 +641,10 @@ function buildBlastRadius() {
       blast_score: 89,
       risk_score: 8.9,
       cvss_score: 8.8,
-      fixed_version: "2.5.1",
+      fixed_version: "2.2.2",
     },
     {
-      vulnerability_id: "DEMO-VULN-0994",
+      vulnerability_id: "CVE-2025-4565",
       severity: "high",
       package: "protobuf",
       ecosystem: "pypi",
@@ -651,10 +655,10 @@ function buildBlastRadius() {
       blast_score: 81,
       risk_score: 8.1,
       cvss_score: 8.1,
-      fixed_version: "6.33.4",
+      fixed_version: "6.31.1",
     },
     {
-      vulnerability_id: "DEMO-VULN-77881",
+      vulnerability_id: "CVE-2024-23334",
       severity: "critical",
       package: "aiohttp",
       ecosystem: "pypi",
@@ -668,7 +672,7 @@ function buildBlastRadius() {
       fixed_version: "3.11.14",
     },
     {
-      vulnerability_id: "DEMO-VULN-88001",
+      vulnerability_id: "CVE-2023-36258",
       severity: "critical",
       package: "openai",
       ecosystem: "pypi",
@@ -685,7 +689,8 @@ function buildBlastRadius() {
   const seenIds = new Set(entries.map((item) => item.vulnerability_id));
   for (const spec of DEMO_AGENT_SPECS) {
     if (!spec.cve) continue;
-    const [id, severity, cvss, , fixedVersion] = spec.cve;
+    const [id] = spec.cve;
+    const { severity, cvss_score: cvss, fixed_version: fixedVersion } = advisory(id);
     if (seenIds.has(id)) continue;
     seenIds.add(id);
     entries.push({
@@ -703,7 +708,14 @@ function buildBlastRadius() {
       fixed_version: fixedVersion,
     });
   }
-  return entries;
+  return entries.map((item) => {
+    const facts = advisory(item.vulnerability_id);
+    return { ...item, package: `${facts.package}@${facts.version}`, ecosystem: facts.ecosystem,
+      severity: facts.severity, cvss_score: facts.cvss_score, cvss_vector: facts.cvss_vector,
+      fixed_version: facts.fixed_version, impact_category: facts.impact_category,
+      ...(["availability", "client-side"].includes(facts.impact_category) ? { exposed_credentials: [], reachable_tools: [] } : {}),
+      attack_vector_summary: `Simulated exposure condition: ${facts.precondition}` };
+  });
 }
 
 function buildFindings() {
@@ -715,16 +727,16 @@ function buildFindings() {
     severity: item.severity,
     effective_severity: item.severity,
     title: `Reachable ${item.severity} package on ${item.affected_servers?.[0] ?? "MCP path"}`,
-    description: `${item.vulnerability_id} is reachable from ${item.affected_agents.join(", ")} through simulated MCP tooling.`,
+    description: `${advisory(item.vulnerability_id).summary}. ${item.attack_vector_summary}`,
     cve_id: item.vulnerability_id,
     cvss_score: item.cvss_score,
-    cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    cvss_vector: item.cvss_vector,
     attack_vector: "network",
     fixed_version: item.fixed_version,
-    remediation_guidance: `Upgrade ${item.package} to ${item.fixed_version} and rerun the graph scan.`,
+    remediation_guidance: `Upgrade ${advisory(item.vulnerability_id).package} to ${item.fixed_version} or a later compatible patched release and rescan.`,
     compliance_tags: ["OWASP-LLM05", "ATLAS-AML.T0051"],
     risk_score: item.risk_score,
-    impact_category: item.severity === "critical" ? "RCE" : "Exposure",
+    impact_category: item.impact_category,
     affected_servers: item.affected_servers ?? [],
     affected_agents: item.affected_agents,
     exposed_credentials: item.exposed_credentials,
@@ -735,15 +747,17 @@ function buildFindings() {
 }
 
 function scanSummary(agentCount) {
+  const findings = buildBlastRadius();
+  const count = (severity) => findings.filter((item) => item.severity === severity).length;
   return {
     total_agents: agentCount,
     total_servers: 22,
     total_packages: 148,
-    total_vulnerabilities: 15,
-    critical_findings: 3,
-    high_findings: 9,
-    medium_findings: 3,
-    low_findings: 0,
+    total_vulnerabilities: findings.length,
+    critical_findings: count("critical"),
+    high_findings: count("high"),
+    medium_findings: count("medium"),
+    low_findings: count("low"),
   };
 }
 
@@ -766,10 +780,10 @@ function scanAgents() {
           packages: [
             {
               name: "next",
-              version: "16.2.6",
+              version: "15.2.2",
               ecosystem: "npm",
-              purl: "pkg:npm/next@16.2.6",
-              vulnerabilities: [vuln("DEMO-VULN-21441", "critical", 9.8, "16.2.7")],
+              purl: "pkg:npm/next@15.2.2",
+              vulnerabilities: [vuln("CVE-2025-29927")],
             },
           ],
         },
@@ -783,10 +797,10 @@ function scanAgents() {
           packages: [
             {
               name: "urllib3",
-              version: "2.4.0",
+              version: "2.2.1",
               ecosystem: "pypi",
-              purl: "pkg:pypi/urllib3@2.4.0",
-              vulnerabilities: [vuln("DEMO-VULN-32597", "high", 8.8, "2.5.1")],
+              purl: "pkg:pypi/urllib3@2.2.1",
+              vulnerabilities: [vuln("CVE-2024-37891")],
             },
           ],
         },
@@ -809,10 +823,10 @@ function scanAgents() {
           packages: [
             {
               name: "urllib3",
-              version: "2.4.0",
+              version: "2.2.1",
               ecosystem: "pypi",
-              purl: "pkg:pypi/urllib3@2.4.0",
-              vulnerabilities: [vuln("DEMO-VULN-32597", "high", 8.8, "2.5.1")],
+              purl: "pkg:pypi/urllib3@2.2.1",
+              vulnerabilities: [vuln("CVE-2024-37891")],
             },
           ],
         },
@@ -835,10 +849,10 @@ function scanAgents() {
           packages: [
             {
               name: "protobuf",
-              version: "6.33.2",
+              version: "6.31.0",
               ecosystem: "pypi",
-              purl: "pkg:pypi/protobuf@6.33.2",
-              vulnerabilities: [vuln("DEMO-VULN-0994", "high", 8.1, "6.33.4")],
+              purl: "pkg:pypi/protobuf@6.31.0",
+              vulnerabilities: [vuln("CVE-2025-4565")],
             },
             {
               name: "langchain",
@@ -861,16 +875,16 @@ function scanJob() {
     {
       package: "next",
       ecosystem: "npm",
-      current_version: "16.2.6",
-      fixed_version: "16.2.7",
+      current_version: "15.2.2",
+      fixed_version: "15.2.3",
       severity: "critical",
       impact_score: 9.8,
       priority: 1,
       action: "upgrade",
       reason: "Critical reachable package on the highest-risk repo-write MCP path.",
-      command: "npm install next@16.2.7",
+      command: "npm install next@15.2.3",
       verify_command: "agent-bom scan --fail-on-severity high",
-      vulnerabilities: ["DEMO-VULN-21441"],
+      vulnerabilities: ["CVE-2025-29927"],
       affected_agents: ["developer-copilot"],
       agents_pct: 33,
       exposed_credentials: ["DEMO_CRED_REF"],
@@ -879,22 +893,22 @@ function scanJob() {
       tools_pct: 25,
       owasp_tags: ["LLM05", "LLM06"],
       atlas_tags: ["AML.T0051"],
-      references: ["urn:agent-bom:demo:DEMO-VULN-21441"],
+      references: [advisory("CVE-2025-29927").reference],
       risk_narrative: "Patch the package first because the affected server exposes repo-write tooling and a credential reference.",
     },
     {
       package: "urllib3",
       ecosystem: "pypi",
-      current_version: "2.4.0",
-      fixed_version: "2.5.1",
-      severity: "high",
+      current_version: "2.2.1",
+      fixed_version: "2.2.2",
+      severity: advisory("CVE-2024-37891").severity,
       impact_score: 8.9,
       priority: 2,
       action: "upgrade",
-      reason: "Runbook agent reaches command tooling through the vulnerable dependency path.",
-      command: "python -m pip install urllib3==2.5.1",
+      reason: "A cross-origin redirect can disclose a manually supplied proxy authorization header.",
+      command: "python -m pip install urllib3==2.2.2",
       verify_command: "agent-bom scan --fail-on-severity high",
-      vulnerabilities: ["DEMO-VULN-32597"],
+      vulnerabilities: ["CVE-2024-37891"],
       affected_agents: ["sre-runbook-agent"],
       agents_pct: 33,
       exposed_credentials: ["AWS_ROLE_SESSION"],
@@ -903,8 +917,8 @@ function scanJob() {
       tools_pct: 25,
       owasp_tags: ["LLM06"],
       atlas_tags: ["AML.T0054"],
-      references: ["urn:agent-bom:demo:DEMO-VULN-32597"],
-      risk_narrative: "Prioritize after the highest-risk demo path because it reaches shell-class tooling.",
+      references: [advisory("CVE-2024-37891").reference],
+      risk_narrative: "Simulated proxy-header exposure; shell access is not established by this vulnerability.",
     },
   ];
   return {
@@ -937,10 +951,10 @@ function agentLifecycleFixture() {
     ["agent", "developer-copilot", 40, 220, {}],
     ["server", "github-enterprise MCP", 300, 100, {}],
     ["server", "filesystem MCP", 300, 340, {}],
-    ["package", "next", 570, 80, { version: "16.2.6", ecosystem: "npm" }],
+    ["package", "next", 570, 80, { version: "15.2.2", ecosystem: "npm" }],
     ["tool", "create_pull_request", 570, 220, {}],
     ["credential", "DEMO_CRED_REF", 570, 360, { description: "Reference only; no value" }],
-    ["cve", "DEMO-VULN-21441", 840, 80, { severity: "critical", fixed_version: "16.2.7" }],
+    ["cve", "CVE-2025-29927", 840, 80, { severity: "critical", fixed_version: "15.2.3" }],
   ].map(([nodeType, label, x, y, extra], index) => ({
     id: `lifecycle-${index + 1}`,
     type: "lifecycleNode",
@@ -1216,7 +1230,7 @@ function overviewResponse() {
     },
     top_risks: [
       {
-        vulnerability_id: "DEMO-VULN-21441",
+        vulnerability_id: "CVE-2025-29927",
         package: "next",
         severity: "critical",
         risk_score: 9.8,
@@ -1773,7 +1787,7 @@ async function installRoutes(page) {
       id: "campaign-demo-openssl",
       tenant_id: "default",
       title: "Upgrade openssl to 3.0.14",
-      finding_ids: ["DEMO-VULN-21441", "DEMO-VULN-32597"],
+      finding_ids: ["CVE-2025-29927", "CVE-2024-37891"],
       finding_count: 2,
       severity: "critical",
       priority_score: 9.2,
@@ -2754,6 +2768,14 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       scope: "Top risks tab from the offline synthetic enterprise estate",
     },
     {
+      path: "dashboard-risks-light-live.png", page: "/?capture=1",
+      scope: "Executive impact summaries with technical details collapsed", presentation: "light desktop",
+    },
+    {
+      path: "dashboard-risks-mobile-live.png", page: "/?capture=1",
+      scope: "Executive impact summaries at a 390 by 844 viewport", presentation: "dark mobile",
+    },
+    {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
       scope: "Expanded Overview synthetic control evaluations and risk mappings with assessment scope",
@@ -3160,17 +3182,27 @@ async function main() {
       expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
-    await capture(page, "/?capture=1", "dashboard-risks-live.png", async (dashboardPage) => {
-      await dashboardPage.getByRole("tab", { name: "Overview", exact: true }).waitFor({ state: "visible" });
-      if (await dashboardPage.getByRole("tab", { name: "Overview", exact: true }).getAttribute("aria-selected") !== "true") {
-        throw new Error("Overview must be the initial risk view");
-      }
+    const prepareExecutiveRisks = async (dashboardPage) => {
+      const overviewTab = dashboardPage.getByRole("tab", { name: "Overview", exact: true });
+      await overviewTab.waitFor({ state: "visible" });
+      if (await overviewTab.getAttribute("aria-selected") !== "true") throw new Error("Overview must be the initial risk view");
       await dashboardPage.getByRole("tab", { name: "Top risks", exact: true }).click();
-      await dashboardPage.getByRole("tabpanel", { name: "Top risks" }).waitFor({ state: "visible" });
-    }, {
-      expectedText: [/Review these findings first/i, /CVE-/],
-      expectedApiPaths: ["/v1/overview"],
-    });
+      const panel = dashboardPage.getByRole("tabpanel", { name: "Top risks" });
+      await panel.waitFor({ state: "visible" });
+      const row = panel.locator("article").first();
+      const cve = row.getByText(/^CVE-/).first();
+      if (await cve.isVisible() || await row.getByText("Path priority", { exact: true }).isVisible()) {
+        throw new Error("Executive risk rows must keep technical identifiers and scores in details");
+      }
+      await row.getByText("Technical details", { exact: true }).click();
+      await cve.waitFor({ state: "visible" });
+      await row.getByText("Technical details", { exact: true }).click();
+    };
+    const executiveRiskAssertions = {
+      expectedText: [/Review these findings first/i, /Affected workload:/i, /Could allow attacker-controlled code/i],
+      expectedApiPaths: ["/v1/overview"], assertNoHorizontalOverflow: true,
+    };
+    await capture(page, "/?capture=1", "dashboard-risks-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
       await frameworks.getByRole("button", { name: /Show all .* control frameworks/ }).click();
@@ -3215,7 +3247,7 @@ async function main() {
       await fitReactFlow(agentsPage);
       await scrollTo(agentsPage, 0);
     }, {
-      expectedText: ["Lifecycle Graph", "developer-copilot", "github-enterprise MCP", "create_pull_request", "DEMO-VULN-21441"],
+      expectedText: ["Lifecycle Graph", "developer-copilot", "github-enterprise MCP", "create_pull_request", "CVE-2025-29927"],
       rejectedText: [/Loading/i],
       expectedApiPaths: ["/v1/agents/developer-copilot/lifecycle"],
       minGraphNodes: 7,
@@ -3263,7 +3295,7 @@ async function main() {
         .getByTestId("selected-exposure-path")
         .waitFor({ state: "visible", timeout: 30_000 });
     }, {
-      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "CVE-2025-29927"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
@@ -3437,8 +3469,8 @@ async function main() {
           "Developer Copilot",
           "github-enterprise MCP",
           "next@",
-          "DEMO-VULN-21441",
-          "Upgrade next to 16.2.7",
+          "CVE-2025-29927",
+          "Upgrade next to 15.2.3",
           "Open remediation plan",
           "Snapshot freshness",
           "6/6 directed traversable relationships evidenced",
@@ -3565,18 +3597,18 @@ async function main() {
         state: "visible",
         timeout: 10_000,
       });
-      await findingsPage.getByRole("row").filter({ hasText: "DEMO-VULN-21441" }).first().waitFor({
+      await findingsPage.getByRole("row").filter({ hasText: "CVE-2025-29927" }).first().waitFor({
         state: "visible",
         timeout: 10_000,
       });
       await scrollTo(findingsPage, 0);
     }, {
-      expectedText: ["Findings", "15 findings", /Detection/i, /Observed/i, /Remediation/i, "DEMO-VULN-21441", "DEMO-VULN-77881"],
+      expectedText: ["Findings", "15 findings", /Detection/i, /Observed/i, /Remediation/i, "CVE-2025-29927", "CVE-2024-23334"],
       expectedApiPaths: ["/v1/findings", "/v1/findings/triage"],
       rejectedText: ["17 findings"],
     });
     await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
-      expectedText: ["Package remediation plan", "next", "16.2.7", "DEMO-VULN-21441", "Campaign workflow and verification"],
+      expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
       rejectedText: ["42.5% modeled window risk"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
     });
@@ -3586,6 +3618,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
+    await capture(lightPage, "/?capture=1", "dashboard-risks-light-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await lightPage.setViewportSize({ width: 1120, height: 900 });
     await capture(
       lightPage,
@@ -3609,12 +3642,12 @@ async function main() {
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
-      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "CVE-2025-29927"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
     await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {
-      expectedText: ["Package remediation plan", "next", "16.2.7", "DEMO-VULN-21441", "Campaign workflow and verification"],
+      expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
     });
@@ -3624,6 +3657,7 @@ async function main() {
       expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
+    await capture(mobilePage, "/?capture=1", "dashboard-risks-mobile-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await capture(
       mobilePage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
@@ -3650,14 +3684,14 @@ async function main() {
         .waitFor({ state: "visible", timeout: 30_000 });
       await scrollTo(securityGraphPage, 0);
     }, {
-      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedText: ["Investigation", "contractor-reviewer", "Developer Copilot", "CVE-2025-29927"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="exposure-path-sequence"]',
       rejectedText: [/Loading/i],
       assertNoHorizontalOverflow: true,
     });
     await capture(mobilePage, "/remediation?capture=1", "remediation-mobile-live.png", undefined, {
-      expectedText: ["Package remediation plan", "next", "16.2.7", "Campaign workflow and verification"],
+      expectedText: ["Package remediation plan", "next", "15.2.3", "Campaign workflow and verification"],
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
       assertNoHorizontalOverflow: true,
@@ -3673,7 +3707,25 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+function checkAdvisoryFixtures() {
+  for (const agent of scanAgents()) for (const server of agent.mcp_servers) for (const pkg of server.packages) {
+    for (const vuln of pkg.vulnerabilities) {
+      const facts = advisory(vuln.id);
+      if (pkg.name !== facts.package || pkg.version !== facts.version || pkg.ecosystem !== facts.ecosystem
+        || vuln.fixed_version !== facts.fixed_version || vuln.cvss_score !== facts.cvss_score) {
+        throw new Error(`Gallery package and advisory disagree: ${agent.name}/${vuln.id}`);
+      }
+    }
+  }
+  for (const finding of buildFindings()) {
+    const facts = advisory(finding.cve_id);
+    if (finding.severity !== facts.severity || finding.cvss_vector !== facts.cvss_vector || finding.impact_category !== facts.impact_category) {
+      throw new Error(`Gallery finding and advisory disagree: ${finding.cve_id}`);
+    }
+  }
+}
+checkAdvisoryFixtures();
+(process.argv.includes("--check-fixtures") ? Promise.resolve() : main()).catch((error) => {
   console.error(error);
   process.exit(1);
 });

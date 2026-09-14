@@ -60,26 +60,14 @@ def _seed(*parts: str) -> int:
 
 
 def vulnerable_version_for(advisory: DemoAdvisory) -> str:
-    """A version the advisory's own range says is affected.
+    """Return the explicit published release selected for this advisory.
 
-    The catalog records ``introduced="0"`` and a fixed version, so *any* release
-    below the fix is in range. Deriving one by stepping the fixed version's last
-    component down is therefore correct by construction — and does not require
-    asserting that some specific historical release existed, which is the kind
-    of detail a demo gets wrong and a reviewer notices.
+    Do not manufacture release numbers by decrementing a patch version:
+    projects can skip version numbers, especially calendar-versioned packages.
     """
-    parts = advisory.fixed.split(".")
-    for index in range(len(parts) - 1, -1, -1):
-        try:
-            value = int(parts[index])
-        except ValueError:
-            continue
-        if value > 0:
-            parts[index] = str(value - 1)
-            # Keep every component. Truncating turned ``9.0.0`` into ``8``,
-            # which is still in range but reads as a version nobody ships.
-            return ".".join(parts)
-    return advisory.fixed
+    if not advisory.sample_version:
+        raise ValueError(f"No published sample version configured for {advisory.vuln_id}")
+    return advisory.sample_version
 
 
 def advisory_catalog() -> tuple[tuple[str, str, str, DemoAdvisory], ...]:

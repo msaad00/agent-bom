@@ -13,7 +13,7 @@ describe("product proof capture contract", () => {
     expect(source.indexOf("await waitForOwnedServer(BASE_URL, server)")).toBeLessThan(source.indexOf("browser = await chromium.launch()"));
   });
 
-  it("uses the hash-pinned real-advisory lab only for correlation proof and keeps gallery fixtures fictional", () => {
+  it("uses published advisories in simulated gallery workloads and a hash-pinned correlation lab", () => {
     expect(source).toContain("REFERENCE_LAB_PROOF_PATH");
     expect(source).toContain("REFERENCE_LAB_DIGEST_PATH");
     expect(source).toContain("Reference evidence lab proof is stale");
@@ -21,7 +21,9 @@ describe("product proof capture contract", () => {
     expect(source).toContain("Reference evidence lab runtime proof is not bound to the completed correlation");
     expect(source).toContain("REFERENCE_LAB.source_artifacts");
     expect(source).toContain("CVE-2023-4863");
-    expect(source).toContain("DEMO-VULN-");
+    expect(source).not.toContain("DEMO-VULN-");
+    expect(source).toContain("gallery-advisories.json");
+    expect(source).toContain("checkAdvisoryFixtures();");
     expect(source).not.toContain('source: "nvd"');
     expect(source).not.toContain("is_kev: true");
     expect(source).not.toMatch(/\b(?:epss_score|is_kev|cisa_kev|kev)\s*:/);
@@ -162,7 +164,7 @@ describe("product proof capture contract", () => {
     expect(source).toContain('assertEdgeLabelsClearOfNodes: true');
     expect(source).toContain('/Focused attack path/i');
     expect(source).toContain('"6 evidence hops"');
-    expect(source).toContain('"Upgrade next to 16.2.7"');
+    expect(source).toContain('"Upgrade next to 15.2.3"');
     expect(source).toContain('"Open remediation plan"');
     expect(source).toContain('"Snapshot freshness"');
     expect(source).not.toContain('react-flow__controls-zoomout');
@@ -179,7 +181,7 @@ describe("product proof capture contract", () => {
   it("asserts the current canonical Findings vocabulary", () => {
     expect(source).toContain('expectedText: ["Findings", "15 findings", /Detection/i, /Observed/i, /Remediation/i');
     expect(source).toContain('getByRole("heading", { name: "Findings", exact: true })');
-    expect(source).toContain('getByRole("row").filter({ hasText: "DEMO-VULN-21441" })');
+    expect(source).toContain('getByRole("row").filter({ hasText: "CVE-2025-29927" })');
     expect(source).not.toContain('expectedText: ["Findings queue"');
   });
 

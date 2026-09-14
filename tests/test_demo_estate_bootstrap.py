@@ -295,10 +295,12 @@ def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: Test
     # Realistic, distinct agents render.
     assert {"Cursor IDE Agent", "LangChain Service Agent", "Support Copilot", "Data Pipeline Agent"} <= labels
 
-    # Malicious/typosquat package differentiator.
-    malicious = [n for n in nodes if n.get("attributes", {}).get("is_malicious")]
-    assert malicious, "expected a malicious/typosquat package node"
-    assert any("reqeusts" in (n.get("label") or "") for n in malicious)
+    # Configuration errors must not masquerade as CVEs or invented packages.
+    assert "CVE-2024-S3ACL" not in labels
+    assert not any("reqeusts" in (label or "") for label in labels)
+    public_bucket = next(n for n in nodes if n.get("id") == "mc:pii-public")
+    assert public_bucket["entity_type"] == "misconfiguration"
+    assert public_bucket["severity"] == "high"
 
     # KEV vulnerability lights up.
     kev = [n for n in nodes if n.get("attributes", {}).get("is_kev")]

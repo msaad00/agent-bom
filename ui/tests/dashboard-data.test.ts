@@ -37,6 +37,12 @@ function makeBlast(overrides: Partial<BlastRadius> = {}): BlastRadius {
 }
 
 describe("buildExposurePathView", () => {
+  it("preserves impact and every affected workload for the executive summary", () => {
+    const view = buildExposurePathView(makeBlast({ impact_category: "availability", affected_agents: ["claims-api", "billing-api"], fixed_version: "5.4" }), "scan-1");
+    expect(view.impactCategory).toBe("availability");
+    expect(view.affectedWorkloads).toEqual(["claims-api", "billing-api"]);
+    expect(view.fixedVersion).toBe("5.4");
+  });
   it("threads the finding's scanId into the exec→graph drill href (#3966)", () => {
     const view = buildExposurePathView(makeBlast(), "scan-abc123");
     // The drill must target the finding's own scan, not the latest snapshot.

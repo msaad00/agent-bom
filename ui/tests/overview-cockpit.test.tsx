@@ -228,7 +228,7 @@ describe("OverviewCockpit", () => {
     }} />);
     expect(screen.getByText(findingId)).not.toBeVisible();
     fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
-    expect(screen.getByRole("link", { name: /requests.*data-pipeline/i })).toHaveAttribute("href", "/findings?severity=high");
+    expect(screen.getByRole("link", { name: /Affected workload: data-pipeline/i })).toHaveAttribute("href", "/findings?severity=high");
     expect(screen.queryByText("Finding in")).not.toBeInTheDocument();
     expect(screen.queryByText(/exposes a credential/i)).not.toBeInTheDocument();
     await user.click(screen.getByText("Technical details"));
@@ -236,14 +236,29 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("SERVICE_KEY")).toBeVisible();
   });
 
-  it.each(["CVE-2020-14343", "GHSA-8q59-q68h-6hv4", "DEMO-VULN-21441"])("identifies the package and %s without generic finding titles", async (advisory) => {
+  it.each(["CVE-2020-14343", "GHSA-8q59-q68h-6hv4"])("keeps %s and package details out of the executive headline", async (advisory) => {
     render(<OverviewCockpit {...baseProps} topPath={{
       key: advisory, href: "/findings", riskScore: 9,
-      nodes: [{ type: "cve", label: advisory, severity: "high" }, { type: "package", label: "requests@2.0.0" }],
+      impactCategory: "availability", affectedWorkloads: ["claims-api", "billing-api"],
+      nodes: [{ type: "cve", label: advisory, severity: "high" }, { type: "package", label: "requests@2.0.0" }, { type: "agent", label: "claims-api" }],
     }} />);
     await userEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     const risks = screen.getByRole("tabpanel", { name: "Top risks" });
-    expect(within(risks).getByRole("link", { name: new RegExp(`requests@2.0.0 · ${advisory}`) })).toBeVisible();
+    expect(within(risks).getByRole("link", { name: /Affected workload: claims-api and 1 more.*Could interrupt service/ })).toBeVisible();
+    expect(within(risks).getByText(advisory)).not.toBeVisible();
+    expect(within(risks).getByText("requests@2.0.0")).not.toBeVisible();
+    expect(within(risks).getByText("Path priority")).not.toBeVisible();
+    await userEvent.click(within(risks).getByText("Technical details"));
+    expect(within(risks).getByText(advisory)).toBeVisible();
+    expect(within(risks).getByText("claims-api, billing-api")).toBeVisible();
+    expect(within(risks).getByText(/exploitation of this workload is not established/)).toBeVisible();
+  });
+
+  it("does not invent an impact when the source has no impact metadata", async () => {
+    render(<OverviewCockpit {...baseProps} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Top risks" }));
+    expect(screen.getByText(/Its effect on this workload needs review/)).toBeVisible();
+    expect(screen.queryByText(/Could allow attacker-controlled code/)).not.toBeInTheDocument();
   });
 
   it("renders a single exec overview without altitude lenses or next-steps farm", () => {
@@ -395,11 +410,10 @@ describe("OverviewCockpit", () => {
     );
 
     fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
-    expect(screen.getByRole("link", { name: /CVE-2026-5555/ })).toBeVisible();
-    expect(screen.getByRole("link", { name: /urllib3/ })).toBeVisible();
-    expect(screen.getByRole("link", { name: /CVE-2026-4444/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: /Affected workload: Ingest Bot/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: /Affected workload not identified/ })).toBeVisible();
     // Worst-first row drills to the exact CVE's finding rows (non-empty target).
-    const worst = screen.getByRole("link", { name: /CVE-2026-5555/ });
+    const worst = screen.getByRole("link", { name: /Affected workload: Ingest Bot/ });
     expect(worst).toHaveAttribute("href", "/findings?cve=CVE-2026-5555");
   });
 
@@ -415,7 +429,7 @@ describe("OverviewCockpit", () => {
     render(<OverviewCockpit {...baseProps} findingsScopeLabel="Current findings · configured window" />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
-    expect(screen.getByRole("link", { name: /CVE-2020-14343.*cursor/i })).toBeVisible();
+    expect(screen.getByRole("link", { name: /Affected workload: cursor/i })).toBeVisible();
     expect(screen.getByRole("link", { name: "Critical findings" })).toHaveAttribute(
       "href",
       "/findings?scope=all&severity=critical",

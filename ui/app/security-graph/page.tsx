@@ -513,6 +513,7 @@ function AttackPathInvestigationContent() {
           title: descriptiveAttackPathTitle(card?.title, pathNodes),
           cve: path.vuln_ids[0] ?? null,
           riskScore: path.composite_risk,
+          scoreLabel: card ? "Evidence priority" : "Queue score",
           nodeCount: path.hops.length,
           agents: labelsForAttackPathType(path, graphNodeById, "agent").length,
           roleChain: attackPathRoleChain(path, graphNodeById),
@@ -528,8 +529,8 @@ function AttackPathInvestigationContent() {
     [fixFirstCards, graphNodeById, visibleAttackPaths],
   );
   const pathQueueCounts = useMemo(
-    () => graphPathQueueCounts(graphData, rankedRows.length),
-    [graphData, rankedRows.length],
+    () => graphPathQueueCounts(graphData, rankedRows.length, fixFirstCards.map((card) => card.attack_path)),
+    [graphData, rankedRows.length, fixFirstCards],
   );
 
   const selectedAttackPath = useMemo(
@@ -987,8 +988,8 @@ function AttackPathInvestigationContent() {
             setCompletedSteps((current) => ({ ...current, path: true }));
             setPathView("graph");
           }}
-          title={`${pathQueueCounts.renderedRows} rendered · ${pathQueueCounts.returnedRows} returned · ${pathQueueCounts.snapshotTotal} snapshot paths${pathQueueCounts.truncated ? " · truncated" : ""}`}
-          subtitle={`Select a path to focus its graph and evidence here.${
+          title={`${pathQueueCounts.renderedRows} shown · ${pathQueueCounts.returnedRows} loaded paths`}
+          subtitle={`${pathQueueCounts.queueRows} from the path queue + ${pathQueueCounts.additionalPriorityRows} additional priority paths. ${pathQueueCounts.snapshotTotal} snapshot paths${pathQueueCounts.truncated ? "; more queue paths available" : ""}. Select a path to inspect.${
             loadingFixFirst
               ? " Ranked paths are ready; fix guidance is still loading."
               : fixFirstLoadError

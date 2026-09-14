@@ -190,6 +190,7 @@ class RollupContainer:
     has_children: bool
     direct_child_count: int
     aggregate: RollupAggregate
+    context: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -201,7 +202,29 @@ class RollupContainer:
             "has_children": self.has_children,
             "direct_child_count": self.direct_child_count,
             "aggregate": self.aggregate.to_dict(),
+            "context": self.context,
         }
+
+
+def _instance_context(node: UnifiedNode, graph: UnifiedGraph) -> dict[str, str]:
+    """Project only instance-location fields, never arbitrary attributes/tags."""
+    attrs = node.attributes or {}
+    tags = attrs.get("tags")
+    tags = tags if isinstance(tags, dict) else {}
+    context: dict[str, str] = {}
+    for label, keys in (
+        ("workload", ("workload_id", "workload_name", "server_name")),
+        ("image", ("container_image", "image_name")),
+        ("environment", ("environment",)),
+        ("account", ("account_id", "account_scope")),
+    ):
+        for key in keys:
+            value = attrs.get(key) or tags.get(key)
+            if isinstance(value, str) and value.strip():
+                linked = graph.nodes.get(value)
+                context[label] = (linked.label if linked else value)[:512]
+                break
+    return context
 
 
 @dataclass(slots=True)
@@ -522,6 +545,7 @@ def rollup_view(
                 has_children=bool(direct),
                 direct_child_count=len(direct),
                 aggregate=agg,
+                context=_instance_context(node, graph),
             )
         )
         rolled_up_ids.add(root_id)
@@ -560,6 +584,7 @@ def rollup_view(
                 has_children=bool(children.get(nid)),
                 direct_child_count=len(children.get(nid, [])),
                 aggregate=_aggregate(_descendants(nid, children), graph, filters=filters),
+                context=_instance_context(node, graph),
             )
         )
 
@@ -697,6 +722,7 @@ def drill_down(
                 has_children=bool(children.get(child_id)),
                 direct_child_count=len(children.get(child_id, [])),
                 aggregate=agg,
+                context=_instance_context(child, graph),
             )
         )
 

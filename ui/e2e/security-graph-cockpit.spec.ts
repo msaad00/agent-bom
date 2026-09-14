@@ -1039,3 +1039,46 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.getByTestId("graph-viewport-scope")).toBeHidden();
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  test(`nonstandard path hops expand with retry and reconciled queue counts in ${theme}`, async ({ page }, testInfo) => {
+    await routeCockpit(page);
+    await page.setViewportSize({ width: 1568, height: 1000 });
+    await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+    const graph = buildCockpitGraph();
+    const repo = node("repo:billing", "directory", "Billing repository");
+    const job = node("ci:billing", "ci_job", "Build billing");
+    graph.nodes.push(repo, job);
+    const extra = { ...graph.attack_paths[0]!, source: repo.id, hops: [repo.id, job.id, "pkg:form-data", "cve:form-data"] };
+    await page.route("**/v1/graph/views/fix-first?**", route => route.fulfill({ json: {
+      scan_id: scanId, tenant_id: "default", created_at: createdAt, attack_campaigns: [],
+      summary: { total_paths: 3, matched_paths: 3, returned_paths: 1, highest_risk: 9.8, covered_findings: 1, node_count: graph.nodes.length, edge_count: graph.edges.length },
+      focus: { cve: "", package: "", agent: "" },
+      cards: [{ id: "priority-repo", rank: 1, title: "Billing dependency exposure", summary: "Build uses a vulnerable dependency", attack_path: extra,
+        nodes: graph.nodes, sequence_labels: [], risk_reasons: [], next_actions: [],
+        affected: { agents: [], servers: [], packages: [], findings: [], credentials: [], tools: [] } }],
+    } }));
+    let attempts = 0;
+    await page.route("**/v1/graph/node/*/neighbors?**", route => {
+      attempts += 1;
+      if (attempts === 1) return route.fulfill({ status: 503, json: { detail: "Unavailable" } });
+      return route.fulfill({ json: { node_id: repo.id, scan_id: scanId, found: true, direction: "both", limit: 12,
+        total_neighbors: 1, truncated: false, neighbors: [job], edges: [edge(repo.id, job.id, "contains")] } });
+    });
+    await page.goto("/security-graph?lens=attack-path");
+    await expect(page.getByRole("heading", { name: "3 shown · 3 loaded paths" })).toBeVisible();
+    await expect(page.getByText(/2 from the path queue \+ 1 additional priority paths/)).toBeVisible();
+    await page.getByLabel("Attack path queue").getByRole("button", { name: /#1 fix first/ }).click();
+    await page.getByRole("button", { name: "List", exact: true }).click();
+    const explorer = page.getByRole("region", { name: "Expand path neighbors" });
+    await explorer.getByRole("button", { name: "Expand neighbors of Billing repository" }).click();
+    await explorer.getByRole("button", { name: "Retry neighbor lookup" }).click();
+    await expect(explorer.getByText("Outgoing relationships", { exact: true })).toBeVisible();
+    await expect(explorer.getByText("Contains", { exact: true })).toBeVisible();
+    await expect(explorer.getByRole("button", { name: "Expand neighbors of Build billing" })).toBeVisible();
+    await expect(explorer.getByText("leaf", { exact: true })).toHaveCount(0);
+    await expect(explorer.getByRole("link", { name: "Traverse from Billing repository" })).toHaveAttribute("href", /root=repo%3Abilling/);
+    await explorer.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`path-neighbors-${theme}.png`) });
+  });
+}

@@ -390,8 +390,12 @@ def project_estate_into_graph(
             target = asset.tags.get(tag, "")
             if not target or target not in known_asset_ids or target == asset.asset_id:
                 continue
+            # Images consume their package contents; workloads consume images.
+            source = asset.asset_id
+            if tag == "container_image" and graph.nodes[source].entity_type == EntityType.PACKAGE:
+                source, target = target, source
             _edge(
-                asset.asset_id,
+                source,
                 target,
                 relationship,
                 evidence={"reason": f"estate_{tag}"},

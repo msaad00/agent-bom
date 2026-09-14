@@ -11,6 +11,7 @@ export interface RankedPathRow {
   title: string;
   cve: string | null;
   riskScore: number;
+  scoreLabel?: "Evidence priority" | "Queue score";
   nodeCount: number;
   agents: number;
   /** Compact correlated layer sequence, for example agent → server → finding. */
@@ -89,7 +90,7 @@ export function RankedPathList({
               </span>
             <span className="flex items-baseline gap-1.5 text-ink-secondary">
               <span className="text-[10px]">
-                Path priority
+                {row.scoreLabel ?? "Path priority"}
               </span>
               <span className="font-mono text-xs font-semibold text-foreground">
                 {row.riskScore.toFixed(1)}

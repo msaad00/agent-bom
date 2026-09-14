@@ -36,7 +36,7 @@ SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
 # ``Remediation`` object frozen to its Python repr, and a running demo would have
 # served that snapshot forever. The seven-day gap is the drift lens's window and
 # is preserved on every bump.
-_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 12, 12, 0, 0, tzinfo=timezone.utc)
+_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 14, 0, 0, 0, tzinfo=timezone.utc)
 _SHOWCASE_IMPORT_NOW = datetime.now(timezone.utc)
 # Preserve the deterministic target once it is in the past. Before then, clamp
 # to the current UTC day's start so a release candidate never presents a

@@ -1300,3 +1300,20 @@ def test_daily_refresh_is_a_no_op_outside_demo_mode(monkeypatch: pytest.MonkeyPa
     reset_daily_evidence_day()
 
     assert refresh_demo_daily_evidence() == {"refreshed": False, "reason": "disabled"}
+
+
+def test_refreshed_demo_graph_gets_matching_scan_evidence(demo_estate_client, monkeypatch):
+    from agent_bom.api.stores import _get_store
+    from agent_bom.demo_estate import bootstrap
+
+    store = _get_store()
+    before = store.list_all(tenant_id="default")
+    report = next(job.result for job in before if job.result and bootstrap._job_has_demo_source(job))
+    monkeypatch.setattr(bootstrap, "seed_showcase_graph_if_empty", lambda *args, **kwargs: True)
+    monkeypatch.setattr(bootstrap, "_run_demo_scan_report", lambda **kwargs: report)
+    refreshed = bootstrap.maybe_bootstrap_demo_estate(tenant_id="default")
+    assert refreshed["seeded"] is True
+    assert len(store.list_all(tenant_id="default")) == len(before) + 1
+    monkeypatch.setattr(bootstrap, "seed_showcase_graph_if_empty", lambda *args, **kwargs: False)
+    assert bootstrap.maybe_bootstrap_demo_estate(tenant_id="default")["reason"] == "demo_jobs_present"
+    assert len(store.list_all(tenant_id="default")) == len(before) + 1

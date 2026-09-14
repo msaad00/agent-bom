@@ -10,7 +10,7 @@
   "sdk_policy": {
     "dependency_constraint": "mcp>=1.26,<2",
     "locked_distribution": "mcp",
-    "locked_version": "1.29.1",
+    "locked_version": "1.30.0",
     "latest_protocol_supported_by_locked_sdk": "2025-11-25",
     "protocol_versions_supported_by_locked_sdk": [
       "2024-11-05",

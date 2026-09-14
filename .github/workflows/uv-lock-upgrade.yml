@@ -1,9 +1,9 @@
-name: Weekly uv.lock Upgrade
+name: Manual uv.lock Upgrade
 
 on:
-  schedule:
-    - cron: "0 8 * * 1"  # Every Monday at 08:00 UTC (before registry sync at 09:00)
-  workflow_dispatch:       # Also triggerable manually from the Actions tab
+  # Dependabot owns scheduled upgrades through the weekly-maintenance group.
+  # Keep a full lock refresh available for an explicit maintenance run.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -81,10 +81,10 @@ jobs:
           BRANCH="chore/uv-lock-upgrade-$(date +%Y%m%d)"
           git switch -C "$BRANCH" origin/main
           git add uv.lock
-          git commit -S -m "chore: weekly uv.lock upgrade"
+          git commit -S -m "chore(deps): refresh uv.lock"
           git push --force-with-lease origin "$BRANCH"
           BODY=$(cat <<'PREOF'
-          Weekly automated lockfile refresh via `uv lock --upgrade`.
+          Manually requested lockfile refresh via `uv lock --upgrade`.
 
           All packages bumped to latest versions within declared bounds in `pyproject.toml`.
 
@@ -96,11 +96,11 @@ jobs:
           PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number')
           if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
             gh pr edit "$PR_NUMBER" \
-              --title "chore: weekly uv.lock upgrade $(date +%Y-%m-%d)" \
+              --title "chore(deps): refresh uv.lock $(date +%Y-%m-%d)" \
               --body "$BODY"
           else
             gh pr create \
-              --title "chore: weekly uv.lock upgrade $(date +%Y-%m-%d)" \
+              --title "chore(deps): refresh uv.lock $(date +%Y-%m-%d)" \
               --body "$BODY" \
               --base main
           fi

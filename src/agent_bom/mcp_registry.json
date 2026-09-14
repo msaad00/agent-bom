@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-09-07",
-  "_total_servers": 1133,
+  "_updated": "2026-09-14",
+  "_total_servers": 1142,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "_sources": [
@@ -731,7 +731,7 @@
     "awslabs.bedrock-kb-retrieval-mcp-server": {
       "package": "awslabs.bedrock-kb-retrieval-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "1.1.0",
+      "latest_version": "1.1.1",
       "description": "AWS Bedrock Knowledge Base queries",
       "name": "AWS Bedrock KB",
       "risk_justification": "Read-only access to AWS Bedrock Knowledge Bases via AWS credentials. Token exposure enables knowledge base queries across the account.",
@@ -950,7 +950,7 @@
     "mcp-server-kubernetes": {
       "package": "mcp-server-kubernetes",
       "ecosystem": "npm",
-      "latest_version": "4.1.6",
+      "latest_version": "4.1.7",
       "description": "Kubernetes cluster management",
       "name": "Kubernetes",
       "risk_justification": "Full Kubernetes cluster management via KUBECONFIG. Can apply manifests, scale deployments, and delete resources.",
@@ -1149,7 +1149,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "1.3.0",
+      "latest_version": "1.4.1",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -2730,7 +2730,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.9.2",
+      "latest_version": "2026.9.4",
       "description": "OpenClaw personal AI assistant — multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessag…",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2940,7 +2940,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.19.0",
+      "latest_version": "2.20.1",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",
@@ -22807,9 +22807,205 @@
       "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
       "version_source": "official-registry",
       "auto_enriched": true
+    },
+    "ac.snag/snag": {
+      "package": "ac.snag/snag",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Gives your coding agent the captured console, network, replay and screenshot evidence for a bug.",
+      "name": "ac.snag/snag",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ac.snag/snag",
+        "snag"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "agency.ottobot/business-contact-finder": {
+      "package": "agency.ottobot/business-contact-finder",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.0",
+      "description": "Check how to contact a business website, and whether that contact path actually works.",
+      "name": "agency.ottobot/business-contact-finder",
+      "category": "web",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "agency.ottobot/business-contact-finder",
+        "business-contact-finder"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/registry",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "agency.ottobot/contractor-license-changes": {
+      "package": "agency.ottobot/contractor-license-changes",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.2",
+      "description": "Did this contractor's licence change? Observed lapses and reinstatements, not a snapshot.",
+      "name": "agency.ottobot/contractor-license-changes",
+      "category": "general",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "agency.ottobot/contractor-license-changes",
+        "contractor-license-changes"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/registry",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "agency.thebureauoflostcontext/bureau-public": {
+      "package": "agency.thebureauoflostcontext/bureau-public",
+      "ecosystem": "mcp-registry",
+      "latest_version": "3.0.0",
+      "description": "Bureau-operated public read-only MCP service for public Context Packets and Cases.",
+      "name": "agency.thebureauoflostcontext/bureau-public",
+      "category": "general",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "agency.thebureauoflostcontext/bureau-public",
+        "bureau-public"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.adako/ads": {
+      "package": "ai.adako/ads",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.0",
+      "description": "Google, Meta, ChatGPT, TikTok and LinkedIn Ads for AI agents. Every write needs your approval.",
+      "name": "ai.adako/ads",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.adako/ads"
+      ],
+      "source_url": "https://github.com/ruslan2027/adako-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.akkrudata/akkrudata": {
+      "package": "ai.akkrudata/akkrudata",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "SEC filings, financial statements, metrics, insider and institutional holdings as structured data",
+      "name": "ai.akkrudata/akkrudata",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.akkrudata/akkrudata",
+        "akkrudata"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.anha/resolver": {
+      "package": "ai.anha/resolver",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Resolve @handles to post-quantum-signed agent identities and transact with the brands behind them.",
+      "name": "ai.anha/resolver",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.anha/resolver",
+        "resolver"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.arsentev/contextburn": {
+      "package": "ai.arsentev/contextburn",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.1",
+      "description": "Run efficiency for coding agents: share of paid tokens that became output, not context re-reading.",
+      "name": "ai.arsentev/contextburn",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.arsentev/contextburn",
+        "contextburn"
+      ],
+      "source_url": "https://github.com/arsentev-ai/contextburn",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.atako/mcp": {
+      "package": "ai.atako/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Remote MCP server to read and manage your Atako AI agents, messages, files, and integrations.",
+      "name": "ai.atako/mcp",
+      "category": "filesystem",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.atako/mcp"
+      ],
+      "source_url": "https://github.com/aiybiz/aiybiz-next",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-14T15:18:27Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
     }
   },
-  "_mcp_registry_sync": "2026-09-07T14:30:57Z",
+  "_mcp_registry_sync": "2026-09-14T15:18:29Z",
   "_mcp_registry_sync_source": "mcp-official",
   "_cve_enriched": "2026-08-24"
 }

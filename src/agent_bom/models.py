@@ -939,7 +939,7 @@ class BlastRadius:
     unsuppressed_risk_score: Optional[float] = None
 
     # CWE-aware impact context
-    impact_category: str = "code-execution"  # CWE-derived: code-execution, file-access, availability, etc.
+    impact_category: str = "unknown"  # CWE-derived: code-execution, file-access, availability, etc.
     all_server_credentials: list[str] = field(default_factory=list)  # Full credential set before CWE filtering
     all_server_tools: list[MCPTool] = field(default_factory=list)  # Full tool set before CWE filtering
     attack_vector_summary: Optional[str] = None  # Human-readable attack path description

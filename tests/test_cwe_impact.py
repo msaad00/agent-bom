@@ -267,3 +267,11 @@ def test_injection_summary_with_db_creds():
     )
     assert "Injection" in summary
     assert "1 database credential(s)" in summary
+
+
+def test_ambiguous_weaknesses_do_not_assert_disclosure_or_credential_reach():
+    for cwe in ("CWE-20", "CWE-116", "CWE-173", "CWE-670", "CWE-754", "CWE-1286"):
+        assert classify_cwe_impact([cwe]) == IMPACT_UNKNOWN
+        assert filter_credentials_by_impact(classify_cwe_impact([cwe]), ["DATABASE_URL"]) == []
+        assert filter_tools_by_impact(classify_cwe_impact([cwe]), _TEST_TOOLS) == []
+        assert classify_cwe_impact([cwe, "CWE-94"]) == IMPACT_CODE_EXECUTION

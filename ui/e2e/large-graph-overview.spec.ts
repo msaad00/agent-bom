@@ -523,3 +523,31 @@ test("blast radius distinguishes related nodes from assets and keeps the type br
   await expect(breakdown.getByText("Vulnerability: 1", { exact: true })).toBeVisible();
   await expect(page.getByText(/Graph relationships do not establish compromise/)).toBeVisible();
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`summary package traversal preserves finding evidence in ${theme}`, async ({ page }, testInfo) => {
+    await routeLargeGraphPage(page);
+    await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const root = node("pkg:42", "package", "pyyaml@5.3", "none", 0);
+    const finding = "vulnerability:CVE-2020-14343";
+    await page.route("**/v1/graph/rollup?**", (route) => route.fulfill({ json: {
+      scan_id: scanId, tenant_id: "default", created_at: createdAt, mode: "rollup", filters: {},
+      top_level: [{ ...root, is_container: false, has_children: false, direct_child_count: 0,
+        aggregate: { descendant_count: 0, by_type: {}, severity_counts: {}, worst_severity: "none",
+          worst_severity_rank: 0, internet_exposed: false, toxic_combo: false, exposed_count: 0, toxic_count: 0 } }],
+      edges: [], summary: { total_nodes: 1241, total_edges: 1860, top_level_count: 1, container_count: 0 },
+      completeness: { status: "complete", returned: 1, total: 1, truncated: false, reasons: [] },
+    } }));
+    await page.route("**/v1/graph/node/**", (route) => route.fulfill({ json: {
+      node: root, edges_out: [edge(root.id, finding, "vulnerable_to")], edges_in: [edge(finding, root.id, "affects")],
+      neighbors: [finding], sources: ["scan"], impact: { affected_count: 0, affected_by_type: {}, max_depth_reached: 0 },
+    } }));
+    await page.goto(`/graph?scan=${scanId}`);
+    await page.getByRole("button", { name: "Summary", exact: true }).click();
+    await page.getByRole("button", { name: "Inspect", exact: true }).click();
+    await expect(page.getByText("Findings", { exact: true })).toBeVisible();
+    await expect(page.getByText("No known findings on this package node")).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`package-evidence-${theme}.png`) });
+  });
+}

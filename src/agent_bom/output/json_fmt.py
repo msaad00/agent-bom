@@ -967,7 +967,7 @@ def _blast_radius_json_entry(
         "exposed_tools": [t.name for t in br.exposed_tools],
         "phantom_tools": [t.name for t in getattr(br, "phantom_tools", []) or []],
         "framework_tags": framework_qualified_blast_radius_tags(br),
-        "impact_category": getattr(br, "impact_category", "code-execution"),
+        "impact_category": getattr(br, "impact_category", "unknown"),
         "cvss_vector": getattr(br.vulnerability, "cvss_vector", None),
         "attack_vector": getattr(br.vulnerability, "attack_vector", None),
         "attack_complexity": getattr(br.vulnerability, "attack_complexity", None),

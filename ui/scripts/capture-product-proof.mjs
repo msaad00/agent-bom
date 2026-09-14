@@ -2,6 +2,7 @@
 import { chromium } from "@playwright/test";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -35,6 +36,7 @@ const REFERENCE_LAB_DIGEST_PATH = path.join(
   "generated",
   "correlation-proof.sha256",
 );
+const overviewProof = JSON.parse(gunzipSync(await fs.readFile(path.join(UI_ROOT, "fixtures/overview-proof.json.gz"))).toString());
 const UI_PACKAGE = JSON.parse(await fs.readFile(path.join(UI_ROOT, "package.json"), "utf8"));
 const RELEASE_VERSION = UI_PACKAGE.version;
 const CREATED_AT = "2026-06-03T20:30:00Z";
@@ -2404,6 +2406,7 @@ function isBenignAppRouterCancellation(request, failure) {
 }
 
 async function capture(page, urlPath, filename, beforeShot, options = {}) {
+  await page.clock.setFixedTime(urlPath.startsWith("/?") ? new Date(new Date(overviewProof.captured_at).getTime() + 60_000) : REFERENCE_CAPTURE_NOW);
   const browserErrors = [];
   const networkErrors = [];
   const successfulApiPaths = new Set();
@@ -2730,25 +2733,30 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
+      scope: "Risk overview — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
       path: "dashboard-light-live.png",
       page: "/?capture=1",
-      scope: "Overview command center in the light theme",
+      scope: "Risk overview in the light theme",
       presentation: "light desktop",
     },
     {
       path: "dashboard-mobile-live.png",
       page: "/?capture=1",
-      scope: "Overview command center at a 390 by 844 viewport",
+      scope: "Risk overview at a 390 by 844 viewport",
       presentation: "dark mobile",
+    },
+    {
+      path: "dashboard-risks-live.png",
+      page: "/?capture=1",
+      scope: "Top risks tab from the offline synthetic enterprise estate",
     },
     {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
-      scope: "Expanded Overview compliance framework catalog and risk mappings, with explicit unevaluated status",
+      scope: "Expanded Overview synthetic control evaluations and risk mappings with assessment scope",
     },
     {
       path: "cloud-accounts-live.png",
@@ -2978,6 +2986,15 @@ async function main() {
       const capturePage = await browser.newPage({ viewport, deviceScaleFactor: 1 });
       await capturePage.clock.setFixedTime(REFERENCE_CAPTURE_NOW);
       await installRoutes(capturePage);
+      // The home-page proof comes from the real offline demo API, including
+      // cross-domain findings and evaluated controls. Other workflow fixtures
+      // retain their own snapshots and IDs.
+      await capturePage.route("**/v1/**", (route) => {
+        const endpoint = new URL(route.request().url()).pathname;
+        const response = overviewProof.responses[endpoint];
+        if (new URL(capturePage.url()).pathname === "/" && response) return fulfill(route, response);
+        return route.fallback();
+      });
       await capturePage.addInitScript((selectedTheme) => {
         window.localStorage.setItem("agent-bom-theme", selectedTheme);
       }, theme);
@@ -3140,8 +3157,19 @@ async function main() {
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
     await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk overview/i, /Review these findings first/i],
+      expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
+    });
+    await capture(page, "/?capture=1", "dashboard-risks-live.png", async (dashboardPage) => {
+      await dashboardPage.getByRole("tab", { name: "Overview", exact: true }).waitFor({ state: "visible" });
+      if (await dashboardPage.getByRole("tab", { name: "Overview", exact: true }).getAttribute("aria-selected") !== "true") {
+        throw new Error("Overview must be the initial risk view");
+      }
+      await dashboardPage.getByRole("tab", { name: "Top risks", exact: true }).click();
+      await dashboardPage.getByRole("tabpanel", { name: "Top risks" }).waitFor({ state: "visible" });
+    }, {
+      expectedText: [/Review these findings first/i, /CVE-/],
+      expectedApiPaths: ["/v1/overview"],
     });
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
@@ -3555,7 +3583,7 @@ async function main() {
 
     const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
     await capture(lightPage, "/?capture=1", "dashboard-light-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk overview/i, /Review these findings first/i],
+      expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await lightPage.setViewportSize({ width: 1120, height: 900 });
@@ -3593,7 +3621,7 @@ async function main() {
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
     await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk overview/i, /Review these findings first/i],
+      expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await capture(

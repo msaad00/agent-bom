@@ -129,7 +129,7 @@ describe("Overview canonical finding counts", () => {
     apiMock.listJobs.mockReturnValue(new Promise(() => {}));
     apiMock.getCompliance.mockReturnValue(new Promise(() => {}));
     await act(async () => { render(<Dashboard />); });
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     expect(screen.getByText("Loading posture…")).toBeVisible();
     expect(screen.queryByText(/Framework coverage appears after the first completed scan/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Run a scan/)).not.toBeInTheDocument();
@@ -138,7 +138,7 @@ describe("Overview canonical finding counts", () => {
   it("does not label control evaluation unavailable while its initial request is pending", async () => {
     apiMock.getCompliance.mockReturnValue(new Promise(() => {}));
     render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     await waitFor(() => expect(screen.getByText("49%")).toBeVisible());
     expect(screen.queryByText(/Control evaluation unavailable for completed scans/)).not.toBeInTheDocument();
   });
@@ -151,6 +151,7 @@ describe("Overview canonical finding counts", () => {
     expect(screen.queryByText(/No completed scans. Run a scan/)).not.toBeInTheDocument();
     const empty = overviewFixture();
     await act(async () => resolveOverview({ ...empty, headline: { ...empty.headline, scans: 0, latest_scan_at: null }, finding_counts: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: 0, kev: 0 } }));
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByText("No completed scans. Run a scan to assess findings.")).toBeVisible();
     expect(screen.queryByText("Loading prioritized findings…")).not.toBeInTheDocument();
   });
@@ -161,6 +162,7 @@ describe("Overview canonical finding counts", () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByText("Overview unavailable.")).toBeVisible());
     expect(screen.getByText("Coverage unavailable.")).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByText("Prioritized findings unavailable.")).toBeVisible();
     expect(screen.queryByText(/No completed scans. Run a scan/)).not.toBeInTheDocument();
     expect(screen.queryByText("private upstream")).not.toBeInTheDocument();
@@ -170,7 +172,7 @@ describe("Overview canonical finding counts", () => {
     let rejectCompliance!: (reason: Error) => void;
     apiMock.getCompliance.mockReturnValue(new Promise((_, reject) => { rejectCompliance = reject; }));
     render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     await waitFor(() => expect(screen.getByText("49%")).toBeVisible());
     expect(screen.getByText("Loading control evaluation…")).toBeVisible();
     await act(async () => rejectCompliance(new Error("private control source")));
@@ -187,7 +189,7 @@ describe("Overview canonical finding counts", () => {
       ],
     });
     render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     await waitFor(() => expect(screen.getByText("49%")).toBeVisible());
     // No server evidence binds these independent scan scores to a comparable estate baseline.
     expect(screen.queryByTestId("overview-posture-trend")).not.toBeInTheDocument();
@@ -223,7 +225,7 @@ describe("Overview canonical finding counts", () => {
 
   it("uses canonical posture/overview counts instead of recomputing the latest ten scans", async () => {
     render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
 
     await waitFor(() => expect(apiMock.getScan).toHaveBeenCalledTimes(10));
     const critical = await screen.findByRole("link", { name: /^Critical 7/i });
@@ -241,7 +243,7 @@ describe("Overview canonical finding counts", () => {
       breakdown: [{ driver: "high", label: "High findings", count: 103, weight: 2, contribution: 206 }],
     } });
     render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     const explanation = await screen.findByRole("button", { name: /What influences this score/ });
     fireEvent.click(explanation);
     expect(screen.getByText("Total weighted pressure: 206.0")).toBeVisible();
@@ -262,7 +264,7 @@ describe("Overview canonical finding counts", () => {
   it("keeps overview counts stable when deployment counts update independently", async () => {
     apiMock.getOverview.mockResolvedValue({ ...overviewFixture(), finding_counts: { ...deploymentCounts, critical: 3, kev: 2 } });
     const view = render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     await screen.findByRole("link", { name: /^Critical 3/i });
     deploymentCounts.critical = 0;
     deploymentCounts.kev = 0;
@@ -281,7 +283,7 @@ describe("Overview canonical finding counts", () => {
     let resolveRefresh!: (value: typeof initial) => void;
     apiMock.getOverview.mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
     const view = render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     await act(async () => {});
     expect(screen.getByRole("link", { name: /^Critical 3/i })).toBeInTheDocument();
     expect(screen.getAllByText(/CVE-2025-1234/).length).toBeGreaterThan(0);
@@ -316,7 +318,7 @@ describe("Overview canonical finding counts", () => {
       finding_counts: { critical: 2, high: 3, medium: 4, low: 1, unrated: 0, total: 10, kev: 1 },
     });
     render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     await act(async () => {});
     expect(screen.getByRole("link", { name: /^Critical 7/i })).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(60_000); });
@@ -332,7 +334,7 @@ describe("Overview canonical finding counts", () => {
       posture: { ...snapshot.posture, score: null },
     });
     render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     await screen.findByRole("link", { name: /^Critical 7/i });
     expect(screen.queryByText("49%")).not.toBeInTheDocument();
   });
@@ -344,7 +346,7 @@ describe("Overview canonical finding counts", () => {
     ] })
       .mockRejectedValueOnce(new Error("private upstream details"));
     render(<Dashboard />);
-    fireEvent.click(screen.getByRole("tab", { name: "Posture details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     await act(async () => {});
     await act(async () => { vi.advanceTimersByTime(60_000); });
     expect(screen.getByText("Overview refresh unavailable. Showing the last loaded snapshot.")).toHaveAttribute("role", "status");

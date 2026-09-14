@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -55,18 +55,19 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
-  it("opens risks first and switches to posture in one overview", async () => {
+  it("opens the full overview first and switches to risks in the same container", async () => {
     const user = userEvent.setup();
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
     const posture = screen.getByRole("region", { name: "Risk overview" });
     const coverage = screen.getByRole("region", { name: /^Coverage$/ });
-    const risks = screen.getByRole("tabpanel", { name: "Top risks" });
+    const risks = document.querySelector<HTMLElement>('[role="tabpanel"][aria-label="Top risks"]')!;
     expect(posture).toContainElement(risks);
-    expect(risks).toBeVisible();
-    expect(within(posture).getByText("Posture score · 0–100, higher is better")).not.toBeVisible();
-    await user.click(screen.getByRole("tab", { name: "Posture details" }));
-    expect(within(posture).getByText("Posture score · 0–100, higher is better")).toBeVisible();
     expect(risks).not.toBeVisible();
+    expect(within(posture).getByText("Posture score · 0–100, higher is better")).toBeVisible();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Overview", "Top risks"]);
+    await user.click(screen.getByRole("tab", { name: "Top risks" }));
+    expect(within(posture).getByText("Posture score · 0–100, higher is better")).not.toBeVisible();
+    expect(risks).toBeVisible();
     const compliance = screen.getByRole("region", { name: "Compliance & frameworks" });
     expect(coverage.parentElement).toBe(compliance.parentElement);
     expect(posture).not.toContainElement(coverage);
@@ -164,7 +165,7 @@ describe("OverviewCockpit", () => {
     expect(toggle).toHaveFocus();
     expect(screen.getByText(/Control evaluation unavailable/i)).not.toBeVisible();
     expect(screen.getByRole("button", { name: /^Coverage/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("tab", { name: "Top risks" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("keeps operational details closed until requested without hiding their summary", async () => {
@@ -195,6 +196,7 @@ describe("OverviewCockpit", () => {
       ...baseProps.topPath,
       nodes: [{ type: "cve", label: "CVE-2020-14343" }, { type: "agent", label: source }],
     }} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByText("SBOM source: model.cdx.json")).toBeVisible();
     expect(screen.queryByText(/Affected workload:/)).not.toBeInTheDocument();
     expect(screen.getByText(source)).not.toBeVisible();
@@ -207,6 +209,7 @@ describe("OverviewCockpit", () => {
       ...baseProps.topPath,
       nodes: [{ type: "cve", label: "CVE-2020-14343" }, { type, label: "api-worker" }],
     }} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByText("Affected workload: api-worker")).toBeVisible();
     expect(screen.queryByText(/SBOM source:/)).not.toBeInTheDocument();
   });
@@ -224,6 +227,7 @@ describe("OverviewCockpit", () => {
       ],
     }} />);
     expect(screen.getByText(findingId)).not.toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByRole("link", { name: /requests.*data-pipeline/i })).toHaveAttribute("href", "/findings?severity=high");
     expect(screen.queryByText("Finding in")).not.toBeInTheDocument();
     expect(screen.queryByText(/exposes a credential/i)).not.toBeInTheDocument();
@@ -232,11 +236,12 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("SERVICE_KEY")).toBeVisible();
   });
 
-  it.each(["CVE-2020-14343", "GHSA-8q59-q68h-6hv4", "DEMO-VULN-21441"])("identifies the package and %s without generic finding titles", (advisory) => {
+  it.each(["CVE-2020-14343", "GHSA-8q59-q68h-6hv4", "DEMO-VULN-21441"])("identifies the package and %s without generic finding titles", async (advisory) => {
     render(<OverviewCockpit {...baseProps} topPath={{
       key: advisory, href: "/findings", riskScore: 9,
       nodes: [{ type: "cve", label: advisory, severity: "high" }, { type: "package", label: "requests@2.0.0" }],
     }} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     const risks = screen.getByRole("tabpanel", { name: "Top risks" });
     expect(within(risks).getByRole("link", { name: new RegExp(`requests@2.0.0 · ${advisory}`) })).toBeVisible();
   });
@@ -250,6 +255,7 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText("Severity roll-up")).not.toBeInTheDocument();
     expect(screen.getByText("Risk posture")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "CISO" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByRole("link", { name: /Agent mesh/i })).toHaveAttribute("href", "/agents/topology");
     // De-dup: the old redundant "Connected estate" list and "Live surfaces" pill
     // strip are gone — the cross-lane grid is the single estate view.
@@ -388,6 +394,7 @@ describe("OverviewCockpit", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByRole("link", { name: /CVE-2026-5555/ })).toBeVisible();
     expect(screen.getByRole("link", { name: /urllib3/ })).toBeVisible();
     expect(screen.getByRole("link", { name: /CVE-2026-4444/ })).toBeVisible();
@@ -407,6 +414,7 @@ describe("OverviewCockpit", () => {
   it("surfaces risk themes and links into findings / compliance", () => {
     render(<OverviewCockpit {...baseProps} findingsScopeLabel="Current findings · configured window" />);
 
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByRole("link", { name: /CVE-2020-14343.*cursor/i })).toBeVisible();
     expect(screen.getByRole("link", { name: "Critical findings" })).toHaveAttribute(
       "href",
@@ -735,7 +743,7 @@ describe("OverviewCockpit", () => {
       { driver: "high", label: "High findings", count: 10, weight: 6, contribution: 60 },
       { driver: "other", label: "Other findings", count: 61, weight: 2, contribution: 122 },
     ]} />);
-    await user.click(screen.getByRole("tab", { name: "Posture details" }));
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
     await user.click(screen.getByRole("button", { name: /What influences this score/ }));
     expect(screen.getByText("Total weighted pressure: 206.0")).toBeVisible();
     expect(screen.getByText(/nonlinear/i)).toBeVisible();
@@ -782,7 +790,7 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "Posture details" }));
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
     const toggle = screen.getByTestId("score-format-toggle");
     await user.click(within(toggle).getByRole("button", { name: "Grade" }));
     expect(onScoreFormatChange).toHaveBeenCalledWith("grade");

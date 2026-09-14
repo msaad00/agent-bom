@@ -39,10 +39,11 @@
 ### Security and engineering leaders: decide what needs attention
 
 See the current risk posture and critical findings first. Open the underlying
-evidence before assigning a priority.
+evidence before assigning a priority. The Overview tab opens with the full posture
+summary; switch to [Top risks](docs/images/dashboard-risks-live.png) for prioritized findings.
 
 <p align="center">
-  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview screen with prioritized sample risks and a tab for posture details" width="920"></a>
+  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview screen with full posture and findings summary, followed by a Top risks tab" width="920"></a>
 </p>
 
 ### GRC and audit: see framework mappings and assessment gaps
@@ -50,8 +51,8 @@ evidence before assigning a priority.
 Review **NIST AI RMF, NIST CSF, ISO 27001, SOC 2, PCI DSS and CIS** framework
 status alongside **OWASP LLM, OWASP MCP, OWASP Agentic and MITRE ATLAS** risk mappings.
 Open **Compliance** for the [framework catalog and control evidence](site-docs/features/compliance.md).
-The sample below has no evaluated controls; mappings and framework icons do not
-establish a compliance pass or certification.
+The sample below uses the offline synthetic enterprise estate, including evaluated
+checks and risk mappings. These results do not establish certification or an audit opinion.
 
 <p align="center">
   <a href="docs/images/dashboard-paths-live.png"><img src="docs/images/dashboard-paths-live.png" alt="Expanded Overview compliance frameworks and risk mappings with NIST, ISO, SOC 2, PCI DSS, CIS, OWASP and MITRE icons and explicit assessment status in a labeled sample environment" width="920"></a>

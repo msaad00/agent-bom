@@ -260,7 +260,7 @@ export function OverviewCockpit({
   compliance = null,
   services = null,
 }: OverviewCockpitProps) {
-  const [riskTab, setRiskTab] = useState<"risks" | "posture">("risks");
+  const [riskTab, setRiskTab] = useState<"risks" | "posture">("posture");
   const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
   // Once scans exist the chip always renders, but an unevidenced score reads as
   // an em dash — the SAME treatment the Trust Center gives this status. Hiding
@@ -286,13 +286,13 @@ export function OverviewCockpit({
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
         </div>
         <DetailTabs ariaLabel="Risk overview views" value={riskTab} onChange={setRiskTab}
-          tabs={[{ key: "risks", label: "Top risks" }, { key: "posture", label: "Posture details" }]} />
+          tabs={[{ key: "posture", label: "Overview" }, { key: "risks", label: "Top risks" }]} />
         <div role="tabpanel" aria-label="Top risks" hidden={riskTab !== "risks"}>
           <TopRisksPanel loading={loading} unavailable={overviewUnavailable} scans={scans}
             topPath={topPath} exposurePaths={exposurePaths}
             agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null} />
         </div>
-        <div role="tabpanel" aria-label="Posture details" hidden={riskTab !== "posture"}>
+        <div role="tabpanel" aria-label="Overview" hidden={riskTab !== "posture"}>
             <div className="mt-2 grid gap-3">
               <PostureHero
                 loading={loading}

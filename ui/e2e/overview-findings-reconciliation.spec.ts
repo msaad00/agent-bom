@@ -202,7 +202,7 @@ for (const theme of ["light", "dark"] as const) {
     await routeProductFixture(page);
 
     await page.goto("/");
-    await page.getByRole("tab", { name: "Posture details", exact: true }).click();
+    await page.getByRole("tab", { name: "Overview", exact: true }).click();
     await expect(page.getByText("Current findings · configured window")).toBeVisible();
     const critical = page.getByRole("link", { name: /^Critical 7/i });
     const high = page.getByRole("link", { name: /^High 28/i });
@@ -240,7 +240,7 @@ test("overview and current-state findings remain readable without mobile overflo
   await routeProductFixture(page);
 
   await page.goto("/");
-  await page.getByRole("tab", { name: "Posture details", exact: true }).click();
+  await page.getByRole("tab", { name: "Overview", exact: true }).click();
   await expect(page.getByRole("link", { name: /^Critical 7/i })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await capture(page, testInfo, "overview-reconciled-mobile.png");
@@ -355,6 +355,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.screenshot({ path: testInfo.outputPath(`overview-two-row-${theme}-${width}.png`) });
       const operations = page.getByRole("button", { name: /Operational signals/ });
       await expect(operations).toHaveAttribute("aria-expanded", "false");
+      await page.getByRole("tab", { name: "Top risks", exact: true }).click();
       if (width === 1440) {
         expect((await page.getByRole("region", { name: "Prioritized findings" }).boundingBox())!.y).toBeLessThan(850);
       }
@@ -366,7 +367,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
       expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
       await expect(unavailableLane.getByText("0", { exact: true })).toHaveCount(0);
-      await page.getByRole("tab", { name: "Posture details", exact: true }).click();
+      await page.getByRole("tab", { name: "Overview", exact: true }).click();
       const scoreToggle = page.getByRole("button", { name: /What influences this score/ });
       await scoreToggle.focus();
       await page.keyboard.press("Enter");
@@ -391,7 +392,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByText("6/6 evaluated controls pass")).not.toBeVisible();
       await expect(complianceToggle).toBeFocused();
       await expect(coverageToggle).toHaveAttribute("aria-expanded", "true");
-      await expect(page.getByRole("tab", { name: "Posture details", exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "Overview", exact: true })).toHaveAttribute("aria-selected", "true");
       await page.keyboard.press("Space");
       await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
       const disclosure = page.getByRole("button", { name: /^Control frameworks/i });

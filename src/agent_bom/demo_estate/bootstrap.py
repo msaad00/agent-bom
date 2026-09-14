@@ -484,7 +484,9 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         _logger.warning("demo estate governance/cost seeding failed", exc_info=True)
         summary["governance_cost_error"] = True
 
-    if not force and _tenant_has_demo_jobs(store, tenant_id):
+    # A refreshed demo graph must also receive matching scan evidence. Keep
+    # prior demo jobs as history, then make subsequent boots a no-op again.
+    if not force and not graph_seeded and _tenant_has_demo_jobs(store, tenant_id):
         summary["reason"] = "demo_jobs_present"
         return _remember_bootstrap_status(tenant_id, summary)
 

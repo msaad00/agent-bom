@@ -3256,6 +3256,8 @@ export interface OverviewCoverageLane {
 }
 
 export interface OverviewTopRisk {
+  impact_category?: string | null;
+  fixed_version?: string | null;
   vulnerability_id: string;
   canonical_id?: string | null | undefined;
   asset_id?: string | null | undefined;

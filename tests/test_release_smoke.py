@@ -20,7 +20,7 @@ def test_release_smoke_isolates_local_state() -> None:
 
 
 def test_release_smoke_golden_path(tmp_path: Path) -> None:
-    """Offline demo scan smoke must pass on every CI run."""
+    """Real critical CVEs satisfy the smoke's exit-1 gate without fake malware."""
     env = {key: value for key, value in os.environ.items() if not key.startswith("AGENT_BOM_")}
     env.update(
         {

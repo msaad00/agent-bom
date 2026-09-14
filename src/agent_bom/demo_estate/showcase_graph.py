@@ -36,7 +36,7 @@ SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
 # ``Remediation`` object frozen to its Python repr, and a running demo would have
 # served that snapshot forever. The seven-day gap is the drift lens's window and
 # is preserved on every bump.
-_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 12, 12, 0, 0, tzinfo=timezone.utc)
+_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 14, 0, 0, 0, tzinfo=timezone.utc)
 _SHOWCASE_IMPORT_NOW = datetime.now(timezone.utc)
 # Preserve the deterministic target once it is in the past. Before then, clamp
 # to the current UTC day's start so a release candidate never presents a
@@ -477,20 +477,8 @@ def build_showcase_graph(
         )
         edge(pid, vid, RelationshipType.VULNERABLE_TO)
 
-    # Malicious/typosquat package — appears only in the current snapshot for drift.
-    if not is_baseline:
-        node(
-            "pkg:reqeusts@2.99.0",
-            EntityType.PACKAGE,
-            "reqeusts@2.99.0",
-            severity="critical",
-            risk_score=9.1,
-            is_malicious=True,
-            malicious_reason="Possible typosquat of 'requests'",
-        )
-        edge("server:etl-server", "pkg:reqeusts@2.99.0", RelationshipType.DEPENDS_ON)
-        node("vuln:MAL-2024-reqeusts", EntityType.VULNERABILITY, "MAL-2024-reqeusts", severity="critical", risk_score=9.1)
-        edge("pkg:reqeusts@2.99.0", "vuln:MAL-2024-reqeusts", RelationshipType.VULNERABLE_TO)
+    # The ETL workload also uses the published Requests release in DEMO_INVENTORY.
+    edge("server:etl-server", "pkg:requests@2.28.0", RelationshipType.DEPENDS_ON)
 
     # Credential-backed env on servers — lights up credential-exposure edges.
     creds = {
@@ -547,10 +535,14 @@ def build_showcase_graph(
         )
         edge("mc:pii-private", "cloud:pii-bucket", RelationshipType.AFFECTS)
     else:
-        node("mc:pii-public", EntityType.MISCONFIGURATION, "S3 bucket customer-pii-prod is publicly readable")
-        node("vuln:bucket-acl", EntityType.VULNERABILITY, "CVE-2024-S3ACL", severity="high", risk_score=8.2)
+        node(
+            "mc:pii-public",
+            EntityType.MISCONFIGURATION,
+            "S3 bucket customer-pii-prod is publicly readable",
+            severity="high",
+            risk_score=8.2,
+        )
         edge("mc:pii-public", "cloud:pii-bucket", RelationshipType.AFFECTS)
-        edge("cloud:pii-bucket", "vuln:bucket-acl", RelationshipType.VULNERABLE_TO)
 
     node(
         "cloud:payments-db",

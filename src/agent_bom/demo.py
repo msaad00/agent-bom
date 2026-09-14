@@ -11,8 +11,7 @@ includes:
     hero blast-radius chain vuln → package → MCP server → agent → credential →
     tool → potential RCE renders end to end.
   * Credential-backed ``env`` on servers so credential-exposure edges light up.
-  * A typosquat package (``reqeusts``) so the malicious-package differentiator
-    shows in the findings list.
+  * Published affected package releases in simulated ETL and support workloads.
 """
 
 from __future__ import annotations
@@ -170,14 +169,13 @@ DEMO_INVENTORY: dict = {
                     ],
                 },
                 {
-                    # Ships a KEV package (Pillow/libwebp) alongside a typosquat
-                    # of "requests" — the malicious-package differentiator.
+                    # Historical published packages and CVEs in a simulated ETL workload.
                     "name": "etl-server",
                     "command": "python -m mcp_etl",
                     "transport": "stdio",
                     "packages": [
                         {"name": "pillow", "version": "9.0.0", "ecosystem": "pypi"},
-                        {"name": "reqeusts", "version": "2.99.0", "ecosystem": "pypi"},
+                        {"name": "requests", "version": "2.28.0", "ecosystem": "pypi"},
                     ],
                     "env": {"GCS_SERVICE_ACCOUNT_KEY": "***"},
                     "tools": [

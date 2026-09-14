@@ -110,8 +110,9 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     grc = journey.split("### GRC and audit:", 1)[1].split("### AppSec", 1)[0]
     assert "dashboard-paths-live.png" in grc
     assert "OWASP" in grc and "MITRE ATLAS" in grc
-    assert "no evaluated controls" in grc
-    assert "compliance pass or certification" in grc
+    assert "offline synthetic enterprise estate" in grc
+    assert "evaluated" in grc
+    assert "do not establish certification or an audit opinion" in grc
     follow_up = re.search(r"<details>\s*<summary>See package remediation and verification</summary>(.*?)</details>", journey, re.S)
     assert follow_up and "remediation-live.png" in follow_up.group(1)
     assert "dependency-map-live.png" not in follow_up.group(1)
@@ -315,3 +316,22 @@ def test_release_workflow_prepends_curated_highlights_to_generated_notes() -> No
 
     assert "scripts/render_release_highlights.py" in workflow
     assert '--generate-notes --notes "$HIGHLIGHTS"' in workflow
+
+
+def test_overview_gallery_fixture_contains_api_scoped_enterprise_evidence() -> None:
+    import gzip
+    import json
+
+    fixture = json.loads(gzip.decompress((ROOT / "ui/fixtures/overview-proof.json.gz").read_bytes()))
+    assert "Synthetic" in fixture["evidence"] and "No live cloud" in fixture["evidence"]
+    responses = fixture["responses"]
+    overview = responses["/v1/overview"]
+    compliance = responses["/v1/compliance"]
+    assert compliance["evaluated_controls"] > 0
+    assert compliance["evaluated_controls"] <= compliance["total_controls"]
+    assert len([lane for lane in overview["coverage"] if lane["count"] > 0]) == 5
+    assert all(not risk["vulnerability_id"].startswith("DEMO-VULN") for risk in overview["top_risks"])
+    for job in responses["/v1/jobs"]["jobs"]:
+        assert job["status"] == "done" and job["request"]["offline"] is True
+        assert f"/v1/scan/{job['job_id']}" in responses
+    assert (ROOT / "docs/images/dashboard-risks-live.png").is_file()

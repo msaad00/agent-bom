@@ -348,6 +348,9 @@ def _rollup_from_blast_radius(blast_radius: list[dict[str, Any]]) -> dict[str, A
                 "cvss_score": b.get("cvss_score"),
                 "epss_score": b.get("epss_score"),
                 "affected_agents": list(b.get("affected_agents") or []),
+                "affected_servers": list(b.get("affected_servers") or []),
+                "impact_category": b.get("impact_category"),
+                "fixed_version": b.get("fixed_version"),
             }
         )
 
@@ -450,6 +453,8 @@ def _finding_top_risk(row: dict[str, Any]) -> dict[str, Any]:
         "cvss_score": row.get("cvss_score"),
         "epss_score": row.get("epss_score"),
         "affected_agents": list(row.get("affected_agents") or []),
+        "impact_category": row.get("impact_category"),
+        "fixed_version": row.get("fixed_version"),
     }
 
 

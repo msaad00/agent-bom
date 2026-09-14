@@ -42,6 +42,10 @@ import {
 } from "@/lib/finding-issue-type";
 
 export interface ExposurePathView {
+  impactCategory?: string;
+  affectedWorkloads?: string[];
+  affectedServices?: string[];
+  fixedVersion?: string;
   nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[];
   riskScore: number;
   href: string;
@@ -260,7 +264,7 @@ export function OverviewCockpit({
   compliance = null,
   services = null,
 }: OverviewCockpitProps) {
-  const [riskTab, setRiskTab] = useState<"risks" | "posture">("risks");
+  const [riskTab, setRiskTab] = useState<"risks" | "posture">("posture");
   const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
   // Once scans exist the chip always renders, but an unevidenced score reads as
   // an em dash — the SAME treatment the Trust Center gives this status. Hiding
@@ -286,13 +290,13 @@ export function OverviewCockpit({
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
         </div>
         <DetailTabs ariaLabel="Risk overview views" value={riskTab} onChange={setRiskTab}
-          tabs={[{ key: "risks", label: "Top risks" }, { key: "posture", label: "Posture details" }]} />
+          tabs={[{ key: "posture", label: "Overview" }, { key: "risks", label: "Top risks" }]} />
         <div role="tabpanel" aria-label="Top risks" hidden={riskTab !== "risks"}>
           <TopRisksPanel loading={loading} unavailable={overviewUnavailable} scans={scans}
             topPath={topPath} exposurePaths={exposurePaths}
             agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null} />
         </div>
-        <div role="tabpanel" aria-label="Posture details" hidden={riskTab !== "posture"}>
+        <div role="tabpanel" aria-label="Overview" hidden={riskTab !== "posture"}>
             <div className="mt-2 grid gap-3">
               <PostureHero
                 loading={loading}
@@ -801,10 +805,22 @@ function TopRisksPanel({
 
 function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) {
   const finding = path.nodes.find((node) => node.type === "cve");
-  const pkg = path.nodes.find((node) => node.type === "package");
   const workload = path.nodes.find((node) => node.type === "agent") ?? path.nodes.find((node) => node.type === "server");
   const sbomSource = workload ? sbomSourceName(workload.label) : null;
-  const findingLabel = finding && /^(CVE-\d{4}-\d+|GHSA-[\w-]+|DEMO-VULN-[\w-]+)$/i.test(finding.label) ? finding.label : null;
+  const workloads = [...new Set(path.affectedWorkloads?.length ? path.affectedWorkloads : workload ? [workload.label] : [])];
+  const impact = {
+    "code-execution": "Could allow attacker-controlled code to run if the vulnerable feature processes untrusted input.",
+    "credential-access": "Could allow unauthorized access if the affected authentication feature is exposed.",
+    "file-access": "Could expose files if an attacker can reach the vulnerable feature.",
+    injection: "Could let untrusted input alter commands or data operations.",
+    ssrf: "Could let an attacker make requests to services reachable by this workload.",
+    "data-leak": "Could disclose sensitive information through the affected feature.",
+    availability: "Could interrupt service when the vulnerable feature handles malicious input.",
+    "client-side": "Could affect users of the application through a vulnerable browser-facing feature.",
+  }[path.impactCategory ?? ""];
+  const subject = sbomSource ? `SBOM source: ${sbomSource}` : workloads.length
+    ? `Affected workload: ${workloads[0]}${workloads.length > 1 ? ` and ${workloads.length - 1} more` : ""}`
+    : "Affected workload not identified";
   const severity = finding?.severity?.toLowerCase();
   const knownSeverity = severity && ["critical", "high", "medium", "low"].includes(severity) ? severity : null;
 
@@ -821,22 +837,26 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
           <div className="grid min-w-0 flex-1 gap-x-4 @min-[42rem]:grid-cols-[minmax(0,1fr)_auto]">
             <p className="text-base font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
-              <span>{pkg?.label || findingLabel || "Unidentified risk"}</span>{pkg && findingLabel ? <> · <span>{findingLabel}</span></> : null}
+              {subject}
             </p>
             <p className="mt-1 text-xs text-ink-secondary [overflow-wrap:anywhere] @min-[42rem]:col-start-1">
-              {sbomSource ? `SBOM source: ${sbomSource}` : workload ? `Affected workload: ${workload.label}` : "Workload not identified"}
+              {impact ?? "A vulnerable dependency was found. Its effect on this workload needs review."}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-secondary @min-[42rem]:col-start-2 @min-[42rem]:row-start-1 @min-[42rem]:row-span-2 @min-[42rem]:mt-0">
               <span className={`rounded-md border px-2 py-0.5 font-semibold capitalize ${severityTone}`}>{knownSeverity ? `${knownSeverity} severity` : "Severity unavailable"}</span>
-              <span>Path priority <strong className="font-semibold tabular-nums text-foreground">{Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "unavailable"}</strong></span>
-              <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">Inspect finding <ArrowRight className="h-3 w-3" aria-hidden="true" /></span>
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">Review impact <ArrowRight className="h-3 w-3" aria-hidden="true" /></span>
             </div>
           </div>
         </div>
       </Link>
       <details className="pb-3 pl-9 text-xs">
         <summary className="cursor-pointer text-ink-secondary">Technical details</summary>
+        <p className="mt-2 text-ink-secondary">Dependency evidence; exploitation of this workload is not established.</p>
         <dl className="mt-2 space-y-2">
+          <div><dt className="text-ink-secondary">Path priority</dt><dd>{Number.isFinite(path.riskScore) ? path.riskScore.toFixed(1) : "Unavailable"}</dd></div>
+          {path.fixedVersion ? <div><dt className="text-ink-secondary">Advisory fix version</dt><dd>{path.fixedVersion}</dd></div> : null}
+          {workloads.length > 1 ? <div><dt className="text-ink-secondary">Affected workloads</dt><dd>{workloads.join(", ")}</dd></div> : null}
+          {path.affectedServices?.length ? <div><dt className="text-ink-secondary">Affected services</dt><dd>{path.affectedServices.join(", ")}</dd></div> : null}
           {path.nodes.map((node, index) => (
             <div key={`${node.type}-${index}`} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
               <dt className="capitalize text-ink-secondary">{node.type === "cve" ? "Finding" : (node.type === "agent" || node.type === "server") && sbomSourceName(node.label) !== null ? "SBOM source" : node.type}</dt>

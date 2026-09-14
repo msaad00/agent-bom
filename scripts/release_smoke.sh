@@ -70,12 +70,14 @@ print(len(findings))
 PY
 )"
 if [ "$scan_rc" -eq 1 ]; then
-  python3 - "$json_out" <<'PY' || fail "demo scan exited 1 without a malicious finding"
+  # The CLI defaults to a critical-severity gate. Malicious packages also
+  # fail the scan, but are not required for a real-CVE demo to return 1.
+  python3 - "$json_out" <<'PY' || fail "demo scan exited 1 without a critical or malicious finding"
 import json, sys
 
 report = json.load(open(sys.argv[1]))
 findings = report.get("findings") or []
-if not any(row.get("is_malicious") for row in findings):
+if not any(row.get("is_malicious") or str(row.get("severity", "")).lower() == "critical" for row in findings):
     raise SystemExit(1)
 PY
 fi

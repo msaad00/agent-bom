@@ -119,17 +119,34 @@ def test_verbose_summary_critical_row_states_its_scope(demo_verbose_console_outp
     ``print_posture_summary``'s ``N CRITICAL`` headline, which counts every
     finding category. Two different denominators, one unscoped label.
     """
-    by_sev = demo_json_report["finding_summary"]["by_severity"]
     critical_cves = demo_json_report["summary"]["critical_findings"]
-    # The demo estate is only useful as a regression lock while the two bases
-    # genuinely differ; if they converge this test stops proving anything.
-    assert critical_cves != by_sev["critical"], "demo estate no longer exercises the two bases"
 
     row = re.search(r"^\s*(Critical\b[^\d]*?)\s{2,}(\d+)\s*$", demo_verbose_console_output, flags=re.MULTILINE)
     assert row, "verbose summary box has no critical row"
     label, value = row.group(1).strip(), int(row.group(2))
     assert value == critical_cves, "the row still counts package CVEs"
     assert "CVE" in label, f"package-CVE-scoped row must say so, got {label!r}"
+
+
+def test_verbose_summary_distinguishes_non_cve_findings(monkeypatch):
+    """Exercise unequal denominators independently of the public demo catalog."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    import agent_bom.output as output
+    from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
+
+    package = Package(name="test-malicious-package", version="1.0.0", ecosystem="npm", is_malicious=True)
+    server = MCPServer(name="test-server", packages=[package])
+    report = AIBOMReport(agents=[Agent(name="test-agent", agent_type=AgentType.CUSTOM, config_path="", mcp_servers=[server])])
+    stream = StringIO()
+    monkeypatch.setattr(output, "console", Console(file=stream, width=120, color_system=None))
+    output.print_summary(report)
+    output.print_posture_summary(report)
+    rendered = stream.getvalue()
+    assert re.search(r"Critical package CVEs\s+0", rendered)
+    assert re.search(r"SECURITY POSTURE:\s+1 CRITICAL", rendered)
 
 
 def test_verbose_posture_headline_matches_unified_stream(demo_verbose_console_output, demo_json_report):

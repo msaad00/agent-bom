@@ -32,6 +32,7 @@ class DemoAdvisory:
     cwe: str = ""
     is_kev: bool = False
     source: str = "demo-advisory"
+    sample_version: str = ""
 
 
 DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
@@ -45,6 +46,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "medium",
         6.1,
         "Express open redirect via malformed URLs passed to res.location/redirect",
+        sample_version="4.19.1",
         cwe="CWE-601",
     ),
     DemoAdvisory(
@@ -56,6 +58,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         7.6,
         "jsonwebtoken insecure key handling allows signature verification bypass",
+        sample_version="8.5.1",
         cwe="CWE-347",
     ),
     DemoAdvisory(
@@ -67,6 +70,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         6.1,
         "node-fetch leaks Cookie/Authorization headers on cross-origin redirect",
+        sample_version="3.1.0",
         cwe="CWE-200",
     ),
     DemoAdvisory(
@@ -78,6 +82,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "medium",
         6.5,
         "Axios can disclose the XSRF cookie token to another host through the X-XSRF-TOKEN request header",
+        sample_version="0.27.2",
         cwe="CWE-352",
     ),
     DemoAdvisory(
@@ -89,6 +94,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "medium",
         6.5,
         "Axios can disclose the XSRF cookie token to another host through the X-XSRF-TOKEN request header",
+        sample_version="1.4.0",
         cwe="CWE-352",
     ),
     DemoAdvisory(
@@ -100,6 +106,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         7.5,
         "ws denial of service when handling a request with many HTTP headers",
+        sample_version="8.17.0",
         cwe="CWE-400",
     ),
     DemoAdvisory(
@@ -111,6 +118,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         7.2,
         "lodash command injection via template() with tainted options",
+        sample_version="4.17.20",
         cwe="CWE-77",
     ),
     # ── pypi ──────────────────────────────────────────────────────────────
@@ -123,6 +131,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "critical",
         9.8,
         "PyYAML arbitrary code execution via yaml.full_load on untrusted input",
+        sample_version="5.3",
         cwe="CWE-20",
     ),
     DemoAdvisory(
@@ -134,6 +143,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "critical",
         9.8,
         "LangChain arbitrary code execution via PALChain prompt-to-Python evaluation",
+        sample_version="0.0.150",
         cwe="CWE-94",
     ),
     DemoAdvisory(
@@ -145,6 +155,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         8.8,
         "Pillow bundled libwebp heap buffer overflow — exploited in the wild (CISA KEV)",
+        sample_version="9.0.0",
         cwe="CWE-787",
         is_kev=True,
     ),
@@ -157,6 +168,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "medium",
         6.1,
         "Requests leaks Proxy-Authorization header to destination on redirect",
+        sample_version="2.28.0",
         cwe="CWE-200",
     ),
     DemoAdvisory(
@@ -168,6 +180,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         7.5,
         "pyca/cryptography Bleichenbacher timing oracle in RSA PKCS#1 v1.5 decryption",
+        sample_version="39.0.0",
         cwe="CWE-208",
     ),
     DemoAdvisory(
@@ -179,6 +192,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         7.5,
         "Flask session cookie disclosed to other clients via a caching proxy",
+        sample_version="2.2.0",
         cwe="CWE-539",
     ),
     DemoAdvisory(
@@ -190,6 +204,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         7.5,
         "Werkzeug multipart form-data parsing denial of service",
+        sample_version="2.2.2",
         cwe="CWE-400",
     ),
     DemoAdvisory(
@@ -201,6 +216,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "medium",
         5.4,
         "Jinja2 cross-site scripting via the xmlattr filter with attacker-controlled keys",
+        sample_version="3.1.2",
         cwe="CWE-79",
     ),
     DemoAdvisory(
@@ -212,6 +228,7 @@ DEMO_ADVISORIES: tuple[DemoAdvisory, ...] = (
         "high",
         7.5,
         "certifi trusted a compromised e-Tugra root certificate authority",
+        sample_version="2023.5.7",
         cwe="CWE-345",
     ),
 )

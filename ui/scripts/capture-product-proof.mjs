@@ -2718,7 +2718,7 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
       // remount graph surfaces after their first ready signal.
       await page.locator(options.readySelector).first().waitFor({ state: "visible", timeout: 30_000 });
     }
-    await page.screenshot({ path: path.join(captureOutputDir, filename), fullPage: false });
+    await page.screenshot({ path: path.join(captureOutputDir, filename), fullPage: false, animations: "disabled" });
     console.log(`captured ${filename}`);
   } finally {
     page.off("console", onConsole);

@@ -337,7 +337,7 @@ export function LineageDetailPanel({
           {data.vulnCount == null ? (
             <div className="text-xs text-ink-secondary">Finding count unavailable</div>
           ) : data.vulnCount > 0 ? (
-            <Row label="Findings" value={data.vulnCount} className="text-red-400" />
+            <Row label="Findings" value={data.vulnCountPartial ? `At least ${data.vulnCount}` : data.vulnCount} className="text-red-400" />
           ) : (
             <div className="text-xs text-ink-secondary">No findings linked in this snapshot</div>
           )}

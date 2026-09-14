@@ -36,3 +36,20 @@ describe("package finding evidence after summary traversal", () => {
     expect(screen.getByText("No findings linked in this snapshot")).toBeInTheDocument();
   });
 });
+
+
+it("does not turn truncated context into an empty finding verdict", () => {
+  const detail = context(false);
+  detail.completeness = { status: "truncated", complete: false, truncated: true, sampled: false, returned: 10000 };
+  const merged = mergeGraphNodeDetail(base, detail);
+  expect(merged.vulnCount).toBeUndefined();
+  render(<LineageDetailPanel data={merged} onClose={() => {}} />);
+  expect(screen.getByText("Finding count unavailable")).toBeInTheDocument();
+});
+
+it("labels known findings in sampled context as a lower bound", () => {
+  const detail = context();
+  detail.completeness = { status: "sampled", complete: false, truncated: false, sampled: true, returned: 2 };
+  render(<LineageDetailPanel data={mergeGraphNodeDetail(base, detail)} onClose={() => {}} />);
+  expect(screen.getByText("At least 1")).toBeInTheDocument();
+});

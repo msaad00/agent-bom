@@ -554,8 +554,8 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
             grouped[key] = statement
             product_sets[key] = set()
         product_sets[key].update(statement.products)
-    for key, statement in grouped.items():
-        statement.products = sorted(product_sets[key])
+    for assessment_key, statement in grouped.items():
+        statement.products = sorted(product_sets[assessment_key])
     return VexDocument(statements=[grouped[key] for key in sorted(grouped)])
 
 

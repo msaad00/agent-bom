@@ -366,8 +366,10 @@ def print_posture_summary(report: AIBOMReport) -> None:
     from agent_bom.finding import FindingType
 
     sev_counts: Counter[str] = Counter()
-    all_cve = cve_findings(report)
-    active_findings = active_cve_findings(report)
+    # Legacy export views may include malicious packages when there are no
+    # blast-radius rows. They belong to the non-CVE pass below, exactly once.
+    all_cve = [finding for finding in cve_findings(report) if finding.finding_type == FindingType.CVE]
+    active_findings = [finding for finding in active_cve_findings(report) if finding.finding_type == FindingType.CVE]
     vex_suppressed_count = len(all_cve) - len(active_findings)
     for finding in active_findings:
         sev_counts[finding_severity(finding).value.upper()] += 1

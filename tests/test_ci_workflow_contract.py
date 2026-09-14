@@ -16,6 +16,22 @@ def _ci() -> dict[str, object]:
     return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
 
 
+def test_dependency_updates_share_one_scheduled_owner() -> None:
+    config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
+    groups = config["multi-ecosystem-groups"]
+    assert set(groups) == {"weekly-maintenance"}
+    assert groups["weekly-maintenance"]["schedule"]["interval"] == "weekly"
+    assert groups["weekly-maintenance"]["open-pull-requests-limit"] == 1
+    for update in config["updates"]:
+        assert update["multi-ecosystem-group"] == "weekly-maintenance"
+        assert update["patterns"] == ["*"]
+        assert update["groups"]["security-updates"]["applies-to"] == "security-updates"
+
+    lock_refresh = yaml.safe_load((ROOT / ".github" / "workflows" / "uv-lock-upgrade.yml").read_text())
+    triggers = lock_refresh.get("on", lock_refresh.get(True))
+    assert set(triggers) == {"workflow_dispatch"}
+
+
 def test_timeout_policy_uses_the_locked_security_environment() -> None:
     steps = _ci()["jobs"]["security"]["steps"]
     install = next(step for step in steps if step.get("name") == "Install dependencies")

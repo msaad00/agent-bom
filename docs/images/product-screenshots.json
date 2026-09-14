@@ -1,9 +1,9 @@
 {
   "release_version": "0.105.0",
-  "captured_at": "2026-09-14T04:47:52.429Z",
-  "source_commit": "ec7ebbe7b8e58b39fc0426aaaa16864c2f2b6216",
+  "captured_at": "2026-09-14T04:55:22.179Z",
+  "source_commit": "97221e8a19cb19d81886678356e00e29b33254fe",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:37bb8eb2f354d9a58ed8288ce74a2250b2853d6ed0a8315b23a2b8b42d8d2ad3",
+  "capture_inputs_sha256": "sha256:2ef481fef0bfb52c0c3ba799a4b235c290f45ec2b158874cf03cb8a9b77ab0f9",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Risk overview — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.105.0",
-      "sha256": "sha256:909d0502bc43118435207173d4eb9e03db481a6a0f89eecfd8bc11e301f89b5b"
+      "sha256": "sha256:055883307fbc464c52c9826b3810bd03d698e26727ece5767606ef088472eee9"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Risk overview in the light theme",
       "visible_version": "0.105.0",
-      "sha256": "sha256:fd0efbfa4b172a5c12c4ba9d19f5823da3c3ee53c1aeeeb3410f05fac3011782"
+      "sha256": "sha256:a54bb9f32505a4cdfaf0079f210412de23c64304087e01c2125eb3835659f6d8"
     },
     {
       "presentation": "dark mobile",
@@ -28,7 +28,7 @@
       "page": "/?capture=1",
       "scope": "Risk overview at a 390 by 844 viewport",
       "visible_version": "0.105.0",
-      "sha256": "sha256:9907a2e4a4a7e960bda179c513bd723dfb23e8a5bc2b64b769d0477d718c8a3f"
+      "sha256": "sha256:01dbf22e1c58772cf7c6b6697342d9404619ffe360c837c0e8970e838fca97e5"
     },
     {
       "presentation": "dark desktop",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Top risks tab from the offline synthetic enterprise estate",
       "visible_version": "0.105.0",
-      "sha256": "sha256:0cb14ca42303c793387a04587a498b3493053e9c516f817d058118980f3f34cf"
+      "sha256": "sha256:12fddcb47b6a025db9d4fb37108f1636d4ea6164207b718d2a06e53984f0f336"
     },
     {
       "presentation": "light desktop",
@@ -44,7 +44,7 @@
       "page": "/?capture=1",
       "scope": "Executive impact summaries with technical details collapsed",
       "visible_version": "0.105.0",
-      "sha256": "sha256:58502eaef4e962479c9ee0daee775cac2976ee201ecaa0f1132802a88e7a7d54"
+      "sha256": "sha256:479602db0d342f49a85683d14d3ae68bfb4c8885c30c69669ae2f54fb5fd09a3"
     },
     {
       "presentation": "dark mobile",
@@ -52,7 +52,7 @@
       "page": "/?capture=1",
       "scope": "Executive impact summaries at a 390 by 844 viewport",
       "visible_version": "0.105.0",
-      "sha256": "sha256:6b344b8ea865bc62f9fb495b4f5387e152ff109b3a19f55595100555337f2566"
+      "sha256": "sha256:badb62f52b39b08a421dd59c92d8d7ac87e4fee390bcc60027e1e027ac6a95b6"
     },
     {
       "presentation": "dark desktop",
@@ -60,7 +60,7 @@
       "page": "/?capture=1",
       "scope": "Expanded Overview synthetic control evaluations and risk mappings with assessment scope",
       "visible_version": "0.105.0",
-      "sha256": "sha256:a6b6d7820333903a0998789b48415249f195ba626e43958e67c92ad6d6843895"
+      "sha256": "sha256:8c52a51f26b65057ed04280ac7aec5f9b233558df218d76093dd018730a0b7c2"
     },
     {
       "presentation": "dark desktop",
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.105.0",
-      "sha256": "sha256:6b103cfc25e7a5788def21a9ecf5cf642dbf9d6f93b435e0add1ebe44653a9b0"
+      "sha256": "sha256:93b08bfa0869d2bf2f573443399252be31b8f9a8a8367b48b959612ddb80d3ff"
     },
     {
       "presentation": "dark desktop",
@@ -225,7 +225,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.105.0",
-      "sha256": "sha256:81d19ee48e823665ced51718cd6b473b67d44d0953c76c9c51f12148e050252f"
+      "sha256": "sha256:a52c9881f26bc470da75e2f45e1211e7c6e5c21cf1349cc2e27c762b200ef32f"
     },
     {
       "presentation": "dark desktop",

@@ -1220,6 +1220,71 @@ def save_graph_streaming(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def load_rollup_graph(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    scan_id: str = "",
+) -> UnifiedGraph:
+    """Load the complete topology and risk fields used by containment roll-ups.
+
+    This internal projection is only for ``rollup_view``: it deliberately does
+    not hydrate evidence, temporal edges, dimensions, or attack paths. Evidence
+    and investigation endpoints must continue to use ``load_graph``. No nodes
+    or relationships are capped, so aggregate counts retain the full snapshot.
+    """
+    tenant_id = normalize_graph_tenant_id(tenant_id)
+    effective_scan_id, created_at = _resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+    graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
+    if not effective_scan_id:
+        return graph
+    params = (tenant_id, effective_scan_id)
+    # Transfer each projection as one JSON batch. sqlite3 releases/reacquires
+    # the GIL for every cursor row: concurrent 20k-edge reads otherwise contend
+    # tens of thousands of times even after evidence columns are excluded.
+    node_batch = conn.execute(
+        """SELECT json_group_array(json_array(id, entity_type, label, severity, risk_score, json(attributes)))
+           FROM (SELECT id, entity_type, label, severity, risk_score, attributes
+                 FROM graph_nodes WHERE tenant_id = ? AND scan_id = ? ORDER BY rowid)""",
+        params,
+    ).fetchone()
+    for node_id, entity_type, label, severity, risk_score, attributes in json.loads(node_batch[0]):
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType(entity_type),
+                label=label,
+                severity=severity or "",
+                risk_score=risk_score,
+                attributes=attributes,
+                first_seen=created_at,
+                last_seen=created_at,
+            )
+        )
+    del node_batch
+    edge_batch = conn.execute(
+        """SELECT json_group_array(json_array(source_id, target_id, relationship))
+           FROM (SELECT source_id, target_id, relationship
+                 FROM graph_edges WHERE tenant_id = ? AND scan_id = ?
+                 ORDER BY source_id, target_id, relationship)""",
+        params,
+    ).fetchone()
+    for source, target, relationship in json.loads(edge_batch[0]):
+        if source in graph.nodes and target in graph.nodes:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=source,
+                    target=target,
+                    relationship=RelationshipType(relationship),
+                    first_seen=created_at,
+                    last_seen=created_at,
+                )
+            )
+    del edge_batch
+    graph.completeness = GraphCompleteness(total_nodes=len(graph.nodes), returned_nodes=len(graph.nodes))
+    return graph
+
+
 def load_graph(
     conn: sqlite3.Connection,
     *,

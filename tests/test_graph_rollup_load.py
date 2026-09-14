@@ -8,7 +8,7 @@ from agent_bom.graph.types import EntityType, RelationshipType
 
 
 def test_load_graph_can_filter_edges_for_rollup(tmp_path) -> None:
-    """Rollup only needs containment edges — skip the long tail at load time."""
+    """An explicit relationship filter retains exactly those edge types."""
     db = tmp_path / "rollup-load.db"
     with sqlite_graph_store.open_graph_db(db) as conn:
         g = UnifiedGraph(scan_id="rollup-load", tenant_id="default")

@@ -1733,6 +1733,20 @@ class SQLiteGraphStore:
         finally:
             conn.close()
 
+    def load_rollup_graph(self, *, tenant_id: str = "", scan_id: str = "") -> UnifiedGraph:
+        """Internal complete-topology projection; never use for evidence exports."""
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
+        try:
+            # Resolve the snapshot, nodes, and edges in one read transaction;
+            # a concurrent refresh must not splice together two revisions.
+            conn.execute("BEGIN")
+            return sqlite_graph_store.load_rollup_graph(conn, tenant_id=tenant_id, scan_id=scan_id)
+        finally:
+            conn.close()
+
     def load_graph(
         self,
         *,

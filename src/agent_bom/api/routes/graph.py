@@ -4496,7 +4496,14 @@ async def get_graph_rollup(
             }
             if mode != "attack_path":
                 load_kwargs["relationship_types"] = _ROLLUP_RELATIONSHIPS
-            graph = await _graph_store_call(graph_store.load_graph, **load_kwargs)
+            # SQLite can avoid hydrating evidence JSON for an aggregate-only
+            # view. Other stores retain the full, equivalent load. Attack-path
+            # mode always needs the complete evidence records.
+            rollup_loader = getattr(graph_store, "load_rollup_graph", None)
+            if mode == "rollup" and callable(rollup_loader):
+                graph = await _graph_store_call(rollup_loader, scan_id=requested_scan_id, tenant_id=tenant)
+            else:
+                graph = await _graph_store_call(graph_store.load_graph, **load_kwargs)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 

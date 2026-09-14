@@ -332,7 +332,7 @@ class TestRollupEndpointScopesItsFetch:
 
     def _calls(self, api_store, monkeypatch) -> list[str]:
         seen: list[str] = []
-        for name in ("load_graph", "traverse_subgraph"):
+        for name in ("load_graph", "load_rollup_graph", "traverse_subgraph"):
             original = getattr(type(api_store), name)
 
             def _spy(self, *args, _name=name, _original=original, **kwargs):
@@ -369,7 +369,29 @@ class TestRollupEndpointScopesItsFetch:
         calls = self._calls(api_store, monkeypatch)
         response = client.get("/v1/graph/rollup", params={"scan_id": SCAN})
         assert response.status_code == 200, response.text
-        assert calls == ["load_graph"], calls
+        assert calls == ["load_rollup_graph"], calls
+
+    def test_attack_path_mode_keeps_evidence_load(self, api_store, client, monkeypatch):
+        calls = self._calls(api_store, monkeypatch)
+        response = client.get("/v1/graph/rollup", params={"scan_id": SCAN, "mode": "attack_path"})
+        assert response.status_code == 200, response.text
+        assert calls == ["load_graph"]
+
+    def test_top_level_projection_matches_full_payload(self, api_store, client):
+        from agent_bom.graph.rollup import rollup_view
+
+        expected = rollup_view(_full_materialisation(api_store, API_TENANT))
+        response = client.get("/v1/graph/rollup", params={"scan_id": SCAN})
+        assert response.status_code == 200, response.text
+        assert response.json() == expected
+
+    def test_backend_without_projection_keeps_full_load(self, api_store, client, monkeypatch):
+        monkeypatch.setattr(type(api_store), "load_rollup_graph", None)
+        response = client.get("/v1/graph/rollup", params={"scan_id": SCAN})
+        assert response.status_code == 200, response.text
+        from agent_bom.graph.rollup import rollup_view
+
+        assert response.json() == rollup_view(_full_materialisation(api_store, API_TENANT))
 
 
 class TestPartialBackendsKeepTheirAnswer:

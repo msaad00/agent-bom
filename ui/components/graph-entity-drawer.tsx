@@ -67,7 +67,7 @@ export function GraphEntityDrawer({
   } | null>(null);
   // Canvas and detail requests may finish in either order. Reapply the richer
   // evidence to each canvas update, but only for the same node and snapshot.
-  const detail = enrich && loadedDetail?.scanId === scanId && loadedDetail.response.node.id === nodeId
+  const detail = enrich && loadedDetail && loadedDetail.scanId === scanId && loadedDetail.response.node.id === nodeId
     ? loadedDetail.response : null;
   const enriched = useMemo(() => detail ? mergeGraphNodeDetail(data, detail) : data, [data, detail]);
   const pathname = usePathname();

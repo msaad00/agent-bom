@@ -365,7 +365,7 @@ def iter_tenant_scan_spine_findings(
     the scan-job results already resident in memory (no per-tenant DB scan).
     """
     from agent_bom.api.compliance_hub_store import status_matches
-    from agent_bom.api.findings_current import current_scan_findings
+    from agent_bom.api.findings_current import current_scan_findings, scan_only_findings
 
     rows = current_scan_findings(
         _completed_jobs_for_tenant(tenant_id),
@@ -373,6 +373,7 @@ def iter_tenant_scan_spine_findings(
         scan_id=scan_id,
         iter_findings=_iter_scan_findings,
     )
+    rows = scan_only_findings(rows, tenant_id, scan_id=scan_id)
     if severity:
         normalized = severity.lower()
         rows = [item for item in rows if str(item.get("severity", "")).lower() == normalized]
@@ -3477,7 +3478,7 @@ def _list_findings_impl(
     # including an empty snapshot, which retires that scope's absent findings —
     # then resolves any cross-scope identity overlap by evidence time.
     # ``?scan_id=`` still returns that scan's rows verbatim.
-    from agent_bom.api.findings_current import current_scan_findings
+    from agent_bom.api.findings_current import current_scan_findings, scan_only_findings
 
     scope_filters = _canonical_scope_filters(
         provider,
@@ -3522,6 +3523,7 @@ def _list_findings_impl(
             scan_id=scan_id,
             iter_findings=_iter_scan_findings,
         )
+        scan_findings = scan_only_findings(scan_findings, tenant_id, hub=store, scan_id=scan_id)
         if severity:
             normalized = severity.lower()
             scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]

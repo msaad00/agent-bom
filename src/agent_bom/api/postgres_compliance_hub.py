@@ -1333,6 +1333,25 @@ class PostgresComplianceHubStore:
                     plain_upsert_params,
                 )
 
+    def lookup_current_ids(
+        self, tenant_id: str, canonical_ids: Sequence[str], *, scan_id: str | None = None, origin: str | None = None
+    ) -> set[str]:
+        found: set[str] = set()
+        keys = list(dict.fromkeys(canonical_ids))
+        with _tenant_connection(self._pool) as conn:
+            for start in range(0, len(keys), 500):
+                predicates = ["tenant_id = %s", "canonical_id = ANY(%s)"]
+                params: list[Any] = [tenant_id, keys[start : start + 500]]
+                if scan_id is not None:
+                    predicates.append("scan_id = %s")
+                    params.append(scan_id)
+                if origin is not None:
+                    predicates.append("origin = %s")
+                    params.append(origin)
+                rows = conn.execute("SELECT canonical_id FROM hub_findings_current WHERE " + " AND ".join(predicates), params).fetchall()  # nosec B608 - predicates are fixed and values are bound.
+                found.update(str(row[0]) for row in rows)
+        return found
+
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         with _tenant_connection(self._pool) as conn:
             has_ledger_col = _postgres_current_has_ledger_col(conn)

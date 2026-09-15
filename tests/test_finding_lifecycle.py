@@ -295,3 +295,20 @@ def test_bulk_reconcile_absent_api() -> None:
     assert resolved_ids == {"finding-dropped-api"}
 
     reset_compliance_hub_store()
+
+
+def test_current_identity_lookup_is_batched_and_tenant_scoped(hub_store):
+    from agent_bom.api.findings_current import scan_only_findings
+
+    rows = [{**_sample_finding(), "id": f"shared-{i}", "scan_id": "scan-a", "batch_id": "scan-a"} for i in range(1001)]
+    hub_store.add("tenant-a", rows)
+    hub_store.upsert_current_batch("tenant-a", rows, observed_at=MON, batch_id="scan-a")
+    keys = [row["id"] for row in rows]
+    assert hub_store.lookup_current_ids("tenant-a", keys, origin="bulk_ingest") == set(keys)
+    assert hub_store.lookup_current_ids("tenant-b", keys) == set()
+    assert hub_store.lookup_current_ids("tenant-a", keys, scan_id="scan-b") == set()
+    assert hub_store.lookup_current_ids("tenant-a", keys, scan_id="scan-a") == set(keys)
+    assert scan_only_findings(rows, "tenant-a", hub=hub_store) == []
+    assert scan_only_findings(rows, "tenant-b", hub=hub_store) == rows
+    _mark_resolved(hub_store, "tenant-a", keys[0], TUE)
+    assert scan_only_findings([rows[0]], "tenant-a", hub=hub_store) == []

@@ -83,3 +83,18 @@ attempts are removed when the process can clean them up; abrupt process death
 can leave orphaned files. A rolling application rollback preserves the additive
 schema and rows, but old binaries cannot resume the new durable queue. Drain
 exports before rolling back to an older application version.
+
+
+### Finding identity across ingestion sources
+
+Exports and the findings queue reconcile scan observations with the compliance
+hub by canonical finding ID. When the same occurrence is also ingested into the
+hub, its current lifecycle record owns status and enrichment; it is emitted
+once. Different assets retain different occurrence IDs even when they share a
+CVE or package. Preserve canonical IDs when forwarding scan evidence through
+`POST /v1/findings/bulk`.
+
+Reconciliation happens before status and severity filters, so a resolved hub
+occurrence cannot reappear as an open scan observation. Identity lookups are
+batched against the tenant's current-state index; exports continue reading the
+hub through bounded keyset pages.

@@ -60,6 +60,34 @@ def finding_identity(finding: dict[str, Any]) -> str:
     return f"{vuln_id}:{package}"
 
 
+def scan_only_findings(
+    rows: Iterable[dict[str, Any]], tenant_id: str, *, hub: Any = None, scan_id: str | None = None, origin: str | None = "bulk_ingest"
+) -> list[dict[str, Any]]:
+    """Exclude observations already represented by the hub's current lifecycle.
+
+    Canonical finding IDs identify occurrences, including their asset scope;
+    CVE or package names alone never establish equivalence. Once that identity
+    is managed by the hub, its lifecycle status and enrichment are authoritative.
+    Reconcile BEFORE severity/status filters so a resolved hub occurrence cannot
+    reappear as an open scan observation. Lookups are bounded to resident scans.
+    """
+    from agent_bom.api.finding_lifecycle import resolve_canonical_id
+
+    retained = list(rows)
+    if not retained:
+        return retained
+    if hub is None:
+        from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+        hub = get_compliance_hub_store()
+    lookup = getattr(hub, "lookup_current_ids", None)
+    if not callable(lookup):
+        return retained
+    keys = [resolve_canonical_id(row) for row in retained]
+    owned = lookup(tenant_id, keys, scan_id=scan_id, origin=origin)
+    return [row for row, key in zip(retained, keys) if key not in owned]
+
+
 _SCAN_TARGET_FIELDS = (
     "inventory",
     "images",

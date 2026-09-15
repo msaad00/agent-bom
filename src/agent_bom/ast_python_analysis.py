@@ -570,8 +570,11 @@ def _collect_framework_tool_registrations(
         if not framework:
             continue
         tools_node = _keyword_value(node, "tools")
-        if tools_node is None and agent_constructor == "create_react_agent" and len(node.args) >= 2:
-            tools_node = node.args[1]
+        # LangChain's constructors have different positional signatures:
+        # initialize_agent(tools, llm), the create_* helpers (llm, tools, ...).
+        tools_position = {"initialize_agent": 0, "create_react_agent": 1, "create_openai_functions_agent": 1}.get(agent_constructor)
+        if tools_node is None and tools_position is not None and len(node.args) > tools_position:
+            tools_node = node.args[tools_position]
         for index, (binding, tool_call) in enumerate(_resolve_framework_tool_exprs(tools_node, assignments)):
             registration = _framework_tool_from_call(
                 binding,

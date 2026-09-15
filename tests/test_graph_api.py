@@ -3359,3 +3359,25 @@ def test_graph_node_query_routes_preserve_slashes_and_suffixes(recording_graph_s
     assert neighbors.status_code == 200
     assert neighbors.json()["node_id"] == node_id
     assert neighbors.json()["total_neighbors"] == 1
+
+
+def test_node_context_preserves_backend_completeness(recording_graph_store, monkeypatch):
+    recording_graph_store.graph.add_node(UnifiedNode(id="pkg:partial", entity_type=EntityType.PACKAGE, label="partial-package"))
+    original = recording_graph_store.node_context
+    completeness = {
+        "status": "truncated",
+        "complete": False,
+        "sampled": False,
+        "truncated": True,
+        "returned": 10000,
+        "reason": "edge_budget",
+        "edge_budget": 10000,
+    }
+
+    def partial_context(**kwargs):
+        return {**original(**kwargs), "completeness": completeness}
+
+    monkeypatch.setattr(recording_graph_store, "node_context", partial_context)
+    response = TestClient(app).get("/v1/graph/node/pkg:partial")
+    assert response.status_code == 200
+    assert response.json()["completeness"] == completeness

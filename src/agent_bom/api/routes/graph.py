@@ -3519,7 +3519,7 @@ async def get_graph_node(
         "neighbors": node_context["neighbors"],
         "sources": node_context["sources"],
         "impact": node_context["impact"],
-        "completeness": graph_completeness(returned=1, total=1),
+        "completeness": node_context.get("completeness") or graph_completeness(returned=1, total=1),
     }
 
 

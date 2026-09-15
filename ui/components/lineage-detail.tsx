@@ -334,16 +334,12 @@ export function LineageDetailPanel({
           {data.versionConfidence && (
             <Row label="Version confidence" value={data.versionConfidence} />
           )}
-          {(data.vulnCount ?? 0) > 0 ? (
-            <Row
-              label="Findings"
-              value={data.vulnCount ?? 0}
-              className="text-red-400"
-            />
+          {data.vulnCount == null ? (
+            <div className="text-xs text-ink-secondary">Finding count unavailable</div>
+          ) : data.vulnCount > 0 ? (
+            <Row label="Findings" value={data.vulnCountPartial ? `At least ${data.vulnCount}` : data.vulnCount} className="text-red-400" />
           ) : (
-            <div className="text-xs text-emerald-400">
-              No known findings on this package node
-            </div>
+            <div className="text-xs text-ink-secondary">No findings linked in this snapshot</div>
           )}
         </div>
       )}
@@ -523,7 +519,7 @@ export function LineageDetailPanel({
           <Label>Lifecycle</Label>
           {data.status && <Row label="Status" value={data.status} />}
           {data.riskScore != null && (
-            <Row label="Risk score" value={data.riskScore.toFixed(1)} />
+            <Row label="Node risk score" value={data.riskScore.toFixed(1)} />
           )}
           {data.firstSeen && (
             <Row label="First seen" value={shortDate(data.firstSeen)} />

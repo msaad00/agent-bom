@@ -137,13 +137,9 @@ CWE_IMPACT_CATEGORIES: dict[str, str] = {
     "CWE-614": IMPACT_CLIENT_SIDE,  # Sensitive cookie without secure flag
     "CWE-1004": IMPACT_CLIENT_SIDE,  # Sensitive cookie without HttpOnly
     "CWE-1275": IMPACT_CLIENT_SIDE,  # Sensitive cookie with SameSite=None
-    # Input validation — ambiguous, treat as data-leak (conservative mid-ground)
-    "CWE-20": IMPACT_DATA_LEAK,  # Improper input validation
-    "CWE-116": IMPACT_DATA_LEAK,  # Improper encoding/escaping
-    "CWE-173": IMPACT_DATA_LEAK,  # Improper handling of alternate encoding
-    "CWE-670": IMPACT_DATA_LEAK,  # Always-incorrect control flow
-    "CWE-754": IMPACT_DATA_LEAK,  # Improper check for exceptional conditions
-    "CWE-1286": IMPACT_DATA_LEAK,  # Improper validation of syntactic correctness
+    # Broad input-validation/control-flow CWEs (20, 116, 173, 670, 754,
+    # 1286) do not establish an effect. Leave them unmapped; a specific
+    # accompanying CWE can still establish the category.
 }
 
 

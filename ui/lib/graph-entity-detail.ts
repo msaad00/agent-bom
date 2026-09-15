@@ -53,8 +53,20 @@ export function mergeGraphNodeDetail(
     ...(detail.node.attributes ?? {}),
     node_id: detail.node.id,
   };
+  // Count canonical finding endpoints once, including reciprocal links.
+  // Node-local risk is not a finding count or an aggregate exposure score.
+  const findingIds = new Set([
+    ...detail.edges_out.filter((edge) => edge.source === detail.node.id && edge.relationship === "vulnerable_to").map((edge) => edge.target),
+    ...detail.edges_in.filter((edge) => edge.target === detail.node.id && edge.relationship === "affects").map((edge) => edge.source),
+  ]);
+  const partial = detail.completeness != null && !detail.completeness.complete;
+  const findingCount = Math.max(base.vulnCount ?? 0, findingIds.size);
   return {
     ...base,
+    ...(base.nodeType === "package" ? {
+      vulnCount: partial && findingCount === 0 ? undefined : findingCount,
+      vulnCountPartial: partial,
+    } : {}),
     entityType: String(detail.node.entity_type),
     status: String(detail.node.status ?? base.status ?? ""),
     riskScore: detail.node.risk_score ?? base.riskScore,

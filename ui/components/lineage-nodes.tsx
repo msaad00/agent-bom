@@ -47,6 +47,7 @@ export type LineageNodeData = {
   serverCount?: number | undefined;
   packageCount?: number | undefined;
   vulnCount?: number | undefined;
+  vulnCountPartial?: boolean | undefined;
   // Server / Shared Server
   toolCount?: number | undefined;
   credentialCount?: number | undefined;

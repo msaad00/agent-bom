@@ -811,7 +811,7 @@ def _cve_sarif_result(
         "network_exploitable": bool(finding.network_exploitable),
         "exploit_likelihood": exploit_likelihood_value(finding),
         "exposed_credentials": list(finding.exposed_credentials),
-        "impact_category": finding.impact_category or "code-execution",
+        "impact_category": finding.impact_category,
         "attack_vector_summary": finding.attack_vector_summary,
         "reachability": finding.reachability,
         "symbol_reachability": evidence(finding, "symbol_reachability"),

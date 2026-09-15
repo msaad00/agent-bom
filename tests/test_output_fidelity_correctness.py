@@ -307,3 +307,19 @@ def test_prometheus_no_truncation_under_cap():
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_legacy_missing_impact_stays_unknown_across_outputs():
+    from agent_bom.output.json_fmt import to_json
+    from agent_bom.output.sarif import to_sarif
+    from agent_bom.vex import generate_vex
+
+    vuln = Vulnerability(id="CVE-2020-14343", summary="Advisory effect requires review", severity=Severity.HIGH)
+    package = Package(name="pyyaml", version="5.3", ecosystem="pypi")
+    br = BlastRadius(vulnerability=vuln, package=package, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
+    report = AIBOMReport(blast_radii=[br])
+    assert br.impact_category == "unknown"
+    assert report.to_findings()[0].impact_category == "unknown"
+    assert to_json(report)["blast_radius"][0]["impact_category"] == "unknown"
+    assert to_sarif(report)["runs"][0]["results"][0]["properties"]["impact_category"] == "unknown"
+    assert "Impact: unknown" in generate_vex(report).statements[0].impact_statement

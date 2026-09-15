@@ -452,21 +452,16 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
     - Everything else → UNDER_INVESTIGATION
     """
     statements = []
-    seen_vulns: set[str] = set()
 
     for br in report.blast_radii:
         vuln = br.vulnerability
-        if vuln.id in seen_vulns:
-            continue
-        seen_vulns.add(vuln.id)
-
         # Collect affected PURLs
         products = []
         if br.package:
             products.append(br.package.purl or f"pkg:{br.package.ecosystem}/{br.package.name}@{br.package.version}")
 
         # CWE-aware triage: use impact category and reachability
-        impact_cat = getattr(br, "impact_category", "code-execution")
+        impact_cat = getattr(br, "impact_category", "unknown")
         reachability = br.reachability
         attack_summary = getattr(br, "attack_vector_summary", None)
 
@@ -543,7 +538,25 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
                 )
             )
 
-    return VexDocument(statements=statements)
+    # Only equivalent assessments may share a statement. CVE-only deduplication
+    # loses products and can hide an active version behind a suppressed one.
+    grouped: dict[tuple[str, ...], VexStatement] = {}
+    product_sets: dict[tuple[str, ...], set[str]] = {}
+    for statement in statements:
+        key = (
+            statement.vulnerability_id,
+            statement.status.value,
+            statement.justification.value if statement.justification else "",
+            statement.impact_statement or "",
+            statement.action_statement or "",
+        )
+        if key not in grouped:
+            grouped[key] = statement
+            product_sets[key] = set()
+        product_sets[key].update(statement.products)
+    for assessment_key, statement in grouped.items():
+        statement.products = sorted(product_sets[assessment_key])
+    return VexDocument(statements=[grouped[key] for key in sorted(grouped)])
 
 
 # ---------------------------------------------------------------------------

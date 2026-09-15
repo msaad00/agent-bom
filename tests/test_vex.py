@@ -461,8 +461,9 @@ class TestVexGenerate:
         pkg2 = _pkg(name="pkg-b", vulns=[vuln])
         report = _report([(vuln, pkg1), (vuln, pkg2)])
         doc = generate_vex(report)
-        # Same vuln ID should appear only once
+        # Equivalent assessments share one statement covering every product
         assert len(doc.statements) == 1
+        assert sorted(doc.statements[0].products) == sorted([pkg1.purl, pkg2.purl])
 
     def test_generate_includes_products(self):
         vuln = _vuln("CVE-2024-1234")
@@ -862,3 +863,25 @@ class TestBlastRadiusToFindingVex:
         finding = blast_radius_to_finding(br)
         assert finding.suppressed is True
         assert finding.suppression_id == "sup-1"
+
+
+def test_generate_vex_preserves_product_assessments_independent_of_order():
+    vuln = _vuln("CVE-2020-14343", is_kev=True)
+    report = _report([(vuln, _pkg("pyyaml", "5.3", "pypi")), (vuln, _pkg("pyyaml", "5.3.1", "pypi"))])
+    report.blast_radii[0].suppressed = True
+    report.blast_radii[0].suppression_state = "false_positive"
+
+    def assessments(rows):
+        return [
+            (s.status.value, s.products, s.impact_statement)
+            for s in generate_vex(AIBOMReport(blast_radii=rows), auto_triage=True).statements
+        ]
+
+    forward = assessments(report.blast_radii)
+    assert forward == assessments(list(reversed(report.blast_radii)))
+    assert {(status, tuple(products)) for status, products, _ in forward} == {
+        ("not_affected", ("pkg:pypi/pyyaml@5.3",)),
+        ("affected", ("pkg:pypi/pyyaml@5.3.1",)),
+    }
+    assert forward == assessments(report.blast_radii * 2)
+    assert all("Impact: unknown" in impact for _, _, impact in forward)

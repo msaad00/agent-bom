@@ -742,6 +742,7 @@ export interface GraphFilterPresetCreate {
 }
 
 export interface GraphNodeDetailResponse {
+  completeness?: GraphCompleteness | undefined;
   node: UnifiedNode;
   edges_out: UnifiedEdge[];
   edges_in: UnifiedEdge[];

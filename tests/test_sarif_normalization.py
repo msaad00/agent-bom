@@ -151,3 +151,21 @@ def test_sast_file_import_fails_closed_on_json_array(tmp_path) -> None:
 
     with pytest.raises(SASTScanError, match="invalid SARIF file"):
         scan_code(str(path))
+
+
+@pytest.mark.parametrize("impact", [None, "unknown", "availability"])
+def test_sarif_preserves_unified_finding_impact(impact):
+    from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.sarif import to_sarif
+
+    finding = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pyyaml", asset_type="package"),
+        severity="critical",
+        cve_id="CVE-2020-14343",
+        impact_category=impact,
+    )
+    result = to_sarif(AIBOMReport(findings=[finding]))["runs"][0]["results"][0]
+    assert result["properties"]["impact_category"] == impact

@@ -433,15 +433,18 @@ def redact_pii(text: str) -> str:
 
 
 def scan_jsonrpc_response(message: dict, config: ScanConfig) -> tuple[dict, list[ScanResult]]:
-    """Apply the same response policy to stdio and SSE/HTTP JSON-RPC results.
+    """Apply the same response policy to stdio and SSE/HTTP JSON-RPC responses, including errors and notifications.
 
     Audit mode leaves the response unchanged. Enforce mode replaces blocked
     content with a protocol error or redacts PII while preserving JSON shape.
     Failed redaction fails closed; the original result is never a fallback.
     """
-    if not config.enabled or "result" not in message:
+    if not config.enabled:
         return message, []
-    response_text = json.dumps(message["result"], ensure_ascii=False)
+    # Inspect all upstream payload fields, including error.data and notification
+    # params. Protocol envelope fields must retain request correlation.
+    payload = {key: value for key, value in message.items() if key not in {"jsonrpc", "id"}}
+    response_text = json.dumps(payload, ensure_ascii=False)
     findings = scan_tool_response(response_text, config)
     if config.mode != "enforce" or not findings:
         return message, findings
@@ -455,12 +458,12 @@ def scan_jsonrpc_response(message: dict, config: ScanConfig) -> tuple[dict, list
             remaining = scan_tool_response(json.dumps(redacted, ensure_ascii=False), config)
             blocked = any(finding.blocked or finding.scanner == "pii" for finding in remaining)
             if not blocked:
-                return {**message, "result": redacted}, findings
+                return {**{key: value for key, value in message.items() if key in {"jsonrpc", "id"}}, **redacted}, findings
         except (TypeError, ValueError):
             blocked = True
 
     if blocked:
-        safe_message = {key: value for key, value in message.items() if key != "result"}
+        safe_message = {key: value for key, value in message.items() if key in {"jsonrpc", "id"}}
         safe_message["error"] = {
             "code": -32600,
             "message": "[BLOCKED] Security scanner detected sensitive content in response",

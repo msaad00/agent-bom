@@ -58,20 +58,25 @@ export function GraphEntityDrawer({
   /** When true and scanId is set, refresh node detail from /v1/graph/node. */
   enrich?: boolean;
 }) {
-  const [enriched, setEnriched] = useState<LineageNodeData>(data);
   const [loading, setLoading] = useState(false);
-  const nodeId = nodeIdFromLineageData(data) ?? nodeIdFromLineageData(enriched);
+  const nodeId = nodeIdFromLineageData(data);
 
-  const [detail, setDetail] = useState<GraphNodeDetailResponse | null>(null);
+  const [loadedDetail, setLoadedDetail] = useState<{
+    scanId: string;
+    response: GraphNodeDetailResponse;
+  } | null>(null);
+  // Canvas and detail requests may finish in either order. Reapply the richer
+  // evidence to each canvas update, but only for the same node and snapshot.
+  const detail = enrich && loadedDetail?.scanId === scanId && loadedDetail.response.node.id === nodeId
+    ? loadedDetail.response : null;
+  const enriched = useMemo(() => detail ? mergeGraphNodeDetail(data, detail) : data, [data, detail]);
   const pathname = usePathname();
   const [showAllRelationships, setShowAllRelationships] = useState(false);
-  useEffect(() => {
-    setEnriched(data);
-  }, [data]);
 
   useEffect(() => {
-    setDetail(null);
+    setLoadedDetail(null);
     setShowAllRelationships(false);
+    setLoading(false);
     if (!enrich || !scanId || !nodeId) return;
     let cancelled = false;
     setLoading(true);
@@ -79,8 +84,7 @@ export function GraphEntityDrawer({
       .getGraphNode(nodeId, scanId)
       .then((detail) => {
         if (cancelled) return;
-        setDetail(detail);
-        setEnriched((current) => mergeGraphNodeDetail(current, detail));
+        setLoadedDetail({ scanId, response: detail });
       })
       .catch(() => {
         /* keep canvas-local fields when detail fetch fails */

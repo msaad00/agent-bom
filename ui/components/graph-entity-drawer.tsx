@@ -43,7 +43,7 @@ export function GraphEntityDrawer({
   data: LineageNodeData;
   onClose: () => void;
   scanId?: string | undefined;
-  variant?: "overlay" | "inline";
+  variant?: "overlay" | "inline" | "docked";
   onShowBlastRadius?: (() => void) | undefined;
   blastRadiusActive?: boolean;
   blastRadiusLoading?: boolean;

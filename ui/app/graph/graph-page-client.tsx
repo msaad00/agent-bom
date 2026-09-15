@@ -2417,7 +2417,7 @@ function GraphPageInner() {
     const canvas = document.querySelector(".react-flow");
     const drawer = document.querySelector('[data-testid="graph-entity-drawer"]');
     const drawerWidth = drawer?.getBoundingClientRect().width ?? 0;
-    if (canvas && drawerWidth < canvas.getBoundingClientRect().width) {
+    if (canvas && drawer && drawer.getBoundingClientRect().left < canvas.getBoundingClientRect().right && drawerWidth < canvas.getBoundingClientRect().width) {
       const viewport = reactFlow.getViewport();
       void reactFlow.setViewport({ ...viewport, x: viewport.x - drawerWidth / 2 });
     }
@@ -3878,7 +3878,8 @@ function GraphPageInner() {
               {selectedNodeId && <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4">Focus selection</button>}
             </div>
           )}
-          <div className="relative min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
+          <div className="relative flex min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
+          <div className="relative min-h-0 min-w-0 flex-1">
           {graphPanelError && graphData && !loadingGraph && (
             <div role="status" className="flex items-center justify-between gap-3 border-b border-outline px-4 py-2 text-sm">
               <span>Refresh failed. Showing the last loaded graph for this scope.</span>
@@ -4037,8 +4038,10 @@ function GraphPageInner() {
             </div>
           )}
 
+          </div>
           {selectedNode && (
             <GraphEntityDrawer
+              variant={narrowViewport ? "overlay" : "docked"}
               data={selectedNode}
               onInspectNode={(rootId) => void loadRootInvestigation({ rootId })}
               scanId={selectedScanId || undefined}

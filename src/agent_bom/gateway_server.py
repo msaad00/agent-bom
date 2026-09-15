@@ -82,7 +82,7 @@ from agent_bom.proxy_policy import (
     resolve_fail_mode,
     summarize_policy_bundle,
 )
-from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan_tool_response
+from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_jsonrpc_response, scan_tool_call
 from agent_bom.runtime.audit_delivery import (
     AuditDeliveryController,
     AuditDeliveryState,
@@ -4169,22 +4169,13 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 safe_tool_name_for_log,
                             )
 
-        # DLP pass on the tool RESULT. Scans the serialized result for the same
-        # sensitive-data classes as the argument pass. In enforce mode a blocked
-        # finding (secrets/payload/injection) replaces the result with a DLP
-        # error so the data never reaches the caller; otherwise PII is redacted
-        # in-place when pii_action=redact. Audit-only in audit mode.
-        if dlp_config.enabled and isinstance(upstream_response, dict) and "result" in upstream_response:
+        # Shared response policy covers results, errors and notification payloads.
+        if dlp_config.enabled and isinstance(upstream_response, dict):
             tool_name_for_dlp = message.get("params", {}).get("name", "") if is_tools_call(message) else str(message.get("method", ""))
-            try:
-                result_text = json.dumps(upstream_response.get("result"), default=str)
-            except (TypeError, ValueError):
-                result_text = str(upstream_response.get("result"))
-            resp_findings = scan_tool_response(result_text, dlp_config)
-            result_blocked = dlp_config.mode == "enforce" and any(f.blocked for f in resp_findings)
-            result_redacted = (
-                dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and bool(resp_findings) and not result_blocked
-            )
+            safe_response, resp_findings = scan_jsonrpc_response(upstream_response, dlp_config)
+            safe_error = safe_response.get("error")
+            result_blocked = isinstance(safe_error, dict) and safe_error.get("code") == -32600 and safe_response != upstream_response
+            result_redacted = safe_response != upstream_response and not result_blocked
             if resp_findings and settings.audit_sink is not None:
                 typed_result_event: dict[str, Any] = {}
                 if result_blocked:
@@ -4217,7 +4208,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 )
             if result_blocked:
                 record_gateway_relay(upstream.name, "blocked")
-                first = next(f for f in resp_findings if f.blocked)
+                first = next((f for f in resp_findings if f.blocked), resp_findings[0])
                 return JSONResponse(
                     {
                         "jsonrpc": "2.0",
@@ -4235,8 +4226,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     status_code=200,
                     headers=_post_forward_headers(dict(rate_limit_headers)) or None,
                 )
-            if result_redacted:
-                upstream_response["result"] = _redact_obj_pii(upstream_response.get("result"))
+            upstream_response = safe_response
 
         if settings.audit_sink is not None and not _forward_is_tool_call:
             forward_audit_event: dict[str, Any] = {

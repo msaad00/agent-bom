@@ -2588,6 +2588,8 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
             const closedDisclosure = element.closest("details:not([open])");
             const visibleDisclosureSummary = Boolean(element.closest("summary"));
             return (
+              !element.closest('[aria-hidden="true"]')
+              &&
               (!closedDisclosure || visibleDisclosureSummary)
               && (element.textContent ?? "").trim().length > 0
               && rect.width > 0
@@ -2747,7 +2749,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Risk overview — posture grade, unique findings breakdown, scan coverage, and operational lanes",
+      scope: "Focused risk overview with posture score, finding breakdown, scan freshness and both investigation tabs",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
@@ -2778,7 +2780,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
-      scope: "Expanded Overview synthetic control evaluations and risk mappings with assessment scope",
+      scope: "Focused full-width Overview control framework catalog and risk mappings with assessment scope",
     },
     {
       path: "cloud-accounts-live.png",
@@ -3178,10 +3180,25 @@ async function main() {
 
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
-    await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
+    const preparePostureOverview = async (dashboardPage) => {
+      await dashboardPage.setViewportSize({ width: 1120, height: 1100 });
+      const risk = dashboardPage.getByRole("region", { name: "Risk overview", exact: true });
+      const box = await risk.boundingBox();
+      if (!box) throw new Error("Risk overview is unavailable for capture");
+      await dashboardPage.setViewportSize({ width: 1120, height: Math.ceil(box.y + box.height + 24) });
+      const score = await dashboardPage.getByTestId("overview-posture-score").boundingBox();
+      const issues = await dashboardPage.getByTestId("overview-severity-issue-strip").boundingBox();
+      if (!score || !issues || issues.x <= score.x + score.width) {
+        throw new Error("Desktop posture proof must show the score beside the finding breakdown");
+      }
+    };
+    await capture(page, "/?capture=1", "dashboard-live.png", preparePostureOverview, {
       expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
+      viewportSelectors: ['section[aria-label="Risk overview"]', "#demo-estate-watermark"],
+      assertNoHorizontalOverflow: true,
     });
+    await page.setViewportSize({ width: 1440, height: 980 });
     const prepareExecutiveRisks = async (dashboardPage) => {
       const overviewTab = dashboardPage.getByRole("tab", { name: "Overview", exact: true });
       await overviewTab.waitFor({ state: "visible" });
@@ -3203,19 +3220,27 @@ async function main() {
       expectedApiPaths: ["/v1/overview"], assertNoHorizontalOverflow: true,
     };
     await capture(page, "/?capture=1", "dashboard-risks-live.png", prepareExecutiveRisks, executiveRiskAssertions);
-    await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
+    const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1040, height: 1100 });
+    await capture(frameworkPage, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
       await frameworks.getByRole("button", { name: /Show all .* control frameworks/ }).click();
       await frameworks.scrollIntoViewIfNeeded();
       const top = await frameworks.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
-      await scrollTo(dashboardPage, top - 100);
+      const height = await frameworks.evaluate((element) => Math.ceil(element.getBoundingClientRect().height));
+      await dashboardPage.setViewportSize({ width: 1040, height: height + 116 });
+      await scrollTo(dashboardPage, top - 92);
       for (const label of ["NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", "CIS Controls v8", "MITRE ATLAS"]) {
         await frameworks.getByText(label, { exact: false }).first().waitFor({ state: "visible" });
       }
+      await dashboardPage.mouse.move(0, 0);
     }, {
       expectedText: [/Control frameworks/i, "NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", /Risk mappings/i, "MITRE ATLAS"],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
+      viewportSelectors: ['section[aria-label="Compliance & frameworks"]', "#demo-estate-watermark"],
+      readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 920, minFontPx: 12 },
+      assertNoHorizontalOverflow: true,
     });
+    await frameworkPage.close();
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {
       await connectionsPage.getByRole("heading", { name: "Connections", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
       const galleryHeading = connectionsPage.getByText("Connect a source", { exact: true }).last();
@@ -3614,10 +3639,13 @@ async function main() {
     });
 
     const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
-    await capture(lightPage, "/?capture=1", "dashboard-light-live.png", undefined, {
+    await capture(lightPage, "/?capture=1", "dashboard-light-live.png", preparePostureOverview, {
       expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
+      viewportSelectors: ['section[aria-label="Risk overview"]', "#demo-estate-watermark"],
+      assertNoHorizontalOverflow: true,
     });
+    await lightPage.setViewportSize({ width: 1440, height: 980 });
     await capture(lightPage, "/?capture=1", "dashboard-risks-light-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await lightPage.setViewportSize({ width: 1120, height: 900 });
     await capture(

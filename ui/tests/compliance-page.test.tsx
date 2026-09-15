@@ -150,6 +150,21 @@ vi.mock("@/lib/api", async () => {
 });
 
 describe("CompliancePage (dense restyle)", () => {
+  it("opens each benchmark in the detail pane and returns to framework controls", async () => {
+    render(<CompliancePage />);
+    await screen.findByText("Prompt Injection");
+    const table = screen.getByTestId("compliance-frameworks-table");
+    fireEvent.click(within(table).getByText("CIS Bench"));
+    expect(within(screen.getByTestId("compliance-split")).getByText("cis benchmark")).toBeInTheDocument();
+    expect(screen.queryByText("Prompt Injection")).toBeNull();
+    fireEvent.click(within(table).getByText("AISVS"));
+    expect(screen.getByRole("heading", { name: "OWASP AISVS benchmark" })).toBeInTheDocument();
+    expect(screen.getByText("No AISVS benchmark checks have been recorded.")).toBeInTheDocument();
+    fireEvent.click(within(table).getByText("LLM"));
+    expect(screen.getByText("Prompt Injection")).toBeInTheDocument();
+    expect(screen.queryByText("cis benchmark")).toBeNull();
+  });
+
   it("renders KPI strip, frameworks table, and control detail via split layout", async () => {
     render(<CompliancePage />);
 

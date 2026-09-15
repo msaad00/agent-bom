@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import platform
+import signal
 import sys
 import tempfile
 import time
@@ -1992,6 +1993,16 @@ async def run_proxy(
             line_str = line.decode("utf-8", errors="replace")
             msg = parse_jsonrpc(line_str)
 
+            if msg is None and scan_config.enabled:
+                # A server's debug/malformed stdout is still an outbound data
+                # channel. Scan for audit visibility; enforce mode never relays
+                # non-protocol bytes that could bypass response inspection.
+                _, findings = scan_jsonrpc_response({"result": line_str}, scan_config)
+                await _handle_alerts(_response_scan_alerts(findings, "upstream stdout"), log_file)
+                if scan_config.mode == "enforce":
+                    logger.warning("Dropped non-JSON-RPC upstream stdout")
+                    continue
+
             if msg:
                 metrics.total_messages_server_to_client += 1
 
@@ -2110,7 +2121,7 @@ async def run_proxy(
                                     line = (json.dumps(msg) + "\n").encode()
 
                 # Inline response scanning (PII, secrets, payload vuln)
-                if scan_config.enabled and "result" in msg:
+                if scan_config.enabled:
                     resp_id_scan = msg.get("id")
                     tool_for_scan = ""
                     if resp_id_scan is not None and resp_id_scan in pending_calls:
@@ -2151,6 +2162,24 @@ async def run_proxy(
     refresh_task = asyncio.create_task(_policy_refresh_loop()) if control_plane_url else None
     audit_task = asyncio.create_task(_audit_push_loop()) if control_plane_url else None
 
+    termination_signal = 0
+    loop = asyncio.get_running_loop()
+    owner_task = asyncio.current_task()
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+    signal_installed = False
+
+    def request_shutdown() -> None:
+        nonlocal termination_signal
+        if not termination_signal and owner_task is not None:
+            termination_signal = signal.SIGTERM
+            owner_task.cancel()
+
+    try:
+        loop.add_signal_handler(signal.SIGTERM, request_shutdown)
+        signal_installed = True
+    except (NotImplementedError, RuntimeError, ValueError):
+        pass  # Non-POSIX platforms and embedded non-main-thread event loops.
+
     try:
         results = await asyncio.gather(
             relay_client_to_server(),
@@ -2173,7 +2202,17 @@ async def run_proxy(
                         log_file,
                         err_entry,
                     )
+    except asyncio.CancelledError:
+        if not termination_signal:
+            raise
     finally:
+        # Reap first: slow audit delivery must not orphan an upstream on TERM.
+        try:
+            await _reap_server(process)
+        finally:
+            if signal_installed:
+                loop.remove_signal_handler(signal.SIGTERM)
+                signal.signal(signal.SIGTERM, previous_sigterm)
         if status_strip_active:
             sys.stderr.write("\n")
             sys.stderr.flush()
@@ -2200,6 +2239,5 @@ async def run_proxy(
         clear_firewall_evaluator()
         if firewall_client is not None:
             await firewall_client.aclose()
-        await _reap_server(process)
 
-    return process.returncode or 0
+    return 128 + termination_signal if termination_signal else process.returncode or 0

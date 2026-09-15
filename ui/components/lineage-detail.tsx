@@ -188,7 +188,7 @@ export function LineageDetailPanel({
   blastRadiusActive?: boolean;
   blastRadiusLoading?: boolean;
   /** overlay = absolute side panel (mesh/lineage); inline = stacked under canvas */
-  variant?: "overlay" | "inline";
+  variant?: "overlay" | "inline" | "docked";
   relationshipSlot?: ReactNode;
   headerSlot?: ReactNode;
   footerSlot?: ReactNode;
@@ -233,7 +233,8 @@ export function LineageDetailPanel({
   );
 
   const { width, onHandlePointerDown, onHandleKeyDown } = useDrawerWidth();
-  const isOverlay = variant !== "inline";
+  const isOverlay = variant === "overlay";
+  const isDocked = variant === "docked";
 
   // ---- Node-type primary block (the "what is this node" hero detail) --------
   const typeSection = (
@@ -701,15 +702,17 @@ export function LineageDetailPanel({
 
   const shellClass = isOverlay
     ? `absolute right-0 top-0 bottom-0 flex max-w-full flex-col bg-[var(--background)]/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50`
+    : isDocked
+      ? `relative flex min-h-0 max-w-[45%] shrink-0 flex-col border-l ${TYPE_BORDER[data.nodeType]} bg-[var(--background)]/95`
     : `relative flex w-full max-w-none flex-col border ${TYPE_BORDER[data.nodeType]} bg-[var(--background)]/95 rounded-xl`;
 
   return (
     <div
       className={shellClass}
-      style={isOverlay ? { width } : undefined}
+      style={isOverlay || isDocked ? { width } : undefined}
       data-testid="graph-entity-drawer"
     >
-      {isOverlay && (
+      {(isOverlay || isDocked) && (
         <div
           role="separator"
           aria-label="Resize drawer"

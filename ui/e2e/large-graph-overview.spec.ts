@@ -481,6 +481,33 @@ test("root investigations expose depth and direction controls with bounded reque
   expect((await reverse).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 2 });
 });
 
+for (const width of [1100, 1440]) {
+  test(`focused graph remains visible beside resized details at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await routeLargeGraphPage(page);
+    await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+    const drawer = page.getByTestId("graph-entity-drawer");
+    const canvas = page.locator(".react-flow");
+    const selected = canvas.locator('[data-id="pkg:42"]');
+    await expect(selected).toBeVisible();
+    const visibleBesideDetails = async () => {
+      const nodeBounds = await selected.boundingBox();
+      const canvasBounds = await canvas.boundingBox();
+      const drawerBounds = await drawer.boundingBox();
+      return Boolean(nodeBounds && canvasBounds && drawerBounds &&
+        canvasBounds.x + canvasBounds.width <= drawerBounds.x + 1 &&
+        nodeBounds.x >= canvasBounds.x &&
+        nodeBounds.x + nodeBounds.width <= drawerBounds.x + 1);
+    };
+    await expect.poll(visibleBesideDetails).toBe(true);
+    await drawer.getByRole("separator", { name: "Resize drawer" }).press("ArrowLeft");
+    await page.getByRole("button", { name: "Focus selection", exact: true }).click();
+    await expect.poll(visibleBesideDetails).toBe(true);
+    await page.getByRole("button", { name: "Switch to light theme" }).click();
+    await expect.poll(visibleBesideDetails).toBe(true);
+  });
+}
+
 test("scope summary does not inherit the unrelated node-page warning", async ({ page }) => {
   await routeLargeGraphPage(page);
   await page.route("**/v1/graph/rollup?**", (route) => route.fulfill({ json: {

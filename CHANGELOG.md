@@ -7,7 +7,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.105.0] - 2026-09-12
+## [0.105.0] - 2026-09-15
 
 This release makes scan coverage and finding evidence clearer, adds explicit
 credential validation, and improves the path from findings to investigation.
@@ -27,8 +27,16 @@ credential validation, and improves the path from findings to investigation.
   outcomes so an uninspected scope cannot silently appear complete.
 - Preserve structured CWE identifiers in the finding drawer and standard SARIF
   taxonomy relationships, including findings without CWE text in their prose.
-- Enforce response DLP consistently across MCP proxy transports and wait for
-  normal server exits before sending shutdown signals.
+- Scan upstream JSON-RPC errors, notifications, and response metadata through
+  shared proxy/gateway DLP. Inspect malformed stdio output in audit mode and
+  drop it in enforce mode; preserve the configured handling of detected secrets.
+- Reap the proxy child on SIGTERM and wait for normal server exits before
+  sending shutdown signals. Forced termination with SIGKILL cannot run cleanup.
+- Resolve positional tool arguments for supported LangChain agent constructors,
+  including imported aliases, so tool and data-flow findings are retained.
+- Reconcile canonical finding occurrences across scan and hub ingestion in
+  findings, exports, and Overview counts. Hub-managed lifecycle and enrichment
+  take precedence; findings on distinct assets remain separate.
 - Accept bounded compressed report uploads, reconcile package versions without
   merging ambiguous findings, and evolve the additive Parquet/Iceberg schema
   while preserving existing field identifiers and rows.
@@ -37,7 +45,8 @@ credential validation, and improves the path from findings to investigation.
   advisory, and path details available on expansion.
 - Admit graph requests before expensive reads, preserve the canvas during
   background refresh failures, and restore bounded drill-in, direction/depth
-  controls, relationship navigation, and actionable empty states.
+  controls, relationship navigation, and actionable empty states. Reserve space
+  for desktop detail drawers so focused nodes remain visible beside them.
 - Reduce concurrent SQLite roll-up latency with batched topology reads while
   retaining complete counts, tenant scope, and consistent snapshots. Attack-path
   investigations continue to load full evidence.

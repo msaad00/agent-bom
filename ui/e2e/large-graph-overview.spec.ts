@@ -546,7 +546,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.goto(`/graph?scan=${scanId}`);
     await page.getByRole("button", { name: "Summary", exact: true }).click();
     await page.getByRole("button", { name: "Inspect pyyaml@5.3 (pkg:42)", exact: true }).click();
-    await expect(page.getByText("Findings", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("graph-drawer-panel-overview").getByText("Findings", { exact: true })).toBeVisible();
     await expect(page.getByText("No known findings on this package node")).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath(`package-evidence-${theme}.png`) });
   });

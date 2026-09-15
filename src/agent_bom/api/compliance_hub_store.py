@@ -598,6 +598,12 @@ class ComplianceHubStore(Protocol):
         """Merge findings into the current-state lifecycle table (#3465 L1)."""
         ...
 
+    def lookup_current_ids(
+        self, tenant_id: str, canonical_ids: Sequence[str], *, scan_id: str | None = None, origin: str | None = None
+    ) -> set[str]:
+        """Batch identity lookup for reconciling scan observations with hub lifecycle state."""
+        ...
+
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         """Return one current-state lifecycle row for tests and diagnostics."""
         ...
@@ -1383,6 +1389,24 @@ class InMemoryComplianceHubStore:
             hydrated_row["payload"] = hydrate_current_payload(row, ledger_payloads=ledger_map)
             hydrated.append(hydrated_row)
         return hydrated
+
+    def lookup_current_ids(
+        self, tenant_id: str, canonical_ids: Sequence[str], *, scan_id: str | None = None, origin: str | None = None
+    ) -> set[str]:
+        with self._lock:
+            current = self._current.get(tenant_id, {})
+            found = set()
+            for key in canonical_ids:
+                row = current.get(key)
+                if row is None:
+                    continue
+                payload = row.get("payload") or {}
+                if scan_id is not None and str(payload.get("batch_id") or payload.get("scan_id") or "") != scan_id:
+                    continue
+                if origin is not None and payload.get("origin") != origin:
+                    continue
+                found.add(key)
+            return found
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -2495,6 +2519,26 @@ class SQLiteComplianceHubStore:
                 _bump_overview_revision_sqlite(self._conn, tenant_id)
         if findings:
             self._invalidate_ingest_caches(tenant_id)
+
+    def lookup_current_ids(
+        self, tenant_id: str, canonical_ids: Sequence[str], *, scan_id: str | None = None, origin: str | None = None
+    ) -> set[str]:
+        found: set[str] = set()
+        keys = list(dict.fromkeys(canonical_ids))
+        for start in range(0, len(keys), 500):
+            batch = keys[start : start + 500]
+            placeholders = ",".join("?" for _ in batch)
+            predicates = ["tenant_id = ?", f"canonical_id IN ({placeholders})"]
+            params: list[Any] = [tenant_id, *batch]
+            if scan_id is not None:
+                predicates.append("scan_id = ?")
+                params.append(scan_id)
+            if origin is not None:
+                predicates.append("origin = ?")
+                params.append(origin)
+            rows = self._conn.execute("SELECT canonical_id FROM hub_findings_current WHERE " + " AND ".join(predicates), params).fetchall()  # nosec B608 - predicates are fixed and values are bound.
+            found.update(str(row[0]) for row in rows)
+        return found
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)

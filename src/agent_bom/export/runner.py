@@ -85,21 +85,23 @@ def iter_current_findings(
     bounded by the resident scan-job results. Tenant scope is enforced by passing
     ``tenant_id`` into every query (never a client-supplied filter).
     """
-    if include_scan_spine:
-        yield from iter_scan_spine_findings(
-            tenant_id,
-            severity=severity,
-            since=since,
-            scan_id=scan_id,
-            scope=scope,
-            status=status,
-            sanitize=sanitize,
-        )
-
     if hub is None:
         from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
         hub = get_compliance_hub_store()
+    if include_scan_spine:
+        from agent_bom.api.findings_current import scan_only_findings
+
+        yield from scan_only_findings(
+            iter_scan_spine_findings(
+                tenant_id, severity=severity, since=since, scan_id=scan_id, scope=scope, status=status, sanitize=sanitize
+            ),
+            tenant_id,
+            hub=hub,
+            scan_id=scan_id,
+            origin=None,
+        )
+
     list_page = getattr(hub, "list_current_page", None)
     if not callable(list_page):
         # Scan-spine rows (if any) were already yielded above; only the hub half

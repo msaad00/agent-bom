@@ -1487,3 +1487,50 @@ def test_overview_preserves_impact_and_fix_from_its_authoritative_finding():
     # No severity- or CVE-based fallback may invent an effect or a fix.
     assert _finding_top_risk({"severity": "critical"})["impact_category"] is None
     assert _finding_top_risk({"severity": "critical"})["fixed_version"] is None
+
+
+def test_dual_source_occurrences_reconcile_overview_pagination_and_exports():
+    from agent_bom.export.runner import iter_current_findings
+
+    _clear_jobs()
+    shared = {
+        "id": "dual-source-ai",
+        "canonical_id": "dual-source-ai",
+        "is_kev": True,
+        "title": "Untrusted tool",
+        "severity": "critical",
+        "security_domain": "aispm",
+        "source": "mcp_scan",
+        "finding_type": "tool_drift",
+    }
+    scan_only = {**shared, "id": "scan-only-ai", "canonical_id": "scan-only-ai"}
+    hub_only = {**shared, "id": "hub-only-ai", "canonical_id": "hub-only-ai"}
+    _add_done_job([], result_extra={"findings": [shared, scan_only]})
+    _ingest_hub_findings([shared, hub_only])
+    client = TestClient(app)
+    rows = []
+    cursor = None
+    first_total = None
+    for _ in range(5):
+        params = {"limit": 1, "status": "all"}
+        if cursor:
+            params["cursor"] = cursor
+        response = client.get("/v1/findings", params=params, headers=_AUTH_HEADERS)
+        assert response.status_code == 200
+        payload = response.json()
+        if first_total is None:
+            first_total = payload["total"]
+        rows.extend(payload["findings"])
+        cursor = payload.get("next_cursor")
+        if not cursor:
+            break
+    assert not cursor
+    assert first_total == len(rows) == 3
+    assert len({row["id"] for row in rows}) == 3
+    overview = client_get_overview()
+    assert overview["headline"]["critical"] == 3
+    assert overview["headline"]["kev"] == 3
+    assert client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()["kev"] == 3
+    assert next(row for row in overview["coverage"] if row["domain"] == "aispm")["count"] == 3
+    exported = list(iter_current_findings("default", status="all", page_size=1))
+    assert len(exported) == len({row["id"] for row in exported}) == 3

@@ -711,3 +711,17 @@ def test_run_findings_export_audits_ambiguous_publish_as_indeterminate(monkeypat
     with pytest.raises(ExportPublicationIndeterminateError):
         run_findings_export(tenant_id="t", kind="bigquery", config={}, destination=Ambiguous(), findings=[])
     assert captured[0]["details"]["outcome"] == "indeterminate"
+
+
+@pytest.mark.parametrize("page_size", [1, 2, 500])
+def test_cross_source_export_emits_one_current_identity(monkeypatch, page_size):
+    scan_row = _finding(1, id="shared", canonical_id="shared", status="open", package_version="2.2.0", asset={"identifier": "service-a"})
+    hub_row = {**scan_row, "status": "resolved"}
+    other_asset = _finding(2, id="other", canonical_id="other", asset={"identifier": "service-b"})
+    hub = FakeHub({"tenant-a": [hub_row, other_asset], "tenant-b": [_finding(9)]})
+    hub.lookup_current_ids = lambda tenant, ids, **kwargs: {row["canonical_id"] for row in hub._rows.get(tenant, [])} & set(ids)
+    monkeypatch.setattr("agent_bom.export.runner.iter_scan_spine_findings", lambda tenant, **kwargs: iter([scan_row]))
+    rows = list(iter_current_findings("tenant-a", hub=hub, page_size=page_size, sanitize=False))
+    assert [row["canonical_id"] for row in rows] == ["shared", "other"]
+    assert rows[0]["status"] == "resolved"
+    assert all(call["tenant_id"] == "tenant-a" for call in hub.calls)

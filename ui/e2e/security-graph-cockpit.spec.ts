@@ -829,8 +829,9 @@ test("ranked paths reach the first viewport instead of sitting under a tower of 
   await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
 
-  const paths = page.getByText(/rendered · .* returned · .* snapshot paths/).first();
+  const paths = page.getByText(/\d+ shown · \d+ loaded paths/).first();
   await expect(paths).toBeVisible();
+  await expect(page.getByText(/from the path queue \+ \d+ additional priority paths/)).toBeVisible();
   const box = await paths.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.y).toBeLessThan(900);

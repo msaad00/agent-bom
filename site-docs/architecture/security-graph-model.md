@@ -148,8 +148,8 @@ a priority-card score; **Queue score** identifies an occurrence-queue score.
 Neither score establishes compromise.
 
 New demo projections direct dependencies from a workload to its image and from
-an image to its packages. Existing saved snapshots are immutable evidence; rebuild
-the demo snapshot to see corrected projection semantics.
+an image to its packages. This change does not rewrite existing saved snapshots; rebuild the demo
+snapshot to see corrected projection semantics.
 
 ## Scale and readability
 

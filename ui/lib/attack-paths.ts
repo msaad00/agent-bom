@@ -320,7 +320,10 @@ function exposureRefFromUnifiedNode(node: UnifiedNode): ExposureEntityRef {
   const role = exposureRoleForEntityType(String(node.entity_type));
   const attributes = node.attributes ?? {};
   let display = formatExposureEntityDisplay(node.label, role, attributes);
-  let kindLabel: string | undefined = String(node.entity_type).replaceAll("_", " ");
+  let kindLabel: string | undefined = role === "unknown"
+    ? String(node.entity_type).replaceAll("_", " ").replace(/^./, (char) => char.toUpperCase())
+    : undefined;
+  if (node.entity_type === EntityType.CI_JOB) kindLabel = "CI job";
   if (node.entity_type === EntityType.CONTAINER) {
     const [title, digest] = node.label.split("@", 2);
     display = {

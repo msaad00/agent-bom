@@ -551,3 +551,28 @@ def test_lowlevel_call_tool_dispatcher_stays_a_sink_entrypoint(tmp_path: Path) -
     assert [(f.entrypoint, f.sink) for f in result.flow_findings if f.category == "unguarded_tool_sink"] == [
         ("handle_call_tool", "subprocess.run")
     ]
+
+
+@pytest.mark.parametrize(
+    "constructor, arguments",
+    [
+        ("initialize_agent", "[lookup_tool], None"),
+        ("create_openai_functions_agent", "None, [lookup_tool], None"),
+    ],
+)
+@pytest.mark.parametrize("alias", [False, True])
+def test_langchain_positional_tool_registration_preserves_sink_analysis(tmp_path, constructor, arguments, alias):
+    name = "build_agent" if alias else constructor
+    imported = f"{constructor} as {name}" if alias else constructor
+    (tmp_path / "app.py").write_text(
+        f"from langchain.agents import {imported}\n"
+        "from langchain.tools import Tool\n"
+        "import subprocess\n"
+        "def lookup(command: str):\n    return subprocess.check_output(command, shell=True)\n"
+        "lookup_tool = Tool(name='lookup', func=lookup, description='Lookup')\n"
+        f"agent = {name}({arguments})\n"
+    )
+    result = analyze_project(tmp_path).to_dict()
+    assert [(tool["name"], tool["handler"]) for tool in result["tools"]] == [("lookup", "lookup")]
+    assert any(finding["category"] == "unguarded_tool_sink" for finding in result["flow_findings"])
+    assert any(finding["category"] == "tainted_command_execution" for finding in result["flow_findings"])

@@ -1105,7 +1105,7 @@ def _current_open_scan_findings(jobs: list[Any]) -> list[dict[str, Any]]:
     """The same executed scan, time window and lifecycle basis as the drill."""
     from agent_bom.api import time_window
     from agent_bom.api.compliance_hub_store import status_matches
-    from agent_bom.api.findings_current import current_scan_findings
+    from agent_bom.api.findings_current import current_scan_findings, scan_only_findings
     from agent_bom.api.routes.scan import _iter_scan_findings
 
     since = time_window.window_since_iso(time_window.normalize_window_days(None))
@@ -1116,6 +1116,8 @@ def _current_open_scan_findings(jobs: list[Any]) -> list[dict[str, Any]]:
         iter_findings=_iter_scan_findings,
         require_authoritative_evidence=True,
     )
+    tenant_id = str(getattr(jobs[0], "tenant_id", "default")) if jobs else "default"
+    findings = scan_only_findings(findings, tenant_id)
     return [row for row in findings if status_matches(row, "open")]
 
 
@@ -1219,7 +1221,16 @@ def _current_coverage(
 
 def _exec_estate(estate: dict[str, Any], jobs: list[Any]) -> dict[str, Any]:
     """Overlay canonical current scan counts without changing domain history."""
-    return {**estate, "severity": _current_scan_severity(jobs)}
+    findings = _current_open_scan_findings(jobs)
+    severity = _empty_severity()
+    for row in findings:
+        severity[_bucket(str(row.get("severity") or ""), severity)] += 1
+    return {
+        **estate,
+        "severity": severity,
+        "kev": sum(bool(row.get("is_kev") or row.get("cisa_kev")) for row in findings),
+        "credential_exposed": sum(bool(row.get("exposed_credentials")) for row in findings),
+    }
 
 
 def exec_severity_counts(request: Request, jobs: list[Any]) -> dict[str, int]:

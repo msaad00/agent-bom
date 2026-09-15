@@ -378,3 +378,37 @@ def test_rollup_endpoint_requires_auth_when_key_configured(monkeypatch) -> None:
     finally:
         api_server.configure_api(api_key=None)
         api_server._runtime_api_key_seeded = False
+
+
+def test_rollup_and_drill_preserve_instance_context_without_raw_attributes(tmp_path) -> None:
+    graph = UnifiedGraph(scan_id="instances")
+    graph.add_node(UnifiedNode(id="env:prod", entity_type=EntityType.ENVIRONMENT, label="Production"))
+    graph.add_node(UnifiedNode(id="image:billing", entity_type=EntityType.CONTAINER, label="billing:1.0"))
+    graph.add_node(
+        UnifiedNode(
+            id="pkg:a",
+            entity_type=EntityType.PACKAGE,
+            label="pyyaml@5.3",
+            attributes={
+                "environment": "production",
+                "account_id": "account-a",
+                "tags": {"container_image": "image:billing"},
+                "secret": "must-not-project",
+            },
+        )
+    )
+    graph.add_edge(UnifiedEdge(source="env:prod", target="pkg:a", relationship=RelationshipType.CONTAINS))
+    row = drill_down(graph, "env:prod")["children"][0]
+    assert row["context"] == {"image": "billing:1.0", "environment": "production", "account": "account-a"}
+    assert "must-not-project" not in str(row)
+    flat = UnifiedGraph(scan_id="flat")
+    flat.add_node(graph.nodes["pkg:a"])
+    assert rollup_view(flat)["top_level"][0]["context"]["image"] == "image:billing"
+
+    from agent_bom.db import graph_store
+
+    with graph_store.open_graph_db(tmp_path / "context.db") as conn:
+        graph_store.save_graph(conn, graph)
+        conn.commit()
+        persisted = graph_store.load_rollup_graph(conn, scan_id="instances")
+    assert drill_down(persisted, "env:prod")["children"][0]["context"] == row["context"]

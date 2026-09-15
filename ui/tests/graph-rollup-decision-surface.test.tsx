@@ -188,3 +188,17 @@ describe("GraphRollupDecisionSurface", () => {
     );
   });
 });
+
+it("distinguishes package instances and exposes canonical IDs with their actions", () => {
+  const onInspect = vi.fn();
+  const items = ["billing", "claims"].map((name) => item(`pkg:${name}`, {
+    label: "pyyaml@5.3", entity_type: "package", has_children: false,
+    context: { image: `${name}:1.0`, environment: "production" },
+  }));
+  render(<GraphRollupDecisionSurface items={items} edges={[]} onDrill={vi.fn()} onInvestigate={onInspect} />);
+  expect(screen.getByText(/billing:1.0/)).toBeInTheDocument();
+  expect(screen.getByText(/claims:1.0/)).toBeInTheDocument();
+  expect(screen.getByText("pkg:billing")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Inspect.*pkg:claims/ }));
+  expect(onInspect).toHaveBeenCalledWith(items[1]);
+});

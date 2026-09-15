@@ -13,14 +13,13 @@ import type { ExposureEntityRole, ExposurePath } from "@/lib/exposure-path";
 /**
  * Progressive-disclosure layer for the exposure path. The command-center graph
  * renders the fixed Agent→Server→Package→Finding chain; this explorer lets an
- * analyst expand any package/server/agent hop to pull that node's *direct*
+ * analyst expand any canonical graph hop to pull that node's *direct*
  * graph neighbors inline — the dependencies and dependents that never fit in
  * the fixed chain — then collapse them again. Neighbors are lazy-loaded on
  * expand (one hop, one level at a time) and fan-out is bounded so a
  * high-degree hub never explodes the view.
  */
 
-const EXPANDABLE_ROLES: ReadonlySet<ExposureEntityRole> = new Set(["agent", "server", "package"]);
 const NEIGHBOR_LIMIT = 12;
 
 const ROLE_STYLE: Record<ExposureEntityRole, { icon: LucideIcon; chip: string; accent: string }> = {
@@ -41,7 +40,7 @@ const ROLE_STYLE: Record<ExposureEntityRole, { icon: LucideIcon; chip: string; a
 
 type NeighborLoadState =
   | { status: "loading" }
-  | { status: "error"; message: string }
+  | { status: "error" }
   | { status: "ready"; data: GraphNodeNeighborsResponse };
 
 interface NeighborEntry {
@@ -50,7 +49,7 @@ interface NeighborEntry {
   title: string;
   subtitle?: string | undefined;
   relationship: string;
-  kind: "dependency" | "dependent";
+  kind: "dependency" | "dependent" | "related";
 }
 
 function humanizeRelationship(value: string): string {
@@ -67,29 +66,26 @@ function neighborRefFromNode(node: UnifiedNode): { role: ExposureEntityRole; tit
 }
 
 function toNeighborEntries(hopId: string, data: GraphNodeNeighborsResponse): NeighborEntry[] {
-  const relationshipByNeighbor = new Map<string, { relationship: string; kind: "dependency" | "dependent" }>();
+  const neighbors = new Map(data.neighbors.map((node) => [node.id, node]));
+  const groups = new Map<string, { node: UnifiedNode; kind: NeighborEntry["kind"]; relationships: Set<string> }>();
   for (const edge of data.edges) {
-    if (edge.source === hopId && edge.target !== hopId) {
-      relationshipByNeighbor.set(edge.target, { relationship: edge.relationship, kind: "dependency" });
-    } else if (edge.target === hopId && edge.source !== hopId) {
-      // Keep an out-edge classification if we already have one; only fill in when absent.
-      if (!relationshipByNeighbor.has(edge.source)) {
-        relationshipByNeighbor.set(edge.source, { relationship: edge.relationship, kind: "dependent" });
-      }
-    }
+    const id = edge.source === hopId ? edge.target : edge.target === hopId ? edge.source : null;
+    const node = id ? neighbors.get(id) : undefined;
+    if (!node || id === hopId) continue;
+    const kind = edge.source === hopId ? "dependency" : "dependent";
+    const key = `${kind}:${id}`;
+    const group = groups.get(key) ?? { node, kind, relationships: new Set<string>() };
+    group.relationships.add(humanizeRelationship(edge.relationship));
+    groups.set(key, group);
   }
-
-  return data.neighbors.map((node) => {
+  const linked = new Set([...groups.values()].map((group) => group.node.id));
+  for (const node of neighbors.values()) {
+    if (!linked.has(node.id)) groups.set(`related:${node.id}`, { node, kind: "related", relationships: new Set(["Relationship unavailable"]) });
+  }
+  return [...groups.values()].map(({ node, kind, relationships }) => {
     const ref = neighborRefFromNode(node);
-    const edgeInfo = relationshipByNeighbor.get(node.id);
-    return {
-      id: node.id,
-      role: ref.role,
-      title: ref.title,
-      subtitle: ref.subtitle,
-      relationship: humanizeRelationship(edgeInfo?.relationship ?? "related"),
-      kind: edgeInfo?.kind ?? "dependency",
-    };
+    return { id: node.id, role: ref.role, title: ref.title, subtitle: ref.subtitle,
+      relationship: [...relationships].sort().join(" · "), kind };
   });
 }
 
@@ -114,26 +110,23 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
   const [load, setLoad] = useState<NeighborLoadState | null>(null);
   const style = ROLE_STYLE[hop.role] ?? ROLE_STYLE.unknown;
   const Icon = style.icon;
-  const expandable = EXPANDABLE_ROLES.has(hop.role);
+  const expandable = Boolean(hop.id);
 
   const fetchNeighbors = useCallback(async () => {
     setLoad({ status: "loading" });
     try {
       const data = await api.getGraphNodeNeighbors(hop.id, { scanId, limit: NEIGHBOR_LIMIT, direction: "both" });
       setLoad({ status: "ready", data });
-    } catch (error) {
-      setLoad({ status: "error", message: error instanceof Error ? error.message : "Could not load neighbors" });
+    } catch {
+      setLoad({ status: "error" });
     }
   }, [hop.id, scanId]);
 
   const onToggle = useCallback(() => {
-    setExpanded((prev) => {
-      const next = !prev;
-      // Lazy-load once, on first expand; cached afterwards so collapse/expand is free.
-      if (next && load === null) void fetchNeighbors();
-      return next;
-    });
-  }, [fetchNeighbors, load]);
+    // Keep network effects outside state updaters (React may replay them).
+    if (!expanded && load === null) void fetchNeighbors();
+    setExpanded(!expanded);
+  }, [expanded, fetchNeighbors, load]);
 
   const entries = useMemo(
     () => (load?.status === "ready" ? toNeighborEntries(hop.id, load.data) : []),
@@ -141,6 +134,7 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
   );
   const dependencies = entries.filter((entry) => entry.kind === "dependency");
   const dependents = entries.filter((entry) => entry.kind === "dependent");
+  const related = entries.filter((entry) => entry.kind === "related");
   const moreCount =
     load?.status === "ready" && load.data.truncated ? Math.max(0, load.data.total_neighbors - load.data.neighbors.length) : 0;
 
@@ -151,7 +145,7 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
           <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span className="min-w-0">
             <span className="block truncate text-[11px] font-medium text-[color:var(--foreground)]">{hop.label}</span>
-            <span className="block text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{hop.role}</span>
+            <span className="block text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{hop.kindLabel ?? hop.role}</span>
           </span>
         </span>
         <span className="flex-1" />
@@ -170,7 +164,7 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
             <span>{expanded ? "Hide neighbors" : "Expand neighbors"}</span>
           </button>
         ) : (
-          <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">leaf</span>
+          <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Node ID unavailable</span>
         )}
       </div>
 
@@ -183,17 +177,21 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
             </div>
           )}
           {load?.status === "error" && (
-            <div className="text-[11px] text-red-400">Could not load neighbors: {load.message}</div>
+            <div className="flex items-center gap-3 text-[11px] text-ink-secondary">
+              Could not load neighbors.
+              <button type="button" onClick={() => void fetchNeighbors()} className="underline">Retry neighbor lookup</button>
+            </div>
           )}
           {load?.status === "ready" && entries.length === 0 && (
-            <div className="text-[11px] text-[color:var(--text-secondary)]">No direct graph neighbors recorded for this node.</div>
+            <div className="text-[11px] text-[color:var(--text-secondary)]">{!load.data.found ? "Node unavailable in this snapshot." : load.data.truncated ? "No neighbors returned in this partial context." : "No direct graph neighbors recorded for this node."}</div>
           )}
           {load?.status === "ready" && dependencies.length > 0 && (
-            <NeighborGroup label="Dependencies" entries={dependencies} />
+            <NeighborGroup label="Outgoing relationships" entries={dependencies} />
           )}
           {load?.status === "ready" && dependents.length > 0 && (
-            <NeighborGroup label="Dependents" entries={dependents} />
+            <NeighborGroup label="Incoming relationships" entries={dependents} />
           )}
+          {related.length > 0 && <NeighborGroup label="Other returned neighbors" entries={related} />}
           {moreCount > 0 && (
             <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
               +{moreCount} more neighbor{moreCount === 1 ? "" : "s"} not shown
@@ -235,18 +233,18 @@ function NeighborGroup({ label, entries }: { label: string; entries: NeighborEnt
 export function ExposurePathNeighborExplorer({ path, scanId }: { path: ExposurePath; scanId?: string | undefined }) {
   const hops = path.hops;
   if (hops.length === 0) return null;
-  const anyExpandable = hops.some((hop) => EXPANDABLE_ROLES.has(hop.role));
+  const anyExpandable = hops.some((hop) => Boolean(hop.id));
   if (!anyExpandable) return null;
 
   return (
     <section aria-label="Expand path neighbors" className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Expand path neighbors</div>
-        <div className="text-[10px] text-[color:var(--text-tertiary)]">Direct dependencies &amp; dependents · loaded on demand</div>
+        <div className="text-[10px] text-[color:var(--text-tertiary)]">Direct relationships · loaded on demand</div>
       </div>
       <div className="space-y-2">
         {hops.map((hop) => (
-          <HopRow key={hop.id} hop={hop} scanId={scanId} />
+          <HopRow key={`${scanId}:${hop.id}`} hop={hop} scanId={scanId} />
         ))}
       </div>
     </section>

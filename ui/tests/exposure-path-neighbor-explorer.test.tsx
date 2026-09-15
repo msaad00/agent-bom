@@ -80,13 +80,13 @@ describe("ExposurePathNeighborExplorer", () => {
     const expandButton = screen.getByRole("button", { name: /Expand neighbors of database/i });
     fireEvent.click(expandButton);
 
-    await waitFor(() => expect(screen.getByText("Dependencies")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Outgoing relationships")).toBeInTheDocument());
     expect(apiMock.getGraphNodeNeighbors).toHaveBeenCalledWith("server:database", {
       scanId: "scan-1",
       limit: 12,
       direction: "both",
     });
-    expect(screen.getByText("Dependents")).toBeInTheDocument();
+    expect(screen.getByText("Incoming relationships")).toBeInTheDocument();
     expect(screen.getByText("werkzeug")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Collapse neighbors of database/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Traverse from database/i })).toHaveAttribute(
@@ -96,11 +96,11 @@ describe("ExposurePathNeighborExplorer", () => {
 
     // Collapsing hides the revealed neighbors without refetching.
     fireEvent.click(screen.getByRole("button", { name: /Collapse neighbors of database/i }));
-    await waitFor(() => expect(screen.queryByText("Dependencies")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Outgoing relationships")).not.toBeInTheDocument());
 
     // Re-expanding is served from cache (no second network call).
     fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of database/i }));
-    await waitFor(() => expect(screen.getByText("Dependencies")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Outgoing relationships")).toBeInTheDocument());
     expect(apiMock.getGraphNodeNeighbors).toHaveBeenCalledTimes(1);
   });
 
@@ -123,8 +123,43 @@ describe("ExposurePathNeighborExplorer", () => {
     await waitFor(() => expect(screen.getByText(/\+39 more neighbors not shown/i)).toBeInTheDocument());
   });
 
-  it("does not offer an expand control for leaf finding hops", () => {
+  it("offers neighbor inspection for finding hops without assuming they are leaves", () => {
     render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
-    expect(screen.queryByRole("button", { name: /Expand neighbors of CVE/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Expand neighbors of CVE/i })).toBeInTheDocument();
   });
+});
+
+it("expands typed nonstandard hops and retries a failed lookup", async () => {
+  const hop = { id: "repo:billing", label: "Billing repository", role: "unknown" as const, kindLabel: "Repository" };
+  apiMock.getGraphNodeNeighbors.mockRejectedValueOnce(new Error("unavailable")).mockResolvedValueOnce({
+    node_id: hop.id, scan_id: "scan-1", found: true, direction: "both", limit: 12,
+    total_neighbors: 0, truncated: false, neighbors: [], edges: [],
+  });
+  render(<ExposurePathNeighborExplorer path={{ ...path, hops: [hop] }} scanId="scan-1" />);
+  expect(screen.getByText("Repository")).toBeInTheDocument();
+  expect(screen.queryByText("leaf")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of Billing repository/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Retry neighbor lookup" }));
+  expect(await screen.findByText("No direct graph neighbors recorded for this node.")).toBeInTheDocument();
+  expect(apiMock.getGraphNodeNeighbors).toHaveBeenCalledTimes(2);
+});
+
+it("does not describe a truncated empty response as an isolated node", async () => {
+  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "pkg:werkzeug", found: true,
+    total_neighbors: 4, truncated: true, neighbors: [], edges: [] });
+  render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
+  fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of werkzeug/ }));
+  expect(await screen.findByText(/No neighbors returned in this partial context/)).toBeInTheDocument();
+  expect(screen.queryByText("No direct graph neighbors recorded for this node.")).not.toBeInTheDocument();
+});
+
+it("retains both directions and multiple relationship types for the same neighbor", async () => {
+  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "pkg:werkzeug", found: true,
+    total_neighbors: 1, truncated: false, neighbors: [node("cve:one", "vulnerability", "CVE-2023-25577")],
+    edges: [edge("pkg:werkzeug", "cve:one", "vulnerable_to"), edge("cve:one", "pkg:werkzeug", "affects")] });
+  render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
+  fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of werkzeug/ }));
+  expect(await screen.findByText("Vulnerable To")).toBeInTheDocument();
+  expect(screen.getByText("Affects")).toBeInTheDocument();
+  expect(screen.getByText("Incoming relationships")).toBeInTheDocument();
 });

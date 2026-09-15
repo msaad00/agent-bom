@@ -545,9 +545,36 @@ for (const theme of ["light", "dark"] as const) {
     } }));
     await page.goto(`/graph?scan=${scanId}`);
     await page.getByRole("button", { name: "Summary", exact: true }).click();
-    await page.getByRole("button", { name: "Inspect", exact: true }).click();
-    await expect(page.getByText("Findings", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Inspect pyyaml@5.3 (pkg:42)", exact: true }).click();
+    await expect(page.getByTestId("graph-drawer-panel-overview").getByText("Findings", { exact: true })).toBeVisible();
     await expect(page.getByText("No known findings on this package node")).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath(`package-evidence-${theme}.png`) });
+  });
+
+  test(`package instance summary identifies the selected image in ${theme}`, async ({ page }, testInfo) => {
+    await routeLargeGraphPage(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+    await page.route("**/v1/graph/rollup?**", route => route.fulfill({ json: {
+      scan_id: scanId, tenant_id: "default", created_at: createdAt, mode: "rollup", filters: {},
+      top_level: ["billing", "claims"].map((name, index) => ({ id: `pkg:${42 + index}`, label: "pyyaml@5.3", entity_type: "package", severity: "high",
+        context: { image: `${name}:1.0`, environment: "production", account: "northstar-001" },
+        is_container: false, has_children: false, direct_child_count: 0,
+        aggregate: { descendant_count: 0, by_type: {}, severity_counts: {}, worst_severity: "none", worst_severity_rank: 0,
+          internet_exposed: false, toxic_combo: false, exposed_count: 0, toxic_count: 0 } })),
+      edges: [], summary: { total_nodes: 2, total_edges: 0, top_level_count: 2, container_count: 0 },
+      completeness: { status: "complete", complete: true, truncated: false, returned: 2, total: 2 },
+    } }));
+    await page.goto("/graph");
+    await page.getByRole("button", { name: "Summary", exact: true }).click();
+    const summary = page.getByTestId("graph-rollup-decision-surface");
+    await expect(summary.getByText(/image: billing:1.0/)).toBeVisible();
+    await expect(summary.getByText(/image: claims:1.0/)).toBeVisible();
+    await summary.locator("summary", { hasText: "Node ID" }).first().click();
+    await expect(summary.getByText("pkg:42", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`package-context-${theme}.png`) });
+    const request = page.waitForRequest(req => req.url().endsWith("/v1/graph/query") && req.postDataJSON().roots?.includes("pkg:42"));
+    await summary.getByRole("button", { name: "Inspect pyyaml@5.3 (pkg:42)", exact: true }).click();
+    expect((await request).postDataJSON()).toMatchObject({ roots: ["pkg:42"] });
   });
 }

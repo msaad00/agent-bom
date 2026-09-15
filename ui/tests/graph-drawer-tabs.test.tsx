@@ -32,6 +32,27 @@ function richNode(): LineageNodeData {
 }
 
 describe("graph entity drawer tabs", () => {
+  it("retains loaded finding evidence when a later canvas response refreshes the same node", async () => {
+    const data = { label: "pyyaml@5.3", nodeType: "package", attributes: { node_id: "pkg:42" } } as LineageNodeData;
+    const getNode = vi.spyOn(api, "getGraphNode").mockResolvedValue({
+      node: { id: "pkg:42", entity_type: "package", attributes: {} },
+      edges_in: [], edges_out: [{ id: "finding", source: "pkg:42", target: "vulnerability:CVE-2020-14343", relationship: "vulnerable_to" }],
+      neighbors: ["vulnerability:CVE-2020-14343"], sources: ["scan"],
+      impact: { affected_count: 0, affected_by_type: {}, max_depth_reached: 0 },
+    } as unknown as GraphNodeDetailResponse);
+    const { rerender } = render(<GraphEntityDrawer data={data} scanId="scan-one" onClose={noop} />);
+    expect(await screen.findByText("Findings", { exact: true })).toBeTruthy();
+    rerender(<GraphEntityDrawer data={{ ...data, label: "Updated canvas label" }} scanId="scan-one" onClose={noop} />);
+    expect(screen.getByText("Findings", { exact: true })).toBeTruthy();
+    expect(getNode).toHaveBeenCalledTimes(1);
+
+    // Detail belongs to one snapshot and cannot leak into another while its request is pending.
+    getNode.mockImplementation(() => new Promise(() => {}));
+    rerender(<GraphEntityDrawer data={data} scanId="scan-two" onClose={noop} />);
+    expect(screen.queryByText("Findings", { exact: true })).toBeNull();
+    expect(screen.getByText("Finding count unavailable")).toBeTruthy();
+  });
+
   it("renders a tab per populated group instead of one long column", () => {
     render(<GraphEntityDrawer data={richNode()} onClose={noop} enrich={false} />);
 

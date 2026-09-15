@@ -1231,13 +1231,18 @@ def _seed_only_yesterdays_evidence() -> datetime:
     reset_gateway_activity = getattr(get_gateway_activity_store(), "reset", None)
     if callable(reset_gateway_activity):
         reset_gateway_activity()
-    cost_store._COST_STORE = None
+    # The client uses SQLite. Clearing the singleton would reopen its seeded
+    # database, including today's records, instead of establishing yesterday's
+    # pre-state. Keep this simulated rollover isolated from persisted boot data.
+    cost_store.set_cost_store(cost_store.InMemoryCostStore())
     reset_daily_evidence_day()
 
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
     seeded = seed_showcase_gateway_events(now=yesterday)
     assert seeded.get("seeded") is True, seeded
     assert _seed_cost_records(tenant_id="default", now=yesterday) > 0
+    records = cost_store.get_cost_store().list_records("default", limit=5000)
+    assert max(record.observed_at[:10] for record in records) == yesterday.date().isoformat()
     return yesterday
 
 
@@ -1255,6 +1260,27 @@ def test_yesterdays_gateway_evidence_is_outside_todays_kpi_window() -> None:
 
     for minutes_ago in (0, 1, 20):
         assert _event_time(yesterday, minutes_ago) < todays_window_start
+
+
+def test_yesterday_fixture_replaces_persisted_cost_evidence(demo_estate_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resetting a singleton must not reopen the boot day's SQLite evidence."""
+    from agent_bom.api import cost_store
+    from agent_bom.demo_estate.showcase_governance import _seed_cost_records
+
+    class Midnight(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 15, 0, 0, 2, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(f"{__name__}.datetime", Midnight)
+    yesterday = Midnight.now(timezone.utc) - timedelta(days=1)
+    _seed_cost_records(tenant_id="default", now=yesterday)
+
+    _seed_only_yesterdays_evidence()
+
+    records = cost_store.get_cost_store().list_records("default", limit=5000)
+    assert records
+    assert max(record.observed_at[:10] for record in records) == yesterday.date().isoformat()
 
 
 def test_gateway_kpis_recover_after_a_utc_day_rollover(demo_estate_client: TestClient) -> None:

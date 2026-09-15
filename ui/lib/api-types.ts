@@ -778,6 +778,7 @@ export interface GraphRollupAggregate {
 }
 
 export interface GraphRollupContainer {
+  context?: { workload?: string; image?: string; environment?: string; account?: string };
   id: string;
   label: string;
   entity_type: string;

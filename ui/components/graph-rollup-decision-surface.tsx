@@ -197,6 +197,15 @@ export function GraphRollupDecisionSurface({
                   <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
                     {item.entity_type.replaceAll("_", " ")}
                   </p>
+                  {item.context && Object.keys(item.context).length > 0 && (
+                    <p className="mt-1 break-words text-xs text-ink-secondary">
+                      {Object.entries(item.context).map(([kind, value]) => `${kind}: ${value}`).join(" · ")}
+                    </p>
+                  )}
+                  <details className="mt-1 text-[11px] text-ink-tertiary">
+                    <summary className="cursor-pointer">Node ID</summary>
+                    <code className="block break-all select-all">{item.id}</code>
+                  </details>
                 </div>
                 <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold uppercase ${severityTone(severity)}`}>
                   {severity === "none" ? "Not rated" : severity}
@@ -238,7 +247,7 @@ export function GraphRollupDecisionSurface({
                     Drill in <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 ) : (
-                  <button type="button" onClick={() => onInvestigate(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-600 dark:text-emerald-300">
+                  <button type="button" aria-label={`Inspect ${item.label} (${item.id})`} onClick={() => onInvestigate(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-600 dark:text-emerald-300">
                     Inspect <ShieldAlert className="h-3.5 w-3.5" />
                   </button>
                 )}

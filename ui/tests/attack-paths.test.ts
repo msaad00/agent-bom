@@ -1070,7 +1070,7 @@ describe("mergeAttackPathGraphPages", () => {
 describe("graphPathQueueCounts", () => {
   it("keeps snapshot, materialization, transfer, render, and truncation counts distinct", () => {
     const graph = {
-      attack_paths: [{}, {}, {}],
+      attack_paths: ["a", "b", "c"].map((id) => ({ source: id, target: "z", hops: [id, "z"] })),
       pagination: { total: 84, offset: 0, limit: 3, has_more: true },
       completeness: { returned: 3, total: 84, truncated: true, reason: "path_page_limit" },
       count_metadata: {
@@ -1087,6 +1087,8 @@ describe("graphPathQueueCounts", () => {
       materializedPaths: 84,
       derivedPaths: 0,
       returnedRows: 3,
+      queueRows: 3,
+      additionalPriorityRows: 0,
       renderedRows: 2,
       truncated: true,
     });
@@ -1112,5 +1114,14 @@ describe("initial investigation direction", () => {
     expect(initialInvestigationDirection("organization:example")).toBe("forward");
     expect(initialInvestigationDirection("vuln:CVE-2023-45857")).toBe("reverse");
     expect(initialInvestigationDirection("package:axios")).toBe("both");
+  });
+});
+
+it("counts the unique union of queue and fix-first paths without inflating the snapshot", () => {
+  const path = (id: string) => ({ source: id, target: "target", hops: [id, "target"], edges: [], composite_risk: 1 }) as unknown as AttackPath;
+  const a = path("a"), b = path("b"), c = path("c");
+  const graph = { attack_paths: [a, b], pagination: { total: 100, has_more: true } } as unknown as import("@/lib/api-types").UnifiedGraphResponse;
+  expect(graphPathQueueCounts(graph, 3, [b, c, c])).toMatchObject({
+    returnedRows: 3, renderedRows: 3, snapshotTotal: 100, queueRows: 2, additionalPriorityRows: 1,
   });
 });

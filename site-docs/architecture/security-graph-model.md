@@ -129,6 +129,28 @@ That split is intentional:
 - the filters tell you how you are slicing it
 - the detail panel tells you why one node matters
 
+### Inspecting one instance or path
+
+Open **Investigation → Summary**, drill into an account or environment, then
+choose **Inspect** on a package. Matching package names can represent different
+instances: the row includes available image/workload context, and **Node ID**
+reveals the canonical identifier used by the API. Missing context stays absent.
+
+In **Attack Paths → List**, expand any hop to load up to 12 direct neighbors.
+Outgoing and incoming groups retain the relationship labels; an access edge is
+not automatically a dependency. Use **Traverse from this hop** for a focused
+investigation, or **Retry neighbor lookup** after a failed request. A partial
+response does not establish that a node has no other neighbors.
+
+The queue distinguishes paths shown, unique paths loaded from both the occurrence
+queue and priority cards, and the snapshot total. **Evidence priority** identifies
+a priority-card score; **Queue score** identifies an occurrence-queue score.
+Neither score establishes compromise.
+
+New demo projections direct dependencies from a workload to its image and from
+an image to its packages. This change does not rewrite existing saved snapshots; rebuild the demo
+snapshot to see corrected projection semantics.
+
 ## Scale and readability
 
 To keep the graph readable at larger sizes, `agent-bom` uses:

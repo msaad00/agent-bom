@@ -309,6 +309,8 @@ export function exposureRoleForEntityType(entityType: string): ExposureEntityRol
       return "tool";
     case EntityType.ENVIRONMENT:
       return "environment";
+    case EntityType.CLUSTER:
+      return "cluster";
     default:
       return "unknown";
   }
@@ -318,7 +320,10 @@ function exposureRefFromUnifiedNode(node: UnifiedNode): ExposureEntityRef {
   const role = exposureRoleForEntityType(String(node.entity_type));
   const attributes = node.attributes ?? {};
   let display = formatExposureEntityDisplay(node.label, role, attributes);
-  let kindLabel: string | undefined;
+  let kindLabel: string | undefined = role === "unknown"
+    ? String(node.entity_type).replaceAll("_", " ").replace(/^./, (char) => char.toUpperCase())
+    : undefined;
+  if (node.entity_type === EntityType.CI_JOB) kindLabel = "CI job";
   if (node.entity_type === EntityType.CONTAINER) {
     const [title, digest] = node.label.split("@", 2);
     display = {
@@ -810,6 +815,8 @@ export interface GraphPathQueueCounts {
   derivedPaths: number;
   returnedRows: number;
   renderedRows: number;
+  queueRows: number;
+  additionalPriorityRows: number;
   truncated: boolean;
 }
 
@@ -817,17 +824,23 @@ export interface GraphPathQueueCounts {
 export function graphPathQueueCounts(
   graph: UnifiedGraphResponse | null | undefined,
   renderedRows: number,
+  priorityPaths: AttackPath[] = [],
 ): GraphPathQueueCounts {
   const metadata = graph?.count_metadata;
   const snapshotTotal = metadata?.snapshot_total ?? graph?.pagination?.total ?? 0;
   const source = metadata?.source;
+  const queueKeys = new Set((graph?.attack_paths ?? []).map(attackPathKey));
+  const priorityKeys = new Set(priorityPaths.map(attackPathKey));
+  const additionalPriorityRows = [...priorityKeys].filter((key) => !queueKeys.has(key)).length;
   return {
     snapshotTotal,
     materializedPaths:
       metadata?.materialized_paths ?? (source === "persisted_graph_paths" ? snapshotTotal : 0),
     derivedPaths:
       metadata?.derived_paths ?? (source === "derived_graph_paths" ? snapshotTotal : 0),
-    returnedRows: graph?.attack_paths.length ?? 0,
+    returnedRows: queueKeys.size + additionalPriorityRows,
+    queueRows: queueKeys.size,
+    additionalPriorityRows,
     renderedRows: Math.max(0, renderedRows),
     truncated: Boolean(graph?.completeness?.truncated ?? graph?.pagination?.has_more),
   };

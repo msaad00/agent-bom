@@ -361,3 +361,22 @@ def test_projected_finding_nodes_carry_readable_remediation_text(projected, esta
         assert isinstance(recommendation, str), (node.id, type(recommendation).__name__)
         assert recommendation, f"{node.id} lost its remediation text"
         assert not recommendation.startswith("Remediation("), f"{node.id} renders a Python repr as its remediation: {recommendation[:80]!r}"
+
+
+def test_container_package_dependencies_follow_consumption_direction(projected, estate) -> None:
+    graph, _ = projected
+    pairs = _edge_pairs(graph)
+    checked = Counter()
+    for asset in estate.assets:
+        image = asset.tags.get("container_image")
+        if not image or image not in graph.nodes:
+            continue
+        if graph.nodes[asset.asset_id].entity_type == EntityType.PACKAGE:
+            assert (image, asset.asset_id, "depends_on") in pairs
+            assert (asset.asset_id, image, "depends_on") not in pairs
+            assert image in graph.impact_of(asset.asset_id, max_depth=1)["affected_nodes"]
+            checked["package"] += 1
+        else:
+            assert (asset.asset_id, image, "depends_on") in pairs
+            checked["workload"] += 1
+    assert checked["package"] > 0 and checked["workload"] > 0

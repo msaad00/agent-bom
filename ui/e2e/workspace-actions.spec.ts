@@ -256,7 +256,9 @@ async function routeCompliance(page: Page) {
     owasp_mcp_top10: [control("MCP01", "Tool Poisoning", "warning", 1)],
     mitre_atlas: [], nist_ai_rmf: [], owasp_agentic_top10: [], eu_ai_act: [], nist_csf: [],
     iso_27001: [], soc2: [], cis_controls: [], cmmc: [], nist_800_53: [], fedramp: [], pci_dss: [],
-    aisvs_benchmark: { checks: [], summary: {} },
+    aisvs_benchmark: { scan_id: "scan-benchmark", measured_at: CREATED_AT, benchmark: { checks: [
+      { check_id: "V1.1", title: "Tool authorization boundary", status: "fail", severity: "high", evidence: "Tool scope exceeds policy", recommendation: "Restrict tool scope" },
+    ] }, summary: { fail: 1 } },
     summary: { ...emptySummary, owasp_pass: 1, owasp_fail: 1, owasp_mcp_warn: 1, aisvs_pass: 0, aisvs_fail: 0, aisvs_error: 0, aisvs_not_applicable: 0 },
   } }));
 }
@@ -283,3 +285,34 @@ test("compliance view, filter, search, and evidence-pack actions are wired", asy
   await packRequest;
   await expect(page.getByTestId("compliance-export-pack")).toContainText("Export pack");
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`benchmark rows open their evidence with keyboard navigation in ${theme}`, async ({ page }, testInfo) => {
+    await routeCompliance(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await page.route("**/v1/cis/checks?**", route => route.fulfill({ json: { count: 1, source: "scan_jobs", checks: [
+      { scan_id: "scan-cloud", measured_at: CREATED_AT, cloud: "aws", check_id: "1.1", title: "Root account has MFA", status: "fail", severity: "high", evidence: "MFA not enabled", resource_ids: [], remediation: {}, requires_human_review: true },
+    ] } }));
+    await page.goto("/compliance");
+    const table = page.getByTestId("compliance-frameworks-table");
+    const cis = table.getByRole("button", { name: /CIS Bench/ });
+    await cis.focus();
+    await page.keyboard.press("Enter");
+    await expect(cis).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("heading", { name: "Cloud Security Checks" })).toBeVisible();
+    await expect(page.getByText("Root account has MFA", { exact: true })).toBeVisible();
+    await expect(page.getByText("Prompt Injection", { exact: true })).toBeHidden();
+    await page.screenshot({ path: testInfo.outputPath(`cis-benchmark-${theme}.png`) });
+    const aisvs = table.getByRole("button", { name: /AISVS/ });
+    await aisvs.focus();
+    await page.keyboard.press("Space");
+    await expect(page.getByRole("heading", { name: "OWASP AISVS benchmark" })).toBeVisible();
+    await page.getByText("Tool authorization boundary", { exact: true }).click();
+    await expect(page.getByText("Tool scope exceeds policy", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`aisvs-benchmark-${theme}.png`) });
+    await table.getByRole("button", { name: /^LLM / }).click();
+    await expect(page.getByText("Prompt Injection", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false);
+  });
+}

@@ -198,3 +198,105 @@ def test_server_cleanup_escalates_and_reaps_after_kill(monkeypatch):
     process.terminate.assert_called_once()
     process.kill.assert_called_once()
     assert process.wait.await_count == 3
+
+
+@pytest.mark.parametrize("field", ["result", "error"])
+@pytest.mark.parametrize("mode", ["enforce", "audit"])
+def test_response_dlp_covers_error_data(field, mode):
+    secret = "sk-proj-" + "a" * 25
+    message = {"jsonrpc": "2.0", "id": 7, field: {"message": secret, "data": {"nested": secret}}}
+    safe, findings = scan_jsonrpc_response(message, ScanConfig(enabled=True, mode=mode))
+    assert findings
+    assert (secret in json.dumps(safe)) == (mode == "audit")
+    assert safe["id"] == 7
+
+
+@pytest.mark.parametrize("line", ["DEBUG: leaked sk-proj-" + "a" * 25, '{"invalid":"sk-proj-' + "a" * 25 + '"}'])
+def test_stdio_non_protocol_output_cannot_bypass_dlp(tmp_path, monkeypatch, line):
+    monkeypatch.setattr(proxy, "create_async_stdin_reader", AsyncMock(return_value=object()))
+    monkeypatch.setattr(proxy, "read_async_stdin_line", AsyncMock(return_value=b""))
+    stdout = SimpleNamespace(buffer=io.BytesIO())
+    monkeypatch.setattr(proxy.sys, "stdout", stdout)
+    audit = tmp_path / "audit.jsonl"
+    assert (
+        asyncio.run(
+            proxy.run_proxy(["python3", "-c", f"print({line!r})"], policy_path=_policy(tmp_path), log_path=str(audit), metrics_port=0)
+        )
+        == 0
+    )
+    assert b"sk-proj-" not in stdout.buffer.getvalue()
+    assert any(str(row.get("detector", "")).startswith("scanner:") for row in map(json.loads, audit.read_text().splitlines()))
+
+
+@pytest.mark.parametrize("field", ["result", "error"])
+@pytest.mark.parametrize("mode", ["enforce", "audit"])
+def test_gateway_response_dlp_covers_error_data(field, mode):
+    from starlette.testclient import TestClient
+
+    from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+    from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+
+    secret = "sk-proj-" + "a" * 25
+
+    async def upstream(_upstream, message, _headers):
+        return {"jsonrpc": "2.0", "id": message["id"], field: {"message": secret}}
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="test", url="http://upstream.local")]),
+        policy={},
+        upstream_caller=upstream,
+        dlp_enabled=True,
+        dlp_mode=mode,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+        response = client.post(
+            "/mcp/test", json={"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "read", "arguments": {}}}
+        )
+    assert response.status_code == 200
+    assert (secret in response.text) == (mode == "audit")
+    assert response.json()["id"] == 7
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process signals")
+def test_sigterm_reaps_running_upstream(tmp_path):
+    import os
+    import signal
+    import time
+
+    pid_file = tmp_path / "child.pid"
+    child = "import os,time,pathlib; pathlib.Path(" + repr(str(pid_file)) + ").write_text(str(os.getpid())); time.sleep(120)"
+    child_file = tmp_path / "upstream.py"
+    child_file.write_text(child)
+    driver = (
+        "import asyncio; from agent_bom.proxy import run_proxy; asyncio.run(run_proxy("
+        + repr(["python3", str(child_file)])
+        + ", metrics_port=0))"
+    )
+    stderr = (tmp_path / "proxy.stderr").open("w+")
+    parent = subprocess.Popen([sys.executable, "-c", driver], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=stderr)
+    child_pid = None
+    try:
+        for _ in range(100):
+            if pid_file.exists():
+                child_pid = int(pid_file.read_text())
+                break
+            time.sleep(0.05)
+        stderr.flush()
+        stderr.seek(0)
+        assert child_pid is not None, stderr.read()
+        parent.send_signal(signal.SIGTERM)
+        parent.wait(timeout=12)
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+    finally:
+        if parent.poll() is None:
+            parent.kill()
+            parent.wait()
+        stderr.close()
+        if parent.stdin:
+            parent.stdin.close()
+        if child_pid:
+            try:
+                os.kill(child_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass

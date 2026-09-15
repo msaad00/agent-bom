@@ -783,8 +783,8 @@ def test_post_forward_result_audit_capacity_failure_returns_completed_result(
 
     monkeypatch.setattr(
         gateway_module,
-        "scan_tool_response",
-        lambda *_args, **_kwargs: [SimpleNamespace(blocked=False, scanner="pii", rule_id="email")],
+        "scan_jsonrpc_response",
+        lambda message, _config: (message, [SimpleNamespace(blocked=False, scanner="pii", rule_id="email")]),
     )
     settings = GatewaySettings(
         registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://filesystem.local")]),

@@ -95,11 +95,18 @@ agent-bom proxy --url https://mcp.example.com --policy policy.json --log audit.j
 ```
 
 The same `inline_scanning` policy applies to stdio and the SSE/HTTP proxy.
-Before returning a JSON-RPC result, enforcement replaces blocked content with
+Before returning JSON-RPC results, errors or notifications, enforcement replaces blocked content with
 an error (`-32600`) and preserves the request ID. PII redaction preserves the
 JSON result shape; if redaction fails or leaves detectable PII, the proxy blocks
 the result. Use `pii_action: "block"` to reject detected PII immediately.
-Resource and discovery responses pass through the same response checks.
+Resource and discovery responses pass through the same response checks. Enforce
+mode drops malformed or non-JSON-RPC upstream stdout after scanning it for audit
+alerts; audit mode retains those bytes. The gateway uses the same response
+scanner with its separately configured DLP settings.
+
+On POSIX, SIGTERM stops relay tasks and reaps the upstream child before flushing
+audit delivery. A child that ignores termination is killed after the cleanup
+timeout. SIGKILL cannot run application cleanup.
 
 The artifact is the client's redacted result or protocol error, plus sanitized
 scanner alerts in `audit.jsonl`. Verify this with controlled sample content

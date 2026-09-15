@@ -1,18 +1,18 @@
 {
   "release_version": "0.105.0",
-  "captured_at": "2026-09-15T00:49:15.103Z",
-  "source_commit": "105d5b7735d375e4707d69226443d7e97d219c94",
+  "captured_at": "2026-09-15T03:06:36.308Z",
+  "source_commit": "7cb389dca956e7687741cd2e14d3364625e3dfe5",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:a2324dabe160ddb39b0d48eef3ff4da830a80f7f0ebac7fa351ecf6a47b27989",
+  "capture_inputs_sha256": "sha256:4b087308f3646b3217f7f51d2e0f23f0cf298a3d3556a9b736742adfcccfb460",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
       "presentation": "dark desktop",
       "path": "dashboard-live.png",
       "page": "/?capture=1",
-      "scope": "Risk overview — posture grade, unique findings breakdown, scan coverage, and operational lanes",
+      "scope": "Focused risk overview with posture score, finding breakdown, scan freshness and both investigation tabs",
       "visible_version": "0.105.0",
-      "sha256": "sha256:055883307fbc464c52c9826b3810bd03d698e26727ece5767606ef088472eee9"
+      "sha256": "sha256:5a1bb673d705c6782cc8942c3d88614c67d819e3bff164c3bf3e7190130085ba"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Risk overview in the light theme",
       "visible_version": "0.105.0",
-      "sha256": "sha256:a54bb9f32505a4cdfaf0079f210412de23c64304087e01c2125eb3835659f6d8"
+      "sha256": "sha256:60234d6430aca5431da62c1551e3e58724af965317d4facd286d2e93d9d5ba06"
     },
     {
       "presentation": "dark mobile",
@@ -28,7 +28,7 @@
       "page": "/?capture=1",
       "scope": "Risk overview at a 390 by 844 viewport",
       "visible_version": "0.105.0",
-      "sha256": "sha256:01dbf22e1c58772cf7c6b6697342d9404619ffe360c837c0e8970e838fca97e5"
+      "sha256": "sha256:dafffab90bee0706373858f306e72de99afbf4924a6240ef3f122ea10fb79481"
     },
     {
       "presentation": "dark desktop",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Top risks tab from the offline synthetic enterprise estate",
       "visible_version": "0.105.0",
-      "sha256": "sha256:12fddcb47b6a025db9d4fb37108f1636d4ea6164207b718d2a06e53984f0f336"
+      "sha256": "sha256:08ee4b1a8246127ae79e9e0a0d3d97fd8e2dfb7d72f31b36a720824ea1a0d259"
     },
     {
       "presentation": "light desktop",
@@ -44,7 +44,7 @@
       "page": "/?capture=1",
       "scope": "Executive impact summaries with technical details collapsed",
       "visible_version": "0.105.0",
-      "sha256": "sha256:479602db0d342f49a85683d14d3ae68bfb4c8885c30c69669ae2f54fb5fd09a3"
+      "sha256": "sha256:f29c487ca942a006012477daf1f677f370f2f6f015ab75486003b13407d6e22c"
     },
     {
       "presentation": "dark mobile",
@@ -52,15 +52,15 @@
       "page": "/?capture=1",
       "scope": "Executive impact summaries at a 390 by 844 viewport",
       "visible_version": "0.105.0",
-      "sha256": "sha256:badb62f52b39b08a421dd59c92d8d7ac87e4fee390bcc60027e1e027ac6a95b6"
+      "sha256": "sha256:1be17ca0f335ec8f344424b04fff85b7b9427400ceddb4e4149600dd1d4413ab"
     },
     {
       "presentation": "dark desktop",
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
-      "scope": "Expanded Overview synthetic control evaluations and risk mappings with assessment scope",
+      "scope": "Focused full-width Overview control framework catalog and risk mappings with assessment scope",
       "visible_version": "0.105.0",
-      "sha256": "sha256:8c52a51f26b65057ed04280ac7aec5f9b233558df218d76093dd018730a0b7c2"
+      "sha256": "sha256:82d92fe8b82f751edef0f0ab1964b41712699c2be6b342e343b6fcb2c2778ca3"
     },
     {
       "presentation": "dark desktop",

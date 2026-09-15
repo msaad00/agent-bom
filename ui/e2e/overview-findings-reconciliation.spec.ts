@@ -342,12 +342,18 @@ for (const theme of ["light", "dark"] as const) {
       await page.waitForTimeout(350);
       const panels = await Promise.all(["Risk overview", "Compliance & frameworks", "Coverage"].map((name) => page.getByRole("region", { name, exact: true }).boundingBox()));
       const [risks, compliance, coverage] = panels;
+      const score = (await page.getByTestId("overview-posture-score").boundingBox())!;
+      const issues = (await page.getByTestId("overview-severity-issue-strip").boundingBox())!;
       if (width === 1440) {
+        expect(issues.x).toBeGreaterThan(score.x + score.width);
+        expect(issues.y).toBeLessThan(score.y + score.height);
+        expect(risks!.height).toBeLessThan(500);
         expect(risks!.width).toBeGreaterThan(compliance!.width + coverage!.width);
         expect(Math.abs(compliance!.y - coverage!.y)).toBeLessThan(2);
         expect(compliance!.y).toBeGreaterThan(risks!.y + risks!.height);
         expect(coverage!.x).toBeGreaterThan(compliance!.x + compliance!.width);
       } else {
+        expect(issues.y).toBeGreaterThan(score.y + score.height);
         for (let index = 1; index < panels.length; index++) {
           expect(panels[index]!.y).toBeGreaterThanOrEqual(panels[index - 1]!.y + panels[index - 1]!.height);
         }
@@ -407,6 +413,7 @@ for (const theme of ["light", "dark"] as const) {
         const title = frameworks.getByText(label, { exact: true });
         const card = frameworks.getByRole("link", { name: new RegExp(label) });
         await expect(title).toBeVisible();
+        expect(await title.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);
         await expect(card).toHaveAttribute("href", "/compliance");
         const titleBox = await title.boundingBox();
         const cardBox = await card.boundingBox();

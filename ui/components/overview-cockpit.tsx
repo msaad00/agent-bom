@@ -284,8 +284,8 @@ export function OverviewCockpit({
 
   return (
     <div className="space-y-7">
-      <section aria-label="Risk overview" className="min-w-0 rounded-2xl border border-outline-strong bg-surface p-5 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <section aria-label="Risk overview" className="@container min-w-0 rounded-2xl border border-outline-strong bg-surface p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className={SECTION_TITLE_CLASS}>Risk overview</h2>
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
         </div>
@@ -297,7 +297,7 @@ export function OverviewCockpit({
             agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null} />
         </div>
         <div role="tabpanel" aria-label="Overview" hidden={riskTab !== "posture"}>
-            <div className="mt-2 grid gap-3">
+            <div className="mt-4 grid items-start gap-5 @min-[56rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @min-[56rem]:gap-6">
               <PostureHero
                 loading={loading}
                 grade={grade}
@@ -703,7 +703,7 @@ function ComplianceSnapshotPanel({
             {mappings.slice(0, 4).map((framework) => (
               <Link key={framework.id} href="/compliance" className="flex min-w-0 items-center gap-2 rounded-md py-2 hover:bg-surface-muted">
                 <span aria-hidden="true"><FrameworkIcon frameworkId={framework.id} size={24} /></span>
-                <span className="min-w-0 text-xs font-semibold text-foreground">{framework.label}
+                <span className="min-w-0 text-sm font-semibold text-foreground">{framework.label}
                   <span className="mt-1 block font-normal text-ink-secondary">{framework.applicable ?? 0}/{framework.total} risks applicable</span>
                 </span>
               </Link>
@@ -718,7 +718,7 @@ function ComplianceSnapshotPanel({
 
 function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot["frameworks"] }) {
   return (
-        <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+        <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2" data-testid="overview-framework-cards">
           {frameworks.map((framework) => {
             const evaluated = frameworkEvaluated(framework);
             const isApplicability = framework.kind === "applicability";
@@ -734,10 +734,10 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
                   <FrameworkIcon frameworkId={framework.id} size={28} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold leading-tight text-foreground">
+                  <p className="text-sm font-semibold leading-snug text-foreground">
                     {framework.label}
                   </p>
-                  <p className="mt-0.5 text-xs leading-tight text-ink-secondary">
+                  <p className="mt-0.5 text-sm leading-snug text-ink-secondary">
                     {isApplicability
                       ? `${framework.applicable ?? 0}/${framework.total} risks applicable`
                       : evaluated === 0
@@ -897,7 +897,7 @@ function ScoreExplainer({
       bare
       className="mt-4 border-t border-outline"
       title="What influences this score"
-      titleClassName={SECTION_TITLE_CLASS}
+      titleClassName="text-sm font-medium text-foreground"
       defaultOpen={false}
       data-testid="overview-score-explainer"
     >
@@ -966,7 +966,7 @@ function ScoreFormatToggle({
             type="button"
             onClick={() => onChange(option.value)}
             aria-pressed={active}
-            className={`px-1.5 py-0.5 text-[10px] font-semibold transition ${
+            className={`px-2 py-1 text-xs font-semibold transition ${
               active
                 ? "bg-surface-elevated text-foreground"
                 : "bg-surface-muted text-ink-secondary hover:text-foreground"
@@ -1019,7 +1019,7 @@ function PostureHero({
     <div className="flex items-center gap-4">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-secondary">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-secondary">
             Risk posture
           </p>
           {graded && onScoreFormatChange ? (
@@ -1048,7 +1048,7 @@ function PostureHero({
         {graded ? (
           trend && trend.points >= 2 ? (
             <p
-              className="mt-1 text-[10px] text-ink-secondary"
+              className="mt-1 text-xs text-ink-secondary"
               data-testid="overview-posture-trend"
               title={`Previous posture score: ${Math.round(trend.previousScore)}%`}
             >
@@ -1057,7 +1057,7 @@ function PostureHero({
                 : `${trend.direction === "improved" ? "Improved" : "Worsened"} ${Math.abs(Math.round(trend.delta))} points since the previous scan`}
             </p>
           ) : (
-            <p className="mt-1 text-[10px] text-ink-secondary">
+            <p className="mt-1 text-xs text-ink-secondary">
               Current evidence snapshot · use Top risks to prioritize remediation
             </p>
           )
@@ -1178,7 +1178,7 @@ function SeverityIssueStrip({
 
   return (
     <div
-      className="min-w-0 border-t border-outline pt-1"
+      className="@container min-w-0 border-t border-outline pt-3 @min-[56rem]:border-t-0 @min-[56rem]:border-l @min-[56rem]:pt-0 @min-[56rem]:pl-6"
       data-testid="overview-severity-issue-strip"
     >
       <Collapsible
@@ -1250,14 +1250,14 @@ function SeverityIssueStrip({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 @min-[36rem]:grid-cols-4">
         {bands.map((band) => (
           <Link
             key={band.key}
             href={findingsHref({ scope: "all", severity: band.key })}
             className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg border px-2.5 py-2 transition ${band.tint}`}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-secondary">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-secondary">
               {band.label}
             </p>
             <p className={`font-mono text-xl font-semibold ${band.tone}`}>

@@ -44,6 +44,7 @@ import {
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
+import { AISVSBenchmarkDetail } from "@/components/aisvs-benchmark-detail";
 import { ComplianceNistCatalog } from "@/components/compliance-nist-catalog";
 import { FrameworkIcon } from "@/components/framework-icon";
 import {
@@ -503,14 +504,9 @@ function CompliancePageContent() {
         rows={visibleFrameworks}
         rowKey={(f) => f.id}
         columns={frameworkColumns}
-        selectedKey={selectedSection?.id}
+        selectedKey={selectedFrameworkId || selectedSection?.id}
         onRowClick={(f) => {
           if (f.disabled) return;
-          // Benchmark rows are in the table because the headline counts them,
-          // but their evidence has its own drill-down below rather than a
-          // control list here. Selecting one would show a different framework's
-          // controls under its name.
-          if (!detailSections.some((section) => section.id === f.id)) return;
           setSelectedFrameworkId(f.id);
         }}
         maxHeight="calc(100vh - 22rem)"
@@ -589,7 +585,16 @@ function CompliancePageContent() {
     },
   ];
 
-  const detail = selectedSection ? (
+  const detail = selectedFrameworkId === "cis-foundations" ? (
+    <div className="h-full min-h-0 overflow-y-auto" data-testid="compliance-benchmark-detail">
+      <p className="mb-2 text-xs text-[color:var(--text-secondary)]">Latest recorded cloud checks for the current tenant.</p>
+      <CISBenchmarkDetail />
+    </div>
+  ) : selectedFrameworkId === "aisvs" ? (
+    <div className="h-full min-h-0 overflow-y-auto" data-testid="compliance-benchmark-detail">
+      <AISVSBenchmarkDetail data={data!.aisvs_benchmark} />
+    </div>
+  ) : selectedSection ? (
     <div className="flex h-full min-h-0 flex-col rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] elev-1">
       <div className="border-b border-[color:var(--border-subtle)] p-4">
         <div className="flex items-center gap-2">
@@ -747,15 +752,6 @@ function CompliancePageContent() {
           />
 
           <ComplianceNistCatalog />
-
-          <Collapsible
-            title="Cloud CIS benchmark drill-down"
-            subtitle="AWS / Azure / GCP / Snowflake / Databricks"
-            icon={Scan}
-            defaultOpen={false}
-          >
-            <CISBenchmarkDetail />
-          </Collapsible>
 
           {(hubPosture && hubPosture.totals.combined > 0) || mitreCatalog || atlasCatalog ? (
             <Collapsible title="Operator & catalog context" defaultOpen={false}>

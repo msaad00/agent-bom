@@ -155,13 +155,13 @@ describe("CompliancePage (dense restyle)", () => {
     await screen.findByText("Prompt Injection");
     const table = screen.getByTestId("compliance-frameworks-table");
     fireEvent.click(within(table).getByText("CIS Bench"));
-    expect(within(screen.getByTestId("compliance-split")).getByText("cis benchmark")).toBeInTheDocument();
+    expect(await within(screen.getByTestId("compliance-split")).findByText("cis benchmark")).toBeInTheDocument();
     expect(screen.queryByText("Prompt Injection")).toBeNull();
     fireEvent.click(within(table).getByText("AISVS"));
-    expect(screen.getByRole("heading", { name: "OWASP AISVS benchmark" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "OWASP AISVS benchmark" })).toBeInTheDocument();
     expect(screen.getByText("No AISVS benchmark checks have been recorded.")).toBeInTheDocument();
     fireEvent.click(within(table).getByText("LLM"));
-    expect(screen.getByText("Prompt Injection")).toBeInTheDocument();
+    expect(await screen.findByText("Prompt Injection")).toBeInTheDocument();
     expect(screen.queryByText("cis benchmark")).toBeNull();
   });
 

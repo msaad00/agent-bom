@@ -502,7 +502,7 @@ def test_live_server_card_exposes_exact_mcp_tool_schemas(monkeypatch):
 
     assert response.status_code == 200
     card = response.json()
-    assert card["authentication"] == {"required": True, "schemes": ["oauth2"]}
+    assert card["authentication"] == {"required": True, "schemes": ["bearer"]}
     assert len(card["tools"]) == len(_SERVER_CARD_TOOLS)
     assert all(isinstance(tool.get("inputSchema"), dict) for tool in card["tools"])
     assert all(tool["inputSchema"].get("additionalProperties") is False for tool in card["tools"])

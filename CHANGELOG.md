@@ -64,6 +64,8 @@ credential validation, and improves the path from findings to investigation.
 
 ### Changed
 
+- Link each team’s README starting point to its evidence and next action,
+  including re-scanning fixes and following up on assessment gaps.
 - Reuse the dependency-audit baseline only when its frozen Python inputs are
   unchanged; fail the OSV gate on scanner errors or invalid reports.
 - Skip redundant CodeQL analysis on prose/image-only main pushes while retaining

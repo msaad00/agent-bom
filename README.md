@@ -25,14 +25,14 @@
 
 ## Built for the teams that build, secure and govern AI
 
-| Your team | What you can do |
+| Your team | First action → evidence → next step |
 |---|---|
-| **Developers & AI engineers** | Inspect repositories, dependencies and MCP configuration; bring findings into CI and coding assistants. |
-| **AppSec & cloud security** | Connect cloud accounts, trace findings through workloads and identities, and prioritize fixes by reachable impact. |
-| **Platform & DevOps** | Run a shared control plane, collect fleet evidence, and apply policy to MCP traffic through the proxy or gateway. |
-| **GRC & audit** | Open **Compliance** to review mappings and [export scan evidence](docs/GALLERY.md#scan-a-repository-before-shipping) with its source, freshness and assessment gaps. |
-| **Security & engineering leaders** | Open **Overview** to review posture, remediation priorities and tracked AI spend across connected sources. |
-| **AI assistants & automation** | Use [MCP workflows](docs/MCP_WORKFLOWS.md) to query evidence and inspect findings within the caller’s permissions. |
+| **Developers & AI engineers** | Inspect repositories with `agent-bom scan .` → save SARIF findings for CI → apply a fix and re-scan. [First run](docs/FIRST_RUN.md) |
+| **AppSec & cloud security** | Connect cloud accounts → follow a finding through workloads, identities and source receipts → prioritize the supported exposure. [Connections](docs/CLOUD_CONNECT.md) |
+| **Platform & DevOps** | Run a shared control plane → retain fleet and scan evidence → add explicit proxy or gateway policies. [Deployment](site-docs/deployment/overview.md) |
+| **GRC & audit** | Open **Compliance** → [export scan evidence](docs/GALLERY.md#scan-a-repository-before-shipping) with source, freshness and assessment gaps → follow up on missing checks. |
+| **Security & engineering leaders** | Open **Overview** → review posture, Top risks and tracked AI spend → inspect the evidence and assign remediation owners. |
+| **AI assistants & automation** | Use [MCP workflows](docs/MCP_WORKFLOWS.md) within the caller’s permissions → inspect finding evidence → propose a fix and verify it with a new scan. |
 
 ## Product tour
 

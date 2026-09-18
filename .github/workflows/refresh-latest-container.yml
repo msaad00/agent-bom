@@ -52,9 +52,11 @@ jobs:
             exit 1
           fi
           VERSION="${TAG#v}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "main_sha=$MAIN_SHA"
+          } >> "$GITHUB_OUTPUT"
           git checkout "$TAG"
 
       - name: Apply current runtime security overlay
@@ -101,11 +103,56 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - uses: ./.github/actions/setup-ui
+
+      - name: Bundle released dashboard
+        run: make build-ui
+
       - name: Build refresh candidate image
         run: docker build -t agent-bom:latest-refresh-test .
 
       - name: Smoke test refresh candidate
         run: docker run --rm agent-bom:latest-refresh-test --version
+
+      - name: Dashboard refresh gate
+        run: |
+          set -euo pipefail
+          cleanup() {
+            status=$?
+            if [ $status -ne 0 ]; then
+              docker logs agent-bom-dashboard-refresh-smoke || true
+            fi
+            docker stop agent-bom-dashboard-refresh-smoke >/dev/null 2>&1 || true
+            exit $status
+          }
+          docker run --rm --entrypoint python agent-bom:latest-refresh-test -c '
+          import pathlib, sys
+          import agent_bom
+          index = pathlib.Path(agent_bom.__file__).parent / "ui_dist" / "index.html"
+          if not index.is_file():
+              sys.exit(f"packaged dashboard missing: {index} is not in the image")
+          print(f"packaged dashboard present: {index}")
+          '
+          docker run -d --rm --name agent-bom-dashboard-refresh-smoke -p 8422:8422 \
+            agent-bom:latest-refresh-test serve --host 0.0.0.0 --port 8422 --api-key release-gate-key
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8422/healthz >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          code=$(curl -sS -o /tmp/dashboard-root.html -w '%{http_code}' http://127.0.0.1:8422/)
+          if [ "$code" != "200" ]; then
+            echo "::error::GET / returned ${code}; the API image is not serving the bundled dashboard"
+            exit 1
+          fi
+          grep -q '/_next/static' /tmp/dashboard-root.html || {
+            echo "::error::GET / returned 200 but referenced no dashboard assets; the response is the API service card, not the packaged UI"
+            head -c 512 /tmp/dashboard-root.html
+            exit 1
+          }
+          echo "OK: the refresh candidate image serves the bundled dashboard at /"
 
       - name: Image vulnerability refresh gate
         # Self-hosted image gate (dogfood) using the snapshot scanner. Native
@@ -148,10 +195,21 @@ jobs:
 
       - name: Verify refreshed API latest signature
         run: |
-          cosign verify \
-            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "agentbom/agent-bom@${{ steps.build-push.outputs.digest }}"
+          set -euo pipefail
+          # Registry signatures can become visible after the image manifest.
+          for attempt in 1 2 3; do
+            if cosign verify \
+                --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                "agentbom/agent-bom@${{ steps.build-push.outputs.digest }}"; then
+              break
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Refreshed image signature did not verify after $attempt attempts"
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Sync Docker Hub README
         env:
@@ -169,7 +227,13 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$TOKEN"
-          DESCRIPTION=$(jq -Rs . < DOCKER_HUB_README.md)
+          PUBLISHED_README="$RUNNER_TEMP/DOCKER_HUB_README.published.md"
+          python scripts/render_docker_storefront.py \
+            --version "${{ steps.release.outputs.version }}" \
+            --input DOCKER_HUB_README.md --output "$PUBLISHED_README"
+          AGENT_BOM_RELEASE_FINALIZE=1 AGENT_BOM_DOCKER_README_PATH="$PUBLISHED_README" \
+            python scripts/check_release_consistency.py
+          DESCRIPTION=$(jq -Rs . < "$PUBLISHED_README")
           SHORT_DESCRIPTION_JSON=$(printf '%s' "$SHORT_DESCRIPTION" | jq -Rs .)
           RESPONSE_FILE=$(mktemp)
           HTTP_CODE=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" -X PATCH \
@@ -224,9 +288,11 @@ jobs:
             exit 1
           fi
           VERSION="${TAG#v}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "main_sha=$MAIN_SHA"
+          } >> "$GITHUB_OUTPUT"
           git checkout "$TAG"
 
       - name: Apply current UI runtime security overlay
@@ -337,10 +403,21 @@ jobs:
 
       - name: Verify refreshed UI latest signature
         run: |
-          cosign verify \
-            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "agentbom/agent-bom-ui@${{ steps.build-push-ui.outputs.digest }}"
+          set -euo pipefail
+          # Registry signatures can become visible after the image manifest.
+          for attempt in 1 2 3; do
+            if cosign verify \
+                --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                "agentbom/agent-bom-ui@${{ steps.build-push-ui.outputs.digest }}"; then
+              break
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Refreshed image signature did not verify after $attempt attempts"
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Sync UI Docker Hub README
         env:
@@ -413,9 +490,11 @@ jobs:
             exit 1
           fi
           VERSION="${TAG#v}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "main_sha=$MAIN_SHA"
+          } >> "$GITHUB_OUTPUT"
           git checkout "$TAG"
 
       - name: Apply current runtime security overlay
@@ -487,7 +566,18 @@ jobs:
 
       - name: Verify refreshed collector latest signature
         run: |
-          cosign verify \
-            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "agentbom/agent-bom-collector@${{ steps.build-push.outputs.digest }}"
+          set -euo pipefail
+          # Registry signatures can become visible after the image manifest.
+          for attempt in 1 2 3; do
+            if cosign verify \
+                --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/refresh-latest-container.yml@${{ github.ref }}" \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                "agentbom/agent-bom-collector@${{ steps.build-push.outputs.digest }}"; then
+              break
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Refreshed image signature did not verify after $attempt attempts"
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done

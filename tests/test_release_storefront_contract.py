@@ -146,3 +146,12 @@ def test_capture_runbook_matches_the_local_authenticated_release_workflow() -> N
     assert '--api-key "$CAPTURE_API_KEY"' in backend_smoke
     assert "Authorization: Bearer $CAPTURE_API_KEY" in backend_smoke
     assert "--allow-insecure-no-auth" not in runbook
+
+
+def test_floating_refresh_preserves_published_storefront_status() -> None:
+    workflow = (ROOT / ".github/workflows/refresh-latest-container.yml").read_text()
+    assert "scripts/render_docker_storefront.py" in workflow
+    assert '--version "${{ steps.release.outputs.version }}"' in workflow
+    assert 'AGENT_BOM_DOCKER_README_PATH="$PUBLISHED_README"' in workflow
+    assert 'DESCRIPTION=$(jq -Rs . < "$PUBLISHED_README")' in workflow
+    assert "DESCRIPTION=$(jq -Rs . < DOCKER_HUB_README.md)" not in workflow

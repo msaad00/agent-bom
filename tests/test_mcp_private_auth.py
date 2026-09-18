@@ -179,3 +179,20 @@ def test_sse_rejects_expired_credential_before_opening_stream(monkeypatch, tmp_p
     with TestClient(server.sse_app(), base_url="http://localhost:8000") as client:
         response = client.get("/sse", headers={"Authorization": "Bearer private-read-token"})
         assert response.status_code == 401
+
+
+@pytest.mark.parametrize("transport", ["sse_app", "streamable_http_app"])
+def test_public_server_card_advertises_the_configured_bearer_contract(monkeypatch, tmp_path, transport):
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    server = create_mcp_server(host="127.0.0.1", port=8000, bearer_token="private-read-token")
+    with TestClient(getattr(server, transport)(), base_url="http://localhost:8000") as client:
+        response = client.get("/.well-known/mcp/server-card.json")
+        assert response.status_code == 200
+        assert response.json()["authentication"] == {"required": True, "schemes": ["bearer"]}
+        assert client.post("/oauth/register", json={"redirect_uris": ["https://client.example/cb"]}).status_code == 404
+
+
+def test_unprotected_server_card_does_not_advertise_authentication():
+    from agent_bom.mcp_server_metadata import build_server_card
+
+    assert build_server_card(auth_required=False)["authentication"] == {"required": False, "schemes": []}

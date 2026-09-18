@@ -667,11 +667,9 @@ def build_server_card(*, auth_required: bool = False, profile: str = "full") -> 
     card["serverInfo"] = {"name": card["name"], "version": card["version"]}
     card["authentication"] = {
         "required": auth_required,
-        # The protected remote exposes RFC 9728/8414 discovery, dynamic client
-        # registration, PKCE authorization and token endpoints.  Marketplaces
-        # must discover that OAuth flow rather than ask users for an opaque
-        # upstream bearer token as session configuration.
-        "schemes": ["oauth2"] if auth_required else [],
+        # HTTP/SSE accepts operator-provisioned bounded bearer credentials.
+        # The server does not issue tokens or expose OAuth registration flows.
+        "schemes": ["bearer"] if auth_required else [],
     }
     return card
 

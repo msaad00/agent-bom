@@ -230,7 +230,7 @@ export function ExposurePathLens({ scanId }: { scanId?: string | undefined }) {
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <ul className="space-y-1.5" aria-label="Exposure path queue">
           {paths.map((path) => {
             const key = exposurePathKey(path);

@@ -373,7 +373,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-base text-[color:var(--text-secondary)]">Arrows show recorded direction. Solid lines permit traversal; dashed lines do not establish traversal. Connections alone do not prove exploitation.</p>
+      <p className="text-base text-[color:var(--text-secondary)]">Solid lines: traversable. Dashed: traversal unproven. Arrows show direction, not exploitation.</p>
       <ExposurePathSequence path={path} showDesktop={collapsible && !expanded} />
       <div ref={boardRef} className="hidden sm:block">
         {collapsible && !expanded ? (

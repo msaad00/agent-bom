@@ -1083,3 +1083,50 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: testInfo.outputPath(`path-neighbors-${theme}.png`) });
   });
 }
+
+for (const proof of [
+  { theme: "light", width: 1440, height: 1000 },
+  { theme: "dark", width: 1440, height: 1000 },
+  { theme: "light", width: 390, height: 844 },
+] as const) {
+  test(`exposure evidence pagination remains readable ${proof.theme} ${proof.width}`, async ({ page }) => {
+    await page.setViewportSize(proof);
+    await page.addInitScript(theme => localStorage.setItem("agent-bom-theme", theme), proof.theme);
+    await routeCockpit(page);
+    const requests: URL[] = [];
+    await page.route("**/v1/graph/exposure-paths?**", async route => {
+      const url = new URL(route.request().url());
+      requests.push(url);
+      const second = url.searchParams.has("cursor");
+      const source = { id: "agent:desktop", label: "A long assistant name with deployment context and an extended readable source label", role: "agent" };
+      const target = { id: second ? "finding:second" : "finding:first", label: second ? "Second page finding" : "First page finding", role: "vulnerability" };
+      const unavailable = { status: "unavailable", verdict: null };
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        schema_version: "v1", tool: "exposure_paths", scan_id: scanId, count: 1, total: 2,
+        pagination: { offset: second ? 1 : 0, limit: 25, returned: 1, has_more: !second, next_cursor: second ? null : "next-page" },
+        paths: [{
+          id: target.id, label: target.label, summary: "Static evidence; execution is unverified.", riskScore: 30, severity: "high",
+          source, target, hops: [source, target], nodeIds: [source.id, target.id], edgeIds: ["context"], findings: [target.label],
+          relationships: [{ id: "context", source: source.id, target: target.id, relationship: "vulnerable_to", direction: "directed", traversable: false }],
+          reachableTools: [], exposedCredentials: [], reachability: "unknown",
+          evidenceDimensions: { reachability: unavailable, exploitability: unavailable, impact: unavailable, actionability: unavailable, completeness: { status: "partial" } },
+          provenance: { source: "fixture", scanId },
+        }],
+      }) });
+    });
+    await page.goto(`/security-graph?lens=attack-path&scan=${scanId}`);
+    await page.getByRole("button", { name: /Exposure paths/ }).click();
+    const lens = page.getByTestId("exposure-path-lens");
+    await expect(lens.getByRole("region", { name: "Path evidence assessment" })).toContainText("Unknown");
+    await lens.getByText("Evidence & relationships", { exact: true }).click();
+    await expect(lens.getByRole("region", { name: "Relationship proof" })).toContainText("Context only; not traversable");
+    await lens.getByRole("button", { name: "Next paths" }).click();
+    await expect(lens.getByRole("status")).toContainText("Page 2");
+    await expect(lens.getByRole("button", { name: "Next paths" })).toBeDisabled();
+    await expect(lens.getByRole("list", { name: "Exposure path queue" })).toContainText("Second page finding");
+    await lens.getByRole("button", { name: "Previous paths" }).click();
+    await expect(lens.getByRole("status")).toContainText("Page 1");
+    expect(requests.every(url => url.searchParams.get("scan_id") === scanId)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  });
+}

@@ -1,9 +1,9 @@
 {
   "release_version": "0.105.0",
-  "captured_at": "2026-09-18T03:38:20.389Z",
-  "source_commit": "80682596600a7d02f0af2b4d816bd32df48edcaa",
+  "captured_at": "2026-09-18T16:34:32.214Z",
+  "source_commit": "50943307fa9d2b4c1502e45f8d60d9d48cc2d26d",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:393f7c7cbd49608cfffff15bba414e0857cd60c72158e7a154d52f140731b677",
+  "capture_inputs_sha256": "sha256:63bfc88ea4494a53a53b729f06d51d566690e61ebee3fcac41ca6d4f6c4d9e84",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Risk overview in the light theme",
       "visible_version": "0.105.0",
-      "sha256": "sha256:d9a579647a7df1b1f7df8e1fafede88f23c04f4a40d5178c54807e6c2b141556"
+      "sha256": "sha256:60234d6430aca5431da62c1551e3e58724af965317d4facd286d2e93d9d5ba06"
     },
     {
       "presentation": "dark mobile",
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.105.0",
-      "sha256": "sha256:ea3335c6b0e5d722b7fadf08eaca5e18460405d90cd34611278c07204152c9a5"
+      "sha256": "sha256:3d41146ac68bb58e76a047423eca683940fe22527e50415aa847039fd695216d"
     },
     {
       "presentation": "dark desktop",
@@ -225,7 +225,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.105.0",
-      "sha256": "sha256:81d19ee48e823665ced51718cd6b473b67d44d0953c76c9c51f12148e050252f"
+      "sha256": "sha256:a52c9881f26bc470da75e2f45e1211e7c6e5c21cf1349cc2e27c762b200ef32f"
     },
     {
       "presentation": "dark desktop",

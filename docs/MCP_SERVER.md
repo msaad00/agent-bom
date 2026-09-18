@@ -141,6 +141,10 @@ to read the server's private evidence. Configure the existing bearer credential
 in the client through its supported secure credential mechanism. API SSO/OIDC
 and gateway authentication are separate surfaces.
 
+The public server card advertises `authentication.schemes: ["bearer"]` for
+protected HTTP/SSE deployments. This describes the configured transport;
+it does not establish OAuth compatibility for marketplace clients.
+
 Rotate the token and its absolute deadline together, then restart the MCP
 process to load the replacement. Environment changes do not hot-reload into a
 running verifier. Preserve the same deadline across ordinary restarts; never

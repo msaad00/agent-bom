@@ -139,7 +139,7 @@ export function ExposurePathLens({ scanId }: { scanId?: string | undefined }) {
     setPageIndex(0);
     void load();
     return () => { requestSequence.current += 1; };
-  }, [load]);
+  }, [load, scanId]);
 
   const paths = useMemo(() => (response?.paths ?? []).map(toUiExposurePath), [response]);
 

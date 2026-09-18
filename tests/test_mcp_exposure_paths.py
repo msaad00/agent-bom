@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 
 import pytest
 
-from agent_bom.graph import AttackPath, EntityType, RelationshipType, UnifiedEdge, UnifiedNode
+from agent_bom.graph import AttackPath, EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.mcp_tools.graph import deploy_decision_impl, exposure_paths_impl
 
 
@@ -141,3 +143,73 @@ async def test_deploy_decision_validates_candidate():
 
     assert payload["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
     assert payload["error"]["details"]["argument"] == "candidate"
+
+
+@pytest.fixture
+def topology_store(tmp_path):
+    """Persist topology without path rows, as CLI report ingestion can do."""
+    from agent_bom.api.graph_store import SQLiteGraphStore
+
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    graph = UnifiedGraph(scan_id="topology", tenant_id="default")
+    for node_id, kind in [("agent:a", EntityType.AGENT), ("server:s", EntityType.SERVER), ("pkg:p", EntityType.PACKAGE)]:
+        graph.add_node(UnifiedNode(id=node_id, entity_type=kind, label=node_id))
+    graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+    graph.add_edge(UnifiedEdge(source="server:s", target="pkg:p", relationship=RelationshipType.DEPENDS_ON))
+    for index in range(3):
+        node_id = f"vuln:{index}"
+        graph.add_node(UnifiedNode(id=node_id, entity_type=EntityType.VULNERABILITY, label=node_id, severity="critical"))
+        graph.add_edge(UnifiedEdge(source="pkg:p", target=node_id, relationship=RelationshipType.VULNERABLE_TO))
+    store.save_graph(graph)
+    return store
+
+
+@pytest.mark.asyncio
+async def test_exposure_paths_derives_persisted_topology_with_limits(topology_store):
+    payload = json.loads(await exposure_paths_impl(scan_id="topology", limit=2, _get_graph_store=lambda: topology_store))
+    assert payload["count"] == 2
+    assert payload["total"] == 3
+    assert payload["completeness"]["complete"] is False
+    assert all(path["reachability"] == "unknown" for path in payload["paths"])
+    assert all(path["riskScore"] <= 39 for path in payload["paths"])
+    assert payload["paths"][0]["nodeIds"][:3] == ["agent:a", "server:s", "pkg:p"]
+    filtered = json.loads(await exposure_paths_impl(scan_id="topology", min_risk=40, _get_graph_store=lambda: topology_store))
+    assert filtered["count"] == 0
+    assert filtered["total"] == 3
+    assert "min_risk=40" in filtered["message"]
+
+
+@pytest.mark.asyncio
+async def test_exposure_paths_fallback_preserves_tenant_scope(topology_store, monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "other")
+    payload = json.loads(await exposure_paths_impl(tenant_id="default", scan_id="topology", _get_graph_store=lambda: topology_store))
+    assert payload["count"] == 0
+    assert payload["nodes"] == []
+    assert payload["edges"] == []
+
+
+@pytest.mark.asyncio
+async def test_deploy_decision_does_not_approve_structural_candidates(topology_store):
+    payload = json.loads(await deploy_decision_impl(candidate="pkg:p", _get_graph_store=lambda: topology_store))
+    assert payload["matchedPathCount"] == 3
+    assert payload["decision"] == "warn"
+    assert payload["evidenceStatus"] == "not_evaluated"
+
+
+@pytest.mark.asyncio
+async def test_exposure_paths_discloses_bounded_derivation(topology_store, monkeypatch):
+    monkeypatch.setattr("agent_bom.mcp_tools.graph.GRAPH_INVESTIGATION_NODE_BUDGET", 2, raising=False)
+    payload = json.loads(await exposure_paths_impl(scan_id="topology", _get_graph_store=lambda: topology_store))
+    assert payload["completeness"]["complete"] is False
+    assert payload["completeness"]["reason"] == "node_budget"
+    assert "No conclusion" in payload["message"]
+
+
+def test_shared_derivation_imports_without_fastapi():
+    result = subprocess.run(
+        [sys.executable, "-c", "import sys; sys.modules['fastapi'] = None; import agent_bom.mcp_tools.graph"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr

@@ -45,25 +45,25 @@ type FrameworkFilter = "all" | "owasp" | "atlas";
 
 const PAGE_SIZE = 25;
 
-// ─── Compliance Impact Summary ────────────────────────────────────────────────
+// ─── Risk Taxonomy Mapping Summary ────────────────────────────────────────────────
 
-function complianceImpact(items: RemediationItem[], topN = 5) {
+function taxonomyMappings(items: RemediationItem[], topN = 5) {
   const top = items.slice(0, topN);
-  const controlSet = new Set<string>();
-  const frameworkSet = new Set<string>();
+  const entrySet = new Set<string>();
+  const taxonomySet = new Set<string>();
 
   for (const item of top) {
     for (const tag of item.owasp_tags ?? []) {
-      controlSet.add(tag);
-      frameworkSet.add("OWASP");
+      entrySet.add(`owasp:${tag}`);
+      taxonomySet.add("OWASP");
     }
     for (const tag of item.atlas_tags ?? []) {
-      controlSet.add(tag);
-      frameworkSet.add("MITRE ATLAS");
+      entrySet.add(`atlas:${tag}`);
+      taxonomySet.add("MITRE ATLAS");
     }
   }
 
-  return { controls: controlSet.size, frameworks: frameworkSet.size };
+  return { entries: entrySet.size, taxonomies: taxonomySet.size, packages: top.length };
 }
 
 // ─── Sort button ──────────────────────────────────────────────────────────────
@@ -507,7 +507,7 @@ function RemediationPage() {
     return c;
   }, [items]);
 
-  const impact = useMemo(() => complianceImpact(displayed), [displayed]);
+  const mappings = useMemo(() => taxonomyMappings(displayed), [displayed]);
 
   const SEVERITY_FILTERS: {
     key: SeverityFilter;
@@ -557,9 +557,9 @@ function RemediationPage() {
           <p className="text-[var(--text-secondary)] text-sm mt-1">
             {items.length} packages prioritized by reach, severity, and available fixes
           </p>
-          {items.length > 0 && (
+          {mappings.packages > 0 && (
             <p className="text-[var(--text-tertiary)] text-xs mt-1">
-              Top {Math.min(5, items.length)} clear {impact.controls} controls across {impact.frameworks} framework{impact.frameworks === 1 ? "" : "s"}
+              Top {mappings.packages} package{mappings.packages === 1 ? " maps" : "s map"} to {mappings.entries} risk taxonomy {mappings.entries === 1 ? "entry" : "entries"} across {mappings.taxonomies} {mappings.taxonomies === 1 ? "taxonomy" : "taxonomies"}
             </p>
           )}
         </div>

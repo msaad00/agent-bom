@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -89,6 +89,26 @@ describe("RemediationPage", () => {
       count: 0,
       connections: [],
     });
+  });
+
+  it("reports taxonomy mappings without claiming controls are cleared", async () => {
+    const item = remediationItem("openssl", "critical");
+    apiMock.getRemediation.mockResolvedValue([{ ...item, atlas_tags: ["AML.T0010"] }]);
+    render(<RemediationPage />);
+    expect(await screen.findByText("Top 1 package maps to 2 risk taxonomy entries across 2 taxonomies")).toBeInTheDocument();
+    expect(screen.queryByText(/clear.*controls/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the mapping summary aligned with the filtered package set", async () => {
+    apiMock.getRemediation.mockResolvedValue([
+      remediationItem("critical-pkg", "critical"),
+      ...Array.from({ length: 5 }, (_, i) => remediationItem(`high${i}`, "high")),
+    ]);
+    render(<RemediationPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Critical (1)" }));
+    expect(screen.getByText("Top 1 package maps to 1 risk taxonomy entry across 1 taxonomy")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Low (0)" }));
+    expect(screen.queryByText(/risk taxonomy entr/)).not.toBeInTheDocument();
   });
 
   it("keeps ticket actions reachable while the wide table scrolls", async () => {

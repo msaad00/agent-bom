@@ -2202,6 +2202,25 @@ class TestGraphStoreBackendSelection:
         )
         assert body["stats"]["total_edges"] == 1
 
+    def test_exposure_paths_rest_derives_the_dashboard_queue(self, recording_graph_store):
+        graph = recording_graph_store.graph
+        graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1", severity="critical"))
+        graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        graph.add_edge(UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO))
+        assert not graph.attack_paths
+        client = TestClient(app)
+
+        dashboard = client.get("/v1/graph/attack-paths", params={"scan_id": "store-scan"})
+        exposure = client.get("/v1/graph/exposure-paths", params={"scan_id": "store-scan"})
+
+        assert dashboard.status_code == exposure.status_code == 200
+        body = exposure.json()
+        assert body["total"] == dashboard.json()["pagination"]["total"] == 1
+        assert body["paths"][0]["nodeIds"] == dashboard.json()["attack_paths"][0]["hops"]
+        assert body["paths"][0]["reachability"] == "unknown"
+        assert body["count_metadata"]["source"] == "derived_graph_paths"
+
     def test_should_i_deploy_rest_route_returns_agent_native_decision(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
         recording_graph_store.graph.add_node(

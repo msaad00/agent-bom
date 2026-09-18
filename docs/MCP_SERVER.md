@@ -265,6 +265,15 @@ create tickets, deploy workloads, or mutate cloud resources. Use proxy,
 gateway, Shield, or API audit evidence when a decision depends on selected
 live runtime traffic rather than static reachability.
 
+For a persisted scan, call `exposure_paths(scan_id="<scan-id>")` and inspect
+`paths`, `count_metadata`, and `completeness`. Snapshots without precomputed
+path rows use the same topology derivation as the dashboard. This fallback
+loads at most the configured graph investigation node budget; a truncated
+result reports a lower-bound total and cannot establish that no paths exist.
+Static candidates retain unknown reachability. `should_i_deploy` returns
+`warn` rather than `allow` when reachability is unverified or the path read is
+incomplete; inspect the linked findings and runtime evidence before deployment.
+
 ## Example Conversations
 
 **"Are my AI agents vulnerable?"**

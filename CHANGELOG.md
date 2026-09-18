@@ -40,6 +40,8 @@ credential validation, and improves the path from findings to investigation.
 - Accept bounded compressed report uploads, reconcile package versions without
   merging ambiguous findings, and evolve the additive Parquet/Iceberg schema
   while preserving existing field identifiers and rows.
+- Describe remediation taxonomy mappings without implying that controls have
+  passed, and keep the summary aligned with the filtered packages.
 - Keep the full posture Overview first and Top risks in a second tab. Lead risk
   summaries with affected workloads and conditional impact, with package,
   advisory, and path details available on expansion.

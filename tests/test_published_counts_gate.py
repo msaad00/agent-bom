@@ -13,6 +13,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "check_published_counts.py"
 
@@ -76,6 +78,20 @@ class TestStaleClaimsAreCaught:
         counts = gate.derive_counts()
         text = f"registry ({counts['registry entries']} servers, {counts['registry verified entries']} verified)\n"
         assert self._sweep(tmp_path, monkeypatch, text) == []
+
+    @pytest.mark.parametrize("separator", [" and ", ", and ", ",\nand "])
+    @pytest.mark.parametrize("stale_kind", ["MCP resources", "MCP prompts", None])
+    def test_resource_and_prompt_lists_allow_serial_commas(self, tmp_path, monkeypatch, separator, stale_kind):
+        counts = gate.derive_counts()
+        resources = counts["MCP resources"] + (stale_kind == "MCP resources")
+        prompts = counts["MCP prompts"] + (stale_kind == "MCP prompts")
+        text = f"{counts['MCP tools']} MCP tools, {resources} resources{separator}{prompts} workflow prompts.\n"
+        problems = self._sweep(tmp_path, monkeypatch, text)
+        if stale_kind is None:
+            assert problems == []
+        else:
+            assert len(problems) == 1
+            assert stale_kind in problems[0]
 
     def test_svg_diagram_label_is_swept(self, tmp_path, monkeypatch):
         """check_release_consistency skips every image suffix; a stale count hid there."""

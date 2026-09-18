@@ -334,6 +334,23 @@ def test_relationship_refs_preserve_reverse_bidirectional_context():
     assert refs[0]["source"] == "agent:b"
 
 
+def test_qualified_reachability_does_not_retain_a_confirmed_summary():
+    from agent_bom.graph.path_evidence import qualify_exposure_reachability
+
+    original = "A confirmed reachable path"
+    payload = qualify_exposure_reachability(
+        {
+            "reachability": "confirmed",
+            "summary": original,
+            "label": original,
+            "evidenceDimensions": {"reachability": {"verdict": None}, "completeness": {"reasonCodes": ["incomplete_hop_evidence"]}},
+        }
+    )
+    assert payload["reachability"] == "unknown"
+    assert "does not establish" in payload["summary"]
+    assert payload["label"] == payload["summary"]
+
+
 @pytest.mark.parametrize("evidence", [{"blocked": True}, {"decision": "blocked"}, {"runtime_observed_state": "not_observed"}])
 def test_blocked_runtime_attempt_does_not_claim_observed_reachability(evidence):
     from agent_bom.graph.path_derivation import _fusion_signals_for_path

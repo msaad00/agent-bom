@@ -1126,7 +1126,9 @@ for (const proof of [
     await expect(lens.getByRole("list", { name: "Exposure path queue" })).toContainText("Second page finding");
     await lens.getByRole("button", { name: "Previous paths" }).click();
     await expect(lens.getByRole("status")).toContainText("Page 1");
-    expect(requests.every(url => url.searchParams.get("scan_id") === scanId)).toBe(true);
+    // The initial request can resolve latest before the parent loads its scope;
+    // both continuation and backward navigation must retain the resolved scan.
+    expect(requests.slice(-2).every(url => url.searchParams.get("scan_id") === scanId)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   });
 }

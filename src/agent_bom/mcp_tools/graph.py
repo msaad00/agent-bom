@@ -8,7 +8,9 @@ import logging
 import uuid
 from typing import Any
 
+from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET
 from agent_bom.graph.completeness import graph_completeness
+from agent_bom.graph.path_derivation import _derived_attack_paths, _enrich_loaded_graph_runtime_evidence
 from agent_bom.graph.path_evidence import exposure_evidence_dimensions, finding_severity_for_path, qualify_exposure_reachability
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
@@ -310,6 +312,23 @@ async def exposure_paths_impl(
             offset=0,
             limit=min(max(limit * 3, limit), 1000),
         )
+        path_source = "persisted_graph_paths"
+        derivation_truncated = False
+        if total == 0:
+            # Keep the same topology semantics as the dashboard without importing
+            # its optional FastAPI routes into the MCP-only installation.
+            graph = await asyncio.to_thread(
+                store.load_graph,
+                tenant_id=tenant_id,
+                scan_id=effective_scan_id,
+                node_budget=GRAPH_INVESTIGATION_NODE_BUDGET,
+            )
+            graph = await asyncio.to_thread(_enrich_loaded_graph_runtime_evidence, graph, tenant_id)
+            paths = await asyncio.to_thread(_derived_attack_paths, graph)
+            effective_scan_id, created_at = graph.scan_id, graph.created_at
+            total = len(paths)
+            path_source = "derived_graph_paths"
+            derivation_truncated = graph.completeness.truncated
         ranked_paths = [path for path in paths if float(getattr(path, "composite_risk", 0.0) or 0.0) >= min_risk][:limit]
         hop_ids = {hop for path in ranked_paths for hop in (getattr(path, "hops", []) or [])}
         nodes = await asyncio.to_thread(store.nodes_by_ids, tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=hop_ids)
@@ -324,6 +343,7 @@ async def exposure_paths_impl(
             "created_at": created_at,
             "count": len(ranked_paths),
             "total": total,
+            "count_metadata": {"source": path_source, "total_is_lower_bound": derivation_truncated},
             "filters": {"limit": limit, "min_risk": min_risk},
             "paths": [
                 _exposure_path_payload(path, nodes_by_id=nodes_by_id, edges=edges, rank=index + 1, scan_id=effective_scan_id)
@@ -334,13 +354,17 @@ async def exposure_paths_impl(
             "stats": stats,
             "completeness": graph_completeness(
                 returned=len(ranked_paths),
-                total=total,
-                truncated=len(ranked_paths) < total,
-                reason="path_limit_or_filter" if len(ranked_paths) < total else "",
+                total=None if derivation_truncated else total,
+                truncated=derivation_truncated or len(ranked_paths) < total,
+                reason="node_budget" if derivation_truncated else "path_limit_or_filter" if len(ranked_paths) < total else "",
             ),
         }
         if not ranked_paths:
-            payload["message"] = _empty_exposure_paths_message(total=total, min_risk=min_risk)
+            payload["message"] = (
+                "No paths found within the graph node budget. No conclusion about the full snapshot can be drawn."
+                if derivation_truncated
+                else _empty_exposure_paths_message(total=total, min_risk=min_risk)
+            )
         encoded = json.dumps(payload, indent=2, default=str)
         return _truncate_response(encoded) if _truncate_response is not None else encoded
     except Exception:
@@ -397,6 +421,10 @@ async def deploy_decision_impl(
     matched_paths = matched_paths[:limit]
     max_risk = max((float(path.get("riskScore", 0.0) or 0.0) for path in matched_paths), default=None)
     decision = _decision_for_risk(max_risk, warn_risk=warn_risk, block_risk=block_risk) if max_risk is not None else "warn"
+    evidence_evaluated = bool(matched_paths) and all(path.get("reachability") in {"likely", "confirmed"} for path in matched_paths)
+    evidence_complete = payload.get("completeness", {}).get("complete", False)
+    if decision == "allow" and (not evidence_evaluated or not evidence_complete):
+        decision = "warn"
     reasons: list[str] = []
     if matched_paths:
         top = matched_paths[0]
@@ -404,6 +432,8 @@ async def deploy_decision_impl(
         findings = sorted({str(finding) for path in matched_paths for finding in path.get("findings", []) if finding})
         if findings:
             reasons.append(f"Matched findings: {', '.join(findings[:5])}.")
+        if not evidence_evaluated or not evidence_complete:
+            reasons.append("Reachability is unverified or path evidence is incomplete; this is not an approval to deploy.")
     else:
         reasons.append("No matching exposure path evidence was found for the candidate; this is not an approval to deploy.")
 
@@ -416,7 +446,7 @@ async def deploy_decision_impl(
             "candidate": {"value": candidate_value},
             "decision": decision,
             "maxRisk": max_risk,
-            "evidenceStatus": "evaluated" if matched_paths else "not_evaluated",
+            "evidenceStatus": "evaluated" if evidence_evaluated and evidence_complete else "not_evaluated",
             "thresholds": {"warnRisk": warn_risk, "blockRisk": block_risk},
             "reasons": reasons,
             "matchedPathCount": len(matched_paths),

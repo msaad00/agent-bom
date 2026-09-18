@@ -130,11 +130,11 @@ RULES: tuple[CountRule, ...] = (
     ),
     CountRule(
         "MCP resources",
-        (re.compile(rf"{_NUMBER}\s+resources\s+and\s+[0-9][0-9,]*\s+workflow\s+prompts", re.I),),
+        (re.compile(rf"{_NUMBER}\s+resources,?\s+and\s+[0-9][0-9,]*\s+workflow\s+prompts", re.I),),
     ),
     CountRule(
         "MCP prompts",
-        (re.compile(rf"[0-9][0-9,]*\s+resources\s+and\s+{_NUMBER}\s+workflow\s+prompts", re.I),),
+        (re.compile(rf"[0-9][0-9,]*\s+resources,?\s+and\s+{_NUMBER}\s+workflow\s+prompts", re.I),),
     ),
 )
 

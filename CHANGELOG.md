@@ -23,6 +23,8 @@ credential validation, and improves the path from findings to investigation.
 
 ### Fixed
 
+- Align the PyPI description with the seven shipped MCP resources and check
+  resource/prompt counts in lists that contain serial commas.
 - Report excluded ancestor directories through shared scanner coverage and API
   outcomes so an uninspected scope cannot silently appear complete.
 - Preserve structured CWE identifiers in the finding drawer and standard SARIF

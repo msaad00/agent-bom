@@ -222,3 +222,18 @@ def test_manual_publish_targets_build_and_verify_dashboard_wheels_first():
     assert "publish-test:\n\tuv build" not in body
     assert "publish:\n\tuv build" not in body
     assert 'uv run python "$ROOT_DIR/scripts/generate_ui_csp_hashes.py"' in build_ui
+
+
+def test_floating_api_refresh_builds_and_serves_dashboard_before_publishing():
+    workflow = ROOT / ".github/workflows/refresh-latest-container.yml"
+    steps = yaml.safe_load(workflow.read_text())["jobs"]["refresh-latest"]["steps"]
+    checkout = _step_index(steps, lambda step: step.get("id") == "release")
+    setup = _step_index(steps, lambda step: step.get("uses") == "./.github/actions/setup-ui")
+    bundle = _step_index(steps, lambda step: "make build-ui" in step.get("run", ""))
+    build = _step_index(steps, lambda step: "docker build" in step.get("run", ""))
+    gate = _step_index(steps, lambda step: "ui_dist" in step.get("run", "") and "/_next/static" in step["run"])
+    publish = _step_index(steps, lambda step: _uses_action(step, "docker/build-push-action"))
+    assert -1 not in (checkout, setup, bundle, build, gate, publish)
+    assert checkout < setup < bundle < build < gate < publish
+    assert "agent-bom:latest-refresh-test" in steps[gate]["run"]
+    assert "index.html" in steps[gate]["run"]

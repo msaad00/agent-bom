@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 from pathlib import Path
 
@@ -152,3 +153,15 @@ def test_demo_tape_pages_real_output_and_displays_the_public_command() -> None:
     assert "recorded CLI excerpt" in renderer
     assert "no fix executed" in renderer
     assert "Sleep 32s" not in tape
+
+
+def test_release_image_pull_commands_use_published_semver_tags() -> None:
+    text = _read("docs/RELEASE_VERIFICATION.md")
+    version = tomllib.loads(_read("pyproject.toml"))["project"]["version"]
+    commands = re.findall(r'^docker pull "(agentbom/agent-bom(?:-ui)?:[^"\n]+)"$', text, re.MULTILINE)
+    assert len(commands) == 2
+    # Expand the documented variables without pulling images or executing the
+    # documentation as shell code. Git release tags and image tags differ.
+    for command in commands:
+        expanded = command.replace("${TAG}", f"v{version}").replace("${VERSION}", version)
+        assert expanded.rsplit(":", 1)[1] == version

@@ -161,9 +161,10 @@ to Docker Hub, release CI:
    the GitHub Release
 
 ```bash
-# both must resolve for the published tag
-docker pull "agentbom/agent-bom:${TAG}"
-docker pull "agentbom/agent-bom-ui:${TAG}"
+# Image tags use the package version without the Git tag's leading v.
+VERSION="${TAG#v}"
+docker pull "agentbom/agent-bom:${VERSION}"
+docker pull "agentbom/agent-bom-ui:${VERSION}"
 ```
 
 | Step | Tool | Default policy |

@@ -327,7 +327,7 @@ describe("ExposurePathCommandCenter", () => {
 it("retains relationships beyond the eighth receipt", () => {
   const relationships = Array.from({length: 13}, (_, i) => ({id: `r${i}`, source: `a${i}`, target: `b${i}`, relationship: `relation_${i}`}));
   render(<ExposurePathCommandCenter path={{...basePath, relationships}} />);
-  expect(screen.getByText("relation_12")).toBeInTheDocument();
+  expect(screen.getByText("Relation 12")).toBeInTheDocument();
 });
 
  it("keeps a long digest compact and exposes its complete value on demand", () => {

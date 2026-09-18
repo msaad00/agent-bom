@@ -17410,6 +17410,17 @@ paths:
           minimum: 0
           title: Min Risk
           type: number
+      - description: Continuation cursor pinned to the snapshot and risk filter
+        in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 4096
+            type: string
+          - type: 'null'
+          description: Continuation cursor pinned to the snapshot and risk filter
+          title: Cursor
       responses:
         '200':
           content:

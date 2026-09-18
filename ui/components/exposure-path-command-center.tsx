@@ -197,6 +197,18 @@ export function ExposurePathCommandCenter({
           </div>
         </div>
 
+        {path.evidenceDimensions && (
+          <section aria-label="Path evidence assessment" className="space-y-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
+            <dl className="grid gap-3 sm:grid-cols-3">
+              <div><dt className="text-xs text-[color:var(--text-secondary)]">Reachability</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.reachability.verdict ?? "Unknown"}</dd></div>
+              <div><dt className="text-xs text-[color:var(--text-secondary)]">Exploitability</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.exploitability.verdict?.replaceAll("_", " ") ?? "Not assessed"}</dd></div>
+              <div><dt className="text-xs text-[color:var(--text-secondary)]">Evidence coverage</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.completeness.status}</dd></div>
+            </dl>
+            <p className="text-xs text-[color:var(--text-secondary)]">{pathSummary}</p>
+            {path.provenance?.scanId && <p className="break-all text-xs text-[color:var(--text-tertiary)]">Snapshot: {path.provenance.scanId}</p>}
+          </section>
+        )}
+
         {primaryAction && (
           <div className="ep-actions">
             <Link
@@ -259,9 +271,15 @@ export function ExposurePathCommandCenter({
               {path.relationships.map((relationship) => (
                 <div key={relationship.id} className="ep-proof-row">
                   <div className="min-w-0">
-                    <span className="ep-proof-source">{relationship.relationship}</span>
+                    <span className="ep-proof-source">{humanizeRelationship(relationship.relationship)}</span>
                     <span className="ep-proof-target">
-                      {relationship.source} → {relationship.target}
+                      {path.hops.find((hop) => hop.id === relationship.source)?.label ?? relationship.source}
+                      {relationship.direction === "bidirectional" ? " ↔ " : relationship.direction === "directed" ? " → " : " · "}
+                      {path.hops.find((hop) => hop.id === relationship.target)?.label ?? relationship.target}
+                    </span>
+                    <span className="mt-1 block text-xs text-[color:var(--text-secondary)]">
+                      {relationship.direction === "directed" ? "Directed" : relationship.direction === "bidirectional" ? "Bidirectional" : "Direction unrecorded"}
+                      {" · "}{relationship.traversable === true ? "Traversal permitted" : relationship.traversable === false ? "Context only; not traversable" : "Traversal unrecorded"}
                     </span>
                   </div>
                 </div>
@@ -271,6 +289,13 @@ export function ExposurePathCommandCenter({
               )}
             </div>
           </section>
+
+          {path.evidenceDimensions && <section aria-label="Assessment basis" className="space-y-2 text-xs text-[color:var(--text-secondary)]">
+            {Object.entries(path.evidenceDimensions).map(([dimension, assessment]) => <div key={dimension}>
+              <span className="font-medium capitalize">{dimension}: </span>
+              {[...(assessment.basis ?? []), ...(assessment.reasonCodes ?? [])].map((reason) => reason.replaceAll("_", " ")).join(" · ") || assessment.status}
+            </div>)}
+          </section>}
 
           <aside aria-label="Evidence drawer" className="ep-role-row">
             <div className="ep-kicker ep-kicker-wide">
@@ -348,6 +373,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 
   return (
     <div className="space-y-2">
+      <p className="text-xs text-[color:var(--text-secondary)]">Arrows show recorded direction. Solid lines permit traversal; dashed lines do not establish traversal. Connections alone do not prove exploitation.</p>
       <ExposurePathSequence path={path} showDesktop={collapsible && !expanded} />
       <div ref={boardRef} className="hidden sm:block">
         {collapsible && !expanded ? (
@@ -368,7 +394,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
           className={`mx-auto block ${scrollable ? "shrink-0" : ""}`}
         >
           <defs>
-            <marker id="exposure-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <marker id="exposure-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto-start-reverse" markerUnits="strokeWidth">
               <path d="M0,0 L0,6 L9,3 z" style={{ fill: "var(--text-tertiary)" }} />
             </marker>
           </defs>
@@ -383,9 +409,11 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
               style={{ stroke: edge.stroke }}
               strokeWidth="2.5"
               strokeLinecap="round"
-              markerEnd="url(#exposure-arrow)"
+              strokeDasharray={edge.traversable === true ? undefined : "5 5"}
+              markerEnd={edge.direction === "directed" || edge.direction === "bidirectional" ? "url(#exposure-arrow)" : undefined}
+              markerStart={edge.direction === "bidirectional" ? "url(#exposure-arrow)" : undefined}
               opacity="0.88"
-            />
+            ><title>{edge.label} · {edge.traversable === true ? "Traversal permitted" : "Traversal not established"}</title></path>
           ))}
 
           {layout.relationshipLabels.map((label) => (
@@ -507,7 +535,8 @@ function pathRelationship(path: ExposurePath, index: number): string | undefined
   const current = path.hops[index];
   if (!previous || !current) return undefined;
   return path.relationships.find(
-    (candidate) => candidate.source === previous.id && candidate.target === current.id,
+    (candidate) => (candidate.source === previous.id && candidate.target === current.id)
+      || (candidate.direction === "bidirectional" && candidate.target === previous.id && candidate.source === current.id),
   )?.relationship;
 }
 

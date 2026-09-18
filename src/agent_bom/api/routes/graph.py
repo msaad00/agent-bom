@@ -2374,6 +2374,7 @@ async def get_graph_exposure_paths(
     scan_id: Optional[str] = Query(None, description="Scan ID"),
     limit: int = Query(5, ge=1, le=100, description="Maximum ExposurePaths"),
     min_risk: float = Query(0.0, ge=0, le=100, description="Minimum ExposurePath risk score"),
+    cursor: Optional[str] = Query(None, max_length=4096, description="Continuation cursor pinned to the snapshot and risk filter"),
 ) -> dict:
     """Return the MCP-compatible ExposurePath queue over REST for SDK consumers."""
     del tenant_id  # SDK compatibility only; request tenant scope is authoritative.
@@ -2385,6 +2386,7 @@ async def get_graph_exposure_paths(
         scan_id=scan_id,
         limit=limit,
         min_risk=min_risk,
+        cursor=cursor,
         _get_graph_store=lambda: graph_store,
         _truncate_response=lambda value: value,
     )

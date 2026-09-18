@@ -213,3 +213,133 @@ def test_shared_derivation_imports_without_fastapi():
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.asyncio
+async def test_exposure_pages_pin_snapshot_and_preserve_every_path(topology_store):
+    first = json.loads(await exposure_paths_impl(limit=1, _get_graph_store=lambda: topology_store))
+    cursor = first["pagination"]["next_cursor"]
+    seen = [first["paths"][0]["id"]]
+    while cursor:
+        page = json.loads(await exposure_paths_impl(limit=1, cursor=cursor, _get_graph_store=lambda: topology_store))
+        assert page["scan_id"] == first["scan_id"]
+        seen.extend(path["id"] for path in page["paths"])
+        cursor = page["pagination"]["next_cursor"]
+    assert len(seen) == len(set(seen)) == 3
+
+
+@pytest.mark.asyncio
+async def test_exposure_cursor_rejects_different_filter_and_tenant(topology_store, monkeypatch):
+    first = json.loads(await exposure_paths_impl(limit=1, _get_graph_store=lambda: topology_store))
+    cursor = first["pagination"]["next_cursor"]
+    for kwargs in ({"min_risk": 20}, {"scan_id": "other"}):
+        page = json.loads(await exposure_paths_impl(cursor=cursor, _get_graph_store=lambda: topology_store, **kwargs))
+        assert page["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "other")
+    page = json.loads(await exposure_paths_impl(cursor=cursor, _get_graph_store=lambda: topology_store))
+    assert page["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
+
+
+@pytest.mark.asyncio
+async def test_exposure_pages_keep_structured_paths_under_response_budget(topology_store, monkeypatch):
+    first = json.loads(await exposure_paths_impl(limit=1, _get_graph_store=lambda: topology_store))
+    budget = len(json.dumps(first)) + 300
+    monkeypatch.setattr("agent_bom.mcp_tools.graph.MCP_MAX_RESPONSE_CHARS", budget)
+    from agent_bom.mcp_server_runtime import truncate_response
+
+    cursor = None
+    seen = []
+    for _ in range(5):
+        raw = await exposure_paths_impl(
+            limit=100,
+            cursor=cursor,
+            _get_graph_store=lambda: topology_store,
+            _truncate_response=lambda value: truncate_response(value, budget),
+        )
+        page = json.loads(raw)
+        assert len(raw) <= budget
+        assert "_truncated" not in page
+        assert page["paths"]
+        seen.extend(path["id"] for path in page["paths"])
+        cursor = page["pagination"]["next_cursor"]
+        if not cursor:
+            break
+    assert len(seen) == len(set(seen)) == 3
+
+
+@pytest.mark.asyncio
+async def test_exposure_cursor_rejects_malformed_values(topology_store):
+    for cursor in ("invalid", "W10=", "e30=", "a" * 4097):
+        page = json.loads(await exposure_paths_impl(cursor=cursor, _get_graph_store=lambda: topology_store))
+        assert page["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
+
+
+@pytest.mark.asyncio
+async def test_exposure_cursor_keeps_old_snapshot_when_latest_changes(topology_store):
+    first = json.loads(await exposure_paths_impl(limit=1, _get_graph_store=lambda: topology_store))
+    topology_store.save_graph(UnifiedGraph(scan_id="newer", tenant_id="default", created_at="2099-01-01T00:00:00Z"))
+    page = json.loads(await exposure_paths_impl(cursor=first["pagination"]["next_cursor"], _get_graph_store=lambda: topology_store))
+    assert page["scan_id"] == "topology"
+    assert page["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_exposure_cursor_pages_materialized_paths(topology_store):
+    graph = topology_store.load_graph(scan_id="topology", tenant_id="default")
+    for index in range(3):
+        graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target=f"vuln:{index}",
+                hops=["agent:a", "server:s", "pkg:p", f"vuln:{index}"],
+                edges=["uses", "depends_on", "vulnerable_to"],
+                composite_risk=80 - index,
+            )
+        )
+    topology_store.save_graph(graph)
+    cursor = None
+    seen = []
+    for _ in range(3):
+        page = json.loads(await exposure_paths_impl(limit=1, cursor=cursor, _get_graph_store=lambda: topology_store))
+        assert page["count_metadata"]["source"] == "persisted_graph_paths"
+        seen.extend(path["target"]["id"] for path in page["paths"])
+        cursor = page["pagination"]["next_cursor"]
+    assert seen == ["vuln:0", "vuln:1", "vuln:2"]
+    assert cursor is None
+
+
+def test_derived_path_without_agent_does_not_invent_a_self_hop():
+    from agent_bom.graph.path_derivation import _derived_attack_paths
+
+    graph = UnifiedGraph(scan_id="server-only")
+    graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server"))
+    graph.add_node(UnifiedNode(id="vuln:v", entity_type=EntityType.VULNERABILITY, label="vuln", severity="high"))
+    graph.add_edge(UnifiedEdge(source="server:s", target="vuln:v", relationship=RelationshipType.VULNERABLE_TO))
+    path = _derived_attack_paths(graph)[0]
+    assert path.hops == ["server:s", "vuln:v"]
+    assert len(path.edges) == len(path.hops) - 1
+
+
+def test_relationship_refs_preserve_reverse_bidirectional_context():
+    from agent_bom.mcp_tools.graph import _relationship_refs
+
+    path = AttackPath(source="agent:a", target="agent:b", hops=["agent:a", "agent:b"], composite_risk=1)
+    edge = UnifiedEdge(
+        source="agent:b", target="agent:a", relationship=RelationshipType.SHARES_SERVER, direction="bidirectional", traversable=False
+    )
+    refs = _relationship_refs(path, [edge])
+    assert len(refs) == 1
+    assert refs[0]["direction"] == "bidirectional"
+    assert refs[0]["traversable"] is False
+    assert refs[0]["source"] == "agent:b"
+
+
+@pytest.mark.parametrize("evidence", [{"blocked": True}, {"decision": "blocked"}, {"runtime_observed_state": "not_observed"}])
+def test_blocked_runtime_attempt_does_not_claim_observed_reachability(evidence):
+    from agent_bom.graph.path_derivation import _fusion_signals_for_path
+
+    graph = UnifiedGraph()
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent"))
+    graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="tool"))
+    graph.add_edge(UnifiedEdge(source="agent:a", target="tool:t", relationship=RelationshipType.INVOKED, evidence=evidence))
+    assert not any(kind == "runtime_observed" for kind, *_ in _fusion_signals_for_path(graph, ["agent:a"]))

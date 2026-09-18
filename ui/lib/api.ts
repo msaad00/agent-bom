@@ -710,6 +710,8 @@ export interface GraphExposureRelationshipRef {
   target: string;
   relationship: string;
   confidence?: number | undefined;
+  direction?: "directed" | "bidirectional" | undefined;
+  traversable?: boolean | undefined;
 }
 
 /** One ranked ExposurePath as returned by the MCP-compatible REST surface. */
@@ -729,6 +731,9 @@ export interface GraphExposurePath {
   findings: string[];
   reachableTools: string[];
   exposedCredentials: string[];
+  reachability?: string | undefined;
+  reachabilityBasis?: string[] | undefined;
+  evidenceDimensions?: import("@/lib/exposure-path").ExposureEvidenceDimensions | undefined;
   provenance?: { source: string; scanId?: string | undefined } | undefined;
 }
 
@@ -743,6 +748,9 @@ export interface GraphExposurePathsResponse {
   filters: { limit: number; min_risk: number };
   paths: GraphExposurePath[];
   message?: string | undefined;
+  count_metadata?: { source: string; total_is_lower_bound: boolean } | undefined;
+  completeness?: { complete: boolean; truncated?: boolean; reason?: string } | undefined;
+  pagination?: { offset: number; limit: number; returned: number; has_more: boolean; next_cursor: string | null } | undefined;
 }
 
 export type DeployDecision = "allow" | "warn" | "block";
@@ -1177,11 +1185,13 @@ export const api = {
     scanId?: string | undefined;
     limit?: number | undefined;
     minRisk?: number | undefined;
+    cursor?: string | undefined;
   }) => {
     const params = new URLSearchParams();
     if (filters?.scanId) params.set("scan_id", filters.scanId);
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.minRisk != null) params.set("min_risk", String(filters.minRisk));
+    if (filters?.cursor) params.set("cursor", filters.cursor);
     const qs = params.toString();
     return get<GraphExposurePathsResponse>(`/v1/graph/exposure-paths${qs ? `?${qs}` : ""}`);
   },

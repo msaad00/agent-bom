@@ -41,11 +41,11 @@ test("builds exposure path query params", async () => {
     },
   });
 
-  await client.exposurePaths({ tenantId: "tenant-b", limit: 5, minRisk: 70 });
+  await client.exposurePaths({ scanId: "scan-1", cursor: "opaque=", tenantId: "tenant-b", limit: 5, minRisk: 70 });
 
   assert.equal(
     seenUrl,
-    "https://agent-bom.example.com/v1/graph/exposure-paths?tenant_id=tenant-b&limit=5&min_risk=70",
+    "https://agent-bom.example.com/v1/graph/exposure-paths?scan_id=scan-1&cursor=opaque%3D&tenant_id=tenant-b&limit=5&min_risk=70",
   );
 });
 

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import logging
 import uuid
 from typing import Any
 
-from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET
+from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET, MCP_MAX_RESPONSE_CHARS
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.path_derivation import _derived_attack_paths, _enrich_loaded_graph_runtime_evidence
 from agent_bom.graph.path_evidence import exposure_evidence_dimensions, finding_severity_for_path, qualify_exposure_reachability
@@ -180,7 +182,8 @@ def _relationship_refs(path: Any, edges: list[Any]) -> list[dict[str, Any]]:
         edge_id = str(getattr(edge, "id", ""))
         source = str(getattr(edge, "source", ""))
         target = str(getattr(edge, "target", ""))
-        if edge_id not in edge_ids and (source, target) not in hop_pairs:
+        reverse_pair = getattr(edge, "direction", "") == "bidirectional" and (target, source) in hop_pairs
+        if edge_id not in edge_ids and (source, target) not in hop_pairs and not reverse_pair:
             continue
         relationship = getattr(edge, "relationship", "")
         relationship_value = relationship.value if hasattr(relationship, "value") else str(relationship)
@@ -266,9 +269,7 @@ def _decision_for_risk(risk: float, *, warn_risk: float, block_risk: float) -> s
 
 def _empty_exposure_paths_message(*, total: int, min_risk: float) -> str | None:
     if total == 0:
-        return (
-            "0 paths means no agent-to-vulnerability ExposurePath currently reaches a credential exposure or reachable tool in this scan."
-        )
+        return "No exposure paths were recorded or derived for this snapshot. This does not establish that its assets are safe."
     if min_risk > 0:
         return f"0 paths matched min_risk={min_risk}; lower min_risk to inspect lower-risk ExposurePaths."
     return "0 paths matched the current filters."
@@ -280,6 +281,7 @@ async def exposure_paths_impl(
     scan_id: str | None = None,
     limit: int = 5,
     min_risk: float = 0.0,
+    cursor: str | None = None,
     _get_graph_store=None,
     _truncate_response=None,
 ) -> str:
@@ -290,13 +292,39 @@ async def exposure_paths_impl(
             "limit must be between 1 and 100",
             details={"argument": "limit", "value": limit},
         )
-    if min_risk < 0 or min_risk > 100:
+    if not 0 <= min_risk <= 100:
         return mcp_error_json(
             CODE_VALIDATION_INVALID_ARGUMENT,
             "min_risk must be between 0 and 100",
             details={"argument": "min_risk", "value": min_risk},
         )
     tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
+
+    # Cursors locate evidence; authorization always comes from the caller's
+    # tenant. Pin the snapshot and filter so a new scan cannot shift page two.
+    scope = hashlib.sha256(json.dumps([tenant_id, float(min_risk)]).encode()).hexdigest()
+    continuation: dict[str, Any] = {}
+    offset = 0
+    if cursor:
+        try:
+            if len(cursor) > 4096:
+                raise ValueError
+            continuation = json.loads(base64.b64decode(cursor, altchars=b"-_", validate=True))
+            if (
+                not isinstance(continuation, dict)
+                or continuation.get("v") != 1
+                or continuation.get("scope") != scope
+                or not isinstance(continuation.get("scan"), str)
+                or not continuation["scan"]
+                or (scan_id and scan_id != continuation["scan"])
+                or type(continuation.get("offset")) is not int
+                or not 0 < continuation["offset"] <= 100_000_000
+                or not isinstance(continuation.get("revision"), str)
+            ):
+                raise ValueError
+            scan_id, offset = continuation["scan"], continuation["offset"]
+        except (ValueError, TypeError, KeyError):
+            return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Invalid exposure cursor; restart the query.")
 
     try:
         if _get_graph_store is None:
@@ -309,11 +337,12 @@ async def exposure_paths_impl(
             store.attack_paths,
             tenant_id=tenant_id,
             scan_id=scan_id or "",
-            offset=0,
-            limit=min(max(limit * 3, limit), 1000),
+            offset=offset,
+            limit=limit + 1,
         )
         path_source = "persisted_graph_paths"
         derivation_truncated = False
+        derived_revision = ""
         if total == 0:
             # Keep the same topology semantics as the dashboard without importing
             # its optional FastAPI routes into the MCP-only installation.
@@ -327,9 +356,19 @@ async def exposure_paths_impl(
             paths = await asyncio.to_thread(_derived_attack_paths, graph)
             effective_scan_id, created_at = graph.scan_id, graph.created_at
             total = len(paths)
+            derived_revision = hashlib.sha256(
+                json.dumps([(p.hops, p.edges, p.composite_risk, p.reachability) for p in paths], sort_keys=True).encode()
+            ).hexdigest()
+            paths = paths[offset : offset + limit + 1]
             path_source = "derived_graph_paths"
             derivation_truncated = graph.completeness.truncated
-        ranked_paths = [path for path in paths if float(getattr(path, "composite_risk", 0.0) or 0.0) >= min_risk][:limit]
+        revision = hashlib.sha256(
+            json.dumps([path_source, effective_scan_id, created_at, total, derived_revision], default=str).encode()
+        ).hexdigest()
+        if continuation and continuation["revision"] != revision:
+            return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Exposure snapshot changed; restart the query.")
+        eligible_paths = [path for path in paths if float(getattr(path, "composite_risk", 0.0) or 0.0) >= min_risk]
+        ranked_paths = eligible_paths[:limit]
         hop_ids = {hop for path in ranked_paths for hop in (getattr(path, "hops", []) or [])}
         nodes = await asyncio.to_thread(store.nodes_by_ids, tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=hop_ids)
         edges = await asyncio.to_thread(store.edges_for_node_ids, tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=hop_ids)
@@ -346,7 +385,7 @@ async def exposure_paths_impl(
             "count_metadata": {"source": path_source, "total_is_lower_bound": derivation_truncated},
             "filters": {"limit": limit, "min_risk": min_risk},
             "paths": [
-                _exposure_path_payload(path, nodes_by_id=nodes_by_id, edges=edges, rank=index + 1, scan_id=effective_scan_id)
+                _exposure_path_payload(path, nodes_by_id=nodes_by_id, edges=edges, rank=offset + index + 1, scan_id=effective_scan_id)
                 for index, path in enumerate(ranked_paths)
             ],
             "nodes": [node.to_dict() for node in nodes],
@@ -365,8 +404,46 @@ async def exposure_paths_impl(
                 if derivation_truncated
                 else _empty_exposure_paths_message(total=total, min_risk=min_risk)
             )
-        encoded = json.dumps(payload, indent=2, default=str)
-        return _truncate_response(encoded) if _truncate_response is not None else encoded
+        # Fit complete path objects rather than returning a sliced JSON preview.
+        # Every omitted path remains reachable through the continuation cursor.
+        while True:
+            returned = len(payload["paths"])
+            has_more = len(eligible_paths) > returned
+            next_cursor = None
+            if has_more and returned:
+                next_cursor = base64.urlsafe_b64encode(
+                    json.dumps(
+                        {"v": 1, "scope": scope, "scan": effective_scan_id, "offset": offset + returned, "revision": revision},
+                        separators=(",", ":"),
+                    ).encode()
+                ).decode()
+            selected_nodes = {node_id for path in payload["paths"] for node_id in path["nodeIds"]}
+            selected_edges = {edge_id for path in payload["paths"] for edge_id in path["edgeIds"]}
+            payload["nodes"] = [node.to_dict() for node in nodes if node.id in selected_nodes]
+            payload["edges"] = [edge.to_dict() for edge in edges if edge.id in selected_edges]
+            payload["count"] = returned
+            payload["pagination"] = {
+                "offset": offset,
+                "limit": limit,
+                "returned": returned,
+                "has_more": has_more,
+                "next_cursor": next_cursor,
+            }
+            payload["completeness"] = graph_completeness(
+                returned=returned,
+                total=None if derivation_truncated else total,
+                truncated=derivation_truncated or offset > 0 or returned < total,
+                reason="node_budget" if derivation_truncated else "path_limit_or_filter" if offset > 0 or returned < total else "",
+            )
+            encoded = json.dumps(payload, separators=(",", ":"), default=str)
+            if len(encoded) <= MCP_MAX_RESPONSE_CHARS:
+                return _truncate_response(encoded) if _truncate_response is not None else encoded
+            if returned <= 1:
+                return mcp_error_json(
+                    CODE_VALIDATION_INVALID_ARGUMENT,
+                    "One exposure path exceeds the response budget; inspect its snapshot through bounded graph node endpoints.",
+                )
+            payload["paths"] = payload["paths"][: max(1, returned // 2)]
     except Exception:
         logger.exception("MCP graph tool error")
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")

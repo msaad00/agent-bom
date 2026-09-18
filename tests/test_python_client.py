@@ -62,9 +62,9 @@ def test_client_builds_query_params() -> None:
 
     client = _client(handler)
 
-    client.exposure_paths(limit=5, min_risk=70)
+    client.exposure_paths(scan_id="scan-1", limit=5, min_risk=70, cursor="opaque=")
 
-    assert urls == ["https://agent-bom.example.com/v1/graph/exposure-paths?tenant_id=tenant-a&limit=5&min_risk=70"]
+    assert urls == ["https://agent-bom.example.com/v1/graph/exposure-paths?tenant_id=tenant-a&scan_id=scan-1&limit=5&min_risk=70&cursor=opaque%3D"]
 
 
 def test_client_exposes_v0871_headline_routes() -> None:

@@ -56,7 +56,7 @@ def _print_attack_paths(payload: Mapping[str, object], *, offset: int) -> None:
                     _risk(item.get("composite_risk")),
                     _node_label(item.get("source")),
                     _node_label(item.get("target")),
-                    _string(len(hops)) if isinstance(hops, list) else "0",
+                    _string(max(0, len(hops) - 1)) if isinstance(hops, list) else "0",
                     ",".join(str(t) for t in techniques) if isinstance(techniques, list) else "",
                     _string(item.get("summary")),
                 ]
@@ -88,11 +88,15 @@ def _print_exposure_paths(payload: Mapping[str, object]) -> None:
                     _string(item.get("severity")),
                     _node_label(item.get("source")),
                     _node_label(item.get("target")),
-                    _string(len(hops)) if isinstance(hops, list) else "0",
+                    _string(max(0, len(hops) - 1)) if isinstance(hops, list) else "0",
                     _string(item.get("summary") or item.get("label")),
                 ]
             )
         )
+
+    pagination = payload.get("pagination")
+    if isinstance(pagination, dict) and pagination.get("next_cursor"):
+        click.echo(f"Next page: repeat this command with --cursor {pagination['next_cursor']}")
 
 
 @click.group(name="graph-paths")
@@ -127,6 +131,7 @@ def attack_paths_cmd(
 
 
 @graph_paths_cmd.command("exposure")
+@click.option("--cursor", help="Continuation cursor from the previous page; keep the same risk filter.")
 @click.option("--scan-id", "scan_id", help="Scan snapshot to query (defaults to the latest for the tenant).")
 @click.option("--limit", default=20, show_default=True, type=click.IntRange(min=1, max=100), help="Maximum exposure paths.")
 @click.option("--min-risk", "min_risk", default=0.0, show_default=True, type=click.FloatRange(min=0, max=100), help="Minimum risk score.")
@@ -140,12 +145,13 @@ def exposure_paths_cmd(
     scan_id: str | None,
     limit: int,
     min_risk: float,
+    cursor: str | None,
     output_format: str,
 ) -> None:
     """List ranked exposure paths (MCP-compatible ExposurePath queue) for a scan."""
 
     client = _make_client(api_url, api_key, bearer_token, tenant_id)
-    payload = _run_request(client, lambda api: api.exposure_paths(scan_id=scan_id, limit=limit, min_risk=min_risk))
+    payload = _run_request(client, lambda api: api.exposure_paths(scan_id=scan_id, limit=limit, min_risk=min_risk, cursor=cursor))
     if output_format == "json":
         _emit_json(payload)
     else:

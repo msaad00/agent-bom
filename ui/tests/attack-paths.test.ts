@@ -465,6 +465,9 @@ describe("attack path helpers", () => {
     const exposure = toExposurePathFromAttackPath(path, nodes, { rank: 1, scanId: "scan-1" });
 
     expect(exposure.rank).toBe(1);
+    expect(exposure.relationships[0]?.traversable).toBeUndefined();
+    expect(exposure.relationships[0]?.direction).toBeUndefined();
+    expect(exposure.relationships[1]?.traversable).toBe(true);
     expect(exposure.riskScore).toBe(9.4);
     expect(exposure.findings).toEqual(["CVE-2026-0002"]);
     expect(exposure.dependencyContext).toMatchObject({ packageName: "werkzeug", serverName: "database" });
@@ -472,6 +475,8 @@ describe("attack path helpers", () => {
     expect(exposure.reachableTools).toEqual(["execute_sql"]);
     expect(exposure.exposedCredentials).toEqual(["DATABASE_URL"]);
     expect(exposure.provenance).toEqual({ source: "graph_attack_path", scanId: "scan-1" });
+    const qualified = { ...exposure, reachability: "unknown", reachabilityBasis: ["incomplete_hop_evidence"] };
+    expect(toExposurePathFromAttackPath({ ...path, exposure_path: qualified }, nodes)).toEqual(qualified);
     expect(exposure.relationships).toEqual([
       expect.objectContaining({ source: "cve-1", target: "pkg-1", relationship: "related" }),
       expect.objectContaining({

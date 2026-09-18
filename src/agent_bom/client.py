@@ -152,6 +152,7 @@ class AgentBomClient:
         scan_id: str | None = None,
         limit: int | None = None,
         min_risk: float | None = None,
+        cursor: str | None = None,
         tenant_id: str | None = None,
     ) -> JsonObject:
         """List graph exposure paths for the request tenant."""
@@ -165,6 +166,7 @@ class AgentBomClient:
                     "scan_id": scan_id,
                     "limit": limit,
                     "min_risk": min_risk,
+                    "cursor": cursor,
                 }
             ),
         )

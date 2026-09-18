@@ -1,5 +1,5 @@
 import { EntityType, type AttackPath, type UnifiedNode } from "./graph-schema";
-import type { UnifiedGraphResponse } from "./api-types";
+import type { GraphAttackPath, UnifiedGraphResponse } from "./api-types";
 import {
   formatExposureEntityDisplay,
   formatExposureEntityTitle,
@@ -402,10 +402,13 @@ function parsePackageHopLabel(label: string): { packageName: string; packageVers
 }
 
 export function toExposurePathFromAttackPath(
-  path: AttackPath,
+  path: GraphAttackPath,
   nodeById: Map<string, UnifiedNode>,
   options: { rank?: number | undefined; scanId?: string | undefined } = {},
 ): ExposurePath {
+  if (path.exposure_path) {
+    return { ...path.exposure_path, rank: options.rank ?? path.exposure_path.rank };
+  }
   const hops = path.hops.map((hop) => {
     const node = nodeById.get(hop);
     return node ? exposureRefFromUnifiedNode(node) : fallbackExposureRef(hop, "unknown");
@@ -431,8 +434,8 @@ export function toExposurePathFromAttackPath(
       source: sourceId,
       target: targetId,
       relationship: receipt?.relationship || edgeRelationship || "related",
-      direction: receipt?.direction === "bidirectional" ? "bidirectional" : "directed",
-      traversable: receipt?.traversable ?? true,
+      direction: receipt?.direction === "bidirectional" ? "bidirectional" : receipt?.direction === "directed" ? "directed" : undefined,
+      traversable: receipt?.traversable,
       confidence: receipt?.confidence,
       evidenceCount: receipt?.source_snapshot_ids.length,
     };
@@ -461,6 +464,8 @@ export function toExposurePathFromAttackPath(
     affectedServers: uniqueExposureValues(servers.map((server) => server.label)),
     reachableTools,
     exposedCredentials,
+    reachability: path.reachability,
+    reachabilityBasis: path.reachability_basis,
     dependencyContext: {
       packageName: packages[0]
         ? parsePackageHopLabel(nodeById.get(packages[0].id)?.label ?? packages[0].label).packageName

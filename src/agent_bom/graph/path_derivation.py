@@ -112,12 +112,22 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
             reach = attrs.get("sensitive_data_access_count")
             reach_detail = f", reachable by {reach} identity/tool path(s)" if isinstance(reach, int) and reach > 0 else ""
             add("sensitive_data", "Sensitive data", f"{node.label} holds sensitive (PII/PHI/secret) data{reach_detail}.", 8.0)
-        # Runtime-observed reachability: a hop with actual observed runtime
-        # activity is confirmed reachable, not just statically connected — so it
-        # ranks above an identical static-only chain.
+        # Activity at one hop is useful context, not proof of end-to-end
+        # reachability. Blocked attempts must not become observed execution.
         hop_edges = graph.adjacency.get(hop_id, []) + graph.reverse_adjacency.get(hop_id, [])
-        if any(_rel_value(e) in _RUNTIME_OBSERVED_RELS for e in hop_edges):
-            add("runtime_observed", "Runtime-observed", f"{node.label} has observed runtime activity (confirmed reachable).", 10.0)
+        if any(
+            _rel_value(e) in _RUNTIME_OBSERVED_RELS
+            and not e.evidence.get("blocked")
+            and e.evidence.get("decision") != "blocked"
+            and (e.evidence.get("runtime_observed_state") or e.provenance.get("runtime_observed_state")) not in {"blocked", "not_observed"}
+            for e in hop_edges
+        ):
+            add(
+                "runtime_observed",
+                "Runtime-observed",
+                f"{node.label} has recorded runtime activity; end-to-end reachability is assessed separately.",
+                10.0,
+            )
         # One-hop governance/exposure neighbours of this node.
         for edge in graph.adjacency.get(hop_id, []):
             target = graph.nodes.get(edge.target)
@@ -575,7 +585,7 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                 ]
 
                 for agent_id in sorted(set(agent_ids)):
-                    hop_ids = [agent_id, server_id]
+                    hop_ids = [agent_id] if agent_id == server_id else [agent_id, server_id]
                     if vulnerable_source.id != server_id:
                         hop_ids.append(vulnerable_source.id)
                     hop_ids.append(finding.id)

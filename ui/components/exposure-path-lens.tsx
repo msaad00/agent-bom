@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Route } from "lucide-react";
 
 import {
@@ -18,6 +18,7 @@ import {
   exposurePathKey,
   normalizeExposureSeverity,
   pathDisplayTitle,
+  pathSpanLabel,
   type ExposureEntityRef,
   type ExposureEntityRole,
   type ExposurePath,
@@ -40,6 +41,7 @@ const KNOWN_ROLES = new Set<ExposureEntityRole>([
 ]);
 
 function toRole(role: string): ExposureEntityRole {
+  if (role === "vulnerability" || role === "misconfiguration") return "finding";
   const value = role.toLowerCase() as ExposureEntityRole;
   return KNOWN_ROLES.has(value) ? value : "unknown";
 }
@@ -75,6 +77,8 @@ export function toUiExposurePath(path: GraphExposurePath): ExposurePath {
       target: rel.target,
       relationship: rel.relationship,
       confidence: rel.confidence,
+      direction: rel.direction,
+      traversable: rel.traversable,
     })),
     nodeIds: path.nodeIds,
     edgeIds: path.edgeIds,
@@ -83,6 +87,9 @@ export function toUiExposurePath(path: GraphExposurePath): ExposurePath {
     affectedServers,
     reachableTools: path.reachableTools,
     exposedCredentials: path.exposedCredentials,
+    reachability: path.reachability,
+    reachabilityBasis: path.reachabilityBasis,
+    evidenceDimensions: path.evidenceDimensions,
     provenance: path.provenance,
   };
 }
@@ -98,27 +105,41 @@ export function ExposurePathLens({ scanId }: { scanId?: string | undefined }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [view, setView] = useState<ExposurePathView>("path");
+  const [pageHistory, setPageHistory] = useState<(string | undefined)[]>([undefined]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const requestSequence = useRef(0);
+  const pinnedScan = useRef<string | undefined>(scanId);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (cursor?: string) => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     setError(null);
     try {
       const data = await api.getGraphExposurePaths({
-        scanId: scanId || undefined,
+        scanId: pinnedScan.current || scanId || undefined,
         limit: EXPOSURE_PATH_LIMIT,
+        ...(cursor ? { cursor } : {}),
       });
+      if (sequence !== requestSequence.current) return;
       setResponse(data);
+      pinnedScan.current = data.scan_id || scanId;
+      setSelectedKey(null);
     } catch (err) {
+      if (sequence !== requestSequence.current) return;
       setResponse(null);
       setError(userFacingApiErrorMessage(err, "Failed to load exposure paths"));
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, [scanId]);
 
   useEffect(() => {
+    pinnedScan.current = scanId;
+    setPageHistory([undefined]);
+    setPageIndex(0);
     void load();
-  }, [load]);
+    return () => { requestSequence.current += 1; };
+  }, [load, scanId]);
 
   const paths = useMemo(() => (response?.paths ?? []).map(toUiExposurePath), [response]);
 
@@ -149,7 +170,12 @@ export function ExposurePathLens({ scanId }: { scanId?: string | undefined }) {
       <PageErrorState
         title="Cannot load exposure paths"
         detail={error}
-        action={{ label: "Retry", onClick: () => void load() }}
+        action={{ label: "Restart query", onClick: () => {
+          pinnedScan.current = scanId;
+          setPageHistory([undefined]);
+          setPageIndex(0);
+          void load();
+        } }}
         data-testid="exposure-path-lens-error"
       />
     );
@@ -159,14 +185,14 @@ export function ExposurePathLens({ scanId }: { scanId?: string | undefined }) {
     return (
       <PageEmptyState
         icon={Route}
-        title="No exposure paths for this snapshot"
+        title={response?.count_metadata?.total_is_lower_bound ? "No paths found within the analysis budget" : "No exposure paths recorded"}
         detail={
           response?.message ||
-          "No agent-to-vulnerability exposure path currently reaches a credential exposure or reachable tool in this scan."
+          "No exposure paths were recorded or derived. This does not establish that the snapshot's assets are safe."
         }
         suggestions={[
           "Run a fresh scan so the graph can rebuild exposure evidence.",
-          "Lower the risk filter to inspect lower-risk exposure paths.",
+          "Inspect snapshot coverage and relationship evidence before drawing a safety conclusion.",
         ]}
         data-testid="exposure-path-lens-empty"
       />
@@ -177,13 +203,34 @@ export function ExposurePathLens({ scanId }: { scanId?: string | undefined }) {
     <section aria-label="Exposure paths" className="space-y-3" data-testid="exposure-path-lens">
       <StatStrip
         items={[
-          { label: "Exposure paths", value: response?.count ?? paths.length },
-          { label: "Total in snapshot", value: response?.total ?? paths.length },
-          { label: "Highest risk", value: highestRisk.toFixed(1), accent: "critical" },
+          { label: "Paths on this page", value: response?.count ?? paths.length },
+          { label: response?.count_metadata?.total_is_lower_bound ? "At least in snapshot" : "Total in snapshot", value: response?.total ?? paths.length },
+          { label: "Highest page priority", value: highestRisk.toFixed(1), accent: "critical" },
         ]}
       />
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[color:var(--text-secondary)]" aria-label="Exposure path pagination">
+        <p role="status">
+          Page {pageIndex + 1} · {paths.length} paths shown. {response?.count_metadata?.total_is_lower_bound
+            ? "Analysis reached its node budget; the snapshot total is a lower bound."
+            : "Path connections do not by themselves establish exploitation."}
+        </p>
+        <div className="flex gap-2">
+          <button type="button" disabled={pageIndex === 0} className="rounded border border-[color:var(--border-subtle)] px-3 py-2 disabled:opacity-40" onClick={() => {
+            const previous = pageIndex - 1;
+            setPageIndex(previous);
+            void load(pageHistory[previous]);
+          }}>Previous paths</button>
+          <button type="button" disabled={!response?.pagination?.next_cursor} className="rounded border border-[color:var(--border-subtle)] px-3 py-2 disabled:opacity-40" onClick={() => {
+            const cursor = response?.pagination?.next_cursor;
+            if (!cursor) return;
+            setPageHistory([...pageHistory.slice(0, pageIndex + 1), cursor]);
+            setPageIndex(pageIndex + 1);
+            void load(cursor);
+          }}>Next paths</button>
+        </div>
+      </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <ul className="space-y-1.5" aria-label="Exposure path queue">
           {paths.map((path) => {
             const key = exposurePathKey(path);
@@ -209,7 +256,7 @@ export function ExposurePathLens({ scanId }: { scanId?: string | undefined }) {
                     </span>
                   </div>
                   <div className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-                    {String(path.severity)} · {Math.max(0, path.hops.length - 1)} hops
+                    {String(path.severity)} · {pathSpanLabel(path.hops.length)} · {path.evidenceDimensions?.reachability.verdict ?? "reachability unknown"}
                   </div>
                 </button>
               </li>
@@ -220,7 +267,7 @@ export function ExposurePathLens({ scanId }: { scanId?: string | undefined }) {
         {selectedPath && (
           <ExposurePathCommandCenter
             path={selectedPath}
-            scanId={scanId || undefined}
+            scanId={response?.scan_id || scanId || undefined}
             view={view}
             onViewChange={setView}
           />

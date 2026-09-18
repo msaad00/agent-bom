@@ -28,6 +28,8 @@ export interface HealthResponse {
 }
 
 export interface ExposurePathQuery {
+  scanId?: string;
+  cursor?: string;
   tenantId?: string;
   limit?: number;
   minRisk?: number;
@@ -41,6 +43,7 @@ export interface FindingsQuery {
 }
 
 export interface ExposurePathEnvelope {
+  pagination?: { offset: number; limit: number; returned: number; has_more: boolean; next_cursor: string | null };
   paths: JsonValue[];
   nodes?: JsonValue[];
   edges?: JsonValue[];
@@ -259,6 +262,8 @@ export class AgentBomClient {
 
   exposurePaths(query: ExposurePathQuery = {}): Promise<ExposurePathEnvelope> {
     const search = new URLSearchParams();
+    if (query.scanId) search.set("scan_id", query.scanId);
+    if (query.cursor) search.set("cursor", query.cursor);
     const tenantId = query.tenantId ?? this.tenantId;
     if (tenantId) {
       search.set("tenant_id", tenantId);

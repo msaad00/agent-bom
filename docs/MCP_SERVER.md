@@ -274,6 +274,23 @@ Static candidates retain unknown reachability. `should_i_deploy` returns
 `warn` rather than `allow` when reachability is unverified or the path read is
 incomplete; inspect the linked findings and runtime evidence before deployment.
 
+Continue a larger result with `exposure_paths(cursor="<pagination.next_cursor>")`,
+keeping the same `min_risk`. Stop when `pagination.next_cursor` is null. The
+cursor pins the snapshot; changing the tenant, snapshot, or risk filter requires
+a new query. REST uses the same `cursor` query parameter on
+`GET /v1/graph/exposure-paths`. A response may contain fewer than `limit` paths
+to keep complete path objects within the transport budget. The dashboard's
+**Next paths** and **Previous paths** controls navigate this same evidence.
+The CLI accepts `agent-bom graph-paths exposure --cursor <cursor> --format json`;
+the Python client accepts `exposure_paths(cursor=...)`, and the TypeScript
+client accepts `exposurePaths({ cursor, scanId })`.
+
+Inspect `evidenceDimensions` for reachability, exploitability, impact,
+actionability, and completeness. Relationship `direction` and `traversable`
+describe the recorded connection, not proof of exploitation. The dashboard
+preserves those qualifications, displays unknown assessments explicitly, and
+uses dashed lines where traversal is not established.
+
 ## Example Conversations
 
 **"Are my AI agents vulnerable?"**

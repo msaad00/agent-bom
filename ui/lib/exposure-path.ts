@@ -57,6 +57,22 @@ export interface ExposureEvidenceSummary {
   source?: string | undefined;
 }
 
+export interface ExposureEvidenceDimension {
+  status: string;
+  verdict?: string | null | undefined;
+  category?: string | null | undefined;
+  actionable?: boolean | null | undefined;
+  basis?: string[] | undefined;
+  reasonCodes?: string[] | undefined;
+  expectedHops?: number | undefined;
+  evidencedHops?: number | undefined;
+}
+
+export type ExposureEvidenceDimensions = Record<
+  "reachability" | "exploitability" | "impact" | "actionability" | "completeness",
+  ExposureEvidenceDimension
+>;
+
 export interface ExposurePath {
   id: string;
   rank?: number | undefined;
@@ -75,6 +91,9 @@ export interface ExposurePath {
   affectedServers: string[];
   reachableTools: string[];
   exposedCredentials: string[];
+  reachability?: string | undefined;
+  reachabilityBasis?: string[] | undefined;
+  evidenceDimensions?: ExposureEvidenceDimensions | undefined;
   dependencyContext?: ExposureDependencyContext | undefined;
   fix?: ExposureFixTarget | undefined;
   evidence?: ExposureEvidenceSummary | undefined;

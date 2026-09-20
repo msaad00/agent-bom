@@ -366,7 +366,12 @@ for (const activation of ["pointer", "keyboard"] as const) {
       await pill.click();
     }
     await expect(pill).toHaveCount(0);
+    await expect(page.getByTestId("graph-viewport-scope")).toContainText("24 displayed nodes · 45 displayed relationships");
+    // Expanding changes the canvas scope and starts its initial framing.
+    // Fit the settled expanded canvas, not the preceding three-node frame.
+    await settledViewportZoom(page);
     await page.getByRole("button", { name: "Fit View", exact: true }).click();
+    await settledViewportZoom(page);
     await expect(page.locator(".react-flow__edge")).toHaveCount(45);
     await expect(page.locator(".react-flow__node")).toHaveCount(24);
     await expect(page.getByTestId("graph-viewport-scope")).toContainText("Topology view");

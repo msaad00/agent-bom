@@ -3,11 +3,11 @@
 import { useThemeMode } from "@/lib/theme-mode";
 
 /** Bump when mark/wordmark SVGs change so browsers drop stale caches. */
-const BRAND_ASSET_REV = "v10";
+const BRAND_ASSET_REV = "v11";
 
 /**
- * Product name is always `agent-bom`. The mark is BOM with an agent HUD in the O
- * (visor slots + status bar + antenna — not an emoji smile). No lockup tagline.
+ * Product name is always `agent-bom`. The mark is BOM with a simple agent face in the O
+ * (antenna, open eyes, and a subtle smile). No decorative status bars or tagline.
  * See docs/VISUAL_LANGUAGE.md.
  */
 

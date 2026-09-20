@@ -703,11 +703,11 @@ function AttackPathInvestigationContent() {
     if (hasFocusContext) {
       return {
         title: "No attack paths matched the current focus",
-        detail: `The persisted graph loaded successfully, but no exploit chain matched ${focusLabel ?? "the current filters"}. Clear the focus or widen the query to inspect the rest of this snapshot.`,
+        detail: `No recorded path matched ${focusLabel ?? "the current filters"} in this snapshot. This does not establish whether the vulnerability is exploitable or whether another path exists.`,
         suggestions: [
           "Clear focus to review every persisted path in this snapshot.",
           "Open the full graph to inspect broader topology.",
-          "Review vulnerabilities before the next focused scan completes.",
+          "Review the finding and its missing evidence before choosing a remediation.",
         ],
       };
     }
@@ -715,7 +715,7 @@ function AttackPathInvestigationContent() {
     return {
       title: "No precomputed attack paths are available for this snapshot",
       detail:
-        "The persisted graph loaded successfully, but it does not currently contain exploit chains for the selected scan.",
+        "This snapshot has no recorded attack paths. Vulnerability presence, structural reachability, and exploitation are separate assessments.",
       suggestions: [
         "Run a fresh scan to refresh the persisted graph snapshot.",
         "Open the full graph to inspect inventory and findings that did persist.",

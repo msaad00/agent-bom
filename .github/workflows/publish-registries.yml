@@ -8,10 +8,10 @@ name: Publish to Registries
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
 #
-# The protected external endpoint publishes RFC 9728/8414 OAuth discovery and
-# a static MCP server card.  Smithery reserves Authorization for that OAuth
-# flow; do not replace it with a required bearer-token config field.  The
-# release is only fresh when the catalog converges to the released tool count.
+# Smithery requires an OAuth-compatible upstream for protected URL publishing.
+# Agent-Bom's configured bearer transport alone does not provide OAuth issuance.
+# A server-card scheme declaration is not proof that authorization works. Keep
+# publication fail-closed until the configured upstream and live scan succeed.
 # Optional vars:
 #   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
 on:
@@ -42,7 +42,6 @@ jobs:
       release_ref: ${{ steps.release.outputs.release_ref }}
       release_sha: ${{ steps.release.outputs.release_sha }}
       tool_count: ${{ steps.release.outputs.tool_count }}
-      smithery_oauth_ready: ${{ steps.release.outputs.smithery_oauth_ready }}
       publish_current: ${{ steps.release.outputs.publish_current }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -126,19 +125,12 @@ jobs:
             echo "::error::Published release metrics do not declare a positive MCP tool count"
             exit 1
           fi
-          if git show "${RELEASE_SHA}:src/agent_bom/mcp_server_metadata.py" \
-            | grep -Fq '"schemes": ["oauth2"] if auth_required else []'; then
-            SMITHERY_OAUTH_READY=true
-          else
-            SMITHERY_OAUTH_READY=false
-          fi
           {
             echo "publish_current=true"
             echo "version=$VERSION"
             echo "release_ref=refs/tags/${RELEASE_TAG}"
             echo "release_sha=$RELEASE_SHA"
             echo "tool_count=$TOOL_COUNT"
-            echo "smithery_oauth_ready=$SMITHERY_OAUTH_READY"
           } >> "$GITHUB_OUTPUT"
 
   smithery:
@@ -160,32 +152,21 @@ jobs:
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
-          SMITHERY_OAUTH_READY: ${{ needs.release.outputs.smithery_oauth_ready }}
-          REGISTRY_PUBLISH_REQUIRED: ${{ github.event_name == 'workflow_run' }}
         run: |
-          require_or_skip() {
-            reason="$1"
-            if [ "$REGISTRY_PUBLISH_REQUIRED" = "true" ]; then
-              echo "::error::Smithery publication is required for an automatic forward release: ${reason}"
-              exit 1
-            fi
-            echo "::notice::${reason} — skipping Smithery for this manual repair run"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          require_configuration() {
+            echo "::error::$1; registry publication cannot be verified"
+            exit 1
           }
-          if [ "$SMITHERY_OAUTH_READY" != "true" ]; then
-            require_or_skip "Latest published release predates the OAuth-capable MCP server contract; publish the next forward release"
-          fi
           if [ -z "${SMITHERY_MCP_URL:-}" ]; then
-            require_or_skip "SMITHERY_MCP_URL is not configured"
+            require_configuration "SMITHERY_MCP_URL is not configured"
           fi
           case "$SMITHERY_MCP_URL" in
             https://server.smithery.ai/*|http://server.smithery.ai/*)
-              require_or_skip "SMITHERY_MCP_URL points at Smithery's hosted proxy instead of agent-bom's upstream MCP origin; avoid publishing the proxy back to itself"
+              require_configuration "SMITHERY_MCP_URL points at Smithery's hosted proxy instead of agent-bom's upstream MCP origin; avoid publishing the proxy back to itself"
               ;;
           esac
           if [ -z "${SMITHERY_API_TOKEN:-}" ]; then
-            require_or_skip "SMITHERY_API_TOKEN is not configured"
+            require_configuration "SMITHERY_API_TOKEN is not configured"
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
@@ -231,7 +212,7 @@ jobs:
             echo "Smithery server card attempt ${ATTEMPT}/12 has not reached the released contract"
             sleep 10
           done
-          echo "::error::Smithery server card does not match the released version/tool/schema contract"
+          echo "::error::Smithery requires the released version/tool/schema contract and an OAuth-compatible upstream. Agent-Bom bearer credentials alone do not provide OAuth; configure and verify an authorized OAuth gateway before retrying"
           exit 1
 
       - name: Check Smithery catalog parity

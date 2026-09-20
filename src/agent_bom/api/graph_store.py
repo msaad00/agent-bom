@@ -310,6 +310,7 @@ class GraphStoreProtocol(Protocol):
         tenant_id: str = "",
         scan_id: str = "",
         node_ids: set[str],
+        induced_only: bool = False,
     ) -> list[Any]: ...
 
     def search_nodes(
@@ -2597,6 +2598,7 @@ class SQLiteGraphStore:
         tenant_id: str = "",
         scan_id: str = "",
         node_ids: set[str],
+        induced_only: bool = False,
     ) -> list[Any]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         if not node_ids:
@@ -2608,14 +2610,16 @@ class SQLiteGraphStore:
             effective_scan_id = scan_id or sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id)
             if not effective_scan_id:
                 return []
+            # Exposure pages need only edges whose two endpoints are on the page.
+            endpoint_join = "AND" if induced_only else "OR"
             placeholders = ",".join("?" for _ in node_ids)
             rows = conn.execute(
                 f"""
                 SELECT *
                 FROM graph_edges
                 WHERE tenant_id = ? AND scan_id = ?
-                  AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
-                """,  # nosec B608 - placeholders are generated solely from "?" markers
+                  AND (source_id IN ({placeholders}) {endpoint_join} target_id IN ({placeholders}))
+                """,  # nosec B608 - endpoint_join is a fixed SQL operator; placeholders are solely "?" markers
                 [tenant_id, effective_scan_id, *node_ids, *node_ids],
             ).fetchall()
             return [self._edge_from_row(row) for row in rows]

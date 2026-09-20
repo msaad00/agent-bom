@@ -39,7 +39,7 @@ describe("GraphHopEvidenceInspector", () => {
   });
 
   it("renders malformed legacy metadata as unknown instead of crashing", () => {
-    const malformed = {source_node_id: "node:0", target_node_id: "node:1", source_snapshot_ids: null};
+    const malformed = {source_node_id: "node:0", target_node_id: "node:1", source_snapshot_ids: [{untrusted: true}], reason_codes: "malformed"};
     render(<GraphHopEvidenceInspector hops={hops.slice(0, 2)} receipts={[malformed as unknown as GraphHopEvidence]} />);
     fireEvent.click(screen.getByRole("button", {name: /1\. Agent/}));
     expect(screen.getByText("Evidence incomplete")).toBeInTheDocument();

@@ -3410,6 +3410,7 @@ class PostgresGraphStore:
         tenant_id: str = "",
         scan_id: str = "",
         node_ids: set[str],
+        induced_only: bool = False,
     ) -> list[Any]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         if not node_ids:
@@ -3417,6 +3418,8 @@ class PostgresGraphStore:
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return []
+        # Exposure pages need only edges whose two endpoints are on the page.
+        endpoint_join = "AND" if induced_only else "OR"
         placeholders = ",".join(["%s"] * len(node_ids))
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
@@ -3426,8 +3429,8 @@ class PostgresGraphStore:
                        source_scan_id, source_run_id, evidence, activity_id, scan_id
                 FROM graph_edges
                 WHERE tenant_id = %s AND scan_id = %s
-                  AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
-                """,  # nosec B608 - placeholders are generated solely from "%s" markers
+                  AND (source_id IN ({placeholders}) {endpoint_join} target_id IN ({placeholders}))
+                """,  # nosec B608 - endpoint_join is a fixed SQL operator; placeholders are solely "%s" markers
                 [tenant_id, effective_scan_id, *node_ids, *node_ids],
             ).fetchall()
             from agent_bom.graph import RelationshipType, UnifiedEdge

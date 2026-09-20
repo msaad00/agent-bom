@@ -374,7 +374,9 @@ async def exposure_paths_impl(
         ranked_paths = eligible_paths[:limit]
         hop_ids = {hop for path in ranked_paths for hop in (getattr(path, "hops", []) or [])}
         nodes = await asyncio.to_thread(store.nodes_by_ids, tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=hop_ids)
-        edges = await asyncio.to_thread(store.edges_for_node_ids, tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=hop_ids)
+        edges = await asyncio.to_thread(
+            store.edges_for_node_ids, tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=hop_ids, induced_only=True
+        )
         stats = await asyncio.to_thread(store.snapshot_stats, tenant_id=tenant_id, scan_id=effective_scan_id)
         nodes_by_id = {node.id: node for node in nodes}
         payload = {

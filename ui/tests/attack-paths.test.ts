@@ -30,6 +30,17 @@ import {
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
 
 describe("attack path helpers", () => {
+  it("matches a package name without dropping version or finding constraints", () => {
+    const path: AttackPath = { source: "package", target: "finding", hops: ["package", "finding"], edges: ["vulnerable_to"],
+      composite_risk: 0, summary: "", credential_exposure: [], tool_exposure: [], vuln_ids: ["CVE-2020-14343"] };
+    const nodes = new Map([["package", graphNode("package", EntityType.PACKAGE, "pyyaml@5.3")]]);
+    expect(matchesAttackPathFocus(path, nodes, { nodeId: "package", cve: "CVE-2020-14343", packageName: "pyyaml" })).toBe(true);
+    expect(matchesAttackPathFocus(path, nodes, { packageName: "pyyaml@6.0" })).toBe(false);
+    expect(matchesAttackPathFocus(path, nodes, { packageName: "yaml" })).toBe(false);
+    expect(matchesAttackPathFocus(path, nodes, { nodeId: "other", packageName: "pyyaml" })).toBe(false);
+    expect(matchesAttackPathFocus(path, nodes, { findingId: "unlinked-finding", nodeId: "package", cve: "CVE-2020-14343", packageName: "pyyaml" })).toBe(false);
+  });
+
   it.each([null, undefined, "snapshot", {}])("keeps malformed legacy snapshot evidence unknown: %j", (snapshots) => {
     const path = {
       source: "a", target: "b", hops: ["a", "b"], edges: ["uses"],

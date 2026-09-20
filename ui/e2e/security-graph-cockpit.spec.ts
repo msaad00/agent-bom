@@ -622,6 +622,32 @@ test("focused investigation never shows an unrelated global path", async ({ page
   await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toHaveCount(0);
 });
 
+test("unlinked finding records require an explicit move to related package paths", async ({ page }) => {
+  await routeCockpit(page);
+  await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&node=pkg%3Aform-data&cve=CVE-2025-7783&package=form-data&finding=unlinked-record`);
+  await expect(page.getByText("No path is linked to this finding record")).toBeVisible();
+  await page.getByRole("link", { name: "Show related package and advisory paths" }).click();
+  await expect(page.getByRole("note", { name: "Finding association" })).toContainText("does not establish a link to the selected finding record");
+  await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
+  expect(new URL(page.url()).searchParams.get("node")).toBe("pkg:form-data");
+  expect(new URL(page.url()).searchParams.has("finding")).toBe(false);
+});
+
+test("snapshot loading never claims that an empty graph loaded successfully", async ({ page }) => {
+  await routeCockpit(page);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/v1/graph/snapshots?**", async route => { await pending; await route.fallback(); });
+  try {
+    await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&cve=CVE-2025-7783`);
+    await expect(page.getByRole("heading", { name: "Loading security graph" })).toBeVisible();
+    await expect(page.getByText(/The persisted graph loaded successfully/)).toHaveCount(0);
+  } finally {
+    release();
+  }
+});
+
 test("ranked persisted paths render before slower fix guidance", async ({ page }) => {
   await routeCockpit(page, undefined, { fixFirstDelayMs: 2_000 });
 

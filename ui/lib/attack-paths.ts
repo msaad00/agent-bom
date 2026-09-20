@@ -772,7 +772,8 @@ export function matchesAttackPathFocus(
     if (!inPathVulns && !inHopLabels) return false;
   }
 
-  if (packageName && !labels.some((node) => node.type === "package" && node.label === packageName)) {
+  if (packageName && !labels.some((node) => node.type === "package" &&
+    (node.label === packageName || normalizeLabel(parsePackageHopLabel(node.rawLabel).packageName) === packageName))) {
     return false;
   }
 

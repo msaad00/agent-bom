@@ -433,6 +433,18 @@ function AttackPathInvestigationContent() {
     const members = new Set(selectedCampaign.member_paths);
     return base.filter((path) => members.has(`${path.source}->${path.target}`));
   }, [fixFirstCards, focus, graphData?.attack_paths, graphNodeById, hasFocusContext, selectedCampaign]);
+  const relatedPackagePathsHref = useMemo(() => {
+    if (!focus.findingId || !focus.nodeId || !focus.cve || allAttackPaths.length > 0) return null;
+    const relatedFocus = { ...focus, findingId: "" };
+    const hasRelatedPath = [...(graphData?.attack_paths ?? []), ...fixFirstCards.map(card => card.attack_path)]
+      .some(path => matchesAttackPathFocus(path, graphNodeById, relatedFocus));
+    if (!hasRelatedPath) return null;
+    // A deliberate scope change, never an inferred association to this finding.
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("finding");
+    params.set("related_finding", focus.findingId);
+    return `${pathname}?${params.toString()}`;
+  }, [allAttackPaths.length, fixFirstCards, focus, graphData?.attack_paths, graphNodeById, pathname, searchParams]);
   const presentationAttackPaths = useMemo(
     () => dedupeAttackPathsForPresentation(allAttackPaths, graphNodeById),
     [allAttackPaths, graphNodeById],
@@ -814,6 +826,12 @@ function AttackPathInvestigationContent() {
 
       <GraphLensSwitcher variant="compact" />
 
+      {searchParams.get("related_finding") ? (
+        <p role="note" aria-label="Finding association" className="graph-callout-sky">
+          Related package and advisory paths. This scope does not establish a link to the selected finding record.
+        </p>
+      ) : null}
+
       {selectedScenarioId ? (
         <div className="graph-callout-sky">
           Attack Paths remains observed-only. Open Estate, Cloud, Repository,
@@ -849,7 +867,7 @@ function AttackPathInvestigationContent() {
         <GraphCorrelationWorkflow snapshots={snapshots} initialRun={latestCorrelationRun} outcome={correlationOutcome} onOpenSnapshot={openCorrelationPath} />
       ) : null}
 
-      {loadingGraph ? (
+      {loadingSnapshots || loadingGraph ? (
         <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
           <GraphPanelSkeleton
             title="Loading security graph"
@@ -917,12 +935,20 @@ function AttackPathInvestigationContent() {
             <GraphAnalysisStatusBanner status={graphData?.stats.analysis_status?.attack_path_fusion} />
           </div>
           <GraphEmptyState
-            title={emptyGraphState.title}
-            detail={emptyGraphState.detail}
+            title={relatedPackagePathsHref ? "No path is linked to this finding record" : emptyGraphState.title}
+            detail={relatedPackagePathsHref
+              ? "Paths match this package and advisory in the selected snapshot, but their evidence does not link the selected finding record. Open that broader context explicitly."
+              : emptyGraphState.detail}
             suggestions={emptyGraphState.suggestions}
             command="agent-bom scan -p . -f graph"
           />
           <div className="mt-4 flex flex-wrap gap-3 border-t border-[color:var(--border-subtle)] pt-4">
+            {relatedPackagePathsHref ? (
+              <Link href={relatedPackagePathsHref} className="sg-action">
+                Show related package and advisory paths
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            ) : null}
             <Link
               href={fullGraphHref}
               className="sg-filter-chip"

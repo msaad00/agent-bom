@@ -110,3 +110,51 @@ def test_user_role_membership_becomes_assumes_edge() -> None:
     assert "user:snowflake:ALICE" in g.nodes
     assumes = {(e.source, e.target) for e in edges if e.relationship.value == "assumes"}
     assert ("user:snowflake:ALICE", "role:snowflake:ANALYST") in assumes
+
+
+def test_multiple_privileges_retain_whole_grants_independently_of_order(tmp_path) -> None:
+    from agent_bom.api.graph_store import SQLiteGraphStore
+
+    report = _report_with_grants()
+    grants = report["snowflake_object_graph"]["grants"]
+    grants.append({**grants[0], "privilege": "INSERT"})
+    expected = None
+    for index, ordered in enumerate((grants, list(reversed(grants)), grants * 3)):
+        report["snowflake_object_graph"]["grants"] = ordered
+        graph = build_unified_graph_from_report(report, scan_id=f"grant-snapshot-{index}")
+        edge = next(e for e in graph.edges if e.source == "role:snowflake:ANALYST" and e.relationship.value == "has_permission")
+        assert edge.evidence.get("privilege") is None
+        assert edge.evidence["privileges"] == ["INSERT", "SELECT"]
+        records = edge.evidence["grant_receipts"]
+        assert len(records) == 2
+        assert {(record["account"], record["role"], record["privilege"], record["object_fqn"]) for record in records} == {
+            ("acct1", "ANALYST", "SELECT", "DB.PUBLIC.ORDERS"),
+            ("acct1", "ANALYST", "INSERT", "DB.PUBLIC.ORDERS"),
+        }
+        assert all("decision" not in record and "observed_at" not in record for record in records)
+        if expected is not None:
+            assert records == expected
+        expected = records
+        db = tmp_path / f"grants-{index}.db"
+        SQLiteGraphStore(db).save_graph(graph)
+        restored = SQLiteGraphStore(db).load_graph(scan_id=graph.scan_id)
+        stored = next(e for e in restored.edges if e.id == edge.id)
+        assert stored.evidence == edge.evidence
+
+
+def test_legacy_grant_merge_keeps_missing_source_fields_unknown() -> None:
+    from agent_bom.graph.edge import merge_edge_evidence
+
+    old = {"source": "snowflake-objects", "privilege": "SELECT"}
+    incoming = {
+        "source": "snowflake-objects",
+        "privilege": "INSERT",
+        "grant_receipts": [
+            {"source": "snowflake-objects", "account": "acct1", "role": "ANALYST", "privilege": "INSERT", "object_fqn": "DB.PUBLIC.ORDERS"},
+        ],
+    }
+    assert merge_edge_evidence(old, incoming)
+    legacy = next(record for record in old["grant_receipts"] if record["privilege"] == "SELECT")
+    assert legacy == {"source": "snowflake-objects", "privilege": "SELECT"}
+    assert old.get("privilege") is None
+    assert not merge_edge_evidence(old, incoming)

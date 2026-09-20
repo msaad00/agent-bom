@@ -321,6 +321,14 @@ def test_authorization_decision_and_status_survive_persistence_and_graph_api(tmp
         "storage.objects.get",
         "storage.objects.create",
     }
+    derived = next(
+        edge
+        for edge in body["edges"]
+        if edge["relationship"] == "has_permission" and edge["source"] == allowed["source"] and edge["target"] == allowed["target"]
+    )
+    witness = derived["evidence"]["permission_derivation"]["paths"][0]
+    assert witness["source_edge_ids"] == [allowed["id"]]
+    assert witness["grant_principal_id"] == allowed["source"]
     assert body["stats"]["analysis_status"]["authorization_evidence:gcp"]["status"] == "complete"
     assert any(
         edge["relationship"] == "can_access"

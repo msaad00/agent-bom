@@ -16,6 +16,8 @@ export type SplitLayoutProps = {
   placeholder?: ReactNode;
   /** Place the detail pane on the left instead of the right. */
   detailFirst?: boolean | undefined;
+  /** Optional single-pane navigation on mobile; desktop keeps both panes. */
+  mobilePane?: "master" | "detail" | undefined;
   /**
    * Container height. Panes scroll independently within it — the antidote to
    * long vertical pages. Defaults to the viewport minus the app shell chrome.
@@ -46,13 +48,14 @@ export function SplitLayout({
   masterWidth = "22rem",
   placeholder,
   detailFirst = false,
+  mobilePane,
   height = "calc(100vh - 12rem)",
   className,
   "data-testid": testId,
 }: SplitLayoutProps) {
   const masterPane = (
     <div
-      className="min-h-0 min-w-0 shrink-0 overflow-y-auto md:basis-[var(--split-master-w)]"
+      className={`min-h-0 min-w-0 shrink-0 overflow-y-auto md:basis-[var(--split-master-w)] ${mobilePane === "detail" ? "hidden md:block" : ""}`}
       style={{ ["--split-master-w" as string]: masterWidth }}
     >
       {master}
@@ -60,7 +63,7 @@ export function SplitLayout({
   );
 
   const detailPane = (
-    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+    <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${mobilePane === "master" ? "hidden md:block" : ""}`}>
       {detail ?? (
         <div className="flex h-full min-h-[12rem] items-center justify-center rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] p-6 text-center">
           <div className="flex flex-col items-center gap-2 text-[color:var(--text-tertiary)]">

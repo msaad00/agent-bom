@@ -46,27 +46,37 @@ summary; switch to [Top risks](docs/images/dashboard-risks-live.png) for priorit
   <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview screen with full posture and findings summary, followed by a Top risks tab" width="920"></a>
 </p>
 
-### GRC and audit: see framework mappings and assessment gaps
+### GRC and audit: investigate assessment gaps
 
-Review **NIST AI RMF, NIST CSF, ISO 27001, SOC 2, PCI DSS and CIS** framework
-status alongside **OWASP LLM, OWASP MCP, OWASP Agentic and MITRE ATLAS** risk mappings.
-Open **Compliance** for the [framework catalog and control evidence](site-docs/features/compliance.md).
+Start with the evaluated-control summary and the frameworks needing attention.
+Select a framework to inspect its controls, open evidence, and follow linked findings.
+Expand **Risk mappings** for OWASP and MITRE ATLAS applicability; these mappings
+are separate from control pass/fail. Open **Compliance** for the
+[framework catalog and control evidence](site-docs/features/compliance.md).
 The sample below uses the offline synthetic enterprise estate, including evaluated
 checks and risk mappings. These results do not establish certification or an audit opinion.
 
 <p align="center">
-  <a href="docs/images/dashboard-paths-live.png"><img src="docs/images/dashboard-paths-live.png" alt="Expanded Overview compliance frameworks and risk mappings with NIST, ISO, SOC 2, PCI DSS, CIS, OWASP and MITRE icons and explicit assessment status in a labeled sample environment" width="920"></a>
+  <a href="docs/images/dashboard-paths-live.png"><img src="docs/images/dashboard-paths-live.png" alt="Compact Overview assessment summary with four priority frameworks, evaluated-control counts, and expandable risk mappings in a labeled sample environment" width="920"></a>
 </p>
 
 ### AppSec and cloud teams: explain why a finding matters
 
-Follow **CVE-2023-4863 in pillow@9.0.0** from its service and container through
-the tool, workload identity and reachable data asset. Inspect the source receipts
-and carry the selected finding into remediation.
+Follow **CVE-2023-4863 in pillow@9.0.0** through recorded relationships between
+the service, container, tool, workload identity and modeled data asset. Inspect
+the source receipts and carry the selected finding into remediation. A recorded
+path does not by itself prove exploitation or successful data access.
 
 <p align="center">
   <a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab application graph connecting a real Pillow advisory to modeled infrastructure and its remediation action" width="920"></a>
 </p>
+
+Start in **Summary** to choose a scope, then **Inspect** an entity. Narrow the
+graph by entity type or severity, choose traversal direction and hop limit, and
+expand the relationships relevant to the investigation. Use the ordered path
+and hop inspector to review direction, evidence freshness and unknowns; return
+to the summary to explore another scope. Large scopes use bounded pages and
+show when the current view is incomplete.
 
 ### Engineers and GRC: prioritize findings and verify fixes
 

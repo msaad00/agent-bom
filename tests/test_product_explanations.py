@@ -27,7 +27,7 @@ def test_readme_explains_blast_radius_before_screenshots_without_exploit_claim()
     readme = (ROOT / "README.md").read_text()
     tour = readme.split("### AppSec and cloud teams", 1)[1].split("### Engineers and GRC", 1)[0]
     assert tour.index("CVE-2023-4863 in pillow@9.0.0") < tour.index("correlation-graph-live.png")
-    for marker in ("workload identity", "reachable data asset", "source receipts", "remediation"):
+    for marker in ("workload identity", "modeled data asset", "source receipts", "remediation", "bounded pages", "hop limit"):
         assert marker in tour
     assert "modeled infrastructure" in readme
     assert "A blocked call does not establish that the underlying package was fixed" in readme

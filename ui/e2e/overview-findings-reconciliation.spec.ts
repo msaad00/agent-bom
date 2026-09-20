@@ -334,7 +334,7 @@ for (const theme of ["light", "dark"] as const) {
         overall_score: 100, overall_status: "pass", evaluated_controls: 6, total_controls: 6,
         scan_count: 14, has_mcp_context: true, has_agent_context: true,
         framework_kinds: Object.fromEntries([...scoredKeys.map((key) => [key, "scored"]), ...mappingKeys.map((key) => [key, "applicability"])]),
-        ...Object.fromEntries([...scoredKeys, ...mappingKeys].map((key) => [key, ["cis_controls", "nist_800_53", "fedramp", "pci_dss"].includes(key) ? [{ id: `${key}-1`, status: "pass" }] : []])),
+        ...Object.fromEntries([...scoredKeys, ...mappingKeys].map((key) => [key, ["cis_controls", "nist_800_53", "fedramp", "pci_dss"].includes(key) ? [{ code: `${key}-1`, name: "Recorded control evidence", status: "pass", findings: 0, severity_breakdown: {}, affected_packages: [], affected_agents: [] }] : []])),
         summary: { cis_pass: 1, nist_800_53_pass: 1, pci_dss_pass: 1, fedramp_pass: 1, cis_foundations_pass: 1, cis_foundations_evaluated: 1, aisvs_pass: 1 },
       } }));
       await page.goto("/");
@@ -409,12 +409,16 @@ for (const theme of ["light", "dark"] as const) {
       await page.keyboard.press("Space");
       await page.getByRole("button", { name: /Show all \d+ control frameworks/ }).click();
       const frameworks = page.getByTestId("overview-evaluated-frameworks");
+      const frameworkList = frameworks.getByRole("region", { name: "Control framework list" });
+      await frameworkList.focus();
+      await expect(frameworkList).toBeFocused();
+      expect((await frameworkList.boundingBox())!.height).toBeLessThanOrEqual(353);
       for (const label of ["CIS Controls v8", "NIST SP 800-53", "PCI DSS 4.0", "FedRAMP Moderate", "CIS Foundations Benchmark", "OWASP AISVS"]) {
         const title = frameworks.getByText(label, { exact: true });
         const card = frameworks.getByRole("link", { name: new RegExp(label) });
         await expect(title).toBeVisible();
         expect(await title.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);
-        await expect(card).toHaveAttribute("href", "/compliance");
+        await expect(card).toHaveAttribute("href", /^\/compliance\?framework=/);
         const titleBox = await title.boundingBox();
         const cardBox = await card.boundingBox();
         expect(titleBox!.width).toBeGreaterThan(80);
@@ -427,6 +431,30 @@ for (const theme of ["light", "dark"] as const) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.waitForTimeout(350);
       await page.getByRole("region", { name: "Compliance & frameworks" }).screenshot({ path: testInfo.outputPath(`frameworks-${theme}-${width}.png`) });
+      await page.route("**/v1/frameworks/catalogs", route => route.fulfill({ json: { frameworks: {} } }));
+      await page.route("**/v1/compliance/hub/posture", route => route.fulfill({ json: { totals: { combined: 0, native: 0, hub: 0 } } }));
+      await page.route("**/v1/compliance/nist-800-53**", route => route.fulfill({ status: 503, json: { detail: "not configured" } }));
+      await frameworks.getByRole("link", { name: /^CIS Controls v8/ }).click();
+      await expect(page).toHaveURL(/\/compliance\?framework=cis$/);
+      await expect(page.getByRole("heading", { name: "CIS Controls v8" })).toBeVisible();
+      const control = page.getByText("cis_controls-1", { exact: true });
+      await control.scrollIntoViewIfNeeded();
+      await expect(control).toBeInViewport();
+      if (width === 390) expect((await page.getByTestId("compliance-split").boundingBox())!.height).toBeLessThan(400);
+      await control.click();
+      const drawer = page.getByRole("dialog", { name: /Control details for cis_controls-1/ });
+      await expect(drawer).toHaveCSS("opacity", "1");
+      await drawer.getByRole("tab", { name: "Evidence", exact: true }).click();
+      await expect(drawer.locator("aside")).toBeInViewport();
+      await page.screenshot({ path: testInfo.outputPath(`control-drill-${theme}-${width}.png`) });
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+      if (width === 390) {
+        await page.getByRole("button", { name: "Browse frameworks", exact: true }).click();
+        await page.getByTestId("compliance-frameworks-table").getByText("800-53", { exact: true }).click();
+        await expect(page.getByRole("heading", { name: "NIST SP 800-53 Rev 5", exact: true })).toBeVisible();
+        await expect(page.getByText("nist_800_53-1", { exact: true })).toBeInViewport();
+      }
     });
   }
 }

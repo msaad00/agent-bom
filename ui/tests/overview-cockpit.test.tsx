@@ -79,7 +79,8 @@ describe("OverviewCockpit", () => {
     expect(within(coverage).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
   });
 
-  it("shows evaluated controls and risk mappings initially in separate sections", () => {
+  it("keeps risk mappings in a separate disclosure when evaluated controls are available", async () => {
+    const user = userEvent.setup();
     render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 50, overallStatus: "fail", evaluatedControls: 2, totalControls: 12, frameworks: [
       { id: "cis", label: "CIS Controls", kind: "scored", pass: 1, fail: 1, warn: 0, total: 2 },
       { id: "atlas", label: "MITRE ATLAS", kind: "applicability", applicable: 3, pass: 0, fail: 0, warn: 0, total: 10 },
@@ -88,7 +89,10 @@ describe("OverviewCockpit", () => {
     const evaluated = screen.getByTestId("overview-evaluated-frameworks");
     const mappings = screen.getByTestId("overview-risk-mappings");
     expect(within(evaluated).queryByText("MITRE ATLAS")).not.toBeInTheDocument();
+    expect(within(mappings).getByText("MITRE ATLAS")).not.toBeVisible();
+    await user.click(within(mappings).getByRole("button", { name: /^Risk mappings/ }));
     expect(within(mappings).getByText("MITRE ATLAS")).toBeVisible();
+    expect(within(mappings).getByRole("link", { name: /MITRE ATLAS/ })).toHaveAttribute("href", "/compliance?framework=atlas");
     expect(within(evaluated).getByText("CIS Controls")).toBeVisible();
   });
 
@@ -113,7 +117,7 @@ describe("OverviewCockpit", () => {
     for (const label of ["NIST SP 800-53", "CIS Controls"]) {
       const title = screen.getByText(label);
       const card = title.closest("a")!;
-      expect(card).toHaveAttribute("href", "/compliance");
+      expect(card).toHaveAttribute("href", `/compliance?framework=${label === "CIS Controls" ? "cis" : "nist-800-53"}`);
       expect(card.children[0]).toHaveAttribute("aria-hidden", "true");
       expect(card.children[1]).toContainElement(title);
       expect(card).toHaveTextContent(label === "CIS Controls" ? "Not evaluated" : "1 failed");
@@ -651,8 +655,8 @@ describe("OverviewCockpit", () => {
 
     expect(screen.getByText("Compliance 0%")).toBeInTheDocument();
     expect(screen.getByText("CIS Controls v8")).toBeInTheDocument();
-    // The percentage always carries the denominator it was computed over.
-    expect(screen.getByText(/0% of 10 evaluated controls · 1 framework needs attention/i)).toBeInTheDocument();
+    expect(screen.getByText("0/10 evaluated controls pass")).toBeVisible();
+    expect(screen.getByText("1 framework needs attention")).toBeVisible();
     expect(screen.queryByText(/coverage appears after the first completed scan/i)).not.toBeInTheDocument();
   });
 
@@ -713,7 +717,7 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/0\/65 pass/i)).not.toBeInTheDocument();
   });
 
-  it("shows three frameworks with the largest control gaps and expands the rest", async () => {
+  it("shows four priority frameworks and expands the rest in a keyboard-accessible region", async () => {
     const user = userEvent.setup();
     const frameworks = Array.from({ length: 9 }, (_, index) => ({
       id: `framework-${index + 1}`,
@@ -743,11 +747,12 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText("Framework 8")).not.toBeInTheDocument();
     expect(screen.getByText("Framework 9")).toBeVisible();
     const summary = screen.getByTestId("overview-evaluated-frameworks");
-    expect(within(summary).getAllByRole("link")).toHaveLength(3);
+    expect(within(summary).getAllByRole("link")).toHaveLength(4);
     expect(within(summary).queryByText(/^fail$/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show all 9 control frameworks" }));
     expect(screen.getByText("Framework 8")).toBeVisible();
     expect(within(summary).getAllByRole("link")).toHaveLength(9);
+    expect(within(summary).getByRole("region", { name: "Control framework list" })).toHaveAttribute("tabindex", "0");
   });
 
   it("explains nonlinear pressure and the worse scan posture without subtracting the inputs", async () => {

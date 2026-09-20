@@ -666,6 +666,7 @@ function ComplianceSnapshotPanel({
   const evidenceReady = hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance);
   const attention = scored.filter((item) => item.fail > 0 || item.warn > 0).length;
   const passed = scored.reduce((total, item) => total + item.pass, 0);
+  const unassessed = scored.filter((item) => frameworkEvaluated(item) === 0).length;
 
   return (
     <div data-testid="overview-compliance-snapshot">
@@ -674,7 +675,7 @@ function ComplianceSnapshotPanel({
       ) : evidenceReady ? (
         <>
           <p className="mt-2 text-base font-semibold tabular-nums text-foreground">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
-          <p className="mt-1 text-xs text-ink-secondary">{Math.round(compliance.overallScore)}% of {compliance.evaluatedControls} evaluated controls · {attention} framework{attention === 1 ? " needs" : "s need"} attention</p>
+          <p className="mt-1 text-xs text-ink-secondary">{attention} framework{attention === 1 ? " needs" : "s need"} attention{unassessed > 0 ? ` · ${unassessed} not evaluated` : ""}</p>
 
         </>
       ) : (
@@ -688,8 +689,11 @@ function ComplianceSnapshotPanel({
       )}
       {!loading && hasScanEvidence && scored.length > 0 ? (
           <Collapsible bare title="Control frameworks" subtitle={`${scored.length} frameworks · ordered by failing and warning checks`} defaultOpen data-testid="overview-evaluated-frameworks">
-            <FrameworkCards frameworks={showAllFrameworks ? scored : scored.slice(0, 3)} />
-            {scored.length > 3 ? (
+            <div role="region" aria-label="Control framework list" tabIndex={showAllFrameworks ? 0 : undefined}
+              className="max-h-[min(50vh,22rem)] overflow-y-auto overscroll-contain rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500">
+              <FrameworkCards frameworks={showAllFrameworks ? scored : scored.slice(0, 4)} />
+            </div>
+            {scored.length > 4 ? (
               <button type="button" className="mt-2 text-xs text-emerald-700 dark:text-emerald-300"
                 aria-expanded={showAllFrameworks} onClick={() => setShowAllFrameworks(!showAllFrameworks)}>
                 {showAllFrameworks ? "Show priority frameworks" : `Show all ${scored.length} control frameworks`}
@@ -698,10 +702,10 @@ function ComplianceSnapshotPanel({
           </Collapsible>
       ) : null}
       {hasScanEvidence && mappings.length > 0 ? (
-        <Collapsible bare title="Risk mappings" subtitle="Applicable risks, separate from control pass/fail" defaultOpen data-testid="overview-risk-mappings">
+        <Collapsible bare title="Risk mappings" count={mappings.length} subtitle="Applicability, separate from control pass/fail" defaultOpen={!evidenceReady} data-testid="overview-risk-mappings">
           <div className="grid gap-2 sm:grid-cols-2">
             {mappings.slice(0, 4).map((framework) => (
-              <Link key={framework.id} href="/compliance" className="flex min-w-0 items-center gap-2 rounded-md py-2 hover:bg-surface-muted">
+              <Link key={framework.id} href={`/compliance?framework=${encodeURIComponent(framework.id)}`} className="flex min-w-0 items-center gap-2 rounded-md py-2 hover:bg-surface-muted">
                 <span aria-hidden="true"><FrameworkIcon frameworkId={framework.id} size={24} /></span>
                 <span className="min-w-0 text-sm font-semibold text-foreground">{framework.label}
                   <span className="mt-1 block font-normal text-ink-secondary">{framework.applicable ?? 0}/{framework.total} risks applicable</span>
@@ -727,7 +731,7 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
             return (
               <Link
                 key={framework.id}
-                href="/compliance"
+                href={`/compliance?framework=${encodeURIComponent(framework.id)}`}
                 className="grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 border-b border-outline px-1.5 py-2 transition hover:bg-surface-muted"
               >
                 <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center">

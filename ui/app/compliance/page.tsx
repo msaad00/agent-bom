@@ -132,6 +132,7 @@ function CompliancePageContent() {
   const searchParams = useSearchParams();
   const queryParam = searchParams.get("q") ?? "";
   const scanParam = searchParams.get("scan") ?? "";
+  const frameworkParam = searchParams.get("framework") ?? "";
   const [data, setData] = useState<ComplianceResponse | null>(null);
   const [mitreCatalog, setMitreCatalog] = useState<FrameworkCatalogMetadata | null>(null);
   const [atlasCatalog, setAtlasCatalog] = useState<MitreAtlasCatalogMetadata | null>(null);
@@ -149,6 +150,7 @@ function CompliancePageContent() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [selectedFrameworkId, setSelectedFrameworkId] = useState("");
+  const [mobilePane, setMobilePane] = useState<"master" | "detail">("master");
   const [selectedControl, setSelectedControl] = useState<{
     control: ComplianceControl;
     frameworkLabel: string;
@@ -308,11 +310,13 @@ function CompliancePageContent() {
   }, [controlQuery, selectedSection, statusFilter]);
 
   useEffect(() => {
-    if (!frameworks.length || selectedFrameworkId) return;
+    if (!frameworks.length) return;
     const firstFailing = frameworks.find((framework) => !framework.disabled && framework.fail > 0);
     const fallback = frameworks.find((framework) => !framework.disabled);
-    setSelectedFrameworkId(firstFailing?.id ?? fallback?.id ?? "");
-  }, [frameworks, selectedFrameworkId]);
+    const requested = frameworks.find((framework) => framework.id === frameworkParam);
+    setSelectedFrameworkId((current) => requested?.id ?? (current || firstFailing?.id || fallback?.id || ""));
+    if (requested) setMobilePane("detail");
+  }, [frameworks, frameworkParam]);
 
   const handleExportPack = async () => {
     setExporting(true);
@@ -508,6 +512,7 @@ function CompliancePageContent() {
         onRowClick={(f) => {
           if (f.disabled) return;
           setSelectedFrameworkId(f.id);
+          setMobilePane("detail");
         }}
         maxHeight="calc(100vh - 22rem)"
         caption="Framework coverage"
@@ -656,6 +661,7 @@ function CompliancePageContent() {
               })
             }
             selectedKey={selectedControl?.control.code}
+            maxHeight="min(50vh,28rem)"
             caption={`${selectedSection.title} controls`}
             empty="No controls match the current filters."
           />
@@ -707,6 +713,10 @@ function CompliancePageContent() {
 
       <StatStrip items={kpis} data-testid="compliance-kpi-strip" />
 
+      {frameworkParam && !frameworks.some((framework) => framework.id === frameworkParam) ? (
+        <p role="status" className="text-sm text-ink-secondary">Requested framework is unavailable in this assessment.</p>
+      ) : null}
+
       {/* ── View Toggle ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5 self-start w-fit">
         {(
@@ -742,9 +752,14 @@ function CompliancePageContent() {
 
       {viewMode === "detail" ? (
         <>
+          <button type="button" className="self-start rounded-md border border-outline px-3 py-2 text-sm text-foreground md:hidden"
+            onClick={() => setMobilePane(mobilePane === "master" ? "detail" : "master")}>
+            {mobilePane === "detail" ? "Browse frameworks" : "View selected framework"}
+          </button>
           <SplitLayout
+            mobilePane={mobilePane}
             masterWidth="24rem"
-            height="calc(100vh - 20rem)"
+            height="auto"
             master={master}
             detail={detail}
             placeholder="Select a framework to review its controls and evidence."

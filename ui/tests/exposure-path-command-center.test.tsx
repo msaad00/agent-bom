@@ -112,6 +112,9 @@ describe("ExposurePathCommandCenter", () => {
     expect(screen.getByText("Evidence & relationships")).toBeInTheDocument();
     expect(screen.queryByText("Evidence drawer")).not.toBeVisible();
     expect(screen.getByText("Validate the lead finding")).toBeInTheDocument();
+    expect(screen.getByText("Open CVE evidence.")).not.toBeVisible();
+    fireEvent.click(screen.getByText("Evidence & relationships"));
+    expect(screen.getByText("Open CVE evidence.")).toBeVisible();
   });
 
   it("keeps raw finding identifiers in evidence and does not invent a path summary", () => {

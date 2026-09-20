@@ -156,6 +156,7 @@ async function routeCockpit(
     rollupDelayMs?: number;
     fixFirstDelayMs?: number;
     rollupItemCount?: number;
+    qualifiedEvidence?: boolean;
   } = {},
 ) {
   const graph = buildCockpitGraph(snapshotNodeCount);
@@ -358,6 +359,17 @@ async function routeCockpit(
             title: "Critical package reachable from MCP server",
             summary: attackPath.summary,
             attack_path: attackPath,
+            exposure_path: options.qualifiedEvidence ? {
+              id: "qualified-path-fixture", label: "Recorded package path", summary: "Recorded relationships do not establish effective permission, exploitation or successful data access.",
+              riskScore: 9.8, severity: "critical", source: { id: "agent:desktop", label: "claude-desktop", role: "agent" },
+              target: { id: "cve:form-data", label: "CVE-2025-7783", role: "finding" },
+              hops: graph.nodes.slice(0, 4).map((item, index) => ({ id: item.id, label: item.label, role: ["agent", "server", "package", "finding"][index] })),
+              relationships: graph.edges.slice(0, 3), nodeIds: attackPath.hops, edgeIds: attackPath.edges,
+              findings: attackPath.vuln_ids, affectedAgents: ["claude-desktop"], affectedServers: ["github"], reachableTools: [], exposedCredentials: [],
+              evidenceDimensions: { reachability: { status: "unavailable", verdict: "unknown" }, exploitability: { status: "unavailable", verdict: "not_assessed" },
+                impact: { status: "unavailable" }, actionability: { status: "unavailable" }, completeness: { status: "partial" } },
+              provenance: { source: "fixture", scanId },
+            } : undefined,
             nodes: graph.nodes,
             sequence_labels: ["claude-desktop", "github", "form-data@4.0.0", "CVE-2025-7783"],
             risk_reasons: [
@@ -1224,5 +1236,25 @@ for (const proof of [
     // both continuation and backward navigation must retain the resolved scan.
     expect(requests.slice(-2).every(url => url.searchParams.get("scan_id") === scanId)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  test(`focused path and qualifications fit the first desktop viewport ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await routeCockpit(page, undefined, { qualifiedEvidence: true });
+    await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&node=pkg%3Aform-data&cve=CVE-2025-7783&package=form-data`);
+    const detail = page.getByTestId("selected-exposure-path");
+    await expect(detail).toBeVisible();
+    const diagram = detail.getByRole("img", { name: /Selected exposure path graph/ });
+    await expect(diagram).toBeVisible();
+    await expect.poll(async () => (await diagram.boundingBox())!.y + (await diagram.boundingBox())!.height).toBeLessThanOrEqual(900);
+    await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Reachability");
+    await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Exploitability");
+    await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Evidence coverage");
+    await expect(detail.getByTestId("exposure-path-primary-action")).toBeVisible();
+    await expect(detail.getByText("Evidence & relationships", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`focused-path-${theme}.png`) });
   });
 }

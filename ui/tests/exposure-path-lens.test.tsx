@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ExposurePathLens, toUiExposurePath } from "@/components/exposure-path-lens";
@@ -77,7 +77,7 @@ describe("ExposurePathLens", () => {
     expect(await screen.findByTestId("exposure-path-lens")).toBeInTheDocument();
     expect(screen.getByText("Total in snapshot")).toBeInTheDocument();
     expect(screen.getAllByText(/88\.5/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /left-pad/ })).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Exposure path queue" })).getByRole("button", { name: /left-pad/ })).toBeInTheDocument();
   });
 
   it("renders the empty state when no exposure paths exist", async () => {
@@ -123,7 +123,10 @@ function qualifiedPath(id: string): GraphExposurePathsResponse["paths"][number] 
 
 it("preserves server evidence, direction, traversability and finding roles", () => {
   const input = qualifiedPath("CVE-2026-1");
+  const hopEvidence = [{ source_node_id: "agent:a", target_node_id: "CVE-2026-1", relationship: "vulnerable_to", source_snapshot_ids: ["scan-1"], freshness: "unknown", complete: false }];
+  Object.assign(input, { hopEvidence });
   const path = toUiExposurePath(input);
+  expect(path).toHaveProperty("hopEvidence", hopEvidence);
   expect(path.target.role).toBe("finding");
   expect(path.relationships[0]).toMatchObject({ direction: "directed", traversable: false });
   expect(path.evidenceDimensions).toEqual(input.evidenceDimensions);
@@ -143,12 +146,12 @@ it("shows uncertainty and pages without accumulating an unbounded canvas", async
   fireEvent.click(screen.getByText("Evidence & relationships"));
   expect(screen.getByText(/Context only; not traversable/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Next paths" }));
-  expect(await screen.findByRole("button", { name: /CVE-second/ })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /CVE-first/ })).not.toBeInTheDocument();
+  expect(await within(await screen.findByRole("list", { name: "Exposure path queue" })).findByRole("button", { name: /CVE-second/ })).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Exposure path queue" })).queryByRole("button", { name: /CVE-first/ })).not.toBeInTheDocument();
   expect(apiMock.getGraphExposurePaths).toHaveBeenLastCalledWith({ scanId: "scan-1", limit: 25, cursor: "page-two" });
   expect(screen.getByRole("button", { name: "Next paths" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Previous paths" }));
-  expect(await screen.findByRole("button", { name: /CVE-first/ })).toBeInTheDocument();
+  expect(await within(await screen.findByRole("list", { name: "Exposure path queue" })).findByRole("button", { name: /CVE-first/ })).toBeInTheDocument();
   expect(apiMock.getGraphExposurePaths).toHaveBeenLastCalledWith({ scanId: "scan-1", limit: 25 });
 });
 

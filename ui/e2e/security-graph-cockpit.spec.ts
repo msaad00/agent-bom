@@ -1088,8 +1088,9 @@ for (const proof of [
   { theme: "light", width: 1440, height: 1000 },
   { theme: "dark", width: 1440, height: 1000 },
   { theme: "light", width: 390, height: 844 },
+  { theme: "dark", width: 390, height: 844 },
 ] as const) {
-  test(`exposure evidence pagination remains readable ${proof.theme} ${proof.width}`, async ({ page }) => {
+  test(`exposure evidence pagination remains readable ${proof.theme} ${proof.width}`, async ({ page }, testInfo) => {
     await page.setViewportSize(proof);
     await page.addInitScript(theme => localStorage.setItem("agent-bom-theme", theme), proof.theme);
     await routeCockpit(page);
@@ -1109,6 +1110,7 @@ for (const proof of [
           source, target, hops: [source, target], nodeIds: [source.id, target.id], edgeIds: ["context"], findings: [target.label],
           relationships: [{ id: "context", source: source.id, target: target.id, relationship: "vulnerable_to", direction: "directed", traversable: false }],
           reachableTools: [], exposedCredentials: [], reachability: "unknown",
+          hopEvidence: [{source_node_id: source.id, target_node_id: target.id, relationship: "vulnerable_to", source_snapshot_ids: ["synthetic-runtime:blocked"], relationship_provenance: "recorded", evidence_tier: "runtime_observed", freshness: "fresh", runtime_observed_state: "blocked", runtime_outcome: "blocked", direction: "directed", traversable: false, complete: false, truncated: false, correlation_identity_status: "current"}],
           evidenceDimensions: { reachability: unavailable, exploitability: unavailable, impact: unavailable, actionability: unavailable, completeness: { status: "partial" } },
           provenance: { source: "fixture", scanId },
         }],
@@ -1120,6 +1122,19 @@ for (const proof of [
     await expect(lens.getByRole("region", { name: "Path evidence assessment" })).toContainText("Unknown");
     await lens.getByText("Evidence & relationships", { exact: true }).click();
     await expect(lens.getByRole("region", { name: "Relationship proof" })).toContainText("Context only; not traversable");
+    await lens.getByText("Inspect 1 hop receipts", { exact: true }).click();
+    const inspector = lens.getByRole("region", { name: "Hop evidence inspector" });
+    const hopButton = inspector.getByRole("button", { name: /1\. A long assistant/ });
+    await hopButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(hopButton).toHaveAttribute("aria-expanded", "true");
+    await expect(inspector).toContainText("Blocked attempt");
+    await expect(inspector).toContainText("synthetic-runtime:blocked");
+    await expect(inspector).toContainText("This receipt cannot establish a successful downstream action");
+    expect(await inspector.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await inspector.screenshot({path: testInfo.outputPath(`hop-evidence-${proof.theme}-${proof.width}.png`)});
+    await page.keyboard.press("Enter");
+    await expect(hopButton).toHaveAttribute("aria-expanded", "false");
     await lens.getByRole("button", { name: "Next paths" }).click();
     await expect(lens.getByRole("status")).toContainText("Page 2");
     await expect(lens.getByRole("button", { name: "Next paths" })).toBeDisabled();

@@ -1,4 +1,5 @@
 import { formatExposureEntityTitle, formatExposurePathSequence } from "@/lib/entity-display";
+import type { GraphHopEvidence } from "@/lib/graph-schema";
 
 export type ExposureSeverity = "critical" | "high" | "medium" | "low" | "none" | string;
 
@@ -93,6 +94,7 @@ export interface ExposurePath {
   exposedCredentials: string[];
   reachability?: string | undefined;
   reachabilityBasis?: string[] | undefined;
+  hopEvidence?: GraphHopEvidence[] | undefined;
   evidenceDimensions?: ExposureEvidenceDimensions | undefined;
   dependencyContext?: ExposureDependencyContext | undefined;
   fix?: ExposureFixTarget | undefined;

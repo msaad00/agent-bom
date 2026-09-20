@@ -114,6 +114,8 @@ export function completeDirectedHopCount(path: AttackPath): number | null {
     receipt.relationship === path.edges[index] &&
     receipt.direction === "directed" && receipt.traversable === true &&
     receipt.complete === true && receipt.truncated === false &&
+    receipt.runtime_observed_state !== "blocked" &&
+    receipt.runtime_outcome !== "blocked" && receipt.runtime_outcome !== "failed" &&
     receipt.freshness === "fresh" && receipt.relationship_provenance === "recorded" &&
     receipt.correlation_identity_status === "current" &&
     Array.isArray(receipt.source_snapshot_ids) && receipt.source_snapshot_ids.length > 0 &&

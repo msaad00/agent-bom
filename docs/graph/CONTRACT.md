@@ -91,6 +91,26 @@ authorization evidence and rebuild the snapshot to obtain the full retained
 set of evaluated allowed actions. Missing legacy principal or observation fields
 remain unknown.
 
+### Derived permission witnesses
+
+Newly built `has_permission` edges include `evidence.permission_derivation`.
+Its ordered `source_edge_ids` reference the actual access, group-membership, or
+assume/inheritance relationships in the same `source_scan_id`. The
+`grant_edge_id` identifies the original access edge and its action receipts;
+`grant_principal_id` remains the original role, group, or direct principal.
+Inheriting that graph connection does not relabel the source's policy decision
+as a directly evaluated grant for the requesting identity.
+
+The overlay retains one deterministic shortest witness for each grant and
+access class, with at most 16 witnesses per derived edge and six principal
+transfer hops. It does not enumerate every alternate route or reevaluate policy
+conditions, session restrictions, expiry, or revocation. A witness cap marks the
+edge's derivation `truncated`; an unvisited frontier at the depth limit or a
+witness cap marks the snapshot analysis `limited`. Cycles alone do not mark a
+walk incomplete. Consumers must resolve source references within the same
+tenant and snapshot, and show an evidence gap when a source edge is unavailable
+in a bounded response. Old snapshots require rebuilding to gain these witnesses.
+
 ---
 
 ## Evidence truth dimensions

@@ -324,7 +324,7 @@ def test_demo_estate_headline_blast_radius_chain(demo_estate_client: TestClient)
     for nid in (
         "agent:cursor",
         "server:shell-runner-server",
-        "pkg:pyyaml@5.3",
+        "pkg:pypi:pyyaml@5.3",
         "vuln:CVE-2020-14343",
         "cred:aws-secret",
         "tool:shell-runner-server:run_shell",
@@ -332,8 +332,8 @@ def test_demo_estate_headline_blast_radius_chain(demo_estate_client: TestClient)
         assert nid in node_ids, f"missing chain node {nid}"
 
     assert ("agent:cursor", "server:shell-runner-server") in edge_pairs
-    assert ("server:shell-runner-server", "pkg:pyyaml@5.3") in edge_pairs
-    assert ("pkg:pyyaml@5.3", "vuln:CVE-2020-14343") in edge_pairs
+    assert ("server:shell-runner-server", "pkg:pypi:pyyaml@5.3") in edge_pairs
+    assert ("pkg:pypi:pyyaml@5.3", "vuln:CVE-2020-14343") in edge_pairs
     assert ("server:shell-runner-server", "cred:aws-secret") in edge_pairs
     # The critical CVE reaches both the credential and the run_shell tool (RCE).
     assert ("vuln:CVE-2020-14343", "cred:aws-secret") in edge_pairs

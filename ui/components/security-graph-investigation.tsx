@@ -265,8 +265,9 @@ export function SecurityGraphInvestigation({
   const activeGraph = useMemo(() => {
     if (!graph) return null;
     const base = focusMode && attackPath
-      ? (buildFocusedGraphData(graph, attackPath) ?? graph)
+      ? buildFocusedGraphData(graph, attackPath)
       : graph;
+    if (!base) return null;
     return mergeGraphNeighborExpansions(base, Object.values(neighborExpansions));
   }, [attackPath, focusMode, graph, neighborExpansions]);
 
@@ -527,7 +528,7 @@ export function SecurityGraphInvestigation({
           </div>
         ) : layout.nodes.length === 0 ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[color:var(--text-secondary)]">
-            No graph nodes matched this path. Run a fresh scan or clear focus to inspect the full snapshot.
+            Selected path nodes are not available in this graph page. Use Path or List to inspect the supplied path evidence, or open lineage for broader context.
           </div>
         ) : rendererDecision.kind === "webgl" ? (
           <SigmaGraphOverview

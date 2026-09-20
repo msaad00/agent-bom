@@ -30,6 +30,15 @@ import {
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
 
 describe("attack path helpers", () => {
+  it.each([null, undefined, "snapshot", {}])("keeps malformed legacy snapshot evidence unknown: %j", (snapshots) => {
+    const path = {
+      source: "a", target: "b", hops: ["a", "b"], edges: ["uses"],
+      composite_risk: 0, summary: "", credential_exposure: [], tool_exposure: [], vuln_ids: [],
+      hop_evidence: [{ source_node_id: "a", target_node_id: "b", relationship: "uses", source_snapshot_ids: snapshots }],
+    } as unknown as AttackPath;
+    expect(toExposurePathFromAttackPath(path, new Map()).relationships[0]?.evidenceCount).toBeUndefined();
+  });
+
   function graphNode(id: string, entityType: EntityType, label: string): UnifiedNode {
     return {
       id,

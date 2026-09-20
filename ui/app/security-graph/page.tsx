@@ -985,7 +985,7 @@ function AttackPathInvestigationContent() {
           onSelect={(key) => {
             setSelectedAttackPathKey(key);
             setCompletedSteps((current) => ({ ...current, path: true }));
-            setPathView("graph");
+            setPathView("path");
           }}
           title={`${pathQueueCounts.renderedRows} shown · ${pathQueueCounts.returnedRows} loaded paths`}
           subtitle={`${pathQueueCounts.queueRows} from the path queue + ${pathQueueCounts.additionalPriorityRows} additional priority paths. ${pathQueueCounts.snapshotTotal} snapshot paths${pathQueueCounts.truncated ? "; more queue paths available" : ""}. Select a path to inspect.${

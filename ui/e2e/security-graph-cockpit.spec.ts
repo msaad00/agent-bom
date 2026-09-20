@@ -655,7 +655,7 @@ test("top-path deep links settle and keep subsequent queue selection interactive
   expect(errors).toEqual([]);
 });
 
-test("ranked path selection focuses the in-place interactive graph and announces the change", async ({ page }) => {
+test("ranked path selection opens the ordered path and can expand the interactive graph", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await routeCockpit(page);
 
@@ -671,6 +671,8 @@ test("ranked path selection focuses the in-place interactive graph and announces
   expect(Math.abs(queueBox!.y - detailBox!.y)).toBeLessThan(200);
 
   await queue.getByRole("button", { name: /#2/ }).click();
+  await expect(detail.getByRole("button", { name: "Path", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await detail.getByRole("button", { name: "Graph", exact: true }).click();
   await expect(detail.getByTestId("security-graph-investigation")).toBeVisible();
   await expect(page.getByRole("status")).toContainText("Focused path 2");
   const [selectedRowBox, focusedDetailBox] = await Promise.all([
@@ -683,7 +685,7 @@ test("ranked path selection focuses the in-place interactive graph and announces
   expect(focusedDetailBox!.y).toBeLessThan(1000);
 });
 
-test("mobile ranked path selection moves the selected graph into view", async ({ page }) => {
+test("mobile ranked path selection moves the ordered path into view", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await routeCockpit(page);
 
@@ -693,8 +695,31 @@ test("mobile ranked path selection moves the selected graph into view", async ({
   const queue = page.getByLabel("Attack path queue");
   await queue.getByRole("button", { name: /#2/ }).click();
   const detail = page.getByRole("region", { name: "Selected path detail" });
-  await expect(detail.getByTestId("security-graph-investigation")).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Path", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(async () => (await detail.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(120);
+});
+
+test("a priority path outside the queue page never displays unrelated graph nodes", async ({ page }) => {
+  await routeCockpit(page);
+  const source = node("repo:isolated", "directory", "Isolated repository");
+  const target = node("ci:isolated", "ci_job", "Isolated build");
+  const path = { ...buildCockpitGraph().attack_paths[0]!, source: source.id, target: target.id,
+    hops: [source.id, target.id], edges: ["contains"], vuln_ids: [] };
+  await page.route("**/v1/graph/views/fix-first?**", route => route.fulfill({ json: {
+    scan_id: scanId, tenant_id: "default", created_at: createdAt, attack_campaigns: [],
+    summary: { total_paths: 3, matched_paths: 3, returned_paths: 1, highest_risk: 9.8, covered_findings: 0, node_count: 7, edge_count: 5 },
+    focus: { cve: "", package: "", agent: "" },
+    cards: [{ id: "isolated", rank: 1, title: "Isolated build path", summary: "Recorded build relationship",
+      attack_path: path, nodes: [source, target], sequence_labels: [], risk_reasons: [], next_actions: [],
+      affected: { agents: [], servers: [], packages: [], findings: [], credentials: [], tools: [] } }],
+  } }));
+  await page.goto("/security-graph?lens=attack-path");
+  await page.getByLabel("Attack path queue").getByRole("button", { name: /#1 FIX FIRST/i }).click();
+  const detail = page.getByRole("region", { name: "Selected path detail" });
+  await detail.getByRole("button", { name: "Graph", exact: true }).click();
+  const canvas = detail.getByTestId("security-graph-investigation");
+  await expect(canvas.getByText(/Selected path nodes are not available/)).toBeVisible();
+  await expect(canvas.locator(".react-flow__node")).toHaveCount(0);
 });
 
 async function openEvidenceControls(page: Page) {
@@ -889,6 +914,7 @@ for (const viewport of [
     await page.waitForLoadState("networkidle");
     await page.getByLabel("Attack path queue").getByRole("button", { name: /#1/ }).click();
     const detail = page.getByRole("region", { name: "Selected path detail" });
+    await detail.getByRole("button", { name: "Graph", exact: true }).click();
     const canvas = detail.getByTestId("security-graph-investigation");
     const legendBand = detail.getByTestId("security-graph-legend-band");
     const interactionBand = detail.getByTestId("security-graph-interaction-band");
@@ -921,6 +947,7 @@ for (const viewport of [
     await page.reload();
     await page.waitForLoadState("networkidle");
     await page.getByLabel("Attack path queue").getByRole("button", { name: /#1/ }).click();
+    await detail.getByRole("button", { name: "Graph", exact: true }).click();
     await expect(detail.getByTestId("security-graph-investigation")).toBeVisible();
     await expect.poll(async () =>
       detail.getByTestId("security-graph-investigation").locator(".react-flow__viewport").getAttribute("style"),

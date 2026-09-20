@@ -1165,7 +1165,9 @@ for (const proof of [
           relationships: [{ id: "context", source: source.id, target: target.id, relationship: "accessed", direction: "directed", traversable: false }],
           reachableTools: [], exposedCredentials: [], reachability: "unknown",
           hopEvidence: [{source_node_id: source.id, target_node_id: target.id, relationship: "accessed", source_snapshot_ids: ["synthetic-runtime:blocked"], relationship_provenance: "recorded", evidence_tier: "runtime_observed", freshness: "fresh", runtime_observed_state: "blocked", runtime_outcome: "blocked", direction: "directed", traversable: false, complete: false, truncated: false, correlation_identity_status: "current", authority: {
-            status: "recorded", derivation: null, reason_codes: [], decisions: Array.from({length: 9}, (_, index) => ({
+            status: "recorded", derivation: null, reason_codes: [], native_grants: ["SELECT", "INSERT"].map(privilege => ({
+              source: "snowflake-objects", privilege, account: "synthetic-account", role: "ANALYST", object_fqn: "DB.PUBLIC.ORDERS", object_type: "table",
+            })), decisions: Array.from({length: 8}, (_, index) => ({
               source: "authorization-evidence", provider: "gcp", decision: "allow", action: `storage.objects.read:${index}`,
               principal_id: source.id, resource: "projects/_/buckets/synthetic-example", binding_ids: [`source-grant:${index}`], observed_at: null,
             })),
@@ -1198,6 +1200,12 @@ for (const proof of [
     const bindings = authority.getByText("Source bindings (1)", {exact: true}).first();
     await bindings.click();
     await expect(authority.getByText("source-grant:4", {exact: true})).toBeVisible();
+    await authority.getByRole("button", {name: "Next receipts"}).click();
+    await expect(authority.getByText("SELECT · Native grant", {exact: true})).toBeVisible();
+    await authority.getByText("INSERT · Native grant", {exact: true}).scrollIntoViewIfNeeded();
+    await expect(authority.getByText("INSERT · Native grant", {exact: true})).toBeVisible();
+    await expect(authority).toContainText("Session authorization and policy effects require separate evidence");
+    await authority.getByRole("list", {name: "Authority receipts"}).evaluate(element => { element.scrollTop = 0; });
     expect(await authority.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
     await authority.evaluate(element => element.scrollIntoView({block: "start"}));
     await authority.screenshot({path: testInfo.outputPath(`hop-authority-${proof.theme}-${proof.width}.png`)});

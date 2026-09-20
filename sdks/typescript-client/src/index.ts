@@ -54,6 +54,14 @@ export type HopAuthorityEvidence = {
     binding_ids: string[];
     observed_at: string | null;
   }>;
+  native_grants?: Array<{
+    source: "snowflake-objects";
+    privilege: string;
+    account: string | null;
+    role: string | null;
+    object_fqn: string | null;
+    object_type: string | null;
+  }>;
   derivation: {
     basis: "recorded_graph_connections";
     source_scan_id: string;

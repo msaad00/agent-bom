@@ -12,14 +12,15 @@ export function GraphHopAuthority({ evidence }: { evidence: HopAuthorityEvidence
   const [page, setPage] = useState(0);
   const decisions = Array.isArray(evidence.decisions) ? evidence.decisions.filter(item => item && typeof item === "object").slice(0, 16) : [];
   const witnesses = Array.isArray(evidence.derivation?.paths) ? evidence.derivation.paths.filter(item => item && typeof item === "object").slice(0, 16) : [];
-  const records = [...decisions.map(item => ({ decision: item, witness: null })), ...witnesses.map(item => ({ decision: null, witness: item }))];
+  const grants = Array.isArray(evidence.native_grants) ? evidence.native_grants.filter(item => item && typeof item === "object").slice(0, 16) : [];
+  const records = [...decisions.map(item => ({ decision: item, witness: null, grant: null })), ...grants.map(item => ({ decision: null, witness: null, grant: item })), ...witnesses.map(item => ({ decision: null, witness: item, grant: null }))];
   const current = Math.min(page, Math.max(0, Math.ceil(records.length / PAGE_SIZE) - 1));
   return <section aria-label="Recorded authority" className="scroll-mt-20 space-y-2 border-t border-outline pt-3">
     <h4 className="text-sm font-semibold">Recorded authority</h4>
-    <p className="text-xs text-ink-secondary">{decisions.length} action receipts · {witnesses.length} source witnesses{evidence.status === "partial" ? " · Partial evidence" : ""}</p>
+    <p className="text-xs text-ink-secondary">{decisions.length} action receipts · {grants.length} native grants · {witnesses.length} source witnesses{evidence.status === "partial" ? " · Partial evidence" : ""}</p>
     <p className="text-xs text-ink-secondary">Snapshot evidence, not a current permission check. Conditions, expiry and revocation require re-evaluation. A grant does not prove successful execution.</p>
     <ol tabIndex={0} aria-label="Authority receipts" className="max-h-72 overflow-y-auto overscroll-contain divide-y divide-outline focus-visible:outline-2 focus-visible:outline-emerald-500">
-      {records.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE).map(({ decision, witness }, index) => <li key={current * PAGE_SIZE + index} className="min-w-0 space-y-2 py-2">
+      {records.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE).map(({ decision, witness, grant }, index) => <li key={current * PAGE_SIZE + index} className="min-w-0 space-y-2 py-2">
         {decision ? <>
           <p className="break-words font-medium [overflow-wrap:anywhere]">{text(decision.action)} · {text(decision.decision).replaceAll("_", " ")}</p>
           <dl className="grid gap-2 text-xs sm:grid-cols-2">
@@ -28,6 +29,12 @@ export function GraphHopAuthority({ evidence }: { evidence: HopAuthorityEvidence
           <details className="text-xs"><summary className="cursor-pointer">Source bindings ({strings(decision.binding_ids).length})</summary>
             <ul className="mt-1 space-y-1">{strings(decision.binding_ids).map((binding, i) => <li key={i} className="break-all font-mono">{binding}</li>)}</ul>
           </details>
+        </> : grant ? <>
+          <p className="break-words font-medium [overflow-wrap:anywhere]">{text(grant.privilege)} · Native grant</p>
+          <dl className="grid gap-2 text-xs sm:grid-cols-2">
+            {[["Role", grant.role], ["Object", grant.object_fqn], ["Account", grant.account], ["Object type", grant.object_type]].map(([label, value]) => <div key={label}><dt className="text-ink-secondary">{label}</dt><dd className="break-words [overflow-wrap:anywhere]">{text(value)}</dd></div>)}
+          </dl>
+          <p className="text-xs text-ink-secondary">Recorded Snowflake grant. Session authorization and policy effects require separate evidence.</p>
         </> : witness ? <>
           <p className="text-xs">{text(witness.access).replaceAll("_", " ")} · Grant principal: <span className="break-all font-mono">{text(witness.grant_principal_id)}</span></p>
           <p className="break-all text-xs">Source snapshot: {text(evidence.derivation?.source_scan_id)}</p>

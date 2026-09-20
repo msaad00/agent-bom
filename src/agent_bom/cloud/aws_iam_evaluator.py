@@ -51,13 +51,14 @@ def _condition_matches(operator: str, actual: tuple[str, ...] | None, expected: 
         qualifier = ""
     elif qualifier not in {"ForAllValues", "ForAnyValue"}:
         return None
+    if actual is None:
+        # The caller provides evidence, not a proven complete AWS request.
+        # No key means unknown, not proven absence: neither IfExists nor Null
+        # can turn missing evidence into an unconditional policy decision.
+        return None
     if base == "Null" and not qualifier:
         want_null = any(value.lower() == "true" for value in expected)
-        return (actual is None) == want_null
-    if actual is None:
-        # This evaluator receives partial evidence, not a complete AWS request.
-        # Missing context remains unknown, distinct from an explicit empty set.
-        return True if base.endswith("IfExists") else None
+        return not want_null
     base = base.removesuffix("IfExists")
     negated = base in {"StringNotEquals", "ArnNotEquals", "StringNotLike", "ArnNotLike"}
     if base in {"StringEquals", "ArnEquals", "StringNotEquals", "ArnNotEquals"}:

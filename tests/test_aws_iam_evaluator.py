@@ -191,3 +191,32 @@ def test_valid_explicit_deny_remains_authoritative_alongside_malformed_condition
     )
     assert result.decision is IamDecision.EXPLICIT_DENY
     assert result.matched_deny_sids == ("deny",)
+
+
+@pytest.mark.parametrize("operator", ["StringEqualsIfExists", "ForAllValues:StringEqualsIfExists", "BogusIfExists", "Null"])
+@pytest.mark.parametrize("context", [None, {}, {"unrelated": "value"}])
+def test_missing_request_context_cannot_prove_ifexists_or_null(operator, context) -> None:
+    condition_value = "true" if operator == "Null" else "team"
+    guarded = policy(
+        {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*", "Condition": {operator: {"aws:TagKeys": condition_value}}}
+    )
+    result = evaluate_identity_policies([guarded], action="s3:GetObject", resource="arn:aws:s3:::bucket/key", context=context)
+    assert result.decision is IamDecision.INDETERMINATE
+
+
+@pytest.mark.parametrize(
+    ("operator", "expected", "actual", "decision"),
+    [
+        ("StringEqualsIfExists", "team", "team", IamDecision.ALLOW),
+        ("StringEqualsIfExists", "team", "outside", IamDecision.IMPLICIT_DENY),
+        ("BogusIfExists", "team", "team", IamDecision.INDETERMINATE),
+        ("Null", "false", "team", IamDecision.ALLOW),
+        ("Null", "true", "team", IamDecision.IMPLICIT_DENY),
+    ],
+)
+def test_supplied_context_is_evaluated_without_inventing_absence(operator, expected, actual, decision) -> None:
+    guarded = policy({"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*", "Condition": {operator: {"aws:TagKeys": expected}}})
+    result = evaluate_identity_policies(
+        [guarded], action="s3:GetObject", resource="arn:aws:s3:::bucket/key", context={"aws:TagKeys": actual}
+    )
+    assert result.decision is decision

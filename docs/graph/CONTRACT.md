@@ -112,8 +112,9 @@ AWS identity-policy evaluation retains supported string/ARN set qualifiers:
 `ForAnyValue` requires one. Negated operators compare each request value against
 all policy values before applying the set qualifier. See the
 [AWS condition-operator reference](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html).
-Missing request context remains unknown; an explicitly supplied empty value
-set is distinct. Malformed conditions make their policy incomplete instead of
+Missing request context remains unknown, including for `IfExists` and `Null`:
+this contract does not carry proof that a key was absent from a complete AWS
+request. An explicitly supplied empty value set is distinct. Malformed conditions make their policy incomplete instead of
 becoming unconditional grants. A valid explicit deny retains precedence.
 
 This evaluator does not establish a complete AWS effective-permission verdict:

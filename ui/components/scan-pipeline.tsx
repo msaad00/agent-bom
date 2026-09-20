@@ -11,7 +11,7 @@
  * on any node.
  */
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -20,7 +20,6 @@ import {
   Position,
   ReactFlowProvider,
   useReactFlow,
-  useNodesInitialized,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -51,7 +50,7 @@ import {
   type PipelineNodeKind,
   type ScannerDomain,
 } from "@/lib/scan-pipeline-graph";
-import { graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
+import { CONTROLS_CLASS, graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
 
 // ── Step node component ─────────────────────────────────────────────────────
 
@@ -132,11 +131,11 @@ const STATUS_STYLES: Record<
 
 function LaneFindings({ data }: { data: PipelineNodeData }) {
   if (data.status === "skipped" || data.ran === false) {
-    return <p className="text-[10px] text-[var(--text-tertiary)]">not run</p>;
+    return <p className="text-xs text-[var(--text-tertiary)]">not run</p>;
   }
   if (data.findings == null) {
     return (
-      <p className="text-[10px] text-[var(--text-tertiary)]">
+      <p className="text-xs text-[var(--text-tertiary)]">
         {data.status === "running" ? "scanning…" : data.detail ?? "—"}
       </p>
     );
@@ -145,7 +144,7 @@ function LaneFindings({ data }: { data: PipelineNodeData }) {
   return (
     <div className="flex items-center gap-1.5">
       <span
-        className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] ${
+        className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-xs ${
           hasFindings
             ? "border-[var(--severity-high-border)] bg-[var(--severity-high-bg)] text-[color:var(--severity-high)]"
             : "border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[color:var(--status-success)]"
@@ -184,9 +183,7 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
           data.onActivate();
         }
       }}
-      className={`rounded-2xl border-2 ${style.border} ${style.bg} ${
-        isScanner ? "min-w-[150px] max-w-[178px]" : "min-w-[176px] max-w-[208px]"
-      } cursor-pointer overflow-hidden shadow-lg shadow-[var(--shadow-color)] transition-shadow ${
+      className={`rounded-2xl border-2 ${style.border} ${style.bg} w-[240px] cursor-pointer overflow-hidden shadow-lg shadow-[var(--shadow-color)] transition-shadow ${
         data.selected ? "ring-2 ring-emerald-400/70 ring-offset-1 ring-offset-transparent" : ""
       }`}
     >
@@ -197,10 +194,7 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
           <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-[var(--surface)] ring-1 ring-[var(--border-subtle)]">
             <StepIcon className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
           </div>
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-              {isScanner ? "scanner" : data.nodeId}
-            </div>
+          <div className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
               {data.label}
             </span>
@@ -214,7 +208,7 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
           <LaneFindings data={data} />
         ) : (
           <>
-            <p className="text-[10px] leading-tight text-[var(--text-tertiary)]">
+            <p className="text-xs leading-tight text-[var(--text-tertiary)]">
               {data.status !== "pending" && data.message ? data.message : data.description}
             </p>
 
@@ -223,7 +217,7 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
                 {Object.entries(data.stats).map(([k, v]) => (
                   <span
                     key={k}
-                    className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[9px] text-[var(--text-secondary)]"
+                    className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]"
                   >
                     {v} {k}
                   </span>
@@ -241,7 +235,7 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
             )}
 
             {duration && (
-              <p className="mt-1 font-mono text-[9px] text-[var(--text-tertiary)]">{duration}s</p>
+              <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">{duration}s</p>
             )}
           </>
         )}
@@ -284,8 +278,8 @@ function ScanPipelineInner({
 
   const { nodes, edges } = useGraphLayout("sankey", rawNodes, rawEdges, {
     sankey: {
-      nodeWidth: 180,
-      nodeHeight: 130,
+      nodeWidth: 240,
+      nodeHeight: 150,
       columnGap: 64,
       rowGap: 16,
     },
@@ -299,23 +293,23 @@ function ScanPipelineInner({
     [edges, nodes],
   );
 
-  const fitOptions = useMemo(() => selectedStepId
-    ? { nodes: [{ id: selectedStepId }], minZoom: 1, maxZoom: 1.2, padding: 0.3, duration: 200 }
-    : { padding: 0.16, maxZoom: 1, duration: 200 }, [selectedStepId]);
-  const { fitView, getNode, setCenter } = useReactFlow();
-  const initialized = useNodesInitialized();
+  const { fitView, viewportInitialized } = useReactFlow();
+  const [overview, setOverview] = useState(false);
+  const focusReadable = useCallback(() => {
+    setOverview(false);
+    // Queue the fit until React Flow has measured the controlled nodes. The
+    // shared stage-event updates do not carry measured dimensions themselves.
+    void fitView({ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2, duration: 200 });
+  }, [fitView, selectedStepId]);
+  const fitOverview = useCallback(() => {
+    setOverview(true);
+    void fitView({ padding: 0.16, minZoom: 0.1, maxZoom: 1, duration: 200 });
+  }, [fitView]);
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      const selected = selectedStepId ? getNode(selectedStepId) : undefined;
-      if (selected) {
-        void setCenter(selected.position.x + (selected.measured?.width ?? 180) / 2,
-          selected.position.y + (selected.measured?.height ?? 130) / 2, { zoom: 1.1, duration: 200 });
-      } else {
-        void fitView(fitOptions);
-      }
-    });
+    if (!viewportInitialized) return;
+    const frame = requestAnimationFrame(focusReadable);
     return () => cancelAnimationFrame(frame);
-  }, [fitView, getNode, setCenter, initialized, fitOptions, selectedStepId]);
+  }, [viewportInitialized, focusReadable]);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -330,12 +324,11 @@ function ScanPipelineInner({
         nodes={nodes}
         edges={displayEdges}
         nodeTypes={nodeTypes}
+        // React Flow fits after its own dimensions settle; keep that initial
+        // fit focused so the first frame is readable even before effects run.
         fitView
-        // Re-fit whenever the node set changes so a live pipeline that grows
-        // scanner lanes mid-run always frames the whole DAG in the container
-        // instead of clipping the tail off-screen.
-        fitViewOptions={fitOptions}
-        minZoom={0.25}
+        fitViewOptions={{ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2 }}
+        minZoom={0.1}
         maxZoom={1.5}
         panOnDrag={interactive}
         zoomOnScroll={interactive}
@@ -349,14 +342,21 @@ function ScanPipelineInner({
         {interactive ? (
           <Controls
             showInteractive={false}
-            className="!border !border-[var(--border-subtle)] !bg-[var(--surface)] !shadow-md"
+            showFitView={false}
+            className={CONTROLS_CLASS}
           />
         ) : null}
       </ReactFlow>
       {interactive ? (
-        <div className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-2.5 py-1 text-[10px] font-medium text-[var(--text-tertiary)] backdrop-blur">
-          <Move className="h-3 w-3" aria-hidden="true" />
-          Drag to pan · scroll to zoom{onStepClick ? " · select a stage for details" : ""}
+        <div className="absolute inset-x-2 top-2 flex flex-wrap items-center justify-end gap-2 text-xs">
+          <span className="pointer-events-none hidden items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[var(--text-secondary)] sm:inline-flex">
+            <Move className="h-3 w-3" aria-hidden="true" />
+            Pan to explore · select a stage to inspect
+          </span>
+          <button type="button" onClick={overview ? focusReadable : fitOverview}
+            className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1.5 font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]">
+            {overview ? "Readable view" : "Fit overview"}
+          </button>
         </div>
       ) : null}
     </div>

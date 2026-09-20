@@ -361,9 +361,10 @@ body {
 /* Exposure-path presentation lives in CSS so the responsive path proof uses
    one DOM contract without repeating long utility strings in route JavaScript. */
 .ep-root { @apply relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]; }
-.ep-body { @apply space-y-5 p-5 sm:p-7; }
-.ep-header { @apply flex flex-wrap items-start justify-between gap-4; }
-.ep-header-copy { @apply w-full min-w-0 space-y-2 sm:flex-1; }
+.ep-body { @apply space-y-2 p-4; }
+.ep-header { @apply flex flex-wrap items-start justify-between gap-2; }
+.ep-header-copy { @apply w-full min-w-0 space-y-1.5 sm:flex-1; }
+.ep-header-action { @apply shrink-0 self-center; }
 .ep-badges { @apply flex flex-wrap items-center gap-2; }
 .ep-severity { @apply rounded-md bg-red-500/10 px-2.5 py-1 text-[15px] font-semibold text-red-700 dark:text-red-200; }
 .ep-kev { @apply rounded-md bg-amber-500/10 px-2.5 py-1 text-[15px] font-semibold text-amber-700 dark:text-amber-200; }
@@ -407,7 +408,7 @@ body {
 .ep-empty-proof { @apply px-3 py-3 text-xs text-[color:var(--text-secondary)]; }
 .ep-view-option { @apply flex items-center gap-1.5 px-2.5 py-1.5 text-[15px] font-medium transition; }
 .ep-severity-rail { @apply absolute inset-y-0 left-0 w-1 bg-gradient-to-b; }
-.ep-actions { @apply flex flex-wrap items-center gap-3 border-y border-[color:var(--border-subtle)] py-4; }
+
 .ep-role-row { @apply grid gap-2 sm:grid-cols-2; }
 .ep-evidence-values { @apply flex flex-wrap gap-1.5; }
 
@@ -783,9 +784,9 @@ main > div {
   transition: box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
-.ep-outcome-title { @apply max-w-4xl text-2xl font-semibold leading-tight tracking-tight text-[color:var(--foreground)] sm:text-3xl; }
+.ep-outcome-title { @apply max-w-4xl break-words text-xl font-semibold leading-tight tracking-tight text-[color:var(--foreground)] sm:text-2xl; }
 
-.ep-action-detail { @apply text-[15px] text-[color:var(--text-secondary)]; }
+
 
 .gc-impact-label { @apply mb-2 block text-[15px] text-[color:var(--text-secondary)]; }
 

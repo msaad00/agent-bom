@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const source = {
   source_id: "src-prod-cloud",
@@ -55,7 +55,7 @@ const jobWithoutTelemetry = {
   request: {},
 };
 
-test("jobs page links sources to completed evidence surfaces", async ({ page }) => {
+async function routeJobs(page: Page) {
   await page.route("**/health", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -225,6 +225,10 @@ test("jobs page links sources to completed evidence surfaces", async ({ page }) 
     });
   });
 
+}
+
+test("jobs page links sources to completed evidence surfaces", async ({ page }) => {
+  await routeJobs(page);
   await page.goto("/jobs");
   await page.waitForLoadState("networkidle");
 
@@ -245,3 +249,56 @@ test("jobs page links sources to completed evidence surfaces", async ({ page }) 
   await expect(unavailable.getByText("Per-stage telemetry unavailable", { exact: true })).toBeVisible();
   await expect(unavailable).toContainText("The scan result is available, but this executor did not emit stage events or stage timestamps.");
 });
+
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`pipeline labels and controls remain readable at ${width}px ${theme}`, async ({ page }, testInfo) => {
+      await routeJobs(page);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/jobs");
+      await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);
+      const panel = page.getByTestId("job-pipeline-job-prod-cloud");
+      await expect(panel.getByRole("navigation", { name: "Scan stages" })).toBeVisible();
+      const firstLabel = panel.locator('.react-flow__node[data-id="discovery"]').getByText("Discovery", { exact: true });
+      const renderedSize = () => firstLabel.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).fontSize) *
+        new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a);
+      await expect.poll(renderedSize).toBeGreaterThanOrEqual(12);
+      await panel.locator(".react-flow").scrollIntoViewIfNeeded();
+      await expect(firstLabel).toBeInViewport();
+      const zoom = panel.getByRole("button", { name: "Zoom In", exact: true });
+      const colors = await zoom.evaluate((element) => {
+        const background = getComputedStyle(element).backgroundColor;
+        const text = getComputedStyle(element).color;
+        const luminance = (color: string) => {
+          const channels = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+            const normalized = value / 255;
+            return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+          });
+          return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+        };
+        const bright = Math.max(luminance(background), luminance(text));
+        const dark = Math.min(luminance(background), luminance(text));
+        return { background, text, contrast: (bright + 0.05) / (dark + 0.05) };
+      });
+      await testInfo.attach("control-colors", { body: JSON.stringify(colors), contentType: "application/json" });
+      expect(colors.contrast).toBeGreaterThanOrEqual(3);
+      if (theme === "dark") expect(colors.background).not.toBe("rgb(254, 254, 254)");
+      await panel.getByRole("navigation", { name: "Scan stages" }).getByRole("button", { name: "Cloud posture", exact: true }).click();
+      await expect(panel.getByRole("complementary", { name: "Stage details" })).toContainText("Cloud posture");
+      await panel.locator(".react-flow").scrollIntoViewIfNeeded();
+      await expect(panel.getByRole("button", { name: "Inspect Cloud posture" })).toBeInViewport();
+      await panel.getByRole("button", { name: "Close stage detail" }).click();
+      await expect.poll(renderedSize).toBeGreaterThanOrEqual(12);
+      await panel.getByRole("button", { name: "Fit overview", exact: true }).click();
+      await expect(panel.getByRole("button", { name: "Readable view", exact: true })).toBeVisible();
+      await panel.getByRole("button", { name: "Readable view", exact: true }).click();
+      await expect.poll(renderedSize).toBeGreaterThanOrEqual(12);
+      await panel.locator(".react-flow").scrollIntoViewIfNeeded();
+      await expect(firstLabel).toBeInViewport();
+      await panel.scrollIntoViewIfNeeded();
+      await panel.screenshot({ path: testInfo.outputPath(`pipeline-${theme}-${width}.png`) });
+    });
+  }
+}

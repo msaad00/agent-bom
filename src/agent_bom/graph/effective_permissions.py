@@ -179,6 +179,11 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     admin_by_policy_actions: set[str] = set()
     for edge in graph.edges:
         rel = edge.relationship
+        # Context-only links cannot acquire authority through a derived overlay.
+        # Attached policy documents remain available to the policy evaluator;
+        # only access, membership and delegation walks require traversability.
+        if not edge.traversable and rel in {*_ASSUME_RELS, RelationshipType.CAN_ACCESS, RelationshipType.MEMBER_OF}:
+            continue
         if rel == RelationshipType.CAN_ACCESS and edge.source in principal_ids:
             target = graph.nodes.get(edge.target)
             if target is not None and target.entity_type in _RESOURCE_TYPES:

@@ -88,12 +88,12 @@ export function formatExposureEntityDisplay(
     case "finding":
       return {
         title: trimmed,
-        subtitle: "Reachable vulnerability",
+        subtitle: "Vulnerability finding",
       };
     case "credential":
       return {
         title: titleCaseWords(trimmed),
-        subtitle: "Exposed secret surface",
+        subtitle: "Credential reference",
       };
     case "tool":
       return {

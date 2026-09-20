@@ -39,3 +39,8 @@ describe("entity-display", () => {
     ).toBe("Claude Desktop → GitHub connector → form-data → CVE-2025-7783");
   });
 });
+
+it("entity kinds do not assert reachability or secret exposure without assessment", () => {
+  expect(formatExposureEntityDisplay("CVE-fixture", "finding").subtitle).toBe("Vulnerability finding");
+  expect(formatExposureEntityDisplay("TOKEN_REF", "credential").subtitle).toBe("Credential reference");
+});

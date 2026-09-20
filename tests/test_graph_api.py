@@ -1433,8 +1433,10 @@ class _RecordingGraphStore:
             next_cursor = encode_graph_cursor(page[-1])
         return self.graph.scan_id, self.graph.created_at, page, full_total, next_cursor
 
-    def edges_for_node_ids(self, *, tenant_id: str = "", scan_id: str = "", node_ids: set[str]):
+    def edges_for_node_ids(self, *, tenant_id: str = "", scan_id: str = "", node_ids: set[str], induced_only: bool = False):
         self.calls.append(("edges_for_node_ids", tenant_id, scan_id, tuple(sorted(node_ids))))
+        if induced_only:
+            return [edge for edge in self.graph.edges if edge.source in node_ids and edge.target in node_ids]
         return [edge for edge in self.graph.edges if edge.source in node_ids or edge.target in node_ids]
 
     def search_nodes(
@@ -1830,6 +1832,41 @@ class TestGraphStoreBackendSelection:
         assert body["cards"][0]["next_actions"][0]["href"] == "/findings?cve=CVE-2026-1"
         assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
+    @pytest.mark.parametrize(
+        ("label", "package", "cve", "expected"),
+        [
+            ("pyyaml@5.3", "pyyaml", "CVE-2026-1", 1),
+            ("pyyaml@5.3", " PYYAML ", "CVE-2026-1", 1),
+            ("pyyaml@5.3", "pyyaml@5.3", "CVE-2026-1", 1),
+            ("pyyaml@5.3", "pyyaml@5.4", "CVE-2026-1", 0),
+            ("pyyaml@5.3", "yaml", "CVE-2026-1", 0),
+            ("pyyaml@5.3", "pyyaml", "CVE-2026-2", 0),
+            ("@scope/tool@1.0", "@scope/tool", "CVE-2026-1", 1),
+            ("@scope/tool@1.0", "@scope/tool@1.0", "CVE-2026-1", 1),
+            ("@scope/tool@1.0", "@scope/tool@2.0", "CVE-2026-1", 0),
+            ("@scope/tool@1.0", "tool", "CVE-2026-1", 0),
+            ("@scope/tool", "@scope/tool", "CVE-2026-1", 1),
+        ],
+    )
+    def test_fix_first_package_focus_matches_name_or_exact_version(self, recording_graph_store, label, package, cve, expected):
+        graph = recording_graph_store.graph
+        graph.add_node(UnifiedNode(id="pkg:focus", entity_type=EntityType.PACKAGE, label=label))
+        graph.add_node(UnifiedNode(id="vuln:focus", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+        graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:focus",
+                hops=["agent:a", "pkg:focus", "vuln:focus"],
+                edges=["depends_on", "vulnerable_to"],
+                composite_risk=90,
+                vuln_ids=["CVE-2026-1"],
+            )
+        )
+        response = TestClient(app).get("/v1/graph/views/fix-first", params={"scan_id": "store-scan", "package": package, "cve": cve})
+        assert response.status_code == 200
+        assert response.json()["summary"]["matched_paths"] == expected
+        assert len(response.json()["cards"]) == expected
+
     def test_fix_first_cards_dedupe_presentational_duplicates_but_keep_identity_and_assets(self, recording_graph_store):
         graph = recording_graph_store.graph
         graph.add_node(UnifiedNode(id="agent:b", entity_type=EntityType.AGENT, label="agent-b"))
@@ -1898,7 +1935,8 @@ class TestGraphStoreBackendSelection:
         assert {tuple(card["affected"]["agents"]) for card in body["cards"]} == {("agent-a",), ("agent-b",)}
         assert {tuple(card["affected"]["servers"]) for card in body["cards"]} == {("asset-one",), ("asset-two",)}
 
-    def test_fix_first_graph_view_derives_paths_when_snapshot_has_topology_but_no_path_rows(self, recording_graph_store):
+    @pytest.mark.parametrize("node_reachable", [False, True])
+    def test_fix_first_graph_view_derives_paths_when_snapshot_has_topology_but_no_path_rows(self, recording_graph_store, node_reachable):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
         recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data"))
         recording_graph_store.graph.add_node(UnifiedNode(id="cred:aws", entity_type=EntityType.CREDENTIAL, label="AWS_SECRET_ACCESS_KEY"))
@@ -1910,6 +1948,7 @@ class TestGraphStoreBackendSelection:
                 label="CVE-2026-1",
                 severity="critical",
                 risk_score=9.8,
+                attributes={"graph_reachable": True} if node_reachable else {},
             )
         )
         recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:a:fs", relationship=RelationshipType.USES))
@@ -1935,6 +1974,13 @@ class TestGraphStoreBackendSelection:
         assert body["cards"][0]["affected"]["findings"] == ["CVE-2026-1"]
         assert body["cards"][0]["affected"]["credentials"] == ["AWS_SECRET_ACCESS_KEY"]
         assert body["cards"][0]["affected"]["tools"] == ["run_shell"]
+        # Structural uses/dependency edges must not imply inherited authority
+        # after the hop-evidence classifier qualifies this path as unknown.
+        assert body["cards"][0]["exposure_path"]["reachability"] == "unknown"
+        if node_reachable:
+            assert "effective permission, successful use, and exploitation require separate evidence" in body["cards"][0]["summary"]
+        else:
+            assert "Unverified structural candidate" in body["cards"][0]["summary"]
 
         queue = client.get("/v1/graph/attack-paths", params={"scan_id": "store-scan", "limit": 5}).json()
         assert queue["pagination"]["total"] == 1
@@ -1954,6 +2000,7 @@ class TestGraphStoreBackendSelection:
         assert queue["attack_paths"][0]["hops"] == ["agent:a", "server:a:fs", "pkg:npm:form-data", "vuln:cve"]
         assert queue["attack_paths"][0]["edges"] == ["uses", "depends_on", "vulnerable_to"]
         assert queue["attack_paths"][0]["exposure_path"]["severity"] == "critical"
+        assert queue["attack_paths"][0]["summary"] == body["cards"][0]["summary"]
         assert {(edge["source_id"], edge["target_id"]) for edge in queue["edges"]} >= {
             ("agent:a", "server:a:fs"),
             ("server:a:fs", "pkg:npm:form-data"),

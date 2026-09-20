@@ -244,6 +244,48 @@ unknown, including when a high-priority asset is present. API and MCP legacy
 evidence dimensions cannot support that verdict. Projection qualification does
 not rewrite stored path receipts.
 
+### Inspect a selected path's evidence
+
+Use `agent-bom graph-paths exposure --api-url "$AGENT_BOM_API_URL" --format json`
+with the control plane's provisioned authentication. The response includes a
+`hopEvidence` array alongside `evidenceDimensions`. Continue with the returned
+cursor to keep the same tenant, snapshot, and risk filter. In the dashboard,
+select the path, expand its evidence disclosure, then select one hop to inspect
+its receipt. The filter searches the loaded path; it does not run a new traversal.
+
+| Receipt field | Interpretation |
+|---|---|
+| `source_snapshot_ids` | Recorded source snapshots, displayed as inert identifiers. The inspector does not fetch or execute locators. |
+| `freshness`, `relationship_provenance`, `correlation_identity_status` | Independent qualifications; missing or mismatched receipts remain unavailable. |
+| `runtime_observed_state` | Whether an invocation or blocked attempt was observed; this is not proof of effective permission. |
+| `runtime_outcome` | `blocked`, `failed`, or `unknown`. An allowed invocation and a mixed aggregate leave the downstream outcome unknown. |
+| `direction`, `traversable` | Eligibility for graph traversal, separate from successful execution. |
+
+A blocked receipt or an aggregate in which every observed attempt failed cannot
+support confirmed downstream reachability. A CVSS network attack vector, KEV
+entry, EPSS score, or a bare exploitability label does not supply an
+exploitability assessment. An assessment must satisfy the existing evidence
+contract, including references; its status and limitations remain visible.
+
+The hop projection excludes unclassified receipt fields. Older snapshots need
+no database migration: receipts use the existing JSON storage, and missing
+outcomes project as unknown. Projection does not change historical rows. To
+refresh an assessment, collect new source evidence and correlate a new snapshot;
+a display change or a proposed fix is not remediation verification. Preserve
+old snapshots for comparison. A rollback to an evaluator that ignores negative
+outcomes can restore overstated labels; do not treat those labels as proof.
+
+Permission overlays exclude context-only access, membership, and delegation
+links from newly derived authority. This does not reconstruct missing action or
+policy-condition evidence. Previously persisted derived edges remain historical
+records; rebuild from source evidence to obtain the corrected derivation.
+
+Exposure pages retrieve relationships between their selected node IDs. Other
+incident-edge queries retain their existing behavior. Response limits and cursor
+continuation still apply; a small rendered page does not establish full-estate
+coverage. The inspector renders at most eight relationship rows at once and
+keeps the original hop positions when filtering.
+
 Node IDs containing slashes (filesystem findings and scoped package identifiers)
 use `GET /v1/graph/node-context?node_id=...` and
 `GET /v1/graph/node-neighbors?node_id=...`. These authenticated query aliases

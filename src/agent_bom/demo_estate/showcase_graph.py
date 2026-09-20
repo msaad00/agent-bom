@@ -36,7 +36,7 @@ SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
 # ``Remediation`` object frozen to its Python repr, and a running demo would have
 # served that snapshot forever. The seven-day gap is the drift lens's window and
 # is preserved on every bump.
-_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 14, 0, 0, 0, tzinfo=timezone.utc)
+_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 20, 0, 0, 0, tzinfo=timezone.utc)
 _SHOWCASE_IMPORT_NOW = datetime.now(timezone.utc)
 # Preserve the deterministic target once it is in the past. Before then, clamp
 # to the current UTC day's start so a release candidate never presents a
@@ -451,15 +451,17 @@ def build_showcase_graph(
 
     # Real CVEs on real package@versions — mirrors the demo advisory catalog.
     from agent_bom.demo_advisories import DEMO_ADVISORIES
+    from agent_bom.package_utils import canonical_package_key
 
     advisory_by_id = {advisory.vuln_id: advisory for advisory in DEMO_ADVISORIES}
     kev_cves = {"CVE-2023-4863"}
     for purl, (sid, cve, sev, score) in SHOWCASE_PACKAGES.items():
-        pid = f"pkg:{purl}"
-        node(pid, EntityType.PACKAGE, purl)
+        advisory = advisory_by_id[cve]
+        package_name, package_version = purl.rsplit("@", 1)
+        pid = f"pkg:{canonical_package_key(package_name, package_version, advisory.ecosystem)}"
+        node(pid, EntityType.PACKAGE, purl, ecosystem=advisory.ecosystem, version=package_version)
         edge(f"server:{sid}", pid, RelationshipType.DEPENDS_ON)
         vid = f"vuln:{cve}"
-        advisory = advisory_by_id.get(cve)
         node(
             vid,
             EntityType.VULNERABILITY,
@@ -478,7 +480,7 @@ def build_showcase_graph(
         edge(pid, vid, RelationshipType.VULNERABLE_TO)
 
     # The ETL workload also uses the published Requests release in DEMO_INVENTORY.
-    edge("server:etl-server", "pkg:requests@2.28.0", RelationshipType.DEPENDS_ON)
+    edge("server:etl-server", "pkg:pypi:requests@2.28.0", RelationshipType.DEPENDS_ON)
 
     # Credential-backed env on servers — lights up credential-exposure edges.
     creds = {
@@ -881,7 +883,7 @@ def project_estate_onto_showcase(
     """Extend a showcase snapshot with the enterprise estate.
 
     *Extend*, not replace. The showcase's hand-built incident chain
-    (``agent:cursor`` → ``server:shell-runner-server`` → ``pkg:pyyaml@5.3`` →
+    (``agent:cursor`` → ``server:shell-runner-server`` → ``pkg:pypi:pyyaml@5.3`` →
     ``vuln:CVE-2020-14343`` → ``cred:aws-secret``) is the demo's headline and is
     asserted by ``tests/test_demo_estate_bootstrap.py``; it is untouched here.
     Seeding the estate as a *separate* snapshot was the alternative and was

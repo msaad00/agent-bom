@@ -49,6 +49,32 @@ def test_seeds_when_empty(store: SQLiteGraphStore) -> None:
     assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == SHOWCASE_SCAN_ID
 
 
+def test_showcase_package_ids_match_finding_links_after_restart(store: SQLiteGraphStore) -> None:
+    """A package finding must pin a real node in its persisted snapshot."""
+    from agent_bom.demo_advisories import DEMO_ADVISORIES
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_PACKAGES
+    from agent_bom.finding import blast_radius_to_finding
+    from agent_bom.models import BlastRadius, Package, Severity, Vulnerability
+
+    seed_showcase_graph_if_empty(store)
+    reloaded = SQLiteGraphStore(db_path=store._db_path).load_graph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
+    advisories = {item.vuln_id: item for item in DEMO_ADVISORIES}
+    for package_label, (_server, cve, _severity, _score) in SHOWCASE_PACKAGES.items():
+        name, version = package_label.rsplit("@", 1)
+        finding = blast_radius_to_finding(
+            BlastRadius(
+                package=Package(name=name, version=version, ecosystem=advisories[cve].ecosystem),
+                vulnerability=Vulnerability(id=cve, severity=Severity.HIGH, summary="Synthetic fixture"),
+                affected_servers=[],
+                affected_agents=[],
+                exposed_credentials=[],
+                exposed_tools=[],
+            )
+        )
+        assert finding.node_id in reloaded.nodes, (package_label, finding.node_id)
+        assert any(finding.node_id in path.hops and cve in path.vuln_ids for path in reloaded.attack_paths), package_label
+
+
 def test_seed_records_completed_attack_path_analysis(store: SQLiteGraphStore) -> None:
     """A seeded path queue must carry the analysis claim it actually earned."""
     from agent_bom.api.routes.graph import _derived_attack_paths

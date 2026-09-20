@@ -437,7 +437,7 @@ export function toExposurePathFromAttackPath(
       direction: receipt?.direction === "bidirectional" ? "bidirectional" : receipt?.direction === "directed" ? "directed" : undefined,
       traversable: receipt?.traversable,
       confidence: receipt?.confidence ?? undefined,
-      evidenceCount: receipt?.source_snapshot_ids.length,
+      evidenceCount: Array.isArray(receipt?.source_snapshot_ids) ? receipt.source_snapshot_ids.length : undefined,
     };
   });
   const packages = hops.filter((hop) => hop.role === "package");
@@ -772,7 +772,8 @@ export function matchesAttackPathFocus(
     if (!inPathVulns && !inHopLabels) return false;
   }
 
-  if (packageName && !labels.some((node) => node.type === "package" && node.label === packageName)) {
+  if (packageName && !labels.some((node) => node.type === "package" &&
+    (node.label === packageName || normalizeLabel(parsePackageHopLabel(node.rawLabel).packageName) === packageName))) {
     return false;
   }
 

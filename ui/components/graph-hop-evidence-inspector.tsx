@@ -61,6 +61,8 @@ export function GraphHopEvidenceInspector({
         const open = selected === index;
         const panelId = `${id}-hop-${index}`;
         const negative = status === "Blocked attempt" || status === "Failed outcome";
+        const snapshots = Array.isArray(receipt?.source_snapshot_ids) ? receipt.source_snapshot_ids.filter(item => typeof item === "string") : [];
+        const reasons = Array.isArray(receipt?.reason_codes) ? receipt.reason_codes.filter(item => typeof item === "string") : [];
         return <li key={`${source.id}:${target.id}:${index}`} className="min-w-0">
           <button type="button" aria-expanded={open} aria-controls={panelId} onClick={() => setSelected(open ? null : index)}
             className="flex w-full min-w-0 items-start gap-2 p-3 text-left hover:bg-[color:var(--surface-elevated)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500">
@@ -88,9 +90,9 @@ export function GraphHopEvidenceInspector({
                 ].map(([label, value]) => <div key={label}><dt className="text-xs text-[color:var(--text-secondary)]">{label}</dt><dd className="mt-0.5 break-words">{value}</dd></div>)}
               </dl>
               <div><p className="text-xs text-[color:var(--text-secondary)]">Source snapshots</p>
-                {Array.isArray(receipt.source_snapshot_ids) && receipt.source_snapshot_ids.length ? <ul className="mt-1 space-y-1">{receipt.source_snapshot_ids.map(snapshot => <li key={snapshot} className="break-all font-mono text-xs">{snapshot}</li>)}</ul> : <p>Not recorded</p>}
+                {snapshots.length ? <ul className="mt-1 space-y-1">{snapshots.map((snapshot, snapshotIndex) => <li key={`${snapshot}:${snapshotIndex}`} className="break-all font-mono text-xs">{snapshot}</li>)}</ul> : <p>Not recorded</p>}
               </div>
-              {receipt.reason_codes?.length ? <p className="break-words text-xs text-[color:var(--text-secondary)]">{receipt.reason_codes.map(humanize).join(" · ")}</p> : null}
+              {reasons.length ? <p className="break-words text-xs text-[color:var(--text-secondary)]">{reasons.map(humanize).join(" · ")}</p> : null}
               {negative && <p className="text-red-700 dark:text-red-300">This receipt cannot establish a successful downstream action. Other paths require separate evidence.</p>}
             </>}
           </div>}

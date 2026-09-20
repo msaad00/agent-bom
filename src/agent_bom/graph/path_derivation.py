@@ -618,8 +618,9 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                         )
                     else:
                         summary = (
-                            "Evidence-backed graph path: vulnerable package/server is reachable from an agent "
-                            "and inherits the server's credential/tool exposure."
+                            "Graph topology links an agent/server to a vulnerable component. Listed tools and "
+                            "credential references are context; effective permission, successful use, and exploitation "
+                            "require separate evidence."
                         )
                     paths.append(
                         AttackPath(

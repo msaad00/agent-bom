@@ -399,3 +399,29 @@ def test_computed_graph_persists_complete_analysis_status_on_graph():
     status = g.analysis_status.get("effective_permissions")
     assert status is not None
     assert status.status.value == "complete"
+
+
+def test_nontraversable_access_cannot_become_traversable_permission():
+    graph = UnifiedGraph(scan_id="context-only")
+    graph.add_node(UnifiedNode(id="user:a", entity_type=EntityType.USER, label="user"))
+    graph.add_node(UnifiedNode(id="resource:a", entity_type=EntityType.RESOURCE, label="resource"))
+    graph.add_edge(UnifiedEdge(source="user:a", target="resource:a", relationship=RelationshipType.CAN_ACCESS, traversable=False))
+    apply_effective_permissions(graph)
+    assert _perm(graph, "user:a") == {}
+
+
+def test_nontraversable_membership_and_delegation_cannot_confer_authority():
+    for relationship, kind in [
+        (RelationshipType.MEMBER_OF, EntityType.GROUP),
+        (RelationshipType.ASSUMES, EntityType.ROLE),
+        (RelationshipType.INHERITS, EntityType.ROLE),
+    ]:
+        graph = UnifiedGraph(scan_id="context-only")
+        for ident, entity_type in [("user:a", EntityType.USER), ("principal:b", kind), ("resource:a", EntityType.RESOURCE)]:
+            graph.add_node(UnifiedNode(id=ident, entity_type=entity_type, label=ident))
+        graph.add_edge(UnifiedEdge(source="user:a", target="principal:b", relationship=relationship, traversable=False))
+        graph.add_edge(UnifiedEdge(source="principal:b", target="resource:a", relationship=RelationshipType.CAN_ACCESS))
+        apply_effective_permissions(graph)
+        assert _perm(graph, "user:a") == {}, relationship
+        assert _perm(graph, "principal:b") == {"resource:a": "direct"}
+        assert not graph.nodes["user:a"].attributes.get("can_escalate_privilege")

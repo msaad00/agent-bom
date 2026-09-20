@@ -389,6 +389,7 @@ def test_governance_api_preserves_qualified_authority(tmp_path, state):
         response = TestClient(app).get("/v1/graph/governance?scan_id=qualified-scan")
         assert response.status_code == 200
         body = response.json()
+        assert body["stats"]["analysis_status"]["governance_overlay"]["status"] == "limited"
         scopes = [
             e for e in body["edges"] if e["source"] == f"managed_identity:{identity.identity_id}" and e["relationship"] == "scoped_to"
         ]
@@ -403,3 +404,27 @@ def test_governance_api_preserves_qualified_authority(tmp_path, state):
     finally:
         set_graph_store(original_graph)
         set_agent_identity_store(original_identity)
+
+
+def test_governance_payload_retains_unavailable_identity_collection(monkeypatch):
+    store = InMemoryAgentIdentityStore()
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("unavailable")
+
+    monkeypatch.setattr(store, "list", unavailable)
+    graph = _base_graph()
+    overlay = apply_governance_overlay(
+        graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]), blueprint_store=_EmptyBlueprintStore()
+    )
+    body = _governance_graph_payload(
+        graph,
+        tenant_id="default",
+        overlay_stats=overlay,
+        node_limit=2000,
+        edge_limit=2000,
+        attack_path_limit=100,
+    )
+    assert not body["nodes"]
+    assert body["stats"]["analysis_status"]["governance_overlay"]["status"] == "limited"
+    assert body["stats"]["analysis_status"]["governance_overlay"]["reason_codes"] == ["identities_unavailable"]

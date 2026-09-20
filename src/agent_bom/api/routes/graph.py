@@ -59,6 +59,7 @@ from agent_bom.graph import (
     UnifiedGraph,
     UnifiedNode,
 )
+from agent_bom.graph.analysis import analysis_status_map_to_dict
 from agent_bom.graph.completeness import bounded_walk_reason, graph_completeness
 from agent_bom.graph.hop_evidence import hop_evidence_schema
 from agent_bom.graph.path_derivation import (
@@ -1608,7 +1609,11 @@ def _governance_graph_payload(
         "attack_paths": attack_paths,
         "overlay": overlay_stats,
         "governance_counts": counts,
-        "stats": {"node_count": len(nodes), "edge_count": len(edges)},
+        "stats": {
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "analysis_status": analysis_status_map_to_dict(graph.analysis_status),
+        },
         "edge_pagination": {
             "total": len(candidate_edges),
             "limit": edge_limit,

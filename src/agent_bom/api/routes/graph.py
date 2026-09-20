@@ -60,6 +60,7 @@ from agent_bom.graph import (
     UnifiedNode,
 )
 from agent_bom.graph.completeness import bounded_walk_reason, graph_completeness
+from agent_bom.graph.hop_evidence import hop_evidence_schema
 from agent_bom.graph.path_derivation import (
     _build_edge_lookup,
     _edge_relationships_for_hops,
@@ -226,6 +227,7 @@ _ATTACK_PATH_ITEM_OPENAPI_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "relationship_provenance": {"type": "string", "enum": ["recorded", "unavailable"]},
                     "correlation_identity_status": {"type": "string", "enum": ["current", "recomputation_required", "unavailable"]},
+                    "authority": hop_evidence_schema()["properties"]["authority"],
                 },
                 "additionalProperties": True,
             },
@@ -254,6 +256,7 @@ _EXPOSURE_PATH_OPENAPI_SCHEMA: dict[str, Any] = {
         "source": {"type": "object", "additionalProperties": True},
         "target": {"type": "object", "additionalProperties": True},
         "hops": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+        "hopEvidence": {"type": "array", "items": hop_evidence_schema()},
         "relationships": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
         "nodeIds": {"type": "array", "items": {"type": "string"}},
         "edgeIds": {"type": "array", "items": {"type": "string"}},

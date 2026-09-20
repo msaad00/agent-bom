@@ -2,11 +2,94 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from collections.abc import Mapping
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent_bom.graph.container import AttackPath
+
+EvidenceId = Annotated[str, Field(min_length=1, max_length=1024)]
+
+
+class AuthorizationReceipt(BaseModel):
+    """A recorded evaluator request, not a re-evaluation of current access."""
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+    source: Literal["authorization-evidence"]
+    provider: Literal["azure", "gcp"]
+    decision: Literal["allow", "explicit_deny", "implicit_deny", "indeterminate"]
+    action: EvidenceId
+    principal_id: EvidenceId | None = None
+    resource: Annotated[str, Field(min_length=1, max_length=2048)] | None = None
+    binding_ids: list[EvidenceId] = Field(default_factory=list, max_length=16)
+    observed_at: Annotated[str, Field(max_length=64)] | None = None
+
+
+class PermissionWitness(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    access: Literal["direct", "group", "assume_chain"]
+    grant_principal_id: EvidenceId
+    grant_edge_id: EvidenceId
+    source_edge_ids: list[EvidenceId] = Field(min_length=1, max_length=7)
+
+
+class PermissionDerivationReceipt(BaseModel):
+    """Selected structural witnesses; never an exhaustive set of permissions."""
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+    basis: Literal["recorded_graph_connections"]
+    source_scan_id: EvidenceId
+    path_selection: Literal["one_shortest_path_per_grant_and_access"]
+    paths: list[PermissionWitness] = Field(max_length=16)
+    truncated: bool
+
+
+class HopAuthorityEvidence(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    status: Literal["recorded", "partial"]
+    decisions: list[AuthorizationReceipt] = Field(default_factory=list, max_length=16)
+    derivation: PermissionDerivationReceipt | None = None
+    reason_codes: list[str] = Field(default_factory=list, max_length=8)
+
+
+def authority_evidence(evidence: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Project allowlisted, bounded fields without copying arbitrary policy/tool data."""
+    raw = evidence.get("authorization_decisions")
+    if raw is None and evidence.get("source") == "authorization-evidence" and "action" in evidence:
+        raw = [evidence]
+    raw_derivation = evidence.get("permission_derivation")
+    if raw is None and raw_derivation is None:
+        return None
+    reasons: list[str] = []
+    decisions: list[AuthorizationReceipt] = []
+    if raw is not None:
+        if not isinstance(raw, list):
+            reasons.append("invalid_authorization_receipt")
+        else:
+            if len(raw) > 16:
+                reasons.append("authorization_receipt_limit")
+            for item in raw[:16]:
+                try:
+                    decisions.append(AuthorizationReceipt.model_validate(item))
+                except ValidationError:
+                    reasons.append("invalid_authorization_receipt")
+    derivation = None
+    if raw_derivation is not None:
+        try:
+            derivation = PermissionDerivationReceipt.model_validate(raw_derivation)
+            if derivation.truncated:
+                reasons.append("permission_witnesses_limited")
+        except ValidationError:
+            reasons.append("invalid_permission_witnesses")
+    if not decisions and derivation is None:
+        reasons.append("authority_receipts_unavailable")
+    return HopAuthorityEvidence(
+        status="partial" if reasons else "recorded",
+        decisions=decisions,
+        derivation=derivation,
+        reason_codes=list(dict.fromkeys(reasons)),
+    ).model_dump(mode="json")
 
 
 class HopEvidenceReceipt(BaseModel):
@@ -35,6 +118,7 @@ class HopEvidenceReceipt(BaseModel):
     complete: bool = False
     truncated: bool = False
     reason_codes: list[str] = Field(default_factory=list, max_length=20)
+    authority: HopAuthorityEvidence | None = None
 
 
 def exposure_hop_evidence(path: AttackPath) -> list[dict]:
@@ -55,5 +139,25 @@ def exposure_hop_evidence(path: AttackPath) -> list[dict]:
                 relationship=relationship,
                 reason_codes=["hop_evidence_not_recorded" if missing else "invalid_hop_receipt"],
             )
-        result.append(receipt.model_dump(mode="json"))
+        payload = receipt.model_dump(mode="json")
+        if receipt.authority is None:
+            payload.pop("authority")
+        result.append(payload)
     return result
+
+
+def hop_evidence_schema() -> dict[str, Any]:
+    """Inline model references for embedding in the existing response schemas."""
+    schema = HopEvidenceReceipt.model_json_schema()
+    definitions = schema.pop("$defs", {})
+
+    def inline(value: Any) -> Any:
+        if isinstance(value, dict):
+            if "$ref" in value:
+                return inline(definitions[value["$ref"].rsplit("/", 1)[-1]])
+            return {key: inline(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [inline(item) for item in value]
+        return value
+
+    return inline(schema)

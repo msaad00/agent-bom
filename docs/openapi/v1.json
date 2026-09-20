@@ -24965,6 +24965,366 @@
                                 },
                                 "type": "array"
                               },
+                              "hopEvidence": {
+                                "items": {
+                                  "description": "Classified receipt fields shared by human and agent path responses.\n\nUnknown imported fields are intentionally excluded: arbitrary tool output,\nprompts, credentials and provider payloads are not a public hop contract.\nMissing legacy facts stay unknown; they are never recomputed in a client.",
+                                  "properties": {
+                                    "authority": {
+                                      "anyOf": [
+                                        {
+                                          "properties": {
+                                            "decisions": {
+                                              "items": {
+                                                "description": "A recorded evaluator request, not a re-evaluation of current access.",
+                                                "properties": {
+                                                  "action": {
+                                                    "maxLength": 1024,
+                                                    "minLength": 1,
+                                                    "title": "Action",
+                                                    "type": "string"
+                                                  },
+                                                  "binding_ids": {
+                                                    "items": {
+                                                      "maxLength": 1024,
+                                                      "minLength": 1,
+                                                      "type": "string"
+                                                    },
+                                                    "maxItems": 16,
+                                                    "title": "Binding Ids",
+                                                    "type": "array"
+                                                  },
+                                                  "decision": {
+                                                    "enum": [
+                                                      "allow",
+                                                      "explicit_deny",
+                                                      "implicit_deny",
+                                                      "indeterminate"
+                                                    ],
+                                                    "title": "Decision",
+                                                    "type": "string"
+                                                  },
+                                                  "observed_at": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 64,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Observed At"
+                                                  },
+                                                  "principal_id": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 1024,
+                                                        "minLength": 1,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Principal Id"
+                                                  },
+                                                  "provider": {
+                                                    "enum": [
+                                                      "azure",
+                                                      "gcp"
+                                                    ],
+                                                    "title": "Provider",
+                                                    "type": "string"
+                                                  },
+                                                  "resource": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 2048,
+                                                        "minLength": 1,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Resource"
+                                                  },
+                                                  "source": {
+                                                    "const": "authorization-evidence",
+                                                    "title": "Source",
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "source",
+                                                  "provider",
+                                                  "decision",
+                                                  "action"
+                                                ],
+                                                "title": "AuthorizationReceipt",
+                                                "type": "object"
+                                              },
+                                              "maxItems": 16,
+                                              "title": "Decisions",
+                                              "type": "array"
+                                            },
+                                            "derivation": {
+                                              "anyOf": [
+                                                {
+                                                  "description": "Selected structural witnesses; never an exhaustive set of permissions.",
+                                                  "properties": {
+                                                    "basis": {
+                                                      "const": "recorded_graph_connections",
+                                                      "title": "Basis",
+                                                      "type": "string"
+                                                    },
+                                                    "path_selection": {
+                                                      "const": "one_shortest_path_per_grant_and_access",
+                                                      "title": "Path Selection",
+                                                      "type": "string"
+                                                    },
+                                                    "paths": {
+                                                      "items": {
+                                                        "properties": {
+                                                          "access": {
+                                                            "enum": [
+                                                              "direct",
+                                                              "group",
+                                                              "assume_chain"
+                                                            ],
+                                                            "title": "Access",
+                                                            "type": "string"
+                                                          },
+                                                          "grant_edge_id": {
+                                                            "maxLength": 1024,
+                                                            "minLength": 1,
+                                                            "title": "Grant Edge Id",
+                                                            "type": "string"
+                                                          },
+                                                          "grant_principal_id": {
+                                                            "maxLength": 1024,
+                                                            "minLength": 1,
+                                                            "title": "Grant Principal Id",
+                                                            "type": "string"
+                                                          },
+                                                          "source_edge_ids": {
+                                                            "items": {
+                                                              "maxLength": 1024,
+                                                              "minLength": 1,
+                                                              "type": "string"
+                                                            },
+                                                            "maxItems": 7,
+                                                            "minItems": 1,
+                                                            "title": "Source Edge Ids",
+                                                            "type": "array"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "access",
+                                                          "grant_principal_id",
+                                                          "grant_edge_id",
+                                                          "source_edge_ids"
+                                                        ],
+                                                        "title": "PermissionWitness",
+                                                        "type": "object"
+                                                      },
+                                                      "maxItems": 16,
+                                                      "title": "Paths",
+                                                      "type": "array"
+                                                    },
+                                                    "source_scan_id": {
+                                                      "maxLength": 1024,
+                                                      "minLength": 1,
+                                                      "title": "Source Scan Id",
+                                                      "type": "string"
+                                                    },
+                                                    "truncated": {
+                                                      "title": "Truncated",
+                                                      "type": "boolean"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "basis",
+                                                    "source_scan_id",
+                                                    "path_selection",
+                                                    "paths",
+                                                    "truncated"
+                                                  ],
+                                                  "title": "PermissionDerivationReceipt",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "reason_codes": {
+                                              "items": {
+                                                "type": "string"
+                                              },
+                                              "maxItems": 8,
+                                              "title": "Reason Codes",
+                                              "type": "array"
+                                            },
+                                            "status": {
+                                              "enum": [
+                                                "recorded",
+                                                "partial"
+                                              ],
+                                              "title": "Status",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "status"
+                                          ],
+                                          "title": "HopAuthorityEvidence",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "complete": {
+                                      "default": false,
+                                      "title": "Complete",
+                                      "type": "boolean"
+                                    },
+                                    "confidence": {
+                                      "anyOf": [
+                                        {
+                                          "maximum": 1,
+                                          "minimum": 0,
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "title": "Confidence"
+                                    },
+                                    "correlation_identity_status": {
+                                      "default": "unavailable",
+                                      "enum": [
+                                        "current",
+                                        "recomputation_required",
+                                        "unavailable"
+                                      ],
+                                      "title": "Correlation Identity Status",
+                                      "type": "string"
+                                    },
+                                    "direction": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "directed",
+                                        "bidirectional",
+                                        "unknown"
+                                      ],
+                                      "title": "Direction",
+                                      "type": "string"
+                                    },
+                                    "evidence_tier": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "static_evidence",
+                                        "modeled_infrastructure",
+                                        "runtime_observed",
+                                        "unknown"
+                                      ],
+                                      "title": "Evidence Tier",
+                                      "type": "string"
+                                    },
+                                    "freshness": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "fresh",
+                                        "stale",
+                                        "stale_allowed",
+                                        "unknown"
+                                      ],
+                                      "title": "Freshness",
+                                      "type": "string"
+                                    },
+                                    "reason_codes": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "maxItems": 20,
+                                      "title": "Reason Codes",
+                                      "type": "array"
+                                    },
+                                    "relationship": {
+                                      "title": "Relationship",
+                                      "type": "string"
+                                    },
+                                    "relationship_provenance": {
+                                      "default": "unavailable",
+                                      "enum": [
+                                        "recorded",
+                                        "unavailable"
+                                      ],
+                                      "title": "Relationship Provenance",
+                                      "type": "string"
+                                    },
+                                    "runtime_observed_state": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "observed",
+                                        "blocked",
+                                        "not_observed",
+                                        "unknown"
+                                      ],
+                                      "title": "Runtime Observed State",
+                                      "type": "string"
+                                    },
+                                    "runtime_outcome": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "blocked",
+                                        "failed",
+                                        "unknown"
+                                      ],
+                                      "title": "Runtime Outcome",
+                                      "type": "string"
+                                    },
+                                    "source_node_id": {
+                                      "title": "Source Node Id",
+                                      "type": "string"
+                                    },
+                                    "source_snapshot_ids": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "maxItems": 50,
+                                      "title": "Source Snapshot Ids",
+                                      "type": "array"
+                                    },
+                                    "target_node_id": {
+                                      "title": "Target Node Id",
+                                      "type": "string"
+                                    },
+                                    "traversable": {
+                                      "default": false,
+                                      "title": "Traversable",
+                                      "type": "boolean"
+                                    },
+                                    "truncated": {
+                                      "default": false,
+                                      "title": "Truncated",
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "source_node_id",
+                                    "target_node_id",
+                                    "relationship"
+                                  ],
+                                  "title": "HopEvidenceReceipt",
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              },
                               "hops": {
                                 "items": {
                                   "additionalProperties": true,
@@ -25055,6 +25415,223 @@
                             "items": {
                               "additionalProperties": true,
                               "properties": {
+                                "authority": {
+                                  "anyOf": [
+                                    {
+                                      "properties": {
+                                        "decisions": {
+                                          "items": {
+                                            "description": "A recorded evaluator request, not a re-evaluation of current access.",
+                                            "properties": {
+                                              "action": {
+                                                "maxLength": 1024,
+                                                "minLength": 1,
+                                                "title": "Action",
+                                                "type": "string"
+                                              },
+                                              "binding_ids": {
+                                                "items": {
+                                                  "maxLength": 1024,
+                                                  "minLength": 1,
+                                                  "type": "string"
+                                                },
+                                                "maxItems": 16,
+                                                "title": "Binding Ids",
+                                                "type": "array"
+                                              },
+                                              "decision": {
+                                                "enum": [
+                                                  "allow",
+                                                  "explicit_deny",
+                                                  "implicit_deny",
+                                                  "indeterminate"
+                                                ],
+                                                "title": "Decision",
+                                                "type": "string"
+                                              },
+                                              "observed_at": {
+                                                "anyOf": [
+                                                  {
+                                                    "maxLength": 64,
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ],
+                                                "title": "Observed At"
+                                              },
+                                              "principal_id": {
+                                                "anyOf": [
+                                                  {
+                                                    "maxLength": 1024,
+                                                    "minLength": 1,
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ],
+                                                "title": "Principal Id"
+                                              },
+                                              "provider": {
+                                                "enum": [
+                                                  "azure",
+                                                  "gcp"
+                                                ],
+                                                "title": "Provider",
+                                                "type": "string"
+                                              },
+                                              "resource": {
+                                                "anyOf": [
+                                                  {
+                                                    "maxLength": 2048,
+                                                    "minLength": 1,
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ],
+                                                "title": "Resource"
+                                              },
+                                              "source": {
+                                                "const": "authorization-evidence",
+                                                "title": "Source",
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "source",
+                                              "provider",
+                                              "decision",
+                                              "action"
+                                            ],
+                                            "title": "AuthorizationReceipt",
+                                            "type": "object"
+                                          },
+                                          "maxItems": 16,
+                                          "title": "Decisions",
+                                          "type": "array"
+                                        },
+                                        "derivation": {
+                                          "anyOf": [
+                                            {
+                                              "description": "Selected structural witnesses; never an exhaustive set of permissions.",
+                                              "properties": {
+                                                "basis": {
+                                                  "const": "recorded_graph_connections",
+                                                  "title": "Basis",
+                                                  "type": "string"
+                                                },
+                                                "path_selection": {
+                                                  "const": "one_shortest_path_per_grant_and_access",
+                                                  "title": "Path Selection",
+                                                  "type": "string"
+                                                },
+                                                "paths": {
+                                                  "items": {
+                                                    "properties": {
+                                                      "access": {
+                                                        "enum": [
+                                                          "direct",
+                                                          "group",
+                                                          "assume_chain"
+                                                        ],
+                                                        "title": "Access",
+                                                        "type": "string"
+                                                      },
+                                                      "grant_edge_id": {
+                                                        "maxLength": 1024,
+                                                        "minLength": 1,
+                                                        "title": "Grant Edge Id",
+                                                        "type": "string"
+                                                      },
+                                                      "grant_principal_id": {
+                                                        "maxLength": 1024,
+                                                        "minLength": 1,
+                                                        "title": "Grant Principal Id",
+                                                        "type": "string"
+                                                      },
+                                                      "source_edge_ids": {
+                                                        "items": {
+                                                          "maxLength": 1024,
+                                                          "minLength": 1,
+                                                          "type": "string"
+                                                        },
+                                                        "maxItems": 7,
+                                                        "minItems": 1,
+                                                        "title": "Source Edge Ids",
+                                                        "type": "array"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "access",
+                                                      "grant_principal_id",
+                                                      "grant_edge_id",
+                                                      "source_edge_ids"
+                                                    ],
+                                                    "title": "PermissionWitness",
+                                                    "type": "object"
+                                                  },
+                                                  "maxItems": 16,
+                                                  "title": "Paths",
+                                                  "type": "array"
+                                                },
+                                                "source_scan_id": {
+                                                  "maxLength": 1024,
+                                                  "minLength": 1,
+                                                  "title": "Source Scan Id",
+                                                  "type": "string"
+                                                },
+                                                "truncated": {
+                                                  "title": "Truncated",
+                                                  "type": "boolean"
+                                                }
+                                              },
+                                              "required": [
+                                                "basis",
+                                                "source_scan_id",
+                                                "path_selection",
+                                                "paths",
+                                                "truncated"
+                                              ],
+                                              "title": "PermissionDerivationReceipt",
+                                              "type": "object"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "reason_codes": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "maxItems": 8,
+                                          "title": "Reason Codes",
+                                          "type": "array"
+                                        },
+                                        "status": {
+                                          "enum": [
+                                            "recorded",
+                                            "partial"
+                                          ],
+                                          "title": "Status",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "status"
+                                      ],
+                                      "title": "HopAuthorityEvidence",
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "correlation_identity_status": {
                                   "enum": [
                                     "current",
@@ -27898,6 +28475,366 @@
                                     },
                                     "type": "array"
                                   },
+                                  "hopEvidence": {
+                                    "items": {
+                                      "description": "Classified receipt fields shared by human and agent path responses.\n\nUnknown imported fields are intentionally excluded: arbitrary tool output,\nprompts, credentials and provider payloads are not a public hop contract.\nMissing legacy facts stay unknown; they are never recomputed in a client.",
+                                      "properties": {
+                                        "authority": {
+                                          "anyOf": [
+                                            {
+                                              "properties": {
+                                                "decisions": {
+                                                  "items": {
+                                                    "description": "A recorded evaluator request, not a re-evaluation of current access.",
+                                                    "properties": {
+                                                      "action": {
+                                                        "maxLength": 1024,
+                                                        "minLength": 1,
+                                                        "title": "Action",
+                                                        "type": "string"
+                                                      },
+                                                      "binding_ids": {
+                                                        "items": {
+                                                          "maxLength": 1024,
+                                                          "minLength": 1,
+                                                          "type": "string"
+                                                        },
+                                                        "maxItems": 16,
+                                                        "title": "Binding Ids",
+                                                        "type": "array"
+                                                      },
+                                                      "decision": {
+                                                        "enum": [
+                                                          "allow",
+                                                          "explicit_deny",
+                                                          "implicit_deny",
+                                                          "indeterminate"
+                                                        ],
+                                                        "title": "Decision",
+                                                        "type": "string"
+                                                      },
+                                                      "observed_at": {
+                                                        "anyOf": [
+                                                          {
+                                                            "maxLength": 64,
+                                                            "type": "string"
+                                                          },
+                                                          {
+                                                            "type": "null"
+                                                          }
+                                                        ],
+                                                        "title": "Observed At"
+                                                      },
+                                                      "principal_id": {
+                                                        "anyOf": [
+                                                          {
+                                                            "maxLength": 1024,
+                                                            "minLength": 1,
+                                                            "type": "string"
+                                                          },
+                                                          {
+                                                            "type": "null"
+                                                          }
+                                                        ],
+                                                        "title": "Principal Id"
+                                                      },
+                                                      "provider": {
+                                                        "enum": [
+                                                          "azure",
+                                                          "gcp"
+                                                        ],
+                                                        "title": "Provider",
+                                                        "type": "string"
+                                                      },
+                                                      "resource": {
+                                                        "anyOf": [
+                                                          {
+                                                            "maxLength": 2048,
+                                                            "minLength": 1,
+                                                            "type": "string"
+                                                          },
+                                                          {
+                                                            "type": "null"
+                                                          }
+                                                        ],
+                                                        "title": "Resource"
+                                                      },
+                                                      "source": {
+                                                        "const": "authorization-evidence",
+                                                        "title": "Source",
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "source",
+                                                      "provider",
+                                                      "decision",
+                                                      "action"
+                                                    ],
+                                                    "title": "AuthorizationReceipt",
+                                                    "type": "object"
+                                                  },
+                                                  "maxItems": 16,
+                                                  "title": "Decisions",
+                                                  "type": "array"
+                                                },
+                                                "derivation": {
+                                                  "anyOf": [
+                                                    {
+                                                      "description": "Selected structural witnesses; never an exhaustive set of permissions.",
+                                                      "properties": {
+                                                        "basis": {
+                                                          "const": "recorded_graph_connections",
+                                                          "title": "Basis",
+                                                          "type": "string"
+                                                        },
+                                                        "path_selection": {
+                                                          "const": "one_shortest_path_per_grant_and_access",
+                                                          "title": "Path Selection",
+                                                          "type": "string"
+                                                        },
+                                                        "paths": {
+                                                          "items": {
+                                                            "properties": {
+                                                              "access": {
+                                                                "enum": [
+                                                                  "direct",
+                                                                  "group",
+                                                                  "assume_chain"
+                                                                ],
+                                                                "title": "Access",
+                                                                "type": "string"
+                                                              },
+                                                              "grant_edge_id": {
+                                                                "maxLength": 1024,
+                                                                "minLength": 1,
+                                                                "title": "Grant Edge Id",
+                                                                "type": "string"
+                                                              },
+                                                              "grant_principal_id": {
+                                                                "maxLength": 1024,
+                                                                "minLength": 1,
+                                                                "title": "Grant Principal Id",
+                                                                "type": "string"
+                                                              },
+                                                              "source_edge_ids": {
+                                                                "items": {
+                                                                  "maxLength": 1024,
+                                                                  "minLength": 1,
+                                                                  "type": "string"
+                                                                },
+                                                                "maxItems": 7,
+                                                                "minItems": 1,
+                                                                "title": "Source Edge Ids",
+                                                                "type": "array"
+                                                              }
+                                                            },
+                                                            "required": [
+                                                              "access",
+                                                              "grant_principal_id",
+                                                              "grant_edge_id",
+                                                              "source_edge_ids"
+                                                            ],
+                                                            "title": "PermissionWitness",
+                                                            "type": "object"
+                                                          },
+                                                          "maxItems": 16,
+                                                          "title": "Paths",
+                                                          "type": "array"
+                                                        },
+                                                        "source_scan_id": {
+                                                          "maxLength": 1024,
+                                                          "minLength": 1,
+                                                          "title": "Source Scan Id",
+                                                          "type": "string"
+                                                        },
+                                                        "truncated": {
+                                                          "title": "Truncated",
+                                                          "type": "boolean"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "basis",
+                                                        "source_scan_id",
+                                                        "path_selection",
+                                                        "paths",
+                                                        "truncated"
+                                                      ],
+                                                      "title": "PermissionDerivationReceipt",
+                                                      "type": "object"
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ]
+                                                },
+                                                "reason_codes": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "maxItems": 8,
+                                                  "title": "Reason Codes",
+                                                  "type": "array"
+                                                },
+                                                "status": {
+                                                  "enum": [
+                                                    "recorded",
+                                                    "partial"
+                                                  ],
+                                                  "title": "Status",
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "status"
+                                              ],
+                                              "title": "HopAuthorityEvidence",
+                                              "type": "object"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "complete": {
+                                          "default": false,
+                                          "title": "Complete",
+                                          "type": "boolean"
+                                        },
+                                        "confidence": {
+                                          "anyOf": [
+                                            {
+                                              "maximum": 1,
+                                              "minimum": 0,
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Confidence"
+                                        },
+                                        "correlation_identity_status": {
+                                          "default": "unavailable",
+                                          "enum": [
+                                            "current",
+                                            "recomputation_required",
+                                            "unavailable"
+                                          ],
+                                          "title": "Correlation Identity Status",
+                                          "type": "string"
+                                        },
+                                        "direction": {
+                                          "default": "unknown",
+                                          "enum": [
+                                            "directed",
+                                            "bidirectional",
+                                            "unknown"
+                                          ],
+                                          "title": "Direction",
+                                          "type": "string"
+                                        },
+                                        "evidence_tier": {
+                                          "default": "unknown",
+                                          "enum": [
+                                            "static_evidence",
+                                            "modeled_infrastructure",
+                                            "runtime_observed",
+                                            "unknown"
+                                          ],
+                                          "title": "Evidence Tier",
+                                          "type": "string"
+                                        },
+                                        "freshness": {
+                                          "default": "unknown",
+                                          "enum": [
+                                            "fresh",
+                                            "stale",
+                                            "stale_allowed",
+                                            "unknown"
+                                          ],
+                                          "title": "Freshness",
+                                          "type": "string"
+                                        },
+                                        "reason_codes": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "maxItems": 20,
+                                          "title": "Reason Codes",
+                                          "type": "array"
+                                        },
+                                        "relationship": {
+                                          "title": "Relationship",
+                                          "type": "string"
+                                        },
+                                        "relationship_provenance": {
+                                          "default": "unavailable",
+                                          "enum": [
+                                            "recorded",
+                                            "unavailable"
+                                          ],
+                                          "title": "Relationship Provenance",
+                                          "type": "string"
+                                        },
+                                        "runtime_observed_state": {
+                                          "default": "unknown",
+                                          "enum": [
+                                            "observed",
+                                            "blocked",
+                                            "not_observed",
+                                            "unknown"
+                                          ],
+                                          "title": "Runtime Observed State",
+                                          "type": "string"
+                                        },
+                                        "runtime_outcome": {
+                                          "default": "unknown",
+                                          "enum": [
+                                            "blocked",
+                                            "failed",
+                                            "unknown"
+                                          ],
+                                          "title": "Runtime Outcome",
+                                          "type": "string"
+                                        },
+                                        "source_node_id": {
+                                          "title": "Source Node Id",
+                                          "type": "string"
+                                        },
+                                        "source_snapshot_ids": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "maxItems": 50,
+                                          "title": "Source Snapshot Ids",
+                                          "type": "array"
+                                        },
+                                        "target_node_id": {
+                                          "title": "Target Node Id",
+                                          "type": "string"
+                                        },
+                                        "traversable": {
+                                          "default": false,
+                                          "title": "Traversable",
+                                          "type": "boolean"
+                                        },
+                                        "truncated": {
+                                          "default": false,
+                                          "title": "Truncated",
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "source_node_id",
+                                        "target_node_id",
+                                        "relationship"
+                                      ],
+                                      "title": "HopEvidenceReceipt",
+                                      "type": "object"
+                                    },
+                                    "type": "array"
+                                  },
                                   "hops": {
                                     "items": {
                                       "additionalProperties": true,
@@ -27988,6 +28925,223 @@
                                 "items": {
                                   "additionalProperties": true,
                                   "properties": {
+                                    "authority": {
+                                      "anyOf": [
+                                        {
+                                          "properties": {
+                                            "decisions": {
+                                              "items": {
+                                                "description": "A recorded evaluator request, not a re-evaluation of current access.",
+                                                "properties": {
+                                                  "action": {
+                                                    "maxLength": 1024,
+                                                    "minLength": 1,
+                                                    "title": "Action",
+                                                    "type": "string"
+                                                  },
+                                                  "binding_ids": {
+                                                    "items": {
+                                                      "maxLength": 1024,
+                                                      "minLength": 1,
+                                                      "type": "string"
+                                                    },
+                                                    "maxItems": 16,
+                                                    "title": "Binding Ids",
+                                                    "type": "array"
+                                                  },
+                                                  "decision": {
+                                                    "enum": [
+                                                      "allow",
+                                                      "explicit_deny",
+                                                      "implicit_deny",
+                                                      "indeterminate"
+                                                    ],
+                                                    "title": "Decision",
+                                                    "type": "string"
+                                                  },
+                                                  "observed_at": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 64,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Observed At"
+                                                  },
+                                                  "principal_id": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 1024,
+                                                        "minLength": 1,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Principal Id"
+                                                  },
+                                                  "provider": {
+                                                    "enum": [
+                                                      "azure",
+                                                      "gcp"
+                                                    ],
+                                                    "title": "Provider",
+                                                    "type": "string"
+                                                  },
+                                                  "resource": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 2048,
+                                                        "minLength": 1,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Resource"
+                                                  },
+                                                  "source": {
+                                                    "const": "authorization-evidence",
+                                                    "title": "Source",
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "source",
+                                                  "provider",
+                                                  "decision",
+                                                  "action"
+                                                ],
+                                                "title": "AuthorizationReceipt",
+                                                "type": "object"
+                                              },
+                                              "maxItems": 16,
+                                              "title": "Decisions",
+                                              "type": "array"
+                                            },
+                                            "derivation": {
+                                              "anyOf": [
+                                                {
+                                                  "description": "Selected structural witnesses; never an exhaustive set of permissions.",
+                                                  "properties": {
+                                                    "basis": {
+                                                      "const": "recorded_graph_connections",
+                                                      "title": "Basis",
+                                                      "type": "string"
+                                                    },
+                                                    "path_selection": {
+                                                      "const": "one_shortest_path_per_grant_and_access",
+                                                      "title": "Path Selection",
+                                                      "type": "string"
+                                                    },
+                                                    "paths": {
+                                                      "items": {
+                                                        "properties": {
+                                                          "access": {
+                                                            "enum": [
+                                                              "direct",
+                                                              "group",
+                                                              "assume_chain"
+                                                            ],
+                                                            "title": "Access",
+                                                            "type": "string"
+                                                          },
+                                                          "grant_edge_id": {
+                                                            "maxLength": 1024,
+                                                            "minLength": 1,
+                                                            "title": "Grant Edge Id",
+                                                            "type": "string"
+                                                          },
+                                                          "grant_principal_id": {
+                                                            "maxLength": 1024,
+                                                            "minLength": 1,
+                                                            "title": "Grant Principal Id",
+                                                            "type": "string"
+                                                          },
+                                                          "source_edge_ids": {
+                                                            "items": {
+                                                              "maxLength": 1024,
+                                                              "minLength": 1,
+                                                              "type": "string"
+                                                            },
+                                                            "maxItems": 7,
+                                                            "minItems": 1,
+                                                            "title": "Source Edge Ids",
+                                                            "type": "array"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "access",
+                                                          "grant_principal_id",
+                                                          "grant_edge_id",
+                                                          "source_edge_ids"
+                                                        ],
+                                                        "title": "PermissionWitness",
+                                                        "type": "object"
+                                                      },
+                                                      "maxItems": 16,
+                                                      "title": "Paths",
+                                                      "type": "array"
+                                                    },
+                                                    "source_scan_id": {
+                                                      "maxLength": 1024,
+                                                      "minLength": 1,
+                                                      "title": "Source Scan Id",
+                                                      "type": "string"
+                                                    },
+                                                    "truncated": {
+                                                      "title": "Truncated",
+                                                      "type": "boolean"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "basis",
+                                                    "source_scan_id",
+                                                    "path_selection",
+                                                    "paths",
+                                                    "truncated"
+                                                  ],
+                                                  "title": "PermissionDerivationReceipt",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "reason_codes": {
+                                              "items": {
+                                                "type": "string"
+                                              },
+                                              "maxItems": 8,
+                                              "title": "Reason Codes",
+                                              "type": "array"
+                                            },
+                                            "status": {
+                                              "enum": [
+                                                "recorded",
+                                                "partial"
+                                              ],
+                                              "title": "Status",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "status"
+                                          ],
+                                          "title": "HopAuthorityEvidence",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
                                     "correlation_identity_status": {
                                       "enum": [
                                         "current",
@@ -28146,6 +29300,366 @@
                               "findings": {
                                 "items": {
                                   "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "hopEvidence": {
+                                "items": {
+                                  "description": "Classified receipt fields shared by human and agent path responses.\n\nUnknown imported fields are intentionally excluded: arbitrary tool output,\nprompts, credentials and provider payloads are not a public hop contract.\nMissing legacy facts stay unknown; they are never recomputed in a client.",
+                                  "properties": {
+                                    "authority": {
+                                      "anyOf": [
+                                        {
+                                          "properties": {
+                                            "decisions": {
+                                              "items": {
+                                                "description": "A recorded evaluator request, not a re-evaluation of current access.",
+                                                "properties": {
+                                                  "action": {
+                                                    "maxLength": 1024,
+                                                    "minLength": 1,
+                                                    "title": "Action",
+                                                    "type": "string"
+                                                  },
+                                                  "binding_ids": {
+                                                    "items": {
+                                                      "maxLength": 1024,
+                                                      "minLength": 1,
+                                                      "type": "string"
+                                                    },
+                                                    "maxItems": 16,
+                                                    "title": "Binding Ids",
+                                                    "type": "array"
+                                                  },
+                                                  "decision": {
+                                                    "enum": [
+                                                      "allow",
+                                                      "explicit_deny",
+                                                      "implicit_deny",
+                                                      "indeterminate"
+                                                    ],
+                                                    "title": "Decision",
+                                                    "type": "string"
+                                                  },
+                                                  "observed_at": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 64,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Observed At"
+                                                  },
+                                                  "principal_id": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 1024,
+                                                        "minLength": 1,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Principal Id"
+                                                  },
+                                                  "provider": {
+                                                    "enum": [
+                                                      "azure",
+                                                      "gcp"
+                                                    ],
+                                                    "title": "Provider",
+                                                    "type": "string"
+                                                  },
+                                                  "resource": {
+                                                    "anyOf": [
+                                                      {
+                                                        "maxLength": 2048,
+                                                        "minLength": 1,
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ],
+                                                    "title": "Resource"
+                                                  },
+                                                  "source": {
+                                                    "const": "authorization-evidence",
+                                                    "title": "Source",
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "source",
+                                                  "provider",
+                                                  "decision",
+                                                  "action"
+                                                ],
+                                                "title": "AuthorizationReceipt",
+                                                "type": "object"
+                                              },
+                                              "maxItems": 16,
+                                              "title": "Decisions",
+                                              "type": "array"
+                                            },
+                                            "derivation": {
+                                              "anyOf": [
+                                                {
+                                                  "description": "Selected structural witnesses; never an exhaustive set of permissions.",
+                                                  "properties": {
+                                                    "basis": {
+                                                      "const": "recorded_graph_connections",
+                                                      "title": "Basis",
+                                                      "type": "string"
+                                                    },
+                                                    "path_selection": {
+                                                      "const": "one_shortest_path_per_grant_and_access",
+                                                      "title": "Path Selection",
+                                                      "type": "string"
+                                                    },
+                                                    "paths": {
+                                                      "items": {
+                                                        "properties": {
+                                                          "access": {
+                                                            "enum": [
+                                                              "direct",
+                                                              "group",
+                                                              "assume_chain"
+                                                            ],
+                                                            "title": "Access",
+                                                            "type": "string"
+                                                          },
+                                                          "grant_edge_id": {
+                                                            "maxLength": 1024,
+                                                            "minLength": 1,
+                                                            "title": "Grant Edge Id",
+                                                            "type": "string"
+                                                          },
+                                                          "grant_principal_id": {
+                                                            "maxLength": 1024,
+                                                            "minLength": 1,
+                                                            "title": "Grant Principal Id",
+                                                            "type": "string"
+                                                          },
+                                                          "source_edge_ids": {
+                                                            "items": {
+                                                              "maxLength": 1024,
+                                                              "minLength": 1,
+                                                              "type": "string"
+                                                            },
+                                                            "maxItems": 7,
+                                                            "minItems": 1,
+                                                            "title": "Source Edge Ids",
+                                                            "type": "array"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "access",
+                                                          "grant_principal_id",
+                                                          "grant_edge_id",
+                                                          "source_edge_ids"
+                                                        ],
+                                                        "title": "PermissionWitness",
+                                                        "type": "object"
+                                                      },
+                                                      "maxItems": 16,
+                                                      "title": "Paths",
+                                                      "type": "array"
+                                                    },
+                                                    "source_scan_id": {
+                                                      "maxLength": 1024,
+                                                      "minLength": 1,
+                                                      "title": "Source Scan Id",
+                                                      "type": "string"
+                                                    },
+                                                    "truncated": {
+                                                      "title": "Truncated",
+                                                      "type": "boolean"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "basis",
+                                                    "source_scan_id",
+                                                    "path_selection",
+                                                    "paths",
+                                                    "truncated"
+                                                  ],
+                                                  "title": "PermissionDerivationReceipt",
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "reason_codes": {
+                                              "items": {
+                                                "type": "string"
+                                              },
+                                              "maxItems": 8,
+                                              "title": "Reason Codes",
+                                              "type": "array"
+                                            },
+                                            "status": {
+                                              "enum": [
+                                                "recorded",
+                                                "partial"
+                                              ],
+                                              "title": "Status",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "status"
+                                          ],
+                                          "title": "HopAuthorityEvidence",
+                                          "type": "object"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "complete": {
+                                      "default": false,
+                                      "title": "Complete",
+                                      "type": "boolean"
+                                    },
+                                    "confidence": {
+                                      "anyOf": [
+                                        {
+                                          "maximum": 1,
+                                          "minimum": 0,
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "title": "Confidence"
+                                    },
+                                    "correlation_identity_status": {
+                                      "default": "unavailable",
+                                      "enum": [
+                                        "current",
+                                        "recomputation_required",
+                                        "unavailable"
+                                      ],
+                                      "title": "Correlation Identity Status",
+                                      "type": "string"
+                                    },
+                                    "direction": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "directed",
+                                        "bidirectional",
+                                        "unknown"
+                                      ],
+                                      "title": "Direction",
+                                      "type": "string"
+                                    },
+                                    "evidence_tier": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "static_evidence",
+                                        "modeled_infrastructure",
+                                        "runtime_observed",
+                                        "unknown"
+                                      ],
+                                      "title": "Evidence Tier",
+                                      "type": "string"
+                                    },
+                                    "freshness": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "fresh",
+                                        "stale",
+                                        "stale_allowed",
+                                        "unknown"
+                                      ],
+                                      "title": "Freshness",
+                                      "type": "string"
+                                    },
+                                    "reason_codes": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "maxItems": 20,
+                                      "title": "Reason Codes",
+                                      "type": "array"
+                                    },
+                                    "relationship": {
+                                      "title": "Relationship",
+                                      "type": "string"
+                                    },
+                                    "relationship_provenance": {
+                                      "default": "unavailable",
+                                      "enum": [
+                                        "recorded",
+                                        "unavailable"
+                                      ],
+                                      "title": "Relationship Provenance",
+                                      "type": "string"
+                                    },
+                                    "runtime_observed_state": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "observed",
+                                        "blocked",
+                                        "not_observed",
+                                        "unknown"
+                                      ],
+                                      "title": "Runtime Observed State",
+                                      "type": "string"
+                                    },
+                                    "runtime_outcome": {
+                                      "default": "unknown",
+                                      "enum": [
+                                        "blocked",
+                                        "failed",
+                                        "unknown"
+                                      ],
+                                      "title": "Runtime Outcome",
+                                      "type": "string"
+                                    },
+                                    "source_node_id": {
+                                      "title": "Source Node Id",
+                                      "type": "string"
+                                    },
+                                    "source_snapshot_ids": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "maxItems": 50,
+                                      "title": "Source Snapshot Ids",
+                                      "type": "array"
+                                    },
+                                    "target_node_id": {
+                                      "title": "Target Node Id",
+                                      "type": "string"
+                                    },
+                                    "traversable": {
+                                      "default": false,
+                                      "title": "Traversable",
+                                      "type": "boolean"
+                                    },
+                                    "truncated": {
+                                      "default": false,
+                                      "title": "Truncated",
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "source_node_id",
+                                    "target_node_id",
+                                    "relationship"
+                                  ],
+                                  "title": "HopEvidenceReceipt",
+                                  "type": "object"
                                 },
                                 "type": "array"
                               },

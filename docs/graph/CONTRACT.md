@@ -289,6 +289,34 @@ unknown, including when a high-priority asset is present. API and MCP legacy
 evidence dimensions cannot support that verdict. Projection qualification does
 not rewrite stored path receipts.
 
+### Inspect recorded authorization
+
+In a selected hop, open **Recorded authority** to inspect an evaluator's action,
+principal, resource, observation time and matched binding IDs together. The same
+optional `hopEvidence[].authority` object is retained by exposure REST responses,
+MCP, the graph-paths JSON command and the Python/TypeScript clients. No permission
+is re-evaluated in the browser. Missing legacy principal, resource or observation
+time remains `null` and appears as **Not recorded**.
+
+A derived permission can instead supply ordered source-edge IDs, the original
+grant principal, source snapshot and grant edge. These are selected shortest
+structural witnesses per grant/access type, not an exhaustive path set or an
+inferred action scope. They do not establish successful execution.
+
+Projection retains at most 16 action receipts and 16 witnesses, with at most
+seven source relationships per witness. Invalid or oversized records are omitted
+with explicit reason codes and `status: partial`; valid neighboring records stay
+inspectable. Each action receipt accepts at most 16 binding IDs. Arbitrary policy
+bodies, tool output and credential fields are excluded. The UI shows four records
+per page in a bounded list and treats all identifiers as inert text.
+
+These are historical records, not proof of current access. Conditions, explicit
+denies, expiry and revocation still require a fresh evaluation in the relevant
+context. Existing path snapshots are not rewritten: rescan or rebuild the derived
+snapshot from source edges to populate the new projection. No database migration
+is required. Older readers ignore the optional object; retained snapshots remain
+available for rollback.
+
 ### Inspect a selected path's evidence
 
 Use `agent-bom graph-paths exposure --api-url "$AGENT_BOM_API_URL" --format json`

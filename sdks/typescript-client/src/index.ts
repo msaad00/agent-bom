@@ -42,6 +42,33 @@ export interface FindingsQuery {
   offset?: number;
 }
 
+export type HopAuthorityEvidence = {
+  status: "recorded" | "partial";
+  decisions: Array<{
+    source: "authorization-evidence";
+    provider: "azure" | "gcp";
+    decision: "allow" | "explicit_deny" | "implicit_deny" | "indeterminate";
+    action: string;
+    principal_id: string | null;
+    resource: string | null;
+    binding_ids: string[];
+    observed_at: string | null;
+  }>;
+  derivation: {
+    basis: "recorded_graph_connections";
+    source_scan_id: string;
+    path_selection: "one_shortest_path_per_grant_and_access";
+    paths: Array<{
+      access: "direct" | "group" | "assume_chain";
+      grant_principal_id: string;
+      grant_edge_id: string;
+      source_edge_ids: string[];
+    }>;
+    truncated: boolean;
+  } | null;
+  reason_codes: string[];
+};
+
 export type ExposureHopEvidence = {
   source_node_id: string;
   target_node_id: string;
@@ -59,6 +86,7 @@ export type ExposureHopEvidence = {
   complete: boolean;
   truncated: boolean;
   reason_codes: string[];
+  authority?: HopAuthorityEvidence | null;
 };
 
 export type ExposurePathRecord = Record<string, JsonValue> & { hopEvidence?: ExposureHopEvidence[] };

@@ -56,7 +56,7 @@ def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     tour = readme.split("## Product tour", 1)[1].split("## Self-host", 1)[0]
     normalized = " ".join(tour.lower().split())
-    for marker in ("finding", "source receipts", "graph", "reachable data asset", "owners", "fix", "re-scan", "verify"):
+    for marker in ("finding", "source receipts", "graph", "modeled data asset", "owners", "fix", "re-scan", "verify"):
         assert marker in normalized
 
 

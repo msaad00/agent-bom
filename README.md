@@ -71,12 +71,10 @@ path does not by itself prove exploitation or successful data access.
   <a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab application graph connecting a real Pillow advisory to modeled infrastructure and its remediation action" width="920"></a>
 </p>
 
-Start in **Summary** to choose a scope, then **Inspect** an entity. Narrow the
-graph by entity type or severity, choose traversal direction and hop limit, and
-expand the relationships relevant to the investigation. Use the ordered path
-and hop inspector to review direction, evidence freshness and unknowns; return
-to the summary to explore another scope. Large scopes use bounded pages and
-show when the current view is incomplete.
+Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity,
+set traversal direction and hop limit, and expand relevant relationships.
+The ordered path and hop inspector expose evidence freshness and unknowns.
+Large scopes use bounded pages and disclose when the current view is incomplete.
 
 ### Engineers and GRC: prioritize findings and verify fixes
 

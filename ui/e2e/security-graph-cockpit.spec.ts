@@ -1154,17 +1154,22 @@ for (const proof of [
       requests.push(url);
       const second = url.searchParams.has("cursor");
       const source = { id: "agent:desktop", label: "A long assistant name with deployment context and an extended readable source label", role: "agent" };
-      const target = { id: second ? "finding:second" : "finding:first", label: second ? "Second page finding" : "First page finding", role: "vulnerability" };
+      const target = { id: second ? "data:second" : "data:first", label: second ? "Second page asset" : "First page asset", role: "data" };
       const unavailable = { status: "unavailable", verdict: null };
       await route.fulfill({ contentType: "application/json", body: JSON.stringify({
         schema_version: "v1", tool: "exposure_paths", scan_id: scanId, count: 1, total: 2,
         pagination: { offset: second ? 1 : 0, limit: 25, returned: 1, has_more: !second, next_cursor: second ? null : "next-page" },
         paths: [{
           id: target.id, label: target.label, summary: "Static evidence; execution is unverified.", riskScore: 30, severity: "high",
-          source, target, hops: [source, target], nodeIds: [source.id, target.id], edgeIds: ["context"], findings: [target.label],
-          relationships: [{ id: "context", source: source.id, target: target.id, relationship: "vulnerable_to", direction: "directed", traversable: false }],
+          source, target, hops: [source, target], nodeIds: [source.id, target.id], edgeIds: ["context"], findings: [],
+          relationships: [{ id: "context", source: source.id, target: target.id, relationship: "accessed", direction: "directed", traversable: false }],
           reachableTools: [], exposedCredentials: [], reachability: "unknown",
-          hopEvidence: [{source_node_id: source.id, target_node_id: target.id, relationship: "vulnerable_to", source_snapshot_ids: ["synthetic-runtime:blocked"], relationship_provenance: "recorded", evidence_tier: "runtime_observed", freshness: "fresh", runtime_observed_state: "blocked", runtime_outcome: "blocked", direction: "directed", traversable: false, complete: false, truncated: false, correlation_identity_status: "current"}],
+          hopEvidence: [{source_node_id: source.id, target_node_id: target.id, relationship: "accessed", source_snapshot_ids: ["synthetic-runtime:blocked"], relationship_provenance: "recorded", evidence_tier: "runtime_observed", freshness: "fresh", runtime_observed_state: "blocked", runtime_outcome: "blocked", direction: "directed", traversable: false, complete: false, truncated: false, correlation_identity_status: "current", authority: {
+            status: "recorded", derivation: null, reason_codes: [], decisions: Array.from({length: 9}, (_, index) => ({
+              source: "authorization-evidence", provider: "gcp", decision: "allow", action: `storage.objects.read:${index}`,
+              principal_id: source.id, resource: "projects/_/buckets/synthetic-example", binding_ids: [`source-grant:${index}`], observed_at: null,
+            })),
+          }}],
           evidenceDimensions: { reachability: unavailable, exploitability: unavailable, impact: unavailable, actionability: unavailable, completeness: { status: "partial" } },
           provenance: { source: "fixture", scanId },
         }],
@@ -1185,6 +1190,18 @@ for (const proof of [
     await expect(inspector).toContainText("Blocked attempt");
     await expect(inspector).toContainText("synthetic-runtime:blocked");
     await expect(inspector).toContainText("This receipt cannot establish a successful downstream action");
+    const authority = inspector.getByRole("region", { name: "Recorded authority" });
+    await expect(authority).toContainText("Snapshot evidence, not a current permission check");
+    await expect(authority.getByText("storage.objects.read:0 · allow", {exact: true})).toBeVisible();
+    await authority.getByRole("button", {name: "Next receipts"}).click();
+    await expect(authority.getByText("storage.objects.read:4 · allow", {exact: true})).toBeVisible();
+    const bindings = authority.getByText("Source bindings (1)", {exact: true}).first();
+    await bindings.click();
+    await expect(authority.getByText("source-grant:4", {exact: true})).toBeVisible();
+    expect(await authority.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await authority.evaluate(element => element.scrollIntoView({block: "start"}));
+    await authority.screenshot({path: testInfo.outputPath(`hop-authority-${proof.theme}-${proof.width}.png`)});
+    await hopButton.focus();
     expect(await inspector.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
     await inspector.screenshot({path: testInfo.outputPath(`hop-evidence-${proof.theme}-${proof.width}.png`)});
     await page.keyboard.press("Enter");
@@ -1192,7 +1209,7 @@ for (const proof of [
     await lens.getByRole("button", { name: "Next paths" }).click();
     await expect(lens.getByRole("status")).toContainText("Page 2");
     await expect(lens.getByRole("button", { name: "Next paths" })).toBeDisabled();
-    await expect(lens.getByRole("list", { name: "Exposure path queue" })).toContainText("Second page finding");
+    await expect(lens.getByRole("list", { name: "Exposure path queue" })).toContainText(/Second Page Asset/i);
     await lens.getByRole("button", { name: "Previous paths" }).click();
     await expect(lens.getByRole("status")).toContainText("Page 1");
     // The initial request can resolve latest before the parent loads its scope;

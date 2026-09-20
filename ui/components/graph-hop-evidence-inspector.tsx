@@ -3,6 +3,7 @@
 import { useId, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import type { GraphHopEvidence } from "@/lib/graph-schema";
+import { GraphHopAuthority } from "@/components/graph-hop-authority";
 
 const PAGE_SIZE = 8;
 const humanize = (value: string | undefined) => (typeof value === "string" && value ? value : "unknown").replaceAll("_", " ");
@@ -37,7 +38,8 @@ export function GraphHopEvidenceInspector({
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return rows.filter(row => !needle || [row.source.label, row.target.label, row.receipt?.relationship, row.status,
-      row.receipt?.evidence_tier, row.receipt?.freshness].join(" ").toLocaleLowerCase().includes(needle));
+      row.receipt?.evidence_tier, row.receipt?.freshness,
+      ...(Array.isArray(row.receipt?.authority?.decisions) ? row.receipt.authority.decisions.map(item => item?.action) : [])].join(" ").toLocaleLowerCase().includes(needle));
   }, [query, rows]);
   const safePage = Math.min(page, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1));
   const visible = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
@@ -93,6 +95,7 @@ export function GraphHopEvidenceInspector({
                 {snapshots.length ? <ul className="mt-1 space-y-1">{snapshots.map((snapshot, snapshotIndex) => <li key={`${snapshot}:${snapshotIndex}`} className="break-all font-mono text-xs">{snapshot}</li>)}</ul> : <p>Not recorded</p>}
               </div>
               {reasons.length ? <p className="break-words text-xs text-[color:var(--text-secondary)]">{reasons.map(humanize).join(" · ")}</p> : null}
+              {receipt.authority && typeof receipt.authority === "object" ? <GraphHopAuthority evidence={receipt.authority} /> : null}
               {negative && <p className="text-red-700 dark:text-red-300">This receipt cannot establish a successful downstream action. Other paths require separate evidence.</p>}
             </>}
           </div>}

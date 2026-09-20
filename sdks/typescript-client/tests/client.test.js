@@ -49,6 +49,19 @@ test("builds exposure path query params", async () => {
   );
 });
 
+test("retains qualified action receipts from exposure responses", async () => {
+  const receipt = {
+    source_node_id: "identity:reader", target_node_id: "data:example", relationship: "can_access",
+    authority: { status: "partial", decisions: [{source: "authorization-evidence", provider: "gcp", decision: "allow",
+      action: "storage.objects.get", principal_id: "reader@example.test", resource: "projects/_/buckets/example",
+      binding_ids: ["grant:read"], observed_at: null}], derivation: null, reason_codes: ["authorization_receipt_limit"] },
+    runtime_outcome: "unknown",
+  };
+  const client = new AgentBomClient({baseUrl: "https://example.test", fetch: async () => jsonResponse({paths: [{hopEvidence: [receipt]}]})});
+  const result = await client.exposurePaths({scanId: "snapshot:recorded"});
+  assert.deepEqual(result.paths[0].hopEvidence[0], receipt);
+});
+
 test("posts deploy decision payload without undefined fields", async () => {
   let payload;
   const client = new AgentBomClient({

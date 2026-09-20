@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from agent_bom.evidence.semantics import ExploitabilityDimension
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.hop_evidence import authority_evidence
 from agent_bom.graph.types import RelationshipType
 
 STRUCTURAL_EXPOSURE_SUMMARY = (
@@ -202,6 +203,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
             continue
         source_ids = _source_snapshot_ids(edge, graph)
         freshness = _freshness(edge)
+        authority = authority_evidence(edge.evidence)
         receipts.append(
             {
                 "source_node_id": source,
@@ -228,6 +230,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                     and edge.target == target
                 ),
                 "truncated": False,
+                **({"authority": authority} if authority is not None else {}),
             }
         )
 

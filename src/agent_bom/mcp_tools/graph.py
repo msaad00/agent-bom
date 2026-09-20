@@ -206,6 +206,8 @@ def _severity_for_path(path: Any, nodes_by_id: dict[str, Any]) -> str:
 
 
 def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: list[Any], rank: int, scan_id: str) -> dict[str, Any]:
+    from agent_bom.graph.hop_evidence import exposure_hop_evidence
+
     hops = [_node_ref(hop, nodes_by_id) for hop in getattr(path, "hops", []) or []]
     source = _node_ref(str(getattr(path, "source", "") or ""), nodes_by_id) if getattr(path, "source", "") else (hops[0] if hops else {})
     target = _node_ref(str(getattr(path, "target", "") or ""), nodes_by_id) if getattr(path, "target", "") else (hops[-1] if hops else {})
@@ -230,6 +232,7 @@ def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: lis
             "exposedCredentials": list(getattr(path, "credential_exposure", []) or []),
             "reachability": str(getattr(path, "reachability", "unknown") or "unknown"),
             "reachabilityBasis": list(getattr(path, "reachability_basis", []) or []),
+            "hopEvidence": exposure_hop_evidence(path),
             "evidenceDimensions": exposure_evidence_dimensions(path, target_node, relationships=relationships),
             "provenance": {"source": "mcp_exposure_paths", "scanId": scan_id},
         }

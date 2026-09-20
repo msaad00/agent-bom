@@ -1061,6 +1061,7 @@ def _exposure_path_for_attack_path(
     agents = [hop for hop in hops if hop["role"] == "agent"]
     findings = _finding_ids_for_nodes(nodes_by_id, path.hops, path.vuln_ids)
     label_parts = [findings[0] if findings else target["label"], agents[0]["label"] if agents else source["label"]]
+    from agent_bom.graph.hop_evidence import exposure_hop_evidence
     from agent_bom.graph.path_evidence import exposure_evidence_dimensions, qualify_exposure_reachability
 
     finding_node = nodes_by_id.get(path.target)
@@ -1083,6 +1084,7 @@ def _exposure_path_for_attack_path(
         "exposedCredentials": list(path.credential_exposure),
         "reachability": path.reachability,
         "reachabilityBasis": list(path.reachability_basis),
+        "hopEvidence": exposure_hop_evidence(path),
         "evidenceDimensions": exposure_evidence_dimensions(path, finding_node, relationships=relationships),
         "provenance": {"source": "graph_attack_path", "scanId": scan_id} if scan_id else {"source": "graph_attack_path"},
     }

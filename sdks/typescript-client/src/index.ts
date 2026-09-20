@@ -42,9 +42,30 @@ export interface FindingsQuery {
   offset?: number;
 }
 
+export type ExposureHopEvidence = {
+  source_node_id: string;
+  target_node_id: string;
+  relationship: string;
+  source_snapshot_ids: string[];
+  relationship_provenance: "recorded" | "unavailable";
+  correlation_identity_status: "current" | "recomputation_required" | "unavailable";
+  evidence_tier: "static_evidence" | "modeled_infrastructure" | "runtime_observed" | "unknown";
+  confidence: number | null;
+  freshness: "fresh" | "stale" | "stale_allowed" | "unknown";
+  runtime_observed_state: "observed" | "blocked" | "not_observed" | "unknown";
+  runtime_outcome: "blocked" | "failed" | "unknown";
+  direction: "directed" | "bidirectional" | "unknown";
+  traversable: boolean;
+  complete: boolean;
+  truncated: boolean;
+  reason_codes: string[];
+};
+
+export type ExposurePathRecord = Record<string, JsonValue> & { hopEvidence?: ExposureHopEvidence[] };
+
 export interface ExposurePathEnvelope {
   pagination?: { offset: number; limit: number; returned: number; has_more: boolean; next_cursor: string | null };
-  paths: JsonValue[];
+  paths: ExposurePathRecord[];
   nodes?: JsonValue[];
   edges?: JsonValue[];
   stats?: Record<string, JsonValue>;

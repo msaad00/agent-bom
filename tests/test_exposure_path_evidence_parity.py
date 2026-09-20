@@ -78,6 +78,45 @@ def test_exposure_path_surfaces_carry_independent_evidence_dimensions() -> None:
         assert dimensions["actionability"]["actionable"] is True
         assert dimensions["completeness"]["status"] == "complete"
         assert payload["relationships"][0]["traversable"] is True
+        assert payload["hopEvidence"][0]["source_snapshot_ids"] == ["scan-1"]
+        assert payload["hopEvidence"][0]["runtime_outcome"] == "unknown"
+
+
+def test_exposure_receipts_discard_unclassified_payloads_and_retain_unknowns() -> None:
+    path = AttackPath(
+        source="agent:a",
+        target="resource:b",
+        hops=["agent:a", "resource:b"],
+        edges=["accessed"],
+        hop_evidence=[
+            {
+                "source_node_id": "agent:a",
+                "target_node_id": "resource:b",
+                "relationship": "accessed",
+                "raw_response": "secret-body",
+                "prompt": "ignore previous instructions",
+            }
+        ],
+    )
+    for payload in _serialize_both(path, nodes=[], edges=[]):
+        receipt = payload["hopEvidence"][0]
+        assert "raw_response" not in receipt and "prompt" not in receipt
+        assert receipt["complete"] is False
+        assert receipt["freshness"] == "unknown"
+        assert receipt["runtime_outcome"] == "unknown"
+
+
+def test_mismatched_receipt_never_attaches_to_a_different_hop() -> None:
+    path = AttackPath(
+        source="agent:a",
+        target="resource:b",
+        hops=["agent:a", "resource:b"],
+        edges=["accessed"],
+        hop_evidence=[{"source_node_id": "other:a", "target_node_id": "other:b", "relationship": "accessed", "complete": True}],
+    )
+    for payload in _serialize_both(path, nodes=[], edges=[]):
+        assert payload["hopEvidence"][0]["complete"] is False
+        assert payload["hopEvidence"][0]["reason_codes"] == ["invalid_hop_receipt"]
 
 
 def test_missing_path_evidence_stays_unavailable_and_does_not_alias_risk() -> None:

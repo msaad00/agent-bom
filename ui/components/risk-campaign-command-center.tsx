@@ -429,6 +429,7 @@ function VerificationQueue() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [verificationError, setVerificationError] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [retryCursor, setRetryCursor] = useState<string | null>(null);
@@ -465,7 +466,7 @@ function VerificationQueue() {
 
   const verify = useCallback(async (entry: RiskCampaignVerificationQueueEntry) => {
     setBusyId(entry.campaign_id);
-    setError("");
+    setVerificationError("");
     setSuccessMessage("");
     try {
       const result = await api.verifyRiskCampaign(entry.campaign_id, { version: entry.version });
@@ -490,7 +491,7 @@ function VerificationQueue() {
         setResults((current) => ({ ...current, [entry.campaign_id]: result }));
       }
     } catch (verifyError: unknown) {
-      setError(verifyError instanceof Error ? verifyError.message : "Campaign verification failed");
+      setVerificationError(verifyError instanceof Error ? verifyError.message : "Campaign verification failed");
     } finally {
       setBusyId(null);
     }
@@ -513,9 +514,10 @@ function VerificationQueue() {
         ) : <span className="risk-collapsed-label">show</span>}
       </summary>
       <div className="risk-queue-body">
-      <p className="risk-helper-copy">Inactive campaigns stay here until canonical evidence confirms the original findings are gone.</p>
+      <p className="risk-helper-copy">Inactive campaigns stay here while remediation evidence is unverified. Findings disappearing from a time window does not prove a fix.</p>
       {loading ? <p role="status" className="risk-empty-copy">Loading verification queue…</p> : null}
       {error ? <p role="alert" className="risk-error-copy">{error}</p> : null}
+      {verificationError ? <p role="alert" className="risk-error-copy">{verificationError}</p> : null}
       {successMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--status-success)]">{successMessage}</p> : null}
       {!loading && entries.length === 0 && !error ? (
         <p className="risk-empty-copy">No inactive campaigns await re-verification.</p>

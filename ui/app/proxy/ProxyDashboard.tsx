@@ -387,6 +387,7 @@ export default function ProxyDashboard() {
                         labelStyle={{ color: chart.text, marginBottom: 4 }}
                       />
                       <Bar
+                        isAnimationActive={false}
                         dataKey="count"
                         name="Calls"
                         fill={chart.accent}
@@ -404,7 +405,7 @@ export default function ProxyDashboard() {
             </div>
 
             {/* Blocked breakdown pie */}
-            <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
+            <div className="min-w-0 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
               <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-1">
                 Block Reasons
               </h3>
@@ -412,56 +413,60 @@ export default function ProxyDashboard() {
                 Why tool calls were blocked
               </p>
               {blockedPieData.length > 0 ? (
-                <div className="h-52">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={blockedPieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={70}
-                        dataKey="value"
-                        nameKey="name"
-                        stroke={chart.bg}
-                        strokeWidth={2}
-                      >
-                        {blockedPieData?.map((_, i) => (
-                          <Cell
-                            key={i}
-                            fill={pieColors[i % pieColors.length] ?? chart.severity.unrated}
-                            fillOpacity={0.85}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          background: chart.tooltip.bg,
-                          border: `1px solid ${chart.tooltip.border}`,
-                          borderRadius: 8,
-                          fontSize: 12,
-                        }}
-                        itemStyle={{ color: chart.tooltip.text }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                <div>
+                  <div className="h-40">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          isAnimationActive={false}
+                          data={blockedPieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={40}
+                          outerRadius={70}
+                          dataKey="value"
+                          nameKey="name"
+                          stroke={chart.bg}
+                          strokeWidth={2}
+                        >
+                          {blockedPieData?.map((_, i) => (
+                            <Cell
+                              key={i}
+                              fill={pieColors[i % pieColors.length] ?? chart.severity.unrated}
+                              fillOpacity={0.85}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            background: chart.tooltip.bg,
+                            border: `1px solid ${chart.tooltip.border}`,
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          itemStyle={{ color: chart.tooltip.text }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ul aria-label="Block reason counts" tabIndex={0} className="mt-3 max-h-36 space-y-2 overflow-y-auto pr-1 focus-visible:outline-2 focus-visible:outline-emerald-500">
                     {blockedPieData?.map((d, i) => (
-                      <div
+                      <li
                         key={d.name}
-                        className="flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)]"
+                        className="flex items-start gap-2 text-xs text-[var(--text-secondary)]"
                       >
                         <span
-                          className="w-2 h-2 rounded-full"
+                          aria-hidden="true"
+                          className="mt-1 h-2 w-2 shrink-0 rounded-full"
                           style={{
                             backgroundColor:
                               pieColors[i % pieColors.length],
                           }}
                         />
-                        {d.name}: {d.value}
-                      </div>
+                        <span className="min-w-0 break-words [overflow-wrap:anywhere]">{d.name}: {d.value}</span>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               ) : (
                 <div className="h-52 flex items-center justify-center">
@@ -497,7 +502,7 @@ export default function ProxyDashboard() {
 
           {/* Alerts */}
           <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
                   Recent Alerts

@@ -605,3 +605,35 @@ for (const theme of ["light", "dark"] as const) {
     expect((await request).postDataJSON()).toMatchObject({ roots: ["pkg:42"] });
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  test(`leaf scope rows remain compact and inspectable on mobile ${theme}`, async ({ page }, testInfo) => {
+    await routeLargeGraphPage(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await page.route("**/v1/graph/rollup?**", route => route.fulfill({ json: {
+      scan_id: scanId, tenant_id: "default", created_at: createdAt, mode: "rollup", filters: {},
+      top_level: Array.from({ length: 13 }, (_, i) => ({ id: `pkg:${i}`, label: `CVE-2026-${1000 + i}`, entity_type: "vulnerability", severity: "high",
+        is_container: false, has_children: false, direct_child_count: 0,
+        aggregate: { descendant_count: 0, by_type: {}, severity_counts: {}, worst_severity: "none", worst_severity_rank: 0,
+          internet_exposed: false, toxic_combo: false, exposed_count: 0, toxic_count: 0 } })),
+      edges: [], summary: { total_nodes: 13, total_edges: 0, top_level_count: 13, container_count: 0 },
+      completeness: { status: "complete", complete: true, truncated: false, returned: 13, total: 13 },
+    } }));
+    await page.goto(`/graph?scan=${scanId}`);
+    await page.getByRole("button", { name: "Summary", exact: true }).click();
+    const summary = page.getByTestId("graph-rollup-decision-surface");
+    await expect(summary.getByRole("article")).toHaveCount(12);
+    const row = summary.getByRole("article").first();
+    expect((await row.boundingBox())!.height).toBeLessThanOrEqual(140);
+    const grid = page.getByTestId("graph-rollup-card-grid");
+    expect((await grid.boundingBox())!.height).toBeLessThanOrEqual(844 * 0.6 + 1);
+    await summary.getByRole("button", { name: "Next scope page", exact: true }).click();
+    await expect(summary.getByRole("article")).toHaveCount(1);
+    await expect(summary.getByRole("button", { name: "Inspect CVE-2026-1012 (pkg:12)", exact: true })).toBeVisible();
+    await summary.locator("summary", { hasText: "Node ID" }).click();
+    await expect(summary.getByText("pkg:12", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`compact-leaf-${theme}.png`), fullPage: true });
+  });
+}

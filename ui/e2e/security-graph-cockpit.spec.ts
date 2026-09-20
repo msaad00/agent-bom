@@ -619,6 +619,7 @@ test("focused investigation never shows an unrelated global path", async ({ page
   await page.waitForLoadState("networkidle");
 
   await expect(page.getByText("No attack paths matched the current focus")).toBeVisible();
+  await expect(page.getByText(/This does not establish whether the vulnerability is exploitable/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toHaveCount(0);
 });
 

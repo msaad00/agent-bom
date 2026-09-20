@@ -190,6 +190,19 @@ export function ExposurePathCommandCenter({
               {findingLabel ? <>{findingLabel}{packageHop ? <> · {packageHop.label}</> : null} · Follow the evidence to the affected asset.</> : "Follow the ordered relationships and inspect their evidence."}
             </p>
           </div>
+          {primaryAction && (
+            <div className="ep-header-action">
+              <Link
+                href={primaryAction.href}
+                data-testid="exposure-path-primary-action"
+                className="ep-primary-action"
+                title={primaryAction.detail}
+              >
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{primaryAction.title}</span>
+              </Link>
+            </div>
+          )}
           <div className="ep-metrics">
             <MetricPill label="Path priority" value={path.riskScore.toFixed(1)} tone="red" />
             <MetricPill label="Path span" value={pathSpanLabel(path.hops.length)} />
@@ -204,29 +217,16 @@ export function ExposurePathCommandCenter({
         </details>}
         {path.evidenceDimensions && (
           <section aria-label="Path evidence assessment" className="space-y-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
-            <dl className="grid gap-3 sm:grid-cols-3">
-              <div><dt className="text-xs text-[color:var(--text-secondary)]">Reachability</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.reachability.verdict ?? "Unknown"}</dd></div>
-              <div><dt className="text-xs text-[color:var(--text-secondary)]">Exploitability</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.exploitability.verdict?.replaceAll("_", " ") ?? "Not assessed"}</dd></div>
-              <div><dt className="text-xs text-[color:var(--text-secondary)]">Evidence coverage</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.completeness.status}</dd></div>
+            <dl className="flex flex-wrap gap-x-6 gap-y-2">
+              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-xs text-[color:var(--text-secondary)]">Reachability</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.reachability.verdict ?? "Unknown"}</dd></div>
+              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-xs text-[color:var(--text-secondary)]">Exploitability</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.exploitability.verdict?.replaceAll("_", " ") ?? "Not assessed"}</dd></div>
+              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-xs text-[color:var(--text-secondary)]">Evidence coverage</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.completeness.status}</dd></div>
             </dl>
             <p className="text-xs text-[color:var(--text-secondary)]">{pathSummary}</p>
             {path.provenance?.scanId && <p className="break-all text-xs text-[color:var(--text-tertiary)]">Snapshot: {path.provenance.scanId}</p>}
           </section>
         )}
 
-        {primaryAction && (
-          <div className="ep-actions">
-            <Link
-              href={primaryAction.href}
-              data-testid="exposure-path-primary-action"
-              className="ep-primary-action"
-            >
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              <span>{primaryAction.title}</span>
-            </Link>
-            <p className="ep-action-detail">{primaryAction.detail}</p>
-          </div>
-        )}
 
         <div className="ep-view-row">
           <div className="ep-view-label">
@@ -268,6 +268,7 @@ export function ExposurePathCommandCenter({
           </summary>
         <div className="ep-details-body">
           <p className="ep-summary">{pathSummary}</p>
+          {primaryAction?.detail && <p className="ep-summary">{primaryAction.detail}</p>}
           <section aria-label="Relationship proof">
             <div className="ep-kicker mb-2">
               Relationship proof

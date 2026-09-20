@@ -9,7 +9,7 @@ tagline under the nav lockup — the wordmark is enough.
 | Layer | Canonical form | Where |
 |---|---|---|
 | **Product name** | `agent-bom` | CLI, packages, URLs, docs titles, UI wordmark `alt`, metadata |
-| **Mark (logo)** | **BOM** with agent HUD in the **O** | Favicon, nav icon, avatars, social icon-only |
+| **Mark (logo)** | **BOM** with agent face in the **O** | Favicon, nav icon, avatars, social icon-only |
 | **Wordmark** | `agent·bom` | Nav lockup beside the mark |
 | **Spoken nickname** | “BOM” | Optional in conversation / tight chrome — never as the sole product name in docs, CLI, or packages |
 
@@ -35,9 +35,9 @@ tagline under the nav lockup — the wordmark is enough.
 - **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
   dark `#34d399 → #06b6d4` / `#22d3ee`. Ink `#1f2937` (light) / `#e6edf3` (dark);
   muted `#6b7280` / `#8b949e`.
-- **Mark (locked):** **BOM** wordmark-as-icon where the **O** is an agent HUD
-  (filled head + visor slots + status bar + antenna — not an emoji smile), with
-  three materials ticks under the letters so the glyph reads as agent-in-BOM.
+- **Mark (locked):** **BOM** wordmark-as-icon where the **O** is a simple agent face
+  with an antenna, open eyes, and a subtle smile. The mark has no decorative
+  status bars; live status belongs in labeled interface controls.
   Canonical product mark — do not replace with lettermarks or clipboard
   variants. Same mark appears in the dashboard lockup and the CLI no-args
   splash (`agent_bom.output.brand_tokens`).
@@ -53,6 +53,13 @@ network refs, light + dark pairs):
 | `wordmark-{light,dark}.svg` | Wordmark only — inline headers where the mark is redundant |
 
 `docs/images/logo-{light,dark}.svg` are kept as compatibility aliases of the lockup.
+Regenerate copies, the social PNG and favicon after editing canonical SVGs:
+
+```bash
+python scripts/render_social_preview_svg.py
+node ui/scripts/render-brand-assets.mjs
+```
+
 The MkDocs site uses `site-docs/assets/brand/mark-mono.svg` (white, for the colored
 header bar) as `theme.logo` and `mark.svg` as the favicon.
 

@@ -618,3 +618,32 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+for (const theme of ["light", "dark"] as const) {
+  test(`short incoming investigation keeps readable labels after fitting ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 850 });
+    const graph = buildDenseGraph();
+    const ids = ["agent:desktop", "server:filesystem", "pkg:filesystem:3", "cve:filesystem:3"];
+    const scoped = { ...graph, nodes: graph.nodes.filter(n => ids.includes(n.id)), edges: graph.edges.filter(e => ids.includes(e.source) && ids.includes(e.target)), attack_paths: [] };
+    await routeGraphPage(page, scoped);
+    await page.route("**/v1/graph/query", route => route.fulfill({ json: { ...scoped, roots: [ids[3]], direction: "reverse", max_depth: 3, truncated: false, budget: {}, depth_by_node: Object.fromEntries(ids.map((id, i) => [id, 3 - i])) } }));
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await page.goto(`/graph?scan=${scanId}&investigate=1&root=${encodeURIComponent(ids[3]!)}&depth=3&scope=expanded`);
+    await expect(page.getByRole("combobox", {name: "Traversal direction"})).toBeVisible();
+    await expect(page.getByTestId("graph-viewport-scope")).toContainText("4 displayed nodes · 3 displayed relationships");
+    await page.getByRole("combobox", {name: "Traversal direction"}).selectOption("reverse");
+    await page.getByRole("combobox", {name: "Traversal depth"}).selectOption("3");
+    const close = page.getByRole("button", { name: "Close", exact: true });
+    if (await close.isVisible()) await close.click();
+    await page.getByRole("button", {name: "Fit View", exact: true}).click();
+    await settledViewportZoom(page);
+    await expect(page.locator(".react-flow__node")).toHaveCount(4);
+    const renderedSizes = await page.locator(".react-flow__node").evaluateAll(elements => elements.map(element => {
+      const viewport = element.closest(".react-flow__viewport")!;
+      const label = element.querySelector("p") ?? element.querySelector('[data-testid="summary-node"] span');
+      return label ? parseFloat(getComputedStyle(label).fontSize) * new DOMMatrixReadOnly(getComputedStyle(viewport).transform).a : 0;
+    }));
+    expect(Math.min(...renderedSizes)).toBeGreaterThanOrEqual(12);
+    await page.screenshot({path: testInfo.outputPath(`short-investigation-${theme}.png`)});
+  });
+}

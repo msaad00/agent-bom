@@ -109,7 +109,7 @@ describe("GraphRollupDecisionSurface", () => {
     expect(screen.getByText("Prioritized findings and scopes")).toBeInTheDocument();
     expect(screen.getByText("Toxic combination")).toBeInTheDocument();
     expect(screen.getByText("Internet exposed")).toBeInTheDocument();
-    expect(screen.getByText("1 connected nodes")).toBeInTheDocument();
+    expect(screen.getByText("1 connected node")).toBeInTheDocument();
     expect(screen.queryByText("Scope quiet-23")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Drill in" }));

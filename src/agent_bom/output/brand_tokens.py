@@ -18,7 +18,8 @@ DOCS_URL = "https://github.com/msaad00/agent-bom"
 REPORT_TITLE = f"{PRODUCT_NAME} scan report"
 
 # Minimal dark mark for API /docs favicon when package data is unavailable.
-MARK_SVG_DARK = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="agent-bom mark">
+MARK_SVG_DARK = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
+  role="img" aria-label="agent-bom mark — BOM with an agent face in the O">
   <defs>
     <linearGradient id="abm" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#34d399"/>
@@ -26,12 +27,23 @@ MARK_SVG_DARK = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" r
     </linearGradient>
   </defs>
   <rect x="3.5" y="3.5" width="57" height="57" rx="15" fill="#0c1210" stroke="url(#abm)" stroke-width="2"/>
+  <g transform="translate(0 3)">
+  <!-- B -->
+  <path fill="url(#abm)"
+    d="M7.5 16.5h7.4c3.7 0 5.9 1.9 5.9 4.7 0 1.9-1.05 3.25-2.75 3.95 2 .8 3.3 2.35 3.3 4.7 0 3.05-2.45 4.95-6.45 4.95H7.5
+    V16.5zm3.65 3.1v4.7h2.8c1.7 0 2.7-.85 2.7-2.35s-1.1-2.35-2.95-2.35H11.15
+    zm0 7.55v5h3.15c1.85 0 3-.95 3-2.55s-1.1-2.45-3.05-2.45H11.15z"/>
+  <!-- O as the agent face: ring-as-head + antenna + two eyes + mouth (readable at small sizes) -->
   <circle cx="32" cy="30.2" r="12" fill="#0f1a17" stroke="url(#abm)" stroke-width="2.4"/>
   <path d="M32 18.4V13.5" stroke="url(#abm)" stroke-width="2.2" stroke-linecap="round"/>
   <circle cx="32" cy="11.9" r="2.1" fill="url(#abm)"/>
   <circle cx="28" cy="28.9" r="2.7" fill="#34d399"/>
   <circle cx="36" cy="28.9" r="2.7" fill="#22d3ee"/>
-  <path d="M28.3 35.4h7.4" stroke="url(#abm)" stroke-width="1.9" stroke-linecap="round"/>
+  <path d="M27.5 34.5Q32 39 36.5 34.5" fill="none" stroke="url(#abm)" stroke-width="1.9" stroke-linecap="round"/>
+  <!-- M -->
+  <path fill="url(#abm)" d="M44.5 16.5h3.7l3.75 11.7 3.75-11.7H59.5v19.6h-3.3V27.8l-3.65 8.5h-2.95l-3.5-8.5v8.5h-3.3V16.5h1.7z"/>
+  </g>
+
 </svg>
 """
 

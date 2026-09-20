@@ -177,7 +177,7 @@ export function GraphRollupDecisionSurface({
 
       <div
         data-testid="graph-rollup-card-grid"
-        className={`grid gap-2 overflow-y-auto p-4 ${cardGridClass}`}
+        className={`grid max-h-[min(60vh,34rem)] gap-2 overflow-y-auto p-3 ${cardGridClass}`}
       >
         {visible.map((item) => {
           const relation = relationEvidence(item.id, edges);
@@ -187,56 +187,46 @@ export function GraphRollupDecisionSurface({
           return (
             <article
               key={item.id}
-              className="grid items-center gap-3 rounded-xl border border-outline bg-background p-3 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]"
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-lg border border-outline bg-background px-3 py-2 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="col-span-2 flex min-w-0 items-start justify-between gap-3 md:col-span-1">
                 <div className="min-w-0">
-                  <p className="break-words text-sm font-semibold text-foreground" title={item.label}>
+                  <p className="break-words text-sm font-semibold text-foreground [overflow-wrap:anywhere]" title={item.label}>
                     {item.label}
                   </p>
-                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
+                  <p className="text-[11px] text-ink-secondary">
                     {item.entity_type.replaceAll("_", " ")}
                   </p>
                   {item.context && Object.keys(item.context).length > 0 && (
-                    <p className="mt-1 break-words text-xs text-ink-secondary">
+                    <p className="mt-1 break-words text-xs text-ink-secondary [overflow-wrap:anywhere]">
                       {Object.entries(item.context).map(([kind, value]) => `${kind}: ${value}`).join(" · ")}
                     </p>
                   )}
-                  <details className="mt-1 text-[11px] text-ink-tertiary">
+                  <details className="text-[11px] text-ink-tertiary">
                     <summary className="cursor-pointer">Node ID</summary>
                     <code className="block break-all select-all">{item.id}</code>
                   </details>
                 </div>
-                <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold uppercase ${severityTone(severity)}`}>
+                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${severityTone(severity)}`}>
                   {severity === "none" ? "Not rated" : severity}
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-4 text-xs">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                 {item.has_children && <div>
-                  <p className="text-[10px] uppercase tracking-wide text-ink-tertiary">Contains</p>
-                  <p className="mt-0.5 font-semibold tabular-nums text-foreground">{item.aggregate.descendant_count} nodes</p>
+                  <p className="text-ink-secondary">Contains <span className="font-semibold tabular-nums text-foreground">{item.aggregate.descendant_count} nodes</span></p>
                 </div>}
                 {item.has_children && <div>
-                  <p className="text-[10px] uppercase tracking-wide text-ink-tertiary">Contained critical / high</p>
-                  <p className="mt-0.5 font-semibold tabular-nums text-foreground">{critical} / {high}</p>
+                  <p className="text-ink-secondary">Contained critical / high <span className="font-semibold tabular-nums text-foreground">{critical} / {high}</span></p>
                 </div>}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-ink-tertiary">Relations</p>
-                  <p className="mt-0.5 font-semibold tabular-nums text-foreground" title={`${relation.relationships} aggregated relationship evidence records`}>
-                    {relation.containers} connected nodes
+                  <p className="tabular-nums text-ink-secondary" title={`${relation.relationships} aggregated relationship evidence records`}>
+                    {relation.containers} connected {relation.containers === 1 ? "node" : "nodes"}
                   </p>
                 </div>
               </div>
 
-              {(item.aggregate.toxic_combo || item.aggregate.internet_exposed) && <div className="flex flex-wrap gap-1.5 text-[10px] md:col-span-3">
-                {item.aggregate.toxic_combo ? (
-                  <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-red-700 dark:text-red-200">Toxic combination</span>
-                ) : null}
-                {item.aggregate.internet_exposed ? (
-                  <span className="rounded border border-orange-500/30 bg-orange-500/10 px-1.5 py-0.5 text-orange-700 dark:text-orange-200">Internet exposed</span>
-                ) : null}
-              </div>}
+
 
               <div className="flex items-center justify-end gap-3">
                 {item.has_children && <button type="button" onClick={() => onInvestigate(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-600 dark:text-sky-300">
@@ -252,6 +242,14 @@ export function GraphRollupDecisionSurface({
                   </button>
                 )}
               </div>
+              {(item.aggregate.toxic_combo || item.aggregate.internet_exposed) && <div className="col-span-2 flex flex-wrap gap-1.5 text-[10px] md:col-span-3">
+                {item.aggregate.toxic_combo ? (
+                  <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-red-700 dark:text-red-200">Toxic combination</span>
+                ) : null}
+                {item.aggregate.internet_exposed ? (
+                  <span className="rounded border border-orange-500/30 bg-orange-500/10 px-1.5 py-0.5 text-orange-700 dark:text-orange-200">Internet exposed</span>
+                ) : null}
+              </div>}
             </article>
           );
         })}

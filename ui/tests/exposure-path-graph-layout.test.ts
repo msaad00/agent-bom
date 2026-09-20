@@ -275,3 +275,18 @@ describe("collapsed exposure-path board", () => {
     expect(layout.width).toBe(852);
   });
 });
+
+it("does not invent reachability or borrow another hop's relationship", () => {
+  const path = makePath(3);
+  path.relationships = [{ id: "unrelated", source: "elsewhere", target: "other", relationship: "invoked", direction: "directed", traversable: true }];
+  const layout = buildPathGraphLayout(path, { expanded: true });
+  expect(layout.edges.every((edge) => edge.label === "Not recorded")).toBe(true);
+  expect(layout.edges.every((edge) => edge.direction === undefined && edge.traversable === undefined)).toBe(true);
+});
+
+it("preserves reverse bidirectional context without inventing traversability", () => {
+  const path = makePath(2);
+  path.relationships = [{ id: "shared", source: "node:1", target: "node:0", relationship: "shares_server", direction: "bidirectional", traversable: false }];
+  const [edge] = buildPathGraphLayout(path).edges;
+  expect(edge).toMatchObject({ label: "Shares Server", direction: "bidirectional", traversable: false });
+});

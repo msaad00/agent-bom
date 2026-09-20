@@ -153,6 +153,8 @@ export interface PathGraphEdge {
   label: string;
   labelX: number;
   labelY: number;
+  direction?: "directed" | "bidirectional" | undefined;
+  traversable?: boolean | undefined;
 }
 
 export interface PathGraphLayout {
@@ -235,7 +237,12 @@ export function buildPathGraphLayout(
 
   const edges: PathGraphEdge[] = nodes.slice(0, -1).map((source, index) => {
     const target = nodes[index + 1]!;
-    const relationship = relationshipForPathStep(path, source.id, target.id, index);
+    const recorded = path.relationships.find((relationship) =>
+      (relationship.source === source.id && relationship.target === target.id) ||
+      (relationship.direction === "bidirectional" && relationship.source === target.id && relationship.target === source.id),
+    );
+    const relationship = source.id === COLLAPSED_HOPS_NODE_ID || target.id === COLLAPSED_HOPS_NODE_ID
+      ? "…" : recorded ? humanizeRelationship(recorded.relationship) : "Not recorded";
     const control = Math.max(40, Math.abs(target.x - source.x) / 2);
     const startX = source.x + nodeWidth;
     const endX = target.x;
@@ -249,6 +256,8 @@ export function buildPathGraphLayout(
       label: truncateGraphText(relationship, 16),
       labelX: (startX + endX) / 2,
       labelY: midY,
+      direction: recorded?.direction,
+      traversable: recorded?.traversable,
     };
   });
 
@@ -275,16 +284,6 @@ export function buildPathGraphLayout(
     hiddenHopCount: hiddenHops.length,
     hiddenHopSummary,
   };
-}
-
-function relationshipForPathStep(path: ExposurePath, source: string, target: string, index: number): string {
-  // An elided span asserts nothing about the relationships it hides.
-  if (source === COLLAPSED_HOPS_NODE_ID || target === COLLAPSED_HOPS_NODE_ID) return "…";
-  const byEndpoints = path.relationships.find(
-    (relationship) => relationship.source === source && relationship.target === target,
-  );
-  const raw = byEndpoints?.relationship ?? path.relationships[index]?.relationship ?? "reaches";
-  return humanizeRelationship(raw);
 }
 
 export function humanizeRelationship(value: string): string {

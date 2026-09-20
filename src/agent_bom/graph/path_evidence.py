@@ -396,6 +396,10 @@ def qualify_exposure_reachability(payload: dict[str, Any]) -> dict[str, Any]:
         payload["reachability"] = "unknown"
         reasons = dimensions["completeness"].get("reasonCodes") or ["incomplete_hop_evidence"]
         payload["reachabilityBasis"] = list(dict.fromkeys([*payload.get("reachabilityBasis", []), *reasons]))
+        previous_summary = payload.get("summary")
+        payload["summary"] = "Structural exposure candidate; available hop evidence does not establish end-to-end reachability."
+        if payload.get("label") == previous_summary:
+            payload["label"] = payload["summary"]
     return payload
 
 

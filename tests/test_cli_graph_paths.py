@@ -90,7 +90,15 @@ def test_graph_paths_exposure_table(monkeypatch) -> None:
     assert "74" in row
     assert "agent-x" in row
     assert "shell-tool" in row
-    assert fake.calls[0] == ("exposure_paths", {"scan_id": "scan-9", "limit": 20, "min_risk": 10.0})
+    assert row.split("\t")[5] == "2"
+    assert fake.calls[0] == ("exposure_paths", {"scan_id": "scan-9", "limit": 20, "min_risk": 10.0, "cursor": None})
+
+
+def test_graph_paths_exposure_continuation(monkeypatch) -> None:
+    fake = _install(monkeypatch)
+    result = CliRunner().invoke(main, ["graph-paths", "exposure", "--cursor", "opaque-continuation", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    assert fake.calls[0][1]["cursor"] == "opaque-continuation"
 
 
 def test_graph_paths_attack_json(monkeypatch) -> None:

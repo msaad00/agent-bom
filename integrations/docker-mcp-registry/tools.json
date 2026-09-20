@@ -155,6 +155,11 @@
         "name": "min_risk",
         "type": "number",
         "desc": "Minimum path risk score to include."
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "desc": "Continue with pagination.next_cursor; keep the risk filter unchanged."
       }
     ]
   },

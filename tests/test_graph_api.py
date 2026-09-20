@@ -2198,7 +2198,7 @@ class TestGraphStoreBackendSelection:
         assert body["count"] == 0
         assert body["total"] == 0
         assert body["message"] == (
-            "0 paths means no agent-to-vulnerability ExposurePath currently reaches a credential exposure or reachable tool in this scan."
+            "No exposure paths were recorded or derived for this snapshot. This does not establish that its assets are safe."
         )
         assert body["stats"]["total_edges"] == 1
 

@@ -980,6 +980,9 @@ def create_mcp_server(
         scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
         limit: Annotated[int, Field(ge=1, le=100, description="Maximum number of ranked exposure paths to return.")] = 5,
         min_risk: Annotated[float, Field(ge=0, le=100, description="Minimum path risk score to include.")] = 0.0,
+        cursor: Annotated[
+            str | None, Field(max_length=4096, description="Continue with pagination.next_cursor; keep the risk filter unchanged.")
+        ] = None,
     ) -> str:
         """Return ranked ExposurePath JSON for headless security agents.
 
@@ -994,6 +997,7 @@ def create_mcp_server(
             scan_id=scan_id,
             limit=limit,
             min_risk=min_risk,
+            cursor=cursor,
             _truncate_response=_truncate_response,
         )
 

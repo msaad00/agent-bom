@@ -105,6 +105,23 @@ authorization evidence and rebuild the snapshot to obtain the full retained
 set of evaluated allowed actions. Missing legacy principal or observation fields
 remain unknown.
 
+### AWS policy conditions
+
+AWS identity-policy evaluation retains supported string/ARN set qualifiers:
+`ForAllValues` requires each supplied request value to match the policy;
+`ForAnyValue` requires one. Negated operators compare each request value against
+all policy values before applying the set qualifier. See the
+[AWS condition-operator reference](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html).
+Missing request context remains unknown; an explicitly supplied empty value
+set is distinct. Malformed conditions make their policy incomplete instead of
+becoming unconditional grants. A valid explicit deny retains precedence.
+
+This evaluator does not establish a complete AWS effective-permission verdict:
+unsupported operators, missing session context, permissions boundaries, SCPs
+and resource policies need their own evidence. Rebuild snapshots after changing
+policy evidence or upgrading the evaluator; existing derived snapshots are not
+rewritten by a read request.
+
 ### Derived permission witnesses
 
 Newly built `has_permission` edges include `evidence.permission_derivation`.

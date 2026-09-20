@@ -45,24 +45,37 @@ def _scope_matches(statement: NormalizedIamStatement, action: str, resource: str
 
 
 def _condition_matches(operator: str, actual: tuple[str, ...] | None, expected: tuple[str, ...]) -> bool | None:
-    base = operator.removeprefix("ForAnyValue:").removeprefix("ForAllValues:")
-    if base == "Null":
+    qualifier, separator, base = operator.partition(":")
+    if not separator:
+        base = operator
+        qualifier = ""
+    elif qualifier not in {"ForAllValues", "ForAnyValue"}:
+        return None
+    if base == "Null" and not qualifier:
         want_null = any(value.lower() == "true" for value in expected)
         return (actual is None) == want_null
     if actual is None:
+        # This evaluator receives partial evidence, not a complete AWS request.
+        # Missing context remains unknown, distinct from an explicit empty set.
         return True if base.endswith("IfExists") else None
     base = base.removesuffix("IfExists")
-    if base in {"StringEquals", "ArnEquals"}:
-        return any(item == wanted for item in actual for wanted in expected)
-    if base in {"StringNotEquals", "ArnNotEquals"}:
-        return all(item != wanted for item in actual for wanted in expected)
-    if base in {"StringLike", "ArnLike"}:
-        return any(fnmatchcase(item, wanted) for item in actual for wanted in expected)
-    if base in {"StringNotLike", "ArnNotLike"}:
-        return all(not fnmatchcase(item, wanted) for item in actual for wanted in expected)
-    if base == "Bool":
+    negated = base in {"StringNotEquals", "ArnNotEquals", "StringNotLike", "ArnNotLike"}
+    if base in {"StringEquals", "ArnEquals", "StringNotEquals", "ArnNotEquals"}:
+        matches = [any(item == wanted for wanted in expected) for item in actual]
+    elif base in {"StringLike", "ArnLike", "StringNotLike", "ArnNotLike"}:
+        matches = [any(fnmatchcase(item, wanted) for wanted in expected) for item in actual]
+    elif base == "Bool" and not qualifier:
         return any(item.lower() == wanted.lower() for item in actual for wanted in expected)
-    return None
+    else:
+        return None
+    if negated:
+        matches = [not match for match in matches]
+    # Negation applies against all policy values for EACH request value before
+    # the set qualifier combines request values. Stripping the qualifier could
+    # allow a partial ForAll match or suppress a matching ForAny explicit deny.
+    if qualifier == "ForAllValues" or (not qualifier and negated):
+        return all(matches)
+    return any(matches)
 
 
 def _conditions_match(statement: NormalizedIamStatement, context: Mapping[str, str | Sequence[str]]) -> bool | None:

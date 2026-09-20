@@ -72,7 +72,8 @@ def test_exposure_path_surfaces_carry_independent_evidence_dimensions() -> None:
             "verdict": "confirmed",
             "basis": ["directed_provenance_backed_hops"],
         }
-        assert dimensions["exploitability"]["verdict"] == "exploitable"
+        # AV:N is advisory metadata; it does not assess this environment.
+        assert dimensions["exploitability"]["verdict"] is None
         assert dimensions["impact"]["category"] == "code-execution"
         assert dimensions["actionability"]["actionable"] is True
         assert dimensions["completeness"]["status"] == "complete"

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
+from pydantic import ValidationError
+
+from agent_bom.evidence.semantics import ExploitabilityDimension
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.types import RelationshipType
@@ -68,14 +71,43 @@ def _freshness(edge: UnifiedEdge) -> str:
 
 
 def _runtime_state(edge: UnifiedEdge) -> str:
+    # A denial is an observed attempt, never evidence of a completed action.
+    # Negative facts win even if another source supplied an "observed" label.
+    if (
+        edge.evidence.get("blocked") is True
+        or edge.evidence.get("decision") in {"blocked", "denied", "explicit_deny", "implicit_deny"}
+        or edge.evidence.get("runtime_observed_state") == "blocked"
+        or edge.provenance.get("runtime_observed_state") == "blocked"
+    ):
+        return "blocked"
     explicit = edge.evidence.get("runtime_observed_state") or edge.provenance.get("runtime_observed_state")
     if explicit in {"observed", "blocked", "not_observed"}:
         return str(explicit)
-    if edge.evidence.get("blocked") or edge.evidence.get("decision") == "blocked":
-        return "blocked"
     if _relationship(edge) in _RUNTIME_RELATIONSHIPS or edge.evidence.get("runtime_observed"):
         return "observed"
     return "not_observed"
+
+
+def _runtime_outcome(edge: UnifiedEdge) -> str:
+    """Retain failed aggregate attempts without inferring downstream success."""
+    if _runtime_state(edge) == "blocked":
+        return "blocked"
+    observed = edge.evidence.get("observation_count")
+    failed = edge.evidence.get("failure_count")
+    if type(observed) is int and type(failed) is int and observed > 0 and failed == observed:
+        return "failed"
+    # A permitted invocation or an event without an error is not an outcome
+    # receipt. Mixed aggregates also cannot identify which action succeeded.
+    return "unknown"
+
+
+def _runtime_reasons(receipts: Sequence[Mapping[str, Any]]) -> list[str]:
+    reasons: list[str] = []
+    if any(item.get("runtime_observed_state") == "blocked" or item.get("runtime_outcome") == "blocked" for item in receipts):
+        reasons.append("blocked_runtime_hop")
+    if any(item.get("runtime_outcome") == "failed" for item in receipts):
+        reasons.append("failed_runtime_outcome")
+    return reasons
 
 
 def _evidence_tier(edge: UnifiedEdge) -> str:
@@ -163,6 +195,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                 "confidence": float(edge.confidence),
                 "freshness": freshness,
                 "runtime_observed_state": _runtime_state(edge),
+                **({"runtime_outcome": _runtime_outcome(edge)} if _runtime_outcome(edge) != "unknown" else {}),
                 "direction": edge.direction,
                 "traversable": bool(edge.traversable),
                 "complete": bool(
@@ -199,7 +232,12 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
         and all(receipt["complete"] and not receipt["truncated"] for receipt in receipts)
     )
     stale = any(str(receipt["freshness"]).startswith("stale") for receipt in receipts)
-    if not all_complete and path.reachability != "unlikely":
+    runtime_reasons = _runtime_reasons(receipts)
+    if runtime_reasons:
+        path.reachability = "unknown"
+        path.composite_risk = min(path.composite_risk, 39.0)
+        path.reachability_basis = list(dict.fromkeys([*path.reachability_basis, *runtime_reasons]))
+    elif not all_complete and path.reachability != "unlikely":
         path.reachability = "unknown"
         path.composite_risk = min(path.composite_risk, 39.0)
         if "incomplete_hop_evidence" not in path.reachability_basis:
@@ -248,6 +286,9 @@ def _path_completeness(path: AttackPath) -> dict[str, Any]:
         return {"status": "partial", **base, "reasonCodes": analysis_reasons or ["analysis_limited"]}
     if analysis_status != "complete":
         return {"status": "unavailable", **base, "reasonCodes": ["analysis_status_unknown"]}
+    runtime_reasons = _runtime_reasons(receipts)
+    if runtime_reasons:
+        return {"status": "partial", **base, "reasonCodes": runtime_reasons}
     if expected_hops and not receipts:
         return {"status": "unavailable", **base, "reasonCodes": ["hop_evidence_not_recorded"]}
     if len(receipts) != expected_hops or any(item.get("truncated") for item in receipts):
@@ -302,8 +343,9 @@ def exposure_evidence_dimensions(
 
     reachability_value = str(path.reachability or "").lower()
     reachability_basis = [str(item) for item in path.reachability_basis if str(item)]
-    reachability_supported = completeness["status"] == "complete" or (
-        completeness["status"] == "partial" and reachability_value in {"likely", "unlikely"}
+    runtime_reasons = _runtime_reasons([item for item in path.hop_evidence if isinstance(item, Mapping)])
+    reachability_supported = not runtime_reasons and (
+        completeness["status"] == "complete" or (completeness["status"] == "partial" and reachability_value in {"likely", "unlikely"})
     )
     if reachability_value in {"confirmed", "likely", "unlikely"} and reachability_basis and reachability_supported:
         reachability = {
@@ -316,18 +358,21 @@ def exposure_evidence_dimensions(
     else:
         reachability = _unavailable_dimension("reachability_not_assessed", verdict=None)
 
-    explicit_exploitability = str(attributes.get("exploitability") or "").lower()
-    if explicit_exploitability in {"exploitable", "not_exploitable"}:
+    # CVSS AV:N, KEV, EPSS and naked imported labels describe signals, not an
+    # environment-specific assessment. Reuse the evidence contract, including
+    # its reference and partial/unavailable validation.
+    assessment = None
+    try:
+        assessment = ExploitabilityDimension.model_validate(attributes.get("exploitability_assessment"))
+    except ValidationError:
+        pass
+    if assessment is not None:
         exploitability = {
-            "status": "complete",
-            "verdict": explicit_exploitability,
-            "basis": ["finding_attribute:exploitability"],
-        }
-    elif attributes.get("network_exploitable") is True:
-        exploitability = {
-            "status": "complete",
-            "verdict": "exploitable",
-            "basis": ["finding_attribute:network_exploitable"],
+            "status": assessment.status.value,
+            "verdict": assessment.verdict.value if assessment.verdict is not None else None,
+            "basis": ["finding_assessment:exploitability"],
+            "evidenceRefs": list(assessment.evidence_refs),
+            "reasonCodes": list(assessment.reason_codes),
         }
     else:
         exploitability = _unavailable_dimension("exploitability_not_assessed", verdict=None)

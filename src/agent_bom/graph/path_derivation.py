@@ -617,11 +617,9 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             "package/server, but no executable graph or symbol path has been proven."
                         )
                     else:
-                        summary = (
-                            "Graph topology links an agent/server to a vulnerable component. Listed tools and "
-                            "credential references are context; effective permission, successful use, and exploitation "
-                            "require separate evidence."
-                        )
+                        from agent_bom.graph.path_evidence import STRUCTURAL_EXPOSURE_SUMMARY
+
+                        summary = STRUCTURAL_EXPOSURE_SUMMARY
                     paths.append(
                         AttackPath(
                             source=agent_id,

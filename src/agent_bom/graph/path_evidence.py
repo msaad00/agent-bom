@@ -13,6 +13,24 @@ from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.types import RelationshipType
 
+STRUCTURAL_EXPOSURE_SUMMARY = (
+    "Graph topology links an agent/server to a vulnerable component. Listed tools and "
+    "credential references are context; effective permission, successful use, and exploitation "
+    "require separate evidence."
+)
+_LEGACY_STRUCTURAL_SUMMARY = (
+    "Evidence-backed graph path: vulnerable package/server is reachable from an agent and inherits the server's credential/tool exposure."
+)
+
+
+def _qualify_structural_summary(summary: str) -> str:
+    # These are known generated explanations, not arbitrary source receipts.
+    # Qualify them on read without rewriting the stored snapshot or custom text.
+    if summary in {_LEGACY_STRUCTURAL_SUMMARY, f"Unverified structural candidate. {_LEGACY_STRUCTURAL_SUMMARY}"}:
+        return STRUCTURAL_EXPOSURE_SUMMARY
+    return summary
+
+
 _RUNTIME_RELATIONSHIPS = frozenset(
     {
         RelationshipType.INVOKED.value,
@@ -157,6 +175,7 @@ def _edge_for_hop(graph: UnifiedGraph, source: str, target: str, relationship: s
 def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> AttackPath:
     """Attach deterministic hop receipts and conservatively classify truth."""
 
+    path.summary = _qualify_structural_summary(path.summary)
     receipts: list[dict[str, Any]] = []
     for index, (source, target) in enumerate(zip(path.hops, path.hops[1:])):
         relationship = path.edges[index] if index < len(path.edges) else ""
@@ -436,6 +455,11 @@ def finding_severity_for_path(path: AttackPath, nodes_by_id: Mapping[str, Any]) 
 
 def qualify_exposure_reachability(payload: dict[str, Any]) -> dict[str, Any]:
     """Qualify legacy projection labels without rewriting historical receipts."""
+    previous_summary = payload.get("summary")
+    if isinstance(previous_summary, str):
+        payload["summary"] = _qualify_structural_summary(previous_summary)
+        if payload.get("label") == previous_summary:
+            payload["label"] = payload["summary"]
     dimensions = payload["evidenceDimensions"]
     if payload.get("reachability") == "confirmed" and dimensions["reachability"].get("verdict") != "confirmed":
         payload["reachability"] = "unknown"

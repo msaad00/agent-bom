@@ -20,6 +20,44 @@ def _serialize_both(
     )
 
 
+@pytest.mark.parametrize("prefix", ["", "Unverified structural candidate. "])
+def test_legacy_structural_summary_is_qualified_after_restart(tmp_path, prefix) -> None:
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.graph import UnifiedGraph
+    from agent_bom.graph.path_evidence import annotate_attack_path_evidence
+
+    legacy_summary = prefix + (
+        "Evidence-backed graph path: vulnerable package/server is reachable from an agent "
+        "and inherits the server's credential/tool exposure."
+    )
+    graph = UnifiedGraph(scan_id="scan-1")
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="assistant"))
+    graph.add_node(UnifiedNode(id="vuln:a", entity_type=EntityType.VULNERABILITY, label="advisory"))
+    graph.add_edge(UnifiedEdge(source="agent:a", target="vuln:a", relationship=RelationshipType.VULNERABLE_TO))
+    graph.attack_paths = [
+        AttackPath(source="agent:a", target="vuln:a", hops=["agent:a", "vuln:a"], edges=["vulnerable_to"], summary=legacy_summary)
+    ]
+    db = tmp_path / "legacy-path.db"
+    SQLiteGraphStore(db).save_graph(graph)
+    restored = SQLiteGraphStore(db).load_graph(scan_id="scan-1")
+    assert restored is not None
+    for payload in _serialize_both(restored.attack_paths[0], nodes=list(restored.nodes.values()), edges=restored.edges):
+        assert "effective permission, successful use, and exploitation require separate evidence" in payload["summary"]
+        assert "inherits" not in payload["summary"]
+        assert payload["reachability"] == "unknown"
+    annotated = annotate_attack_path_evidence(restored.attack_paths[0], restored)
+    assert "effective permission, successful use, and exploitation require separate evidence" in annotated.summary
+    # Read-time compatibility does not rewrite historical persisted evidence.
+    assert SQLiteGraphStore(db).load_graph(scan_id="scan-1").attack_paths[0].summary == legacy_summary
+
+
+def test_custom_source_summary_is_retained() -> None:
+    summary = "Source notes: synthetic package inventory; exact action evidence not collected."
+    path = AttackPath(source="agent:a", target="resource:b", summary=summary)
+    for payload in _serialize_both(path, nodes=[], edges=[]):
+        assert payload["summary"] == summary
+
+
 def test_exposure_path_surfaces_carry_independent_evidence_dimensions() -> None:
     target = UnifiedNode(
         id="vuln:cve",

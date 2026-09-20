@@ -87,7 +87,7 @@ export function AttackPathCorrelationProof({
         </div>
       </details>
       <details className="mt-3">
-        <summary className="cursor-pointer py-1 text-sm font-medium text-[color:var(--text-secondary)]">Inspect {expectedHopCount} hop receipts</summary>
+        <summary className="cursor-pointer py-1 text-[15px] font-medium text-[color:var(--text-secondary)]">Inspect {expectedHopCount} hop receipts</summary>
         <div className="mt-2">
           <GraphHopEvidenceInspector key={path.hops.join("->")} receipts={path.hop_evidence}
             hops={path.hops.map(id => ({ id, label: nodeById.get(id)?.label || id }))} />

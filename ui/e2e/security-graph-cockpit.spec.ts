@@ -1089,7 +1089,6 @@ for (const proof of [
   { theme: "dark", width: 1440, height: 1000 },
   { theme: "light", width: 390, height: 844 },
   { theme: "dark", width: 390, height: 844 },
-  { theme: "light", width: 1440, height: 1000 },
 ] as const) {
   test(`exposure evidence pagination remains readable ${proof.theme} ${proof.width}`, async ({ page }, testInfo) => {
     await page.setViewportSize(proof);

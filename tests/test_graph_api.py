@@ -1972,6 +1972,10 @@ class TestGraphStoreBackendSelection:
         assert body["cards"][0]["affected"]["findings"] == ["CVE-2026-1"]
         assert body["cards"][0]["affected"]["credentials"] == ["AWS_SECRET_ACCESS_KEY"]
         assert body["cards"][0]["affected"]["tools"] == ["run_shell"]
+        # Structural uses/dependency edges must not imply inherited authority
+        # after the hop-evidence classifier qualifies this path as unknown.
+        assert body["cards"][0]["exposure_path"]["reachability"] == "unknown"
+        assert "effective permission, successful use, and exploitation require separate evidence" in body["cards"][0]["summary"]
 
         queue = client.get("/v1/graph/attack-paths", params={"scan_id": "store-scan", "limit": 5}).json()
         assert queue["pagination"]["total"] == 1
@@ -1991,6 +1995,7 @@ class TestGraphStoreBackendSelection:
         assert queue["attack_paths"][0]["hops"] == ["agent:a", "server:a:fs", "pkg:npm:form-data", "vuln:cve"]
         assert queue["attack_paths"][0]["edges"] == ["uses", "depends_on", "vulnerable_to"]
         assert queue["attack_paths"][0]["exposure_path"]["severity"] == "critical"
+        assert queue["attack_paths"][0]["summary"] == body["cards"][0]["summary"]
         assert {(edge["source_id"], edge["target_id"]) for edge in queue["edges"]} >= {
             ("agent:a", "server:a:fs"),
             ("server:a:fs", "pkg:npm:form-data"),

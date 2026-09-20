@@ -841,7 +841,11 @@ def _path_matches_focus(graph: UnifiedGraph, path: AttackPath, *, cve: str, pack
         return False
     if package_n:
         package_labels = {norm(label) for label in _node_labels_for_types(graph, path.hops, {EntityType.PACKAGE})}
-        if package_n not in package_labels:
+        # Finding links carry the package name while graph labels may include
+        # its version. Match either exactly; retain npm scopes and never widen
+        # an explicitly versioned selector to a different package version.
+        package_names = {label[: label.rfind("@")] if label.rfind("@") > 0 else label for label in package_labels}
+        if package_n not in package_labels and package_n not in package_names:
             return False
     if agent_n:
         agent_labels = {

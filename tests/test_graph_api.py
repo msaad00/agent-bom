@@ -1832,6 +1832,41 @@ class TestGraphStoreBackendSelection:
         assert body["cards"][0]["next_actions"][0]["href"] == "/findings?cve=CVE-2026-1"
         assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
+    @pytest.mark.parametrize(
+        ("label", "package", "cve", "expected"),
+        [
+            ("pyyaml@5.3", "pyyaml", "CVE-2026-1", 1),
+            ("pyyaml@5.3", " PYYAML ", "CVE-2026-1", 1),
+            ("pyyaml@5.3", "pyyaml@5.3", "CVE-2026-1", 1),
+            ("pyyaml@5.3", "pyyaml@5.4", "CVE-2026-1", 0),
+            ("pyyaml@5.3", "yaml", "CVE-2026-1", 0),
+            ("pyyaml@5.3", "pyyaml", "CVE-2026-2", 0),
+            ("@scope/tool@1.0", "@scope/tool", "CVE-2026-1", 1),
+            ("@scope/tool@1.0", "@scope/tool@1.0", "CVE-2026-1", 1),
+            ("@scope/tool@1.0", "@scope/tool@2.0", "CVE-2026-1", 0),
+            ("@scope/tool@1.0", "tool", "CVE-2026-1", 0),
+            ("@scope/tool", "@scope/tool", "CVE-2026-1", 1),
+        ],
+    )
+    def test_fix_first_package_focus_matches_name_or_exact_version(self, recording_graph_store, label, package, cve, expected):
+        graph = recording_graph_store.graph
+        graph.add_node(UnifiedNode(id="pkg:focus", entity_type=EntityType.PACKAGE, label=label))
+        graph.add_node(UnifiedNode(id="vuln:focus", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+        graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:focus",
+                hops=["agent:a", "pkg:focus", "vuln:focus"],
+                edges=["depends_on", "vulnerable_to"],
+                composite_risk=90,
+                vuln_ids=["CVE-2026-1"],
+            )
+        )
+        response = TestClient(app).get("/v1/graph/views/fix-first", params={"scan_id": "store-scan", "package": package, "cve": cve})
+        assert response.status_code == 200
+        assert response.json()["summary"]["matched_paths"] == expected
+        assert len(response.json()["cards"]) == expected
+
     def test_fix_first_cards_dedupe_presentational_duplicates_but_keep_identity_and_assets(self, recording_graph_store):
         graph = recording_graph_store.graph
         graph.add_node(UnifiedNode(id="agent:b", entity_type=EntityType.AGENT, label="agent-b"))

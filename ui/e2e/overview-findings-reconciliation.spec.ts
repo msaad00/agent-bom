@@ -446,7 +446,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect(drawer).toHaveCSS("opacity", "1");
       await drawer.getByRole("tab", { name: "Evidence", exact: true }).click();
       await expect(drawer.locator("aside")).toBeInViewport();
-      await page.screenshot({ path: testInfo.outputPath(`control-drill-${theme}-${width}.png`) });
+      expect(await drawer.getByRole("heading").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`control-drill-${theme}-${width}.png`), animations: "disabled" });
       await page.keyboard.press("Escape");
       await expect(drawer).toHaveCount(0);
       if (width === 390) {

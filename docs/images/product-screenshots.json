@@ -1,9 +1,9 @@
 {
   "release_version": "0.105.0",
-  "captured_at": "2026-09-20T21:06:51.836Z",
-  "source_commit": "86e0a77a96672eaeb79bd86b504a973dbc4d0db6",
+  "captured_at": "2026-09-20T21:41:51.483Z",
+  "source_commit": "ed224dcd40e958f43df0579dc13bca34455ce402",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:dbcfd833356ec71d9aea99763279b73c8b2296329a54e71d2b72426797ebcfe5",
+  "capture_inputs_sha256": "sha256:1a1d176709b589df1487cfac389b04e40f34c3e07b4fa2b34c4116cf2e8e5b32",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -193,7 +193,7 @@
       "evidence_sha256": "sha256:b7f7b30b5939a4efe71c9af5de5e2302d9f27eca4ca010a00d669bb5fc8a0652",
       "correlation_manifest_sha256": "sha256:cc9f3fe5ed5e792bcd69e96a35c120b90aaf3d34ead006b130e1db2a7a8135ff",
       "visible_version": "0.105.0",
-      "sha256": "sha256:db26ab6ab9487acd0773987c8d998c579a1e124c4559b3b09a507f5c65f73631"
+      "sha256": "sha256:342ead2715a26a73324f55c0e9126fef701d60d6e1dfa0102c1eca64ae356c8a"
     },
     {
       "presentation": "light desktop",
@@ -225,7 +225,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.105.0",
-      "sha256": "sha256:39b764f59821d6db19e13fa476b8230fb790133c90ec3acfa070f153682ba458"
+      "sha256": "sha256:27d515756eaaa7ccf0f465640e7f85b9e5fb3e2c50645a2cc123bdfdb1fe485b"
     },
     {
       "presentation": "dark desktop",

@@ -1265,3 +1265,20 @@ describe('graph node addressing', () => {
     expect(urls[1]!.searchParams.get('limit')).toBe('12')
   })
 })
+
+describe('api.queryGraph cancellation', () => {
+  it('forwards caller cancellation while retaining session auth', async () => {
+    const fetchMock = mockFetch({ nodes: [], edges: [] })
+    global.fetch = fetchMock
+    document.cookie = 'agent_bom_csrf=query-test; path=/'
+    const controller = new AbortController()
+    await api.queryGraph({ roots: ['agent:1'], scan_id: 'scan:1' }, { signal: controller.signal })
+    const [, options] = fetchMock.mock.calls[0]!
+    expect(options.credentials).toBe('include')
+    expect(options.headers['X-Agent-Bom-CSRF']).toBe('query-test')
+    document.cookie = 'agent_bom_csrf=; Max-Age=0; path=/'
+    expect(options.signal.aborted).toBe(false)
+    controller.abort()
+    expect(options.signal.aborted).toBe(true)
+  })
+})

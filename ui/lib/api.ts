@@ -591,13 +591,13 @@ async function get<T>(path: string, options: GetOptions = {}): Promise<T> {
   );
 }
 
-async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
+async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
   const res = await _doFetch(path, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", ...getSessionAuthHeaders(), ...headers },
     body: JSON.stringify(body),
-    signal: withTimeout(),
+    signal: signal ? AbortSignal.any([signal, withTimeout()]) : withTimeout(),
   }, "POST");
   _runInvalidations(path);
   return res.json() as Promise<T>;
@@ -1214,8 +1214,8 @@ export const api = {
   },
 
   /** Run a bounded root-centered graph traversal */
-  queryGraph: (body: GraphQueryRequest) =>
-    post<GraphQueryResponse>("/v1/graph/query", body),
+  queryGraph: (body: GraphQueryRequest, options?: { signal?: AbortSignal }) =>
+    post<GraphQueryResponse>("/v1/graph/query", body, {}, options?.signal),
 
   /** Search graph nodes within a snapshot */
   searchGraph: (

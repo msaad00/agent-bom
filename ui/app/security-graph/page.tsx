@@ -88,6 +88,7 @@ import type { UnifiedGraphData, UnifiedNode } from "@/lib/graph-schema";
 import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+import { useSelectedPathGraph } from "@/hooks/use-selected-path-graph";
 import {
   buildCorrelationPathHref,
   buildCorrelationRemediationHref,
@@ -605,6 +606,12 @@ function AttackPathInvestigationContent() {
     () => (selectedAttackPath ? cardByPathKey.get(attackPathKey(selectedAttackPath)) ?? null : null),
     [cardByPathKey, selectedAttackPath],
   );
+  const selectedPathGraph = useSelectedPathGraph({
+    graph: graphData as UnifiedGraphData | null,
+    path: selectedAttackPath,
+    scanId: selectedScanId,
+    enabled: pathView === "graph",
+  });
   const selectedExposurePath = useMemo(
     () => {
       if (!selectedAttackPath) return null;
@@ -1088,18 +1095,31 @@ function AttackPathInvestigationContent() {
                 }
                 detailsSlot={selectedAttackPath ? <AttackPathTechniqueChain path={selectedAttackPath} /> : null}
                 graphSlot={
-                  graphData && selectedAttackPath ? (
-                    <SecurityGraphInvestigation
-                      graph={graphData as UnifiedGraphData}
-                      attackPath={selectedAttackPath}
-                      focusMode={investigationFocusMode}
-                      onFocusModeChange={setInvestigationFocusMode}
-                      fullGraphHref={fullGraphHref}
-                      loading={loadingGraph}
-                      scanId={selectedScanId || undefined}
-                      onPinnedNodeChange={setPinnedNodeId}
-                      onStepHint={handleStepHint}
-                    />
+                  selectedAttackPath ? (
+                    <div className="space-y-2">
+                      {selectedPathGraph.message ? (
+                        <div role="status" className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                          {selectedPathGraph.message}
+                          {selectedPathGraph.canRetry ? (
+                            <button type="button" className="ml-2 font-medium text-foreground underline" onClick={selectedPathGraph.retry}>Retry graph</button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {selectedPathGraph.loading ? <GraphPanelSkeleton title="Loading selected path" detail="Reading its nodes and relationships from this snapshot…" /> : null}
+                      {selectedPathGraph.graph ? (
+                        <SecurityGraphInvestigation
+                          graph={selectedPathGraph.graph}
+                          attackPath={selectedAttackPath}
+                          focusMode={investigationFocusMode}
+                          onFocusModeChange={setInvestigationFocusMode}
+                          fullGraphHref={fullGraphHref}
+                          loading={loadingGraph}
+                          scanId={selectedScanId || undefined}
+                          onPinnedNodeChange={setPinnedNodeId}
+                          onStepHint={handleStepHint}
+                        />
+                      ) : null}
+                    </div>
                   ) : null
                 }
               />

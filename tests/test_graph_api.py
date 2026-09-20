@@ -2898,6 +2898,51 @@ class TestGraphStoreBackendSelection:
         assert any(call[0] == "traverse_subgraph" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
+    def test_graph_query_hydrates_selected_hops_without_rewriting_edge_authority(self, recording_graph_store):
+        graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        for node_id in ("agent:a", "server:s", "server:other"):
+            graph.add_node(UnifiedNode(id=node_id, entity_type=EntityType.SERVER, label=node_id))
+        graph.add_edge(
+            UnifiedEdge(
+                source="agent:a",
+                target="server:s",
+                relationship=RelationshipType.USES,
+                traversable=False,
+                evidence={"runtime_outcome": "blocked", "receipt_id": "denied-use"},
+            )
+        )
+        graph.add_edge(UnifiedEdge(source="server:s", target="server:other", relationship=RelationshipType.USES))
+        recording_graph_store.graph = graph
+        response = TestClient(app).post(
+            "/v1/graph/query",
+            json={
+                "scan_id": "store-scan",
+                "roots": ["agent:a", "server:s"],
+                "direction": "both",
+                "max_depth": 1,
+                "max_nodes": 2,
+                "max_edges": 2048,
+                "timeout_ms": 2500,
+                "traversable_only": False,
+                "include_roots": True,
+                "include_attack_paths": False,
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["scan_id"] == "store-scan"
+        assert body["tenant_id"] == "default"
+        assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s"}
+        assert len(body["edges"]) == 1
+        assert body["edges"][0]["source"] == "agent:a"
+        assert body["edges"][0]["target"] == "server:s"
+        assert body["edges"][0]["direction"] == "directed"
+        assert body["edges"][0]["traversable"] is False
+        assert body["edges"][0]["evidence"] == {"runtime_outcome": "blocked", "receipt_id": "denied-use"}
+        assert body["attack_paths"] == []
+        assert body["completeness"]["complete"] is False
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
     def test_graph_query_traversal_budget_does_not_fabricate_exhaustive_total(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))

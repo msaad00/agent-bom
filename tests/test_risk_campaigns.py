@@ -735,7 +735,7 @@ def test_campaign_verify_reports_unavailable_evidence_without_mutating(monkeypat
     assert get_campaign_store().get("tenant-alpha", campaign["id"]).version == campaign["version"]
 
 
-def test_campaign_verify_survives_restart_and_disappeared_campaign(monkeypatch, tmp_path) -> None:
+def test_campaign_verify_does_not_equate_disappeared_campaign_with_a_verified_fix(monkeypatch, tmp_path) -> None:
     from agent_bom.api.server import app
 
     path = str(tmp_path / "verify-restart.db")
@@ -750,10 +750,13 @@ def test_campaign_verify_survives_restart_and_disappeared_campaign(monkeypatch, 
     retired = get_campaign_store().get("tenant-alpha", campaign["id"])
     assert retired is not None and retired.active is False
     response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": retired.version}, headers=_headers())
-    assert response.status_code == 200
-    assert response.json()["verification_status"] == "verified"
-    assert response.json()["state"] == "done"
-    assert response.json()["remaining_count"] == 0
+    assert response.status_code == 409
+    assert response.json()["detail"]["outcome"] == "unavailable_evidence"
+    assert response.json()["detail"]["retry_state"] == "awaiting_fresh_scope_evidence"
+    assert "alternate graph paths have not been verified" in response.json()["detail"]["reason"]
+    unchanged = get_campaign_store().get("tenant-alpha", campaign["id"])
+    assert unchanged == retired
+    assert unchanged.verification_status == "unverified"
 
 
 def test_verification_queue_rediscovers_retired_campaign_after_reload(monkeypatch, tmp_path) -> None:
@@ -779,8 +782,9 @@ def test_verification_queue_rediscovers_retired_campaign_after_reload(monkeypatc
     assert client.get("/v1/campaigns/verification-queue").status_code == 401
 
     verified = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": entry["version"]}, headers=_headers())
-    assert verified.status_code == 200 and verified.json()["verification_status"] == "verified"
-    assert client.get("/v1/campaigns/verification-queue", headers=_headers()).json()["entries"] == []
+    assert verified.status_code == 409
+    assert verified.json()["detail"]["retry_state"] == "awaiting_fresh_scope_evidence"
+    assert client.get("/v1/campaigns/verification-queue", headers=_headers()).json()["entries"] == [entry]
 
 
 def test_verification_queue_uses_filtered_keyset_pagination(tmp_path) -> None:
@@ -857,6 +861,44 @@ def test_campaign_verify_fails_for_same_target_replacement_membership(monkeypatc
     assert response.json()["remaining_finding_ids"] == ["finding-replacement"]
     stale = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
     assert stale.status_code == 409
+
+
+@pytest.mark.parametrize("persistent", (False, True), ids=("memory", "sqlite-restart"))
+@pytest.mark.parametrize("regroup", ("fixed_version", "purl", "missing_fix"))
+def test_campaign_verify_does_not_lose_original_members_when_remediation_group_changes(monkeypatch, tmp_path, persistent, regroup):
+    """Correcting advisory metadata is not evidence that an existing finding was fixed."""
+    from agent_bom.api.server import app
+
+    path = str(tmp_path / "regrouped.db")
+    if persistent:
+        set_campaign_store(SQLiteCampaignStore(path))
+    original = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    if persistent:
+        set_campaign_store(SQLiteCampaignStore(path))
+    retained = dict(original[0])
+    if regroup == "fixed_version":
+        retained["fixed_version"] = "2.1"
+    elif regroup == "purl":
+        retained["purl"] = "pkg:pypi/acme-lib@1.0"
+    else:
+        retained.pop("fixed_version")
+    current = [retained, original[2]]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    # Listing may retire the old group; its original IDs must still be checked.
+    client.get("/v1/campaigns", headers=_headers())
+    stored = get_campaign_store().get("tenant-alpha", campaign["id"])
+    response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": stored.version}, headers=_headers())
+
+    assert response.status_code == 200
+    assert response.json()["outcome"] == "still_affected"
+    assert response.json()["verification_status"] == "failed"
+    assert response.json()["remaining_finding_ids"] == ["finding-a"]
+    assert response.json()["remaining_count"] == 1
+    assert response.json()["original_member_count"] == 2
+    assert get_campaign_store().get("tenant-alpha", campaign["id"]).state == "open"
 
 
 @pytest.mark.parametrize(
@@ -1249,3 +1291,52 @@ def test_campaign_ticket_sync_preserves_transport_code_without_exception_detail(
         }
     ]
     assert "secret sync detail" not in result.text
+
+
+def test_campaign_verification_does_not_replay_unsupported_cached_success(monkeypatch):
+    from agent_bom.api.idempotency_store import idempotency_request_fingerprint
+    from agent_bom.api.server import app
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    client = TestClient(app)
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    cache = InMemoryIdempotencyStore()
+    set_idempotency_store(cache)
+    cache.put(
+        f"/v1/campaigns/{campaign['id']}/verify",
+        "tenant-alpha",
+        "risk-campaign",
+        "legacy-success",
+        {"outcome": "verified_fixed", "verification_status": "verified"},
+        request_hash=idempotency_request_fingerprint({"campaign_id": campaign["id"], "version": campaign["version"]}),
+    )
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: [])
+    before = get_campaign_store().get("tenant-alpha", campaign["id"])
+    result = client.post(
+        f"/v1/campaigns/{campaign['id']}/verify",
+        json={"version": campaign["version"]},
+        headers={**_headers(), "Idempotency-Key": "legacy-success"},
+    )
+    assert result.status_code == 409
+    assert result.json()["detail"]["outcome"] == "unavailable_evidence"
+    assert get_campaign_store().get("tenant-alpha", campaign["id"]) == before
+
+
+def test_campaign_remaining_count_unions_replacement_and_regrouped_members(monkeypatch):
+    from agent_bom.api.server import app
+
+    original = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    current = [
+        {**original[0], "fixed_version": "2.1"},
+        original[1],
+        {**original[1], "id": "finding-replacement"},
+    ]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    result = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers()).json()
+    assert result["outcome"] == "still_affected"
+    assert result["remaining_finding_ids"] == ["finding-a", "finding-b", "finding-replacement"]
+    assert result["remaining_count"] == 3
+    assert result["original_member_count"] == 2

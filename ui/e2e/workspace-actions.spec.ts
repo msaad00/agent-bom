@@ -141,17 +141,12 @@ async function routeRemediation(page: Page) {
     }],
     count: 1, has_more: false, next_cursor: null, limit: 25,
   } }));
-  await page.route("**/v1/campaigns/campaign-retired/verify", (route) => route.fulfill({ json: {
-    schema_version: "risk-campaign-verification.v1",
-    campaign_id: "campaign-retired",
-    verification_status: "verified",
-    state: "done",
-    remaining_finding_ids: [],
-    remaining_count: 0,
-    original_member_count: 2,
-    evidence_scope: { source: "canonical_findings_spine", finding_window_days: 90, finding_limit: 1000, membership_complete: true },
-    version: 8,
-    verified_at: "2026-07-17T13:00:00Z",
+  await page.route("**/v1/campaigns/campaign-retired/verify", (route) => route.fulfill({ status: 409, json: {
+    detail: {
+      outcome: "unavailable_evidence",
+      retry_state: "awaiting_fresh_scope_evidence",
+      message: "Fresh collection evidence for the original target scope is unavailable. Access revocation and alternate graph paths have not been verified.",
+    },
   } }));
   await page.route("**/v1/campaigns", (route) => route.fulfill({ json: {
     schema_version: "risk-campaigns.v1",
@@ -189,10 +184,9 @@ test("remediation compact rows disclose detail and durable re-verification", asy
   );
   await page.getByRole("button", { name: "Re-verify Retired synthetic campaign" }).click();
   await verifyRequest;
-  await expect(page.getByText("0 waiting", { exact: true })).toBeVisible();
-  await expect(page.getByText("Retired synthetic campaign", { exact: true })).toBeHidden();
-  await page.getByText("Awaiting re-verification", { exact: true }).click();
-  await expect(page.getByText(/verified: no original findings remain/i)).toBeVisible();
+  await expect(page.getByText("1 waiting", { exact: true })).toBeVisible();
+  await expect(page.getByText("Retired synthetic campaign", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("Access revocation and alternate graph paths have not been verified.");
 });
 
 test("remediation remains horizontally contained on mobile", async ({ page }) => {

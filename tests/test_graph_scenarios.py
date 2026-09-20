@@ -307,3 +307,81 @@ def test_path_identity_is_stable_and_uses_endpoints_and_ordered_hops() -> None:
     assert _path_id(baseline) == _path_id(copy.deepcopy(baseline))
     assert _path_id(baseline) != _path_id(AttackPath(source="a", target="c", hops=["a", "x", "c"]))
     assert _path_id(baseline) != _path_id(AttackPath(source="c", target="a", hops=["c", "b", "a"]))
+
+
+def test_proposed_permission_removal_requires_a_new_snapshot_and_retains_an_alternate_path(tmp_path):
+    """Synthetic collection revisions prove reconstruction, not live revocation."""
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion
+
+    def collected(scan_id: str, removed_roles: set[str]) -> UnifiedGraph:
+        graph = UnifiedGraph(scan_id=scan_id, tenant_id="tenant-a")
+        graph.add_node(
+            UnifiedNode(
+                id="entry",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label="Synthetic public workload",
+                attributes={"internet_exposed": True, "account_id": "synthetic-account"},
+            )
+        )
+        for role, risk in (("role:primary", 9.0), ("role:alternate", 1.0)):
+            graph.add_node(UnifiedNode(id=role, entity_type=EntityType.ROLE, label=role, risk_score=risk))
+            graph.add_edge(UnifiedEdge(source="entry", target=role, relationship=RelationshipType.ASSUMES))
+            if role not in removed_roles:
+                graph.add_edge(UnifiedEdge(source=role, target="db:orders", relationship=RelationshipType.HAS_PERMISSION))
+        graph.add_node(
+            UnifiedNode(
+                id="db:orders",
+                entity_type=EntityType.DATA_STORE,
+                label="Synthetic sensitive orders",
+                attributes={"data_sensitivity": "sensitive"},
+            )
+        )
+        apply_attack_path_fusion(graph)
+        return graph
+
+    baseline = collected("before-access-change", set())
+    assert len(baseline.attack_paths) == 1
+    assert "role:primary" in baseline.attack_paths[0].hops
+    path = tmp_path / "remediation-snapshots.db"
+    store = SQLiteGraphStore(path)
+    store.save_graph(baseline)
+    proposal = _scenario_with(
+        [
+            {
+                "kind": "remove_edge",
+                "source": "role:primary",
+                "target": "db:orders",
+                "relationship": "has_permission",
+            }
+        ]
+    )
+    proposal["base_scan_id"] = baseline.scan_id
+    comparison = _apply_operations(
+        scenario=proposal,
+        graph=baseline,
+        exact_node_count=4,
+        exact_edge_count=4,
+        attack_paths=baseline.attack_paths,
+    )
+    assert comparison["difference"]["touched_observed_path_count"] == 1
+    assert store.attack_paths(tenant_id="tenant-a", scan_id=baseline.scan_id)[3] == 1
+
+    # A fresh, separately labelled collection excludes one grant. Recomputing
+    # discovers the alternate route instead of declaring the target safe.
+    after_primary = collected("after-primary-removal", {"role:primary"})
+    store.save_graph(after_primary)
+    reopened = SQLiteGraphStore(path)
+    _, _, remaining, total = reopened.attack_paths(tenant_id="tenant-a", scan_id=after_primary.scan_id)
+    assert total == 1
+    assert remaining[0].hops == ["entry", "role:alternate", "db:orders"]
+    assert remaining[0].reachability == "unknown"
+    assert reopened.attack_paths(tenant_id="tenant-a", scan_id=baseline.scan_id)[2][0].hops == baseline.attack_paths[0].hops
+    assert reopened.attack_paths(tenant_id="tenant-b", scan_id=after_primary.scan_id)[3] == 0
+
+    # Empty recomputation is scoped to this synthetic snapshot. It supplies no
+    # native policy evaluation, successful-action receipt, or live fix proof.
+    after_all = collected("after-both-removals", {"role:primary", "role:alternate"})
+    reopened.save_graph(after_all)
+    assert SQLiteGraphStore(path).attack_paths(tenant_id="tenant-a", scan_id=after_all.scan_id)[3] == 0
+    assert remaining[0].analysis is not None

@@ -402,3 +402,30 @@ use `GET /v1/graph/node-context?node_id=...` and
 `GET /v1/graph/node-neighbors?node_id=...`. These authenticated query aliases
 preserve the complete ID without URL-path decoding ambiguities. Existing
 single-segment node routes remain supported.
+
+
+### Campaign verification and graph remediation
+
+Run `agent-bom campaigns list --format json`, then use the returned campaign ID
+and version with `agent-bom campaigns verify CAMPAIGN_ID --version VERSION`.
+Both commands use the control plane's configured authentication. Verification
+checks original finding identities even if advisory enrichment moved them to
+another remediation group, plus current replacement findings in the original
+group. `remaining_count` counts distinct matches; it can exceed the baseline
+member count when new affected instances appear.
+
+A complete 90-day findings window is not a fresh scan receipt for the original
+target scope. With no matching findings, verification returns HTTP 409 with
+`outcome: unavailable_evidence` and
+`retry_state: awaiting_fresh_scope_evidence`; workflow state remains unchanged.
+The MCP workflow preserves these fields and the dashboard displays the reason.
+No absence-based `verified_fixed` result is issued, including from older cached
+success responses. Existing saved workflow states are not rewritten.
+
+Collect the same target scope again and inspect its new graph snapshot for
+remaining and alternate routes. A proposed edge removal changes only a scenario;
+it does not revoke provider access, trigger a rescan, or verify remediation.
+The campaign endpoint currently does not bind baseline/rescan coverage receipts
+or evaluate alternate graph paths, so it cannot certify access revocation from
+that comparison. Retain those source receipts and compare the new snapshot's
+qualified hop evidence before deciding whether more remediation is needed.

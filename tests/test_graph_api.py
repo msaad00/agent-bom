@@ -1935,7 +1935,8 @@ class TestGraphStoreBackendSelection:
         assert {tuple(card["affected"]["agents"]) for card in body["cards"]} == {("agent-a",), ("agent-b",)}
         assert {tuple(card["affected"]["servers"]) for card in body["cards"]} == {("asset-one",), ("asset-two",)}
 
-    def test_fix_first_graph_view_derives_paths_when_snapshot_has_topology_but_no_path_rows(self, recording_graph_store):
+    @pytest.mark.parametrize("node_reachable", [False, True])
+    def test_fix_first_graph_view_derives_paths_when_snapshot_has_topology_but_no_path_rows(self, recording_graph_store, node_reachable):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
         recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data"))
         recording_graph_store.graph.add_node(UnifiedNode(id="cred:aws", entity_type=EntityType.CREDENTIAL, label="AWS_SECRET_ACCESS_KEY"))
@@ -1947,6 +1948,7 @@ class TestGraphStoreBackendSelection:
                 label="CVE-2026-1",
                 severity="critical",
                 risk_score=9.8,
+                attributes={"graph_reachable": True} if node_reachable else {},
             )
         )
         recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:a:fs", relationship=RelationshipType.USES))
@@ -1975,7 +1977,10 @@ class TestGraphStoreBackendSelection:
         # Structural uses/dependency edges must not imply inherited authority
         # after the hop-evidence classifier qualifies this path as unknown.
         assert body["cards"][0]["exposure_path"]["reachability"] == "unknown"
-        assert "effective permission, successful use, and exploitation require separate evidence" in body["cards"][0]["summary"]
+        if node_reachable:
+            assert "effective permission, successful use, and exploitation require separate evidence" in body["cards"][0]["summary"]
+        else:
+            assert "Unverified structural candidate" in body["cards"][0]["summary"]
 
         queue = client.get("/v1/graph/attack-paths", params={"scan_id": "store-scan", "limit": 5}).json()
         assert queue["pagination"]["total"] == 1

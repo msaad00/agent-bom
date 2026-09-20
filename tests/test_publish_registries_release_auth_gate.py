@@ -132,21 +132,33 @@ python3() {
     assert "publishing a new deployment" not in result.stdout
 
 
-def test_smithery_publish_waits_for_oauth_capable_forward_release() -> None:
-    workflow = WORKFLOW.read_text(encoding="utf-8")
+@pytest.mark.parametrize("event_required", ["true", "false"])
+@pytest.mark.parametrize("missing", ["SMITHERY_MCP_URL", "SMITHERY_API_TOKEN"])
+def test_registry_repair_cannot_succeed_by_skipping_missing_configuration(tmp_path, event_required, missing):
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    step = next(step for step in workflow["jobs"]["smithery"]["steps"] if step.get("name") == "Check Smithery configuration")
+    env = {
+        **os.environ,
+        "GITHUB_OUTPUT": str(tmp_path / "outputs"),
+        "SMITHERY_API_TOKEN": "test-only",
+        "SMITHERY_MCP_URL": "https://mcp.example.test/mcp",
+        "SMITHERY_OAUTH_READY": "true",
+        "REGISTRY_PUBLISH_REQUIRED": event_required,
+    }
+    env[missing] = ""
+    result = subprocess.run(["bash", "-c", step["run"]], env=env, text=True, capture_output=True, timeout=10)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "::error::" in result.stdout
+    if (tmp_path / "outputs").exists():
+        assert "enabled=false" not in (tmp_path / "outputs").read_text()
 
-    assert "smithery_oauth_ready: ${{ steps.release.outputs.smithery_oauth_ready }}" in workflow
-    assert 'git show "${RELEASE_SHA}:src/agent_bom/mcp_server_metadata.py"' in workflow
-    assert "SMITHERY_OAUTH_READY: ${{ needs.release.outputs.smithery_oauth_ready }}" in workflow
-    assert 'if [ "$SMITHERY_OAUTH_READY" != "true" ]; then' in workflow
-    assert "publish the next forward release" in workflow
+
+def test_registry_auth_readiness_is_not_inferred_from_metadata_source_text():
+    workflow = WORKFLOW.read_text()
+    assert "smithery_oauth_ready" not in workflow
+    assert "predates the OAuth-capable" not in workflow
+    assert "OAuth-compatible upstream" in workflow
     assert '(.authentication.schemes | index("oauth2") != null)' in workflow
-
-
-def test_automatic_forward_release_cannot_report_success_when_smithery_is_skipped() -> None:
-    workflow = WORKFLOW.read_text(encoding="utf-8")
-    assert "REGISTRY_PUBLISH_REQUIRED: ${{ github.event_name == 'workflow_run' }}" in workflow
-    assert "Smithery publication is required for an automatic forward release" in workflow
 
 
 def test_smithery_publication_is_idempotent_and_bounds_authorization_recovery() -> None:
@@ -250,3 +262,23 @@ def test_surface_freshness_rechecks_immediately_after_registry_publication() -> 
     workflow = (ROOT / ".github/workflows/surface-freshness.yml").read_text(encoding="utf-8")
     assert 'workflows: ["Publish to Registries"]' in workflow
     assert "github.event.workflow_run.conclusion == 'success'" in workflow
+
+
+def test_configured_registry_repair_runs_without_a_source_metadata_auth_claim(tmp_path):
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    step = next(step for step in workflow["jobs"]["smithery"]["steps"] if step.get("name") == "Check Smithery configuration")
+    result = subprocess.run(
+        ["bash", "-c", step["run"]],
+        env={
+            **os.environ,
+            "GITHUB_OUTPUT": str(tmp_path / "outputs"),
+            "SMITHERY_API_TOKEN": "test-only",
+            "SMITHERY_MCP_URL": "https://mcp.example.test/mcp",
+            "SMITHERY_OAUTH_READY": "false",
+        },
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "outputs").read_text() == "enabled=true\n"

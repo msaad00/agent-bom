@@ -42,6 +42,28 @@ report is stale or unmonitored. Registry rebuilds may finish asynchronously;
 rerun the check until Glama and every configured public surface reflect the
 released version and expected inventory.
 
+### Protected MCP deployment and registry recovery
+
+Run `gh workflow run deployment-freshness.yml` after deploying the exact
+published release; inspect the completed run and its drift issue before closing
+an incident. A recorded alert or public server card does not prove authenticated
+MCP calls succeed. Verify anonymous rejection and authenticated initialization,
+tool inventory, and a read-only call with a current credential separately.
+
+Agent-Bom HTTP MCP accepts operator-provisioned bearer credentials with an
+absolute expiry of at most one hour. Rotate the credential and deadline together,
+update its clients, and restart the process through the operator's credential
+workflow. Ordinary restarts must retain the original deadline. See
+[MCP authentication](MCP_SERVER.md#sse-transport-remote--multi-client).
+
+[Smithery protected URL publishing](https://smithery.ai/docs/build/publish)
+requires OAuth. The bearer-only MCP server does not supply an OAuth issuer;
+a metadata declaration cannot supply that capability. Configure an authorized
+OAuth-compatible upstream and prove its login/token/refresh flow before running
+`gh workflow run publish-registries.yml`. Missing configuration fails manual,
+scheduled, and release-triggered runs. Do not disable authentication or restore
+an automatic grant just to make a catalog scan pass.
+
 ### Source-to-published storefront transition
 
 During the four-PR sequence, code freeze, and after publication, the committed

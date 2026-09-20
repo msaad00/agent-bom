@@ -76,6 +76,7 @@ jobs:
           RAILWAY_MCP_BEARER_TOKEN: ${{ secrets.RAILWAY_MCP_BEARER_TOKEN }}
         run: |
           set -euo pipefail
+          echo "probe_failed=true" >> "$GITHUB_OUTPUT"
           DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
           if RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
             --base-url "$DEPLOY_URL" \
@@ -98,6 +99,7 @@ jobs:
             exit 0
           fi
           {
+            echo "probe_failed=false"
             echo "railway_version=$DEPLOYED"
             echo "tool_count=$TOOL_COUNT"
           } >> "$GITHUB_OUTPUT"
@@ -149,7 +151,7 @@ jobs:
 
       - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
         shell: bash
-        if: steps.railway.outputs.stale == 'true' || steps.railway.outputs.probe_failed == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true'
+        if: steps.railway.outcome != 'success' || steps.public.outcome != 'success' || steps.railway.outputs.stale == 'true' || steps.railway.outputs.probe_failed == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -257,7 +259,7 @@ jobs:
           fi
 
       - name: Close supply-chain drift issue when deployment is fresh
-        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true' && steps.public.outputs.public_version == 'fresh' && steps.public.outputs.probe_failed == 'false'
+        if: steps.expected.outputs.version != '' && steps.railway.outputs.railway_version == steps.expected.outputs.version && steps.railway.outcome == 'success' && steps.public.outcome == 'success' && steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed == 'false' && steps.public.outputs.public_version == 'fresh' && steps.public.outputs.probe_failed == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -273,3 +275,22 @@ jobs:
                 gh issue close "$issue" --comment "Deployment freshness check is clean again; closing the automated supply-chain drift alert."
               fi
             done
+
+      - name: Require deployment freshness
+        if: always()
+        env:
+          EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
+          RAILWAY_VERSION: ${{ steps.railway.outputs.railway_version }}
+          RAILWAY_OUTCOME: ${{ steps.railway.outcome }}
+          RAILWAY_PROBE_FAILED: ${{ steps.railway.outputs.probe_failed }}
+          PUBLIC_OUTCOME: ${{ steps.public.outcome }}
+          PUBLIC_PROBE_FAILED: ${{ steps.public.outputs.probe_failed }}
+          PUBLIC_VERSION: ${{ steps.public.outputs.public_version }}
+        run: |
+          if [ -z "$EXPECTED_VERSION" ] || [ "$RAILWAY_VERSION" != "$EXPECTED_VERSION" ] ||
+             [ "$RAILWAY_OUTCOME" != "success" ] || [ "$RAILWAY_PROBE_FAILED" != "false" ] ||
+             [ "$PUBLIC_OUTCOME" != "success" ] || [ "$PUBLIC_PROBE_FAILED" != "false" ] ||
+             [ "$PUBLIC_VERSION" != "fresh" ]; then
+            echo "::error::Deployment freshness failed; recording an incident does not make a failed or missing probe pass"
+            exit 1
+          fi

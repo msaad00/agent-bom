@@ -546,7 +546,7 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     assert "tool_count" in workflow
     assert "smithery-oauth" in workflow
     assert "probe_failed=true" in workflow
-    assert "steps.railway.outputs.probe_failed != 'true'" in workflow
+    assert "steps.railway.outputs.probe_failed == 'false'" in workflow
     assert "--server-card" in workflow
 
 
@@ -1117,3 +1117,45 @@ def test_smithery_release_uses_oauth_discovery_not_bearer_config():
     assert '\\"configSchema\\"' not in workflow
     # The endpoint must never be published as open in place of supplying a token.
     assert "--allow-insecure-no-auth" not in workflow
+
+
+@pytest.mark.parametrize(
+    "overrides, expected",
+    [
+        ({}, 0),
+        ({"RAILWAY_PROBE_FAILED": "true"}, 1),
+        ({"RAILWAY_PROBE_FAILED": ""}, 1),
+        ({"RAILWAY_OUTCOME": "failure"}, 1),
+        ({"PUBLIC_OUTCOME": "failure"}, 1),
+        ({"PUBLIC_PROBE_FAILED": "true"}, 1),
+        ({"PUBLIC_VERSION": "stale"}, 1),
+        ({"RAILWAY_VERSION": "0.104.0"}, 1),
+        ({"EXPECTED_VERSION": ""}, 1),
+    ],
+)
+def test_deployment_workflow_verdict_requires_explicit_success(overrides, expected):
+    import os
+
+    import yaml
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/deployment-freshness.yml").read_text())
+    steps = workflow["jobs"]["check"]["steps"]
+    verdict = next(step for step in steps if step.get("name") == "Require deployment freshness")
+    assert verdict["if"] == "always()"
+    env = {
+        **os.environ,
+        "EXPECTED_VERSION": "0.105.0",
+        "RAILWAY_VERSION": "0.105.0",
+        "RAILWAY_OUTCOME": "success",
+        "RAILWAY_PROBE_FAILED": "false",
+        "PUBLIC_OUTCOME": "success",
+        "PUBLIC_PROBE_FAILED": "false",
+        "PUBLIC_VERSION": "fresh",
+        **overrides,
+    }
+    result = subprocess.run(["bash", "-c", verdict["run"]], env=env, text=True, capture_output=True, timeout=10)
+    assert result.returncode == expected, result.stdout + result.stderr
+    closer = next(step for step in steps if step.get("name") == "Close supply-chain drift issue when deployment is fresh")
+    assert "steps.railway.outputs.probe_failed == 'false'" in closer["if"]
+    assert "steps.railway.outcome == 'success'" in closer["if"]
+    assert "steps.railway.outputs.railway_version == steps.expected.outputs.version" in closer["if"]

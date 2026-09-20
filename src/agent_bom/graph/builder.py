@@ -3098,7 +3098,20 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
             _ensure_role(role),
             _ensure_object(object_fqn, object_type=str(grant.get("object_type") or "object").lower()),
             RelationshipType.HAS_PERMISSION,
-            {"source": "snowflake-objects", "privilege": grant.get("privilege", "")},
+            {
+                "source": "snowflake-objects",
+                "privilege": grant.get("privilege", ""),
+                "grant_receipts": [
+                    {
+                        "source": "snowflake-objects",
+                        "account": account or None,
+                        "role": role,
+                        "privilege": grant.get("privilege", ""),
+                        "object_fqn": object_fqn,
+                        "object_type": str(grant["object_type"]).lower() if grant.get("object_type") else None,
+                    }
+                ],
+            },
         )
 
     # Users. ``role_memberships`` carry user→role grants; the live SHOW overlay

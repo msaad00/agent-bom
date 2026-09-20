@@ -1,9 +1,9 @@
 {
   "release_version": "0.105.0",
-  "captured_at": "2026-09-20T22:55:16.140Z",
-  "source_commit": "7ac653079ddd4a931f26516a11d47436b94eb209",
+  "captured_at": "2026-09-20T23:18:38.769Z",
+  "source_commit": "c3de911c69f667d0b3080aedb9d722e8650df9df",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:5d9f2737c0b5074d532c5aeb2209e7760456a992c71e16ac563bda9e387edcd5",
+  "capture_inputs_sha256": "sha256:90bd82a7d7b168be1d688e0ea1ea2c48e6063e970f09782a72941b650acb0dd8",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.105.0",
-      "sha256": "sha256:80e149200110558f93a6cdaa6893603449b27703b17f107040663d097771ca59"
+      "sha256": "sha256:c121429ffcd3861bd49fdbda8da99722265748afdaad98821166b8266a78adef"
     },
     {
       "presentation": "dark desktop",

@@ -21,7 +21,17 @@ def merge_edge_evidence(stored: dict[str, Any], incoming: dict[str, Any]) -> boo
     """
     changed = False
     decisions: dict[str, dict[str, Any]] = {}
+    grants: dict[str, dict[str, Any]] = {}
     for evidence in (stored, incoming):
+        native_grants = evidence.get("grant_receipts")
+        if native_grants is None and evidence.get("source") == "snowflake-objects" and isinstance(evidence.get("privilege"), str):
+            native_grants = [
+                {key: evidence[key] for key in ("source", "account", "role", "privilege", "object_fqn", "object_type") if key in evidence}
+            ]
+        if isinstance(native_grants, list):
+            for record in native_grants:
+                if isinstance(record, dict):
+                    grants[json.dumps(record, sort_keys=True, default=str)] = deepcopy(record)
         records = evidence.get("authorization_decisions")
         if records is None and evidence.get("source") == "authorization-evidence" and isinstance(evidence.get("action"), str):
             records = [
@@ -35,7 +45,10 @@ def merge_edge_evidence(stored: dict[str, Any], incoming: dict[str, Any]) -> boo
             for record in records:
                 if isinstance(record, dict):
                     decisions[json.dumps(record, sort_keys=True, default=str)] = deepcopy(record)
+    grant_privileges = {json.dumps(record.get("privilege"), sort_keys=True, default=str) for record in grants.values()}
     for key, value in incoming.items():
+        if key == "privilege" and len(grant_privileges) > 1:
+            continue
         if value in (None, "", [], {}):
             continue
         if key not in stored or stored[key] in (None, "", [], {}):
@@ -65,6 +78,21 @@ def merge_edge_evidence(stored: dict[str, Any], incoming: dict[str, Any]) -> boo
         if stored.get("binding_ids") != bindings:
             stored["binding_ids"] = bindings
             changed = True
+    if grants:
+        records = [grants[key] for key in sorted(grants)]
+        if stored.get("grant_receipts") != records:
+            stored["grant_receipts"] = records
+            changed = True
+        privileges = sorted({record["privilege"] for record in records if isinstance(record.get("privilege"), str) and record["privilege"]})
+        if stored.get("privileges") != privileges:
+            stored["privileges"] = privileges
+            changed = True
+        # A scalar cannot represent multiple grants. Do not imply that one
+        # privilege was the only recorded action or fill unknown legacy scope.
+        if len(grant_privileges) > 1:
+            if "privilege" in stored:
+                stored.pop("privilege")
+                changed = True
     return changed
 
 

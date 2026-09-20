@@ -34,6 +34,18 @@ class PermissionWitness(BaseModel):
     source_edge_ids: list[EvidenceId] = Field(min_length=1, max_length=7)
 
 
+class NativeGrantReceipt(BaseModel):
+    """An inventoried native grant; no session authorization verdict is implied."""
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+    source: Literal["snowflake-objects"]
+    privilege: EvidenceId
+    account: EvidenceId | None = None
+    role: EvidenceId | None = None
+    object_fqn: Annotated[str, Field(min_length=1, max_length=2048)] | None = None
+    object_type: EvidenceId | None = None
+
+
 class PermissionDerivationReceipt(BaseModel):
     """Selected structural witnesses; never an exhaustive set of permissions."""
 
@@ -49,6 +61,7 @@ class HopAuthorityEvidence(BaseModel):
     model_config = ConfigDict(extra="ignore", strict=True)
     status: Literal["recorded", "partial"]
     decisions: list[AuthorizationReceipt] = Field(default_factory=list, max_length=16)
+    native_grants: list[NativeGrantReceipt] = Field(default_factory=list, max_length=16)
     derivation: PermissionDerivationReceipt | None = None
     reason_codes: list[str] = Field(default_factory=list, max_length=8)
 
@@ -59,10 +72,25 @@ def authority_evidence(evidence: Mapping[str, Any]) -> dict[str, Any] | None:
     if raw is None and evidence.get("source") == "authorization-evidence" and "action" in evidence:
         raw = [evidence]
     raw_derivation = evidence.get("permission_derivation")
-    if raw is None and raw_derivation is None:
+    raw_grants = evidence.get("grant_receipts")
+    if raw_grants is None and evidence.get("source") == "snowflake-objects" and "privilege" in evidence:
+        raw_grants = [evidence]
+    if raw is None and raw_derivation is None and raw_grants is None:
         return None
     reasons: list[str] = []
     decisions: list[AuthorizationReceipt] = []
+    grants: list[NativeGrantReceipt] = []
+    if raw_grants is not None:
+        if not isinstance(raw_grants, list):
+            reasons.append("invalid_native_grant")
+        else:
+            if len(raw_grants) > 16:
+                reasons.append("native_grant_limit")
+            for item in raw_grants[:16]:
+                try:
+                    grants.append(NativeGrantReceipt.model_validate(item))
+                except ValidationError:
+                    reasons.append("invalid_native_grant")
     if raw is not None:
         if not isinstance(raw, list):
             reasons.append("invalid_authorization_receipt")
@@ -82,11 +110,12 @@ def authority_evidence(evidence: Mapping[str, Any]) -> dict[str, Any] | None:
                 reasons.append("permission_witnesses_limited")
         except ValidationError:
             reasons.append("invalid_permission_witnesses")
-    if not decisions and derivation is None:
+    if not decisions and not grants and derivation is None:
         reasons.append("authority_receipts_unavailable")
     return HopAuthorityEvidence(
         status="partial" if reasons else "recorded",
         decisions=decisions,
+        native_grants=grants,
         derivation=derivation,
         reason_codes=list(dict.fromkeys(reasons)),
     ).model_dump(mode="json")

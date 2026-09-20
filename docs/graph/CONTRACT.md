@@ -275,6 +275,11 @@ a display change or a proposed fix is not remediation verification. Preserve
 old snapshots for comparison. A rollback to an evaluator that ignores negative
 outcomes can restore overstated labels; do not treat those labels as proof.
 
+Permission overlays exclude context-only access, membership, and delegation
+links from newly derived authority. This does not reconstruct missing action or
+policy-condition evidence. Previously persisted derived edges remain historical
+records; rebuild from source evidence to obtain the corrected derivation.
+
 Exposure pages retrieve relationships between their selected node IDs. Other
 incident-edge queries retain their existing behavior. Response limits and cursor
 continuation still apply; a small rendered page does not establish full-estate

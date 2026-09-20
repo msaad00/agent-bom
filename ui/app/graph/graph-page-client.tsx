@@ -1799,6 +1799,9 @@ function GraphPageInner() {
   // renderers upstream, so ReactFlow only ever lays out small/medium graphs
   // where dagre is the better fit.
   const compactGroupedTopology = aggregated.clusters.size > 0 && aggregated.nodes.length <= 6;
+  // A short investigation should fit as readable cards, not tiny summary pills
+  // separated by the spacing intended for a much larger estate.
+  const compactInvestigationTopology = Boolean(investigationMode) && aggregated.nodes.length > 0 && aggregated.nodes.length <= 4;
   const compactMobileTopology = narrowViewport && !selectedAttackPath &&
     !rollupNavigationActive && compactGroupedTopology;
   const graphLayoutKind = compactMobileTopology ? "dagre" : "dagre-lr";
@@ -1829,6 +1832,8 @@ function GraphPageInner() {
       dagreLr: readableLineageDagreLr(
         selectedAttackPath
           ? { rankSep: 72, nodeSep: 40, nodeWidth: 224, nodeHeight: 128, fitAspect: 2.65 }
+          : compactInvestigationTopology
+            ? { rankSep: 32, nodeSep: 24, nodeWidth: 260, minSeparation: { width: 260, height: 140, gap: 24 } }
           : selectedScenarioId
             ? { rankSep: 48, nodeSep: 12, nodeWidth: 260, minSeparation: { width: 260, height: 140, gap: 12 } }
             : filters.agentName
@@ -1925,7 +1930,7 @@ function GraphPageInner() {
   // returns "cluster" | "summary" | "detail". The chosen render band
   // keeps dense graphs readable without changing node positions or data.
   const lodBand = useLodBand();
-  const effectiveLodBand = compactGroupedTopology || (scenarioContextIds && graphViewport.zoom >= 0.85) ? "detail" : effectiveLodBandForGraph(lodBand, {
+  const effectiveLodBand = compactInvestigationTopology || compactGroupedTopology || (scenarioContextIds && graphViewport.zoom >= 0.85) ? "detail" : effectiveLodBandForGraph(lodBand, {
     sourceNodeCount: flow.nodes.length,
     renderedNodeCount: aggregated.nodes.length,
     clusterCount: aggregated.clusters.size,
@@ -3874,7 +3879,7 @@ function GraphPageInner() {
               </div>
             </section>
           )}
-          {!rollupDecisionActive && (selectedScenarioId || initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
+          {!rollupDecisionActive && (selectedScenarioId || investigationMode || initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
             <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
               <span>{scenarioContextIds ? `Changes and neighbors · ${displayNodes.length} of ${aggregated.nodes.length} nodes` : graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>
               {selectedScenarioId && !attackPathLens && !selectedAttackPath && !investigationMode && <button type="button" onClick={() => setExpandedScenarioId(scenarioExpanded ? null : selectedScenarioId)} className="text-foreground underline underline-offset-4">{scenarioExpanded ? "Focus changes" : "Show full graph"}</button>}

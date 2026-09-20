@@ -60,7 +60,7 @@ from agent_bom.graph.build_workspace import (
     open_workspace_backend,
 )
 from agent_bom.graph.container import GraphCompleteness, UnifiedGraph
-from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType
@@ -402,14 +402,7 @@ class StoreBackedUnifiedGraph(UnifiedGraph):
         if existing_payload is not None:
             if edge.evidence:
                 stored = _edge_from_payload(json.loads(existing_payload))
-                changed = False
-                for evidence_key, value in edge.evidence.items():
-                    if value in (None, "", [], {}):
-                        continue
-                    if evidence_key not in stored.evidence or stored.evidence[evidence_key] in (None, "", [], {}):
-                        stored.evidence[evidence_key] = value
-                        changed = True
-                if changed:
+                if merge_edge_evidence(stored.evidence, edge.evidence):
                     self._backend.add_edge_payloads(self._tenant, [_edge_to_row(stored)])
             return
         self._backend.add_edge_payloads(self._tenant, [_edge_to_row(edge)])

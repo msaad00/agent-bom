@@ -14,6 +14,18 @@ function receipt(index: number, overrides: Partial<GraphHopEvidence> = {}): Grap
 }
 
 describe("GraphHopEvidenceInspector", () => {
+  it("finds native privileges without changing hop identity or inferring permission", () => {
+    render(<GraphHopEvidenceInspector hops={hops} receipts={[receipt(0), receipt(1, {authority: {
+      status: "recorded", decisions: [], derivation: null, reason_codes: [], native_grants: [
+        {source: "snowflake-objects", privilege: "INSERT", account: "account-a", role: "ANALYST", object_fqn: "DB.PUBLIC.ORDERS", object_type: "table"},
+      ],
+    }}), receipt(2)]} />);
+    fireEvent.change(screen.getByRole("textbox", {name: "Filter hop evidence"}), {target: {value: "INSERT"}});
+    fireEvent.click(screen.getByRole("button", {name: /2\. Tool/}));
+    expect(screen.getByText("INSERT · Native grant")).toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: /1\. Agent/})).not.toBeInTheDocument();
+    expect(screen.getByText("DB.PUBLIC.ORDERS")).toBeInTheDocument();
+  });
   it("separates blocked, failed, and unknown downstream outcomes from runtime observation", () => {
     render(<GraphHopEvidenceInspector hops={hops} receipts={[
       receipt(0, {runtime_observed_state: "observed", runtime_outcome: "blocked"}),

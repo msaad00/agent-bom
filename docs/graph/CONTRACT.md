@@ -303,7 +303,13 @@ grant principal, source snapshot and grant edge. These are selected shortest
 structural witnesses per grant/access type, not an exhaustive path set or an
 inferred action scope. They do not establish successful execution.
 
-Projection retains at most 16 action receipts and 16 witnesses, with at most
+Snowflake object grants are separate `native_grants` receipts. Each retains its
+recorded privilege, account, role, object FQN and object type; a native grant is
+not an evaluator `allow` decision. Multiple privileges on one relationship remain
+separate records. Unknown legacy scope stays null, and grants do not establish
+active session roles, required database/schema usage, masking or row-policy effects.
+
+Projection retains at most 16 action receipts, 16 native grants and 16 witnesses, with at most
 seven source relationships per witness. Invalid or oversized records are omitted
 with explicit reason codes and `status: partial`; valid neighboring records stay
 inspectable. Each action receipt accepts at most 16 binding IDs. Arbitrary policy

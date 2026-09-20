@@ -24,6 +24,70 @@ def _decision(action="storage.objects.get", **extra):
     }
 
 
+def _native_grant(privilege="SELECT", **extra):
+    return {
+        "source": "snowflake-objects",
+        "account": "account-a",
+        "role": "ANALYST",
+        "privilege": privilege,
+        "object_fqn": "DB.PUBLIC.ORDERS",
+        "object_type": "table",
+        **extra,
+    }
+
+
+def _ingested_native_graph():
+    from agent_bom.graph.builder import build_unified_graph_from_report
+    from tests.test_snowflake_object_graph import _report_with_grants
+
+    report = _report_with_grants()
+    grants = report["snowflake_object_graph"]["grants"]
+    grants.append({**grants[0], "privilege": "INSERT"})
+    graph = build_unified_graph_from_report(report, scan_id="native-transport")
+    edge = next(edge for edge in graph.edges if edge.relationship == RelationshipType.HAS_PERMISSION)
+    path = AttackPath(source=edge.source, target=edge.target, hops=[edge.source, edge.target], edges=[edge.relationship.value])
+    graph.attack_paths = [annotate_attack_path_evidence(path, graph)]
+    return graph
+
+
+def test_native_grants_survive_restart_without_becoming_evaluated_allows(tmp_path):
+    graph = _graph(
+        {"grant_receipts": [_native_grant(), _native_grant("INSERT", raw_policy="secret-body")]}, RelationshipType.HAS_PERMISSION
+    )
+    db = tmp_path / "native.db"
+    SQLiteGraphStore(db).save_graph(graph)
+    restored = SQLiteGraphStore(db).load_graph(scan_id=graph.scan_id)
+    for payload in _serialize_both(restored.attack_paths[0], nodes=list(restored.nodes.values()), edges=restored.edges):
+        authority = payload["hopEvidence"][0]["authority"]
+        assert authority["status"] == "recorded"
+        assert authority["decisions"] == []
+        assert [item["privilege"] for item in authority["native_grants"]] == ["SELECT", "INSERT"]
+        assert authority["native_grants"][1]["account"] == "account-a"
+        assert all("decision" not in grant and "observed_at" not in grant for grant in authority["native_grants"])
+        assert payload["hopEvidence"][0]["runtime_outcome"] == "unknown"
+        assert payload["reachability"] == "unknown"
+        assert "secret-body" not in json.dumps(payload)
+
+
+def test_native_grant_projection_bounds_invalid_records_and_unknown_legacy_scope():
+    graph = _graph(
+        {
+            "grant_receipts": [
+                _native_grant(),
+                {"source": "snowflake-objects", "privilege": False},
+                *[_native_grant(f"PRIVILEGE_{i}") for i in range(30)],
+            ]
+        }
+    )
+    authority = graph.attack_paths[0].hop_evidence[0]["authority"]
+    assert len(authority["native_grants"]) == 15
+    assert authority["status"] == "partial"
+    assert set(authority["reason_codes"]) == {"native_grant_limit", "invalid_native_grant"}
+    legacy = _graph({"source": "snowflake-objects", "privilege": "SELECT"})
+    grant = legacy.attack_paths[0].hop_evidence[0]["authority"]["native_grants"][0]
+    assert grant["account"] is None and grant["role"] is None and grant["object_fqn"] is None
+
+
 def _graph(evidence, relationship=RelationshipType.CAN_ACCESS):
     graph = UnifiedGraph(scan_id="authority-snapshot")
     graph.add_node(UnifiedNode(id="principal:reader", entity_type=EntityType.SERVICE_ACCOUNT, label="reader"))
@@ -112,13 +176,14 @@ def test_plain_relationship_has_no_authority_projection():
 
 
 @pytest.mark.asyncio
-async def test_persisted_authority_reaches_mcp_and_python_client(tmp_path):
+@pytest.mark.parametrize("native", [False, True])
+async def test_persisted_authority_reaches_mcp_and_python_client(tmp_path, native):
     import httpx
 
     from agent_bom import AgentBomClient
     from agent_bom.mcp_tools.graph import exposure_paths_impl
 
-    graph = _graph({"authorization_decisions": [_decision()]})
+    graph = _ingested_native_graph() if native else _graph({"authorization_decisions": [_decision()]})
     db = tmp_path / "transport.db"
     SQLiteGraphStore(db).save_graph(graph)
     store = SQLiteGraphStore(db)
@@ -131,22 +196,29 @@ async def test_persisted_authority_reaches_mcp_and_python_client(tmp_path):
     ) as client:
         result = client.exposure_paths(scan_id=graph.scan_id)
     assert result["paths"][0]["hopEvidence"] == mcp["paths"][0]["hopEvidence"]
-    assert result["paths"][0]["hopEvidence"][0]["authority"]["decisions"][0]["binding_ids"] == ["grant:storage.objects.get"]
+    authority = result["paths"][0]["hopEvidence"][0]["authority"]
+    assert (
+        authority["native_grants"][0]["privilege"] == "SELECT"
+        if native
+        else authority["decisions"][0]["binding_ids"] == ["grant:storage.objects.get"]
+    )
 
 
-def test_exposure_authority_matches_embedded_openapi_schema():
+@pytest.mark.parametrize("native", [False, True])
+def test_exposure_authority_matches_embedded_openapi_schema(native):
     import jsonschema
 
     from agent_bom.api.routes.graph import _EXPOSURE_PATH_OPENAPI_SCHEMA
 
-    graph = _graph({"authorization_decisions": [_decision()]})
+    graph = _ingested_native_graph() if native else _graph({"authorization_decisions": [_decision()]})
     api = _serialize_both(graph.attack_paths[0], nodes=list(graph.nodes.values()), edges=graph.edges)[1]
     schema = _EXPOSURE_PATH_OPENAPI_SCHEMA["properties"]["hopEvidence"]
     assert "$ref" not in json.dumps(schema)
     jsonschema.validate(api["hopEvidence"], schema)
 
 
-def test_api_and_cli_preserve_same_authority_and_tenant_boundary(tmp_path, monkeypatch):
+@pytest.mark.parametrize("native", [False, True])
+def test_api_and_cli_preserve_same_authority_and_tenant_boundary(tmp_path, monkeypatch, native):
     from click.testing import CliRunner
     from starlette.testclient import TestClient
 
@@ -155,7 +227,7 @@ def test_api_and_cli_preserve_same_authority_and_tenant_boundary(tmp_path, monke
     from agent_bom.cli import main
     from tests.test_cli_graph_paths import FakeGraphClient
 
-    graph = _graph({"authorization_decisions": [_decision()]})
+    graph = _ingested_native_graph() if native else _graph({"authorization_decisions": [_decision()]})
     db = tmp_path / "route.db"
     SQLiteGraphStore(db).save_graph(graph)
     monkeypatch.setattr(graph_routes, "_get_graph_store", lambda: SQLiteGraphStore(db))
@@ -164,7 +236,9 @@ def test_api_and_cli_preserve_same_authority_and_tenant_boundary(tmp_path, monke
     assert response.status_code == 200
     payload = response.json()
     authority = payload["paths"][0]["hopEvidence"][0]["authority"]
-    assert authority["decisions"][0]["action"] == "storage.objects.get"
+    assert (
+        authority["native_grants"][0]["privilege"] == "SELECT" if native else authority["decisions"][0]["action"] == "storage.objects.get"
+    )
     foreign = client.get(
         "/v1/graph/exposure-paths", params={"scan_id": graph.scan_id, "tenant_id": "default"}, headers={"x-agent-bom-tenant-id": "foreign"}
     )

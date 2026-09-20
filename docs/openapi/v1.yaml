@@ -16895,6 +16895,57 @@ paths:
                                             title: PermissionDerivationReceipt
                                             type: object
                                           - type: 'null'
+                                        native_grants:
+                                          items:
+                                            description: An inventoried native grant;
+                                              no session authorization verdict is
+                                              implied.
+                                            properties:
+                                              account:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Account
+                                              object_fqn:
+                                                anyOf:
+                                                - maxLength: 2048
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Object Fqn
+                                              object_type:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Object Type
+                                              privilege:
+                                                maxLength: 1024
+                                                minLength: 1
+                                                title: Privilege
+                                                type: string
+                                              role:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Role
+                                              source:
+                                                const: snowflake-objects
+                                                title: Source
+                                                type: string
+                                            required:
+                                            - source
+                                            - privilege
+                                            title: NativeGrantReceipt
+                                            type: object
+                                          maxItems: 16
+                                          title: Native Grants
+                                          type: array
                                         reason_codes:
                                           items:
                                             type: string
@@ -17221,6 +17272,56 @@ paths:
                                         title: PermissionDerivationReceipt
                                         type: object
                                       - type: 'null'
+                                    native_grants:
+                                      items:
+                                        description: An inventoried native grant;
+                                          no session authorization verdict is implied.
+                                        properties:
+                                          account:
+                                            anyOf:
+                                            - maxLength: 1024
+                                              minLength: 1
+                                              type: string
+                                            - type: 'null'
+                                            title: Account
+                                          object_fqn:
+                                            anyOf:
+                                            - maxLength: 2048
+                                              minLength: 1
+                                              type: string
+                                            - type: 'null'
+                                            title: Object Fqn
+                                          object_type:
+                                            anyOf:
+                                            - maxLength: 1024
+                                              minLength: 1
+                                              type: string
+                                            - type: 'null'
+                                            title: Object Type
+                                          privilege:
+                                            maxLength: 1024
+                                            minLength: 1
+                                            title: Privilege
+                                            type: string
+                                          role:
+                                            anyOf:
+                                            - maxLength: 1024
+                                              minLength: 1
+                                              type: string
+                                            - type: 'null'
+                                            title: Role
+                                          source:
+                                            const: snowflake-objects
+                                            title: Source
+                                            type: string
+                                        required:
+                                        - source
+                                        - privilege
+                                        title: NativeGrantReceipt
+                                        type: object
+                                      maxItems: 16
+                                      title: Native Grants
+                                      type: array
                                     reason_codes:
                                       items:
                                         type: string
@@ -19370,6 +19471,57 @@ paths:
                                                 title: PermissionDerivationReceipt
                                                 type: object
                                               - type: 'null'
+                                            native_grants:
+                                              items:
+                                                description: An inventoried native
+                                                  grant; no session authorization
+                                                  verdict is implied.
+                                                properties:
+                                                  account:
+                                                    anyOf:
+                                                    - maxLength: 1024
+                                                      minLength: 1
+                                                      type: string
+                                                    - type: 'null'
+                                                    title: Account
+                                                  object_fqn:
+                                                    anyOf:
+                                                    - maxLength: 2048
+                                                      minLength: 1
+                                                      type: string
+                                                    - type: 'null'
+                                                    title: Object Fqn
+                                                  object_type:
+                                                    anyOf:
+                                                    - maxLength: 1024
+                                                      minLength: 1
+                                                      type: string
+                                                    - type: 'null'
+                                                    title: Object Type
+                                                  privilege:
+                                                    maxLength: 1024
+                                                    minLength: 1
+                                                    title: Privilege
+                                                    type: string
+                                                  role:
+                                                    anyOf:
+                                                    - maxLength: 1024
+                                                      minLength: 1
+                                                      type: string
+                                                    - type: 'null'
+                                                    title: Role
+                                                  source:
+                                                    const: snowflake-objects
+                                                    title: Source
+                                                    type: string
+                                                required:
+                                                - source
+                                                - privilege
+                                                title: NativeGrantReceipt
+                                                type: object
+                                              maxItems: 16
+                                              title: Native Grants
+                                              type: array
                                             reason_codes:
                                               items:
                                                 type: string
@@ -19696,6 +19848,57 @@ paths:
                                             title: PermissionDerivationReceipt
                                             type: object
                                           - type: 'null'
+                                        native_grants:
+                                          items:
+                                            description: An inventoried native grant;
+                                              no session authorization verdict is
+                                              implied.
+                                            properties:
+                                              account:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Account
+                                              object_fqn:
+                                                anyOf:
+                                                - maxLength: 2048
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Object Fqn
+                                              object_type:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Object Type
+                                              privilege:
+                                                maxLength: 1024
+                                                minLength: 1
+                                                title: Privilege
+                                                type: string
+                                              role:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Role
+                                              source:
+                                                const: snowflake-objects
+                                                title: Source
+                                                type: string
+                                            required:
+                                            - source
+                                            - privilege
+                                            title: NativeGrantReceipt
+                                            type: object
+                                          maxItems: 16
+                                          title: Native Grants
+                                          type: array
                                         reason_codes:
                                           items:
                                             type: string
@@ -19993,6 +20196,57 @@ paths:
                                             title: PermissionDerivationReceipt
                                             type: object
                                           - type: 'null'
+                                        native_grants:
+                                          items:
+                                            description: An inventoried native grant;
+                                              no session authorization verdict is
+                                              implied.
+                                            properties:
+                                              account:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Account
+                                              object_fqn:
+                                                anyOf:
+                                                - maxLength: 2048
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Object Fqn
+                                              object_type:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Object Type
+                                              privilege:
+                                                maxLength: 1024
+                                                minLength: 1
+                                                title: Privilege
+                                                type: string
+                                              role:
+                                                anyOf:
+                                                - maxLength: 1024
+                                                  minLength: 1
+                                                  type: string
+                                                - type: 'null'
+                                                title: Role
+                                              source:
+                                                const: snowflake-objects
+                                                title: Source
+                                                type: string
+                                            required:
+                                            - source
+                                            - privilege
+                                            title: NativeGrantReceipt
+                                            type: object
+                                          maxItems: 16
+                                          title: Native Grants
+                                          type: array
                                         reason_codes:
                                           items:
                                             type: string

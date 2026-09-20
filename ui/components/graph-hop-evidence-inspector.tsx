@@ -39,7 +39,8 @@ export function GraphHopEvidenceInspector({
     const needle = query.trim().toLocaleLowerCase();
     return rows.filter(row => !needle || [row.source.label, row.target.label, row.receipt?.relationship, row.status,
       row.receipt?.evidence_tier, row.receipt?.freshness,
-      ...(Array.isArray(row.receipt?.authority?.decisions) ? row.receipt.authority.decisions.map(item => item?.action) : [])].join(" ").toLocaleLowerCase().includes(needle));
+      ...(Array.isArray(row.receipt?.authority?.decisions) ? row.receipt.authority.decisions.map(item => item?.action) : []),
+      ...(Array.isArray(row.receipt?.authority?.native_grants) ? row.receipt.authority.native_grants.flatMap(item => [item?.privilege, item?.role, item?.object_fqn, item?.account]) : [])].join(" ").toLocaleLowerCase().includes(needle));
   }, [query, rows]);
   const safePage = Math.min(page, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1));
   const visible = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);

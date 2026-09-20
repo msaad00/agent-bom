@@ -62,6 +62,16 @@ test("retains qualified action receipts from exposure responses", async () => {
   assert.deepEqual(result.paths[0].hopEvidence[0], receipt);
 });
 
+test("retains native grants without inventing evaluator decisions", async () => {
+  const receipt = {runtime_outcome: "unknown", authority: {status: "recorded", decisions: [], derivation: null, reason_codes: [], native_grants: [
+    {source: "snowflake-objects", privilege: "SELECT", account: "account-a", role: "ANALYST", object_fqn: "DB.PUBLIC.ORDERS", object_type: "table"},
+    {source: "snowflake-objects", privilege: "INSERT", account: null, role: null, object_fqn: null, object_type: null},
+  ]}};
+  const client = new AgentBomClient({baseUrl: "https://example.test", fetch: async () => jsonResponse({paths: [{hopEvidence: [receipt]}]})});
+  const result = await client.exposurePaths({scanId: "snapshot:native"});
+  assert.deepEqual(result.paths[0].hopEvidence[0], receipt);
+});
+
 test("posts deploy decision payload without undefined fields", async () => {
   let payload;
   const client = new AgentBomClient({

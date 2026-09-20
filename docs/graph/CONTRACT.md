@@ -68,14 +68,28 @@ Edges carry `weight` and `evidence` (a metadata dict). Bidirectional edges (`sha
 
 ### Provider authorization receipts
 
-Azure/GCP authorization evaluation emits `can_access` and `assumes` edges only
-for an explicit `allow` result. Each `evidence.authorization_decisions` record
+Azure/GCP authorization evaluation emits `can_access` edges only for an explicit
+`allow` result. Each `evidence.authorization_decisions` record
 keeps the evaluated principal, concrete action, resource, decision, provider,
 matched binding IDs, and source observation time together. Multiple allowed
 actions on the same edge retain separate records through graph aggregation,
 SQLite/Postgres persistence, and the graph API. Top-level compatibility fields
 such as `action` are omitted when the records disagree; the union of binding
 IDs does not authorize every action under every binding.
+
+Identity-attachment actions (`iam.serviceAccounts.actAs` and
+`Microsoft.ManagedIdentity/userAssignedIdentities/assign/action`) retain their
+allowed-action receipts on a **nontraversable** `can_access` edge to the target
+identity. These permissions alone do not establish an impersonated session or
+inherit the target's access. The edge records `authority_effect=identity_attachment`
+and the missing workload-control, attachment, and credential-access context;
+analysis is `limited` with `identity_attachment_requires_workload_context`.
+See [Google's service-account permission semantics](https://docs.cloud.google.com/iam/docs/service-account-permissions)
+and [Azure's managed-identity assignment prerequisites](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-to-configure-managed-identities).
+
+Rebuild or rescan older snapshots that contain `assumes` edges derived from
+these attachment permissions. Historical snapshots are not rewritten on read;
+rolling back to an older binary restores the earlier derivation behavior.
 
 These receipts describe the evaluator's result for the collected snapshot.
 They do not establish that an action executed, that data was affected, or that

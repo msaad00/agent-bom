@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as api_stores
@@ -197,7 +198,7 @@ def test_conditional_gcp_allow_is_indeterminate_and_never_reachable() -> None:
     assert status["observed"]["allow_edges"] == 0
 
 
-def test_gcp_act_as_is_the_only_evidence_that_creates_an_assume_escalation() -> None:
+def _gcp_attachment_inventory() -> dict[str, object]:
     inventory = _gcp_inventory()
     assert isinstance(inventory["service_accounts"], list)
     inventory["service_accounts"] = [
@@ -241,22 +242,124 @@ def test_gcp_act_as_is_the_only_evidence_that_creates_an_assume_escalation() -> 
         }
     )
 
-    graph = build_unified_graph_from_report({"scan_id": "scan-gcp-act-as", "cloud_inventory": inventory})
-    source = "service_account:gcp:source@proj-1.iam.gserviceaccount.com"
-    target = "service_account:gcp:target@proj-1.iam.gserviceaccount.com"
-    bucket = "cloud_resource:gcp:gcs:bucket:prod-data"
+    return inventory
 
-    assume = next(
-        edge for edge in graph.edges if edge.source == source and edge.target == target and edge.relationship is RelationshipType.ASSUMES
+
+def _azure_attachment_inventory() -> dict[str, object]:
+    inventory = _azure_inventory()
+    subscription = "/subscriptions/sub-1"
+    identity_resource = f"{subscription}/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/reader"
+    inventory["managed_identities"].append(
+        {"name": "Target", "arn": identity_resource, "principal_id": "target-mi", "principal_type": "managed-identity"}
     )
-    assert assume.evidence["action"] == "iam.serviceAccounts.actAs"
-    inherited = next(
-        edge
+    # The target identity may read storage. The source can only attach it.
+    inventory["role_assignments"][0]["principal_id"] = "target-mi"
+    inventory["role_assignments"].append(
+        {
+            "id": "attachment-binding",
+            "principal_id": "sp-1",
+            "principal_type": "serviceprincipal",
+            "scope": identity_resource,
+            "role_definition_id": "identity-operator",
+        }
+    )
+    inventory["role_definitions"].append(
+        {
+            "id": "identity-operator",
+            "completeness": "complete",
+            "permissions": [{"actions": ["Microsoft.ManagedIdentity/userAssignedIdentities/assign/action"]}],
+        }
+    )
+    return inventory
+
+
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+def test_identity_attachment_retains_action_without_inheriting_target_authority(provider, tmp_path) -> None:
+    inventory = _gcp_attachment_inventory() if provider == "gcp" else _azure_attachment_inventory()
+    action = "iam.serviceAccounts.actAs" if provider == "gcp" else "Microsoft.ManagedIdentity/userAssignedIdentities/assign/action"
+    graph = build_unified_graph_from_report({"scan_id": "identity-attachment", "cloud_inventory": inventory})
+    receipt_edge = next(edge for edge in graph.edges if edge.evidence.get("action") == action)
+
+    assert receipt_edge.relationship is RelationshipType.CAN_ACCESS
+    assert receipt_edge.traversable is False
+    assert receipt_edge.evidence["authorization_decisions"][0]["decision"] == "allow"
+    assert receipt_edge.evidence["authority_effect"] == "identity_attachment"
+    assert receipt_edge.evidence["required_context"] == ["workload_control", "identity_attachment", "credential_access"]
+    assert not any(
+        edge.source == receipt_edge.source and edge.relationship in {RelationshipType.ASSUMES, RelationshipType.HAS_PERMISSION}
         for edge in graph.edges
-        if edge.source == source and edge.target == bucket and edge.relationship is RelationshipType.HAS_PERMISSION
     )
-    assert inherited.evidence["access"] == "assume_chain"
-    assert graph.nodes[source].attributes["can_escalate_privilege"] is True
+    assert graph.nodes[receipt_edge.source].attributes.get("can_escalate_privilege") is not True
+    assert any(
+        edge.source == receipt_edge.target and edge.relationship is RelationshipType.HAS_PERMISSION for edge in graph.edges
+    )  # The target's independently proved access remains available.
+    status = graph.analysis_status[f"authorization_evidence:{provider}"]
+    assert status.status.value == "limited"
+    assert "identity_attachment_requires_workload_context" in status.reason_codes
+
+    # Preserve the exact receipt and negative traversal boundary through restart
+    # and the shared graph JSON response consumed by CLI, SDK and dashboard.
+    path = tmp_path / "attachment.db"
+    SQLiteGraphStore(path).save_graph(graph)
+    restored_store = SQLiteGraphStore(path)
+    restored = restored_store.load_graph(scan_id="identity-attachment", tenant_id="default")
+    restored_edge = next(edge for edge in restored.edges if edge.id == receipt_edge.id)
+    assert restored_edge.evidence == receipt_edge.evidence
+    assert restored_edge.relationship is RelationshipType.CAN_ACCESS
+    assert restored_edge.traversable is False
+    assert restored_edge.source_scan_id == graph.scan_id
+    assert receipt_edge.target not in restored.reachable_from(receipt_edge.source, traversable_only=True)
+    original = api_stores._graph_store
+    try:
+        set_graph_store(restored_store)
+        response = TestClient(app).get("/v1/graph", params={"scan": "identity-attachment", "limit": 200})
+    finally:
+        set_graph_store(original)
+    assert response.status_code == 200
+    projected = next(edge for edge in response.json()["edges"] if edge["id"] == receipt_edge.id)
+    assert projected["relationship"] == "can_access"
+    assert projected["traversable"] is False
+    assert projected["evidence"] == receipt_edge.evidence
+
+
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+def test_conditional_identity_attachment_never_emits_an_unconditional_receipt(provider) -> None:
+    inventory = _gcp_attachment_inventory() if provider == "gcp" else _azure_attachment_inventory()
+    if provider == "gcp":
+        inventory["allow_policies"][-1]["bindings"][0]["condition"] = {"expression": "request.time < timestamp('2026-01-01T00:00:00Z')"}
+    else:
+        inventory["role_assignments"][-1]["condition"] = "@Resource[Example:environment] StringEquals 'production'"
+        inventory["role_assignments"][-1]["condition_version"] = "2.0"
+    graph = build_unified_graph_from_report({"scan_id": "conditional-attachment", "cloud_inventory": inventory})
+    assert not any(edge.evidence.get("authority_effect") == "identity_attachment" for edge in graph.edges)
+    assert not any(edge.relationship is RelationshipType.ASSUMES for edge in graph.edges)
+    assert "indeterminate_evaluations" in graph.analysis_status[f"authorization_evidence:{provider}"].reason_codes
+
+
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+@pytest.mark.parametrize("change", ["revoked", "stale", "approval_condition"])
+def test_attachment_refresh_does_not_reuse_unavailable_authority(provider, change) -> None:
+    inventory = _gcp_attachment_inventory() if provider == "gcp" else _azure_attachment_inventory()
+    before = build_unified_graph_from_report({"scan_id": "before", "cloud_inventory": inventory})
+    assert any(edge.evidence.get("authority_effect") == "identity_attachment" for edge in before.edges)
+    if change == "revoked":
+        if provider == "gcp":
+            inventory["allow_policies"][-1]["bindings"] = []
+        else:
+            inventory["role_assignments"].pop()
+    elif change == "stale":
+        sources = inventory["iam_sources"] if provider == "gcp" else inventory["authorization_sources"]
+        sources[0]["state"] = "stale"
+    elif provider == "gcp":
+        inventory["allow_policies"][-1]["bindings"][0]["condition"] = {"expression": "request.auth.claims.approved == true"}
+    else:
+        inventory["role_assignments"][-1]["condition"] = "@Resource[Example:approved] BoolEquals true"
+        inventory["role_assignments"][-1]["condition_version"] = "2.0"
+    after = build_unified_graph_from_report({"scan_id": "after", "cloud_inventory": inventory})
+    assert not any(edge.evidence.get("authority_effect") == "identity_attachment" for edge in after.edges)
+    assert not any(edge.relationship is RelationshipType.ASSUMES for edge in after.edges)
+    if change != "revoked":
+        assert after.analysis_status[f"authorization_evidence:{provider}"].status.value == "limited"
 
 
 def test_gcp_explicit_deny_never_becomes_access() -> None:

@@ -203,7 +203,7 @@ carries plaintext secrets in the compose.
 
 | Principle | What it means here |
 |-----------|--------------------|
-| **Read-only** | Only `List*` / `Describe*` / `Get*` (AWS), `list` / `get` ARM (Azure), Google Cloud list/get permissions (GCP), and `SELECT` / `SHOW` over `ACCOUNT_USAGE` (Snowflake). No create/update/delete, ever. |
+| **Read-only** | Only `List*` / `Describe*` / `Get*` (AWS), `list` / `get` ARM (Azure), Google Cloud list/get permissions (GCP), and `SELECT` on metadata views and inventory `SHOW` commands (Snowflake). No create/update/delete, ever. |
 | **Least privilege** | Read-only managed roles per source (AWS `SecurityAudit`, Azure `Reader`/`Security Reader`, GCP inventory + IAM review + Cloud Asset roles, Snowflake `ABOM_READONLY`). Nothing broader. |
 | **Zero trust / no passwords** | Short-lived tokens, key-pairs, or federated identity only. No long-lived password is ever accepted (Snowflake password auth is deprecated and warns). |
 | **No data exfiltration** | Secret *metadata* is read (a secret exists, when it rotated) but never secret *values*. No object/blob/row data is read. Errors are sanitized before display. |
@@ -479,7 +479,7 @@ CREATE ROLE IF NOT EXISTS ABOM_READONLY;
 
 -- ACCOUNT_USAGE powers inventory + the CIS benchmark
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE ABOM_READONLY;
--- account/warehouse visibility for SHOW-based discovery (tasks, streams, stages…)
+-- Account usage visibility; object-specific SHOW visibility still follows grants.
 GRANT MONITOR USAGE ON ACCOUNT TO ROLE ABOM_READONLY;
 GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE ABOM_READONLY;   -- swap to your WH
 
@@ -495,9 +495,31 @@ GRANT ROLE ABOM_READONLY TO USER ABOM_SCANNER;
 
 | Grant | Unlocks |
 |-------|---------|
-| `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE` | `ACCOUNT_USAGE.*` and `INFORMATION_SCHEMA.*` — object/lineage graph, grants, auth posture, login anomalies, exfil tags, CIS checks |
-| `MONITOR USAGE ON ACCOUNT` | `SHOW …` commands — warehouses, databases/schemas, tasks, streams, pipes, stages, shares, integrations, external/iceberg tables |
+| `IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE` | Shared Snowflake metadata and history, including available `ACCOUNT_USAGE` views. Does not grant access to customer tables or every customer database’s `INFORMATION_SCHEMA`. |
+| `MONITOR USAGE ON ACCOUNT` | Account usage visibility. Does not make every object visible to `SHOW` commands. |
 | `USAGE ON WAREHOUSE` | the compute to run the read-only `SELECT`s |
+
+Validate each enabled collection lane with the scanner role. `SHOW GRANTS` and
+customer `INFORMATION_SCHEMA` views respect the role’s object visibility;
+additional metadata visibility must be scoped to the intended objects. A
+successful connection or empty result does not establish account-wide coverage.
+Do not add `MANAGE GRANTS` to this read-only role: that privilege can change
+access, even though it also expands visibility. See [SHOW GRANTS visibility](https://docs.snowflake.com/en/sql-reference/sql/show-grants#usage-notes)
+and [Information Schema visibility](https://docs.snowflake.com/en/sql-reference/info-schema#general-usage-notes).
+
+`ACCOUNT_USAGE.GRANTS_TO_ROLES` can lag by up to two hours. A collected grant is
+recorded metadata, not a fresh session authorization decision; an empty,
+visibility-limited `SHOW` response cannot by itself prove revocation. Review
+collection warnings and source freshness before using the graph to assess a
+change. See [grant-view limits](https://docs.snowflake.com/en/sql-reference/account-usage/grants_to_roles#usage-notes).
+
+Cortex agent inventory, user-role membership and object grants are separate
+pieces of evidence. They do not establish which session and primary or secondary
+roles an agent used. Access-history collection joins query IDs to recorded
+users and role names, but the current collector does not ingest the agent chain
+in `agents_info` or evaluate all session and data-policy conditions. Confirm
+exact agent attribution with the corresponding runtime records before claiming
+agent-specific read/write access. See [ACCESS_HISTORY fields](https://docs.snowflake.com/en/sql-reference/account-usage/access_history#columns).
 
 **Authenticate** with the matching private key — no password ever:
 

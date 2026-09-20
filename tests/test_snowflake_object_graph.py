@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
+import pytest
+
 from agent_bom.graph.builder import build_unified_graph_from_report
 
 
@@ -158,3 +162,58 @@ def test_legacy_grant_merge_keeps_missing_source_fields_unknown() -> None:
     assert legacy == {"source": "snowflake-objects", "privilege": "SELECT"}
     assert old.get("privilege") is None
     assert not merge_edge_evidence(old, incoming)
+
+
+@pytest.mark.parametrize(
+    "name,database,schema,expected",
+    [
+        ("ORDERS", "DB", "PUBLIC", "DB.PUBLIC.ORDERS"),
+        ("DB.PUBLIC.ORDERS", "DB", "PUBLIC", "DB.PUBLIC.ORDERS"),
+        ("PUBLIC.ORDERS", "DB", "PUBLIC", "DB.PUBLIC.ORDERS"),
+        ('"DB"."PUBLIC"."Order.Items"', "DB", "PUBLIC", '"DB"."PUBLIC"."Order.Items"'),
+        ('"Order.Items"', "DB", "PUBLIC", 'DB.PUBLIC."Order.Items"'),
+        ('"Order"".Items"', "DB", "PUBLIC", 'DB.PUBLIC."Order"".Items"'),
+        ("DB.PUBLIC.ORDERS", None, None, "DB.PUBLIC.ORDERS"),
+    ],
+)
+def test_collected_grants_keep_one_qualified_object_target(tmp_path, name, database, schema, expected):
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.cloud.snowflake import _discover_sf_grants
+
+    grant_cursor = MagicMock()
+    grant_cursor.description = [(key,) for key in ("grantee_name", "privilege", "granted_on", "name", "table_catalog", "table_schema")]
+    grant_cursor.fetchall.return_value = [("ANALYST", action, "TABLE", name, database, schema) for action in ("SELECT", "INSERT")]
+    membership_cursor = MagicMock()
+    membership_cursor.description = [("grantee_name",), ("role",)]
+    membership_cursor.fetchall.return_value = [("ALICE", "ANALYST")]
+    conn = MagicMock()
+    conn.cursor.side_effect = [grant_cursor, membership_cursor]
+    warnings = []
+    grants, memberships = _discover_sf_grants(conn, warnings)
+    assert not warnings
+    assert {grant["object_fqn"] for grant in grants} == {expected}
+
+    graph = build_unified_graph_from_report(
+        {
+            "snowflake_object_graph": {
+                "status": "ok",
+                "account": "acct1",
+                "objects": [{"fqn": expected, "object_type": "table", "row_count": 100}],
+                "grants": grants,
+                "role_memberships": memberships,
+            }
+        },
+        scan_id="grant-name",
+        tenant_id="tenant-a",
+    )
+    object_ids = {node.id for node in graph.nodes.values() if node.entity_type.value == "data_store"}
+    assert object_ids == {f"data_store:snowflake:{expected}"}
+    permission = next(edge for edge in graph.edges if edge.relationship.value == "has_permission")
+    assert permission.target == f"data_store:snowflake:{expected}"
+    assert {receipt["privilege"] for receipt in permission.evidence["grant_receipts"]} == {"SELECT", "INSERT"}
+    assert {receipt["object_fqn"] for receipt in permission.evidence["grant_receipts"]} == {expected}
+    store = SQLiteGraphStore(tmp_path / "grant-name.db")
+    store.save_graph(graph)
+    restored = SQLiteGraphStore(tmp_path / "grant-name.db").load_graph(scan_id=graph.scan_id, tenant_id=graph.tenant_id)
+    restored_permission = next(edge for edge in restored.edges if edge.relationship.value == "has_permission")
+    assert restored_permission.evidence["grant_receipts"] == permission.evidence["grant_receipts"]

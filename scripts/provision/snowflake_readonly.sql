@@ -22,8 +22,11 @@ CREATE ROLE IF NOT EXISTS AGENT_BOM_READONLY
 --   ACCOUNT_USAGE.PROCEDURES             → stored proc discovery
 --   ACCOUNT_USAGE.CORTEX_AGENT_REGISTRY  → Cortex agent inventory
 --   ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY → observability/health
---   INFORMATION_SCHEMA.*                 → package metadata, notebook cells
--- No customer warehouse data is accessible via these views.
+-- Customer INFORMATION_SCHEMA / SHOW visibility still follows object grants.
+-- These grants do not grant SELECT on customer warehouse tables. Metadata and
+-- query history can contain sensitive information and follow the account's
+-- metadata access boundary. IMPORTED PRIVILEGES does not expose every object.
+-- See docs/CLOUD_CONNECT.md for visibility, freshness, and attribution limits.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AGENT_BOM_READONLY;
 
 -- ─── Step 3: Create the service account user (no password — key-pair only) ──

@@ -32,7 +32,6 @@ type EvidenceAge = "fresh" | "stale" | "future" | "unknown";
 
 export type GraphCorrelationOutcome = {
   scanId: string;
-  title: string;
   summary: string;
   source: string;
   target: string;
@@ -224,12 +223,7 @@ export function GraphCorrelationWorkflow({
   const boundOutcome = run?.output_scan_id && outcome?.scanId === run.output_scan_id
     ? outcome
     : null;
-  const findingSuffix = boundOutcome?.finding ? ` through ${boundOutcome.finding}` : "";
-  const outcomeTitle = findingSuffix && boundOutcome?.title.endsWith(findingSuffix)
-    ? boundOutcome.title.slice(0, -findingSuffix.length)
-    : boundOutcome?.title;
   const runIsCompleteAndFresh = isComplete && analysisState === "complete" && staleReceiptCount === 0;
-  const selectedPathEvidenceComplete = runIsCompleteAndFresh && Boolean(boundOutcome);
   const evidenceState = staleReceiptCount > 0
     ? `${staleReceiptCount} stale source${staleReceiptCount === 1 ? "" : "s"} allowed`
     : "Fresh evidence";
@@ -274,14 +268,12 @@ export function GraphCorrelationWorkflow({
               <p className="gc-decision-state">
                 {isComplete ? <CheckCircle2 className="h-4 w-4" /> : isFailed ? <AlertTriangle className="h-4 w-4 text-red-500" /> : <Loader2 className="h-4 w-4 animate-spin text-sky-500" />}
                 {isComplete
-                  ? selectedPathEvidenceComplete
-                    ? `Evidence-complete path across ${receiptCount} sources`
-                    : `${attackPaths} retained path${attackPaths === 1 ? "" : "s"} across ${receiptCount} sources`
+                  ? `${attackPaths} retained path${attackPaths === 1 ? "" : "s"} across ${receiptCount} sources`
                   : isFailed ? "Correlation failed" : `Correlation ${run.status}`}
               </p>
               {isComplete && attackPaths > 0 && boundOutcome ? (
                 <div className="gc-outcome" aria-label="Prioritized path">
-                  <h3 className="gc-heading">{outcomeTitle}</h3>
+                  <h3 className="gc-heading">{boundOutcome.source} → {boundOutcome.target}</h3>
                   <p className="gc-preview-summary-copy">{boundOutcome.summary}</p>
                   <div className="gc-outcome-actions">
                     {boundOutcome.action ? <a data-testid="correlation-primary-action" href={boundOutcome.action.href} className="gc-primary gc-primary-inline">{boundOutcome.action.title}<ArrowRight className="h-4 w-4" aria-hidden="true" /></a> : null}
@@ -292,19 +284,18 @@ export function GraphCorrelationWorkflow({
                     <ArrowRight className="gc-impact-arrow" aria-hidden="true" />
                     <div><span className="gc-impact-label">Vulnerable package</span><strong>{boundOutcome.packageName ?? "Package unavailable"}</strong>{boundOutcome.finding && <span className="gc-impact-finding">{boundOutcome.finding}</span>}</div>
                     <ArrowRight className="gc-impact-arrow" aria-hidden="true" />
-                    <div><span className="gc-impact-label">Reachable asset</span><strong>{boundOutcome.target}</strong></div>
+                    <div><span className="gc-impact-label">Path target</span><strong>{boundOutcome.target}</strong></div>
                   </div>
                   <p className="gc-source-coverage">{[...new Set(run.input_manifest.map((receipt) => sourceLabel(receipt.source_kinds, receipt.scan_id)))].join(" · ")}</p>
                   <div className="gc-preview-badges">
                     <span className="gc-pill">Path priority {boundOutcome.risk.toFixed(1)}</span>
                     <span className="gc-pill">{boundOutcome.hops} directed hops</span>
                   </div>
-                  {boundOutcome.runtimeObserved ? (
+                  {boundOutcome.runtimeObserved || boundOutcome.runtimeBlocked ? (
                     <p className="gc-runtime-summary">
-                      Runtime observed{boundOutcome.runtimeBlocked ? "; a gateway call was blocked" : ""}.
                       {boundOutcome.runtimeBlocked
-                        ? " Exposure remains until the vulnerable package and access path are remediated."
-                        : " This observation does not by itself prove exploitation."}
+                        ? "A runtime call was blocked. This does not establish a successful downstream action or rule out alternate paths."
+                        : "Runtime invocation recorded. Downstream success and exploitation require separate evidence."}
                     </p>
                   ) : null}
 

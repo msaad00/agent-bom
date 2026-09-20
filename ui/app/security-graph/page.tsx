@@ -636,10 +636,9 @@ function AttackPathInvestigationContent() {
     const actionIsRemediation = action?.href.split("?", 1)[0] === "/remediation";
     return {
       scanId: selectedScanId,
-      title: selectedFixFirstCard?.title ?? selectedAttackPath.summary ?? "Confirmed correlated attack path",
       summary: finding && packageNode?.label
-        ? `${finding} in ${packageNode.label} connects the selected source to the affected asset across correlated evidence.`
-        : selectedFixFirstCard?.summary ?? selectedAttackPath.summary ?? "The selected correlated evidence forms a directed, traversable path.",
+        ? `${finding} in ${packageNode.label} appears on this correlated path. Inspect the evidence and conditions at each hop.`
+        : "Review the recorded relationships and per-hop evidence for this selected path.",
       source: labels[0] ?? selectedAttackPath.source,
       target: labels.at(-1) ?? selectedAttackPath.target,
       finding,

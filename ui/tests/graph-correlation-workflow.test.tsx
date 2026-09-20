@@ -24,8 +24,7 @@ const snapshots: GraphSnapshot[] = [
 
 const outcome: GraphCorrelationOutcome = {
   scanId: "corr-1",
-  title: "Public API reaches customer records through CVE-2023-4863",
-  summary: "The evidence-complete path crosses the public service, workload, vulnerable package, MCP tool, and data asset.",
+  summary: "The recorded path connects the public service, workload, package, MCP tool, and data asset.",
   source: "Public API service",
   target: "Modeled customer records",
   finding: "CVE-2023-4863",
@@ -82,21 +81,30 @@ describe("GraphCorrelationWorkflow", () => {
     vi.restoreAllMocks();
   });
 
+  it("does not promote completed analysis and a blocked attempt into proven reach", () => {
+    render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} outcome={outcome} onOpenSnapshot={vi.fn()} />);
+    expect(screen.queryByText(/Evidence-complete path across/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Reachable asset")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Exposure remains until/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: `${outcome.source} → ${outcome.target}` })).toBeInTheDocument();
+    expect(screen.getByText(/does not establish a successful downstream action/i)).toBeInTheDocument();
+  });
+
   it("loads the latest completed correlation as the primary automated evidence view", async () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} outcome={outcome} onOpenSnapshot={vi.fn()} />);
 
     expect(await screen.findByTestId("graph-correlation-decision")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: outcome.title.replace(` through ${outcome.finding}`, "") })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: `${outcome.source} → ${outcome.target}` })).toBeInTheDocument();
     expect(screen.getByText("Path priority 9.8")).toBeInTheDocument();
     expect(screen.getByText("7 directed hops")).toBeInTheDocument();
-    expect(screen.getByText(/Runtime observed; a gateway call was blocked/)).toBeInTheDocument();
-    expect(screen.getByText(/Exposure remains until the vulnerable package and access path are remediated/)).toBeInTheDocument();
+    expect(screen.getByText(/A runtime call was blocked/)).toBeInTheDocument();
+    expect(screen.getByText(/does not establish a successful downstream action/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open pillow@9.0.0 remediation" })).toHaveAttribute(
       "href",
       "/remediation?scan=corr-1&cve=CVE-2023-4863&package=pillow%409.0.0",
     );
     expect(screen.queryByText("Connect")).not.toBeVisible();
-    expect(screen.getByText("Evidence-complete path across 2 sources")).toBeInTheDocument();
+    expect(screen.getByText("2 retained paths across 2 sources")).toBeInTheDocument();
     expect(screen.queryByLabelText("Correlation name")).not.toBeVisible();
     expect(apiMock.createGraphCorrelation).not.toHaveBeenCalled();
     expect(screen.getByText("Fresh evidence")).toBeInTheDocument();
@@ -106,10 +114,10 @@ describe("GraphCorrelationWorkflow", () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={run("complete")} outcome={outcome} onOpenSnapshot={vi.fn()} />);
 
     expect(await screen.findByTestId("graph-correlation-decision")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: outcome.title.replace(` through ${outcome.finding}`, "") })).toBeVisible();
+    expect(screen.getByRole("heading", { name: `${outcome.source} → ${outcome.target}` })).toBeVisible();
     expect(screen.getByRole("link", { name: outcome.action!.title })).toBeVisible();
     expect(screen.getByText("Entry point")).toBeVisible();
-    expect(screen.getByText("Reachable asset")).toBeVisible();
+    expect(screen.getByText("Path target")).toBeVisible();
     expect(screen.getByRole("button", { name: "Open top path" })).toBeVisible();
   });
 
@@ -200,7 +208,7 @@ describe("GraphCorrelationWorkflow", () => {
       />,
     );
 
-    expect(screen.queryByText(outcome.title)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: `${outcome.source} → ${outcome.target}` })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open pillow@9.0.0 remediation" })).not.toBeInTheDocument();
     expect(screen.getByText(/Load this correlation's output to review its prioritized paths/i)).toBeInTheDocument();
   });

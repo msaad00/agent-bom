@@ -3071,13 +3071,13 @@ async function main() {
     const correlationReceiptAssertions = {
       expectedText: [
         "Correlation result",
-        /evidence-complete path across 6 sources/i,
+        /retained paths? across 6 sources/i,
         "Fresh evidence",
         "0 conflicts",
         "Analysis complete",
         "Entry point",
         "Vulnerable package",
-        "Reachable asset",
+        "Path target",
         "Open pillow@9.0.0 remediation",
         "Open top path",
         "Inspect source receipts",

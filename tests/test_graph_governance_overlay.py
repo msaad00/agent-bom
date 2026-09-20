@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -227,3 +228,178 @@ def test_governance_payload_caps_edges_and_attack_paths_for_large_graphs():
     assert len(payload["attack_paths"]) == 2
     assert payload["attack_path_pagination"] == {"total": 8, "limit": 2, "has_more": True}
     assert payload["stats"]["edge_count"] == 3
+
+
+@pytest.mark.parametrize("state", ["expired", "invalid"])
+def test_expired_or_invalid_identity_does_not_link_agent_to_tool(state):
+    store = InMemoryAgentIdentityStore()
+    identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="default", allowed_tools=["read_file"])
+    identity.expires_at = "invalid" if state == "invalid" else (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    store.put(identity)
+    graph = _base_graph()
+    apply_governance_overlay(
+        graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]), blueprint_store=_EmptyBlueprintStore()
+    )
+    assert identity.is_live() is False
+    assert "tool:srv:read_file" not in graph.reachable_from("agent:agent-a", traversable_only=True)
+    assert graph.nodes[f"managed_identity:{identity.identity_id}"].status.value == "inactive"
+
+
+def test_duplicate_agent_labels_do_not_bind_one_identity_to_both_workloads():
+    store = InMemoryAgentIdentityStore()
+    issue_identity(store, agent_id="agent-a", tenant_id="default", allowed_tools=["read_file"])
+    graph = _base_graph()
+    graph.add_node(UnifiedNode(id="agent:other-account", entity_type=EntityType.AGENT, label="agent-a"))
+    apply_governance_overlay(
+        graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]), blueprint_store=_EmptyBlueprintStore()
+    )
+    assert not _rels(graph, RelationshipType.AUTHENTICATES_AS)
+    assert "ambiguous_agent_identity" in graph.analysis_status["governance_overlay"].reason_codes
+
+
+@pytest.mark.parametrize(
+    "effect,conditions,expected",
+    [
+        ("deny", {}, "explicit_deny"),
+        ("require", {"allowed_environments": ["prod"]}, "context_required"),
+        ("deny", {"allowed_environments": ["prod"]}, "context_required"),
+    ],
+)
+def test_governance_scope_preserves_deny_and_missing_request_context(effect, conditions, expected):
+    from agent_bom.api.agent_identity_store import AccessContext, evaluate_conditional_access
+    from agent_bom.graph.path_derivation import _derived_governance_attack_paths
+
+    store = InMemoryAgentIdentityStore()
+    identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="default", allowed_tools=["run_shell"])
+    create_conditional_policy(
+        store, tenant_id="default", name="guard", effect=effect, agent_ids=["agent-a"], tools=["run_shell"], **conditions
+    )
+    if expected == "explicit_deny":
+        allowed, _, _ = evaluate_conditional_access(
+            store.list_conditional_policies("default"),
+            AccessContext(identity_id=identity.identity_id, agent_id="agent-a", tool_name="run_shell"),
+        )
+        assert allowed is False
+    graph = _base_graph()
+    graph.add_node(UnifiedNode(id="tool:srv:run_shell", entity_type=EntityType.TOOL, label="run_shell"))
+    apply_governance_overlay(
+        graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]), blueprint_store=_EmptyBlueprintStore()
+    )
+    scope = next(e for e in graph.edges if e.source == f"managed_identity:{identity.identity_id}" and e.target == "tool:srv:run_shell")
+    assert scope.traversable is False
+    assert scope.evidence["authorization_state"] == expected
+    assert "tool:srv:run_shell" not in graph.reachable_from("agent:agent-a", traversable_only=True)
+    assert not any(p.target == "tool:srv:run_shell" for p in _derived_governance_attack_paths(graph))
+    assert graph.analysis_status["governance_overlay"].status.value == "limited"
+
+
+@pytest.mark.parametrize("state", ["requested", "expired", "revoked", "future", "active"])
+def test_jit_lifecycle_remains_consistent_with_live_grant_filter(state):
+    from agent_bom.api.agent_identity_store import request_jit_grant
+
+    store = InMemoryAgentIdentityStore()
+    identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="default", allowed_tools=["list_files"])
+    grant = request_jit_grant(store, identity_id=identity.identity_id, agent_id="agent-a", tenant_id="default", tool_name="read_file")
+    now = datetime.now(timezone.utc)
+    if state != "requested":
+        grant.status = "revoked" if state == "revoked" else "active"
+        grant.starts_at = (now + timedelta(hours=1) if state == "future" else now - timedelta(hours=1)).isoformat()
+        grant.expires_at = (now - timedelta(minutes=30) if state == "expired" else now + timedelta(hours=2)).isoformat()
+        store.put_jit_grant(grant)
+    graph = _base_graph()
+    apply_governance_overlay(
+        graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]), blueprint_store=_EmptyBlueprintStore()
+    )
+    assert ("tool:srv:read_file" in graph.reachable_from("agent:agent-a", traversable_only=True)) is (state == "active")
+
+
+def test_exact_agent_id_binding_does_not_use_another_workloads_matching_label():
+    store = InMemoryAgentIdentityStore()
+    identity, _ = issue_identity(store, agent_id="agent:agent-a", tenant_id="default", allowed_tools=["read_file"])
+    graph = _base_graph()
+    graph.add_node(UnifiedNode(id="agent:other-account", entity_type=EntityType.AGENT, label="agent:agent-a"))
+    apply_governance_overlay(
+        graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]), blueprint_store=_EmptyBlueprintStore()
+    )
+    edges = [e for e in graph.edges if e.relationship is RelationshipType.AUTHENTICATES_AS]
+    assert len(edges) == 1
+    assert edges[0].source == "agent:agent-a"
+    assert edges[0].target == f"managed_identity:{identity.identity_id}"
+    assert edges[0].evidence == {"identity_match_basis": "exact_node_id", "runtime_observed_state": "not_observed"}
+
+
+@pytest.mark.parametrize("failure", ["unavailable", "limit"])
+def test_incomplete_policy_collection_cannot_prove_unconditional_scope(monkeypatch, failure):
+    store = InMemoryAgentIdentityStore()
+    identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="default", allowed_tools=["read_file"])
+    if failure == "unavailable":
+
+        def policies(*args, **kwargs):
+            raise RuntimeError("unavailable")
+    else:
+        policy = create_conditional_policy(store, tenant_id="default", name="require", effect="require")
+
+        def policies(*args, **kwargs):
+            return [policy] * 500
+
+    monkeypatch.setattr(store, "list_conditional_policies", policies)
+    graph = _base_graph()
+    apply_governance_overlay(
+        graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]), blueprint_store=_EmptyBlueprintStore()
+    )
+    scope = next(e for e in graph.edges if e.source == f"managed_identity:{identity.identity_id}" and e.target == "tool:srv:read_file")
+    assert scope.traversable is False
+    assert scope.evidence["authorization_state"] == "policy_evidence_unavailable"
+    assert graph.analysis_status["governance_overlay"].status.value == "limited"
+
+
+@pytest.mark.parametrize("state", ["expired", "denied", "conditional"])
+def test_governance_api_preserves_qualified_authority(tmp_path, state):
+    from starlette.testclient import TestClient
+
+    from agent_bom.api import stores as api_stores
+    from agent_bom.api.agent_identity_store import get_agent_identity_store, set_agent_identity_store
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.api.server import app
+    from agent_bom.api.stores import set_graph_store
+
+    graph = _base_graph()
+    graph.scan_id = "qualified-scan"
+    graph_store = SQLiteGraphStore(tmp_path / "graph.db")
+    graph_store.save_graph(graph)
+    identity_store = InMemoryAgentIdentityStore()
+    identity, _ = issue_identity(identity_store, agent_id="agent-a", tenant_id="default", allowed_tools=["read_file"])
+    if state == "expired":
+        identity.expires_at = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        identity_store.put(identity)
+    else:
+        create_conditional_policy(
+            identity_store,
+            tenant_id="default",
+            name="guard",
+            effect="deny",
+            identity_ids=[identity.identity_id],
+            tools=["read_file"],
+            allowed_environments=["prod"] if state == "conditional" else [],
+        )
+    original_graph, original_identity = api_stores._graph_store, get_agent_identity_store()
+    try:
+        set_graph_store(graph_store)
+        set_agent_identity_store(identity_store)
+        response = TestClient(app).get("/v1/graph/governance?scan_id=qualified-scan")
+        assert response.status_code == 200
+        body = response.json()
+        scopes = [
+            e for e in body["edges"] if e["source"] == f"managed_identity:{identity.identity_id}" and e["relationship"] == "scoped_to"
+        ]
+        if state == "expired":
+            assert not scopes
+        else:
+            assert len(scopes) == 1
+            assert scopes[0]["traversable"] is False
+            assert scopes[0]["evidence"]["authorization_state"] == ("explicit_deny" if state == "denied" else "context_required")
+            if state == "conditional":
+                assert scopes[0]["evidence"]["required_context"] == ["allowed_environments"]
+    finally:
+        set_graph_store(original_graph)
+        set_agent_identity_store(original_identity)

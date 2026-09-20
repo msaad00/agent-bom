@@ -104,12 +104,38 @@ as a directly evaluated grant for the requesting identity.
 The overlay retains one deterministic shortest witness for each grant and
 access class, with at most 16 witnesses per derived edge and six principal
 transfer hops. It does not enumerate every alternate route or reevaluate policy
-conditions, session restrictions, expiry, or revocation. A witness cap marks the
+provider policy conditions or session restrictions. A witness cap marks the
 edge's derivation `truncated`; an unvisited frontier at the depth limit or a
 witness cap marks the snapshot analysis `limited`. Cycles alone do not mark a
 walk incomplete. Consumers must resolve source references within the same
 tenant and snapshot, and show an evidence gap when a source edge is unavailable
 in a bounded response. Old snapshots require rebuilding to gain these witnesses.
+
+New permission derivation excludes source edges that are deleted, not yet valid,
+expired, or have invalid validity windows. It evaluates at UTC now by default;
+a historical build must pass its evaluation time explicitly. Each witness uses
+the intersection of its source windows; overlapping alternate witnesses may
+extend the resulting interval. This preserves recorded graph validity, not a
+fresh provider authorization decision. Existing snapshots and derived edges are
+not retroactively rewritten; rebuild them to apply these checks.
+
+### Managed-identity governance scope
+
+The live governance overlay connects a managed identity to an exact agent node
+ID when available, otherwise to one unambiguous agent label. Duplicate labels
+remain unlinked. This is a registered binding, not evidence of an authenticated
+session. Expired or invalid identities do not acquire traversable tool scope;
+JIT scope requires a live identity and an active grant within its recorded time
+window. Pending, revoked, future, or expired grants do not establish access.
+
+A matching unconditional deny leaves a context-only scope edge with
+`authorization_state=explicit_deny`. Applicable conditional policies require
+request context and use `context_required`; unavailable or capped policy
+collection uses `policy_evidence_unavailable`. These edges are non-traversable
+and do not generate governance access paths. Policy IDs and required context
+survive edge serialization. `recorded_scope` means the collected scope has no
+such unresolved policy guard; it does not prove a successful tool call or data
+access. Runtime enforcement is unchanged by this graph qualification.
 
 ---
 

@@ -244,6 +244,8 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
         )
 
     for edge in graph.edges:
+        if not edge.traversable:
+            continue
         rel = _rel_value(edge)
         src = graph.nodes.get(edge.source)
         tgt = graph.nodes.get(edge.target)
@@ -283,11 +285,15 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
         ntype = _node_type_value(node)
         if ntype == EntityType.AGENT.value:
             for id_edge in graph.adjacency.get(node.id, []):
+                if not id_edge.traversable:
+                    continue
                 if _rel_value(id_edge) == RelationshipType.AUTHENTICATES_AS.value:
                     identity = graph.nodes.get(id_edge.target)
                     if identity is None:
                         continue
                     for tool_edge in graph.adjacency.get(identity.id, []):
+                        if not tool_edge.traversable:
+                            continue
                         tool = graph.nodes.get(tool_edge.target)
                         if tool is None or _node_type_value(tool) != EntityType.TOOL.value or not _is_dangerous_tool(tool.label):
                             continue
@@ -320,6 +326,8 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     if incident is None:
                         continue
                     for tool_edge in graph.adjacency.get(incident.id, []):
+                        if not tool_edge.traversable:
+                            continue
                         tool = graph.nodes.get(tool_edge.target)
                         if tool is None or _node_type_value(tool) != EntityType.TOOL.value:
                             continue

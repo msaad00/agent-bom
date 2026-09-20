@@ -16,6 +16,7 @@ from agent_bom.cloud.authorization_evaluator import evaluate_authorization
 from agent_bom.cloud.authorization_evidence import (
     AuthorizationBinding,
     AuthorizationDecision,
+    AuthorizationEvaluation,
     AuthorizationEvidenceBundle,
     AuthorizationPlane,
     AuthorizationProvider,
@@ -25,7 +26,7 @@ from agent_bom.cloud.azure_rbac_evidence import normalize_azure_rbac_inventory
 from agent_bom.cloud.gcp_iam_evidence import normalize_gcp_iam_inventory
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import UnifiedGraph
-from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 
@@ -288,6 +289,22 @@ def _assume_actions(bundle: AuthorizationEvidenceBundle, binding: AuthorizationB
     return tuple(sorted(actions))
 
 
+def _decision_receipt(
+    bundle: AuthorizationEvidenceBundle, principal_id: str, action: str, resource: str, result: AuthorizationEvaluation
+) -> dict[str, Any]:
+    """Retain each evaluated request and its matched source bindings together."""
+    return {
+        "source": _SOURCE,
+        "provider": bundle.provider.value,
+        "principal_id": principal_id,
+        "decision": result.decision.value,
+        "action": action,
+        "resource": resource,
+        "binding_ids": sorted(result.matched_allow_bindings),
+        "observed_at": bundle.observed_at.isoformat() if bundle.observed_at else None,
+    }
+
+
 def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[str, int]:
     """Emit evaluator-proven access edges and a secret-safe execution status."""
     if not has_authoritative_authorization_evidence(inventory):
@@ -320,6 +337,7 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
             if not actions:
                 continue
             matched_resource = True
+            receipts: list[dict[str, Any]] = []
             for action in actions:
                 key = (binding.principal_id.casefold(), action.casefold(), resource.casefold())
                 if key in seen_requests:
@@ -345,32 +363,30 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
                     ),
                 )
                 if result.decision is AuthorizationDecision.ALLOW:
-                    before = len(graph.edges)
-                    graph.add_edge(
-                        UnifiedEdge(
-                            source=principal_node_id,
-                            target=resource_node.id,
-                            relationship=RelationshipType.CAN_ACCESS,
-                            weight=4.0,
-                            confidence=1.0,
-                            provenance={"source": _SOURCE},
-                            evidence={
-                                "source": _SOURCE,
-                                "provider": provider,
-                                "decision": result.decision.value,
-                                "action": action,
-                                "resource": resource,
-                                "binding_ids": list(result.matched_allow_bindings),
-                                "observed_at": bundle.observed_at.isoformat() if bundle.observed_at else None,
-                            },
-                        )
-                    )
-                    if len(graph.edges) > before:
-                        allow_edges += 1
+                    receipts.append(_decision_receipt(bundle, binding.principal_id, action, resource, result))
                 elif result.decision in {AuthorizationDecision.EXPLICIT_DENY, AuthorizationDecision.IMPLICIT_DENY}:
                     denied += 1
                 else:
                     indeterminate += 1
+            if receipts:
+                # Persist the bounded evaluation batch once per resource. Rewriting
+                # an ever-growing JSON receipt array for every action is quadratic.
+                evidence = {**receipts[0], "authorization_decisions": receipts}
+                merge_edge_evidence(evidence, {})
+                before = len(graph.edges)
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=principal_node_id,
+                        target=resource_node.id,
+                        relationship=RelationshipType.CAN_ACCESS,
+                        weight=4.0,
+                        confidence=1.0,
+                        provenance={"source": _SOURCE},
+                        evidence=evidence,
+                    )
+                )
+                if len(graph.edges) > before:
+                    allow_edges += 1
             if capped:
                 break
         if not matched_resource and not assume_actions:
@@ -405,6 +421,7 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
                 )
                 if result.decision is AuthorizationDecision.ALLOW:
                     before = len(graph.edges)
+                    receipt = _decision_receipt(bundle, binding.principal_id, action, resource, result)
                     graph.add_edge(
                         UnifiedEdge(
                             source=principal_node_id,
@@ -413,15 +430,7 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
                             weight=6.0,
                             confidence=1.0,
                             provenance={"source": _SOURCE},
-                            evidence={
-                                "source": _SOURCE,
-                                "provider": provider,
-                                "decision": result.decision.value,
-                                "action": action,
-                                "resource": resource,
-                                "binding_ids": list(result.matched_allow_bindings),
-                                "observed_at": bundle.observed_at.isoformat() if bundle.observed_at else None,
-                            },
+                            evidence={**receipt, "authorization_decisions": [receipt]},
                         )
                     )
                     if len(graph.edges) > before:

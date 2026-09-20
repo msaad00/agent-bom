@@ -292,8 +292,10 @@ def test_gcp_explicit_deny_never_becomes_access() -> None:
 
 
 def test_authorization_decision_and_status_survive_persistence_and_graph_api(tmp_path) -> None:
+    inventory = _gcp_inventory()
+    inventory["role_definitions"][0]["permissions"] = ["storage.objects.get", "storage.objects.create"]
     graph = build_unified_graph_from_report(
-        {"scan_id": "scan-authorization-api", "cloud_inventory": _gcp_inventory()},
+        {"scan_id": "scan-authorization-api", "cloud_inventory": inventory},
         tenant_id="default",
     )
     store = SQLiteGraphStore(tmp_path / "authorization-graph.db")
@@ -310,6 +312,15 @@ def test_authorization_decision_and_status_survive_persistence_and_graph_api(tmp
 
     assert response.status_code == 200
     body = response.json()
+    allowed = next(
+        edge
+        for edge in body["edges"]
+        if edge["relationship"] == "can_access" and edge["evidence"].get("source") == "authorization-evidence"
+    )
+    assert {record["action"] for record in allowed["evidence"]["authorization_decisions"]} == {
+        "storage.objects.get",
+        "storage.objects.create",
+    }
     assert body["stats"]["analysis_status"]["authorization_evidence:gcp"]["status"] == "complete"
     assert any(
         edge["relationship"] == "can_access"

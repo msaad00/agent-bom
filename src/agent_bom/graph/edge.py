@@ -2,12 +2,70 @@
 
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
 from agent_bom.canonical_ids import canonical_graph_edge_id
 from agent_bom.graph.types import RelationshipType
 from agent_bom.graph.util import _now_iso
+
+
+def merge_edge_evidence(stored: dict[str, Any], incoming: dict[str, Any]) -> bool:
+    """Merge evidence without collapsing provider action/binding receipts.
+
+    Other evidence keeps the established non-empty-first behavior. Authorization
+    decisions are complete records: merging actions and bindings independently
+    would manufacture combinations the evaluator never assessed.
+    """
+    changed = False
+    decisions: dict[str, dict[str, Any]] = {}
+    for evidence in (stored, incoming):
+        records = evidence.get("authorization_decisions")
+        if records is None and evidence.get("source") == "authorization-evidence" and isinstance(evidence.get("action"), str):
+            records = [
+                {
+                    key: evidence[key]
+                    for key in ("source", "provider", "principal_id", "decision", "action", "resource", "binding_ids", "observed_at")
+                    if key in evidence
+                }
+            ]
+        if isinstance(records, list):
+            for record in records:
+                if isinstance(record, dict):
+                    decisions[json.dumps(record, sort_keys=True, default=str)] = deepcopy(record)
+    for key, value in incoming.items():
+        if value in (None, "", [], {}):
+            continue
+        if key not in stored or stored[key] in (None, "", [], {}):
+            stored[key] = deepcopy(value)
+            changed = True
+    if decisions:
+        records = [decisions[key] for key in sorted(decisions)]
+        if stored.get("authorization_decisions") != records:
+            stored["authorization_decisions"] = records
+            changed = True
+        # Keep compatibility scalars only when every receipt agrees. Missing
+        # fields on legacy records remain unknown, never filled from a new grant.
+        for key in ("action", "decision", "provider", "resource", "principal_id", "observed_at"):
+            values = {json.dumps(record.get(key), sort_keys=True, default=str) for record in records}
+            if len(values) > 1 and key in stored:
+                stored.pop(key)
+                changed = True
+        bindings = sorted(
+            {
+                binding
+                for record in records
+                if isinstance(record.get("binding_ids"), list)
+                for binding in record["binding_ids"]
+                if isinstance(binding, str)
+            }
+        )
+        if stored.get("binding_ids") != bindings:
+            stored["binding_ids"] = bindings
+            changed = True
+    return changed
 
 
 @dataclass(slots=True)

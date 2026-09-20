@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.graph.bottleneck import BottleneckAnalysis, compute_bottlenecks
-from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 from agent_bom.graph.severity import SEVERITY_RANK
@@ -471,11 +471,7 @@ class UnifiedGraph:
             if edge.evidence:
                 for stored in self.adjacency.get(edge.source, []):
                     if stored.target == edge.target and stored.relationship == edge.relationship:
-                        for evidence_key, value in edge.evidence.items():
-                            if value in (None, "", [], {}):
-                                continue
-                            if evidence_key not in stored.evidence or stored.evidence[evidence_key] in (None, "", [], {}):
-                                stored.evidence[evidence_key] = value
+                        merge_edge_evidence(stored.evidence, edge.evidence)
                         break
             return
         self._edge_keys.add(key)

@@ -46,6 +46,13 @@ describe("GraphHopEvidenceInspector", () => {
     expect(screen.getByText("Not recorded")).toBeInTheDocument();
   });
 
+  it.each([undefined, "false"])("does not infer traversal from legacy value %s", (traversable) => {
+    const legacy = { ...receipt(0), traversable } as unknown as GraphHopEvidence;
+    render(<GraphHopEvidenceInspector hops={hops.slice(0, 2)} receipts={[legacy]} />);
+    fireEvent.click(screen.getByRole("button", { name: /1\. Agent/ }));
+    expect(screen.getByText("Traversal").nextElementSibling).toHaveTextContent(/^unknown$/);
+  });
+
   it("limits rendered rows and keeps original hop numbers when filtering a long path", () => {
     const longHops = Array.from({length: 1001}, (_, index) => ({id: `node:${index}`, label: `Asset ${index}`}));
     render(<GraphHopEvidenceInspector hops={longHops} />);

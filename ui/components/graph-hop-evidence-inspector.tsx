@@ -80,7 +80,7 @@ export function GraphHopEvidenceInspector({
                   ["Evidence basis", humanize(receipt.evidence_tier)],
                   ["Freshness", humanize(receipt.freshness)],
                   ["Direction", humanize(receipt.direction)],
-                  ["Traversal", receipt.traversable ? "Eligible for graph traversal" : "Not traversable"],
+                  ["Traversal", receipt.traversable === true ? "Eligible for graph traversal" : receipt.traversable === false ? "Not traversable" : "unknown"],
                   ["Runtime observation", humanize(receipt.runtime_observed_state)],
                   ["Downstream outcome", humanize(receipt.runtime_outcome)],
                   ["Relationship provenance", humanize(receipt.relationship_provenance)],

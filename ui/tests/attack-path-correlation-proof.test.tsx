@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { AttackPathCorrelationProof } from "@/components/attack-path-correlation-proof";
@@ -81,13 +81,16 @@ describe("AttackPathCorrelationProof", () => {
     expect(screen.getByText(`reference-api@${digest}`)).toBeInTheDocument();
     expect(screen.getByText("pillow@9.0.0")).toBeInTheDocument();
     expect(screen.getByText("CVE-2023-4863")).toBeInTheDocument();
-    expect(screen.queryByText("reference-kubernetes-iac-scan")).not.toBeVisible();
+    expect(screen.queryByText("reference-kubernetes-iac-scan")).not.toBeInTheDocument();
     expect(screen.getByText("Inspect 3 hop receipts")).toBeInTheDocument();
 
-    screen.getByText("Inspect 3 hop receipts").click();
+    fireEvent.click(screen.getByText("Inspect 3 hop receipts"));
+    fireEvent.click(screen.getByRole("button", { name: /1\. Public API/ }));
     expect(screen.getByText("reference-kubernetes-iac-scan")).toBeInTheDocument();
-    expect(screen.getAllByText("reference-image-sbom-scan")).toHaveLength(2);
-    expect(screen.getByText("3. vulnerable_to")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /2\. reference-api/ }));
+    expect(screen.queryByText("reference-kubernetes-iac-scan")).not.toBeInTheDocument();
+    expect(screen.getByText("reference-image-sbom-scan")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /3\. pillow@9.0.0 → CVE-2023-4863/ })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("does not call an incomplete or non-traversable chain verified", () => {

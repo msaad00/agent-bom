@@ -436,7 +436,7 @@ export function toExposurePathFromAttackPath(
       relationship: receipt?.relationship || edgeRelationship || "related",
       direction: receipt?.direction === "bidirectional" ? "bidirectional" : receipt?.direction === "directed" ? "directed" : undefined,
       traversable: receipt?.traversable,
-      confidence: receipt?.confidence,
+      confidence: receipt?.confidence ?? undefined,
       evidenceCount: receipt?.source_snapshot_ids.length,
     };
   });
@@ -466,6 +466,7 @@ export function toExposurePathFromAttackPath(
     exposedCredentials,
     reachability: path.reachability,
     reachabilityBasis: path.reachability_basis,
+    hopEvidence: path.hop_evidence,
     dependencyContext: {
       packageName: packages[0]
         ? parsePackageHopLabel(nodeById.get(packages[0].id)?.label ?? packages[0].label).packageName

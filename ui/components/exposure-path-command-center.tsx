@@ -38,6 +38,7 @@ import {
   truncateGraphText,
 } from "@/lib/exposure-path-graph-layout";
 import { ExposurePathNeighborExplorer } from "@/components/exposure-path-neighbor-explorer";
+import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
 
 export interface ExposurePathCommandAction {
   title: string;
@@ -197,6 +198,10 @@ export function ExposurePathCommandCenter({
           </div>
         </div>
 
+        {!techniquesSlot && <details className="rounded-xl border border-[color:var(--border-subtle)] p-3">
+          <summary className="cursor-pointer text-sm font-medium">Inspect {Math.max(0, path.hops.length - 1)} hop receipts</summary>
+          <div className="mt-3"><GraphHopEvidenceInspector key={exposurePathKey(path)} hops={path.hops} receipts={path.hopEvidence} /></div>
+        </details>}
         {path.evidenceDimensions && (
           <section aria-label="Path evidence assessment" className="space-y-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
             <dl className="grid gap-3 sm:grid-cols-3">

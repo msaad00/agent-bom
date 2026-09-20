@@ -389,6 +389,25 @@ export interface TechniqueMapping {
   evidence_basis?: "observed" | "runtime_observed" | "inferred" | "modeled" | null;
 }
 
+export interface GraphHopEvidence {
+  source_node_id: string;
+  target_node_id: string;
+  relationship: string;
+  source_snapshot_ids: string[];
+  relationship_provenance?: "recorded" | "unavailable";
+  correlation_identity_status?: "current" | "recomputation_required" | "unavailable";
+  evidence_tier: "static_evidence" | "modeled_infrastructure" | "runtime_observed" | "unknown" | string;
+  confidence: number | null;
+  freshness: "fresh" | "stale_allowed" | "unknown" | string;
+  runtime_observed_state: "observed" | "blocked" | "not_observed" | string;
+  direction: string;
+  traversable: boolean;
+  complete: boolean;
+  truncated: boolean;
+  runtime_outcome?: "blocked" | "failed" | "unknown" | undefined;
+  reason_codes?: string[] | undefined;
+}
+
 export interface AttackPath {
   source: string;
   target: string;
@@ -405,22 +424,7 @@ export interface AttackPath {
   reachability?: "confirmed" | "likely" | "unknown" | "unlikely" | string;
   reachability_basis?: string[];
   /** Immutable source receipts for every directed hop in correlated snapshots. */
-  hop_evidence?: Array<{
-    source_node_id: string;
-    target_node_id: string;
-    relationship: string;
-    source_snapshot_ids: string[];
-    relationship_provenance?: "recorded" | "unavailable";
-    correlation_identity_status?: "current" | "recomputation_required" | "unavailable";
-    evidence_tier: "static_evidence" | "modeled_infrastructure" | "runtime_observed" | "unknown" | string;
-    confidence: number;
-    freshness: "fresh" | "stale_allowed" | "unknown" | string;
-    runtime_observed_state: "observed" | "blocked" | "not_observed" | string;
-    direction: string;
-    traversable: boolean;
-    complete: boolean;
-    truncated: boolean;
-  }>;
+  hop_evidence?: GraphHopEvidence[];
   /** Completeness and limits for the analysis that produced this path. */
   analysis?: {
     status?: "complete" | "limited" | "skipped" | "failed" | "not_recorded" | string;

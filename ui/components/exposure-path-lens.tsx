@@ -90,6 +90,7 @@ export function toUiExposurePath(path: GraphExposurePath): ExposurePath {
     reachability: path.reachability,
     reachabilityBasis: path.reachabilityBasis,
     evidenceDimensions: path.evidenceDimensions,
+    hopEvidence: path.hopEvidence,
     provenance: path.provenance,
   };
 }

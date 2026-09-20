@@ -734,6 +734,7 @@ export interface GraphExposurePath {
   reachability?: string | undefined;
   reachabilityBasis?: string[] | undefined;
   evidenceDimensions?: import("@/lib/exposure-path").ExposureEvidenceDimensions | undefined;
+  hopEvidence?: import("@/lib/graph-schema").GraphHopEvidence[] | undefined;
   provenance?: { source: string; scanId?: string | undefined } | undefined;
 }
 

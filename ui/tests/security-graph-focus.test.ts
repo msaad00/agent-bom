@@ -333,6 +333,7 @@ describe("correlation outcome focus", () => {
     ];
 
     expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: receipts })).toBe(3);
+    expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [{ ...receipt, runtime_observed_state: "blocked" }, ...receipts.slice(1)] })).toBeNull();
     expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipts[1]!, receipts[0]!, receipts[2]!] })).toBeNull();
     expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipt, { ...receipts[1]!, target_node_id: "wrong" }, receipts[2]!] })).toBeNull();
     expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipt, { ...receipts[1]!, direction: "forward" }, receipts[2]!] })).toBeNull();

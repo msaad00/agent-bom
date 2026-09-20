@@ -1,6 +1,7 @@
 import { completeDirectedHopCount } from "@/lib/security-graph-focus";
 import type { FixFirstRiskReason, GraphAttackPath } from "@/lib/api-types";
 import type { UnifiedNode } from "@/lib/graph-schema";
+import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
 
 function badgeTone(kind: string): string {
   if (kind === "runtime_observed") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
@@ -85,18 +86,11 @@ export function AttackPathCorrelationProof({
         ))}
         </div>
       </details>
-      <details className="group mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-        <summary className="cursor-pointer list-none px-3 py-2 text-[15px] font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
-          Inspect {receipts.length} hop receipts
-        </summary>
-        <div className="grid gap-1.5 border-t border-[color:var(--border-subtle)] p-2 sm:grid-cols-2">
-          {receipts.map((receipt, index) => (
-            <div key={`${receipt.source_node_id}-${receipt.target_node_id}-${index}`} className="min-w-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-2 text-[10px]">
-              <p className="break-words font-mono text-[color:var(--foreground)]">{index + 1}. {receipt.relationship}</p>
-              <p className="mt-1 break-words text-[color:var(--text-secondary)]">{Array.isArray(receipt.source_snapshot_ids) ? receipt.source_snapshot_ids.join(" + ") : "Sources unavailable"}</p>
-              <p className="mt-1 text-[color:var(--text-tertiary)]">{String(receipt.evidence_tier ?? "unknown").replaceAll("_", " ")} · {String(receipt.freshness ?? "unknown").replaceAll("_", " ")} · {String(receipt.runtime_observed_state ?? "unknown").replaceAll("_", " ")}</p>
-            </div>
-          ))}
+      <details className="mt-3">
+        <summary className="cursor-pointer py-1 text-sm font-medium text-[color:var(--text-secondary)]">Inspect {expectedHopCount} hop receipts</summary>
+        <div className="mt-2">
+          <GraphHopEvidenceInspector key={path.hops.join("->")} receipts={path.hop_evidence}
+            hops={path.hops.map(id => ({ id, label: nodeById.get(id)?.label || id }))} />
         </div>
       </details>
     </section>

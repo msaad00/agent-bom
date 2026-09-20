@@ -1,5 +1,6 @@
 "use client";
 
+import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
 import { completeDirectedHopCount } from "@/lib/security-graph-focus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -3847,6 +3848,10 @@ function GraphPageInner() {
                 <summary className="cursor-pointer font-medium text-foreground">Path explanation and scoring</summary>
                 <p className="mt-2 leading-relaxed [overflow-wrap:anywhere]">{selectedAttackPath.summary || "No additional path explanation recorded."}</p>
                 <p className="mt-2">Path risk uses a 0–100 scale; higher means more risk. This is a composite ranking score, not a CVSS score or a probability.</p>
+                <div className="mt-3">
+                  <GraphHopEvidenceInspector key={selectedAttackPath.hops.join("->")} receipts={selectedAttackPath.hop_evidence}
+                    hops={selectedAttackPath.hops.map(id => ({ id, label: graphNodeById.get(id)?.label || id }))} />
+                </div>
               </details>
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-secondary">
                 <span>{selectedEvidenceHopCount} evidence hops</span>

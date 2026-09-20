@@ -75,13 +75,13 @@ def _runtime_state(edge: UnifiedEdge) -> str:
     # Negative facts win even if another source supplied an "observed" label.
     if (
         edge.evidence.get("blocked") is True
-        or edge.evidence.get("decision") in {"blocked", "denied", "explicit_deny", "implicit_deny"}
+        or edge.evidence.get("decision") in ("blocked", "denied", "explicit_deny", "implicit_deny")
         or edge.evidence.get("runtime_observed_state") == "blocked"
         or edge.provenance.get("runtime_observed_state") == "blocked"
     ):
         return "blocked"
     explicit = edge.evidence.get("runtime_observed_state") or edge.provenance.get("runtime_observed_state")
-    if explicit in {"observed", "blocked", "not_observed"}:
+    if explicit in ("observed", "blocked", "not_observed"):
         return str(explicit)
     if _relationship(edge) in _RUNTIME_RELATIONSHIPS or edge.evidence.get("runtime_observed"):
         return "observed"

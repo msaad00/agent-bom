@@ -56,6 +56,11 @@ def test_observed_call_does_not_invent_downstream_outcome() -> None:
     assert path.hop_evidence[0].get("runtime_outcome", "unknown") == "unknown"
 
 
+def test_malformed_imported_state_does_not_raise_or_invent_success() -> None:
+    _, path = runtime_path({"decision": {"untrusted": "allowed"}, "runtime_observed_state": ["observed"]})
+    assert path.hop_evidence[0].get("runtime_outcome", "unknown") == "unknown"
+
+
 def test_blocked_legacy_receipt_is_qualified_after_restart(tmp_path) -> None:
     graph, path = runtime_path({"blocked": True})
     # Historical rows can predate the annotator correction.

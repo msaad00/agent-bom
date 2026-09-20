@@ -634,7 +634,17 @@ for (const theme of ["light", "dark"] as const) {
     await page.getByRole("combobox", {name: "Traversal direction"}).selectOption("reverse");
     await page.getByRole("combobox", {name: "Traversal depth"}).selectOption("3");
     const close = page.getByRole("button", { name: "Close", exact: true });
-    if (await close.isVisible()) await close.click();
+    // Query completion opens the requested finding. Do not skip closing it
+    // while an asynchronous depth/direction refresh is still loading.
+    await expect(close).toBeVisible();
+    await close.click();
+    await expect(page.getByTestId("graph-entity-drawer")).toBeHidden();
+    // React Flow receives the expanded canvas size through ResizeObserver.
+    // Let that observation commit before asking it to fit the node bounds;
+    // a fit against the preceding drawer width is not the settled layout.
+    await page.evaluate(() => new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
     await page.getByRole("button", {name: "Fit View", exact: true}).click();
     await settledViewportZoom(page);
     await expect(page.locator(".react-flow__node")).toHaveCount(4);

@@ -1,9 +1,9 @@
 {
   "release_version": "0.105.0",
-  "captured_at": "2026-09-20T22:30:49.494Z",
-  "source_commit": "52f74e2c3861017c2bb487f1420a2681725af749",
+  "captured_at": "2026-09-20T22:55:16.140Z",
+  "source_commit": "7ac653079ddd4a931f26516a11d47436b94eb209",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:f16e771992e211c6f03d16669509e891f6268496780b580a4ad95e8d6a539895",
+  "capture_inputs_sha256": "sha256:5d9f2737c0b5074d532c5aeb2209e7760456a992c71e16ac563bda9e387edcd5",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Top risks tab from the offline synthetic enterprise estate",
       "visible_version": "0.105.0",
-      "sha256": "sha256:3febd1c7b12c5335fe54588dd4be015b05e4b82af65a42be6e9012280eb2ed17"
+      "sha256": "sha256:c937b61225a4c9458cc61954e1d42c49e4f9c33006569297c9f62a42c1380344"
     },
     {
       "presentation": "light desktop",
@@ -44,7 +44,7 @@
       "page": "/?capture=1",
       "scope": "Executive impact summaries with technical details collapsed",
       "visible_version": "0.105.0",
-      "sha256": "sha256:37c19ece63cea7d83be8c9ec00e664494330eb849ba61d234e8c9c5997fb497c"
+      "sha256": "sha256:938c42c73b3df9d6b236dfdbed1450c3cd026b170c0488de0e584c5b13437b6d"
     },
     {
       "presentation": "dark mobile",
@@ -58,9 +58,9 @@
       "presentation": "dark desktop",
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
-      "scope": "Focused full-width Overview control framework catalog and risk mappings with assessment scope",
+      "scope": "Default Overview assessment summary with four priority frameworks and risk mappings collapsed",
       "visible_version": "0.105.0",
-      "sha256": "sha256:5572273ba4b7a899f56fd22a80bd66aa60a98d30d5774c781748db04067be8d1"
+      "sha256": "sha256:9cf33686a7da33a3cbcaebdb9a31bfe5681a6ea802a180d89cb0c634648fed73"
     },
     {
       "presentation": "dark desktop",
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.105.0",
-      "sha256": "sha256:f3eef737f3aeb4317fc1258ca2e29071dbbd9417c991c501be2abf8d7ab851c1"
+      "sha256": "sha256:80e149200110558f93a6cdaa6893603449b27703b17f107040663d097771ca59"
     },
     {
       "presentation": "dark desktop",

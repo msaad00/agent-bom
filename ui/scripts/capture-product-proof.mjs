@@ -2780,7 +2780,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
-      scope: "Focused full-width Overview control framework catalog and risk mappings with assessment scope",
+      scope: "Default Overview assessment summary with four priority frameworks and risk mappings collapsed",
     },
     {
       path: "cloud-accounts-live.png",
@@ -3223,18 +3223,20 @@ async function main() {
     const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1040, height: 1100 });
     await capture(frameworkPage, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
-      await frameworks.getByRole("button", { name: /Show all .* control frameworks/ }).click();
       await frameworks.scrollIntoViewIfNeeded();
       const top = await frameworks.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
       const height = await frameworks.evaluate((element) => Math.ceil(element.getBoundingClientRect().height));
       await dashboardPage.setViewportSize({ width: 1040, height: height + 116 });
       await scrollTo(dashboardPage, top - 92);
-      for (const label of ["NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", "CIS Controls v8", "MITRE ATLAS"]) {
+      for (const label of ["NIST SP 800-53", "CMMC 2.0", "FedRAMP Moderate", "NIST AI RMF"]) {
         await frameworks.getByText(label, { exact: false }).first().waitFor({ state: "visible" });
+      }
+      if (await frameworks.getByRole("button", { name: /^Risk mappings/ }).getAttribute("aria-expanded") !== "false") {
+        throw new Error("Risk mappings must remain collapsed in the initial assessed overview");
       }
       await dashboardPage.mouse.move(0, 0);
     }, {
-      expectedText: [/Control frameworks/i, "NIST AI RMF", "ISO 27001", "SOC 2", "PCI DSS 4.0", /Risk mappings/i, "MITRE ATLAS"],
+      expectedText: [/Control frameworks/i, "NIST AI RMF", "NIST SP 800-53", /Risk mappings/i, /Show all .* control frameworks/],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
       viewportSelectors: ['section[aria-label="Compliance & frameworks"]', "#demo-estate-watermark"],
       readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 920, minFontPx: 12 },

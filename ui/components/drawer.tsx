@@ -252,7 +252,7 @@ export function Drawer({
                   {eyebrow}
                 </p>
               ) : null}
-              <h2 className="mt-1 truncate text-base font-semibold leading-snug text-[color:var(--foreground)]">
+              <h2 className="mt-1 break-words [overflow-wrap:anywhere] text-base font-semibold leading-snug text-[color:var(--foreground)]">
                 {title}
               </h2>
               {subtitle ? (

@@ -1,11 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import CompliancePage from "@/app/compliance/page";
 
+const navigation = vi.hoisted(() => ({ query: "" }));
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => new URLSearchParams(navigation.query),
 }));
+beforeEach(() => { navigation.query = ""; });
 
 // Render next/link as a plain anchor so href assertions are deterministic and
 // no app-router context is required in the test environment.
@@ -150,6 +152,30 @@ vi.mock("@/lib/api", async () => {
 });
 
 describe("CompliancePage (dense restyle)", () => {
+  it("opens the requested framework and still lets the reader select another", async () => {
+    navigation.query = "framework=owasp-mcp";
+    render(<CompliancePage />);
+    expect(await screen.findByText("MCP01")).toBeVisible();
+    expect(screen.queryByText("Prompt Injection")).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId("compliance-frameworks-table")).getByText("LLM"));
+    expect(await screen.findByText("Prompt Injection")).toBeVisible();
+  });
+
+  it("follows framework changes in the URL without resetting manual selection", async () => {
+    navigation.query = "framework=owasp-mcp";
+    const view = render(<CompliancePage />);
+    await screen.findByText("MCP01");
+    navigation.query = "framework=cis-foundations";
+    view.rerender(<CompliancePage />);
+    expect(await screen.findByText("cis benchmark")).toBeVisible();
+  });
+
+  it("explains when a requested framework is absent from the assessment", async () => {
+    navigation.query = "framework=missing-framework";
+    render(<CompliancePage />);
+    expect(await screen.findByText("Requested framework is unavailable in this assessment.")).toBeVisible();
+  });
+
   it("opens each benchmark in the detail pane and returns to framework controls", async () => {
     render(<CompliancePage />);
     await screen.findByText("Prompt Injection");

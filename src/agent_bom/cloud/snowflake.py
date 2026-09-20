@@ -2079,6 +2079,26 @@ def _discover_sf_dependencies(conn: Any, warnings: list[str]) -> list[dict[str, 
     return dependencies
 
 
+def _grant_object_fqn(name: str, database: str, schema: str) -> str:
+    """Retain qualified grant names; only add missing namespace components.
+
+    Dots inside a quoted identifier belong to that identifier. Counting only
+    unquoted separators also handles doubled quotes without splitting the name
+    or changing its case/escaping. Metadata is never used as executable SQL.
+    """
+    quoted = False
+    separators = 0
+    for character in name:
+        if character == '"':
+            quoted = not quoted
+        elif character == "." and not quoted:
+            separators += 1
+    if separators >= 2:
+        return name
+    prefix = (database,) if separators == 1 else (database, schema)
+    return ".".join(part for part in (*prefix, name) if part)
+
+
 def _discover_sf_grants(conn: Any, warnings: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Object-level role grants + user→role memberships (the CIEM access graph).
 
@@ -2098,14 +2118,14 @@ def _discover_sf_grants(conn: Any, warnings: list[str]) -> tuple[list[dict[str, 
         for row in cursor.fetchall():
             r = dict(zip(keys, row))
             role = str(r.get("grantee_name", ""))
-            db, sch, nm = str(r.get("table_catalog", "")), str(r.get("table_schema", "")), str(r.get("name", ""))
+            db, sch, nm = str(r.get("table_catalog") or ""), str(r.get("table_schema") or ""), str(r.get("name") or "")
             if not role or not nm:
                 continue
             grants.append(
                 {
                     "role": role,
                     "privilege": str(r.get("privilege", "")),
-                    "object_fqn": f"{db}.{sch}.{nm}",
+                    "object_fqn": _grant_object_fqn(nm, db, sch),
                     "object_type": str(r.get("granted_on", "")).lower(),
                 }
             )

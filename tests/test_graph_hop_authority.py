@@ -198,7 +198,7 @@ async def test_persisted_authority_reaches_mcp_and_python_client(tmp_path, nativ
     assert result["paths"][0]["hopEvidence"] == mcp["paths"][0]["hopEvidence"]
     authority = result["paths"][0]["hopEvidence"][0]["authority"]
     assert (
-        authority["native_grants"][0]["privilege"] == "SELECT"
+        {grant["privilege"] for grant in authority["native_grants"]} == {"SELECT", "INSERT"}
         if native
         else authority["decisions"][0]["binding_ids"] == ["grant:storage.objects.get"]
     )
@@ -237,7 +237,9 @@ def test_api_and_cli_preserve_same_authority_and_tenant_boundary(tmp_path, monke
     payload = response.json()
     authority = payload["paths"][0]["hopEvidence"][0]["authority"]
     assert (
-        authority["native_grants"][0]["privilege"] == "SELECT" if native else authority["decisions"][0]["action"] == "storage.objects.get"
+        {grant["privilege"] for grant in authority["native_grants"]} == {"SELECT", "INSERT"}
+        if native
+        else authority["decisions"][0]["action"] == "storage.objects.get"
     )
     foreign = client.get(
         "/v1/graph/exposure-paths", params={"scan_id": graph.scan_id, "tenant_id": "default"}, headers={"x-agent-bom-tenant-id": "foreign"}

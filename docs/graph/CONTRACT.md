@@ -66,6 +66,31 @@ The graph subsystem has one source of truth in code: enums in `src/agent_bom/gra
 
 Edges carry `weight` and `evidence` (a metadata dict). Bidirectional edges (`shares_server`, `shares_cred`, `correlates_with`) are stored once but traversed both ways.
 
+### Provider authorization receipts
+
+Azure/GCP authorization evaluation emits `can_access` and `assumes` edges only
+for an explicit `allow` result. Each `evidence.authorization_decisions` record
+keeps the evaluated principal, concrete action, resource, decision, provider,
+matched binding IDs, and source observation time together. Multiple allowed
+actions on the same edge retain separate records through graph aggregation,
+SQLite/Postgres persistence, and the graph API. Top-level compatibility fields
+such as `action` are omitted when the records disagree; the union of binding
+IDs does not authorize every action under every binding.
+
+These receipts describe the evaluator's result for the collected snapshot.
+They do not establish that an action executed, that data was affected, or that
+the grant is still valid now. Conditional, denied, stale, and incomplete inputs
+remain subject to the evaluator's fail-closed behavior. This receipt list
+currently retains allowed decisions, not the complete policy evaluation trace.
+Derived permission overlays and specialized path responses must not be assumed
+to expose this action detail merely because the source edge contains it.
+
+Existing snapshots may contain only a single legacy action receipt. Reading or
+merging that record cannot recover actions previously discarded; collect fresh
+authorization evidence and rebuild the snapshot to obtain the full retained
+set of evaluated allowed actions. Missing legacy principal or observation fields
+remain unknown.
+
 ---
 
 ## Evidence truth dimensions

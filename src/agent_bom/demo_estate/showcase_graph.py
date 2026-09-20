@@ -462,7 +462,6 @@ def build_showcase_graph(
         node(pid, EntityType.PACKAGE, purl, ecosystem=advisory.ecosystem, version=package_version)
         edge(f"server:{sid}", pid, RelationshipType.DEPENDS_ON)
         vid = f"vuln:{cve}"
-        advisory = advisory_by_id.get(cve)
         node(
             vid,
             EntityType.VULNERABILITY,

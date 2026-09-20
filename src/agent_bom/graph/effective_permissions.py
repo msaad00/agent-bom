@@ -63,6 +63,7 @@ _ASSUME_RELS = frozenset({RelationshipType.ASSUMES, RelationshipType.INHERITS})
 
 _MAX_PRINCIPALS = 5000
 _MAX_DEPTH = 6
+_MAX_PERMISSION_WITNESSES = 16
 
 _ANALYZER = "effective_permissions"
 _ADMIN_PRIVILEGE_KEYWORDS = ("administratoraccess", "fullaccess", "poweruseraccess", "iamfullaccess", "*:*", "admin", "owner", "root")
@@ -137,11 +138,13 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     Returns counts of permission edges added and escalation chains found. Never
     raises into the builder.
     """
-    limits = {"max_principals": _MAX_PRINCIPALS, "max_depth": _MAX_DEPTH}
+    limits = {"max_principals": _MAX_PRINCIPALS, "max_depth": _MAX_DEPTH, "max_permission_witnesses": _MAX_PERMISSION_WITNESSES}
+    input_limited = graph.completeness.truncated or graph.completeness.depth_limited
     principals = [n for n in graph.nodes.values() if n.entity_type in _PRINCIPAL_TYPES]
     if not principals:
         graph.analysis_status[_ANALYZER] = GraphAnalysisStatus(
-            status=GraphAnalysisState.COMPLETE,
+            status=GraphAnalysisState.LIMITED if input_limited else GraphAnalysisState.COMPLETE,
+            reason_codes=("incomplete_source_graph",) if input_limited else (),
             limits=limits,
             observed={"principal_count": 0, "privilege_escalations": 0},
         )
@@ -174,6 +177,9 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     direct_access: dict[str, set[str]] = defaultdict(set)
     assumes: dict[str, set[str]] = defaultdict(set)
     member_of_groups: dict[str, set[str]] = defaultdict(set)
+    access_edges: dict[tuple[str, str], UnifiedEdge] = {}
+    assume_edges: dict[tuple[str, str], UnifiedEdge] = {}
+    membership_edges: dict[tuple[str, str], UnifiedEdge] = {}
     attached_policy_labels: dict[str, list[str]] = defaultdict(list)
     attached_policy_nodes: dict[str, list[UnifiedNode]] = defaultdict(list)
     admin_by_policy_actions: set[str] = set()
@@ -188,8 +194,12 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             target = graph.nodes.get(edge.target)
             if target is not None and target.entity_type in _RESOURCE_TYPES:
                 direct_access[edge.source].add(edge.target)
+                access_edges[(edge.source, edge.target)] = edge
         elif rel in _ASSUME_RELS and edge.source in principal_ids and edge.target in principal_ids:
             assumes[edge.source].add(edge.target)
+            key = (edge.source, edge.target)
+            if key not in assume_edges or edge.id < assume_edges[key].id:
+                assume_edges[key] = edge
         elif rel == RelationshipType.MEMBER_OF and edge.source in principal_ids:
             # A principal inherits the access of every GROUP it belongs to. Group
             # membership is NOT an assume chain, so it is tracked separately and
@@ -197,6 +207,7 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             target = graph.nodes.get(edge.target)
             if target is not None and target.entity_type == EntityType.GROUP:
                 member_of_groups[edge.source].add(edge.target)
+                membership_edges[(edge.source, edge.target)] = edge
         elif rel == RelationshipType.ATTACHED and edge.source in principal_ids:
             policy = graph.nodes.get(edge.target)
             if policy is not None and policy.entity_type == EntityType.POLICY:
@@ -262,54 +273,80 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             pnode.attributes["admin_equivalent"] = True
             pnode.attributes["admin_equivalence_basis"] = basis
 
-    def _group_closure(principal_id: str) -> set[str]:
-        """Return the GROUP ids a principal belongs to, transitively (nested groups)."""
-        groups: set[str] = set()
-        frontier = list(member_of_groups.get(principal_id, set()))
-        depth = 0
-        while frontier and depth < _MAX_DEPTH:
-            nxt: list[str] = []
-            for gid in frontier:
-                if gid in groups:
-                    continue
-                groups.add(gid)
-                nxt.extend(member_of_groups.get(gid, set()))
-            frontier = nxt
-            depth += 1
-        return groups
+    depth_limited = False
+    witness_limited = False
 
-    def effective(principal_id: str) -> tuple[set[str], set[str], set[str], set[str]]:
-        """Return (all_resources, via_assume_only, via_group_only, assumed_principal_ids)."""
+    def _walk(
+        principal_id: str, adjacency: Mapping[str, set[str]], source_edges: Mapping[tuple[str, str], UnifiedEdge]
+    ) -> dict[str, tuple[str, ...]]:
+        """One deterministic shortest witness per reachable principal, not all paths."""
+        nonlocal depth_limited
+        paths: dict[str, tuple[str, ...]] = {principal_id: ()}
+        frontier = [principal_id]
+        for _ in range(_MAX_DEPTH):
+            next_frontier: list[str] = []
+            for source in frontier:
+                for target in sorted(adjacency.get(source, set())):
+                    if target in paths:
+                        continue
+                    paths[target] = (*paths[source], source_edges[(source, target)].id)
+                    next_frontier.append(target)
+            frontier = next_frontier
+            if not frontier:
+                break
+        # Cycles and already visited nodes do not imply unexamined authority.
+        if any(target not in paths for source in frontier for target in adjacency.get(source, set())):
+            depth_limited = True
+        paths.pop(principal_id)
+        return paths
+
+    def effective(principal_id: str) -> tuple[set[str], set[str], set[str], set[str], dict[str, dict[str, Any]]]:
+        nonlocal witness_limited
         direct = set(direct_access.get(principal_id, set()))
-        # Access inherited from group membership (and the groups a group nests in).
+        groups = _walk(principal_id, member_of_groups, membership_edges)
+        assumed = _walk(principal_id, assumes, assume_edges)
         via_group: set[str] = set()
-        for gid in _group_closure(principal_id):
-            via_group |= direct_access.get(gid, set())
         via_assume: set[str] = set()
-        assumed: set[str] = set()
-        visited = {principal_id}
-        frontier = list(assumes.get(principal_id, set()))
-        depth = 0
-        while frontier and depth < _MAX_DEPTH:
-            nxt: list[str] = []
-            for pid in frontier:
-                if pid in visited:
-                    continue
-                visited.add(pid)
-                assumed.add(pid)
-                via_assume |= direct_access.get(pid, set())
-                nxt.extend(assumes.get(pid, set()))
-            frontier = nxt
-            depth += 1
+        proofs: dict[str, dict[str, Any]] = {}
+        for access, sources in (("direct", {principal_id: ()}), ("group", groups), ("assume_chain", assumed)):
+            for source, chain in sorted(sources.items()):
+                for resource in sorted(direct_access.get(source, set())):
+                    if access == "group":
+                        via_group.add(resource)
+                    elif access == "assume_chain":
+                        via_assume.add(resource)
+                    proof = proofs.setdefault(
+                        resource,
+                        {
+                            "basis": "recorded_graph_connections",
+                            "source_scan_id": graph.scan_id,
+                            "path_selection": "one_shortest_path_per_grant_and_access",
+                            "paths": [],
+                            "truncated": False,
+                        },
+                    )
+                    if len(proof["paths"]) >= _MAX_PERMISSION_WITNESSES:
+                        proof["truncated"] = True
+                        witness_limited = True
+                        continue
+                    grant = access_edges[(source, resource)]
+                    proof["paths"].append(
+                        {
+                            "access": access,
+                            "grant_principal_id": source,
+                            "grant_edge_id": grant.id,
+                            "source_edge_ids": [*chain, grant.id],
+                        }
+                    )
         all_resources = direct | via_assume | via_group
-        return all_resources, via_assume - direct, via_group - direct - via_assume, assumed
+        return all_resources, via_assume - direct, via_group - direct - via_assume, set(assumed), proofs
 
     edges_added = 0
     escalations = 0
     seen_perm: set[tuple[str, str]] = set()
     for principal in principals:
-        all_resources, escalated, via_group_only, assumed = effective(principal.id)
-        for resource_id in all_resources:
+        all_resources, escalated, via_group_only, assumed, proofs = effective(principal.id)
+        for resource_id in sorted(all_resources):
             key = (principal.id, resource_id)
             if key in seen_perm:
                 continue
@@ -327,7 +364,7 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
                     relationship=RelationshipType.HAS_PERMISSION,
                     weight=5.0 if via == "assume_chain" else 2.0,
                     provenance={"source": _OVERLAY_SOURCE},
-                    evidence={"access": via},
+                    evidence={"access": via, "permission_derivation": proofs[resource_id]},
                 )
             )
             edges_added += 1
@@ -353,8 +390,18 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             )
             escalations += 1
 
+    reason_codes = tuple(
+        code
+        for code, limited in (
+            ("permission_depth_limit", depth_limited),
+            ("permission_witness_limit", witness_limited),
+            ("incomplete_source_graph", input_limited),
+        )
+        if limited
+    )
     graph.analysis_status[_ANALYZER] = GraphAnalysisStatus(
-        status=GraphAnalysisState.COMPLETE,
+        status=GraphAnalysisState.LIMITED if reason_codes else GraphAnalysisState.COMPLETE,
+        reason_codes=reason_codes,
         limits=limits,
         observed={
             "principal_count": len(principals),

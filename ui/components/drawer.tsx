@@ -234,8 +234,8 @@ export function Drawer({
           </button>
         ) : null}
         {panelLeading}
-        <div className="flex items-start justify-between gap-4 border-b border-[color:var(--border-subtle)] p-5">
-          <div className="flex min-w-0 items-start gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 border-b border-[color:var(--border-subtle)] p-4 sm:p-5">
+          <div className="col-span-2 row-start-2 flex min-w-0 items-start gap-2 sm:col-span-1 sm:row-start-1">
             {onBack ? (
               <button
                 type="button"
@@ -246,7 +246,7 @@ export function Drawer({
                 <ChevronLeft className="h-4 w-4" />
               </button>
             ) : null}
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               {eyebrow ? (
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
                   {eyebrow}
@@ -260,7 +260,7 @@ export function Drawer({
               ) : null}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="col-start-2 row-start-1 flex items-center justify-end gap-2">
             {headerAside}
             <button
               type="button"

@@ -177,6 +177,10 @@ for (const theme of ["light", "dark"] as const) {
       await expect(drawer.getByText("Not reported by this connection record", { exact: true })).toBeVisible();
       await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
       expect(await drawer.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      const titleBounds = await drawer.getByRole("heading", { name: "Production account", exact: true }).boundingBox();
+      const drawerBounds = await drawer.locator("aside").boundingBox();
+      expect(titleBounds!.width).toBeGreaterThan(drawerBounds!.width * 0.6);
+      expect(titleBounds!.height).toBeLessThan(120);
       await page.screenshot({ path: testInfo.outputPath(`connection-evidence-${theme}-${width}.png`), fullPage: true });
       await page.keyboard.press("Escape");
       await expect(drawer).toHaveCount(0);

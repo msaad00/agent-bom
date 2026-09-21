@@ -272,6 +272,7 @@ for (const theme of ["light", "dark"] as const) {
     await routeProductFixture(page);
     await page.route("**/v1/overview", (route) => route.fulfill({ json: {
       ...OVERVIEW,
+      finding_counts: COUNTS,
       domains: {
         ...OVERVIEW.domains,
         runtime: { ...OVERVIEW.domains.runtime, status: "critical" },

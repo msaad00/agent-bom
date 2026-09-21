@@ -41,14 +41,35 @@
 Start with **Posture** for the current findings window; open **Top risks** to select a
 finding and inspect its evidence. **Assets & coverage** shows recorded inventory in its
 snapshot and source scope. Asset counts do not establish collection coverage.
+Inventory keeps selected filters visible when no assets match, so an empty result
+does not lose the scope you chose.
 
 <p align="center">
   <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview starting with posture, current findings and freshness, with Top risks and Assets and coverage drilldowns" width="920"></a>
 </p>
 
+<details>
+<summary>Explore Top risks and scoped inventory</summary>
+
+Select a finding in **Top risks** to inspect its evidence and open investigation.
+
+<p align="center">
+  <a href="docs/images/dashboard-risks-live.png"><img src="docs/images/dashboard-risks-live.png" alt="Top risks with prioritized sample findings and selected evidence" width="920"></a>
+</p>
+
+Open **Inventory** to filter recorded assets and inspect their finding context.
+
+<p align="center">
+  <a href="docs/images/inventory-live.png"><img src="docs/images/inventory-live.png" alt="Scoped inventory with asset filters and recorded finding context in a labeled sample environment" width="920"></a>
+</p>
+
+</details>
+
 ### GRC and audit: investigate assessment gaps
 
 Review controls passed, failed and needing review, with pass rate and assessment coverage.
+Pass rate describes evaluated control results; assessment coverage describes how many
+framework control entries were evaluated. Entries may overlap across frameworks.
 Select a framework to inspect its controls, open evidence, and follow linked findings.
 Expand **Risk mappings** for OWASP and MITRE ATLAS applicability; these mappings
 are separate from control pass/fail. Open **Compliance** for the

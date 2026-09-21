@@ -122,7 +122,10 @@ class CloudConnectionRecord:
         surfaces ``has_external_id`` so a client can tell a secret is configured
         without ever seeing it. ``auth_params`` is non-secret and is included.
         """
+        from agent_bom.cloud.connection_metadata import public_connection_params
+
         data = asdict(self)
+        data["auth_params"] = public_connection_params(self.provider, self.auth_params)
         data.pop("external_id_encrypted", None)
         data["has_external_id"] = bool(self.external_id_encrypted)
         data["credential_present"] = bool(self.external_id_encrypted and self.role_ref)

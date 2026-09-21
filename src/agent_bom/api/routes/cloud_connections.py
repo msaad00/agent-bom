@@ -186,14 +186,14 @@ def _validate_scan_interval(interval: int | None) -> int | None:
     return interval
 
 
-def _validate_auth_params(auth_params: dict[str, str]) -> dict[str, str]:
+def _validate_auth_params(provider: str, auth_params: dict[str, str]) -> dict[str, str]:
     """Validate the non-secret provider params blob (bounds + string coercion).
 
-    Keeps the row small and predictable: caps the number of keys and the key /
-    value lengths. Values are coerced to trimmed strings. These params are never
-    secret (the one secret is ``external_id``), so they are stored and returned
-    as-is.
+    Only declared provider metadata is accepted. Unknown fields and recognizable
+    credential payloads fail closed without echoing keys or values.
     """
+    from agent_bom.cloud.connection_metadata import public_connection_param
+
     if not auth_params:
         return {}
     if len(auth_params) > _MAX_AUTH_PARAMS:
@@ -208,6 +208,8 @@ def _validate_auth_params(auth_params: dict[str, str]) -> dict[str, str]:
         value_str = str(value).strip()
         if len(value_str) > _MAX_AUTH_PARAM_VALUE_LEN:
             raise HTTPException(status_code=400, detail=f"auth_params value too long (max {_MAX_AUTH_PARAM_VALUE_LEN}).")
+        if not public_connection_param(provider, key_str, value_str):
+            raise HTTPException(status_code=400, detail="Invalid public connection metadata; use the credential field for secrets.")
         cleaned[key_str] = value_str
     return cleaned
 
@@ -294,7 +296,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
 
     regions = _validate_regions(body.regions)
     scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
-    auth_params = _validate_auth_params(body.auth_params)
+    auth_params = _validate_auth_params(provider, body.auth_params)
     inventory_scope = _validate_inventory_scope(body.inventory_scope, auth_params=auth_params)
     scan_mode = _validate_scan_mode(body.scan_mode)
     auto_scan_on_create = bool(body.auto_scan_on_create)

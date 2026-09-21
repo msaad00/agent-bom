@@ -2141,3 +2141,41 @@ def test_create_503_on_encryption_failure_never_leaks_exception(monkeypatch: Any
     assert "AKIASECRETVALUE" not in blob
     assert "master.pem" not in blob
     assert "kms-key-id" not in blob
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"client_secret": "private-canary-value"},
+        {"password": "private-canary-value"},
+        {"tenant_id": "-----BEGIN PRIVATE KEY-----private-canary-value"},
+        {"subscription_id": '{"private_key":"private-canary-value"}'},
+        {"project_id": "private-canary-value"},
+    ],
+)
+def test_connection_rejects_undeclared_or_secret_metadata_without_echo(params: dict[str, str]) -> None:
+    client = TestClient(_app())
+    body = {**_create_body(), "provider": "azure", "auth_params": params, "auto_scan_on_create": False}
+    response = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers())
+    assert response.status_code == 400
+    assert "private-canary-value" not in response.text
+    assert client.get("/v1/cloud/connections", headers=_proxy_headers()).json()["connections"] == []
+
+
+def test_connection_legacy_public_metadata_drops_undeclared_and_secret_values() -> None:
+    record = CloudConnectionRecord(
+        id="legacy",
+        tenant_id="tenant-alpha",
+        provider="azure",
+        display_name="Legacy",
+        role_ref="app-id",
+        external_id_encrypted="ciphertext",
+        auth_params={
+            "tenant_id": "tenant-guid",
+            "subscription_id": "-----BEGIN PRIVATE KEY-----private-canary-value",
+            "client_secret": "private-canary-value",
+            "custom": "private-canary-value",
+        },
+    )
+    assert record.to_public_dict()["auth_params"] == {"tenant_id": "tenant-guid"}
+    assert record.auth_params["client_secret"] == "private-canary-value"

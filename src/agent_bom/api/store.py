@@ -412,7 +412,55 @@ class SQLiteJobStore:
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_batch ON jobs(tenant_id, batch_id, created_at DESC)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_parent ON jobs(tenant_id, parent_job_id, created_at DESC)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_schedule ON jobs(tenant_id, schedule_id, created_at DESC)")
+            # Durable revisions invalidate read caches for every writer, including
+            # in-place result refreshes whose job timestamps did not change.
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS job_overview_identity "
+                "(singleton INTEGER PRIMARY KEY CHECK(singleton=1), identity TEXT NOT NULL)"
+            )
+            self._conn.execute("INSERT OR IGNORE INTO job_overview_identity VALUES (1, lower(hex(randomblob(16))))")
+            self._conn.execute("CREATE TABLE IF NOT EXISTS job_overview_revisions (tenant_id TEXT PRIMARY KEY, revision INTEGER NOT NULL)")
+            self._conn.execute("""CREATE TRIGGER IF NOT EXISTS jobs_overview_insert AFTER INSERT ON jobs BEGIN
+                INSERT INTO job_overview_revisions VALUES (NEW.tenant_id, 1)
+                ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1;
+            END""")
+            self._conn.execute("""CREATE TRIGGER IF NOT EXISTS jobs_overview_replace BEFORE INSERT ON jobs BEGIN
+                INSERT INTO job_overview_revisions SELECT tenant_id, 1 FROM jobs
+                WHERE job_id=NEW.job_id AND tenant_id!=NEW.tenant_id
+                ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1;
+            END""")
+            self._conn.execute("""CREATE TRIGGER IF NOT EXISTS jobs_overview_update AFTER UPDATE ON jobs BEGIN
+                INSERT INTO job_overview_revisions VALUES (OLD.tenant_id, 1)
+                ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1;
+                INSERT INTO job_overview_revisions SELECT NEW.tenant_id, 1 WHERE NEW.tenant_id!=OLD.tenant_id
+                ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1;
+            END""")
+            self._conn.execute("""CREATE TRIGGER IF NOT EXISTS jobs_overview_delete AFTER DELETE ON jobs BEGIN
+                INSERT INTO job_overview_revisions VALUES (OLD.tenant_id, 1)
+                ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1;
+            END""")
             self._conn.commit()
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
+
+    def overview_evidence_revision(self, tenant_id: str) -> str:
+        """Opaque database/tenant mutation token without reading job JSON.
+
+        Optional optimization: backends without this method retain the complete
+        result fingerprint path. Database identity prevents cache reuse after a
+        store replacement; triggers update revisions in the writer transaction.
+        """
+        _require_tenant_scope(tenant_id, False, "SQLiteJobStore.overview_evidence_revision()")
+        try:
+            row = self._conn.execute(
+                """SELECT identity, COALESCE((SELECT revision FROM job_overview_revisions
+                   WHERE tenant_id=?), 0) FROM job_overview_identity WHERE singleton=1""",
+                (tenant_id,),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Job evidence revision unavailable")
+            return f"{row[0]}:{row[1]}"
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()

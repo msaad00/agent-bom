@@ -75,6 +75,13 @@ def _tenant(request: Request) -> str:
 @router.get("/inventory/summary", tags=["inventory"])
 async def inventory_summary(
     request: Request,
+    type: Optional[str] = Query(None, description="Comma-separated asset entity types"),
+    search: Optional[str] = Query(None, description="Free-text search over asset name / label / attributes"),
+    environment: Optional[str] = Query(None, description="Filter by environment facet"),
+    provider: Optional[str] = Query(None, description="Filter by provider facet"),
+    source: Optional[str] = Query(None, description="Filter by data-source / provenance facet"),
+    severity: Optional[str] = Query(None, description="Highest directly linked finding severity"),
+    min_severity: Optional[str] = Query(None, description="Minimum directly linked finding severity"),
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
 ) -> dict[str, Any]:
     """Asset counts for the tenant's current graph snapshot, by type and group.
@@ -89,6 +96,13 @@ async def inventory_summary(
             store=_get_graph_store(),
             tenant_id=tenant,
             scan_id=scan_id,
+            type=type,
+            search=search,
+            environment=environment,
+            provider=provider,
+            source=source,
+            severity=severity,
+            min_severity=min_severity,
             store_call=_store_call,
         )
     except InventoryError as exc:

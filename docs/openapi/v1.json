@@ -32796,6 +32796,132 @@
         "operationId": "inventory_summary_v1_inventory_summary_get",
         "parameters": [
           {
+            "description": "Comma-separated asset entity types",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated asset entity types",
+              "title": "Type"
+            }
+          },
+          {
+            "description": "Free-text search over asset name / label / attributes",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Free-text search over asset name / label / attributes",
+              "title": "Search"
+            }
+          },
+          {
+            "description": "Filter by environment facet",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by environment facet",
+              "title": "Environment"
+            }
+          },
+          {
+            "description": "Filter by provider facet",
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by provider facet",
+              "title": "Provider"
+            }
+          },
+          {
+            "description": "Filter by data-source / provenance facet",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by data-source / provenance facet",
+              "title": "Source"
+            }
+          },
+          {
+            "description": "Highest directly linked finding severity",
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Highest directly linked finding severity",
+              "title": "Severity"
+            }
+          },
+          {
+            "description": "Minimum directly linked finding severity",
+            "in": "query",
+            "name": "min_severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum directly linked finding severity",
+              "title": "Min Severity"
+            }
+          },
+          {
             "description": "Scan snapshot ID; latest if omitted",
             "in": "query",
             "name": "scan_id",

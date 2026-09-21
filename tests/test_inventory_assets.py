@@ -148,6 +148,35 @@ def test_summary_counts_assets_by_type_and_group_excluding_findings(inventory_st
 # ── Faceted list ──
 
 
+@pytest.mark.parametrize(
+    "filters",
+    [
+        {"environment": "production", "provider": "aws"},
+        {"source": "cloud:snowflake", "type": "user,role"},
+        {"type": "server", "severity": "critical"},
+        {"search": "no matching asset"},
+    ],
+)
+def test_summary_and_drilldown_share_exact_filter_scope(inventory_store, filters):
+    client = TestClient(app)
+    summary = client.get("/v1/inventory/summary", params=filters).json()
+    page = client.get("/v1/inventory/assets", params={**filters, "scan_id": summary["scan_id"]}).json()
+    assert summary["total_assets"] == page["pagination"]["total"]
+    assert summary["by_type"] == {
+        kind: sum(row["type"] == kind for row in page["assets"]) for kind in {row["type"] for row in page["assets"]}
+    }
+    assert summary["filters"] == page["filters"]
+    assert summary["count_exact"] is True
+    assert summary["collection_coverage"]["status"] == "unknown"
+    assert summary["finding_count_scope"] == "selected_snapshot"
+
+
+def test_summary_rejects_finding_types_and_invalid_severity(inventory_store):
+    client = TestClient(app)
+    assert client.get("/v1/inventory/summary", params={"type": "vulnerability"}).status_code == 422
+    assert client.get("/v1/inventory/summary", params={"severity": "made-up"}).status_code == 422
+
+
 def test_list_returns_asset_rows_and_excludes_findings(inventory_store):
     client = TestClient(app)
     resp = client.get("/v1/inventory/assets?limit=100")
@@ -231,10 +260,12 @@ def test_explicit_scan_is_resolved_once_and_tenant_scoped(tmp_path):
     _seed_graph(store, tenant_id="tenant-b", scan_id="hidden")
     set_graph_store(store)
     try:
-        body = TestClient(app).get("/v1/inventory/assets?scan_id=hidden&limit=100").json()
-        assert body["scan_id"] == ""
-        assert body["pagination"]["total"] == 0
-        assert body["assets"] == []
+        client = TestClient(app)
+        hidden = client.get("/v1/inventory/assets?scan_id=hidden&limit=100")
+        missing = client.get("/v1/inventory/assets?scan_id=missing&limit=100")
+        assert hidden.status_code == missing.status_code == 404
+        for key in ("code", "message", "details"):
+            assert hidden.json()["error"][key] == missing.json()["error"][key]
     finally:
         set_graph_store(original)
 
@@ -438,3 +469,20 @@ def test_tenant_isolation_no_cross_tenant_leak(tmp_path):
         assert store.snapshot_stats(tenant_id="default").get("total_nodes") == 17  # 16 assets + 1 finding
     finally:
         set_graph_store(original)
+
+
+@pytest.mark.parametrize("endpoint", ["summary", "assets"])
+@pytest.mark.parametrize("query", ["scan_id=missing", "min_severity=typo"])
+def test_inventory_unavailable_or_invalid_scope_is_not_empty_success(inventory_store, endpoint, query):
+    response = TestClient(app).get(f"/v1/inventory/{endpoint}?{query}")
+    assert response.status_code == (404 if query.startswith("scan_id") else 422)
+
+
+@pytest.mark.asyncio
+async def test_uninitialized_inventory_store_does_not_confirm_empty_scope(tmp_path):
+    from agent_bom.api.inventory_service import InventoryError, build_summary
+
+    store = SQLiteGraphStore(tmp_path / "not-created.db")
+    with pytest.raises(InventoryError) as error:
+        await build_summary(store=store, tenant_id="default", scan_id="requested-snapshot")
+    assert error.value.status_code == 404

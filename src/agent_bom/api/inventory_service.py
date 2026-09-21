@@ -200,6 +200,13 @@ async def build_summary(
     store: Any,
     tenant_id: str,
     scan_id: Optional[str] = None,
+    type: Optional[str] = None,
+    search: Optional[str] = None,
+    environment: Optional[str] = None,
+    provider: Optional[str] = None,
+    source: Optional[str] = None,
+    severity: Optional[str] = None,
+    min_severity: Optional[str] = None,
     store_call: StoreCall = default_store_call,
 ) -> dict[str, Any]:
     """Asset counts for the tenant's current snapshot, by type and group.
@@ -208,15 +215,29 @@ async def build_summary(
     excluded — this counts assets across AI, cloud, Snowflake, and identity
     uniformly because they already coexist as typed nodes in one snapshot.
     """
-    result = await store_call(
-        store.query_inventory,
-        scan_id=scan_id or "",
+    # Use the same bounded query and validation as the drilldown. Type facets
+    # are self-excluding, so apply the selected types to the summary buckets.
+    result = await build_asset_list(
+        store=store,
         tenant_id=tenant_id,
-        asset_entity_types=set(_ASSET_TYPE_VALUES),
+        scan_id=scan_id,
+        type=type,
+        search=search,
+        environment=environment,
+        provider=provider,
+        source=source,
+        severity=severity,
+        min_severity=min_severity,
         limit=1,
+        store_call=store_call,
     )
-    type_buckets = result.get("facets", {}).get("type", [])
-    node_types: dict[str, int] = {str(bucket["value"]): int(bucket["count"]) for bucket in type_buckets if bucket.get("value") is not None}
+    selected_types = set(result["filters"]["type"])
+    type_buckets = result.get("facets", {}).get("type", {}).get("buckets", [])
+    node_types = {
+        str(bucket["value"]): int(bucket["count"])
+        for bucket in type_buckets
+        if bucket.get("value") is not None and (not selected_types or bucket["value"] in selected_types)
+    }
 
     by_type: dict[str, int] = {}
     by_group: dict[str, int] = {group: 0 for group in _TYPE_GROUPS}
@@ -241,13 +262,16 @@ async def build_summary(
         "by_type": dict(sorted(by_type.items(), key=lambda kv: (-kv[1], kv[0]))),
         "by_group": {group: count for group, count in by_group.items() if count or group in _TYPE_GROUPS},
         "finding_count": int(result.get("finding_count", 0)),
-        "facets": {name: {"buckets": buckets} for name, buckets in result.get("facets", {}).items()},
-        "facet_metadata": {
-            "basis": "whole_query",
-            "mode": "self_excluding",
-            "exact": True,
-            "scan_id": result.get("scan_id", ""),
+        "finding_count_scope": "selected_snapshot",
+        "filters": result["filters"],
+        "count_exact": True,
+        "count_basis": "persisted_graph_nodes",
+        "collection_coverage": {
+            "status": "unknown",
+            "reason": "Inventory query completeness does not establish source collection or assessment coverage.",
         },
+        "facets": result["facets"],
+        "facet_metadata": result["facet_metadata"],
         "completeness": graph_completeness(returned=total_assets, total=total_assets),
     }
 
@@ -296,7 +320,10 @@ async def build_asset_list(
     normalized_severity = (severity or "").strip().lower()
     if normalized_severity and normalized_severity not in SEVERITY_RANK:
         raise InventoryError(f"Unsupported severity: {normalized_severity}", status_code=422)
-    min_rank = SEVERITY_RANK.get((min_severity or "").strip().lower(), 0)
+    normalized_min_severity = (min_severity or "").strip().lower()
+    if normalized_min_severity and normalized_min_severity not in SEVERITY_RANK:
+        raise InventoryError("Unsupported minimum severity", status_code=422)
+    min_rank = SEVERITY_RANK.get(normalized_min_severity, 0)
     try:
         result = await store_call(
             store.query_inventory,
@@ -317,6 +344,9 @@ async def build_asset_list(
     except ValueError as exc:
         raise InventoryError(str(sanitize_error(exc)), status_code=400) from exc
 
+    if not result.get("scan_id"):
+        raise InventoryError("No graph snapshot is available for the selected scope", status_code=404)
+
     summaries = result.get("finding_summaries", {})
     relationship_counts = result.get("relationship_counts", {})
     page_rows: list[dict[str, Any]] = []
@@ -336,6 +366,8 @@ async def build_asset_list(
         "scan_id": result.get("scan_id", ""),
         "created_at": result.get("created_at", ""),
         "assets": page_rows,
+        "finding_count": int(result.get("finding_count", 0)),
+        "finding_count_scope": "selected_snapshot",
         "filters": {
             "type": sorted(entity_types) if entity_types else [],
             "search": query,
@@ -343,7 +375,7 @@ async def build_asset_list(
             "provider": (provider or "").strip(),
             "source": (source or "").strip(),
             "severity": normalized_severity,
-            "min_severity": min_severity or "",
+            "min_severity": normalized_min_severity,
         },
         "pagination": {
             "total": total,

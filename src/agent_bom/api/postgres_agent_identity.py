@@ -168,6 +168,16 @@ class PostgresAgentIdentityStore:
                 ).fetchall()
         return [AgentIdentity(**json.loads(r[0])) for r in rows]
 
+    def count(self, tenant_id: str, *, include_inactive: bool = False) -> int:
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM agent_identities WHERE tenant_id = %s AND (%s OR status IN ('active', 'rotating'))",
+                (tenant_id, include_inactive),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Identity aggregation did not return a result")
+        return int(row[0])
+
     def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(

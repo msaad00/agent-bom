@@ -258,3 +258,15 @@ async def test_inventory_asset_empty_id_rejected(seeded_store) -> None:
     body = json.loads(response)
     assert "error" in body
     assert body["error"]["category"] == "validation"
+
+
+@pytest.mark.asyncio
+async def test_inventory_summary_filters_match_list_receipts(seeded_store):
+    filters = {"scan_id": "inv-scan-1", "provider": "aws", "environment": "production"}
+    summary = await inventory_summary_impl(**filters, _get_graph_store=_store_factory(seeded_store), _truncate_response=lambda v: v)
+    page = await inventory_list_impl(**filters, _get_graph_store=_store_factory(seeded_store), _truncate_response=lambda v: v)
+    summary, page = json.loads(summary), json.loads(page)
+    assert summary["total_assets"] == page["pagination"]["total"] == 1
+    assert summary["filters"] == page["filters"]
+    assert summary["collection_coverage"]["status"] == "unknown"
+    assert summary["finding_count_scope"] == "selected_snapshot"

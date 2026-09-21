@@ -339,6 +339,8 @@ class AgentIdentityStore(Protocol):
 
     def list(self, tenant_id: str, *, include_inactive: bool = False, limit: int = 200) -> list[AgentIdentity]: ...
 
+    def count(self, tenant_id: str, *, include_inactive: bool = False) -> int: ...
+
     def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]: ...
 
     def put_jit_grant(self, grant: AgentJITGrant) -> None: ...
@@ -420,6 +422,14 @@ class InMemoryAgentIdentityStore:
                 i for i in self._by_id.values() if i.tenant_id == tenant_id and (include_inactive or i.status in ("active", "rotating"))
             ]
             return sorted(rows, key=lambda i: i.issued_at, reverse=True)[:limit]
+
+    def count(self, tenant_id: str, *, include_inactive: bool = False) -> int:
+        """Count records without list pagination; lifecycle status is not authority."""
+        with self._lock:
+            return sum(
+                identity.tenant_id == tenant_id and (include_inactive or identity.status in ("active", "rotating"))
+                for identity in self._by_id.values()
+            )
 
     def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]:
         with self._lock:
@@ -622,6 +632,13 @@ class SQLiteAgentIdentityStore:
                 (tenant_id, limit),
             ).fetchall()
         return [AgentIdentity(**json.loads(r[0])) for r in rows]
+
+    def count(self, tenant_id: str, *, include_inactive: bool = False) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM agent_identities WHERE tenant_id = ? AND (? OR status IN ('active', 'rotating'))",
+            (tenant_id, include_inactive),
+        ).fetchone()
+        return int(row[0])
 
     def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]:
         rows = self._conn.execute(

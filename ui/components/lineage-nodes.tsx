@@ -157,10 +157,10 @@ function NodeCard({
     <div
       title={data.label}
       data-rollup-container={isRollupContainer ? "true" : undefined}
-      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[260px] shadow-xl backdrop-blur transition-opacity ${
+      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[260px] shadow-sm transition-opacity ${
         isRollupContainer
           ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)]"
-          : `${borderClass} ${bgClass}`
+          : `${borderClass} bg-[var(--surface-elevated)]`
       } ${
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? `ring-2 ${ringClass}` : ""}`}
@@ -176,7 +176,7 @@ function NodeCard({
         className={`!w-2 !h-2 !bg-current ${source ? "" : "!opacity-0"}`}
       />
       <div className="mb-1 flex min-w-0 items-start gap-2">
-        <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
+        <Icon className={`w-[18px] h-[18px] shrink-0 rounded ${iconClass} ${bgClass}`} />
         <span className="ml-auto shrink-0 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
           {/* Applications share the container layout, not its runtime identity. */}
           {data.entityType === "application" ? "Application" : NODE_TYPE_BADGES[data.nodeType]}

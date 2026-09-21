@@ -297,7 +297,8 @@ function PulseStyles() {
         transition: opacity 0.2s ease;
       }
       .lineage-node-focus {
-        box-shadow: 0 0 16px rgba(56, 189, 248, 0.6);
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
         transition: box-shadow 0.15s ease;
         z-index: 5;
       }
@@ -2173,11 +2174,11 @@ function GraphPageInner() {
             labelBgPadding: [8, 4],
             labelBgBorderRadius: 6,
             labelBgStyle: {
-              fill: captureMode ? "#0a0a0a" : "rgba(24,24,27,0.92)",
-              fillOpacity: 0.94,
+              fill: "var(--surface)",
+              fillOpacity: 1,
             },
             labelStyle: {
-              fill: "#f4f4f5",
+              fill: "var(--foreground)",
               fontSize: Math.max(12, Math.min(20, 13 / Math.max(graphViewport.zoom, 0.2))),
               fontWeight: 650,
             },
@@ -2193,9 +2194,7 @@ function GraphPageInner() {
                     3.2,
                   )
                 : 1,
-              ...(inPath
-                ? { filter: "drop-shadow(0 0 6px rgba(249,115,22,0.55))" }
-                : {}),
+              filter: undefined,
             },
           };
         });
@@ -3857,18 +3856,18 @@ function GraphPageInner() {
             <section
               aria-label="Focused attack path decision"
               data-testid="focused-path-decision"
-              className="mb-3 rounded-2xl border border-orange-500/35 bg-gradient-to-r from-orange-500/10 via-[var(--surface-elevated)] to-red-500/10 p-4"
+              className="mb-2 rounded-xl border border-outline bg-surface px-4 py-3"
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-300">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-secondary">
                     Focused attack path
                   </p>
                   <h2 className="mt-1 text-lg font-semibold text-foreground">
                     {selectedPathDecision.sourceLabel} → {selectedPathDecision.targetLabel}
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm text-ink-secondary">
-                    Review {selectedPathDecision.findingLabel} across {selectedEvidenceHopCount} evidence hops, then {selectedPathDecision.nextAction.charAt(0).toLowerCase() + selectedPathDecision.nextAction.slice(1)}.
+                    {selectedPathDecision.findingLabel} · Inspect the recorded relationships and their evidence.
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -3877,7 +3876,7 @@ function GraphPageInner() {
                   </span>
                   <a
                     href={selectedPathDecision.remediationHref}
-                    className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+                    className="rounded-lg bg-[var(--accent-strong)] px-3 py-2 text-sm font-semibold text-[var(--accent-contrast)] hover:opacity-90"
                   >
                     Open remediation plan
                   </a>

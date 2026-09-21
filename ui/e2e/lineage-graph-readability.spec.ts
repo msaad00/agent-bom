@@ -671,6 +671,22 @@ for (const theme of ["light", "dark"] as const) {
       return label ? parseFloat(getComputedStyle(label).fontSize) * new DOMMatrixReadOnly(getComputedStyle(viewport).transform).a : 0;
     }));
     expect(Math.min(...renderedSizes)).toBeGreaterThanOrEqual(12);
+    const titleContrast = await page.locator(".react-flow__node p").evaluateAll(labels => {
+      const luminance = (color: string) => {
+        const channels = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+          const c = value / 255;
+          return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        });
+        return channels.reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0);
+      };
+      return labels.map(label => {
+        const foreground = luminance(getComputedStyle(label).color);
+        const background = luminance(getComputedStyle(label.parentElement!).backgroundColor);
+        return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+      });
+    });
+    expect(titleContrast).toHaveLength(4);
+    for (const ratio of titleContrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
     await page.screenshot({path: testInfo.outputPath(`short-investigation-${theme}.png`)});
   });
 }

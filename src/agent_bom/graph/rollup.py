@@ -18,7 +18,7 @@ follow-up consumes.
 
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Optional, cast
@@ -338,6 +338,7 @@ def _aggregate(
     graph: UnifiedGraph,
     *,
     filters: Optional[RollupFilters] = None,
+    memberships: Optional[Counter[str]] = None,
 ) -> RollupAggregate:
     agg = RollupAggregate()
     severity_counts: dict[str, int] = defaultdict(int)
@@ -349,6 +350,8 @@ def _aggregate(
         if filters is not None and filters.active() and not filters.matches(node):
             continue
         agg.descendant_count += 1
+        if memberships is not None:
+            memberships[nid] += 1
         by_type[_node_type_value(node)] += 1
         bucket = _severity_bucket(node)
         severity_counts[bucket] += 1
@@ -365,6 +368,29 @@ def _aggregate(
     agg.by_type = dict(by_type)
     agg.severity_counts = dict(severity_counts)
     return agg
+
+
+def _aggregate_count_metadata(graph: UnifiedGraph, memberships: Counter[str]) -> dict[str, Any]:
+    """Reconcile the returned entries' aggregates without assuming disjoint scopes.
+
+    Each aggregate counts a descendant once within that entry. A DAG can put
+    the same descendant in several entries; summing them counts memberships,
+    not unique assets. Collect during the existing aggregation walk so this
+    does not introduce a second traversal or return unbounded member IDs.
+    """
+    membership_count = sum(memberships.values())
+    distinct_count = len(memberships)
+    return {
+        "basis": "returned_entry_descendants",
+        "definition": "Filtered descendants of returned entries, excluding each entry itself; not an estate total.",
+        "distinct_descendants": distinct_count,
+        "descendant_memberships": membership_count,
+        "shared_descendants": sum(count > 1 for count in memberships.values()),
+        "extra_memberships": membership_count - distinct_count,
+        "additive": membership_count == distinct_count,
+        "source_truncated": graph.completeness.truncated,
+        "reason": graph.completeness.reason if graph.completeness.truncated else "",
+    }
 
 
 def _container_for(node: UnifiedNode, child_map: dict[str, list[str]]) -> bool:
@@ -523,13 +549,14 @@ def rollup_view(
     root_ids = _roots(graph, children, parents)
 
     containers: list[RollupContainer] = []
+    memberships: Counter[str] = Counter()
     rolled_up_ids: set[str] = set()
     for root_id in root_ids:
         node = graph.nodes.get(root_id)
         if node is None:
             continue
         descendants = _descendants(root_id, children)
-        agg = _aggregate(descendants, graph, filters=filters)
+        agg = _aggregate(descendants, graph, filters=filters, memberships=memberships)
         # When filters are active, drop containers whose descendants were all
         # filtered out — they carry no risk worth surfacing.
         if filters is not None and filters.active() and agg.descendant_count == 0 and not (filters.matches(node)):
@@ -583,7 +610,7 @@ def rollup_view(
                 is_container=_container_for(node, children),
                 has_children=bool(children.get(nid)),
                 direct_child_count=len(children.get(nid, [])),
-                aggregate=_aggregate(_descendants(nid, children), graph, filters=filters),
+                aggregate=_aggregate(_descendants(nid, children), graph, filters=filters, memberships=memberships),
                 context=_instance_context(node, graph),
             )
         )
@@ -637,6 +664,7 @@ def rollup_view(
         # excluded: it is the nesting the roll-up already expresses.
         "edges": relationship_edges,
         "edge_count_metadata": edge_count_metadata,
+        "aggregate_count_metadata": _aggregate_count_metadata(graph, memberships),
         "orphan_summary": orphan_summary,
         "summary": {
             "total_nodes": len(graph.nodes),
@@ -688,6 +716,7 @@ def drill_down(
             "children": [],
             "edges": [],
             "edge_count_metadata": _edge_count_metadata(graph, returned=0, source_total=0),
+            "aggregate_count_metadata": _aggregate_count_metadata(graph, Counter()),
             "summary": {"direct_child_count": 0, "returned_child_count": 0},
             # "Not in this graph" over a bounded snapshot may only mean "never
             # loaded" — say which, rather than implying the node does not exist.
@@ -704,12 +733,13 @@ def drill_down(
     parent = graph.nodes[node_id]
 
     child_entries: list[RollupContainer] = []
+    memberships: Counter[str] = Counter()
     for child_id in direct:
         child = graph.nodes.get(child_id)
         if child is None:
             continue
         descendants = _descendants(child_id, children)
-        agg = _aggregate(descendants, graph, filters=filters)
+        agg = _aggregate(descendants, graph, filters=filters, memberships=memberships)
         if filters is not None and filters.active() and agg.descendant_count == 0 and not filters.matches(child):
             continue
         child_entries.append(
@@ -748,6 +778,7 @@ def drill_down(
         # other constantly.
         "edges": relationship_edges,
         "edge_count_metadata": edge_count_metadata,
+        "aggregate_count_metadata": _aggregate_count_metadata(graph, memberships),
         "summary": {
             "direct_child_count": len(direct),
             "returned_child_count": len(child_entries),

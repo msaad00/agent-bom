@@ -234,6 +234,19 @@ unknown. Collection is bounded by the configured lookback and the collector's
 
 ## 3. Scaling boundaries
 
+`GET /v1/graph/rollup` returns `aggregate_count_metadata` for roll-up and
+drill-down views. Each card's descendant count is unique within that scope;
+shared assets can belong to several scopes. `distinct_descendants` counts
+unique matching descendants across returned entries, while
+`descendant_memberships` is the sum of their descendant counts.
+`shared_descendants`, `extra_memberships`, and `additive` identify overlap.
+These counts exclude each entry itself, apply the same filters as the cards,
+and describe the returned level rather than the whole estate.
+`source_truncated` and `reason` preserve an incomplete source's limits.
+The graph shows a compact overlap explanation when memberships exceed unique
+descendants. Missing metadata in older responses does not establish disjoint
+scopes.
+
 The graph renderer ships deterministic focused and expanded modes. Operators can override per-tenant; defaults match the table below.
 
 | Mode / size | Default behaviour | Why |

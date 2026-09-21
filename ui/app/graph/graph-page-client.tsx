@@ -75,7 +75,7 @@ import {
   type LineageNodeType,
 } from "@/components/lineage-nodes";
 import { useGraphLayout } from "@/lib/use-graph-layout";
-import { readableLineageDagreLr } from "@/lib/graph-node-dimensions";
+import { compactInvestigationLayout, readableLineageDagreLr } from "@/lib/graph-node-dimensions";
 import { effectiveLodBandForGraph, useLodBand } from "@/lib/lod-renderer";
 import {
   aggregateSiblings,
@@ -1804,7 +1804,8 @@ function GraphPageInner() {
   const compactGroupedTopology = aggregated.clusters.size > 0 && aggregated.nodes.length <= 6;
   // A short investigation should fit as readable cards, not tiny summary pills
   // separated by the spacing intended for a much larger estate.
-  const compactInvestigationTopology = Boolean(investigationMode) && aggregated.nodes.length > 0 && aggregated.nodes.length <= 4;
+  const investigationLayout = compactInvestigationLayout(Boolean(investigationMode), aggregated.nodes.length);
+  const compactInvestigationTopology = investigationLayout !== undefined;
   const compactMobileTopology = narrowViewport && !selectedAttackPath &&
     !rollupNavigationActive && compactGroupedTopology;
   const graphLayoutKind = compactMobileTopology ? "dagre" : "dagre-lr";
@@ -1836,7 +1837,7 @@ function GraphPageInner() {
         selectedAttackPath
           ? { rankSep: 72, nodeSep: 40, nodeWidth: 224, nodeHeight: 128, fitAspect: 2.65 }
           : compactInvestigationTopology
-            ? { rankSep: 32, nodeSep: 24, nodeWidth: 260, minSeparation: { width: 260, height: 140, gap: 24 } }
+            ? investigationLayout
           : selectedScenarioId
             ? { rankSep: 48, nodeSep: 12, nodeWidth: 260, minSeparation: { width: 260, height: 140, gap: 12 } }
             : filters.agentName

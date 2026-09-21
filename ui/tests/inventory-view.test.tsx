@@ -148,6 +148,41 @@ beforeEach(() => {
 });
 
 describe("AssetInventoryView inventory projection", () => {
+  it("keeps scoped zero-result filters recoverable within the same snapshot", async () => {
+    vi.mocked(api.getInventorySummary).mockImplementation(async (_scan, filters) =>
+      filters?.search ? summary({ total_assets: 0, by_type: {} }) : summary());
+    vi.mocked(api.getInventoryAssets).mockImplementation(async (options) => options?.search
+      ? page([], { pagination: { total: 0, offset: 0, limit: 100, next_cursor: "", has_more: false, facet_filtered: true } })
+      : page());
+    render(<InventoryProvider scanId={SNAPSHOT} entityTypes={ASSET_KIND_BY_ID.packages.entityTypes}
+      initialFilters={{ search: "no-such-package", provider: "aws" }}>
+      <AssetInventoryView kind="packages" />
+    </InventoryProvider>);
+
+    expect(await screen.findByText(/No packages match/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Inventory filters" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Name, id, type, source…")).toHaveValue("no-such-package");
+    expect(screen.queryByText(/No packages discovered yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/does not establish collection coverage/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    const table = await screen.findByTestId("inventory-table-packages");
+    expect(within(table).getByText("requests")).toBeInTheDocument();
+    expect(api.getInventorySummary).toHaveBeenLastCalledWith(SNAPSHOT, expect.objectContaining({ search: "", provider: "" }));
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({ scanId: SNAPSHOT, type: ["package"] }));
+  });
+
+  it.each(["kind", "index"] as const)("qualifies retained %s results while a filter update is pending", async (view) => {
+    renderPackages(view === "kind" ? <AssetInventoryView kind="packages" /> : <InventoryIndex />);
+    await screen.findByRole("table");
+    vi.mocked(api.getInventorySummary).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(api.getInventoryAssets).mockImplementation(() => new Promise(() => {}));
+    fireEvent.change(screen.getByLabelText("Filter by provider"), { target: { value: "aws" } });
+    const notice = await screen.findByText("Updating results… showing previous results.");
+    expect(notice).toHaveAttribute("role", "status");
+    expect(notice.closest('[aria-busy="true"]')).not.toBeNull();
+    expect(within(screen.getByRole("table")).getByText("requests")).toBeInTheDocument();
+  });
+
   it("renders bounded package rows and their server-authored finding summaries", async () => {
     renderPackages(<AssetInventoryView kind="packages" />);
 

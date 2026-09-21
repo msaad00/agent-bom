@@ -95,8 +95,9 @@ export function InventoryIndex() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={loading}>
       {header}
+      {loading ? <p role="status" className="text-xs text-ink-secondary">Updating results… showing previous results.</p> : null}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-secondary" aria-label="Snapshot summary">
         <span><strong className="text-foreground">{totals.assets.toLocaleString()}</strong> matching recorded assets</span>

@@ -176,6 +176,15 @@ describe("CompliancePage (dense restyle)", () => {
     expect(await screen.findByText("Requested framework is unavailable in this assessment.")).toBeVisible();
   });
 
+  it("labels frameworks without evaluated controls instead of showing a zero pass rate", async () => {
+    render(<CompliancePage />);
+    const table = await screen.findByTestId("compliance-frameworks-table");
+    const row = within(table).getByRole("button", { name: /AISVS OWASP AISVS/ });
+    expect(within(row).getByText("Not evaluated")).toBeVisible();
+    expect(within(row).queryByText("0%")).not.toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Assessment" })).toBeVisible();
+  });
+
   it("opens each benchmark in the detail pane and returns to framework controls", async () => {
     render(<CompliancePage />);
     await screen.findByText("Prompt Injection");

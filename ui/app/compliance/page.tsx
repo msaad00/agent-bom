@@ -49,7 +49,6 @@ import { ComplianceNistCatalog } from "@/components/compliance-nist-catalog";
 import { FrameworkIcon } from "@/components/framework-icon";
 import {
   complianceFrameworkSummaries,
-  compliancePassRate,
   complianceScoredTotals,
   controlMatchesQuery,
   type ComplianceFrameworkSummary,
@@ -443,7 +442,7 @@ function CompliancePageContent() {
     },
     {
       key: "coverage",
-      header: "Coverage",
+      header: "Assessment",
       cell: (f) =>
         f.disabled ? (
           <span className="text-[11px] text-[color:var(--text-tertiary)]">
@@ -456,12 +455,14 @@ function CompliancePageContent() {
           <span className="text-[11px] text-[color:var(--text-tertiary)]">
             {f.applicable ?? 0} of {f.total} applicable
           </span>
+        ) : f.pass + f.warn + f.fail === 0 ? (
+          <span className="text-xs text-[color:var(--text-tertiary)]">Not evaluated</span>
         ) : (
-          <div className="flex items-center gap-2">
-            <CoverageBar pass={f.pass} warn={f.warn} fail={f.fail} total={f.total} />
-            <span className="tabular-nums text-[11px] text-[color:var(--text-tertiary)]">
-              {compliancePassRate(f)}%
+          <div className="flex flex-col gap-1">
+            <span className="tabular-nums text-xs text-[color:var(--text-tertiary)]">
+              {f.pass}/{f.pass + f.warn + f.fail} evaluated pass
             </span>
+            <CoverageBar pass={f.pass} warn={f.warn} fail={f.fail} total={f.pass + f.warn + f.fail} />
           </div>
         ),
     },

@@ -82,6 +82,7 @@ def test_broad_scope_identity_surfaces_without_dangerous_tool():
     broad = [p for p in paths if p.hops == ["agent:a", "id:1"]]
     assert broad, "broad-scope identity path should surface"
     assert "no per-tool scope" in broad[0].summary
+    assert "does not establish request authorization" in broad[0].summary
     # base 40 + broad_identity_scope fusion (+8)
     assert broad[0].composite_risk >= 48
 

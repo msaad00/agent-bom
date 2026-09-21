@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
 from agent_bom.cloud.aws_iam_evaluator import IamDecision, evaluate_identity_policies
@@ -132,12 +133,28 @@ def _normalized_policies_for(principal: UnifiedNode, attached_policies: Sequence
     return normalized
 
 
-def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
+def _validity_instant(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
+
+
+def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = None) -> dict[str, object]:
     """Emit HAS_PERMISSION edges + privilege-escalation signals in place.
 
-    Returns counts of permission edges added and escalation chains found. Never
-    raises into the builder.
+    Source windows are evaluated at ``at`` (UTC now by default). A caller
+    rebuilding historical authority must supply that historical evaluation time.
+    Derived windows retain the witnessed source intervals; existing historical
+    derived edges are not rewritten. Never raises into the builder.
     """
+    moment = at or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        graph.analysis_status[_ANALYZER] = GraphAnalysisStatus(
+            status=GraphAnalysisState.SKIPPED, reason_codes=("invalid_permission_evaluation_time",)
+        )
+        return {"has_permission_edges": 0, "privilege_escalations": 0}
     limits = {"max_principals": _MAX_PRINCIPALS, "max_depth": _MAX_DEPTH, "max_permission_witnesses": _MAX_PERMISSION_WITNESSES}
     input_limited = graph.completeness.truncated or graph.completeness.depth_limited
     principals = [n for n in graph.nodes.values() if n.entity_type in _PRINCIPAL_TYPES]
@@ -183,8 +200,22 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     attached_policy_labels: dict[str, list[str]] = defaultdict(list)
     attached_policy_nodes: dict[str, list[UnifiedNode]] = defaultdict(list)
     admin_by_policy_actions: set[str] = set()
+    validity: dict[str, tuple[datetime, datetime | None]] = {}
+    invalid_validity = 0
+    inactive_edges = 0
+    temporal_relations = {*_ASSUME_RELS, RelationshipType.CAN_ACCESS, RelationshipType.MEMBER_OF, RelationshipType.ATTACHED}
     for edge in graph.edges:
         rel = edge.relationship
+        if rel in temporal_relations:
+            start = _validity_instant(edge.valid_from)
+            end = _validity_instant(edge.valid_to) if edge.valid_to is not None else None
+            if start is None or (edge.valid_to is not None and end is None) or (end is not None and end <= start):
+                invalid_validity += 1
+                continue
+            if edge.activity_id == 3 or moment < start or (end is not None and moment >= end):
+                inactive_edges += 1
+                continue
+            validity[edge.id] = (start, end)
         # Context-only links cannot acquire authority through a derived overlay.
         # Attached policy documents remain available to the policy evaluator;
         # only access, membership and delegation walks require traversability.
@@ -341,6 +372,18 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
         all_resources = direct | via_assume | via_group
         return all_resources, via_assume - direct, via_group - direct - via_assume, set(assumed), proofs
 
+    def witnessed_window(proof: Mapping[str, Any]) -> tuple[str, str | None]:
+        intervals = []
+        for path in proof["paths"]:
+            windows = [validity[edge_id] for edge_id in path["source_edge_ids"]]
+            ends = [end for _start, end in windows if end is not None]
+            intervals.append((max(start for start, _end in windows), min(ends) if ends else None))
+        # Every retained witness contains the evaluation instant. Their union is
+        # therefore contiguous; the chosen bounds cannot bridge an unseen gap.
+        start = min(start for start, _end in intervals)
+        end = None if any(end is None for _start, end in intervals) else max(end for _start, end in intervals if end is not None)
+        return start.isoformat(), end.isoformat() if end is not None else None
+
     edges_added = 0
     escalations = 0
     seen_perm: set[tuple[str, str]] = set()
@@ -357,11 +400,14 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
                 via = "group"
             else:
                 via = "direct"
+            valid_from, valid_to = witnessed_window(proofs[resource_id])
             graph.add_edge(
                 UnifiedEdge(
                     source=principal.id,
                     target=resource_id,
                     relationship=RelationshipType.HAS_PERMISSION,
+                    valid_from=valid_from,
+                    valid_to=valid_to,
                     weight=5.0 if via == "assume_chain" else 2.0,
                     provenance={"source": _OVERLAY_SOURCE},
                     evidence={"access": via, "permission_derivation": proofs[resource_id]},
@@ -396,6 +442,7 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             ("permission_depth_limit", depth_limited),
             ("permission_witness_limit", witness_limited),
             ("incomplete_source_graph", input_limited),
+            ("invalid_permission_validity", invalid_validity > 0),
         )
         if limited
     )
@@ -408,6 +455,8 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             "has_permission_edges": edges_added,
             "privilege_escalations": escalations,
             "admin_principals": len(admin_principals),
+            "inactive_source_edges": inactive_edges,
+            "invalid_source_validity": invalid_validity,
         },
     )
     return {

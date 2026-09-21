@@ -244,6 +244,8 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
         )
 
     for edge in graph.edges:
+        if not edge.traversable:
+            continue
         rel = _rel_value(edge)
         src = graph.nodes.get(edge.source)
         tgt = graph.nodes.get(edge.target)
@@ -283,11 +285,15 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
         ntype = _node_type_value(node)
         if ntype == EntityType.AGENT.value:
             for id_edge in graph.adjacency.get(node.id, []):
+                if not id_edge.traversable:
+                    continue
                 if _rel_value(id_edge) == RelationshipType.AUTHENTICATES_AS.value:
                     identity = graph.nodes.get(id_edge.target)
                     if identity is None:
                         continue
                     for tool_edge in graph.adjacency.get(identity.id, []):
+                        if not tool_edge.traversable:
+                            continue
                         tool = graph.nodes.get(tool_edge.target)
                         if tool is None or _node_type_value(tool) != EntityType.TOOL.value or not _is_dangerous_tool(tool.label):
                             continue
@@ -298,7 +304,7 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             [node.id, identity.id, tool.id],
                             ["authenticates_as", _rel_value(tool_edge)],
                             48.0,
-                            f"{node.label} can reach high-capability tool {tool.label} through identity {identity.label}.",
+                            f"{node.label} has recorded scope for high-capability tool {tool.label} through identity {identity.label}.",
                         )
                     # Broad-scope identity: standing access with no per-tool scope.
                     # This is a posture risk on its own — no vulnerability or
@@ -312,14 +318,16 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             [node.id, identity.id],
                             ["authenticates_as"],
                             40.0,
-                            f"{node.label} authenticates as {identity.label}, an identity with no per-tool scope — "
-                            "it holds standing access to every tool it can reach.",
+                            f"{node.label} is registered to {identity.label}, an identity with no per-tool scope; "
+                            "this binding does not establish request authorization or successful tool execution.",
                         )
                 elif _rel_value(id_edge) == RelationshipType.EXHIBITS_DRIFT.value:
                     incident = graph.nodes.get(id_edge.target)
                     if incident is None:
                         continue
                     for tool_edge in graph.adjacency.get(incident.id, []):
+                        if not tool_edge.traversable:
+                            continue
                         tool = graph.nodes.get(tool_edge.target)
                         if tool is None or _node_type_value(tool) != EntityType.TOOL.value:
                             continue

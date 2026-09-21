@@ -1,6 +1,7 @@
 """Derived permissions retain ordered source witnesses without inventing grants."""
 
 import os
+from datetime import datetime, timezone
 
 import pytest
 
@@ -160,3 +161,76 @@ def test_source_grants_and_overlapping_transfer_types_are_not_reassigned(reverse
         source = next(e for e in graph.edges if e.id == row["grant_edge_id"])
         assert source.evidence["authorization_decisions"] == [receipt]
         assert row["grant_principal_id"] == "group:g"
+
+
+@pytest.mark.parametrize("relation", [RelationshipType.CAN_ACCESS, RelationshipType.ASSUMES, RelationshipType.MEMBER_OF])
+@pytest.mark.parametrize("start,end", [("2026-01-01T00:00:00Z", "2026-09-01T00:00:00Z"), ("2026-10-01T00:00:00Z", None), ("invalid", None)])
+def test_inactive_source_authority_never_yields_current_permission(relation, start, end):
+    g = UnifiedGraph(scan_id="time-qualified")
+    for node_id, kind in [("user:a", EntityType.USER), ("group:g", EntityType.GROUP), ("data:x", EntityType.DATA_STORE)]:
+        g.add_node(UnifiedNode(id=node_id, entity_type=kind, label=node_id))
+    if relation is RelationshipType.CAN_ACCESS:
+        _edge(g, "user:a", "data:x", relation, valid_from=start, valid_to=end)
+    else:
+        _edge(g, "user:a", "group:g", relation, valid_from=start, valid_to=end)
+        _edge(g, "group:g", "data:x", RelationshipType.CAN_ACCESS, valid_from="2026-01-01T00:00:00Z")
+    apply_effective_permissions(g, at=datetime(2026, 9, 20, tzinfo=timezone.utc))
+    assert not any(e.source == "user:a" and e.relationship is RelationshipType.HAS_PERMISSION for e in g.edges)
+    if start == "invalid":
+        assert "invalid_permission_validity" in g.analysis_status["effective_permissions"].reason_codes
+
+
+def test_derived_permission_preserves_intersection_of_witness_validity(tmp_path):
+    g = UnifiedGraph(scan_id="time-window", tenant_id="tenant-a")
+    for node_id, kind in [("user:a", EntityType.USER), ("group:g", EntityType.GROUP), ("data:x", EntityType.DATA_STORE)]:
+        g.add_node(UnifiedNode(id=node_id, entity_type=kind, label=node_id))
+    _edge(g, "user:a", "group:g", RelationshipType.MEMBER_OF, valid_from="2026-09-01T00:00:00Z", valid_to="2026-10-01T00:00:00Z")
+    _edge(g, "group:g", "data:x", RelationshipType.CAN_ACCESS, valid_from="2026-09-10T00:00:00Z", valid_to="2026-11-01T00:00:00Z")
+    apply_effective_permissions(g, at=datetime(2026, 9, 20, tzinfo=timezone.utc))
+    edge = _permission(g, "user:a", "data:x")
+    assert edge.valid_from == "2026-09-10T00:00:00+00:00"
+    assert edge.valid_to == "2026-10-01T00:00:00+00:00"
+    store = SQLiteGraphStore(tmp_path / "window.db")
+    store.save_graph(g)
+    restored = SQLiteGraphStore(tmp_path / "window.db").load_graph(scan_id="time-window", tenant_id="tenant-a")
+    assert _permission(restored, "user:a", "data:x").valid_to == edge.valid_to
+
+
+@pytest.mark.parametrize(
+    "at,activity_id,expected",
+    [
+        (datetime(2026, 8, 15, tzinfo=timezone.utc), 1, True),
+        (datetime(2026, 9, 1, tzinfo=timezone.utc), 1, False),
+        (datetime(2026, 9, 20, tzinfo=timezone.utc), 1, False),
+        (datetime(2026, 8, 15, tzinfo=timezone.utc), 3, False),
+    ],
+)
+def test_permission_evaluation_uses_requested_time_and_excludes_deleted_source(at, activity_id, expected):
+    graph = UnifiedGraph(scan_id="historical")
+    graph.add_node(UnifiedNode(id="user:a", entity_type=EntityType.USER, label="User"))
+    graph.add_node(UnifiedNode(id="data:x", entity_type=EntityType.DATA_STORE, label="Data"))
+    _edge(
+        graph,
+        "user:a",
+        "data:x",
+        RelationshipType.CAN_ACCESS,
+        valid_from="2026-08-01T00:00:00Z",
+        valid_to="2026-09-01T00:00:00Z",
+        activity_id=activity_id,
+    )
+    apply_effective_permissions(graph, at=at)
+    assert any(e.relationship is RelationshipType.HAS_PERMISSION for e in graph.edges) is expected
+
+
+def test_alternate_permission_witnesses_preserve_union_of_overlapping_windows():
+    graph = UnifiedGraph(scan_id="alternate-window")
+    for node_id, kind in [("user:a", EntityType.USER), ("role:r", EntityType.ROLE), ("data:x", EntityType.DATA_STORE)]:
+        graph.add_node(UnifiedNode(id=node_id, entity_type=kind, label=node_id))
+    _edge(graph, "user:a", "data:x", RelationshipType.CAN_ACCESS, valid_from="2026-09-01T00:00:00Z", valid_to="2026-10-01T00:00:00Z")
+    _edge(graph, "user:a", "role:r", RelationshipType.ASSUMES, valid_from="2026-09-10T00:00:00Z", valid_to="2026-11-01T00:00:00Z")
+    _edge(graph, "role:r", "data:x", RelationshipType.CAN_ACCESS, valid_from="2026-09-05T00:00:00Z", valid_to="2026-12-01T00:00:00Z")
+    apply_effective_permissions(graph, at=datetime(2026, 9, 20, tzinfo=timezone.utc))
+    permission = _permission(graph, "user:a", "data:x")
+    assert permission.valid_from == "2026-09-01T00:00:00+00:00"
+    assert permission.valid_to == "2026-11-01T00:00:00+00:00"
+    assert len(permission.evidence["permission_derivation"]["paths"]) == 2

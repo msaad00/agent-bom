@@ -9,15 +9,20 @@ in the graph, so attack-path traversal can run:
     agent → managed_identity → access_grant → tool → vulnerable package
     agent ↔ drift_incident → tool
 
-Matching to existing agent/tool nodes is by label (agent name / tool name); a
-governance node with no match is still added so it is visible, just unlinked.
+Agent bindings prefer an exact graph node ID, then an unambiguous agent label.
+They describe registered identity scope, not an observed authenticated session.
+Tool scopes remain context-only when conditional policy evidence is incomplete
+or denies access. Unmatched governance nodes remain visible and unlinked.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any
 
+from agent_bom.api.agent_identity_store import AccessContext, evaluate_conditional_access
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -87,6 +92,15 @@ def apply_governance_overlay(
     tools_by_label = _label_index(graph, EntityType.TOOL)
     added_nodes = 0
     added_edges = 0
+    moment = datetime.now(timezone.utc)
+    reasons: set[str] = set()
+    try:
+        policies = identity_store.list_conditional_policies(tenant_id, include_disabled=False, limit=500)
+        if len(policies) >= 500:
+            reasons.add("conditional_policy_limit")
+    except Exception:  # noqa: BLE001
+        policies = []
+        reasons.add("conditional_policies_unavailable")
 
     def add_node(node: UnifiedNode) -> None:
         nonlocal added_nodes
@@ -103,27 +117,74 @@ def apply_governance_overlay(
         for tool_id in tools_by_label.get(tool_name.strip().lower(), []):
             add_edge(_gedge(source_id, tool_id, rel, **kw))
 
+    def scoped_tool(source_id: str, tool_name: str, identity: Any, **kw: Any) -> None:
+        ctx = AccessContext(identity_id=identity.identity_id, agent_id=identity.agent_id, tool_name=tool_name, at=moment)
+        applicable = [p for p in policies if p.status == "active" and p.applies_to(ctx)]
+        condition_fields = (
+            "allowed_environments",
+            "allowed_hours_utc",
+            "allowed_weekdays",
+            "allowed_source_cidrs",
+            "allowed_devices",
+            "allowed_groups",
+            "allowed_clients",
+            "require_device_managed",
+            "require_device_compliant",
+            "require_device_disk_encrypted",
+        )
+        conditional = [p for p in applicable if any(getattr(p, field, None) for field in condition_fields)]
+        unconditional = [p for p in applicable if p not in conditional]
+        allowed, _reason, policy_id = evaluate_conditional_access(unconditional, ctx)
+        state = "recorded_scope"
+        if not allowed:
+            state = "explicit_deny"
+            reasons.add("explicit_policy_denies")
+        elif conditional:
+            state = "context_required"
+            reasons.add("conditional_access_context_required")
+        elif {"conditional_policies_unavailable", "conditional_policy_limit"} & reasons:
+            state = "policy_evidence_unavailable"
+        evidence = {**kw.pop("evidence", {}), "authorization_state": state}
+        if policy_id:
+            evidence["policy_ids"] = [policy_id]
+        elif conditional:
+            evidence["policy_ids"] = sorted(p.policy_id for p in conditional)
+            evidence["required_context"] = sorted({field for p in conditional for field in condition_fields if getattr(p, field, None)})
+        link_tool(source_id, tool_name, RelationshipType.SCOPED_TO, traversable=state == "recorded_scope", evidence=evidence, **kw)
+
     # ── Managed identities (+ standing per-tool scope) ──
     identity_node_by_id: dict[str, str] = {}
+    live_identities: dict[str, Any] = {}
     try:
         identities = identity_store.list(tenant_id, include_inactive=False, limit=500)
+        if len(identities) >= 500:
+            reasons.add("identity_limit")
     except Exception:  # noqa: BLE001
         identities = []
+        reasons.add("identities_unavailable")
     for identity in identities:
         nid = f"managed_identity:{identity.identity_id}"
         identity_node_by_id[identity.identity_id] = nid
+        try:
+            live = identity.is_live(at=moment)
+        except (TypeError, ValueError):
+            live = False
+            reasons.add("invalid_identity_validity")
+        if live:
+            live_identities[identity.identity_id] = identity
         add_node(
             _gnode(
                 nid,
                 EntityType.MANAGED_IDENTITY,
                 identity.agent_id or identity.identity_id,
-                status=NodeStatus.ACTIVE if identity.status == "active" else NodeStatus.INACTIVE,
+                status=NodeStatus.ACTIVE if live else NodeStatus.INACTIVE,
                 attributes={
                     "identity_id": identity.identity_id,
                     "agent_id": identity.agent_id,
                     "role": identity.role,
                     "status": identity.status,
                     "expires_at": identity.expires_at,
+                    "is_live": live,
                     "allowed_tools": list(identity.allowed_tools),
                     "scope_bound": bool(identity.allowed_tools),
                     # Surface the accountability + usage fields the NHI governance
@@ -136,17 +197,40 @@ def apply_governance_overlay(
                 },
             )
         )
-        for agent_id in agents_by_label.get((identity.agent_id or "").strip().lower(), []):
-            add_edge(_gedge(agent_id, nid, RelationshipType.AUTHENTICATES_AS))
+        if not live:
+            reasons.add("inactive_identity")
+            continue
+        exact_agent = graph.nodes.get(identity.agent_id)
+        exact_match = exact_agent is not None and exact_agent.entity_type == EntityType.AGENT
+        matches = [identity.agent_id] if exact_match else agents_by_label.get((identity.agent_id or "").strip().lower(), [])
+        if len(matches) == 1:
+            add_edge(
+                _gedge(
+                    matches[0],
+                    nid,
+                    RelationshipType.AUTHENTICATES_AS,
+                    valid_from=identity.issued_at,
+                    valid_to=identity.expires_at or None,
+                    evidence={
+                        "identity_match_basis": "exact_node_id" if exact_match else "unique_agent_label",
+                        "runtime_observed_state": "not_observed",
+                    },
+                )
+            )
+        elif len(matches) > 1:
+            reasons.add("ambiguous_agent_identity")
         for tool_name in identity.allowed_tools:
             if tool_name != "*":
-                link_tool(nid, tool_name, RelationshipType.SCOPED_TO, weight=3.0)
+                scoped_tool(nid, tool_name, identity, weight=3.0, valid_from=identity.issued_at, valid_to=identity.expires_at or None)
 
     # ── JIT grants (time-bound access to a tool) ──
     try:
         grants = identity_store.list_jit_grants(tenant_id, include_inactive=False, limit=500)
+        if len(grants) >= 500:
+            reasons.add("jit_grant_limit")
     except Exception:  # noqa: BLE001
         grants = []
+        reasons.add("jit_grants_unavailable")
     for grant in grants:
         if grant.status != "active":
             continue
@@ -168,12 +252,16 @@ def apply_governance_overlay(
             )
         )
         identity_node = identity_node_by_id.get(grant.identity_id)
-        if identity_node:
-            add_edge(_gedge(identity_node, gid, RelationshipType.ATTACHED))
-        link_tool(
+        identity = live_identities.get(grant.identity_id)
+        if identity_node and identity:
+            add_edge(_gedge(identity_node, gid, RelationshipType.ATTACHED, valid_from=grant.starts_at, valid_to=grant.expires_at))
+        else:
+            reasons.add("jit_identity_unavailable")
+            continue
+        scoped_tool(
             gid,
             grant.tool_name,
-            RelationshipType.SCOPED_TO,
+            identity,
             weight=4.0,
             valid_from=grant.starts_at,
             valid_to=grant.expires_at,
@@ -181,10 +269,6 @@ def apply_governance_overlay(
         )
 
     # ── Conditional-access policies ──
-    try:
-        policies = identity_store.list_conditional_policies(tenant_id, include_disabled=False, limit=500)
-    except Exception:  # noqa: BLE001
-        policies = []
     for policy in policies:
         pid = f"access_policy:{policy.policy_id}"
         add_node(
@@ -290,4 +374,15 @@ def apply_governance_overlay(
             if tool_name:
                 link_tool(did, tool_name, RelationshipType.SCOPED_TO, weight=4.0, evidence={"kind": "drift_violation"})
 
+    graph.analysis_status["governance_overlay"] = GraphAnalysisStatus(
+        status=GraphAnalysisState.LIMITED if reasons else GraphAnalysisState.COMPLETE,
+        reason_codes=tuple(sorted(reasons)),
+        limits={"max_identities": 500, "max_jit_grants": 500, "max_conditional_policies": 500},
+        observed={
+            "identities": len(identities),
+            "live_identities": len(live_identities),
+            "jit_grants": len(grants),
+            "conditional_policies": len(policies),
+        },
+    )
     return {"nodes_added": added_nodes, "edges_added": added_edges}

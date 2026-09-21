@@ -4,7 +4,8 @@
 # The ONLY per-cloud difference: the ABOM_READONLY role + its read-only grants
 # (IMPORTED PRIVILEGES on the SNOWFLAKE db, MONITOR USAGE on account, USAGE on a
 # warehouse) and a key-pair scanner user. No password is ever set; no write
-# privilege is granted. The connector runs only SELECT/SHOW over ACCOUNT_USAGE.
+# privilege is granted. The connector reads metadata with SELECT and SHOW;
+# object-specific visibility remains scoped to the scanner role’s grants.
 
 # ABOM_READONLY — the single read-only role.
 resource "snowflake_account_role" "readonly" {
@@ -23,7 +24,7 @@ resource "snowflake_grant_privileges_to_account_role" "imported_privileges" {
   }
 }
 
-# MONITOR USAGE ON ACCOUNT — powers SHOW-based discovery (tasks, streams, …).
+# MONITOR USAGE ON ACCOUNT — account usage visibility, not universal SHOW access.
 resource "snowflake_grant_privileges_to_account_role" "monitor_account" {
   account_role_name = snowflake_account_role.readonly.name
   privileges        = ["MONITOR USAGE"]

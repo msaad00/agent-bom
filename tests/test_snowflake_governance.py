@@ -185,7 +185,7 @@ class TestAccessHistory:
         assert records[0].role_name == "ANALYST"
         assert records[0].base_objects == ["DB.SCHEMA.USERS"]
         assert "EMAIL" in records[0].columns
-        assert records[0].operation == "SELECT"
+        assert records[0].operation == "READ"
         assert records[0].is_write is False
         assert warnings == []
 
@@ -214,7 +214,7 @@ class TestAccessHistory:
         assert records[0].role_name == ""
         assert warnings == []
 
-    def test_mine_access_history_write_operation(self):
+    def test_mine_access_history_does_not_infer_sql_verb_from_column_lineage(self):
         from agent_bom.cloud.snowflake import _mine_access_history
 
         conn = _make_mock_conn()
@@ -246,8 +246,10 @@ class TestAccessHistory:
 
         records, _ = _mine_access_history(conn, 30)
         assert len(records) == 1
-        assert records[0].operation == "UPDATE"
-        assert records[0].is_write is True
+        # Unsupported metadata cannot promote a direct read observation to a
+        # write; write evidence must come from objects_modified.
+        assert records[0].operation == "READ"
+        assert records[0].is_write is False
 
     def test_mine_access_history_write_from_objects_modified(self):
         """Writes surface in objects_modified, not direct_objects_accessed."""
@@ -936,32 +938,6 @@ class TestHelpers:
         from agent_bom.cloud.snowflake import _parse_json_field
 
         assert _parse_json_field("not json") == []
-
-    def test_infer_operation_select(self):
-        from agent_bom.cloud.snowflake import _infer_operation
-
-        obj = {"columns": [{"columnName": "ID", "directSources": [{"type": "SELECT"}]}]}
-        assert _infer_operation(obj) == "SELECT"
-
-    def test_infer_operation_insert(self):
-        from agent_bom.cloud.snowflake import _infer_operation
-
-        obj = {"columns": [{"columnName": "ID", "directSources": [{"type": "INSERT"}]}]}
-        assert _infer_operation(obj) == "INSERT"
-
-    def test_infer_operation_no_columns(self):
-        from agent_bom.cloud.snowflake import _infer_operation
-
-        assert _infer_operation({}) == "SELECT"
-
-    def test_is_write_operation(self):
-        from agent_bom.cloud.snowflake import _is_write_operation
-
-        write_obj = {"columns": [{"columnName": "X", "directSources": [{"type": "DELETE"}]}]}
-        read_obj = {"columns": [{"columnName": "X", "directSources": [{"type": "SELECT"}]}]}
-
-        assert _is_write_operation(write_obj) is True
-        assert _is_write_operation(read_obj) is False
 
 
 # ─── Governance edge-case tests ──────────────────────────────────────────────

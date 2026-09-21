@@ -22,7 +22,35 @@ def merge_edge_evidence(stored: dict[str, Any], incoming: dict[str, Any]) -> boo
     changed = False
     decisions: dict[str, dict[str, Any]] = {}
     grants: dict[str, dict[str, Any]] = {}
+    accesses: dict[str, dict[str, Any]] = {}
     for evidence in (stored, incoming):
+        access_records = evidence.get("access_receipts")
+        if access_records is None and evidence.get("source") == "snowflake-governance" and isinstance(evidence.get("operation"), str):
+            access_records = [
+                {
+                    key: evidence[key]
+                    for key in (
+                        "source",
+                        "account",
+                        "query_id",
+                        "user_name",
+                        "role_name",
+                        "query_start",
+                        "object_name",
+                        "object_type",
+                        "operation",
+                        "is_write",
+                        "columns",
+                        "base_objects",
+                        "source_field",
+                    )
+                    if key in evidence
+                }
+            ]
+        if isinstance(access_records, list):
+            for record in access_records:
+                if isinstance(record, dict):
+                    accesses[json.dumps(record, sort_keys=True, default=str)] = deepcopy(record)
         native_grants = evidence.get("grant_receipts")
         if native_grants is None and evidence.get("source") == "snowflake-objects" and isinstance(evidence.get("privilege"), str):
             native_grants = [
@@ -92,6 +120,18 @@ def merge_edge_evidence(stored: dict[str, Any], incoming: dict[str, Any]) -> boo
         if len(grant_privileges) > 1:
             if "privilege" in stored:
                 stored.pop("privilege")
+                changed = True
+    if accesses:
+        records = [accesses[key] for key in sorted(accesses)]
+        if stored.get("access_receipts") != records:
+            stored["access_receipts"] = records
+            changed = True
+        # No representative query/role/action may stand in for different source
+        # observations. Missing legacy fields remain unknown, not backfilled.
+        for key in ("operation", "is_write", "role_name", "query_id", "query_start", "source_field", "account"):
+            values = {json.dumps(record.get(key), sort_keys=True, default=str) for record in records}
+            if key in stored and (len(values) != 1 or json.dumps(stored[key], sort_keys=True, default=str) not in values):
+                stored.pop(key)
                 changed = True
     return changed
 

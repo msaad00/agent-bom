@@ -20,7 +20,7 @@ from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam
 from agent_bom.constants import is_credential_key as _is_credential_key
 from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
 from agent_bom.graph.container import UnifiedGraph
-from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.severity import SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, RelationshipType
@@ -4037,8 +4037,8 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
       ``ACCESSED`` the object's ``DATA_STORE`` node. The data-store id matches the
       scheme the object/exfil layers emit (``data_store:snowflake:{fqn}``), so the
       edge lands on the existing object node rather than a duplicate. Records are
-      collapsed per ``(user, object, write?)`` so a year of reads becomes a handful
-      of edges, not thousands.
+      collapsed per ``(user, object)`` with distinct query/action/role receipts.
+      Historical observations do not establish current permission or row impact.
     - **CORTEX_AGENT_USAGE_HISTORY** → one ``AGENT`` node per distinct agent name,
       ``OWNS``-attached to the account, carrying aggregate telemetry (calls, tokens,
       credits) as attributes — not one node per call.
@@ -4069,7 +4069,7 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
 
     # ── ACCESS_HISTORY: user ACCESSED data store (collapsed per user+object) ──
     seen_users: set[str] = set()
-    seen_access: set[tuple[str, str, bool]] = set()
+    access_records_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
 
     def _ensure_user(name: str) -> str:
         node_id = f"user:snowflake:{name}"
@@ -4095,11 +4095,14 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
         object_name = _clean_graph_part(rec.get("object_name"))
         if not user_name or not object_name:
             continue
-        is_write = bool(rec.get("is_write"))
-        key = (user_name, object_name, is_write)
-        if key in seen_access:
-            continue
-        seen_access.add(key)
+        receipt: dict[str, Any] = {"source": "snowflake-governance", "account": account}
+        for field_name in ("query_id", "user_name", "role_name", "query_start", "object_name", "object_type", "operation", "source_field"):
+            receipt[field_name] = _clean_graph_part(rec.get(field_name))
+        receipt["is_write"] = rec.get("is_write") if isinstance(rec.get("is_write"), bool) else None
+        for field_name in ("columns", "base_objects"):
+            values = rec.get(field_name)
+            receipt[field_name] = sorted({value for value in values if isinstance(value, str)}) if isinstance(values, list) else []
+        access_records_by_pair[(user_name, object_name)].append(receipt)
         object_node_id = f"data_store:snowflake:{object_name}"
         if object_node_id not in graph.nodes:
             # Thin object node — the object/exfil layers, if also run, own the
@@ -4126,18 +4129,17 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
                     object_node_id,
                     evidence={"source": "snowflake-governance"},
                 )
-        _add_rel_edge(
-            graph,
-            _ensure_user(user_name),
-            object_node_id,
-            RelationshipType.ACCESSED,
-            {
-                "source": "snowflake-governance",
-                "operation": _clean_graph_part(rec.get("operation")),
-                "is_write": is_write,
-                "role_name": _clean_graph_part(rec.get("role_name")),
-            },
-        )
+    for (user_name, object_name), receipts in access_records_by_pair.items():
+        evidence: dict[str, Any] = {
+            "source": "snowflake-governance",
+            "evidence_kind": "historical_access",
+            "authorization_state": "not_evaluated",
+            "data_impact_state": "unknown",
+        }
+        # Aggregate once per edge rather than repeatedly merging its growing
+        # history. Keep whole records so different queries/roles cannot combine.
+        merge_edge_evidence(evidence, {"access_receipts": receipts})
+        _add_rel_edge(graph, _ensure_user(user_name), f"data_store:snowflake:{object_name}", RelationshipType.ACCESSED, evidence)
 
     # ── CORTEX_AGENT_USAGE_HISTORY: one AGENT node per name, aggregated ──────
     agent_aggregate: dict[str, dict[str, Any]] = {}

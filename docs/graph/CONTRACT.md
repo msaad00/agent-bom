@@ -216,6 +216,22 @@ agent-bom's graph is a static analytical artifact derived from inventory plus ca
 
 ---
 
+### Snowflake historical access receipts
+
+Snowflake ACCESS_HISTORY observations collapse into one `ACCESSED` edge per user
+and object while retaining distinct `access_receipts`. Each receipt keeps its
+query ID/time, recorded query role (empty when unavailable), account, object,
+columns, base objects and source array. A query that reads and writes the same
+object retains both observations. `READ` and `WRITE` describe the source arrays;
+they do not infer a SELECT/INSERT/UPDATE statement, current permission, or rows
+changed. See [Snowflake ACCESS_HISTORY](https://docs.snowflake.com/en/sql-reference/account-usage/access_history).
+
+Graph JSON and persisted edge evidence retain these records without combining
+one query's role with another query's action. Historical access does not establish
+an exact agent/session binding or current authorization; data impact remains
+unknown. Collection is bounded by the configured lookback and the collector's
+1,000-query limit, and source visibility/latency still apply.
+
 ## 3. Scaling boundaries
 
 The graph renderer ships deterministic focused and expanded modes. Operators can override per-tenant; defaults match the table below.

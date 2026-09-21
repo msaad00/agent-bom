@@ -1396,15 +1396,13 @@ def _mine_access_history(
             objects_modified = _parse_json_field(row_dict.get("objects_modified", "[]"))
 
             base_names = [b.get("objectName", "") for b in base_objects if b.get("objectName")]
-            # Tables written by this query — writes surface in objects_modified,
-            # not direct_objects_accessed (which captures reads).
-            modified_names = {m.get("objectName", "") for m in objects_modified if m.get("objectName")}
 
             for obj in direct_objects:
                 obj_name = obj.get("objectName", "")
                 obj_type = obj.get("objectDomain", "")
                 col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
-                is_write = obj_name in modified_names or _is_write_operation(obj)
+                if not obj_name:
+                    continue
 
                 records.append(
                     AccessRecord(
@@ -1415,18 +1413,19 @@ def _mine_access_history(
                         object_name=obj_name,
                         object_type=obj_type,
                         columns=col_list,
-                        operation=_infer_operation(obj),
-                        is_write=is_write,
+                        operation="READ",
+                        is_write=False,
                         base_objects=base_names,
+                        source_field="direct_objects_accessed",
                     )
                 )
 
-            # Surface write targets that only appear in objects_modified (e.g. an
-            # INSERT/COPY into a table not present in direct_objects_accessed).
-            direct_names = {o.get("objectName", "") for o in direct_objects}
+            # A query can read and write the same object. Keep those observations
+            # separate, including their distinct column lists. These arrays do
+            # not establish the SQL verb, rows changed, or current authorization.
             for obj in objects_modified:
                 obj_name = obj.get("objectName", "")
-                if not obj_name or obj_name in direct_names:
+                if not obj_name:
                     continue
                 col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
                 records.append(
@@ -1441,6 +1440,7 @@ def _mine_access_history(
                         operation="WRITE",
                         is_write=True,
                         base_objects=base_names,
+                        source_field="objects_modified",
                     )
                 )
 
@@ -1954,28 +1954,6 @@ def _parse_json_object(value: Any) -> dict:
         except (json.JSONDecodeError, TypeError):
             return {}
     return {}
-
-
-def _infer_operation(obj: dict) -> str:
-    """Infer the SQL operation from an ACCESS_HISTORY direct_objects_accessed entry."""
-    # Snowflake ACCESS_HISTORY may include objectDomain and columns with DML type
-    columns = obj.get("columns", [])
-    if not columns:
-        return "SELECT"
-    # Check if any column access indicates a write
-    for col in columns:
-        dml_types = col.get("directSources", [])
-        for src in dml_types:
-            op = src.get("type", "").upper()
-            if op in ("INSERT", "UPDATE", "DELETE", "MERGE", "COPY"):
-                return op
-    return "SELECT"
-
-
-def _is_write_operation(obj: dict) -> bool:
-    """Check if an ACCESS_HISTORY object was written to."""
-    op = _infer_operation(obj)
-    return op in ("INSERT", "UPDATE", "DELETE", "MERGE", "COPY")
 
 
 # ---------------------------------------------------------------------------

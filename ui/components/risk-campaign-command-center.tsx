@@ -39,6 +39,12 @@ const VERIFICATION_LABELS: Record<RiskCampaign["verification_status"], string> =
   failed: "Verification failed",
 };
 
+function verificationSummary(result: RiskCampaignVerificationResult): string {
+  if (result.remaining_count === 0) return "No matching findings remain in the current window.";
+  const count = result.remaining_count;
+  return `${count} matching finding${count === 1 ? " remains" : "s remain"} · ${result.original_member_count} findings in the verification baseline.`;
+}
+
 function formatDate(value: string | null): string {
   if (!value) return "No SLA assigned";
   const date = new Date(value);
@@ -239,7 +245,7 @@ function CampaignCard({
         updated_at: result.verified_at,
       });
     } catch (error: unknown) {
-      setVersionConflict(error instanceof ApiConflictError);
+      setVersionConflict(error instanceof ApiConflictError && error.details?.outcome !== "unavailable_evidence");
       setActionError(error instanceof Error ? error.message : "Campaign verification failed");
     } finally {
       setBusy(false);
@@ -403,9 +409,7 @@ function CampaignCard({
       {verificationResult ? (
         <div role="status" className="risk-campaign-verification-result">
           <strong className="text-[color:var(--foreground)]">
-            {verificationResult.remaining_count === 0
-              ? "No original findings remain."
-              : `${verificationResult.remaining_count} of ${verificationResult.original_member_count} original findings remain.`}
+            {verificationSummary(verificationResult)}
           </strong>{" "}
           Evidence: {verificationResult.evidence_scope.source.replaceAll("_", " ")}, complete {verificationResult.evidence_scope.finding_window_days}-day window.
         </div>
@@ -425,6 +429,7 @@ function VerificationQueue() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [verificationError, setVerificationError] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [retryCursor, setRetryCursor] = useState<string | null>(null);
@@ -461,12 +466,12 @@ function VerificationQueue() {
 
   const verify = useCallback(async (entry: RiskCampaignVerificationQueueEntry) => {
     setBusyId(entry.campaign_id);
-    setError("");
+    setVerificationError("");
     setSuccessMessage("");
     try {
       const result = await api.verifyRiskCampaign(entry.campaign_id, { version: entry.version });
       if (result.verification_status === "verified") {
-        setSuccessMessage(`${entry.title} verified: no original findings remain in the complete canonical evidence window.`);
+        setSuccessMessage(`${entry.title} verified: no matching findings remain in the complete canonical evidence window.`);
         setEntries((current) => current.filter((item) => item.campaign_id !== entry.campaign_id));
         setResults((current) => {
           const next = { ...current };
@@ -486,7 +491,7 @@ function VerificationQueue() {
         setResults((current) => ({ ...current, [entry.campaign_id]: result }));
       }
     } catch (verifyError: unknown) {
-      setError(verifyError instanceof Error ? verifyError.message : "Campaign verification failed");
+      setVerificationError(verifyError instanceof Error ? verifyError.message : "Campaign verification failed");
     } finally {
       setBusyId(null);
     }
@@ -509,9 +514,10 @@ function VerificationQueue() {
         ) : <span className="risk-collapsed-label">show</span>}
       </summary>
       <div className="risk-queue-body">
-      <p className="risk-helper-copy">Inactive campaigns stay here until canonical evidence confirms the original findings are gone.</p>
+      <p className="risk-helper-copy">Inactive campaigns stay here while remediation evidence is unverified. Findings disappearing from a time window does not prove a fix.</p>
       {loading ? <p role="status" className="risk-empty-copy">Loading verification queue…</p> : null}
       {error ? <p role="alert" className="risk-error-copy">{error}</p> : null}
+      {verificationError ? <p role="alert" className="risk-error-copy">{verificationError}</p> : null}
       {successMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--status-success)]">{successMessage}</p> : null}
       {!loading && entries.length === 0 && !error ? (
         <p className="risk-empty-copy">No inactive campaigns await re-verification.</p>
@@ -542,7 +548,7 @@ function VerificationQueue() {
                 </div>
                 {result ? (
                   <p role="status" className="mt-2 text-xs text-[color:var(--status-warn)]">
-                    {result.remaining_count} of {result.original_member_count} original findings remain · canonical findings spine, complete {result.evidence_scope.finding_window_days}-day window.
+                    {verificationSummary(result)} Canonical findings spine, complete {result.evidence_scope.finding_window_days}-day window.
                   </p>
                 ) : null}
               </article>

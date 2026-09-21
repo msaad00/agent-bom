@@ -141,17 +141,12 @@ async function routeRemediation(page: Page) {
     }],
     count: 1, has_more: false, next_cursor: null, limit: 25,
   } }));
-  await page.route("**/v1/campaigns/campaign-retired/verify", (route) => route.fulfill({ json: {
-    schema_version: "risk-campaign-verification.v1",
-    campaign_id: "campaign-retired",
-    verification_status: "verified",
-    state: "done",
-    remaining_finding_ids: [],
-    remaining_count: 0,
-    original_member_count: 2,
-    evidence_scope: { source: "canonical_findings_spine", finding_window_days: 90, finding_limit: 1000, membership_complete: true },
-    version: 8,
-    verified_at: "2026-07-17T13:00:00Z",
+  await page.route("**/v1/campaigns/campaign-retired/verify", (route) => route.fulfill({ status: 409, json: {
+    detail: {
+      outcome: "unavailable_evidence",
+      retry_state: "awaiting_fresh_scope_evidence",
+      message: "No matching findings remain in the current window, but fresh collection evidence for the original target scope is unavailable. Access revocation and alternate graph paths have not been verified. Complete a same-scope rescan and inspect remaining paths. Workflow state is unchanged.",
+    },
   } }));
   await page.route("**/v1/campaigns", (route) => route.fulfill({ json: {
     schema_version: "risk-campaigns.v1",
@@ -167,42 +162,42 @@ async function routeRemediation(page: Page) {
   } }));
 }
 
-test("remediation compact rows disclose detail and durable re-verification", async ({ page }) => {
-  await routeRemediation(page);
-  await page.goto("/remediation");
-  await page.getByText("Campaign workflow and verification", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Risk campaigns" })).toBeVisible();
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`remediation preserves unverified evidence at ${width}px in ${theme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      await routeRemediation(page);
+      await page.goto("/remediation");
+      await page.getByText("Campaign workflow and verification", { exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Risk campaigns" })).toBeVisible();
 
-  const campaignSummary = page.getByText(campaign.title, { exact: true });
-  await expect(campaignSummary).toBeVisible();
-  const priorityDisclosure = page.getByRole("button", { name: /Why this priority/i });
-  await expect(priorityDisclosure).toBeVisible();
-  await expect(priorityDisclosure).toHaveAttribute("aria-expanded", "false");
-  await priorityDisclosure.click();
-  await expect(page.getByText("Observed priority evidence", { exact: true })).toBeVisible();
+      const campaignSummary = page.getByText(campaign.title, { exact: true });
+      await expect(campaignSummary).toBeVisible();
+      const priorityDisclosure = page.getByRole("button", { name: /Why this priority/i });
+      await expect(priorityDisclosure).toBeVisible();
+      await expect(priorityDisclosure).toHaveAttribute("aria-expanded", "false");
+      await priorityDisclosure.click();
+      await expect(page.getByText("Observed priority evidence", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Details", exact: true }).click();
-  await expect(page.getByText("Patch the package, then regenerate evidence.", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Details", exact: true }).click();
+      await expect(page.getByText("Patch the package, then regenerate evidence.", { exact: true })).toBeVisible();
 
-  const verifyRequest = page.waitForRequest((request) =>
-    request.url().endsWith("/v1/campaigns/campaign-retired/verify") && request.method() === "POST",
-  );
-  await page.getByRole("button", { name: "Re-verify Retired synthetic campaign" }).click();
-  await verifyRequest;
-  await expect(page.getByText("0 waiting", { exact: true })).toBeVisible();
-  await expect(page.getByText("Retired synthetic campaign", { exact: true })).toBeHidden();
-  await page.getByText("Awaiting re-verification", { exact: true }).click();
-  await expect(page.getByText(/verified: no original findings remain/i)).toBeVisible();
-});
+      const verifyRequest = page.waitForRequest((request) =>
+        request.url().endsWith("/v1/campaigns/campaign-retired/verify") && request.method() === "POST",
+      );
+      await page.getByRole("button", { name: "Re-verify Retired synthetic campaign" }).click();
+      await verifyRequest;
+      await expect(page.getByText("1 waiting", { exact: true })).toBeVisible();
+      await expect(page.getByText("Retired synthetic campaign", { exact: true })).toBeVisible();
+      await expect(page.locator("#verification").getByRole("alert")).toContainText("Access revocation and alternate graph paths have not been verified.");
+      await expect(page.getByRole("button", { name: "Retry verification queue" })).toBeHidden();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false);
+      await page.locator("#verification").screenshot({ path: testInfo.outputPath(`verification-${theme}-${width}.png`) });
+    });
 
-test("remediation remains horizontally contained on mobile", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await routeRemediation(page);
-  await page.goto("/remediation");
-  await page.getByText("Campaign workflow and verification", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Risk campaigns" })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false);
-});
+  }
+}
 
 const control = (code: string, name: string, status: "pass" | "warning" | "fail", findings: number) => ({
   code, name, status, findings, severity_breakdown: {}, affected_packages: [], affected_agents: [],

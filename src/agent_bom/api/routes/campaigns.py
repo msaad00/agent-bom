@@ -461,6 +461,25 @@ def _audit_for_actor(action: str, *, tenant_id: str, actor: str, campaign_id: st
         _logger.warning("risk campaign audit append failed")
 
 
+def _verification_unavailable(*, tenant_id: str, actor: str, campaign_id: str, retry_state: str, reason: str) -> None:
+    """Fail closed without changing workflow state when absence cannot prove a fix."""
+    from agent_bom.db.adoption_events import record_adoption_event_best_effort
+
+    record_adoption_event_best_effort("verification_completed", channel="control_plane", outcome="unavailable_evidence")
+    _audit_for_actor(
+        "risk_campaign.verify_unavailable",
+        tenant_id=tenant_id,
+        actor=actor,
+        campaign_id=campaign_id,
+        outcome="unavailable_evidence",
+        retry_state=retry_state,
+    )
+    raise HTTPException(
+        status_code=409,
+        detail={"outcome": "unavailable_evidence", "retry_state": retry_state, "reason": reason, "message": reason},
+    )
+
+
 def verify_campaign_workflow(
     *,
     tenant_id: str,
@@ -474,28 +493,12 @@ def verify_campaign_workflow(
     if len(idempotency_key) > 200:
         raise HTTPException(status_code=422, detail="Idempotency-Key must be 200 characters or fewer.")
     if _source_incomplete(source):
-        from agent_bom.db.adoption_events import record_adoption_event_best_effort
-
-        record_adoption_event_best_effort(
-            "verification_completed",
-            channel="control_plane",
-            outcome="unavailable_evidence",
-        )
-        _audit_for_actor(
-            "risk_campaign.verify_unavailable",
+        _verification_unavailable(
             tenant_id=tenant_id,
             actor=actor,
             campaign_id=campaign_id,
-            outcome="unavailable_evidence",
             retry_state="awaiting_complete_snapshot",
-        )
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "outcome": "unavailable_evidence",
-                "retry_state": "awaiting_complete_snapshot",
-                "reason": "Campaign verification requires a complete findings snapshot.",
-            },
+            reason="Campaign verification requires a complete findings snapshot.",
         )
 
     endpoint = f"/v1/campaigns/{campaign_id}/verify"
@@ -508,7 +511,9 @@ def verify_campaign_workflow(
             idempotency_key,
             request_hash=request_hash,
         )
-        if cached is not None:
+        # Older results treated absence from a time window as proof of a fix.
+        # Do not replay that unsupported success after the fail-closed repair.
+        if cached is not None and cached.get("outcome") == "still_affected":
             return cast("dict[str, Any]", cached)
 
     store = get_campaign_store()
@@ -524,7 +529,28 @@ def verify_campaign_workflow(
         truncated=False,
     )
     current = next((item for item in current_campaigns if item["id"] == campaign_id), None)
-    remaining = tuple(sorted(str(value) for value in current["finding_ids"])) if current else ()
+    # Campaign grouping depends on mutable enrichment (fixed version, purl,
+    # package identity). An original finding moving to another group is not a
+    # remediation. Check its persisted identity as well as any replacements in
+    # the original remediation group, deduplicating their shared members.
+    current_ids = {_canonical_finding_id(row) for row in source["findings"]}
+    remaining_ids = set(stored.member_ids).intersection(current_ids)
+    if current:
+        remaining_ids.update(str(value) for value in current["finding_ids"])
+    remaining = tuple(sorted(remaining_ids))
+    if not remaining:
+        _verification_unavailable(
+            tenant_id=tenant_id,
+            actor=actor,
+            campaign_id=campaign_id,
+            retry_state="awaiting_fresh_scope_evidence",
+            reason=(
+                "No matching findings remain in the current window, but fresh collection evidence "
+                "for the original target scope is unavailable. Access revocation and alternate "
+                "graph paths have not been verified. Complete a same-scope rescan and inspect "
+                "remaining paths. Workflow state is unchanged."
+            ),
+        )
     verified = store.verify(tenant_id, campaign_id, expected_version=version, remaining_ids=remaining)
     if verified is None:
         raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")

@@ -445,9 +445,24 @@ describe("RiskCampaignCommandCenter", () => {
     fireEvent.click(screen.getByRole("button", { name: /Re-verify remediation/i }));
 
     await waitFor(() => expect(api.verifyRiskCampaign).toHaveBeenCalledWith("campaign-1", { version: 4 }));
-    expect(await screen.findByText(/1 of 2 original findings remain/i)).toBeInTheDocument();
+    expect(await screen.findByText(/1 matching finding remains/i)).toBeInTheDocument();
     expect(screen.getByText(/canonical findings spine/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Verification failed/i).length).toBeGreaterThan(0);
+  });
+
+  it("keeps workflow state and explains unavailable fresh scope evidence without a misleading reload", async () => {
+    const reason = "Fresh collection evidence for the original target scope is unavailable. Alternate graph paths have not been verified.";
+    vi.mocked(api.verifyRiskCampaign).mockRejectedValue(new ApiConflictError(reason, {
+      status: 409, statusText: "Conflict", url: "/v1/campaigns/campaign-1/verify", method: "POST",
+      details: { outcome: "unavailable_evidence", retry_state: "awaiting_fresh_scope_evidence" },
+    }));
+    render(<RiskCampaignCommandCenter />);
+    await screen.findByText(response.campaigns[0]!.title);
+    fireEvent.click(screen.getByRole("button", { name: /Re-verify remediation/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(reason);
+    expect(screen.queryByRole("button", { name: "Reload campaigns" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Pending verification").length).toBeGreaterThan(0);
+    expect(api.updateRiskCampaign).not.toHaveBeenCalled();
   });
 
   it("reports successful server verification without caller-authored status", async () => {
@@ -473,7 +488,7 @@ describe("RiskCampaignCommandCenter", () => {
     await screen.findByText(response.campaigns[0]!.title);
     fireEvent.click(screen.getByRole("button", { name: /Re-verify remediation/i }));
 
-    expect(await screen.findByText(/No original findings remain/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No matching findings remain/i)).toBeInTheDocument();
     expect((await screen.findAllByText("Verified")).length).toBeGreaterThan(0);
     expect(api.updateRiskCampaign).not.toHaveBeenCalled();
   });
@@ -529,7 +544,7 @@ describe("RiskCampaignCommandCenter", () => {
     fireEvent.click(screen.getByRole("button", { name: /Re-verify Upgrade retired openssl campaign/i }));
 
     await waitFor(() => expect(api.verifyRiskCampaign).toHaveBeenCalledWith("retired-campaign-1", { version: 7 }));
-    expect(await screen.findByText(/verified: no original findings remain/i)).toBeInTheDocument();
+    expect(await screen.findByText(/verified: no matching findings remain/i)).toBeInTheDocument();
     expect(await screen.findByText(/No inactive campaigns await re-verification/i)).toBeInTheDocument();
     expect(screen.queryByText("Upgrade retired openssl campaign")).not.toBeInTheDocument();
   });
@@ -577,7 +592,7 @@ describe("RiskCampaignCommandCenter", () => {
     await screen.findByText("Resolve runtime package exposure");
     fireEvent.click(screen.getByRole("button", { name: /Re-verify Resolve runtime package exposure/i }));
 
-    expect(await screen.findByText(/2 of 5 original findings remain/i)).toBeInTheDocument();
+    expect(await screen.findByText(/2 matching findings remain/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Re-verify Resolve runtime package exposure/i }));
     await waitFor(() => expect(api.verifyRiskCampaign).toHaveBeenLastCalledWith("retired-campaign-2", { version: 4 }));
   });

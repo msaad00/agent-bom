@@ -1,9 +1,9 @@
 {
   "release_version": "0.105.0",
-  "captured_at": "2026-09-21T17:54:59.284Z",
-  "source_commit": "bb7de932347215670c2446043d8948d16ecf1d1f",
+  "captured_at": "2026-09-21T18:17:49.551Z",
+  "source_commit": "f1a3373e4d7e845f8e36842241bc4bfb34c97733",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:90f62f45b95e4fd72943d8a4e00eddce57a9b4411f0da847329901328e3dabab",
+  "capture_inputs_sha256": "sha256:65f92e5361614552ae40848c620e5c14ff0ce91c6b62070a17f770719ac2beee",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.105.0",
-      "sha256": "sha256:77bdacb7fbe364be2d6ce8f4b2b8c5b282d8af9f6c0b2bbc03cd8838387c5cbb"
+      "sha256": "sha256:2ca2d600aad61a0e2cb0a57b2f66b8cd64bcd17c723bacbdc52e12c0cb294431"
     },
     {
       "presentation": "dark desktop",
@@ -201,7 +201,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.105.0",
-      "sha256": "sha256:455e1449bce2f713380d8706b0aeb4b7ade643c81eff9384359a690bb4f2d6c9"
+      "sha256": "sha256:1dd77af5067dd97e9feec77d6758b91cbcf670004010706af4e56fe68053ca41"
     },
     {
       "presentation": "dark mobile",
@@ -225,7 +225,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.105.0",
-      "sha256": "sha256:ff4811743a421e31ac473e9ca3416676e9161eba04204929f3bd1ebc3d72863d"
+      "sha256": "sha256:2626ef29bbbe4f074f5fee7923c77aa1e96c14cbfe50c8ddf7a6069f378211ae"
     },
     {
       "presentation": "dark desktop",

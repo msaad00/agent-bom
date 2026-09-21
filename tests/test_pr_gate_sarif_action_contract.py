@@ -18,6 +18,43 @@ from agent_bom.output.sarif import to_sarif
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_fixture_dogfood_scans_keep_gates_without_bulk_database_refresh() -> None:
+    action = yaml.safe_load((ROOT / "action.yml").read_text(encoding="utf-8"))
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    scan_step = next(step for step in action["runs"]["steps"] if step.get("id") == "scan")
+    argument_script = scan_step["run"].split("# Run scan, capture exit code", 1)[0]
+    fixture_steps = [
+        step for step in workflow["jobs"]["action-dogfood"]["steps"] if step.get("uses") == "./" and step.get("with", {}).get("sbom")
+    ]
+    assert len(fixture_steps) == 6
+    assert action["inputs"]["auto-update-db"]["default"] == "true"
+    for step in fixture_steps:
+        inputs = step["with"]
+        env = dict(os.environ)
+        for name, expression in scan_step["env"].items():
+            if not name.startswith("INPUT_"):
+                continue
+            input_name = expression.removeprefix("${{ inputs.").removesuffix(" }}")
+            env[name] = str(inputs.get(input_name, action["inputs"][input_name].get("default", "")))
+        result = subprocess.run(
+            ["bash", "-c", argument_script + '\nprintf "%s\\n" "${ARGS[@]}"'],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        args = result.stdout.splitlines()
+        assert "--auto-update-db" not in args, step["name"]
+        assert "--offline" not in args
+        assert args[0] == "scan"
+        assert args[args.index("--sbom") + 1] == inputs["sbom"]
+        assert args[args.index("-f") + 1] == inputs["format"]
+        assert args[args.index("--fail-on-severity") + 1] == inputs.get("severity-threshold", "high")
+        for input_name, flag in (("policy", "--policy"), ("warn-on-severity", "--warn-on")):
+            if input_name in inputs:
+                assert args[args.index(flag) + 1] == inputs[input_name]
+
+
 def test_action_legacy_agents_input_dispatches_canonical_scan() -> None:
     action = yaml.safe_load((ROOT / "action.yml").read_text(encoding="utf-8"))
     step = next(step for step in action["runs"]["steps"] if step.get("id") == "scan")

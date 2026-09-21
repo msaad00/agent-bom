@@ -1868,11 +1868,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Fixture output/gate checks retain targeted advisory lookups without
+      # refreshing every ecosystem in the vulnerability database.
       # 7a. Basic SARIF scan (clean SBOM)
       - name: "Dogfood: SARIF format (clean SBOM)"
         uses: ./
         with:
           sbom: tests/fixtures/test-sbom.cdx.json
+          auto-update-db: 'false'
           format: sarif
           upload-sarif: 'false'
           install-from-source: 'true'
@@ -1882,6 +1885,7 @@ jobs:
         uses: ./
         with:
           sbom: tests/fixtures/test-sbom.cdx.json
+          auto-update-db: 'false'
           format: json
           output: dogfood-results.json
           install-from-source: 'true'
@@ -1894,6 +1898,7 @@ jobs:
         uses: ./
         with:
           sbom: tests/fixtures/test-sbom.cdx.json
+          auto-update-db: 'false'
           policy: tests/fixtures/test-policy.json
           format: json
           install-from-source: 'true'
@@ -1903,6 +1908,7 @@ jobs:
         uses: ./
         with:
           sbom: tests/fixtures/test-sbom.cdx.json
+          auto-update-db: 'false'
           severity-threshold: critical
           format: json
           install-from-source: 'true'
@@ -1912,6 +1918,7 @@ jobs:
         uses: ./
         with:
           sbom: tests/fixtures/test-sbom.cdx.json
+          auto-update-db: 'false'
           badge: dogfood-badge.json
           format: sarif
           install-from-source: 'true'
@@ -1924,6 +1931,7 @@ jobs:
         uses: ./
         with:
           sbom: tests/fixtures/test-sbom.cdx.json
+          auto-update-db: 'false'
           severity-threshold: critical
           warn-on-severity: medium
           format: json

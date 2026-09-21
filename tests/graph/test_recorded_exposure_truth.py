@@ -176,7 +176,7 @@ def test_recorded_exposure_and_receipts_survive_graph_and_rollup_api(tmp_path, p
         resource = next(node for node in response.json()["nodes"] if node["entity_type"] == "cloud_resource")
         assert resource["attributes"]["internet_exposed"] is expected
         assert resource["attributes"]["internet_exposure_evidence"]["inputs"] == {"publicly_accessible": value}
-        rollup = client.get("/v1/graph/rollup", params={"scan_id": graph.scan_id, "exposed_only": True})
+        rollup = client.get("/v1/graph/rollup", params={"scan_id": graph.scan_id, "exposed": True})
         assert rollup.status_code == 200
         count = sum(item["aggregate"]["exposed_count"] for item in rollup.json()["top_level"])
         assert bool(count) is (expected is True)

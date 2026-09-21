@@ -56,13 +56,14 @@ from agent_bom.governance import (
     QueryHistoryRecord,
 )
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
-from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
 
 from .aws_inventory import record_discovery_failure
 from .base import CloudDiscoveryError
 from .normalization import (
     build_cloud_origin,
     build_package_purl,
+    coerce_bool_or_none,
     coerce_int_or_none,
     coerce_truthy,
     resolve_env_or_value,
@@ -3632,7 +3633,12 @@ def discover_snowflake_integrations(
                         "name": name,
                         "type": itype,
                         "category": category,
-                        "enabled": _sf_truthy(r.get("enabled")),
+                        "enabled": coerce_bool_or_none(r.get("enabled")),
+                        "enabled_evidence": {
+                            "source": "SHOW INTEGRATIONS",
+                            "recorded": "enabled" in r,
+                            "value": sanitize_sensitive_payload(r.get("enabled")),
+                        },
                         "comment": str(r.get("comment", "") or "")[:200],
                     }
                 )
@@ -3648,7 +3654,10 @@ def discover_snowflake_integrations(
                 {
                     "severity": "medium",
                     "title": "External-access integrations enabled",
-                    "detail": f"{len(ext_access)} external-access integration(s) let UDFs/procedures make outbound network calls.",
+                    "detail": (
+                        f"{len(ext_access)} external-access integration(s) configure outbound connections for UDFs/procedures. "
+                        "Effective permissions, network rules and successful calls require separate evidence."
+                    ),
                 }
             )
         security = [i["name"] for i in result["integrations"] if i["enabled"] and i["category"] == "SECURITY"]

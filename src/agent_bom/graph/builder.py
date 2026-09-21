@@ -3634,12 +3634,10 @@ def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source:
 def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
     """Promote Snowflake account integrations into the graph (external-trust layer).
 
-    Each integration is the account's connection to the outside world. They
-    become ``CLOUD_RESOURCE`` nodes owned by the account, carrying the category
-    (STORAGE / API / EXTERNAL_ACCESS / SECURITY / NOTIFICATION / CATALOG) and an
-    ``internet_exposed`` flag for the egress-bearing kinds, so blast-radius and
-    the visual surface the account's outbound/federation surface. Never raises;
-    a non-ok payload is a no-op.
+    Account-owned nodes retain category and enabled configuration for outbound
+    connections and federation. SHOW INTEGRATIONS does not establish inbound
+    internet reachability, effective authorization or successful data transfer.
+    A non-ok payload is a no-op.
     """
     prepared = _prepare_cloud_payload(payload, data_source, "snowflake-integrations")
     if prepared is None:
@@ -3666,7 +3664,8 @@ def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: 
         name = _clean_graph_part(integ.get("name"))
         if not name:
             continue
-        category = str(integ.get("category", "") or "").upper()
+        category = str(integ.get("category", "") or "").strip().upper().replace(" ", "_")
+        enabled = coerce_bool_or_none(integ.get("enabled"))
         node_id = f"cloud_resource:snowflake:integration:{name}"
         graph.add_node(
             UnifiedNode(
@@ -3680,8 +3679,21 @@ def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: 
                     "cloud_provider": "snowflake",
                     "integration_type": integ.get("type"),
                     "integration_category": category,
-                    "enabled": bool(integ.get("enabled")),
-                    "internet_exposed": bool(integ.get("enabled")) and category in egress_categories,
+                    "enabled": enabled,
+                    "internet_exposed": None,
+                    "outbound_access_configured": enabled if category in egress_categories else None,
+                    "integration_evidence": {
+                        "source": "snowflake-integrations",
+                        "basis": "recorded_configuration",
+                        "network_direction": "outbound" if category in egress_categories else "not_assessed",
+                        "access_outcome": "not_observed",
+                        "inputs": sanitize_sensitive_payload({key: integ[key] for key in ("category", "type", "enabled") if key in integ}),
+                        **(
+                            {"enabled_observation": sanitize_sensitive_payload(integ["enabled_evidence"])}
+                            if isinstance(integ.get("enabled_evidence"), dict)
+                            else {}
+                        ),
+                    },
                     "external_access": category == "EXTERNAL_ACCESS",
                     "identity_federation": category == "SECURITY",
                 },

@@ -217,3 +217,13 @@ def test_mixed_source_snapshot_remains_unchanged_when_one_account_is_rescanned(s
         assert edge.valid_to is None and edge.activity_id == 1
     active = _api(ctx, "/v1/graph/edges/active", at=T3)
     assert {edge["relationship"] for edge in active} >= {"accessed", "has_permission"}
+
+
+@pytest.mark.parametrize("alias", ["e; DROP TABLE graph_nodes", "e --", "e.join", "e\nWHERE TRUE", "", "a" * 64])
+@pytest.mark.parametrize("parameter", ["previous", "current"])
+def test_observation_sql_rejects_non_identifier_aliases(alias, parameter):
+    from agent_bom.graph.observation_scope import comparable_observation_sql
+
+    args = {"previous": "previous", "current": "current", parameter: alias}
+    with pytest.raises(ValueError, match="SQL alias"):
+        comparable_observation_sql(dialect="sqlite", **args)

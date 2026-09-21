@@ -7,6 +7,7 @@ native revocation. Absence from a later scan cannot end an earlier observation.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from typing import Any, Literal
 
@@ -61,6 +62,10 @@ def comparable_observation_sql(*, dialect: Literal["sqlite", "postgres"], previo
     Callers provide internal SQL aliases only. Scope values are read from the
     stored JSON; there is no label matching or account/provider alias inference.
     """
+
+    for alias in (previous, current):
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", alias):
+            raise ValueError("SQL alias must be a bounded identifier")
 
     def value(expression: str, field: str) -> str:
         if dialect == "sqlite":
@@ -131,4 +136,6 @@ def comparable_observation_sql(*, dialect: Literal["sqlite", "postgres"], previo
             same("scope_pt", "scope_ct"),
         ]
     )
-    return "EXISTS (SELECT 1 FROM " + ", ".join(joins) + " WHERE " + " AND ".join(predicates) + ")"
+    # Scope values remain stored JSON expressions; interpolated identifiers are
+    # fixed here or validated above, never arbitrary query fragments.
+    return "EXISTS (SELECT 1 FROM " + ", ".join(joins) + " WHERE " + " AND ".join(predicates) + ")"  # nosec B608

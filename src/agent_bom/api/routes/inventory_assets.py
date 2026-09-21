@@ -106,6 +106,12 @@ async def inventory_summary(
             store_call=_store_call,
         )
     except InventoryError as exc:
+        # No snapshot yet (fresh install, pre-first-scan) — return empty counts
+        # so dashboards and healthchecks see a stable 200 rather than a 404.
+        # All other InventoryError variants (bad filter, invalid scan_id) still
+        # surface as their original status code so callers can distinguish them.
+        if exc.status_code == 404:
+            return inventory_service.empty_summary(tenant_id=tenant)
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 

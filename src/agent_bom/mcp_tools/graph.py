@@ -323,6 +323,7 @@ async def exposure_paths_impl(
                 or type(continuation.get("offset")) is not int
                 or not 0 < continuation["offset"] <= 100_000_000
                 or not isinstance(continuation.get("revision"), str)
+                or not isinstance(continuation.get("derived_revision", ""), str)
             ):
                 raise ValueError
             scan_id, offset = continuation["scan"], continuation["offset"]
@@ -368,8 +369,12 @@ async def exposure_paths_impl(
         revision = hashlib.sha256(
             json.dumps([path_source, effective_scan_id, created_at, total, derived_revision], default=str).encode()
         ).hexdigest()
-        if continuation and continuation["revision"] != revision:
-            return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Exposure snapshot changed; restart the query.")
+        if continuation:
+            # For derived paths, validate derived_revision directly so page 2+
+            # can detect a changed derivation without trusting only the outer
+            # revision hash. Both checks must agree.
+            if continuation["revision"] != revision or continuation.get("derived_revision", "") != derived_revision:
+                return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Exposure snapshot changed; restart the query.")
         eligible_paths = [path for path in paths if float(getattr(path, "composite_risk", 0.0) or 0.0) >= min_risk]
         ranked_paths = eligible_paths[:limit]
         hop_ids = {hop for path in ranked_paths for hop in (getattr(path, "hops", []) or [])}
@@ -418,7 +423,14 @@ async def exposure_paths_impl(
             if has_more and returned:
                 next_cursor = base64.urlsafe_b64encode(
                     json.dumps(
-                        {"v": 1, "scope": scope, "scan": effective_scan_id, "offset": offset + returned, "revision": revision},
+                        {
+                            "v": 1,
+                            "scope": scope,
+                            "scan": effective_scan_id,
+                            "offset": offset + returned,
+                            "revision": revision,
+                            "derived_revision": derived_revision,
+                        },
                         separators=(",", ":"),
                     ).encode()
                 ).decode()
@@ -519,6 +531,17 @@ async def deploy_decision_impl(
     else:
         reasons.append("No matching exposure path evidence was found for the candidate; this is not an approval to deploy.")
 
+    if evidence_evaluated and evidence_complete:
+        evidence_status = "evaluated"
+    elif not matched_paths:
+        # No paths at all — scan may be incomplete, candidate may not yet be
+        # in the graph, or the tenant has no exposure data. Distinct from
+        # "not_evaluated" (paths exist but reachability is unverified) so
+        # CI gates can tell "no evidence" from "inconclusive evidence".
+        evidence_status = "no_paths"
+    else:
+        evidence_status = "not_evaluated"
+
     encoded = json.dumps(
         {
             "schema_version": "v1",
@@ -528,7 +551,7 @@ async def deploy_decision_impl(
             "candidate": {"value": candidate_value},
             "decision": decision,
             "maxRisk": max_risk,
-            "evidenceStatus": "evaluated" if evidence_evaluated and evidence_complete else "not_evaluated",
+            "evidenceStatus": evidence_status,
             "thresholds": {"warnRisk": warn_risk, "blockRisk": block_risk},
             "reasons": reasons,
             "matchedPathCount": len(matched_paths),

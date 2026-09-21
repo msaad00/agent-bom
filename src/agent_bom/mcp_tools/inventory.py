@@ -75,6 +75,8 @@ async def inventory_summary_impl(
         )
         return _encode(payload, _truncate_response)
     except inventory_service.InventoryError as exc:
+        if exc.status_code == 404:
+            return _encode(inventory_service.empty_summary(tenant_id=tenant_id), _truncate_response)
         return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, exc.detail)
     except Exception:
         logger.exception("MCP inventory_summary error")

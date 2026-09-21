@@ -467,6 +467,10 @@ for (const width of [1440, 390]) {
       graph.edges = [edge(source.id, pkg.id, "contains"), ...findings.flatMap((finding) => [edge(pkg.id, finding.id, "has_cve"), edge(source.id, finding.id, "has_cve")])].map((item) => ({ ...item, traversable: false }));
       graph.pagination = { total: 24, offset: 0, limit: 250, has_more: false };
       await routeGraphPage(page, graph);
+      await page.route("**/v1/posture/counts", route => route.fulfill({ json: {
+        critical: 4, high: 17, medium: 1, low: 0, total: 22, kev: 0,
+        compound_issues: 1, scan_sources: ["demo-sbom-readability"],
+      } }));
       await page.setViewportSize({ width, height: 811 });
       await page.goto(`${routePath}?lens=estate&scan=${scanId}&rollup=0`);
       await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);
@@ -557,7 +561,12 @@ for (const width of [1440, 390]) {
       expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
       const detailPanel = page.getByTestId("graph-entity-drawer");
       const detailHeader = width === 1440 ? detailPanel.locator("aside") : detailPanel;
-      await detailHeader.getByRole("button", { name: "Close", exact: true }).click();
+      if (width === 1440 && theme === "light") {
+        await expect(page.locator("#demo-estate-watermark")).toBeVisible();
+        await detailPanel.getByRole("button", { name: "Back", exact: true }).click();
+      } else {
+        await detailHeader.getByRole("button", { name: "Close", exact: true }).click();
+      }
       await expect(detailPanel).not.toBeVisible();
       await page.goto("/findings");
       await expect.poll(() => new URL(page.url()).pathname).toBe("/findings");

@@ -2979,37 +2979,62 @@ def _add_snowflake_source_lanes(graph: UnifiedGraph, report_json: dict[str, Any]
         scope = ("account", account) if account else ("source", key)
         scopes.setdefault(scope, {})[key] = payload
 
+    if not scopes:
+        return
+    from contextlib import nullcontext
+    from copy import deepcopy
+
+    from agent_bom.graph.store_backed import StoreBackedUnifiedGraph, open_store_backed_unified_graph
+
+    store_backed = isinstance(graph, StoreBackedUnifiedGraph)
     for scope, lanes in scopes.items():
-        staged = UnifiedGraph(scan_id=graph.scan_id, tenant_id=graph.tenant_id, created_at=graph.created_at)
-        _project_snowflake_lanes(staged, lanes, data_source)
-        remap: dict[str, str] = {}
-        account = scope[1] if scope[0] == "account" else ""
-        for node in staged.nodes.values():
-            original_id = node.id
-            provider = _clean_graph_part(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider)
-            account_local = provider == "snowflake" and node.entity_type not in {EntityType.ACCOUNT, EntityType.ORG}
-            if account_local:
-                node.attributes["snowflake_local_id"] = original_id
-                node.attributes["snowflake_scope_version"] = "account-lanes.v1"
-                if account:
-                    node.attributes["account_id"] = account
-                existing = graph.nodes.get(original_id)
-                collides = existing is not None and (not account or _clean_graph_part(existing.attributes.get("account_id")) != account)
-                if len(scopes) > 1 or collides:
-                    # Content framing and SHA-256 preserve case and separators;
-                    # stable_node_id lowercases its inputs and is unsuitable for
-                    # quoted Snowflake identifiers or unproven account aliases.
-                    key = json.dumps([*scope, original_id], separators=(",", ":"))
-                    suffix = hashlib.sha256(key.encode()).hexdigest()
-                    node.id = f"{node.entity_type.value}:snowflake:scoped:{suffix}"
-                    node.attributes["legacy_graph_id"] = original_id
-            remap[original_id] = node.id
-            graph.add_node(node)
-        for edge in staged.edges:
-            edge.source = remap[edge.source]
-            edge.target = remap[edge.target]
-            graph.add_edge(edge)
-        graph.analysis_status.update(staged.analysis_status)
+        stage_context = (
+            open_store_backed_unified_graph(scan_id=graph.scan_id, tenant_id=graph.tenant_id, created_at=graph.created_at, backend="sqlite")
+            if store_backed
+            else nullcontext(UnifiedGraph(scan_id=graph.scan_id, tenant_id=graph.tenant_id, created_at=graph.created_at))
+        )
+        with stage_context as staged:
+            _project_snowflake_lanes(staged, lanes, data_source)
+            remap: dict[str, str] = {}
+            account = scope[1] if scope[0] == "account" else ""
+            for staged_node in staged.nodes.values():
+                # Store-backed cached identities must retain their original key.
+                # Clone only the current output node, never the whole graph.
+                node = deepcopy(staged_node) if store_backed else staged_node
+                original_id = node.id
+                provider = _clean_graph_part(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider)
+                account_local = provider == "snowflake" and node.entity_type not in {EntityType.ACCOUNT, EntityType.ORG}
+                if account_local:
+                    node.attributes["snowflake_local_id"] = original_id
+                    node.attributes["snowflake_scope_version"] = "account-lanes.v1"
+                    if account:
+                        node.attributes["account_id"] = account
+                    existing = graph.nodes.get(original_id)
+                    collides = existing is not None and (not account or _clean_graph_part(existing.attributes.get("account_id")) != account)
+                    if len(scopes) > 1 or collides:
+                        # Content framing and SHA-256 preserve case and separators;
+                        # stable_node_id lowercases its inputs and is unsuitable for
+                        # quoted Snowflake identifiers or unproven account aliases.
+                        key = json.dumps([*scope, original_id], separators=(",", ":"))
+                        suffix = hashlib.sha256(key.encode()).hexdigest()
+                        node.id = f"{node.entity_type.value}:snowflake:scoped:{suffix}"
+                        node.attributes["legacy_graph_id"] = original_id
+                if store_backed:
+                    # Persist the mapping in the private staging workspace so
+                    # a large source does not retain an O(nodes) remap in RAM.
+                    staged_node.attributes["_snowflake_projection_id"] = node.id
+                else:
+                    remap[original_id] = node.id
+                graph.add_node(node)
+            for edge in staged.edges:
+                if store_backed:
+                    edge.source = staged.nodes[edge.source].attributes["_snowflake_projection_id"]
+                    edge.target = staged.nodes[edge.target].attributes["_snowflake_projection_id"]
+                else:
+                    edge.source = remap[edge.source]
+                    edge.target = remap[edge.target]
+                graph.add_edge(edge)
+            graph.analysis_status.update(staged.analysis_status)
 
 
 def _project_snowflake_lanes(graph: UnifiedGraph, report_json: dict[str, Any], data_source: str) -> None:

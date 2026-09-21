@@ -1253,13 +1253,13 @@ def create_mcp_server(
     async def inventory_summary(
         tenant_id: Annotated[str, Field(description="Tenant scope for the snapshot. Defaults to 'default'.")] = "default",
         scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
-        type: Annotated[str | None, Field(description="Comma-separated asset entity types; finding types are rejected.")] = None,
-        search: Annotated[str | None, Field(description="Free-text search over asset name / label / attributes.")] = None,
-        environment: Annotated[str | None, Field(description="Filter by environment facet.")] = None,
-        provider: Annotated[str | None, Field(description="Filter by provider facet.")] = None,
-        source: Annotated[str | None, Field(description="Filter by data-source / provenance facet.")] = None,
-        severity: Annotated[str | None, Field(description="Highest directly linked finding severity.")] = None,
-        min_severity: Annotated[str | None, Field(description="Minimum directly linked finding severity.")] = None,
+        type: Annotated[str | None, Field(max_length=1024, description="Comma-separated asset entity types; finding types are rejected.")] = None,
+        search: Annotated[str | None, Field(max_length=1024, description="Free-text search over asset name / label / attributes.")] = None,
+        environment: Annotated[str | None, Field(max_length=1024, description="Filter by environment facet.")] = None,
+        provider: Annotated[str | None, Field(max_length=1024, description="Filter by provider facet.")] = None,
+        source: Annotated[str | None, Field(max_length=1024, description="Filter by data-source / provenance facet.")] = None,
+        severity: Annotated[str | None, Field(max_length=64, description="Highest directly linked finding severity.")] = None,
+        min_severity: Annotated[str | None, Field(max_length=64, description="Minimum directly linked finding severity.")] = None,
     ) -> str:
         """Return unified asset-inventory counts by type and source group.
 
@@ -1290,15 +1290,15 @@ def create_mcp_server(
         tenant_id: Annotated[str, Field(description="Tenant scope for the snapshot. Defaults to 'default'.")] = "default",
         type: Annotated[
             str | None,
-            Field(description="Comma-separated asset entity types to include, e.g. 'agent,cloud_resource'. Finding types are rejected."),
+            Field(max_length=1024, description="Comma-separated asset entity types to include, e.g. 'agent,cloud_resource'. Finding types are rejected."),
         ] = None,
-        search: Annotated[str | None, Field(description="Free-text search over asset name / label / attributes.")] = None,
-        environment: Annotated[str | None, Field(description="Filter by environment facet, e.g. 'production'.")] = None,
-        provider: Annotated[str | None, Field(description="Filter by provider facet, e.g. 'aws', 'snowflake'.")] = None,
-        source: Annotated[str | None, Field(description="Filter by data-source / provenance facet.")] = None,
-        severity: Annotated[str | None, Field(description="Filter by the asset's highest directly linked finding severity.")] = None,
+        search: Annotated[str | None, Field(max_length=1024, description="Free-text search over asset name / label / attributes.")] = None,
+        environment: Annotated[str | None, Field(max_length=1024, description="Filter by environment facet, e.g. 'production'.")] = None,
+        provider: Annotated[str | None, Field(max_length=1024, description="Filter by provider facet, e.g. 'aws', 'snowflake'.")] = None,
+        source: Annotated[str | None, Field(max_length=1024, description="Filter by data-source / provenance facet.")] = None,
+        severity: Annotated[str | None, Field(max_length=64, description="Filter by the asset's highest directly linked finding severity.")] = None,
         min_severity: Annotated[
-            str | None, Field(description="Minimum severity floor for included assets: critical / high / medium / low.")
+            str | None, Field(max_length=64, description="Minimum severity floor for included assets: critical / high / medium / low.")
         ] = None,
         scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
         cursor: Annotated[str | None, Field(description="Opaque keyset cursor from a previous page's pagination.next_cursor.")] = None,

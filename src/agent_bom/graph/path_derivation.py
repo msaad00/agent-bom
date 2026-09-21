@@ -109,7 +109,7 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
                 f"{node.label} holds sensitive data and is internet-exposed{reach_detail}.",
                 22.0,
             )
-        elif attrs.get("data_sensitivity"):
+        elif coerce_truthy(attrs.get("data_sensitivity")):
             reach = attrs.get("sensitive_data_access_count")
             reach_detail = f", reachable by {reach} identity/tool path(s)" if isinstance(reach, int) and reach > 0 else ""
             add("sensitive_data", "Sensitive data", f"{node.label} holds sensitive (PII/PHI/secret) data{reach_detail}.", 8.0)
@@ -267,7 +267,7 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
             )
         # Data exposure: internet-exposed resource backing a data store.
         elif rel == RelationshipType.EXPOSED_TO.value and _node_type_value(tgt) == EntityType.DATA_STORE.value:
-            sensitive = bool(tgt.attributes.get("data_sensitivity"))
+            sensitive = coerce_truthy(tgt.attributes.get("data_sensitivity"))
             frameworks = tgt.attributes.get("data_regulatory_frameworks") or []
             # Name the regulation at risk when classified (PCI-DSS / HIPAA / GDPR / SOC2).
             data_descr = f"{'/'.join(frameworks)} data store" if frameworks else f"{'sensitive ' if sensitive else ''}data store"
@@ -415,7 +415,7 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
                 admin_reachable.add(edge.target)
         elif rel in (RelationshipType.STORES.value, RelationshipType.EXPOSED_TO.value):
             store = graph.nodes.get(edge.target)
-            if store is not None and store.attributes.get("data_sensitivity"):
+            if store is not None and coerce_truthy(store.attributes.get("data_sensitivity")):
                 sensitive_neighbors.setdefault(edge.source, []).append(edge.target)
 
     paths: list[AttackPath] = []
@@ -438,7 +438,7 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
         ):
             factors.append("exploitable vulnerability")
         sens_ids = sensitive_neighbors.get(node.id, [])
-        if attrs.get("data_sensitivity") or sens_ids:
+        if coerce_truthy(attrs.get("data_sensitivity")) or sens_ids:
             regs = list(attrs.get("data_regulatory_frameworks") or [])
             for sid in sens_ids:
                 store = graph.nodes.get(sid)

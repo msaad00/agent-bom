@@ -75,14 +75,14 @@ def _tenant(request: Request) -> str:
 @router.get("/inventory/summary", tags=["inventory"])
 async def inventory_summary(
     request: Request,
-    type: Optional[str] = Query(None, description="Comma-separated asset entity types"),
-    search: Optional[str] = Query(None, description="Free-text search over asset name / label / attributes"),
-    environment: Optional[str] = Query(None, description="Filter by environment facet"),
-    provider: Optional[str] = Query(None, description="Filter by provider facet"),
-    source: Optional[str] = Query(None, description="Filter by data-source / provenance facet"),
-    severity: Optional[str] = Query(None, description="Highest directly linked finding severity"),
-    min_severity: Optional[str] = Query(None, description="Minimum directly linked finding severity"),
-    scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
+    type: Optional[str] = Query(None, max_length=1024, description="Comma-separated asset entity types"),
+    search: Optional[str] = Query(None, max_length=1024, description="Free-text search over asset name / label / attributes"),
+    environment: Optional[str] = Query(None, max_length=1024, description="Filter by environment facet"),
+    provider: Optional[str] = Query(None, max_length=1024, description="Filter by provider facet"),
+    source: Optional[str] = Query(None, max_length=1024, description="Filter by data-source / provenance facet"),
+    severity: Optional[str] = Query(None, max_length=64, description="Highest directly linked finding severity"),
+    min_severity: Optional[str] = Query(None, max_length=64, description="Minimum directly linked finding severity"),
+    scan_id: Optional[str] = Query(None, max_length=256, description="Scan snapshot ID; latest if omitted"),
 ) -> dict[str, Any]:
     """Asset counts for the tenant's current graph snapshot, by type and group.
 
@@ -117,14 +117,14 @@ async def inventory_summary(
 @router.get("/inventory/assets", tags=["inventory"])
 async def list_inventory_assets(
     request: Request,
-    type: Optional[str] = Query(None, description="Comma-separated asset entity types (e.g. agent,cloud_resource)"),
-    search: Optional[str] = Query(None, description="Free-text search over asset name / label / attributes"),
-    environment: Optional[str] = Query(None, description="Filter by environment facet (e.g. production)"),
-    provider: Optional[str] = Query(None, description="Filter by provider facet (e.g. aws, snowflake)"),
-    source: Optional[str] = Query(None, description="Filter by data source / provenance facet"),
-    severity: Optional[str] = Query(None, description="Filter by highest directly linked finding severity"),
-    min_severity: Optional[str] = Query(None, description="Minimum severity floor (critical/high/medium/low)"),
-    scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
+    type: Optional[str] = Query(None, max_length=1024, description="Comma-separated asset entity types (e.g. agent,cloud_resource)"),
+    search: Optional[str] = Query(None, max_length=1024, description="Free-text search over asset name / label / attributes"),
+    environment: Optional[str] = Query(None, max_length=1024, description="Filter by environment facet (e.g. production)"),
+    provider: Optional[str] = Query(None, max_length=1024, description="Filter by provider facet (e.g. aws, snowflake)"),
+    source: Optional[str] = Query(None, max_length=1024, description="Filter by data source / provenance facet"),
+    severity: Optional[str] = Query(None, max_length=64, description="Filter by highest directly linked finding severity"),
+    min_severity: Optional[str] = Query(None, max_length=64, description="Minimum severity floor (critical/high/medium/low)"),
+    scan_id: Optional[str] = Query(None, max_length=256, description="Scan snapshot ID; latest if omitted"),
     cursor: Optional[str] = Query(None, description="Opaque keyset cursor from a previous page's next_cursor"),
     offset: int = Query(0, ge=0, description="Pagination offset (non-cursor paging only)"),
     limit: int = Query(50, ge=1, le=MAX_PAGE_LIMIT, description="Max rows to return"),

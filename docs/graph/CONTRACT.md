@@ -68,14 +68,28 @@ Edges carry `weight` and `evidence` (a metadata dict). Bidirectional edges (`sha
 
 ### Provider authorization receipts
 
-Azure/GCP authorization evaluation emits `can_access` and `assumes` edges only
-for an explicit `allow` result. Each `evidence.authorization_decisions` record
+Azure/GCP authorization evaluation emits `can_access` edges only for an explicit
+`allow` result. Each `evidence.authorization_decisions` record
 keeps the evaluated principal, concrete action, resource, decision, provider,
 matched binding IDs, and source observation time together. Multiple allowed
 actions on the same edge retain separate records through graph aggregation,
 SQLite/Postgres persistence, and the graph API. Top-level compatibility fields
 such as `action` are omitted when the records disagree; the union of binding
 IDs does not authorize every action under every binding.
+
+Identity-attachment actions (`iam.serviceAccounts.actAs` and
+`Microsoft.ManagedIdentity/userAssignedIdentities/assign/action`) retain their
+allowed-action receipts on a **nontraversable** `can_access` edge to the target
+identity. These permissions alone do not establish an impersonated session or
+inherit the target's access. The edge records `authority_effect=identity_attachment`
+and the missing workload-control, attachment, and credential-access context;
+analysis is `limited` with `identity_attachment_requires_workload_context`.
+See [Google's service-account permission semantics](https://docs.cloud.google.com/iam/docs/service-account-permissions)
+and [Azure's managed-identity assignment prerequisites](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-to-configure-managed-identities).
+
+Rebuild or rescan older snapshots that contain `assumes` edges derived from
+these attachment permissions. Historical snapshots are not rewritten on read;
+rolling back to an older binary restores the earlier derivation behavior.
 
 These receipts describe the evaluator's result for the collected snapshot.
 They do not establish that an action executed, that data was affected, or that
@@ -90,6 +104,24 @@ merging that record cannot recover actions previously discarded; collect fresh
 authorization evidence and rebuild the snapshot to obtain the full retained
 set of evaluated allowed actions. Missing legacy principal or observation fields
 remain unknown.
+
+### AWS policy conditions
+
+AWS identity-policy evaluation retains supported string/ARN set qualifiers:
+`ForAllValues` requires each supplied request value to match the policy;
+`ForAnyValue` requires one. Negated operators compare each request value against
+all policy values before applying the set qualifier. See the
+[AWS condition-operator reference](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html).
+Missing request context remains unknown, including for `IfExists` and `Null`:
+this contract does not carry proof that a key was absent from a complete AWS
+request. An explicitly supplied empty value set is distinct. Malformed conditions make their policy incomplete instead of
+becoming unconditional grants. A valid explicit deny retains precedence.
+
+This evaluator does not establish a complete AWS effective-permission verdict:
+unsupported operators, missing session context, permissions boundaries, SCPs
+and resource policies need their own evidence. Rebuild snapshots after changing
+policy evidence or upgrading the evaluator; existing derived snapshots are not
+rewritten by a read request.
 
 ### Derived permission witnesses
 
@@ -396,3 +428,30 @@ use `GET /v1/graph/node-context?node_id=...` and
 `GET /v1/graph/node-neighbors?node_id=...`. These authenticated query aliases
 preserve the complete ID without URL-path decoding ambiguities. Existing
 single-segment node routes remain supported.
+
+
+### Campaign verification and graph remediation
+
+Run `agent-bom campaigns list --format json`, then use the returned campaign ID
+and version with `agent-bom campaigns verify CAMPAIGN_ID --version VERSION`.
+Both commands use the control plane's configured authentication. Verification
+checks original finding identities even if advisory enrichment moved them to
+another remediation group, plus current replacement findings in the original
+group. `remaining_count` counts distinct matches; it can exceed the baseline
+member count when new affected instances appear.
+
+A complete 90-day findings window is not a fresh scan receipt for the original
+target scope. With no matching findings, verification returns HTTP 409 with
+`outcome: unavailable_evidence` and
+`retry_state: awaiting_fresh_scope_evidence`; workflow state remains unchanged.
+The MCP workflow preserves these fields and the dashboard displays the reason.
+No absence-based `verified_fixed` result is issued, including from older cached
+success responses. Existing saved workflow states are not rewritten.
+
+Collect the same target scope again and inspect its new graph snapshot for
+remaining and alternate routes. A proposed edge removal changes only a scenario;
+it does not revoke provider access, trigger a rescan, or verify remediation.
+The campaign endpoint currently does not bind baseline/rescan coverage receipts
+or evaluate alternate graph paths, so it cannot certify access revocation from
+that comparison. Retain those source receipts and compare the new snapshot's
+qualified hop evidence before deciding whether more remediation is needed.

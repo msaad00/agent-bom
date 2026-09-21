@@ -52,19 +52,21 @@ def _condition_values(value: Any) -> tuple[str, ...]:
     return tuple(sorted(canonical))
 
 
-def _conditions(value: Any) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
-    if not isinstance(value, Mapping):
-        return ()
+def _conditions(value: Any) -> tuple[tuple[str, str, tuple[str, ...]], ...] | None:
+    """Retain every guard, or mark the whole condition unreadable."""
+    if not isinstance(value, Mapping) or not value:
+        return None
     normalized: list[tuple[str, str, tuple[str, ...]]] = []
     for operator, entries in value.items():
-        if not isinstance(operator, str) or not isinstance(entries, Mapping):
-            continue
+        if not isinstance(operator, str) or not operator.strip() or not isinstance(entries, Mapping) or not entries:
+            return None
         for key, raw_values in entries.items():
-            if not isinstance(key, str):
-                continue
-            values = _condition_values(raw_values)
-            if values:
-                normalized.append((operator.strip(), key.strip(), values))
+            if not isinstance(key, str) or not key.strip():
+                return None
+            items = raw_values if isinstance(raw_values, list) else [raw_values]
+            if not items or any(_canonical_condition_scalar(item) is None for item in items):
+                return None
+            normalized.append((operator.strip(), key.strip(), _condition_values(raw_values)))
     return tuple(sorted(normalized))
 
 
@@ -131,6 +133,10 @@ def normalize_iam_policy_document(
         if resources and not_resources:
             diagnostics.append(f"statement_{index}_conflicting_resource_forms")
             continue
+        conditions = _conditions(raw["Condition"]) if "Condition" in raw else ()
+        if conditions is None:
+            diagnostics.append(f"statement_{index}_invalid_condition")
+            continue
         sid_value = raw.get("Sid")
         statements.append(
             NormalizedIamStatement(
@@ -139,7 +145,7 @@ def normalize_iam_policy_document(
                 not_actions=not_actions,
                 resources=resources,
                 not_resources=not_resources,
-                conditions=_conditions(raw.get("Condition")),
+                conditions=conditions,
                 sid=sid_value.strip() if isinstance(sid_value, str) and sid_value.strip() else None,
             )
         )

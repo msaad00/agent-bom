@@ -38,23 +38,25 @@
 
 ### Security and engineering leaders: decide what needs attention
 
-Start with **Posture** for the current findings window; open **Top risks** to select a
-finding and inspect its evidence. **Assets & coverage** shows recorded inventory in its
-snapshot and source scope. Asset counts do not establish collection coverage.
+Start with **Posture**, then open **Top risks** to inspect a finding and its evidence.
+**Assets & coverage** shows inventory in its snapshot and source scope; asset counts
+do not establish collection coverage. Inventory retains selected filters even when no assets match.
 
 <p align="center">
   <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview starting with posture, current findings and freshness, with Top risks and Assets and coverage drilldowns" width="920"></a>
 </p>
 
+Explore [Top risks](docs/images/dashboard-risks-live.png) and [scoped Inventory](docs/images/inventory-live.png).
+
 ### GRC and audit: investigate assessment gaps
 
-Review controls passed, failed and needing review, with pass rate and assessment coverage.
-Select a framework to inspect its controls, open evidence, and follow linked findings.
-Expand **Risk mappings** for OWASP and MITRE ATLAS applicability; these mappings
-are separate from control pass/fail. Open **Compliance** for the
-[framework catalog and control evidence](site-docs/features/compliance.md).
-The sample below uses the offline synthetic enterprise estate, including evaluated
-checks and risk mappings. These results do not establish certification or an audit opinion.
+Review controls passed, failed and needing review. Pass rate describes evaluated results;
+assessment coverage counts evaluated framework control entries, which may overlap across frameworks.
+Select a framework to inspect controls, evidence and linked findings. **Risk mappings** show
+OWASP and MITRE ATLAS applicability separately from control pass/fail. Open **Compliance**
+for the [framework catalog and control evidence](site-docs/features/compliance.md).
+The offline synthetic enterprise estate below includes evaluated checks and risk mappings.
+These results do not establish certification or an audit opinion.
 
 <p align="center">
   <a href="docs/images/dashboard-paths-live.png"><img src="docs/images/dashboard-paths-live.png" alt="Compact Overview assessment summary with four priority frameworks, evaluated-control counts, and expandable risk mappings in a labeled sample environment" width="920"></a>
@@ -107,10 +109,8 @@ A blocked call does not establish that the underlying package was fixed.
 ## Self-host in your environment
 
 **Your infrastructure, your identity, your database, your audit boundary.**
-Run the control plane on a workstation, a VM or your Kubernetes cluster.
-Connect the sources you need and add fleet collection or runtime enforcement as
-teams adopt them. The deployment guides cover credentials, persistence and access
-controls for each supported path.
+Run on a workstation, VM or Kubernetes cluster; add sources, fleet collection and
+runtime enforcement as needed. The guides cover credentials, persistence and access.
 
 For a workstation pilot, run from a [published release checkout](https://github.com/msaad00/agent-bom/releases):
 

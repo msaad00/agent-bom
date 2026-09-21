@@ -726,9 +726,11 @@ function buildFindings() {
     source: "demo-fixture",
     severity: item.severity,
     effective_severity: item.severity,
-    title: `Reachable ${item.severity} package on ${item.affected_servers?.[0] ?? "MCP path"}`,
+    title: `Vulnerable ${item.severity} package on ${item.affected_servers?.[0] ?? "MCP path"}`,
     description: `${advisory(item.vulnerability_id).summary}. ${item.attack_vector_summary}`,
     cve_id: item.vulnerability_id,
+    package_name: advisory(item.vulnerability_id).package,
+    package_version: advisory(item.vulnerability_id).version,
     cvss_score: item.cvss_score,
     cvss_vector: item.cvss_vector,
     attack_vector: "network",
@@ -3620,7 +3622,7 @@ async function main() {
     }, {
       expectedText: ["Findings", "15 findings", /Detection/i, /Observed/i, /Remediation/i, "CVE-2025-29927", "CVE-2024-23334"],
       expectedApiPaths: ["/v1/findings", "/v1/findings/triage"],
-      rejectedText: ["17 findings"],
+      rejectedText: ["17 findings", /Reachable (critical|high|medium|low) package/i],
     });
     await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
@@ -3729,7 +3731,9 @@ function checkAdvisoryFixtures() {
   }
   for (const finding of buildFindings()) {
     const facts = advisory(finding.cve_id);
-    if (finding.severity !== facts.severity || finding.cvss_vector !== facts.cvss_vector || finding.impact_category !== facts.impact_category) {
+    if (finding.severity !== facts.severity || finding.cvss_vector !== facts.cvss_vector || finding.impact_category !== facts.impact_category
+      || finding.package_name !== facts.package || finding.package_version !== facts.version
+      || /reachable/i.test(finding.title)) {
       throw new Error(`Gallery finding and advisory disagree: ${finding.cve_id}`);
     }
   }

@@ -3142,16 +3142,24 @@ class PostgresGraphStore:
         """Postgres-native parity for the exact inventory query contract."""
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_offset_within_cap(offset, cursor)
-        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
-        if not effective_scan_id:
-            return self._empty_inventory_result(scan_id="")
-        with _tenant_connection(self._pool) as conn:
-            created_row = conn.execute(
-                "SELECT created_at FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
-                (effective_scan_id, tenant_id),
-            ).fetchone()
-            if created_row is None:
+        # Resolve the snapshot and every projection under one MVCC view so a
+        # concurrent replacement cannot mix facets, rows and finding context.
+        with _tenant_connection(self._pool, repeatable_read=True) as conn:
+            if scan_id:
+                snapshot_row = conn.execute(
+                    "SELECT scan_id, created_at FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
+                    (scan_id, tenant_id),
+                ).fetchone()
+            else:
+                snapshot_row = conn.execute(
+                    """SELECT scan_id, created_at FROM graph_snapshots
+                       WHERE tenant_id = %s AND snapshot_kind = 'scan'
+                       ORDER BY created_at DESC, scan_id DESC LIMIT 1""",
+                    (tenant_id,),
+                ).fetchone()
+            if snapshot_row is None:
                 return self._empty_inventory_result(scan_id="")
+            effective_scan_id = str(snapshot_row[0])
             asset_types = sorted(asset_entity_types)
             finding_types = sorted(_FINDING_ENTITY_TYPE_VALUES)
             asset_marks = ",".join("%s" for _ in asset_types)
@@ -3316,7 +3324,7 @@ class PostgresGraphStore:
             ).fetchone()
             return {
                 "scan_id": effective_scan_id,
-                "created_at": str(created_row[0]),
+                "created_at": str(snapshot_row[1]),
                 "nodes": nodes,
                 "total": total,
                 "next_cursor": next_cursor,

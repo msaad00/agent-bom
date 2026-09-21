@@ -127,6 +127,7 @@ import {
 import {
   prettifyReachabilityType,
   summarizeReachability,
+  describeTraversalSequence,
   type ReachabilitySummary,
 } from "@/lib/graph-reachability";
 import {
@@ -4218,7 +4219,7 @@ function ReachabilityDrillInPanel({
               </p>
               {Object.keys(summary.countsByType).length === 0 ? (
                 <p className="mt-2 text-ink-secondary">
-                  No downstream nodes returned for this root.
+                  No related nodes returned for this root.
                 </p>
               ) : (
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -4261,7 +4262,7 @@ function ReachabilityDrillInPanel({
                         </span>
                       </summary>
                       <p className="mt-1 break-words text-xs text-ink-secondary">
-                        {path.labels.join(" -> ")}
+                        {describeTraversalSequence(path.labels)}
                       </p>
                     </details>
                   ))}

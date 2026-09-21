@@ -40,10 +40,14 @@ describe("graph-entity-detail", () => {
         compliance_tags: [],
         attributes: { evidence_tier: "static_scan", summary: "Cross-host token disclosure", cvss_score: 6.5, fixed_version: "1.6.0", is_kev: false },
       },
-      edges_out: [{ id: "e1" }],
-      edges_in: [{ id: "e2" }, { id: "e3" }],
-      neighbors: ["a", "b"],
-      sources: ["scan"],
+      edges_out: [{ id: "e1", source: "vuln::cve-2024-1234", target: "b" }],
+      edges_in: [
+        { id: "e2", source: "a", target: "vuln::cve-2024-1234" },
+        { id: "e3", source: "a", target: "vuln::cve-2024-1234" },
+      ],
+      neighbors: ["b"],
+      sources: ["a", "a"],
+      completeness: { complete: true },
       impact: {
         node_id: "vuln::cve-2024-1234",
         affected_nodes: ["a", "b", "c"],
@@ -65,6 +69,37 @@ describe("graph-entity-detail", () => {
     expect(merged.cvssScore).toBe(6.5);
     expect(merged.attributes?.node_id).toBe("vuln::cve-2024-1234");
     expect(evidenceTierLabel(merged)).toBe("static scan");
+  });
+
+  it("counts unique neighbors from both edge directions, not outgoing arrays", () => {
+    const detail = {
+      node: { id: "data", entity_type: "data_store", attributes: {} },
+      edges_in: [
+        { id: "contains", source: "bucket", target: "data" },
+        { id: "exposes", source: "bucket", target: "data" },
+      ],
+      edges_out: [],
+      neighbors: [], sources: ["bucket", "bucket"], impact: {},
+      completeness: { complete: true },
+    } as unknown as GraphNodeDetailResponse;
+    const merged = mergeGraphNodeDetail(baseNode(), detail);
+    expect(merged.neighborCount).toBe(1);
+    expect(merged.sourceCount).toBe(1);
+    expect(merged.incomingEdgeCount).toBe(2);
+    expect(merged.outgoingEdgeCount).toBe(0);
+  });
+
+  it.each([undefined, { complete: false, truncated: true }])("does not turn missing or partial empty context into zero neighbors", (completeness) => {
+    const detail = {
+      node: { id: "data", entity_type: "data_store", attributes: {} },
+      edges_in: [], edges_out: [], neighbors: [], sources: [], impact: {}, completeness,
+    } as unknown as GraphNodeDetailResponse;
+    const merged = mergeGraphNodeDetail(baseNode(), detail);
+    expect(merged.neighborCount).toBeUndefined();
+    expect(merged.incomingEdgeCount).toBeUndefined();
+    expect(merged.relationshipCountsPartial).toBe(true);
+    detail.completeness = { complete: true } as GraphNodeDetailResponse["completeness"];
+    expect(mergeGraphNodeDetail(baseNode(), detail).neighborCount).toBe(0);
   });
 
   it("resolves next actions for findings and packages", () => {

@@ -35,6 +35,7 @@ export type LineageNodeData = {
   complianceTags?: string[] | undefined;
   attributes?: Record<string, unknown> | undefined;
   neighborCount?: number | undefined;
+  relationshipCountsPartial?: boolean | undefined;
   sourceCount?: number | undefined;
   incomingEdgeCount?: number | undefined;
   outgoingEdgeCount?: number | undefined;

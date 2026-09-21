@@ -578,16 +578,16 @@ export function LineageDetailPanel({
   const relationshipsSection = hasRelationships ? (
     <div className="space-y-2">
       {data.neighborCount != null && (
-        <Row label="Neighbors" value={data.neighborCount} />
+        <Row label={data.relationshipCountsPartial ? "Known neighbors" : "Neighbors"} value={data.neighborCount} />
       )}
       {data.sourceCount != null && (
-        <Row label="Sources" value={data.sourceCount} />
+        <Row label={data.relationshipCountsPartial ? "Known incoming neighbors" : "Incoming neighbors"} value={data.sourceCount} />
       )}
       {data.incomingEdgeCount != null && (
-        <Row label="Incoming edges" value={data.incomingEdgeCount} />
+        <Row label={data.relationshipCountsPartial ? "Returned incoming edges" : "Incoming edges"} value={data.incomingEdgeCount} />
       )}
       {data.outgoingEdgeCount != null && (
-        <Row label="Outgoing edges" value={data.outgoingEdgeCount} />
+        <Row label={data.relationshipCountsPartial ? "Returned outgoing edges" : "Outgoing edges"} value={data.outgoingEdgeCount} />
       )}
       {data.impactCount != null && (
         <Row

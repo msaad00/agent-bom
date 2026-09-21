@@ -157,9 +157,9 @@ export function GraphEntityDrawer({
         </p>
       ) : null}
       <div className="flex flex-wrap gap-3 text-[11px] text-[color:var(--text-secondary)]">
-        <span>in {enriched.incomingEdgeCount ?? "—"}</span>
-        <span>out {enriched.outgoingEdgeCount ?? "—"}</span>
-        <span>neighbors {enriched.neighborCount ?? "—"}</span>
+        <span>{enriched.relationshipCountsPartial ? "returned in" : "in"} {enriched.incomingEdgeCount ?? "—"}</span>
+        <span>{enriched.relationshipCountsPartial ? "returned out" : "out"} {enriched.outgoingEdgeCount ?? "—"}</span>
+        <span>{enriched.relationshipCountsPartial ? "known neighbors" : "neighbors"} {enriched.neighborCount ?? "—"}</span>
         <span title="Upstream graph connections within the reported hop limit; not confirmed compromise">upstream connections {enriched.impactCount ?? "—"}</span>
       </div>
     </div>

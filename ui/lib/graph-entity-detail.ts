@@ -61,6 +61,17 @@ export function mergeGraphNodeDetail(
   ]);
   const partial = detail.completeness != null && !detail.completeness.complete;
   const findingCount = Math.max(base.vulnCount ?? 0, findingIds.size);
+  // The API's legacy `neighbors` list contains outgoing targets; `sources`
+  // contains incoming endpoints. Neither list counts unique adjacent nodes.
+  const isOtherNode = (id: unknown): id is string =>
+    typeof id === "string" && id.length > 0 && id !== detail.node.id;
+  const incoming = detail.edges_in.filter((edge) => edge.target === detail.node.id).map((edge) => edge.source);
+  const outgoing = detail.edges_out.filter((edge) => edge.source === detail.node.id).map((edge) => edge.target);
+  const neighbors = new Set([...incoming, ...outgoing, ...detail.sources, ...detail.neighbors].filter(isOtherNode));
+  const sources = new Set([...incoming, ...detail.sources].filter(isOtherNode));
+  const relationshipCountsPartial = detail.completeness?.complete !== true;
+  const returnedCount = (count: number) => relationshipCountsPartial && count === 0 ? undefined : count;
+
   return {
     ...base,
     ...(base.nodeType === "package" ? {
@@ -87,10 +98,11 @@ export function mergeGraphNodeDetail(
       fixedVersion: typeof mergedAttributes.fixed_version === "string" ? mergedAttributes.fixed_version : base.fixedVersion,
       isKev: typeof mergedAttributes.is_kev === "boolean" ? mergedAttributes.is_kev : base.isKev,
     } : {}),
-    neighborCount: detail.neighbors.length,
-    sourceCount: detail.sources.length,
-    incomingEdgeCount: detail.edges_in.length,
-    outgoingEdgeCount: detail.edges_out.length,
+    neighborCount: returnedCount(neighbors.size),
+    sourceCount: returnedCount(sources.size),
+    incomingEdgeCount: returnedCount(detail.edges_in.length),
+    outgoingEdgeCount: returnedCount(detail.edges_out.length),
+    relationshipCountsPartial,
     impactCount: detail.impact.affected_count,
     maxImpactDepth: detail.impact.max_depth_reached,
     impactByType: detail.impact.affected_by_type,

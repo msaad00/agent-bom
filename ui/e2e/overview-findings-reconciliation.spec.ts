@@ -280,6 +280,7 @@ for (const theme of ["light", "dark"] as const) {
       },
     } }));
     await page.goto("/");
+    await page.getByRole("tab", { name: "Top risks", exact: true }).click();
     const metrics = page.getByRole("group", { name: "Select a risk" }).locator("button > span:first-child");
     await expect(metrics).toHaveCount(2);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);

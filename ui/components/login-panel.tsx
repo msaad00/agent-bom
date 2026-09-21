@@ -5,12 +5,12 @@ import { useState, type ReactNode } from "react";
 import { useAuthState } from "@/components/auth-provider";
 import { BrandLogo } from "@/components/brand-logo";
 import { api } from "@/lib/api";
-import { userFacingApiErrorMessage } from "@/lib/api-errors";
+import { ApiError } from "@/lib/api-errors";
 import { clearSessionApiKey } from "@/lib/auth";
 import { ssoLoginPreset } from "@/lib/sso-login-presets";
 
 const AUTH_FAILURE_MESSAGE =
-  "That key is not active. If the local server restarted, reload to use its new dev session; otherwise paste the current raw key without the :role suffix.";
+  "Sign-in failed. Check your API key or contact your administrator.";
 const OIDC_BROWSER_LOGIN_PATH = "/v1/auth/oidc/login";
 const SNOWFLAKE_OAUTH_LOGIN_PATH = "/v1/auth/snowflake/login";
 
@@ -63,7 +63,7 @@ export function LoginPanel({
 
   if (error && isApiReachabilityFailure(error)) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-6">
         <div className="w-full max-w-xl rounded-3xl border border-amber-900/50 bg-amber-950/20 p-8 text-center shadow-2xl shadow-black/20">
           <div className="mx-auto mb-4 flex justify-center">
             <BrandLogo />
@@ -74,7 +74,7 @@ export function LoginPanel({
             stays locked until session discovery succeeds.
           </p>
           <p className="mt-2 text-xs text-[var(--text-tertiary)]">
-            {userFacingApiErrorMessage(error, "Failed to load auth session")}
+            Try again, or contact your administrator if the problem continues.
           </p>
           <button
             type="button"
@@ -97,14 +97,14 @@ export function LoginPanel({
     const oidcBearerConfigured = configuredModes.includes("oidc_bearer");
     const proxyOrBearerHint = !ssoConfigured && (trustedProxyConfigured || oidcBearerConfigured);
     const showApiKeyDivider = ssoConfigured || proxyOrBearerHint;
-    const authError = error && isAuthFailure(error) ? AUTH_FAILURE_MESSAGE : null;
-    const shownError = formError ?? authError;
+    // An unauthenticated page load is not evidence that a submitted key was rejected.
+    const shownError = formError;
     const ssoPreset = ssoLoginPreset(session?.sso_provider);
 
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md rounded-3xl border border-[var(--border-subtle)] bg-[var(--background)]/80 p-8 shadow-2xl shadow-black/20">
-          <div className="mb-6 text-center">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-6">
+        <div className="w-full max-w-md rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/80 p-5 sm:p-6 shadow-2xl shadow-black/20">
+          <div className="mb-4 text-center">
             <div className="mx-auto mb-4 flex justify-center">
               <BrandLogo />
             </div>
@@ -178,13 +178,16 @@ export function LoginPanel({
                 await api.createAuthSession(trimmedApiKey);
                 clearSessionApiKey();
               } catch (nextError) {
-                const message = userFacingApiErrorMessage(nextError, "Failed to create browser session");
                 clearSessionApiKey();
-                if (message.includes("404") || message.includes("405")) {
-                  setFormError("Browser session endpoint unavailable; update the API before using browser API-key exchange.");
-                  return;
-                }
-                setFormError(isAuthFailure(message) ? AUTH_FAILURE_MESSAGE : message);
+                setApiKey("");
+                const status = nextError instanceof ApiError ? nextError.status : undefined;
+                const authFailure = status === 401 || status === 403 || (
+                  status === undefined && nextError instanceof Error && isAuthFailure(nextError.message)
+                );
+                // Do not echo upstream response bodies or exception messages at the sign-in boundary.
+                setFormError(authFailure ? AUTH_FAILURE_MESSAGE : status === 429
+                  ? "Too many sign-in attempts. Wait a moment and try again."
+                  : "Sign-in is unavailable. Try again, or contact your administrator.");
                 return;
               }
               await refresh();
@@ -209,10 +212,7 @@ export function LoginPanel({
               />
             </div>
             <p className="mt-2 text-xs leading-5 text-[var(--text-tertiary)]">
-              No key yet? Server operators set API keys via the{" "}
-              <code className="rounded bg-[var(--surface)] px-1 py-0.5 font-mono text-[var(--text-secondary)]">AGENT_BOM_API_KEYS</code> env var
-              (format{" "}
-              <code className="rounded bg-[var(--surface)] px-1 py-0.5 font-mono text-[var(--text-secondary)]">&lt;key&gt;:&lt;admin|analyst|viewer&gt;</code>).
+              Need access? Contact your administrator.
             </p>
 
             <button
@@ -228,7 +228,7 @@ export function LoginPanel({
             </button>
 
             {shownError ? (
-              <div className="mt-4 rounded-xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/20 px-4 py-2.5 text-sm text-red-700 dark:text-red-300">
+              <div role="alert" className="mt-3 rounded-xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/20 px-4 py-2.5 text-sm text-red-700 dark:text-red-300">
                 {shownError}
               </div>
             ) : null}
@@ -249,29 +249,27 @@ export function LoginPanel({
                 }}
                 className="text-xs text-[var(--text-tertiary)] underline-offset-4 transition hover:text-[var(--text-secondary)] hover:underline"
               >
-                Clear
+                Reset sign-in
               </button>
             </div>
           </form>
 
-          {!ssoConfigured && !proxyOrBearerHint ? (
-            <p className="mt-6 border-t border-[var(--border-subtle)] pt-4 text-center text-xs text-[var(--text-tertiary)]">
-              Setting up single sign-on? Run{" "}
-              <code className="rounded bg-[var(--surface)] px-1 py-0.5 font-mono text-[var(--text-secondary)]">
-                agent-bom auth setup-oidc
-              </code>{" "}
-              for a guided &ldquo;Sign in with Google&rdquo; / OIDC walkthrough (see docs/AUTH_SSO.md).
-            </p>
-          ) : null}
+          <details className="mt-4 border-t border-[var(--border-subtle)] pt-3 text-sm text-[var(--text-secondary)]">
+            <summary className="cursor-pointer font-medium">Sign-in help</summary>
+            <p className="mt-2">Use the key provided by your administrator. Access permissions are managed by your organization.</p>
+            {!ssoConfigured && !proxyOrBearerHint ? (
+              <p className="mt-2">For single sign-on, ask your administrator to configure your organization's identity provider.</p>
+            ) : null}
+          </details>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-6">
       <div className="max-w-xl rounded-2xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/20 p-6 text-sm text-red-700 dark:text-red-300">
-        {userFacingApiErrorMessage(error, "Failed to load auth session")}
+        Try again, or contact your administrator if the problem continues.
       </div>
     </div>
   );

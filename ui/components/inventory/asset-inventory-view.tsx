@@ -36,6 +36,8 @@ export function AssetInventoryView({
     loading,
     error,
     errorKind,
+    scopeConflict,
+    setFilter,
     details,
     detailLoadingId,
     detailError,
@@ -61,6 +63,15 @@ export function AssetInventoryView({
       subtitle={config.description}
     />
   );
+
+  if (scopeConflict) {
+    return <div className="space-y-5">
+      {header}
+      <PageEmptyState title="No assets match these filters"
+        detail="The selected types do not belong to this asset category. Other filters and the selected snapshot are retained." />
+      <button type="button" onClick={() => setFilter("type", "")} className="rounded-lg border border-outline px-3 py-2 text-sm hover:bg-surface-muted">Clear type filter</button>
+    </div>;
+  }
 
   if (loading && !model) {
     return (

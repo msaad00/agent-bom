@@ -326,3 +326,18 @@ describe("InventoryIndex whole-query truth", () => {
     delete document.documentElement.dataset.theme;
   });
 });
+
+it("explains incompatible category filters without claiming missing collection and clears only type", async () => {
+  const onFiltersChange = vi.fn();
+  render(<InventoryProvider entityTypes={["package"]} scanId={SNAPSHOT}
+    initialFilters={{ type: "agent", provider: "aws", environment: "production" }} onFiltersChange={onFiltersChange}>
+    <AssetInventoryView kind="packages" />
+  </InventoryProvider>);
+  expect(await screen.findByText("No assets match these filters")).toBeInTheDocument();
+  expect(screen.queryByText(/discovered yet/i)).not.toBeInTheDocument();
+  expect(api.getInventorySummary).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Clear type filter" }));
+  await waitFor(() => expect(api.getInventorySummary).toHaveBeenCalledWith(SNAPSHOT,
+    expect.objectContaining({ type: ["package"], provider: "aws", environment: "production" })));
+  expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ type: "", provider: "aws", environment: "production" }));
+});

@@ -54,6 +54,7 @@ export interface InventoryState {
   page: InventoryAssetsResponse | null;
   filters: InventoryFilters;
   fixedEntityTypes: readonly string[];
+  scopeConflict?: boolean;
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
@@ -135,6 +136,10 @@ export function InventoryProvider({
   const reload = useCallback(() => setNonce((value) => value + 1), []);
   const entityTypesKey = (entityTypes ?? []).join(",");
   const fixedEntityTypes = useMemo(() => (entityTypesKey ? entityTypesKey.split(",") : []), [entityTypesKey]);
+  const selectedTypes = useMemo(() => filters.type.split(",").map((type) => type.trim()).filter(Boolean), [filters.type]);
+  const requestedTypes = useMemo(() => selectedTypes.length === 0 ? fixedEntityTypes
+    : fixedEntityTypes.length === 0 ? selectedTypes : selectedTypes.filter((type) => fixedEntityTypes.includes(type)), [selectedTypes, fixedEntityTypes]);
+  const scopeConflict = selectedTypes.length > 0 && fixedEntityTypes.length > 0 && requestedTypes.length === 0;
 
   const initialFiltersKey = JSON.stringify(initialFilters ?? {});
   useEffect(() => {
@@ -160,14 +165,27 @@ export function InventoryProvider({
 
   useEffect(() => {
     let cancelled = false;
+    if (scopeConflict) {
+      pageGeneration.current += 1;
+      snapshotGeneration.current += 1;
+      setSummary(null);
+      setPage(null);
+      setDetails({});
+      setDetailLoadingId("");
+      setDetailError("");
+      setLoadingSummary(false);
+      setLoadingPage(false);
+      setLoadingMore(false);
+      setError("The selected types do not belong to this asset category. Clear the type filter to inspect this category.");
+      setErrorKind("empty");
+      return;
+    }
     setLoadingSummary(true);
     setError("");
     const restored = JSON.parse(queryFiltersKey) as InventoryFilters;
-    const selectedTypes = restored.type ? restored.type.split(",") : [];
-    const scopedTypes = fixedEntityTypes.length ? selectedTypes.filter((type) => fixedEntityTypes.includes(type)) : selectedTypes;
     api.getInventorySummary(scanId ?? resolvedSnapshot.current, {
       environment: restored.environment, provider: restored.provider, source: restored.source,
-      search: restored.search, type: scopedTypes.length ? scopedTypes : fixedEntityTypes.length ? fixedEntityTypes : undefined,
+      search: restored.search, type: requestedTypes.length ? requestedTypes : undefined,
       severity: minSeverity ?? restored.severity, minSeverity: restored.minSeverity,
     })
       .then((response) => {
@@ -189,15 +207,7 @@ export function InventoryProvider({
     return () => {
       cancelled = true;
     };
-  }, [nonce, scanId, queryFiltersKey, minSeverity, fixedEntityTypes]);
-
-  const requestedTypes = useMemo(() => {
-    if (!filters.type) return fixedEntityTypes;
-    const selected = filters.type.split(",").map((type) => type.trim()).filter(Boolean);
-    if (fixedEntityTypes.length === 0) return selected;
-    const allowed = selected.filter((type) => fixedEntityTypes.includes(type));
-    return allowed.length ? allowed : fixedEntityTypes;
-  }, [filters.type, fixedEntityTypes]);
+  }, [nonce, scanId, queryFiltersKey, minSeverity, requestedTypes, scopeConflict]);
 
   const requestScope = useMemo(() => ({
     ...(requestedTypes.length > 0 ? { type: requestedTypes } : {}),
@@ -211,7 +221,7 @@ export function InventoryProvider({
 
   const snapshotId = summary?.scan_id;
   useEffect(() => {
-    if (!snapshotId) return;
+    if (!snapshotId || scopeConflict) return;
     pageCursors.current.clear();
     pageGeneration.current += 1;
     setLoadingMore(false);
@@ -240,10 +250,10 @@ export function InventoryProvider({
       cancelled = true;
       pageGeneration.current += 1;
     };
-  }, [snapshotId, requestScope, pageSize, nonce]);
+  }, [snapshotId, requestScope, pageSize, nonce, scopeConflict]);
 
   const model = useMemo(() => (summary && page ? buildInventoryFromApi(summary, page) : null), [summary, page]);
-  const hasMore = !loadingPage && Boolean(page?.pagination.has_more);
+  const hasMore = !scopeConflict && !loadingPage && Boolean(page?.pagination.has_more);
   const setFilter = useCallback((key: InventoryFilterKey, value: string) => {
     const next = { ...filtersRef.current, [key]: value };
     filtersRef.current = next;
@@ -258,7 +268,7 @@ export function InventoryProvider({
   }, [minSeverity, onFiltersChange]);
 
   const navigatePage = useCallback(async (previous: boolean) => {
-    if (!summary || !page || loadingPage || loadingMore || (previous ? page.pagination.offset === 0 : !page.pagination.has_more)) return;
+    if (scopeConflict || !summary || !page || loadingPage || loadingMore || (previous ? page.pagination.offset === 0 : !page.pagination.has_more)) return;
     const generation = pageGeneration.current;
     const targetOffset = previous ? Math.max(0, page.pagination.offset - pageSize) : page.pagination.offset + pageSize;
     const cursor = previous ? pageCursors.current.get(targetOffset) : page.pagination.next_cursor;
@@ -281,12 +291,12 @@ export function InventoryProvider({
     } finally {
       if (generation === pageGeneration.current) setLoadingMore(false);
     }
-  }, [summary, page, loadingPage, loadingMore, requestScope, pageSize]);
+  }, [summary, page, loadingPage, loadingMore, requestScope, pageSize, scopeConflict]);
   const loadMore = useCallback(() => navigatePage(false), [navigatePage]);
   const previousPage = useCallback(() => navigatePage(true), [navigatePage]);
 
   const loadAssetDetail = useCallback(async (assetId: string) => {
-    if (!summary || details[assetId] || detailLoadingId === assetId) return;
+    if (scopeConflict || !summary || details[assetId] || detailLoadingId === assetId) return;
     const generation = snapshotGeneration.current;
     setDetailLoadingId(assetId);
     setDetailError("");
@@ -302,15 +312,16 @@ export function InventoryProvider({
         setDetailLoadingId((current) => current === assetId ? "" : current);
       }
     }
-  }, [summary, details, detailLoadingId]);
+  }, [summary, details, detailLoadingId, scopeConflict]);
 
   const value = useMemo<InventoryState>(() => ({
-    model,
-    summary,
-    page,
+    model: scopeConflict ? null : model,
+    summary: scopeConflict ? null : summary,
+    page: scopeConflict ? null : page,
     filters,
     fixedEntityTypes,
-    loading: loadingSummary || loadingPage,
+    scopeConflict,
+    loading: !scopeConflict && (loadingSummary || loadingPage),
     loadingMore,
     hasMore,
     error,
@@ -324,7 +335,7 @@ export function InventoryProvider({
     loadMore,
     previousPage, pageSize, setPageSize,
     loadAssetDetail,
-  }), [model, summary, page, filters, fixedEntityTypes, loadingSummary, loadingPage, loadingMore, hasMore, error, errorKind, details, detailLoadingId, detailError, setFilter, clearFilters, reload, loadMore, previousPage, pageSize, setPageSize, loadAssetDetail]);
+  }), [model, summary, page, filters, fixedEntityTypes, scopeConflict, loadingSummary, loadingPage, loadingMore, hasMore, error, errorKind, details, detailLoadingId, detailError, setFilter, clearFilters, reload, loadMore, previousPage, pageSize, setPageSize, loadAssetDetail]);
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>;
 }

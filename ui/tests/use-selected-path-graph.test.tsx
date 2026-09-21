@@ -125,6 +125,38 @@ describe("selected path graph hydration", () => {
     expect(signal.aborted).toBe(true);
   });
 
+  it("reconciles selected graph counts and omits metadata about the broader response", async () => {
+    const selected = response.nodes.find((node) => node.id === path.hops[0])!;
+    const wider = {
+      ...response,
+      nodes: [selected, { ...selected, id: "unrelated", entity_type: "package", severity: "critical" }],
+      edges: [],
+      stats: { ...response.stats, total_nodes_source: 999, total_nodes: 999, node_types: { package: 999 }, severity_counts: { critical: 999 }, relationship_types: { uses: 999 }, max_attack_path_risk: 999, highest_interaction_risk: 999, analysis_status: { broader: { status: "complete" } } },
+      pagination: { total: 999, has_more: true },
+      completeness: { complete: true, total: 999, returned: 999 },
+      count_metadata: { total: 999 },
+    } as unknown as GraphQueryResponse;
+    query.mockResolvedValue(wider);
+    const { result } = renderHook(() => useSelectedPathGraph(props));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.graph!.stats).toEqual({
+      total_nodes: 1, total_edges: 0, node_types: { [selected.entity_type]: 1 }, severity_counts: { [selected.severity]: 1 }, relationship_types: {},
+      attack_path_count: 1, interaction_risk_count: 0, max_attack_path_risk: path.composite_risk, highest_interaction_risk: 0,
+    });
+    for (const field of ["pagination", "completeness", "count_metadata", "missing_roots", "depth_by_node"]) {
+      expect(result.current.graph).not.toHaveProperty(field);
+    }
+    expect(result.current.message).toContain("incomplete");
+  });
+
+  it("shows an explicit status for a path without recorded hops", () => {
+    const { result } = renderHook(() => useSelectedPathGraph({ ...props, path: { ...path, hops: [], edges: [] } }));
+    expect(query).not.toHaveBeenCalled();
+    expect(result.current.graph).toBeNull();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.message).toContain("no recorded hops");
+  });
+
   it("does not issue unbounded requests for oversized paths", () => {
     const { result } = renderHook(() => useSelectedPathGraph({ ...props, path: { ...path, hops: Array.from({ length: 65 }, (_, index) => `node:${index}`) } }));
     expect(query).not.toHaveBeenCalled();

@@ -8,9 +8,15 @@ import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 const MAX_PATH_NODES = 64;
 const MAX_CONTEXT_EDGES = 2048;
 
+function counts(values: string[]): Record<string, number> {
+  const totals = new Map<string, number>();
+  for (const value of values) totals.set(value, (totals.get(value) ?? 0) + 1);
+  return Object.fromEntries(totals);
+}
+
 function containsPath(graph: UnifiedGraphData, path: AttackPath): boolean {
   const nodes = new Set(graph.nodes.map((node) => node.id));
-  return path.hops.every((id) => nodes.has(id)) && path.hops.slice(1).every((target, index) =>
+  return path.hops.length > 0 && path.hops.every((id) => nodes.has(id)) && path.hops.slice(1).every((target, index) =>
     graph.edges.some((edge) =>
       (edge.relationship === path.edges[index] || edge.id === path.edges[index]) && (
         (edge.source === path.hops[index] && edge.target === target) ||
@@ -65,15 +71,29 @@ export function useSelectedPathGraph({ graph, path, scanId, enabled }: {
       const nodeIds = new Set(nodes.map((node) => node.id));
       const edges = response.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
       const selectedGraph: UnifiedGraphData = {
-        ...response, nodes, edges, attack_paths: [path], interaction_risks: [],
-        stats: { ...response.stats, total_nodes: nodes.length, total_edges: edges.length, attack_path_count: 1, interaction_risk_count: 0 },
+        scan_id: response.scan_id,
+        tenant_id: response.tenant_id,
+        created_at: response.created_at,
+        nodes, edges, attack_paths: [path], interaction_risks: [],
+        // Query totals/completeness describe broader traversal, not this slice.
+        stats: {
+          total_nodes: nodes.length,
+          total_edges: edges.length,
+          node_types: counts(nodes.map((node) => node.entity_type)),
+          severity_counts: counts(nodes.map((node) => node.severity)),
+          relationship_types: counts(edges.map((edge) => edge.relationship)),
+          attack_path_count: 1,
+          interaction_risk_count: 0,
+          max_attack_path_risk: path.composite_risk,
+          highest_interaction_risk: 0,
+        },
       };
       const complete = containsPath(selectedGraph, path);
       setResult({
         key, graph: selectedGraph, failed: false,
         message: !complete
           ? "Selected path graph is incomplete: some recorded nodes or relationships were not returned. The ordered Path retains the available source receipts."
-          : response.truncated
+          : response.truncated || response.completeness?.complete === false
             ? "Selected path loaded. Broader context was limited by the graph query budget."
             : "",
       });
@@ -89,9 +109,11 @@ export function useSelectedPathGraph({ graph, path, scanId, enabled }: {
   return {
     graph: available ? graph : inScope ? current?.graph ?? null : null,
     loading: needsLoad && current === null,
-    message: !available && overBudget
-      ? "This path exceeds the 64-node graph inspection limit. Inspect its ordered Path or open the full graph."
-      : current?.message ?? "",
+    message: path && roots.length === 0
+      ? "This path has no recorded hops to display. Inspect the ordered Path evidence or open the full graph."
+      : !available && overBudget
+        ? "This path exceeds the 64-node graph inspection limit. Inspect its ordered Path or open the full graph."
+        : current?.message ?? "",
     canRetry: Boolean(current?.failed),
     retry: () => setAttempt((value) => value + 1),
   };

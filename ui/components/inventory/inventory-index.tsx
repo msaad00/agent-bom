@@ -35,11 +35,8 @@ export function InventoryIndex() {
 
   const cards = useMemo(() => {
     if (!summary) return [];
-    const typeCounts = new Map(
-      (model?.facets.type.buckets ?? summary.facets.type.buckets)
-        .filter((bucket) => bucket.value)
-        .map((bucket) => [bucket.value!, bucket.count]),
-    );
+    // Self-excluding type facets describe alternative filters, not these links' scope.
+    const typeCounts = new Map(Object.entries(summary.by_type));
     return ASSET_KINDS.map((kind) => {
       return {
         kind,
@@ -49,15 +46,13 @@ export function InventoryIndex() {
         ),
       };
     });
-  }, [model, summary]);
+  }, [summary]);
 
   const totals = useMemo(() => {
-    const sourceCount = summary?.facets.source.buckets.filter((bucket) => bucket.value).length ?? 0;
     return {
       assets: summary?.total_assets ?? 0,
       matching: model?.matchingTotal ?? 0,
       findings: summary?.finding_count ?? 0,
-      sources: sourceCount,
     };
   }, [model, summary]);
 
@@ -105,7 +100,7 @@ export function InventoryIndex() {
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-secondary" aria-label="Snapshot summary">
         <span><strong className="text-foreground">{totals.assets.toLocaleString()}</strong> matching recorded assets</span>
-        <span>{totals.sources.toLocaleString()} evidence sources</span>
+        <span>{filters.source ? `Source: ${filters.source}` : "All recorded sources"}</span>
       </div>
 
       <nav aria-label="Asset types" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">

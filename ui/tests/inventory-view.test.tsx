@@ -261,6 +261,14 @@ describe("InventoryIndex whole-query truth", () => {
     expect(screen.getByText("Showing 101–101 of 700 matching assets")).toBeVisible();
   });
 
+  it("uses filtered type totals for category links rather than self-excluding facets", async () => {
+    vi.mocked(api.getInventorySummary).mockResolvedValue(summary({total_assets: 100, by_type: {agent:100}}));
+    render(<InventoryProvider initialFilters={{type:"agent"}}><InventoryIndex /></InventoryProvider>);
+    expect(await screen.findByRole("link", {name:"AI entities 100"})).toHaveAttribute("href", "/inventory/agents?scan=scan-inventory-7&type=agent");
+    expect(await screen.findByRole("link", {name:"Packages 0"})).toHaveAttribute("href", "/inventory/packages?scan=scan-inventory-7&type=agent");
+    expect(await screen.findByRole("link", {name:"Servers & tools 0"})).toBeVisible();
+  });
+
   it("renders authoritative snapshot and kind totals despite a bounded first page", async () => {
     render(
       <InventoryProvider>
@@ -292,6 +300,7 @@ describe("InventoryIndex whole-query truth", () => {
     vi.mocked(api.getInventorySummary).mockResolvedValue(
       summary({
         total_assets: 1000 + count,
+        by_type: {package:700,server:200,agent:100,user:count},
         facets: identityFacets,
       }),
     );

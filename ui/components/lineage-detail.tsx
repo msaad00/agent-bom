@@ -771,7 +771,7 @@ export function LineageDetailPanel({
 
   if (mobileDialog) {
     return createPortal(
-      <div className="fixed inset-0 z-[130]" data-testid="graph-entity-drawer">
+      <div className="fixed inset-0 z-[80]" data-testid="graph-entity-drawer">
         <Drawer open onClose={onClose} onBack={onClose} title={data.label}
           eyebrow={TYPE_LABELS[data.nodeType]} size="none" resizable={false}
           bodyClassName="!p-0 flex flex-col" footer={footerSlot}>

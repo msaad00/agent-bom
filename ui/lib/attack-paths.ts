@@ -342,7 +342,15 @@ function exposureRefFromUnifiedNode(node: UnifiedNode): ExposureEntityRef {
     node.entity_type === EntityType.GROUP ||
     node.entity_type === EntityType.ROLE
   ) {
-    display = { title: node.label, subtitle: "Workload identity" };
+    const identitySubtitles: Partial<Record<EntityType, string>> = {
+      [EntityType.USER]: "User identity",
+      [EntityType.GROUP]: "Identity group",
+      [EntityType.ROLE]: "Authorization role",
+      [EntityType.SERVICE_ACCOUNT]: "Service account",
+      [EntityType.SERVICE_PRINCIPAL]: "Service principal",
+      [EntityType.MANAGED_IDENTITY]: "Managed identity",
+    };
+    display = { title: node.label, subtitle: identitySubtitles[node.entity_type as EntityType] ?? "Identity" };
     kindLabel = "Identity";
   } else if (node.entity_type === EntityType.AGENT && node.id.startsWith("workload:")) {
     display = { title: node.label, subtitle: "Application workload" };
@@ -432,7 +440,7 @@ export function toExposurePathFromAttackPath(
   });
   const packages = hops.filter((hop) => hop.role === "package");
   const servers = hops.filter((hop) => hop.role === "server");
-  const affectedAgents = uniqueExposureValues(labelsForAttackPathType(path, nodeById, "agent"));
+  const affectedAgents = labelsForAttackPathType(path, nodeById, "agent");
   const exposedCredentials = uniqueExposureValues(path.credential_exposure);
   const reachableTools = uniqueExposureValues(path.tool_exposure);
 
@@ -500,6 +508,14 @@ export function withCanonicalExposurePresentation(
   return {
     ...path,
     hops,
+    // Broad API visual roles also include human and service identities. Only
+    // replace the legacy list when the entire path has canonical node types.
+    affectedAgents: path.hops.every((hop) => nodeById.has(hop.id))
+      ? [...new Set(path.hops.map((hop) => hop.id))].flatMap((id) => {
+          const node = nodeById.get(id)!;
+          return node.entity_type === EntityType.AGENT ? [exposureRefFromUnifiedNode(node).label] : [];
+        })
+      : path.affectedAgents,
     source: sourceNode
       ? exposureRefFromUnifiedNode(sourceNode)
       : hopById.get(path.source.id) ?? path.source,
@@ -589,6 +605,8 @@ function pathNodeLabels(path: AttackPath, nodeById: Map<string, UnifiedNode>) {
                   : "unknown";
       const display = formatExposureEntityDisplay(node.label, role, node.attributes ?? {});
       return {
+        id: node.id,
+        entityType: node.entity_type,
         rawLabel: node.label,
         label: normalizeLabel(node.label),
         friendlyLabel: display.title,
@@ -604,8 +622,12 @@ export function labelsForAttackPathType(
 ): string[] {
   const deduped = new Map<string, string>();
   for (const node of pathNodeLabels(path, nodeById)) {
-    if (node.type !== type || deduped.has(node.label)) continue;
-    deduped.set(node.label, node.friendlyLabel);
+    // The visual "agent" style covers identities too; an Agents count must
+    // use canonical types and stable IDs, including distinct same-name agents.
+    if (type === "agent" && node.entityType !== EntityType.AGENT) continue;
+    const key = type === "agent" ? node.id : node.label;
+    if (node.type !== type || deduped.has(key)) continue;
+    deduped.set(key, node.friendlyLabel);
   }
   return Array.from(deduped.values());
 }

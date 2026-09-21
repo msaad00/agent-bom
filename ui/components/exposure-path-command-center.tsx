@@ -220,7 +220,7 @@ export function ExposurePathCommandCenter({
             <dl className="ep-assessment-grid">
               <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-[15px] text-[color:var(--text-secondary)]">Reachability</dt><dd className="text-[15px] font-medium capitalize">{path.evidenceDimensions?.reachability.verdict ?? "Unknown"}</dd></div>
               <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-[15px] text-[color:var(--text-secondary)]">Exploitability</dt><dd className="text-[15px] font-medium capitalize">{path.evidenceDimensions?.exploitability.verdict?.replaceAll("_", " ") ?? "Not assessed"}</dd></div>
-              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-[15px] text-[color:var(--text-secondary)]">Evidence coverage</dt><dd className="text-[15px] font-medium capitalize">{path.evidenceDimensions?.completeness.status ?? "Unavailable"}</dd></div>
+              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-[15px] text-[color:var(--text-secondary)]">Assessment completeness</dt><dd className="text-[15px] font-medium capitalize">{path.evidenceDimensions?.completeness.status ?? "Unavailable"}</dd></div>
             </dl>
           </section>
 

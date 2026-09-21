@@ -450,6 +450,39 @@ describe("attack path helpers", () => {
     expect(investigationRootForAttackPath(path, nodes, {})?.id).toBe("cve-1");
   });
 
+  it("counts canonical agent nodes separately from identity visual roles and duplicate labels", () => {
+    const ids = ["agent-a", "agent-b", "identity", "user", "group"];
+    const path: AttackPath = { source: ids[0]!, target: ids[4]!, hops: ids, edges: [],
+      composite_risk: 0, summary: "", credential_exposure: [], tool_exposure: [], vuln_ids: [] };
+    const nodes = new Map<string, UnifiedNode>([
+      [ids[0]!, graphNode(ids[0]!, EntityType.AGENT, "reviewer")],
+      [ids[1]!, graphNode(ids[1]!, EntityType.AGENT, "reviewer")],
+      [ids[2]!, graphNode(ids[2]!, EntityType.SERVICE_ACCOUNT, "service-reviewer")],
+      [ids[3]!, graphNode(ids[3]!, EntityType.USER, "human-reviewer")],
+      [ids[4]!, graphNode(ids[4]!, EntityType.GROUP, "review-team")],
+    ]);
+    expect(labelsForAttackPathType(path, nodes, "agent")).toEqual(["Reviewer", "Reviewer"]);
+    const exposure = toExposurePathFromAttackPath(path, nodes);
+    expect(exposure.affectedAgents).toEqual(["Reviewer", "Reviewer"]);
+    const legacy = { ...exposure, affectedAgents: ["Reviewer", "service-reviewer", "human-reviewer"] };
+    expect(withCanonicalExposurePresentation(legacy, nodes).affectedAgents).toEqual(["Reviewer", "Reviewer"]);
+    expect(withCanonicalExposurePresentation(legacy, new Map()).affectedAgents).toEqual(legacy.affectedAgents);
+  });
+
+  it.each([
+    [EntityType.USER, "User identity"],
+    [EntityType.GROUP, "Identity group"],
+    [EntityType.ROLE, "Authorization role"],
+    [EntityType.SERVICE_ACCOUNT, "Service account"],
+    [EntityType.SERVICE_PRINCIPAL, "Service principal"],
+    [EntityType.MANAGED_IDENTITY, "Managed identity"],
+  ])("uses the recorded identity kind for %s subtitles", (entityType, subtitle) => {
+    const node = graphNode("identity", entityType, "Reviewer");
+    const path: AttackPath = { source: node.id, target: node.id, hops: [node.id], edges: [],
+      composite_risk: 0, summary: "", credential_exposure: [], tool_exposure: [], vuln_ids: [] };
+    expect(toExposurePathFromAttackPath(path, new Map([[node.id, node]])).source).toMatchObject({ kindLabel: "Identity", subtitle });
+  });
+
   it("adapts persisted attack paths into the shared exposure path contract", () => {
     const path: AttackPath = {
       source: "cve-1",
@@ -551,7 +584,7 @@ describe("attack path helpers", () => {
       "Application service",
       "Application workload",
       "Digest sha256:abc",
-      "Workload identity",
+      "Service account",
       "Sensitive data asset",
     ]);
   });

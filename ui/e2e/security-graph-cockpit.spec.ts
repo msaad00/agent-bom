@@ -1311,7 +1311,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect.poll(async () => (await diagram.boundingBox())!.y + (await diagram.boundingBox())!.height).toBeLessThanOrEqual(900);
     await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Reachability");
     await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Exploitability");
-    await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Evidence coverage");
+    await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Assessment completeness");
     await expect(detail.getByTestId("exposure-path-primary-action")).toBeVisible();
     await expect(detail.getByText("Evidence & relationships", { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`focused-path-${theme}.png`) });

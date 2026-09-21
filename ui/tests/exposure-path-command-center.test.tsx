@@ -393,5 +393,5 @@ it("keeps unavailable assessments visible when a legacy snapshot has no dimensio
   const assessment = screen.getByRole("region", { name: "Path evidence assessment" });
   expect(assessment).toHaveTextContent("ReachabilityUnknown");
   expect(assessment).toHaveTextContent("ExploitabilityNot assessed");
-  expect(assessment).toHaveTextContent("Evidence coverageUnavailable");
+  expect(assessment).toHaveTextContent("Assessment completenessUnavailable");
 });

@@ -2332,6 +2332,9 @@ class SQLiteGraphStore:
         if conn is None:
             return self._empty_inventory_result(scan_id="")
         try:
+            # Keep facets, page rows and related evidence in one read snapshot,
+            # including when a collector replaces the same scan concurrently.
+            conn.execute("BEGIN")
             effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
             if not effective_scan_id:
                 return self._empty_inventory_result(scan_id="")
@@ -2340,7 +2343,13 @@ class SQLiteGraphStore:
             asset_placeholders = ",".join("?" for _ in asset_types)
             finding_types = sorted(_FINDING_ENTITY_TYPE_VALUES)
             finding_placeholders = ",".join("?" for _ in finding_types)
-            cte = f"""
+
+            def inventory_cte(*, facets: bool = False) -> str:
+                # Each facet scans the same qualified assets. Materialize this
+                # narrow projection once instead of decoding node JSON per facet.
+                projection = "n.id, n.entity_type, n.label, n.attributes, n.data_sources" if facets else "n.*"
+                materialized = "MATERIALIZED" if facets and sqlite3.sqlite_version_info >= (3, 35, 0) else ""
+                return f"""
                 WITH finding_links AS (
                     SELECT e.source_id AS asset_id, f.severity_id
                     FROM graph_edges e
@@ -2355,7 +2364,7 @@ class SQLiteGraphStore:
                     SELECT asset_id, MAX(COALESCE(severity_id, 0)) AS finding_severity_rank
                     FROM finding_links GROUP BY asset_id
                 ), assets_raw AS (
-                    SELECT n.*,
+                    SELECT {projection},
                            NULLIF(LOWER(COALESCE(json_extract(n.dimensions, '$.environment'),
                                                   json_extract(n.attributes, '$.environment'), '')), '') AS inventory_environment,
                            NULLIF(LOWER(COALESCE(json_extract(n.dimensions, '$.cloud_provider'),
@@ -2368,14 +2377,15 @@ class SQLiteGraphStore:
                     LEFT JOIN finding_rollup ON finding_rollup.asset_id = n.id
                     WHERE n.tenant_id = ? AND n.scan_id = ?
                       AND n.entity_type IN ({asset_placeholders})
-                ), assets AS (
+                ), assets AS {materialized} (
                     SELECT *, CASE finding_severity_rank
                         WHEN 5 THEN 'critical' WHEN 4 THEN 'high'
                         WHEN 3 THEN 'medium' WHEN 2 THEN 'low' WHEN 1 THEN 'info'
                         ELSE NULL END AS finding_severity
                     FROM assets_raw
                 )
-            """  # nosec B608 - placeholders only; type values are bound
+            """  # nosec B608 - static projection/hint; all type and scope values are bound
+
             cte_params: list[Any] = [
                 tenant_id,
                 effective_scan_id,
@@ -2454,7 +2464,7 @@ class SQLiteGraphStore:
                 """  # nosec B608 - source_where contains only generated placeholders
             )
             facet_params.extend([*source_params, *source_params])
-            facet_rows = conn.execute(cte + " UNION ALL ".join(facet_sql), [*cte_params, *facet_params]).fetchall()
+            facet_rows = conn.execute(inventory_cte(facets=True) + " UNION ALL ".join(facet_sql), [*cte_params, *facet_params]).fetchall()
             facets: dict[str, list[dict[str, Any]]] = {name: [] for name in ("type", "source", "provider", "environment", "severity")}
             total = 0
             for facet, value, count in facet_rows:
@@ -2479,7 +2489,7 @@ class SQLiteGraphStore:
                     [severity_id, severity_id, risk_score, severity_id, risk_score, label, severity_id, risk_score, label, node_id]
                 )
             rows = conn.execute(
-                cte
+                inventory_cte()
                 + f"""
                     SELECT id, entity_type, label, category_uid, class_uid, type_uid,
                            status, risk_score, severity, severity_id, first_seen, last_seen,

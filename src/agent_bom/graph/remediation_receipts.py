@@ -351,7 +351,9 @@ def _snapshot_gap(snapshot: AccessEvidenceSnapshot, request: AccessComparisonReq
 
 def _hop_allowed(index: _ComparisonIndex, edge: UnifiedEdge) -> tuple[bool, ComparisonReason | None]:
     snapshot, request = index.snapshot, index.request
-    if not edge.traversable:
+    # A retained closed edge is historical evidence, even when its collector
+    # did not supply valid_to. It cannot witness baseline or residual access.
+    if not edge.traversable or edge.activity_id == 3:
         return False, None
     if edge.relationship not in _ACCESS_RELATIONSHIPS | _IDENTITY_RELATIONSHIPS:
         return False, None

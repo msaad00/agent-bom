@@ -2751,7 +2751,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Prioritized findings beside selected evidence, with freshness and scoped inventory navigation",
+      scope: "Default Posture view with current findings, freshness, and risk and scoped inventory drilldowns",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
@@ -3189,10 +3189,20 @@ async function main() {
 
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
+    const preparePosture = async (dashboardPage) => {
+      const postureTab = dashboardPage.getByRole("tab", { name: "Posture", exact: true });
+      await expect(postureTab).toHaveAttribute("aria-selected", "true");
+      await dashboardPage.getByRole("tabpanel", { name: "Posture", exact: true }).waitFor({ state: "visible" });
+    };
+    const postureAssertions = {
+      expectedText: [/Posture score/i, /Open issues/i, /Top risks/i, /Assets & coverage/i],
+      expectedApiPaths: ["/v1/overview", "/v1/inventory/summary"], assertNoHorizontalOverflow: true,
+    };
     const prepareExecutiveRisks = async (dashboardPage) => {
       const riskTab = dashboardPage.getByRole("tab", { name: "Top risks", exact: true });
       await riskTab.waitFor({ state: "visible" });
-      if (await riskTab.getAttribute("aria-selected") !== "true") throw new Error("Top risks must be the initial risk view");
+      await riskTab.click();
+      await expect(riskTab).toHaveAttribute("aria-selected", "true");
       const rows = dashboardPage.getByRole("group", { name: "Select a risk", exact: true }).getByRole("button");
       await expect(rows).toHaveCount(5);
       if (dashboardPage.viewportSize().width >= 1440) {
@@ -3203,7 +3213,7 @@ async function main() {
       expectedText: [/Review these findings first/i, /Top risks/i, /Assets & coverage/i],
       expectedApiPaths: ["/v1/overview", "/v1/inventory/summary"], assertNoHorizontalOverflow: true,
     };
-    await capture(page, "/?capture=1", "dashboard-live.png", prepareExecutiveRisks, executiveRiskAssertions);
+    await capture(page, "/?capture=1", "dashboard-live.png", preparePosture, postureAssertions);
     await capture(page, "/?capture=1", "dashboard-risks-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1040, height: 1100 });
     await capture(frameworkPage, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
@@ -3631,7 +3641,7 @@ async function main() {
     });
 
     const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
-    await capture(lightPage, "/?capture=1", "dashboard-light-live.png", prepareExecutiveRisks, executiveRiskAssertions);
+    await capture(lightPage, "/?capture=1", "dashboard-light-live.png", preparePosture, postureAssertions);
     await lightPage.setViewportSize({ width: 1440, height: 980 });
     await capture(lightPage, "/?capture=1", "dashboard-risks-light-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await lightPage.setViewportSize({ width: 1120, height: 900 });
@@ -3668,7 +3678,7 @@ async function main() {
     });
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
-    await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", prepareExecutiveRisks, executiveRiskAssertions);
+    await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", preparePosture, postureAssertions);
     await capture(mobilePage, "/?capture=1", "dashboard-risks-mobile-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await capture(
       mobilePage,

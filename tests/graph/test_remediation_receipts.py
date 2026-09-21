@@ -232,7 +232,9 @@ def test_mere_disappearance_without_explicit_revocation_is_unavailable():
 
 
 @pytest.mark.parametrize("component", ["authorization", "identity_binding", "policy_conditions", "session_context", "alternate_paths"])
-@pytest.mark.parametrize("state", ["partial", "access_denied", "unavailable", "stale", "truncated"])
+@pytest.mark.parametrize(
+    "state", ["partial", "access_denied", "unavailable", "stale", "truncated", "unsupported", "disabled", "sdk_missing"]
+)
 def test_incomplete_context_or_collection_cannot_prove_removal(component, state):
     baseline, candidate, request = _pair()
     coverage = tuple(
@@ -601,3 +603,97 @@ def test_baseline_identity_relationship_cannot_substitute_for_action_authority()
     result = _compare(baseline, candidate, request)
     assert result.outcome == "unavailable_evidence"
     assert result.reason_codes == ("baseline_access_not_established",)
+
+
+@pytest.mark.parametrize("edge_index", [0, 1], ids=["identity", "action"])
+@pytest.mark.parametrize("lifecycle", ["closed", "expired", "not_yet_valid"])
+def test_inactive_baseline_hop_cannot_establish_selected_access(edge_index, lifecycle):
+    baseline, candidate, request = _pair()
+    edge = baseline.graph.edges[edge_index]
+    if lifecycle == "closed":
+        edge.activity_id = 3
+    elif lifecycle == "expired":
+        edge.valid_to = baseline.receipt.completed_at.isoformat()
+    else:
+        edge.valid_from = (baseline.receipt.completed_at + timedelta(seconds=1)).isoformat()
+    baseline = _reseal(baseline)
+    request = request.model_copy(update={"baseline_graph_digest": baseline.receipt.graph_digest})
+    result = _compare(baseline, candidate, request)
+    assert result.outcome == "unavailable_evidence"
+    assert result.reason_codes == ("baseline_access_not_established",)
+    assert result.selected_authorization_removed is None
+
+
+@pytest.mark.parametrize("relationship", [RelationshipType.AUTHENTICATES_AS, RelationshipType.CAN_ACCESS])
+@pytest.mark.parametrize("lifecycle", ["closed", "expired", "not_yet_valid"])
+def test_inactive_alternate_hop_is_not_a_remaining_access_witness(relationship, lifecycle):
+    baseline, candidate, request = _pair(alternate=True, candidate_bindings=[_binding("alternate-read", OTHER)])
+    edge = next(
+        edge
+        for edge in candidate.graph.edges
+        if edge.relationship == relationship and (edge.target == "alternate" or edge.source == "alternate")
+    )
+    if lifecycle == "closed":
+        edge.activity_id = 3
+    elif lifecycle == "expired":
+        edge.valid_to = candidate.receipt.completed_at.isoformat()
+    else:
+        edge.valid_from = (candidate.receipt.completed_at + timedelta(seconds=1)).isoformat()
+    candidate = _reseal(candidate)
+    request = request.model_copy(update={"candidate_graph_digest": candidate.receipt.graph_digest})
+    result = _compare(baseline, candidate, request)
+    assert result.remaining_path == ()
+    if relationship is RelationshipType.AUTHENTICATES_AS:
+        # The alternate principal's native grant remains, but the recorded
+        # agent session no longer reaches it. This is only recorded path proof.
+        assert result.outcome == "recorded_authorization_removed"
+        assert result.selected_authorization_removed is True
+    else:
+        # A still-reachable principal with an ALLOW but no active action edge
+        # is inconsistent evidence, never proof of removal or residual access.
+        assert result.outcome == "unavailable_evidence"
+        assert result.reason_codes == ("authorization_graph_inconsistent",)
+    assert result.remediation_verified is False
+    assert result.successful_action_proven is False
+
+
+@pytest.mark.parametrize("conditional", [False, True])
+def test_alternate_native_deny_is_reevaluated_without_assuming_conditions(conditional):
+    baseline, candidate, request = _pair(alternate=True, candidate_bindings=[_binding("alternate-read", OTHER)])
+    deny = replace(
+        _binding("alternate-deny", OTHER),
+        effect=AuthorizationEffect.DENY,
+        condition=AuthorizationCondition(ConditionLanguage.CEL, "request.time < timestamp('2030-01-01T00:00:00Z')")
+        if conditional
+        else None,
+    )
+    candidate = replace(candidate, authorization=replace(candidate.authorization, bindings=(*candidate.authorization.bindings, deny)))
+    # A collector must not materialize an ALLOW edge after a deny or unknown
+    # condition; the comparison rechecks the native policy for reachable roles.
+    candidate.graph.edges = [edge for edge in candidate.graph.edges if edge.target != "data"]
+    candidate = _reseal(candidate)
+    request = request.model_copy(update={"candidate_graph_digest": candidate.receipt.graph_digest})
+    result = _compare(baseline, candidate, request)
+    assert result.outcome == ("unavailable_evidence" if conditional else "recorded_authorization_removed")
+    assert result.reason_codes == (("authorization_indeterminate",) if conditional else ())
+    assert not result.remaining_path
+    assert not result.remediation_verified
+
+
+def test_closed_alternate_identity_remains_inactive_after_sqlite_roundtrip(tmp_path):
+    from agent_bom.api.graph_store import SQLiteGraphStore
+
+    baseline, candidate, request = _pair(alternate=True, candidate_bindings=[_binding("alternate-read", OTHER)])
+    edge = next(edge for edge in candidate.graph.edges if edge.target == "alternate")
+    edge.activity_id = 3
+    candidate = _reseal(candidate)
+    request = request.model_copy(update={"candidate_graph_digest": candidate.receipt.graph_digest})
+    store = SQLiteGraphStore(tmp_path / "closed-session.db")
+    store.save_graph(candidate.graph)
+    restored = store.load_graph(scan_id="rescan", tenant_id="tenant-a")
+    assert correlation_graph_digest(restored) == candidate.receipt.graph_digest
+    assert next(edge for edge in restored.edges if edge.target == "alternate").activity_id == 3
+    result = _compare(baseline, replace(candidate, graph=restored), request)
+    assert result.outcome == "recorded_authorization_removed"
+    assert result.remaining_path == ()
+    assert result.remediation_verified is False

@@ -84,6 +84,11 @@ export function Drawer({
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const clampPanelWidth = useCallback((width: number): number => {
     const viewport = typeof window === "undefined" ? 1440 : window.innerWidth;
@@ -141,7 +146,7 @@ export function Drawer({
 
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -175,7 +180,7 @@ export function Drawer({
       document.removeEventListener("keydown", onKey);
       previouslyFocused?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

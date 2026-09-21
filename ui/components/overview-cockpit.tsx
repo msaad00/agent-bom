@@ -271,7 +271,7 @@ export function OverviewCockpit({
   exposurePaths,
   compliance = null,
 }: OverviewCockpitProps) {
-  const [riskTab, setRiskTab] = useState<"risks" | "posture" | "assets">("risks");
+  const [riskTab, setRiskTab] = useState<"risks" | "posture" | "assets">("posture");
   const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
   // Once scans exist the chip always renders, but an unevidenced score reads as
   // an em dash — the SAME treatment the Trust Center gives this status. Hiding
@@ -297,14 +297,14 @@ export function OverviewCockpit({
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
         </div>
         <DetailTabs ariaLabel="Risk overview views" value={riskTab} onChange={setRiskTab}
-          tabs={[{ key: "risks", label: "Top risks" }, { key: "assets", label: "Assets & coverage" }, { key: "posture", label: "Posture" }]} />
+          tabs={[{ key: "posture", label: "Posture" }, { key: "risks", label: "Top risks" }, { key: "assets", label: "Assets & coverage" }]} />
         <div role="tabpanel" aria-label="Top risks" hidden={riskTab !== "risks"}>
           <TopRisksPanel loading={loading} unavailable={overviewUnavailable} scans={scans}
             topPath={topPath} exposurePaths={exposurePaths}
             agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null} />
         </div>
         <div role="tabpanel" aria-label="Assets & coverage" hidden={riskTab !== "assets"}><OverviewAssets summary={inventorySummary} loading={inventoryLoading} unavailable={inventoryUnavailable} unavailableHref={inventoryUnavailableHref} /></div>
-        <div role="tabpanel" aria-label="Overview" hidden={riskTab !== "posture"}>
+        <div role="tabpanel" aria-label="Posture" hidden={riskTab !== "posture"}>
             <div className="mt-4 grid items-start gap-5 @min-[56rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @min-[56rem]:gap-6">
               <PostureHero
                 loading={loading}
@@ -530,6 +530,12 @@ function ComplianceSnapshotPanel({
   const attention = scored.filter((item) => item.fail > 0 || item.warn > 0).length;
   const passed = scored.reduce((total, item) => total + item.pass, 0);
   const unassessed = scored.filter((item) => frameworkEvaluated(item) === 0).length;
+  const assessmentCoverage = evidenceReady
+    && Number.isInteger(compliance.evaluatedControls) && compliance.evaluatedControls >= 0
+    && Number.isInteger(compliance.totalControls) && compliance.totalControls > 0
+    && compliance.evaluatedControls <= compliance.totalControls
+    ? Math.round(100 * compliance.evaluatedControls / compliance.totalControls)
+    : null;
 
   return (
     <div data-testid="overview-compliance-snapshot">
@@ -537,11 +543,13 @@ function ComplianceSnapshotPanel({
         <p role="status" className="mt-2 text-xs text-ink-secondary">Loading control evaluation…</p>
       ) : evidenceReady ? (
         <>
-          <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Evaluated control results">
-            {[{ label: "Passed", value: passed, tone: "text-emerald-700 dark:text-emerald-300" }, { label: "Failed", value: scored.reduce((n, f) => n + f.fail, 0), tone: "text-red-700 dark:text-red-300" }, { label: "Review", value: scored.reduce((n, f) => n + f.warn, 0), tone: "text-amber-700 dark:text-amber-300" }].map(({label, value, tone}) => <div key={label} className="rounded-md border border-outline p-2"><strong className={`block text-lg tabular-nums ${tone}`}>{value}</strong><span className="text-xs text-ink-secondary">{label}</span></div>)}
+          <dl className="mt-3 grid grid-cols-3 gap-2" aria-label="Evaluated control results">
+            {[{ label: "Controls passed", value: passed, tone: "text-emerald-700 dark:text-emerald-300" }, { label: "Controls failed", value: scored.reduce((n, f) => n + f.fail, 0), tone: "text-red-700 dark:text-red-300" }, { label: "Controls need review", value: scored.reduce((n, f) => n + f.warn, 0), tone: "text-amber-700 dark:text-amber-300" }].map(({label, value, tone}) => <div key={label} className="min-w-0 rounded-md border border-outline p-2"><dt className="text-xs leading-snug text-ink-secondary">{label}</dt><dd className={`mt-1 text-lg font-semibold tabular-nums ${tone}`}>{value}</dd></div>)}
+          </dl>
+          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-ink-secondary">
+            <p>{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
+            <p className="font-medium">{Math.round(compliance.overallScore)}% pass rate</p>
           </div>
-          <p className="mt-2 text-xs text-ink-secondary">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
-          <p className="mt-1 text-xs text-ink-secondary">{attention} framework{attention === 1 ? " needs" : "s need"} attention{unassessed > 0 ? ` · ${unassessed} not evaluated` : ""}</p>
 
         </>
       ) : (
@@ -553,7 +561,17 @@ function ComplianceSnapshotPanel({
             : "Framework coverage appears after the first completed scan. Empty estates do not show pass tiles."}
         </p>
       )}
+      {!loading && hasScanEvidence && compliance ? (
+        <details className="mt-2 text-xs text-ink-secondary">
+          <summary className="cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-emerald-500">
+            {assessmentCoverage == null ? "Assessment coverage unavailable" : `Assessment: ${compliance.evaluatedControls}/${compliance.totalControls} framework control entries evaluated (${assessmentCoverage}%)`}
+          </summary>
+          <p className="mt-2 leading-relaxed">Entries are counted per framework and may overlap. Recorded evaluations can include check errors. Coverage is limited to the framework entries returned for this assessment.</p>
+        </details>
+      ) : null}
       {!loading && hasScanEvidence && scored.length > 0 ? (
+        <div className="mt-3 border-t border-outline pt-3">
+          {evidenceReady ? <p className="mb-2 text-xs text-ink-secondary">{attention} framework{attention === 1 ? " needs" : "s need"} attention{unassessed > 0 ? ` · ${unassessed} not evaluated` : ""}</p> : null}
           <Collapsible bare title="Control frameworks" subtitle={`${scored.length} frameworks · ordered by failing and warning checks`} defaultOpen data-testid="overview-evaluated-frameworks">
             <div role="region" aria-label="Control framework list" tabIndex={showAllFrameworks ? 0 : undefined}
               className="max-h-[min(50vh,22rem)] overflow-y-auto overscroll-contain rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500">
@@ -566,6 +584,7 @@ function ComplianceSnapshotPanel({
               </button>
             ) : null}
           </Collapsible>
+        </div>
       ) : null}
       {hasScanEvidence && mappings.length > 0 ? (
         <Collapsible bare title="Risk mappings" count={mappings.length} subtitle="Applicability, separate from control pass/fail" defaultOpen={!evidenceReady} data-testid="overview-risk-mappings">

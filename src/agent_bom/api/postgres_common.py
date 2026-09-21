@@ -638,13 +638,17 @@ def _ensure_tenant_rls(conn: Connection, table: str, column: str) -> None:
 
 
 @contextmanager
-def _tenant_connection(pool: ConnectionPool) -> Iterator[Connection]:
+def _tenant_connection(pool: ConnectionPool, *, repeatable_read: bool = False) -> Iterator[Connection]:
     """Open a tenant-bound app connection; never activate maintenance bypass."""
     if _bypass_tenant_rls.get():
         raise MaintenanceRoleConfigurationError(
             "Tenant RLS bypass requires an explicit _maintenance_connection(); the application pool cannot self-authorize maintenance."
         )
     with pool.connection() as conn:
+        if repeatable_read:
+            # Isolation must be set before tenant set_config SELECTs establish
+            # the read snapshot. The option is transaction-local and read-only.
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
         _apply_tenant_session(conn)
         yield conn
 

@@ -272,6 +272,7 @@ for (const theme of ["light", "dark"] as const) {
     await routeProductFixture(page);
     await page.route("**/v1/overview", (route) => route.fulfill({ json: {
       ...OVERVIEW,
+      finding_counts: COUNTS,
       domains: {
         ...OVERVIEW.domains,
         runtime: { ...OVERVIEW.domains.runtime, status: "critical" },
@@ -280,6 +281,7 @@ for (const theme of ["light", "dark"] as const) {
       },
     } }));
     await page.goto("/");
+    await page.getByRole("tab", { name: "Top risks", exact: true }).click();
     const metrics = page.getByRole("group", { name: "Select a risk" }).locator("button > span:first-child");
     await expect(metrics).toHaveCount(2);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
@@ -339,6 +341,9 @@ for (const theme of ["light", "dark"] as const) {
       } }));
       await page.goto("/");
       await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
+      await expect(page.getByLabel("Evaluated control results").locator("dt")).toHaveText(["Controls passed", "Controls failed", "Controls need review"]);
+      await expect(page.getByText("100% pass rate", { exact: true })).toBeVisible();
+      await expect(page.getByText("Assessment: 6/6 framework control entries evaluated (100%)", { exact: true })).toBeVisible();
       expect(await page.getByRole("button", {name: /^Compliance & frameworks/}).getByText("Compliance & frameworks", {exact: true}).evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await page.waitForTimeout(350);
       await page.getByRole("tab", { name: "Posture", exact: true }).click();
@@ -468,10 +473,12 @@ for (const theme of ["light", "dark"] as const) {
 
 for (const theme of ["light", "dark"] as const) {
   for (const viewport of [{ width: 1568, height: 900 }, { width: 390, height: 844 }]) {
-    test(`risk-first scope workspace ${theme} ${viewport.width}`, async ({ page }, testInfo) => {
+    test(`posture-first scope workspace ${theme} ${viewport.width}`, async ({ page }, testInfo) => {
       await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
       await page.setViewportSize(viewport);
       await routeProductFixture(page);
+      const version = "9.8.7-preview.20260921.abcdef";
+      await page.route("**/health", route => route.fulfill({ json: { status: "ok", version } }));
       await page.route("**/v1/overview", (route) => route.fulfill({ json: { ...OVERVIEW, finding_counts: COUNTS,
         top_risks: Array.from({length: 7}, (_, i) => ({...OVERVIEW.top_risks[0], vulnerability_id: `CVE-2026-${7100+i}`, risk_score: 10-i, affected_agents: [`scope-agent-${i}`]})),
       } }));
@@ -480,7 +487,9 @@ for (const theme of ["light", "dark"] as const) {
         by_type: {agent: 2, server: 3, tool: 10, tool_call: 50, model: 40, framework: 20, user: 2},
       }}));
       await page.goto("/");
-      await expect(page.getByRole("tab", {name: "Top risks"})).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", {name: "Posture"})).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tablist", {name: "Risk overview views"}).getByRole("tab")).toHaveText(["Posture", "Top risks", "Assets & coverage"]);
+      await page.getByRole("tab", {name: "Top risks"}).click();
       const risks = page.getByRole("group", {name: "Select a risk"});
       await expect(risks.getByRole("button")).toHaveCount(5);
       await risks.getByRole("button", {name: /scope-agent-4/}).click();
@@ -520,7 +529,7 @@ for (const theme of ["light", "dark"] as const) {
       const status = page.locator("header summary", {hasText: "Control plane"});
       await status.focus(); await page.keyboard.press("Enter");
       const statusDetails = page.locator("header details[open] p");
-      await expect(statusDetails).toHaveText("Control plane · v9.8.7");
+      await expect(statusDetails).toHaveText(`Control plane · v${version}`);
       const statusBounds = await statusDetails.boundingBox();
       expect(statusBounds!.x).toBeGreaterThanOrEqual(0);
       expect(statusBounds!.x + statusBounds!.width).toBeLessThanOrEqual(viewport.width);

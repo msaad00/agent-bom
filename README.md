@@ -48,7 +48,7 @@ snapshot and source scope. Asset counts do not establish collection coverage.
 
 ### GRC and audit: investigate assessment gaps
 
-Review controls passed, failed and needing review, with the evaluated denominator and pass rate.
+Review controls passed, failed and needing review, with pass rate and assessment coverage.
 Select a framework to inspect its controls, open evidence, and follow linked findings.
 Expand **Risk mappings** for OWASP and MITRE ATLAS applicability; these mappings
 are separate from control pass/fail. Open **Compliance** for the

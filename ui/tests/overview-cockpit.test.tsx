@@ -95,6 +95,11 @@ describe("OverviewCockpit", () => {
     expect(within(results).getByText("Controls failed").nextElementSibling).toHaveTextContent("1");
     expect(within(results).getByText("Controls need review").nextElementSibling).toHaveTextContent("0");
     expect(screen.getByText("50% pass rate")).toBeVisible();
+    const assessment = screen.getByText("Assessment: 2/12 framework control entries evaluated (17%)");
+    expect(assessment).toBeVisible();
+    expect(assessment.closest("details")).not.toHaveAttribute("open");
+    await user.click(assessment);
+    expect(screen.getByText(/Entries are counted per framework and may overlap/)).toBeVisible();
     expect(within(results).queryByText(/framework/i)).not.toBeInTheDocument();
     const evaluated = screen.getByTestId("overview-evaluated-frameworks");
     const mappings = screen.getByTestId("overview-risk-mappings");
@@ -104,6 +109,15 @@ describe("OverviewCockpit", () => {
     expect(within(mappings).getByText("MITRE ATLAS")).toBeVisible();
     expect(within(mappings).getByRole("link", { name: /MITRE ATLAS/ })).toHaveAttribute("href", "/compliance?framework=atlas");
     expect(within(evaluated).getByText("CIS Controls")).toBeVisible();
+  });
+
+  it.each([undefined, 0, -1, 1, Number.NaN])("does not invent assessment coverage from invalid total %s", (total) => {
+    render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 50, overallStatus: "fail", evaluatedControls: 2, totalControls: total as number, frameworks: [
+      { id: "cis", label: "CIS Controls", kind: "scored", pass: 1, fail: 1, warn: 0, total: 2 },
+    ] }} />);
+    expect(screen.getByText("Assessment coverage unavailable")).toBeVisible();
+    expect(screen.queryByText(/framework control entries evaluated \(.*%\)/)).not.toBeInTheDocument();
+    expect(screen.getByText("1/2 evaluated controls pass")).toBeVisible();
   });
 
   it("shows available risk mappings when control evaluation is unavailable", () => {

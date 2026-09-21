@@ -530,6 +530,12 @@ function ComplianceSnapshotPanel({
   const attention = scored.filter((item) => item.fail > 0 || item.warn > 0).length;
   const passed = scored.reduce((total, item) => total + item.pass, 0);
   const unassessed = scored.filter((item) => frameworkEvaluated(item) === 0).length;
+  const assessmentCoverage = evidenceReady
+    && Number.isInteger(compliance.evaluatedControls) && compliance.evaluatedControls >= 0
+    && Number.isInteger(compliance.totalControls) && compliance.totalControls > 0
+    && compliance.evaluatedControls <= compliance.totalControls
+    ? Math.round(100 * compliance.evaluatedControls / compliance.totalControls)
+    : null;
 
   return (
     <div data-testid="overview-compliance-snapshot">
@@ -555,6 +561,14 @@ function ComplianceSnapshotPanel({
             : "Framework coverage appears after the first completed scan. Empty estates do not show pass tiles."}
         </p>
       )}
+      {!loading && hasScanEvidence && compliance ? (
+        <details className="mt-2 text-xs text-ink-secondary">
+          <summary className="cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-emerald-500">
+            {assessmentCoverage == null ? "Assessment coverage unavailable" : `Assessment: ${compliance.evaluatedControls}/${compliance.totalControls} framework control entries evaluated (${assessmentCoverage}%)`}
+          </summary>
+          <p className="mt-2 leading-relaxed">Entries are counted per framework and may overlap. Recorded evaluations can include check errors. Coverage is limited to the framework entries returned for this assessment.</p>
+        </details>
+      ) : null}
       {!loading && hasScanEvidence && scored.length > 0 ? (
         <div className="mt-3 border-t border-outline pt-3">
           {evidenceReady ? <p className="mb-2 text-xs text-ink-secondary">{attention} framework{attention === 1 ? " needs" : "s need"} attention{unassessed > 0 ? ` · ${unassessed} not evaluated` : ""}</p> : null}

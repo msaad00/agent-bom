@@ -341,6 +341,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
       await expect(page.getByLabel("Evaluated control results").locator("dt")).toHaveText(["Controls passed", "Controls failed", "Controls need review"]);
       await expect(page.getByText("100% pass rate", { exact: true })).toBeVisible();
+      await expect(page.getByText("Assessment: 6/6 framework control entries evaluated (100%)", { exact: true })).toBeVisible();
       expect(await page.getByRole("button", {name: /^Compliance & frameworks/}).getByText("Compliance & frameworks", {exact: true}).evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await page.waitForTimeout(350);
       await page.getByRole("tab", { name: "Posture", exact: true }).click();

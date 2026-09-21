@@ -38,17 +38,17 @@
 
 ### Security and engineering leaders: decide what needs attention
 
-Start with **Top risks**: select a finding, inspect its evidence, then open investigation.
-Use **Assets & coverage** to inspect recorded inventory in its snapshot and source scope;
-**Posture** summarizes the current findings window. Asset counts do not establish collection coverage.
+Start with **Posture** for the current findings window; open **Top risks** to select a
+finding and inspect its evidence. **Assets & coverage** shows recorded inventory in its
+snapshot and source scope. Asset counts do not establish collection coverage.
 
 <p align="center">
-  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview with prioritized findings beside selected evidence, freshness and an Assets and coverage tab" width="920"></a>
+  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview starting with posture, current findings and freshness, with Top risks and Assets and coverage drilldowns" width="920"></a>
 </p>
 
 ### GRC and audit: investigate assessment gaps
 
-Start with the evaluated-control summary and the frameworks needing attention.
+Review controls passed, failed and needing review, with the evaluated denominator and pass rate.
 Select a framework to inspect its controls, open evidence, and follow linked findings.
 Expand **Risk mappings** for OWASP and MITRE ATLAS applicability; these mappings
 are separate from control pass/fail. Open **Compliance** for the

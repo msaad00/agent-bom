@@ -64,15 +64,18 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
-  it("starts with prioritized risks and exposes recorded assets separately", () => {
+  it("starts with posture and orders risk and asset drilldowns consistently", () => {
     render(<OverviewCockpit {...baseProps} />);
-    expect(screen.getByRole("tab", { name: "Top risks" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Posture" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Posture", "Top risks", "Assets & coverage"]);
+    expect(screen.getByRole("tabpanel", { name: "Posture" })).toBeVisible();
     expect(screen.getByRole("tab", { name: "Assets & coverage" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "AI spend & usage" })).not.toBeInTheDocument();
   });
 
-  it("places risks first and keeps posture available without duplicating the detail", async () => {
+  it("opens risk details from posture without duplicating the detail", async () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByRole("tabpanel", { name: "Top risks" })).toBeVisible();
     expect(screen.getAllByRole("region", { name: "Selected risk" })).toHaveLength(1);
     await userEvent.click(screen.getByRole("tab", { name: "Posture" }));
@@ -87,6 +90,12 @@ describe("OverviewCockpit", () => {
       { id: "atlas", label: "MITRE ATLAS", kind: "applicability", applicable: 3, pass: 0, fail: 0, warn: 0, total: 10 },
     ] }} />);
     expect(screen.getByText("1/2 evaluated controls pass")).toBeVisible();
+    const results = screen.getByLabelText("Evaluated control results");
+    expect(within(results).getByText("Controls passed").nextElementSibling).toHaveTextContent("1");
+    expect(within(results).getByText("Controls failed").nextElementSibling).toHaveTextContent("1");
+    expect(within(results).getByText("Controls need review").nextElementSibling).toHaveTextContent("0");
+    expect(screen.getByText("50% pass rate")).toBeVisible();
+    expect(within(results).queryByText(/framework/i)).not.toBeInTheDocument();
     const evaluated = screen.getByTestId("overview-evaluated-frameworks");
     const mappings = screen.getByTestId("overview-risk-mappings");
     expect(within(evaluated).queryByText("MITRE ATLAS")).not.toBeInTheDocument();
@@ -169,7 +178,7 @@ describe("OverviewCockpit", () => {
     expect(toggle).toHaveFocus();
     expect(screen.getByText(/Control evaluation unavailable/i)).not.toBeVisible();
     expect(screen.getByRole("button", { name: /^Findings by discipline/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("tab", { name: "Top risks" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Posture" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("does not mix runtime operations into the findings discipline panel", () => {
@@ -403,6 +412,7 @@ describe("OverviewCockpit", () => {
 
   it("keeps risk evidence scoped to its original navigation target", () => {
     render(<OverviewCockpit {...baseProps} findingsScopeLabel="Current findings · configured window" />);
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByRole("link", {name: /Affected workload: cursor/i})).toHaveAttribute("href", "/security-graph");
     expect(screen.getByRole("link", {name: /Open investigation/})).toHaveAttribute("href", "/security-graph");
   });
@@ -555,6 +565,7 @@ describe("OverviewCockpit", () => {
 
   it("bounds the risk list to five and keeps only the selected detail mounted", async () => {
     render(<OverviewCockpit {...baseProps} exposurePaths={Array.from({length: 8}, (_, i) => ({...baseProps.topPath, key: `risk-${i}`, riskScore: 8-i, nodes: [{type: "agent" as const, label: `agent-${i}`}]}))} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     const list = screen.getByRole("group", {name: "Select a risk"});
     expect(within(list).getAllByRole("button")).toHaveLength(5);
     await userEvent.click(within(list).getByRole("button", {name: /agent-3/}));

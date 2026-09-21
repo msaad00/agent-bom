@@ -146,6 +146,72 @@ class AgentBomClient:
 
         return self._request("GET", "/health")
 
+    def inventory_summary(
+        self,
+        *,
+        scan_id: str | None = None,
+        type: str | None = None,
+        search: str | None = None,
+        environment: str | None = None,
+        provider: str | None = None,
+        source: str | None = None,
+        severity: str | None = None,
+        min_severity: str | None = None,
+    ) -> JsonObject:
+        """Read scoped inventory summary; preserve server evidence qualifications."""
+        return self._request(
+            "GET",
+            "/v1/inventory/summary",
+            params=_strip_query_none(
+                {
+                    "scan_id": scan_id,
+                    "type": type,
+                    "search": search,
+                    "environment": environment,
+                    "provider": provider,
+                    "source": source,
+                    "severity": severity,
+                    "min_severity": min_severity,
+                }
+            ),
+        )
+
+    def inventory_assets(
+        self,
+        *,
+        scan_id: str | None = None,
+        type: str | None = None,
+        search: str | None = None,
+        environment: str | None = None,
+        provider: str | None = None,
+        source: str | None = None,
+        severity: str | None = None,
+        min_severity: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        cursor: str | None = None,
+    ) -> JsonObject:
+        """Read scoped inventory assets; preserve server evidence qualifications."""
+        return self._request(
+            "GET",
+            "/v1/inventory/assets",
+            params=_strip_query_none(
+                {
+                    "scan_id": scan_id,
+                    "type": type,
+                    "search": search,
+                    "environment": environment,
+                    "provider": provider,
+                    "source": source,
+                    "severity": severity,
+                    "min_severity": min_severity,
+                    "limit": limit,
+                    "offset": offset,
+                    "cursor": cursor,
+                }
+            ),
+        )
+
     def exposure_paths(
         self,
         *,

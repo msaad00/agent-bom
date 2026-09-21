@@ -340,3 +340,41 @@ def test_client_registers_workload_binding_without_secret_argument() -> None:
     assert captured["external_id"] == ""
     assert captured["auth_params"] == params
     assert result["has_external_id"] is False
+
+
+@pytest.mark.parametrize(
+    "method,path,paging",
+    [
+        ("inventory_summary", "/v1/inventory/summary", {}),
+        ("inventory_assets", "/v1/inventory/assets", {"limit": 25, "offset": 0, "cursor": "cursor/+="}),
+    ],
+)
+def test_inventory_scope_filters_and_qualification_round_trip(method, path, paging) -> None:
+    seen = {}
+    payload = {
+        "scan_id": "snapshot/a",
+        "total_assets": 17,
+        "count_exact": True,
+        "collection": {"state": "partial", "reason_codes": ["permission_denied"], "future_field": None},
+        "completeness": {"returned": 17, "total": None, "truncated": True},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["params"] = dict(request.url.params)
+        seen["tenant"] = request.headers["x-agent-bom-tenant-id"]
+        return httpx.Response(200, json=payload)
+
+    client = _client(handler)
+    filters = {
+        "scan_id": "snapshot/a",
+        "type": "agent,server",
+        "search": "data + agent",
+        "environment": "prod",
+        "provider": "gcp",
+        "source": "source/a",
+        "severity": "high",
+        "min_severity": "medium",
+    }
+    assert getattr(client, method)(**filters, **paging) == payload
+    assert seen == {"path": path, "params": {**filters, **{key: str(value) for key, value in paging.items()}}, "tenant": "tenant-a"}

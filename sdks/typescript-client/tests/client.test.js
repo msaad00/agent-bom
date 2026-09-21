@@ -440,3 +440,23 @@ test("preserves finding reconfirmation receipts and original provenance", async 
   const client = new AgentBomClient({ baseUrl: "https://example.test", fetch: async () => jsonResponse(payload) });
   assert.deepEqual(await client.listFindings(), payload);
 });
+
+test("inventory filters preserve scope and all evidence qualifications", async () => {
+  const seen = [];
+  const payload = { scan_id: "snapshot/a", total_assets: 17, count_exact: true,
+    collection: { state: "partial", reason_codes: ["permission_denied"], future_field: null },
+    completeness: { returned: 17, total: null, truncated: true } };
+  const client = new AgentBomClient({baseUrl: "https://agent-bom.example.com", tenantId: "tenant-a",
+    fetch: async (url, init) => { seen.push({url: new URL(url), tenant: init.headers["x-agent-bom-tenant-id"]}); return jsonResponse(payload); }});
+  const filters = { scanId: "snapshot/a", type: "agent,server", search: "data + agent", environment: "prod",
+    provider: "gcp", source: "source/a", severity: "high", minSeverity: "medium" };
+  assert.deepEqual(await client.inventorySummary(filters), payload);
+  assert.deepEqual(await client.inventoryAssets({...filters, limit: 25, offset: 0, cursor: "cursor/+="}), payload);
+  const expected = {scan_id: "snapshot/a", type: "agent,server", search: "data + agent", environment: "prod",
+    provider: "gcp", source: "source/a", severity: "high", min_severity: "medium"};
+  assert.equal(seen[0].url.pathname, "/v1/inventory/summary");
+  assert.deepEqual(Object.fromEntries(seen[0].url.searchParams), expected);
+  assert.equal(seen[1].url.pathname, "/v1/inventory/assets");
+  assert.deepEqual(Object.fromEntries(seen[1].url.searchParams), {...expected, limit: "25", offset: "0", cursor: "cursor/+="});
+  assert.deepEqual(seen.map(x => x.tenant), ["tenant-a", "tenant-a"]);
+});

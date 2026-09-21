@@ -80,3 +80,19 @@ This package wraps stable HTTP control-plane calls for JavaScript and
 TypeScript consumers. It does not run local scanners itself, and it does not
 embed secrets. Operators still own the control-plane URL, API key or bearer
 token, tenant ID, network boundary, and retention policy.
+
+## Scoped inventory
+
+Use the same snapshot and filters for summary counts and the asset drilldown:
+
+```ts
+const scope = { scanId: "snapshot-id", environment: "production", provider: "aws", type: "agent,server" };
+const summary = await client.inventorySummary(scope);
+const assets = await client.inventoryAssets({ ...scope, limit: 50 });
+```
+
+Both methods retain the server's complete JSON envelope, including collection
+status, count qualifications and future evidence fields. Exact counts of recorded
+assets do not establish complete source collection. Follow the returned cursor
+with the same scope when the asset list has another page. Scope-aware summary
+filters require a server version that supports those filters.

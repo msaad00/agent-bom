@@ -36,6 +36,8 @@ export function AssetInventoryView({
     loading,
     error,
     errorKind,
+    scopeConflict,
+    setFilter,
     details,
     detailLoadingId,
     detailError,
@@ -62,6 +64,15 @@ export function AssetInventoryView({
     />
   );
 
+  if (scopeConflict) {
+    return <div className="space-y-5">
+      {header}
+      <PageEmptyState title="No assets match these filters"
+        detail="The selected types do not belong to this asset category. Other filters and the selected snapshot are retained." />
+      <button type="button" onClick={() => setFilter("type", "")} className="rounded-lg border border-outline px-3 py-2 text-sm hover:bg-surface-muted">Clear type filter</button>
+    </div>;
+  }
+
   if (loading && !model) {
     return (
       <div className="space-y-5">
@@ -83,7 +94,7 @@ export function AssetInventoryView({
     );
   }
 
-  if (!model || total === 0) {
+  if (!model) {
     return (
       <div className="space-y-5">
         {header}
@@ -107,8 +118,9 @@ export function AssetInventoryView({
   const columns = buildColumns(kind);
 
   return (
-    <div className="flex min-h-0 flex-col gap-5">
+    <div className="flex min-h-0 flex-col gap-5" aria-busy={loading}>
       {header}
+      {loading ? <p role="status" className="text-xs text-ink-secondary">Updating results… showing previous results.</p> : null}
 
       <InventoryFacetBar
         severityFilter={severityFilter === "all" ? "" : severityFilter}
@@ -117,7 +129,7 @@ export function AssetInventoryView({
 
       <StatStrip
         items={[
-          { label: "Snapshot kind assets", value: total.toLocaleString() },
+          { label: "Matching kind assets", value: total.toLocaleString() },
           { label: "Matching filters", value: model.matchingTotal.toLocaleString() },
           { label: "Loaded rows", value: loadedCount.toLocaleString() },
           { label: "Loaded with findings", value: summary.withFindings.toLocaleString(), accent: summary.withFindings > 0 ? "warn" : "neutral" },
@@ -135,7 +147,7 @@ export function AssetInventoryView({
       {model.matchingTotal === 0 ? (
         <PageEmptyState
           title={`No ${config.label.toLowerCase()} match these filters`}
-          detail="The selected snapshot contains this asset kind, but no rows match the current whole-inventory filters."
+          detail="No recorded assets of this type match the selected snapshot and filters. This does not establish collection coverage."
           action={{ label: "Clear filters", onClick: clearFilters, variant: "secondary" }}
         />
       ) : (

@@ -176,6 +176,15 @@ describe("CompliancePage (dense restyle)", () => {
     expect(await screen.findByText("Requested framework is unavailable in this assessment.")).toBeVisible();
   });
 
+  it("labels frameworks without evaluated controls instead of showing a zero pass rate", async () => {
+    render(<CompliancePage />);
+    const table = await screen.findByTestId("compliance-frameworks-table");
+    const row = within(table).getByRole("button", { name: /AISVS OWASP AISVS/ });
+    expect(within(row).getByText("Not evaluated")).toBeVisible();
+    expect(within(row).queryByText("0%")).not.toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Assessment" })).toBeVisible();
+  });
+
   it("opens each benchmark in the detail pane and returns to framework controls", async () => {
     render(<CompliancePage />);
     await screen.findByText("Prompt Injection");
@@ -228,6 +237,28 @@ describe("CompliancePage (dense restyle)", () => {
     expect(link).toHaveAttribute(
       "href",
       "/findings?framework=owasp-llm&control=LLM01",
+    );
+  });
+
+  it.each(["detail", "matrix"])("preserves framework and snapshot from the %s drawer", async (view) => {
+    navigation.query = "scan=source%2F1";
+    render(<CompliancePage />);
+    await screen.findByTestId("compliance-kpi-strip");
+    if (view === "matrix") fireEvent.click(screen.getByRole("button", { name: "Matrix" }));
+    else expect(screen.getByRole("link", { name: /4 findings for LLM01/i })).toHaveAttribute(
+      "href", "/findings?scan=source%2F1&framework=owasp-llm&control=LLM01",
+    );
+    fireEvent.click(await screen.findByText("Prompt Injection"));
+    const drawer = await screen.findByRole("dialog", { name: /Control details for LLM01/i });
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+    expect(within(drawer).getByRole("link", { name: "View findings" })).toHaveAttribute(
+      "href", "/findings?scan=source%2F1&framework=owasp-llm&control=LLM01",
+    );
+    expect(within(drawer).getByRole("link", { name: "Browse remediation" })).toHaveAttribute(
+      "href", "/remediation?scan=source%2F1",
+    );
+    expect(within(drawer).getByRole("link", { name: "Evidence in security graph" })).toHaveAttribute(
+      "href", "/security-graph?scan=source%2F1",
     );
   });
 

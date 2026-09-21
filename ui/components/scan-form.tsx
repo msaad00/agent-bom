@@ -535,9 +535,11 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                       items={form.agent_projects ?? []}
                       onRemove={(i) => removeFromList("agent_projects", i)}
                     />
-                    <p className="text-xs leading-5 text-[color:var(--text-secondary)]">
-                      Enter a path relative to <code className="font-mono">AGENT_BOM_API_SCAN_ROOT</code>, not a path on the browser machine or an absolute server path. An administrator must set <code className="font-mono">AGENT_BOM_API_LOCAL_PATH_SCANS=enabled</code> and mount the intended project inside that root.
-                    </p>
+                    <p className="text-sm text-ink-secondary">Use a project mounted on this control plane.</p>
+                    <details className="text-xs leading-5 text-ink-secondary">
+                      <summary className="w-fit cursor-pointer">Operator setup and path boundary</summary>
+                      <p className="mt-2">Enter a path relative to <code className="font-mono">AGENT_BOM_API_SCAN_ROOT</code>, not a path on the browser machine or an absolute server path. An administrator must set <code className="font-mono">AGENT_BOM_API_LOCAL_PATH_SCANS=enabled</code> and mount the intended project inside that root.</p>
+                    </details>
                   </div>
                 )}
 
@@ -779,20 +781,6 @@ function ScanWorkspacePanel({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-emerald-700/30 bg-emerald-500/[0.06] p-3" aria-label="Read-only boundary">
-        <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--foreground)]">
-          <ShieldCheck className="h-4 w-4 text-emerald-400" />
-          Read-only boundary
-        </div>
-        <p className="mt-1.5 text-[11px] leading-4 text-[color:var(--text-secondary)]">{boundaryCopy(mode, target)}</p>
-      </section>
-
-      <details className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2.5">
-        <summary className="cursor-pointer text-xs font-semibold text-[color:var(--foreground)]">
-          What this scan collects and produces
-        </summary>
-        <p className="mt-2 text-[11px] leading-5 text-[color:var(--text-secondary)]">{plan}</p>
-      </details>
 
       <section aria-labelledby="scan-scope-heading">
         <div className="flex items-center justify-between gap-3">
@@ -828,6 +816,21 @@ function ScanWorkspacePanel({
           </details>
         ) : null}
       </section>
+
+      <section className="rounded-xl border border-emerald-700/30 bg-emerald-500/[0.06] p-3" aria-label="Read-only boundary">
+        <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--foreground)]">
+          <ShieldCheck className="h-4 w-4 text-emerald-400" />
+          Read-only boundary
+        </div>
+        <p className="mt-1.5 text-[11px] leading-4 text-[color:var(--text-secondary)]">{boundaryCopy(mode, target)}</p>
+      </section>
+
+      <details className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2.5">
+        <summary className="cursor-pointer text-xs font-semibold text-[color:var(--foreground)]">
+          What this scan collects and produces
+        </summary>
+        <p className="mt-2 text-[11px] leading-5 text-[color:var(--text-secondary)]">{plan}</p>
+      </details>
 
     </div>
   );

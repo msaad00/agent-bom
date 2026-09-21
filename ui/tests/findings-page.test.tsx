@@ -103,6 +103,18 @@ describe("FindingsPage", () => {
     });
   });
 
+  it("shows an unreconfirmed collection qualifier through the API-to-drawer path", async () => {
+    apiMock.listFindings.mockResolvedValue({ findings: [{ ...canonicalFinding,
+      observation_status: "unreconfirmed",
+      reconfirmation: { scan_id: "denied-attempt", attempted_at: "2026-09-01T00:00:00Z", reason_codes: ["scope_permission_denied"] },
+    }], total: 1, has_more: false });
+    render(<FindingsPage />);
+    expect(await screen.findAllByText("Unreconfirmed")).not.toHaveLength(0);
+    fireEvent.click(screen.getAllByRole("button", { name: "Investigate" })[0]!);
+    expect(await screen.findByRole("note", { name: "Unreconfirmed collection evidence" })).toHaveTextContent("denied-attempt");
+    expect(screen.getByText("Collection permission denied")).toBeVisible();
+  });
+
   it("does not assert zero findings while the authoritative total is loading", async () => {
     let resolveFindings!: (value: {
       schema_version: string;

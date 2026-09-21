@@ -160,7 +160,7 @@ function JourneyAction({
       <button
         type="button"
         onClick={onConnect}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400"
+        className="inline-flex max-w-full items-center gap-1.5 whitespace-normal rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400"
       >
         <Plug className="h-3.5 w-3.5" />
         Connect cloud account
@@ -171,7 +171,7 @@ function JourneyAction({
   return (
     <Link
       href="/connections?tab=sources"
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400"
+      className="inline-flex max-w-full items-center gap-1.5 whitespace-normal rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400"
     >
       {step === "verify" ? "Open connection to verify" : "Open connection to run scan"}
       <ArrowRight className="h-3.5 w-3.5" />

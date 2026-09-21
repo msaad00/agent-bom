@@ -50,6 +50,30 @@ function edge(source: string, target: string, relationship: RelationshipType): U
 }
 
 describe("buildUnifiedFlowGraph", () => {
+  it("counts distinct loaded entities of the requested type, not relationship rows", () => {
+    const nodes = [node("agent", EntityType.AGENT, "Agent"), node("server", EntityType.SERVER, "Server"), node("tool", EntityType.TOOL, "Tool")];
+    const graph = {
+      scan_id: "partial", tenant_id: "default", created_at: createdAt, nodes,
+      edges: [edge("agent", "server", RelationshipType.USES), { ...edge("agent", "server", RelationshipType.USES), id: "second-receipt" }, edge("agent", "tool", RelationshipType.USES), edge("agent", "unloaded-server", RelationshipType.USES)],
+      attack_paths: [], interaction_risks: [],
+    } as unknown as UnifiedGraphData;
+    const data = buildUnifiedFlowGraph(graph, createFocusedGraphFilters(), new Set(nodes.map((item) => item.id))).nodes.find((item) => item.id === "agent")!.data;
+    expect(data.serverCount).toBe(1);
+    expect(data.countScope).toBe("loaded_graph");
+    expect(data.countHopLimits).toEqual({ serverCount: 1, packageCount: 3, vulnCount: 5 });
+  });
+
+  it("does not traverse missing intermediate nodes when counting loaded descendants", () => {
+    const nodes = [node("agent", EntityType.AGENT, "Agent"), node("package", EntityType.PACKAGE, "Package")];
+    const graph = {
+      scan_id: "partial", tenant_id: "default", created_at: createdAt, nodes,
+      edges: [edge("agent", "missing", RelationshipType.USES), edge("missing", "package", RelationshipType.DEPENDS_ON)],
+      attack_paths: [], interaction_risks: [],
+    } as unknown as UnifiedGraphData;
+    const data = buildUnifiedFlowGraph(graph, createFocusedGraphFilters(), new Set(nodes.map((item) => item.id))).nodes.find((item) => item.id === "agent")!.data;
+    expect(data.packageCount).toBe(0);
+    expect(data.countScope).toBe("loaded_graph");
+  });
   it("retains explicitly changed standalone resources without bypassing layer filters", () => {
     const graph = {
       scan_id: "scenario", tenant_id: "default", created_at: createdAt,

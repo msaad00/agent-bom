@@ -220,7 +220,7 @@ describe("inventory API route scope", () => {
     expect(api.getGraph).not.toHaveBeenCalled();
   });
 
-  it("refetches the list without refetching summary when the routed kind changes", async () => {
+  it("refetches the list and summary when the routed kind changes", async () => {
     const { rerender } = render(
       <InventoryProvider entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}>
         <InventoryProbe />
@@ -235,7 +235,7 @@ describe("inventory API route scope", () => {
     );
 
     await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(2));
-    expect(api.getInventorySummary).toHaveBeenCalledTimes(1);
+    expect(api.getInventorySummary).toHaveBeenCalledTimes(2);
     expect(api.getInventoryAssets).toHaveBeenLastCalledWith(
       expect.objectContaining({ type: ASSET_KIND_BY_ID.containers.entityTypes, scanId: SNAPSHOT }),
     );
@@ -351,4 +351,42 @@ describe("inventory snapshot request lifecycle", () => {
     await act(async () => pending.resolve(detail("same-snapshot")));
     expect(screen.getByTestId("detail-name")).toHaveTextContent("same-snapshot");
   });
+});
+
+
+describe("shared inventory scope", () => {
+  it("restores exact URL scope for both summary and rows", async () => {
+    const onSnapshotResolved = vi.fn();
+    render(<InventoryProvider scanId={SNAPSHOT} initialFilters={{ type: "agent", environment: "production", provider: "aws", source: "runtime", search: "payments", minSeverity: "high" }} onSnapshotResolved={onSnapshotResolved}><InventoryProbe /></InventoryProvider>);
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(1));
+    expect(api.getInventorySummary).toHaveBeenLastCalledWith(SNAPSHOT, expect.objectContaining({ type: ["agent"], environment: "production", provider: "aws", source: "runtime", search: "payments", minSeverity: "high" }));
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({ scanId: SNAPSHOT, type: ["agent"], environment: "production", provider: "aws", source: "runtime", search: "payments", minSeverity: "high" }));
+    expect(onSnapshotResolved).toHaveBeenCalledWith(SNAPSHOT);
+  });
+});
+
+it("does not broaden an explicit type outside the routed category", async () => {
+  const { rerender } = render(<InventoryProvider entityTypes={["package"]} scanId={SNAPSHOT} initialFilters={{ type: "agent" }}><InventoryProbe /></InventoryProvider>);
+  await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("selected types do not belong to this asset category"));
+  expect(api.getInventorySummary).not.toHaveBeenCalled();
+  expect(api.getInventoryAssets).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open detail" }));
+  expect(api.getInventoryAssets).not.toHaveBeenCalled();
+  expect(api.getInventoryAsset).not.toHaveBeenCalled();
+  rerender(<InventoryProvider entityTypes={["package"]} scanId={SNAPSHOT} initialFilters={{ type: " package,agent " }}><InventoryProbe /></InventoryProvider>);
+  await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(1));
+  expect(api.getInventorySummary).toHaveBeenLastCalledWith(SNAPSHOT, expect.objectContaining({ type: ["package"] }));
+  expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({ type: ["package"], scanId: SNAPSHOT }));
+});
+
+it("removes previously loaded rows when the category becomes incompatible", async () => {
+  const { rerender } = render(<InventoryProvider entityTypes={["agent"]} scanId={SNAPSHOT} initialFilters={{ type: "agent" }}><InventoryProbe /></InventoryProvider>);
+  await waitFor(() => expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent("1"));
+  const calls = vi.mocked(api.getInventoryAssets).mock.calls.length;
+  rerender(<InventoryProvider entityTypes={["package"]} scanId={SNAPSHOT} initialFilters={{ type: "agent" }}><InventoryProbe /></InventoryProvider>);
+  expect(screen.getByTestId("loaded-agent-count")).toHaveTextContent("0");
+  await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("selected types do not belong"));
+  fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+  expect(api.getInventoryAssets).toHaveBeenCalledTimes(calls);
 });

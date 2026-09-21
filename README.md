@@ -38,12 +38,12 @@
 
 ### Security and engineering leaders: decide what needs attention
 
-See the current risk posture and critical findings first. Open the underlying
-evidence before assigning a priority. The Overview tab opens with the full posture
-summary; switch to [Top risks](docs/images/dashboard-risks-live.png) for prioritized findings.
+Start with **Top risks**: select a finding, inspect its evidence, then open investigation.
+Use **Assets & coverage** to inspect recorded inventory in its snapshot and source scope;
+**Posture** summarizes the current findings window. Asset counts do not establish collection coverage.
 
 <p align="center">
-  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview screen with full posture and findings summary, followed by a Top risks tab" width="920"></a>
+  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Actual Overview with prioritized findings beside selected evidence, freshness and an Assets and coverage tab" width="920"></a>
 </p>
 
 ### GRC and audit: investigate assessment gaps

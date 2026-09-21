@@ -331,6 +331,10 @@ def test_overview_gallery_fixture_contains_api_scoped_enterprise_evidence() -> N
     assert compliance["evaluated_controls"] <= compliance["total_controls"]
     assert len([lane for lane in overview["coverage"] if lane["count"] > 0]) == 5
     assert all(not risk["vulnerability_id"].startswith("DEMO-VULN") for risk in overview["top_risks"])
+    # This fixture records only the broad CWE-20 classification for PyYAML.
+    # An older generated payload incorrectly turned it into data disclosure.
+    pyyaml = next(risk for risk in overview["top_risks"] if risk["vulnerability_id"] == "CVE-2020-14343")
+    assert pyyaml["impact_category"] == "unknown"
     for job in responses["/v1/jobs"]["jobs"]:
         assert job["status"] == "done" and job["request"]["offline"] is True
         assert f"/v1/scan/{job['job_id']}" in responses

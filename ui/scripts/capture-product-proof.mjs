@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
@@ -726,9 +726,11 @@ function buildFindings() {
     source: "demo-fixture",
     severity: item.severity,
     effective_severity: item.severity,
-    title: `Reachable ${item.severity} package on ${item.affected_servers?.[0] ?? "MCP path"}`,
+    title: `Vulnerable ${item.severity} package on ${item.affected_servers?.[0] ?? "MCP path"}`,
     description: `${advisory(item.vulnerability_id).summary}. ${item.attack_vector_summary}`,
     cve_id: item.vulnerability_id,
+    package_name: advisory(item.vulnerability_id).package,
+    package_version: advisory(item.vulnerability_id).version,
     cvss_score: item.cvss_score,
     cvss_vector: item.cvss_vector,
     attack_vector: "network",
@@ -2749,7 +2751,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Focused risk overview with posture score, finding breakdown, scan freshness and both investigation tabs",
+      scope: "Prioritized findings beside selected evidence, with freshness and scoped inventory navigation",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
@@ -3056,6 +3058,13 @@ async function main() {
         throw new Error("Exact container digest is unavailable in the identifier disclosure");
       }
       await identifier.locator("summary").click();
+      // Inspecting a later identifier can scroll the ordered lane. Restore its
+      // initial position before recording the default operator view.
+      const sequence = selectedPath.getByTestId("exposure-path-sequence");
+      await sequence.evaluate((element) => element.scrollTo({ left: 0, behavior: "instant" }));
+      if (await sequence.evaluate((element) => element.scrollLeft) > 1) {
+        throw new Error("Default path capture did not return to its first step");
+      }
       await proofPage.evaluate(() => {
         document.body.style.paddingBottom = "900px";
       });
@@ -3125,7 +3134,7 @@ async function main() {
         "Authenticates As",
         "Has Permission",
         `Digest ${REFERENCE_LAB.container_digest.slice(0, 19)}…`,
-        "Path evidence complete",
+        "Hop receipts complete",
         "Runtime observed",
         "Gateway block observed",
         "Open pillow@9.0.0 remediation",
@@ -3180,45 +3189,21 @@ async function main() {
 
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
-    const preparePostureOverview = async (dashboardPage) => {
-      await dashboardPage.setViewportSize({ width: 1120, height: 1100 });
-      const risk = dashboardPage.getByRole("region", { name: "Risk overview", exact: true });
-      const box = await risk.boundingBox();
-      if (!box) throw new Error("Risk overview is unavailable for capture");
-      await dashboardPage.setViewportSize({ width: 1120, height: Math.ceil(box.y + box.height + 24) });
-      const score = await dashboardPage.getByTestId("overview-posture-score").boundingBox();
-      const issues = await dashboardPage.getByTestId("overview-severity-issue-strip").boundingBox();
-      if (!score || !issues || issues.x <= score.x + score.width) {
-        throw new Error("Desktop posture proof must show the score beside the finding breakdown");
-      }
-    };
-    await capture(page, "/?capture=1", "dashboard-live.png", preparePostureOverview, {
-      expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
-      expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
-      viewportSelectors: ['section[aria-label="Risk overview"]', "#demo-estate-watermark"],
-      assertNoHorizontalOverflow: true,
-    });
-    await page.setViewportSize({ width: 1440, height: 980 });
     const prepareExecutiveRisks = async (dashboardPage) => {
-      const overviewTab = dashboardPage.getByRole("tab", { name: "Overview", exact: true });
-      await overviewTab.waitFor({ state: "visible" });
-      if (await overviewTab.getAttribute("aria-selected") !== "true") throw new Error("Overview must be the initial risk view");
-      await dashboardPage.getByRole("tab", { name: "Top risks", exact: true }).click();
-      const panel = dashboardPage.getByRole("tabpanel", { name: "Top risks" });
-      await panel.waitFor({ state: "visible" });
-      const row = panel.locator("article").first();
-      const cve = row.getByText(/^CVE-/).first();
-      if (await cve.isVisible() || await row.getByText("Path priority", { exact: true }).isVisible()) {
-        throw new Error("Executive risk rows must keep technical identifiers and scores in details");
+      const riskTab = dashboardPage.getByRole("tab", { name: "Top risks", exact: true });
+      await riskTab.waitFor({ state: "visible" });
+      if (await riskTab.getAttribute("aria-selected") !== "true") throw new Error("Top risks must be the initial risk view");
+      const rows = dashboardPage.getByRole("group", { name: "Select a risk", exact: true }).getByRole("button");
+      await expect(rows).toHaveCount(5);
+      if (dashboardPage.viewportSize().width >= 1440) {
+        await dashboardPage.getByRole("region", { name: "Selected risk", exact: true }).waitFor({ state: "visible" });
       }
-      await row.getByText("Technical details", { exact: true }).click();
-      await cve.waitFor({ state: "visible" });
-      await row.getByText("Technical details", { exact: true }).click();
     };
     const executiveRiskAssertions = {
-      expectedText: [/Review these findings first/i, /Affected workload:/i, /Could allow attacker-controlled code/i],
-      expectedApiPaths: ["/v1/overview"], assertNoHorizontalOverflow: true,
+      expectedText: [/Review these findings first/i, /Top risks/i, /Assets & coverage/i],
+      expectedApiPaths: ["/v1/overview", "/v1/inventory/summary"], assertNoHorizontalOverflow: true,
     };
+    await capture(page, "/?capture=1", "dashboard-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await capture(page, "/?capture=1", "dashboard-risks-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1040, height: 1100 });
     await capture(frameworkPage, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
@@ -3245,6 +3230,7 @@ async function main() {
     await frameworkPage.close();
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {
       await connectionsPage.getByRole("heading", { name: "Connections", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+      await connectionsPage.getByRole("tab", { name: /Add source/ }).click();
       const galleryHeading = connectionsPage.getByText("Connect a source", { exact: true }).last();
       await galleryHeading.scrollIntoViewIfNeeded();
       await connectionsPage.evaluate(() => window.scrollBy({ top: -120, behavior: "instant" }));
@@ -3259,7 +3245,11 @@ async function main() {
       expectedApiPaths: ["/v1/cloud/connections", "/v1/sources"],
     });
     await capture(page, "/jobs?capture=1", "jobs-pipeline-live.png", async (jobsPage) => {
-      await jobsPage.getByTestId(`job-pipeline-${SCAN_ID}`).waitFor({ state: "visible", timeout: 20_000 });
+      const pipeline = jobsPage.getByTestId(`job-pipeline-${SCAN_ID}`);
+      await pipeline.waitFor({ state: "visible", timeout: 20_000 });
+      // The container appears before React Flow finishes measuring its DAG.
+      await expect(pipeline.locator(".react-flow__node:visible")).toHaveCount(10);
+      await expect(pipeline.locator(".react-flow__edge")).toHaveCount(13);
       await jobsPage.getByText("Timing & activity", { exact: true }).scrollIntoViewIfNeeded();
       await jobsPage.evaluate(() => window.scrollBy({ top: -540, behavior: "instant" }));
     }, {
@@ -3336,7 +3326,7 @@ async function main() {
     );
     await correlationPage.close();
 
-    await page.setViewportSize({ width: 1120, height: 1320 });
+    await page.setViewportSize({ width: 1120, height: 920 });
     await capture(
       page,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
@@ -3570,7 +3560,7 @@ async function main() {
       });
       await scrollTo(inventoryPage, 0);
     }, {
-      expectedText: ["Asset inventory", "Packages", "MCP servers", "AI agents", "Cloud resources", "Coverage reflects scanned and connected sources"],
+      expectedText: ["Asset inventory", "Packages", "Servers & tools", "AI entities", "Cloud resources", "Recorded assets are separate from collection and assessment coverage"],
       expectedApiPaths: ["/v1/inventory/summary", "/v1/inventory/assets"],
     });
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
@@ -3632,7 +3622,7 @@ async function main() {
     }, {
       expectedText: ["Findings", "15 findings", /Detection/i, /Observed/i, /Remediation/i, "CVE-2025-29927", "CVE-2024-23334"],
       expectedApiPaths: ["/v1/findings", "/v1/findings/triage"],
-      rejectedText: ["17 findings"],
+      rejectedText: ["17 findings", /Reachable (critical|high|medium|low) package/i],
     });
     await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
@@ -3641,12 +3631,7 @@ async function main() {
     });
 
     const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
-    await capture(lightPage, "/?capture=1", "dashboard-light-live.png", preparePostureOverview, {
-      expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
-      expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
-      viewportSelectors: ['section[aria-label="Risk overview"]', "#demo-estate-watermark"],
-      assertNoHorizontalOverflow: true,
-    });
+    await capture(lightPage, "/?capture=1", "dashboard-light-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await lightPage.setViewportSize({ width: 1440, height: 980 });
     await capture(lightPage, "/?capture=1", "dashboard-risks-light-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await lightPage.setViewportSize({ width: 1120, height: 900 });
@@ -3657,7 +3642,7 @@ async function main() {
       prepareCorrelationReceipts,
       correlationReceiptAssertions,
     );
-    await lightPage.setViewportSize({ width: 1120, height: 1320 });
+    await lightPage.setViewportSize({ width: 1120, height: 920 });
     await capture(
       lightPage,
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
@@ -3683,10 +3668,7 @@ async function main() {
     });
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
-    await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk overview/i, /Posture score/i],
-      expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
-    });
+    await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await capture(mobilePage, "/?capture=1", "dashboard-risks-mobile-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     await capture(
       mobilePage,
@@ -3749,7 +3731,9 @@ function checkAdvisoryFixtures() {
   }
   for (const finding of buildFindings()) {
     const facts = advisory(finding.cve_id);
-    if (finding.severity !== facts.severity || finding.cvss_vector !== facts.cvss_vector || finding.impact_category !== facts.impact_category) {
+    if (finding.severity !== facts.severity || finding.cvss_vector !== facts.cvss_vector || finding.impact_category !== facts.impact_category
+      || finding.package_name !== facts.package || finding.package_version !== facts.version
+      || /reachable/i.test(finding.title)) {
       throw new Error(`Gallery finding and advisory disagree: ${finding.cve_id}`);
     }
   }

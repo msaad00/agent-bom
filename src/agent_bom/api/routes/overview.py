@@ -1426,10 +1426,13 @@ def _build_overview(request: Request) -> dict[str, Any]:
     stampeding it.
     """
     tenant_id = _tenant_id(request)
-    jobs = _get_store().list_all(tenant_id=tenant_id)
+    store = _get_store()
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     hub_store = get_compliance_hub_store()
+    if callable(getattr(store, "overview_evidence_revision", None)):
+        return _build_revisioned_overview(request, tenant_id, store, hub_store)
+    jobs = store.list_all(tenant_id=tenant_id)
     hub_snapshot = _capture_hub_overview_snapshot(request, hub_store)
     hub_evidence_version = hub_snapshot.revision
     hub_severity = hub_snapshot.severity
@@ -1493,6 +1496,78 @@ def _build_overview(request: Request) -> dict[str, Any]:
             if _overview_inflight.get(tenant_id) is flight:
                 del _overview_inflight[tenant_id]
         flight.event.set()
+
+
+def _build_revisioned_overview(request: Request, tenant_id: str, store: Any, hub_store: Any) -> dict[str, Any]:
+    """Check durable revisions before materializing large persisted job results.
+
+    Cache TTL and hub evidence validation remain unchanged. The job revision is
+    checked around reads/composition; continuous mutation fails closed rather
+    than caching an aggregate under the wrong evidence version.
+    """
+
+    def revision() -> str:
+        try:
+            return str(store.overview_evidence_revision(tenant_id))
+        except Exception:
+            _raise_hub_overview_unavailable()
+
+    for _attempt in range(_HUB_SNAPSHOT_MAX_ATTEMPTS):
+        before = revision()
+        hub = _capture_hub_overview_snapshot(request, hub_store)
+        fingerprint = (
+            "job-revision:" + before + ":" + _overview_fingerprint(tenant_id, [], hub.severity, hub.failing_frameworks, hub.revision or 0)
+        )
+        if revision() != before:
+            continue
+        cached = _overview_cache_get(tenant_id, fingerprint)
+        if cached is not None:
+            return cached
+        with _overview_cache_lock:
+            flight = _overview_inflight.get(tenant_id)
+            leader = flight is None or flight.fingerprint != fingerprint
+            if leader:
+                flight = _OverviewFlight(fingerprint=fingerprint)
+                _overview_inflight[tenant_id] = flight
+        assert flight is not None  # nosec B101 — set on both branches
+        if not leader:
+            if flight.event.wait(timeout=_overview_singleflight_timeout()) and flight.payload is not None:
+                if revision() == before:
+                    return flight.payload
+                continue
+            # A failed or slow leader does not authorize stale evidence. Retry
+            # the bounded revision check rather than stampeding payload reads.
+            continue
+        try:
+            jobs = store.list_all(tenant_id=tenant_id)
+            if revision() != before:
+                continue
+            payload = _compose_overview(
+                request,
+                tenant_id,
+                jobs,
+                hub.severity,
+                hub.failing_frameworks,
+                hub.revision,
+                hub_kev=hub.kev,
+                hub_top_risks=hub.top_risks,
+                hub_coverage=hub.coverage,
+            )
+            if revision() != before:
+                continue
+            _overview_cache_put(tenant_id, fingerprint, payload)
+            flight.payload = payload
+            return payload
+        finally:
+            with _overview_cache_lock:
+                if _overview_inflight.get(tenant_id) is flight:
+                    del _overview_inflight[tenant_id]
+            flight.event.set()
+    raise HTTPException(
+        status_code=503,
+        detail="Overview evidence changed or is busy; retry the request.",
+        headers={"Retry-After": "1"},
+    )
 
 
 def _compose_overview(

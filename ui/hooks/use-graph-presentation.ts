@@ -82,6 +82,11 @@ export function useGraphPresentation<T extends Node>({
   );
   const [viewport, setViewport] = useState(initialState?.viewport ?? DEFAULT_VIEWPORT);
   const nodesRef = useRef(presentedNodes);
+  // Existing saved coordinates remain personal overrides until Reset/Auto
+  // layout. New viewport-only moves must not freeze automatic geometry.
+  const positionOverridesRef = useRef<GraphPresentationState["positions"]>(
+    initialState?.layout === layout ? initialState.positions : {},
+  );
   const viewportRef = useRef(viewport);
   const ownerRef = useRef(`${scope.tenantId}\u0000${scope.subject}`);
   const wasOwnerActiveRef = useRef(ownerActive);
@@ -107,6 +112,7 @@ export function useGraphPresentation<T extends Node>({
   useEffect(() => {
     const stored = persistenceEnabled ? readGraphPresentation(browserStorage(), storageKey) : null;
     const compatible = stored?.layout === layout ? stored : null;
+    positionOverridesRef.current = compatible?.positions ?? {};
     const nextNodes = applyGraphPresentation(accessibleNodes, compatible);
     // ReactFlow needs measured dimensions during presentation-only updates.
     // Dropping them on hover clears handle bounds and briefly hides the node,
@@ -136,7 +142,7 @@ export function useGraphPresentation<T extends Node>({
       registerGraphPresentationKey(browserStorage(), scope, storageKey);
       writeGraphPresentation(browserStorage(), storageKey, {
         version: 1,
-        positions: graphPositions(nodesRef.current),
+        positions: positionOverridesRef.current,
         viewport: viewportRef.current,
         layout,
         locked: !editing,
@@ -174,7 +180,9 @@ export function useGraphPresentation<T extends Node>({
       );
       nodesRef.current = next;
       setPresentedNodes(next);
-      persist({ positions: graphPositions(next), locked: false });
+      const positions = { ...positionOverridesRef.current, ...graphPositions([node]) };
+      positionOverridesRef.current = positions;
+      persist({ positions, locked: false });
     },
     [editing, persist, persistenceEnabled],
   );
@@ -196,7 +204,7 @@ export function useGraphPresentation<T extends Node>({
       registerGraphPresentationKey(browserStorage(), scope, storageKey);
       writeGraphPresentation(browserStorage(), storageKey, {
         version: 1,
-        positions: graphPositions(nodesRef.current),
+        positions: positionOverridesRef.current,
         viewport: viewportRef.current,
         layout,
         locked: !next,
@@ -209,6 +217,7 @@ export function useGraphPresentation<T extends Node>({
   const reset = useCallback(() => {
     if (!persistenceEnabled) return;
     removeGraphPresentation(browserStorage(), storageKey);
+    positionOverridesRef.current = {};
     nodesRef.current = accessibleNodes;
     setPresentedNodes(accessibleNodes);
     viewportRef.current = DEFAULT_VIEWPORT;
@@ -220,6 +229,7 @@ export function useGraphPresentation<T extends Node>({
 
   const autoLayout = useCallback(() => {
     if (!persistenceEnabled) return;
+    positionOverridesRef.current = {};
     nodesRef.current = accessibleNodes;
     setPresentedNodes(accessibleNodes);
     registerGraphPresentationKey(browserStorage(), scope, storageKey);

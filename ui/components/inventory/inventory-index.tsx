@@ -14,7 +14,7 @@ import { useInventory } from "@/lib/inventory-context";
 import { ASSET_KINDS, ASSET_KIND_BY_ID, type AssetRow } from "@/lib/inventory";
 
 export function InventoryIndex() {
-  const { model, summary, loading, error, errorKind,
+  const { model, summary, filters, loading, error, errorKind,
     details, detailLoadingId, detailError, loadAssetDetail } = useInventory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const rows = useMemo(() => Object.values(model?.rowsByKind ?? {}).flat(), [model]);
@@ -27,7 +27,7 @@ export function InventoryIndex() {
         <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
           Explore what exists across your environments, where it comes from, and how it connects.
         </p>
-        <p className="mt-1 text-xs text-ink-tertiary">Coverage reflects scanned and connected sources.</p>
+        <p className="mt-1 text-xs text-ink-tertiary">Recorded assets are separate from collection and assessment coverage.</p>
       </div>
       <Link href="/connections" className="rounded-lg border border-outline px-3 py-2 text-sm hover:bg-surface-muted">Manage connections</Link>
     </header>
@@ -35,11 +35,8 @@ export function InventoryIndex() {
 
   const cards = useMemo(() => {
     if (!summary) return [];
-    const typeCounts = new Map(
-      (model?.facets.type.buckets ?? summary.facets.type.buckets)
-        .filter((bucket) => bucket.value)
-        .map((bucket) => [bucket.value!, bucket.count]),
-    );
+    // Self-excluding type facets describe alternative filters, not these links' scope.
+    const typeCounts = new Map(Object.entries(summary.by_type));
     return ASSET_KINDS.map((kind) => {
       return {
         kind,
@@ -49,15 +46,13 @@ export function InventoryIndex() {
         ),
       };
     });
-  }, [model, summary]);
+  }, [summary]);
 
   const totals = useMemo(() => {
-    const sourceCount = summary?.facets.source.buckets.filter((bucket) => bucket.value).length ?? 0;
     return {
       assets: summary?.total_assets ?? 0,
       matching: model?.matchingTotal ?? 0,
       findings: summary?.finding_count ?? 0,
-      sources: sourceCount,
     };
   }, [model, summary]);
 
@@ -79,7 +74,7 @@ export function InventoryIndex() {
     );
   }
 
-  if (!summary || totals.assets === 0) {
+  if (!summary) {
     return (
       <div className="space-y-5">
         {header}
@@ -100,18 +95,24 @@ export function InventoryIndex() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={loading}>
       {header}
+      {loading ? <p role="status" className="text-xs text-ink-secondary">Updating results… showing previous results.</p> : null}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-secondary" aria-label="Snapshot summary">
-        <span><strong className="text-foreground">{totals.assets.toLocaleString()}</strong> snapshot assets</span>
-        <span>{totals.sources.toLocaleString()} evidence sources</span>
+        <span><strong className="text-foreground">{totals.assets.toLocaleString()}</strong> matching recorded assets</span>
+        <span>{filters.source ? `Source: ${filters.source}` : "All recorded sources"}</span>
       </div>
 
       <nav aria-label="Asset types" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
         {cards.map(({ kind, total }) => {
           const Icon = kind.icon;
-          return <Link key={kind.id} aria-label={`${kind.label} ${total.toLocaleString()}`} href={`/inventory/${kind.id}`} className="flex min-h-24 items-center gap-3 rounded-xl border border-outline bg-surface p-4 text-ink-secondary transition-colors hover:border-outline-strong hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2">
+          return <Link key={kind.id} aria-label={`${kind.label} ${total.toLocaleString()}`} href={(() => {
+            const query = new URLSearchParams();
+            if (summary?.scan_id) query.set("scan", summary.scan_id);
+            for (const [key, value] of Object.entries(filters)) if (value) query.set(key === "minSeverity" ? "min_severity" : key, value);
+            return `/inventory/${kind.id}?${query}`;
+          })()} className="flex min-h-24 items-center gap-3 rounded-xl border border-outline bg-surface p-4 text-ink-secondary transition-colors hover:border-outline-strong hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2">
             <Icon className="h-6 w-6 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden="true" />
             <span className="min-w-0"><strong className="block text-2xl font-semibold tabular-nums text-foreground">{total.toLocaleString()}</strong><span className="text-sm">{kind.label}</span></span>
           </Link>;
@@ -125,8 +126,8 @@ export function InventoryIndex() {
           data-testid="inventory-coverage"
           className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs leading-5 text-ink-secondary"
         >
-          <span className="font-medium text-foreground">Evidence coverage:</span>{" "}
-          {summary.completeness.status}. Collection coverage is incomplete for this snapshot.
+          <span className="font-medium text-foreground">Query completeness:</span>{" "}
+          {summary.completeness.status}. Some graph results are unavailable.
         </div>
       ) : null}
 

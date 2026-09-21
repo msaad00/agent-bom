@@ -31,6 +31,7 @@ import {
   Download,
   Loader2,
 } from "lucide-react";
+import { findingsHref } from "@/lib/page-links";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
 import {
   controlStatusLabel,
@@ -49,7 +50,6 @@ import { ComplianceNistCatalog } from "@/components/compliance-nist-catalog";
 import { FrameworkIcon } from "@/components/framework-icon";
 import {
   complianceFrameworkSummaries,
-  compliancePassRate,
   complianceScoredTotals,
   controlMatchesQuery,
   type ComplianceFrameworkSummary,
@@ -154,6 +154,7 @@ function CompliancePageContent() {
   const [selectedControl, setSelectedControl] = useState<{
     control: ComplianceControl;
     frameworkLabel: string;
+    frameworkId: string;
     catalog?: Record<string, string> | undefined;
   } | null>(null);
 
@@ -443,7 +444,7 @@ function CompliancePageContent() {
     },
     {
       key: "coverage",
-      header: "Coverage",
+      header: "Assessment",
       cell: (f) =>
         f.disabled ? (
           <span className="text-[11px] text-[color:var(--text-tertiary)]">
@@ -456,12 +457,14 @@ function CompliancePageContent() {
           <span className="text-[11px] text-[color:var(--text-tertiary)]">
             {f.applicable ?? 0} of {f.total} applicable
           </span>
+        ) : f.pass + f.warn + f.fail === 0 ? (
+          <span className="text-xs text-[color:var(--text-tertiary)]">Not evaluated</span>
         ) : (
-          <div className="flex items-center gap-2">
-            <CoverageBar pass={f.pass} warn={f.warn} fail={f.fail} total={f.total} />
-            <span className="tabular-nums text-[11px] text-[color:var(--text-tertiary)]">
-              {compliancePassRate(f)}%
+          <div className="flex flex-col gap-1">
+            <span className="tabular-nums text-xs text-[color:var(--text-tertiary)]">
+              {f.pass}/{f.pass + f.warn + f.fail} evaluated pass
             </span>
+            <CoverageBar pass={f.pass} warn={f.warn} fail={f.fail} total={f.pass + f.warn + f.fail} />
           </div>
         ),
     },
@@ -577,7 +580,7 @@ function CompliancePageContent() {
           // control's framework + control id. stopPropagation keeps the row
           // click (which opens the evidence drawer) from also firing.
           <Link
-            href={`/findings?framework=${encodeURIComponent(selectedSection?.id ?? "")}&control=${encodeURIComponent(c.code)}`}
+            href={findingsHref({ framework: selectedSection?.id, control: c.code, scan: scanParam })}
             onClick={(e) => e.stopPropagation()}
             aria-label={`View ${c.findings} findings for ${c.code}`}
             className="font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
@@ -657,6 +660,7 @@ function CompliancePageContent() {
               setSelectedControl({
                 control,
                 frameworkLabel: selectedSection.title,
+                frameworkId: selectedSection.id,
                 catalog: selectedSection.catalog,
               })
             }
@@ -812,6 +816,8 @@ function CompliancePageContent() {
         <ComplianceControlDrawer
           control={selectedControl.control}
           frameworkLabel={selectedControl.frameworkLabel}
+          frameworkId={selectedControl.frameworkId}
+          scanId={scanParam}
           catalogName={selectedControl.catalog?.[selectedControl.control.code]}
           onClose={() => setSelectedControl(null)}
         />

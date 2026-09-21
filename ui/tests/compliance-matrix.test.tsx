@@ -136,6 +136,7 @@ describe("ComplianceMatrix", () => {
     const payload = onSelect.mock.calls[0]![0];
     expect(payload.control.code).toBe("LLM01");
     expect(payload.frameworkLabel).toBe("OWASP LLM");
+    expect(payload.frameworkId).toBe("owasp-llm");
     // The catalog map travels with the control so the drawer can resolve names.
     expect(typeof payload.catalog).toBe("object");
   });

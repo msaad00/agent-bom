@@ -160,4 +160,21 @@ describe("AgentsPage list view", () => {
     fireEvent.click(screen.getByText("Installed but not configured"));
     expect(within(screen.getByTestId("agents-installed-table")).getByText("SomeBinary")).toBeInTheDocument();
   });
+
+  it.each(["", "invalid-capture-time"])("keeps unverified collection context explicit (%s)", async (captured_at) => {
+    apiMock.listAgents.mockResolvedValue({ agents: [{ ...AGENTS[0], discovery_envelope: {
+      envelope_version: 1, scan_mode: "unknown", redaction_status: "unknown", captured_at,
+      discovery_scope: [], permissions_used: ["iam:GetRole"],
+    } }] });
+    render(<AgentsPage />);
+    await waitFor(() => expect(screen.getByTestId("agents-configured-table")).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId("agents-configured-table")).getByText("Cursor"));
+    const detail = within(screen.getByTestId("agent-detail-Cursor"));
+    expect(detail.getByText("Collection context")).toBeInTheDocument();
+    expect(detail.getByText("redaction: unknown")).toBeInTheDocument();
+    expect(detail.getByText(/Capture time unknown/)).toBeInTheDocument();
+    expect(detail.getByText("Reported permissions (1)")).toBeInTheDocument();
+    expect(detail.queryByText(/Scan ran from/)).not.toBeInTheDocument();
+    expect(detail.queryByText(/Invalid Date/)).not.toBeInTheDocument();
+  });
 });

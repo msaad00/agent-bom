@@ -156,3 +156,8 @@ export function prettifyReachabilityType(type: string): string {
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
+
+/** Traversal visits do not establish the stored direction of each edge. */
+export function describeTraversalSequence(labels: readonly string[]): string {
+  return `Traversal order: ${labels.join(" · ")}`;
+}

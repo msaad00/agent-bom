@@ -62,3 +62,14 @@ it("applies visibility and keyboard-button order to mobile evidence cards", () =
     expect(within(article).getByRole("button", { name: "Investigate" })).toBeInTheDocument();
   } finally { view.unmount(); vi.unstubAllGlobals(); }
 });
+
+it("opens column settings outside the results flow and restores focus on Escape", async () => {
+  mount();
+  const trigger = screen.getByRole("button", { name: "Columns" });
+  trigger.focus(); fireEvent.click(trigger);
+  expect(screen.getByRole("dialog", { name: "Column preferences" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Detection" })).toBeInTheDocument();
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Column preferences" })).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+});

@@ -51,3 +51,21 @@ it("renders structured CWEs without mining summary prose", async () => {
   expect(screen.getByText("CWE-89")).toBeVisible();
   expect(screen.queryByText("CWE-999", { exact: true })).not.toBeInTheDocument();
 });
+
+it("keeps unreconfirmed status and collection attempt separate from original evidence", async () => {
+  const user = userEvent.setup();
+  render(<FindingDrawer vuln={{ ...base, observation_status: "unreconfirmed", last_observed: "2026-08-01T00:00:00Z", scan_id: "baseline-scan", reconfirmation: { scan_id: "partial-candidate", attempted_at: "2026-09-01T00:00:00Z", reason_codes: ["scope_permission_denied"] } }} triage={undefined} triageBusy={false} onTriageDecision={vi.fn()} onClose={vi.fn()} />);
+  expect(screen.getByRole("note", { name: "Unreconfirmed collection evidence" })).toHaveTextContent("Current presence unconfirmed");
+  expect(screen.getByText("Collection permission denied")).toBeVisible();
+  expect(screen.getByText("partial-candidate")).toBeVisible();
+  await user.click(screen.getByRole("tab", { name: "Evidence" }));
+  expect(screen.getByRole("note", { name: "Unreconfirmed collection evidence" })).toBeVisible();
+  expect(screen.getByText("baseline-scan")).toBeVisible();
+  expect(screen.getByText("Last observed:")).toBeVisible();
+});
+
+it("qualifies a group with an observed representative and an unreconfirmed occurrence", () => {
+  render(<FindingDrawer vuln={{ ...base, observation_status: "observed", unreconfirmed_occurrence_count: 1, occurrence_count: 2 }} triage={undefined} triageBusy={false} onTriageDecision={vi.fn()} onClose={vi.fn()} />);
+  expect(screen.getByRole("note", { name: "Unreconfirmed collection evidence" })).toHaveTextContent("1 occurrence retains earlier evidence");
+  expect(screen.queryByText(/Latest attempt:/)).not.toBeInTheDocument();
+});

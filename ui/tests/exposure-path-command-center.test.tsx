@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ExposurePathCommandCenter } from "@/components/exposure-path-command-center";
@@ -95,6 +95,33 @@ const referencePath: ExposurePath = {
 };
 
 describe("ExposurePathCommandCenter", () => {
+  it("positions the mobile graph immediately before its navigation controls can take focus", async () => {
+    const scrollIntoView = vi.fn();
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      render(<ExposurePathCommandCenter path={basePath} graphSlot={<div>Graph navigation</div>} />);
+      fireEvent.click(screen.getByRole("button", { name: /^Graph$/ }));
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "instant" }));
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps assessments visible and discloses scope without duplicating the finding title", () => {
+    render(<ExposurePathCommandCenter path={{ ...basePath, provenance: { source: "fixture", scanId: "scan-scope" } }} />);
+    expect(screen.getByTestId("path-finding-context")).toHaveTextContent("werkzeug@2.2.2");
+    expect(screen.getByTestId("path-finding-context")).not.toHaveTextContent("CVE-2026-0002");
+    expect(screen.getByRole("region", { name: "Path evidence assessment" })).toHaveTextContent("Unknown");
+    expect(screen.getByRole("region", { name: "Path evidence assessment" })).toHaveTextContent("Not assessed");
+    expect(screen.getByText("Snapshot: scan-scope")).not.toBeVisible();
+    fireEvent.click(screen.getByText("Evidence & relationships"));
+    expect(screen.getByText("Snapshot: scan-scope")).toBeVisible();
+    expect(screen.getByText("Recorded relationships do not establish effective permission, exploitation or successful data access.")).toBeVisible();
+  });
+
   it("renders a compact path header with collapsed evidence by default", () => {
     render(
       <ExposurePathCommandCenter
@@ -147,8 +174,11 @@ describe("ExposurePathCommandCenter", () => {
     render(<ExposurePathCommandCenter path={basePath} />);
 
     const title = screen.getByRole("heading", { level: 2 });
-    expect(title.parentElement).toHaveClass("ep-header-copy");
-    expect(screen.getByText(basePath.summary!)).toHaveClass("ep-summary");
+    expect(title.closest(".ep-header-copy")).not.toBeNull();
+    expect(screen.getByText(basePath.summary!)).not.toBeVisible();
+    fireEvent.click(screen.getByText("Evidence & relationships"));
+    expect(screen.getByText("Source summary · consult assessments and receipts")).toBeVisible();
+    expect(screen.getByText(basePath.summary!)).toBeVisible();
   });
 
   it("presents a single-node risk signal as one node instead of zero hops", () => {
@@ -215,7 +245,7 @@ describe("ExposurePathCommandCenter", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows every long-path hop in a readable ordered first frame", () => {
+  it("keeps every long-path hop available in the ordered lane", () => {
     render(<ExposurePathCommandCenter path={longPath} />);
 
     const orderedPath = screen.getByTestId("exposure-path-sequence");
@@ -227,7 +257,7 @@ describe("ExposurePathCommandCenter", () => {
     expect(within(orderedPath).getByText("11. Environment")).toBeInTheDocument();
     expect(within(orderedPath).queryByText(/hops hidden/)).not.toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Selected exposure path graph for/ })).not.toBeInTheDocument();
-    expect(screen.getByText("All 11 steps shown in order.")).toBeInTheDocument();
+    expect(screen.getByText("All 11 steps available in order.")).toBeInTheDocument();
   });
 
   it("shows every hop in the eight-hop reference proof without a hidden summary", () => {
@@ -242,7 +272,7 @@ describe("ExposurePathCommandCenter", () => {
     const mobileSequence = screen.getByRole("list", {
       name: /Selected exposure path ordered steps for/,
     });
-    expect(mobileSequence).toHaveClass("sm:hidden");
+    expect(mobileSequence.parentElement).toHaveClass("sm:hidden");
     expect(within(mobileSequence).getByText("1. Agent")).toBeInTheDocument();
     expect(within(mobileSequence).getByText("8. Credential")).toBeInTheDocument();
     expect(within(mobileSequence).getByText("Cursor IDE Agent")).toBeInTheDocument();
@@ -343,3 +373,37 @@ it("retains relationships beyond the eighth receipt", () => {
   fireEvent.click(toggle);
   expect(screen.getByText(digest, {selector: "code"})).toBeVisible();
  });
+
+
+it("uses recorded endpoints even when a source title claims unassessed exploitation", () => {
+  const sourceTitle = "Exploitable agent reaches private data";
+  render(<ExposurePathCommandCenter path={basePath} title={sourceTitle} />);
+  expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("Analyst Agent → CVE-2026-0002");
+  expect(screen.getByRole("heading", { level: 2 })).not.toHaveTextContent(/exploitable|reaches/i);
+  expect(screen.getByText(sourceTitle)).not.toBeVisible();
+  fireEvent.click(screen.getByText("Evidence & relationships"));
+  fireEvent.click(screen.getByText("Source-provided title"));
+  expect(screen.getByText(sourceTitle)).toBeVisible();
+  expect(screen.getByText("This label is not an assessment of reachability, exploitation, or impact.")).toBeVisible();
+});
+
+
+it("keeps unavailable assessments visible when a legacy snapshot has no dimensions", () => {
+  render(<ExposurePathCommandCenter path={basePath} />);
+  const assessment = screen.getByRole("region", { name: "Path evidence assessment" });
+  expect(assessment).toHaveTextContent("ReachabilityUnknown");
+  expect(assessment).toHaveTextContent("ExploitabilityNot assessed");
+  expect(assessment).toHaveTextContent("Assessment completenessUnavailable");
+});
+
+it("preserves distinct same-name agent references without duplicate render keys", () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    render(<ExposurePathCommandCenter path={{ ...basePath, affectedAgents: ["Reviewer", "Reviewer"] }} />);
+    fireEvent.click(screen.getByText("Evidence & relationships"));
+    expect(screen.getAllByText("Reviewer", { exact: true })).toHaveLength(2);
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
+  } finally {
+    error.mockRestore();
+  }
+});

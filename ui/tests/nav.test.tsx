@@ -136,6 +136,7 @@ describe('Nav', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /collapse sidebar/i }))
     expect(container.querySelector('img[alt="agent-bom"]')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'agent-bom' })).toHaveAttribute('href', '/')
   })
 
   it('contains link to Overview (/)', () => {

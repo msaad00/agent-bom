@@ -196,6 +196,9 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       graph_min_hop_distance: finding.graph_min_hop_distance ?? null,
       graph_reachable_from_agents: finding.graph_reachable_from_agents ?? [],
       lifecycle_status: finding.status ?? undefined,
+      observation_status: finding.observation_status,
+      reconfirmation: finding.reconfirmation,
+      unreconfirmed_occurrence_count: finding.unreconfirmed_occurrence_count,
       first_seen: finding.first_seen ?? undefined,
       last_seen: finding.last_seen ?? undefined,
       resolved_at: finding.resolved_at ?? undefined,
@@ -927,7 +930,7 @@ function FindingsPage() {
           <div className="flex flex-col gap-3">
             {/* Primary toolbar: search + issue type + severity, with
                 advanced filters tucked into the "Filters (n)" popover. */}
-            <div className="flex flex-col gap-2.5 rounded-xl border border-outline bg-background/70 px-3 py-2.5">
+            <div aria-label="Findings controls" role="region" className="flex flex-col gap-2.5 rounded-xl border border-outline bg-background/70 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
@@ -1099,6 +1102,7 @@ function FindingsPage() {
                     </div>
                   )}
                 </div>
+                <div id="findings-table-controls" />
               </div>
 
               <div className="flex flex-wrap items-center gap-1">
@@ -1179,6 +1183,7 @@ function FindingsPage() {
           </div>
 
           <FindingsQueueTable
+            controlsContainerId="findings-table-controls"
             vulns={displayed}
             sortKey={sortKey}
             sortDir={sortDir}

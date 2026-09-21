@@ -100,7 +100,7 @@ describe("connections-sources merge model", () => {
     expect(rows[0]).toMatchObject({ origin: "source", sourceId: "a", kindLabel: "Repo / package scan" });
   });
 
-  it("dedupes a cloud account registered in both surfaces (cloud row wins)", () => {
+  it("keeps same-name cloud records without an authoritative stable binding", () => {
     const rows = buildUnifiedRows(
       [cloud({ display_name: "Production Account" })],
       [
@@ -108,9 +108,9 @@ describe("connections-sources merge model", () => {
         source({ source_id: "keep", display_name: "Repo mono", kind: "scan.repo" }),
       ],
     );
-    // The cloud-kind source that mirrors the connection name is dropped.
-    expect(rows).toHaveLength(2);
-    expect(rows.find((r) => r.sourceId === "dup")).toBeUndefined();
+    // A display name cannot establish account identity.
+    expect(rows).toHaveLength(3);
+    expect(rows.find((r) => r.sourceId === "dup")).toBeDefined();
     expect(rows.find((r) => r.connectionId === "conn-1")).toBeDefined();
     expect(rows.find((r) => r.sourceId === "keep")).toBeDefined();
   });

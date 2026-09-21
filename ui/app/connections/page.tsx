@@ -73,7 +73,6 @@ import { Card, Section } from "@/components/card";
 import { Collapsible } from "@/components/collapsible";
 import { PageLaneHeader } from "@/components/page-lane";
 import { Drawer } from "@/components/drawer";
-import { StatCard } from "@/components/stat-card";
 import { StatStrip } from "@/components/stat-strip";
 import { DemoConnectCard } from "@/components/demo-mode-cta";
 import { useDemoMode } from "@/hooks/use-demo-mode";
@@ -107,8 +106,9 @@ import { PermissionDeniedNotice } from "@/components/role-access";
 
 type HubTab = "connect" | "sources";
 
-function parseTab(value: string | null): HubTab {
-  return value === "sources" ? "sources" : "connect";
+function parseTab(value: string | null, established: boolean): HubTab {
+  if (value === "sources" || value === "connect") return value;
+  return established ? "sources" : "connect";
 }
 
 // ── Provider catalog ──────────────────────────────────────────────────────────
@@ -830,7 +830,6 @@ export default function ConnectionsPage() {
 function ConnectionsHub() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tab = parseTab(searchParams.get("tab"));
 
   const { hasCapability, session } = useAuthState();
   const { counts } = useDeploymentContext();
@@ -853,6 +852,7 @@ function ConnectionsHub() {
   // Cloud connections.
   const [connections, setConnections] = useState<CloudConnectionRecord[]>([]);
   const [connectionsSchedulerEnabled, setConnectionsSchedulerEnabled] = useState(false);
+  const [workloadAuthModes, setWorkloadAuthModes] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -897,9 +897,11 @@ function ConnectionsHub() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterQuery, setFilterQuery] = useState("");
 
+  const tab = parseTab(searchParams.get("tab"), connections.length > 0 || sources.length > 0);
+
   const setTab = useCallback(
     (next: HubTab) => {
-      router.replace(next === "connect" ? "/connections" : "/connections?tab=sources");
+      router.replace(`/connections?tab=${next}`);
     },
     [router],
   );
@@ -910,10 +912,21 @@ function ConnectionsHub() {
     try {
       const result = await api.listCloudConnections();
       setConnections(result.connections);
+      const advertised = "workload_auth_modes" in result ? result.workload_auth_modes : null;
+      const modes: Record<string, string[]> = {};
+      if (advertised && typeof advertised === "object") {
+        for (const [provider, values] of Object.entries(advertised)) {
+          if (!Array.isArray(values)) continue;
+          modes[provider] = values.filter((value): value is string => typeof value === "string" &&
+            (provider === "azure" ? ["managed_identity", "workload_identity"].includes(value) : provider === "gcp" && value === "workload_identity"));
+        }
+      }
+      setWorkloadAuthModes(modes);
       setConnectionsSchedulerEnabled(Boolean(result.connections_scheduler_enabled));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load cloud connections.");
       setConnections([]);
+      setWorkloadAuthModes({});
       setConnectionsSchedulerEnabled(false);
     } finally {
       setLoading(false);
@@ -1464,11 +1477,11 @@ function ConnectionsHub() {
           </>
         }
         banner={
-          <div className="grid gap-3 sm:grid-cols-3">
-            <StatCard label="Cloud accounts" value={loading ? "…" : error ? "Unavailable" : connections.length} />
-            <StatCard label="Registered sources" value={sourcesLoading ? "…" : sourcesUnavailable ? "Unavailable" : sources.length} accent="info" />
-            <StatCard label="Last scan" value={loading ? "…" : error ? "Unavailable" : formatWhenShort(lastAccountScan)} />
-          </div>
+          <dl aria-label="Source status" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <div className="flex gap-2"><dt className="text-ink-secondary">Cloud accounts</dt><dd className="font-semibold tabular-nums">{loading ? "…" : error ? "Unavailable" : connections.length}</dd></div>
+            <div className="flex gap-2"><dt className="text-ink-secondary">Registered sources</dt><dd className="font-semibold tabular-nums">{sourcesLoading ? "…" : sourcesUnavailable ? "Unavailable" : sources.length}</dd></div>
+            <div className="flex gap-2"><dt className="text-ink-secondary">Last cloud scan</dt><dd>{loading ? "…" : error ? "Unavailable" : formatWhenShort(lastAccountScan)}</dd></div>
+          </dl>
         }
       />
 
@@ -1484,7 +1497,8 @@ function ConnectionsHub() {
           data-testid="connections-scheduler-disabled-banner"
           className="rounded-xl border border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-100"
         >
-          <p className="font-medium">Scheduler disabled on this control plane</p>
+          <details>
+          <summary className="w-fit cursor-pointer font-medium">Scheduler disabled on this control plane</summary>
           <p className="mt-1 text-xs leading-5 text-amber-900/80 dark:text-amber-100/80">
             One or more connections use a scan interval or Continuous mode, but neither recurring
             scans nor continuous event drains run until{" "}
@@ -1492,6 +1506,7 @@ function ConnectionsHub() {
             <code className="font-mono text-[11px]">controlPlane.connectionsScheduler.enabled</code>) is
             turned on. Continuous mode additionally needs a provider event queue env.
           </p>
+          </details>
         </div>
       ) : null}
       {!canManage ? (
@@ -1561,7 +1576,7 @@ function ConnectionsHub() {
           onUpdateForm={updateForm}
           submitting={submitting}
           onCreateSource={handleCreateSource}
-          createDefaultOpen={createNonce > 0 || sources.length === 0}
+          createDefaultOpen={createNonce > 0 || unifiedRows.length === 0}
           createKey={`create-${createNonce}`}
           onGoConnect={() => setTab("connect")}
         />
@@ -1605,6 +1620,7 @@ function ConnectionsHub() {
 
       {wizardOpen ? (
         <AddConnectionWizard
+          workloadAuthModes={workloadAuthModes}
           initialProvider={wizardProvider}
           providerContracts={providerContracts}
           managedTrial={managedTrialSession}
@@ -1636,12 +1652,12 @@ function HubTabs({
   sourceCount: number;
 }) {
   const tabs: { key: HubTab; label: string; count: number; icon: typeof Plug }[] = [
-    { key: "connect", label: "Connect", count: connectCount, icon: Plug },
+    { key: "connect", label: "Add source", count: connectCount, icon: Plug },
     { key: "sources", label: "Sources", count: sourceCount, icon: Boxes },
   ];
   return (
     <div
-      className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
+      className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
       role="tablist"
       aria-label="Connections segment"
     >
@@ -1654,6 +1670,15 @@ function HubTabs({
             type="button"
             role="tab"
             aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
+            onKeyDown={(event) => {
+              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+              event.preventDefault();
+              const next = event.key === "Home" ? "connect" : event.key === "End" ? "sources" : item.key === "connect" ? "sources" : "connect";
+              onChange(next);
+              const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]");
+              buttons?.[next === "connect" ? 0 : 1]?.focus();
+            }}
             onClick={() => onChange(item.key)}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
               selected
@@ -1711,8 +1736,6 @@ function ConnectSegment({
         session={session}
         onConnect={onConnect}
       />
-
-      <p className="text-xs text-ink-secondary">{connectionsCount} configured · {verifiedConnectionsCount} access verified · {scannedConnectionsCount} scanned</p>
 
       <Section
         label="Connect a source"
@@ -1837,53 +1860,6 @@ function SourcesSegment(props: SourcesSegmentProps) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <ServiceStateChip
-          serviceId="data_sources"
-          entry={dataSourcesService}
-          registry={servicesRegistry}
-          showUnlock={false}
-        />
-        {!isDemoMode ? (
-          <button
-            onClick={onFleetSync}
-            disabled={syncingFleet || !canManageFleet}
-            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Activity className="h-3.5 w-3.5" />
-            {syncingFleet ? "Syncing…" : "Fleet sync"}
-          </button>
-        ) : null}
-      </div>
-
-      <ServiceStateBanner serviceId="data_sources" entry={dataSourcesService} registry={servicesRegistry} />
-      {isDemoMode ? <DemoConnectCard /> : null}
-
-      <StatStrip
-        data-testid="sources-kpis"
-        items={[
-          { label: "Registered", value: loading ? "…" : totalRows },
-          {
-            label: "Connector health",
-            value: loading ? "…" : connectorHealthUnavailable ? "Unavailable" : `${healthyConnectors}/${connectorHealth.length || 0}`,
-            accent:
-              connectorHealth.length > 0 && healthyConnectors === connectorHealth.length
-                ? "success"
-                : "neutral",
-          },
-          {
-            label: "Schedules",
-            value: loading ? "…" : schedulesUnavailable ? "Unavailable" : schedulesCount,
-            hint: schedulesUnavailable ? "Read not available" : nextSchedule ? `Next ${formatWhen(nextSchedule)}` : "None yet",
-          },
-          {
-            label: "Providers",
-            value: loading ? "…" : providerContracts ? providerSummary.total : "Unavailable",
-            hint: providerContracts ? `${providerSummary.readOnly} read-only` : "Read not available",
-          },
-        ]}
-      />
-
       {(fleetSyncSummary || formMessage) && (
         <div className="space-y-1 text-sm">
           {fleetSyncSummary ? <p className="text-[color:var(--status-success)]">{fleetSyncSummary}</p> : null}
@@ -1929,7 +1905,7 @@ function SourcesSegment(props: SourcesSegmentProps) {
           No sources match the current filters.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)]" data-testid="unified-sources-table">
+        <div className="relative overflow-x-auto rounded-xl border border-[color:var(--border-subtle)]" data-testid="unified-sources-table">
           <table className="w-full min-w-[1000px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[11px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
@@ -1963,6 +1939,55 @@ function SourcesSegment(props: SourcesSegmentProps) {
           </table>
         </div>
       )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <ServiceStateChip
+          serviceId="data_sources"
+          entry={dataSourcesService}
+          registry={servicesRegistry}
+          showUnlock={false}
+        />
+        {!isDemoMode ? (
+          <button
+            onClick={onFleetSync}
+            disabled={syncingFleet || !canManageFleet}
+            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Activity className="h-3.5 w-3.5" />
+            {syncingFleet ? "Syncing…" : "Fleet sync"}
+          </button>
+        ) : null}
+      </div>
+
+      <ServiceStateBanner serviceId="data_sources" entry={dataSourcesService} registry={servicesRegistry} />
+      {isDemoMode ? <DemoConnectCard /> : null}
+
+
+
+      <StatStrip
+        data-testid="sources-kpis"
+        items={[
+          { label: "Registered", value: loading ? "…" : totalRows },
+          {
+            label: "Connector health",
+            value: loading ? "…" : connectorHealthUnavailable ? "Unavailable" : `${healthyConnectors}/${connectorHealth.length || 0}`,
+            accent:
+              connectorHealth.length > 0 && healthyConnectors === connectorHealth.length
+                ? "success"
+                : "neutral",
+          },
+          {
+            label: "Schedules",
+            value: loading ? "…" : schedulesUnavailable ? "Unavailable" : schedulesCount,
+            hint: schedulesUnavailable ? "Read not available" : nextSchedule ? `Next ${formatWhen(nextSchedule)}` : "None yet",
+          },
+          {
+            label: "Providers",
+            value: loading ? "…" : providerContracts ? providerSummary.total : "Unavailable",
+            hint: providerContracts ? `${providerSummary.readOnly} read-only` : "Read not available",
+          },
+        ]}
+      />
 
       {!isDemoMode ? (
         <div className="grid gap-4 xl:grid-cols-2">
@@ -2714,7 +2739,7 @@ function ConnectorGallery({
           No connectors match “{search}”.
         </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
           {visible.map((connector) => (
             <ConnectorTile
               key={connector.id}
@@ -2767,8 +2792,8 @@ function ConnectorTile({
         Boolean(managedTrialProviders?.includes(connector.action.provider))));
 
   return (
-    <Card className="flex h-full flex-col gap-3">
-      <div className="flex items-start justify-between gap-3">
+    <Card className="flex h-full min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[linear-gradient(145deg,var(--surface-elevated),var(--surface-muted))] shadow-inner shadow-black/20">
             {connector.logo ? (
@@ -2778,8 +2803,8 @@ function ConnectorTile({
             )}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-[var(--foreground)]">{connector.label}</p>
-            <p className="truncate text-[11px] text-[var(--text-secondary)]">{connector.tagline}</p>
+            <p className="text-sm font-semibold leading-snug text-[var(--foreground)] [overflow-wrap:anywhere]">{connector.label}</p>
+            <p className="mt-1 text-xs leading-snug text-[var(--text-secondary)]">{connector.tagline}</p>
           </div>
         </div>
         <span
@@ -2789,7 +2814,7 @@ function ConnectorTile({
         </span>
       </div>
 
-      <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
         {connector.action.type === "coding-agent" ? (
           <span className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--text-tertiary)]">
             <Lock className="h-3 w-3" /> Read-only
@@ -2932,11 +2957,55 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         </section>
 
         <p className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 dark:border-emerald-900/50 bg-emerald-500/10 dark:bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-700 dark:text-emerald-300">
-          <Lock className="h-3.5 w-3.5 shrink-0" /> Read-only. The server never writes to your cloud, repos, or
-          control-plane data.
+          <Lock className="h-3.5 w-3.5 shrink-0" /> Collection uses read-only source access. Scan evidence and connection settings are stored in the control plane.
         </p>
       </div>
     </Drawer>
+  );
+}
+
+function ConnectionEvidenceSummary({ connection }: { connection: CloudConnectionRecord }) {
+  const mode = connection.auth_params?.auth_mode;
+  const recordedCredential = connection.credential_present || connection.has_external_id;
+  const authentication = connection.provider === "azure" && mode === "managed_identity" ? "Managed identity"
+    : ["azure", "gcp"].includes(connection.provider) && mode === "workload_identity" ? "Workload identity"
+    : mode ? "Unrecognized authentication mode"
+    : !recordedCredential ? "Not recorded"
+    : connection.provider === "aws" ? "AWS AssumeRole"
+    : connection.provider === "azure" ? "Client secret (legacy)"
+    : connection.provider === "gcp" ? "Service-account key (legacy)"
+    : connection.provider === "snowflake" ? "Key-pair authentication"
+    : "Not recorded";
+  const scope = connection.inventory_scope === "organization" ? "Organization"
+    : connection.inventory_scope === "account" ? "Account" : "Unavailable";
+  const cadence = connection.scan_interval_minutes === null ? "Manual"
+    : typeof connection.scan_interval_minutes === "number" && connection.scan_interval_minutes > 0
+      ? `Every ${connection.scan_interval_minutes} minutes` : "Unavailable";
+  const fields = [
+    ["Authentication", authentication], ["Inventory scope", scope],
+    ["Regions", connection.regions?.length ? connection.regions.join(", ") : "Not recorded"],
+    ["Scan schedule", cadence],
+  ];
+  const probeStatus = connection.capability_probe_status?.replaceAll("_", " ") ?? "Unavailable";
+  return (
+    <section aria-label="Recorded connection configuration" className="space-y-3">
+      <dl className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 text-sm">
+        {fields.map(([label, value]) => <div key={label} className="min-w-0">
+          <dt className="text-xs text-[color:var(--text-tertiary)]">{label}</dt>
+          <dd className="mt-0.5 break-words font-medium text-[color:var(--foreground)]">{value}</dd>
+        </div>)}
+      </dl>
+      <details className="border-y border-[color:var(--border-subtle)] py-2 text-sm">
+        <summary className="cursor-pointer font-medium">Capability evidence</summary>
+        <dl className="mt-3 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
+          <div><dt className="text-xs text-[color:var(--text-tertiary)]">Last probe</dt><dd className="capitalize">{probeStatus}</dd></div>
+          <div><dt className="text-xs text-[color:var(--text-tertiary)]">Verification time</dt><dd>Unavailable</dd></div>
+          <div className="min-w-0 sm:col-span-2"><dt className="text-xs text-[color:var(--text-tertiary)]">Verified reads</dt><dd className="break-words">{connection.verified_capabilities?.length ? connection.verified_capabilities.join(", ") : "None recorded"}</dd></div>
+          <div className="sm:col-span-2"><dt className="text-xs text-[color:var(--text-tertiary)]">Collection gaps</dt><dd>Not reported by this connection record</dd></div>
+        </dl>
+        <p className="mt-2 text-xs text-[color:var(--text-secondary)]">Configuration does not establish read access. Open the scan result for collection coverage and failures.</p>
+      </details>
+    </section>
   );
 }
 
@@ -2984,7 +3053,7 @@ function ConnectionDetailDrawer({
       title={connection.display_name}
       subtitle={
         <span className="inline-flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[11px] text-[color:var(--text-tertiary)]">{connection.role_ref}</span>
+          <span className="min-w-0 break-all font-mono text-[11px] text-[color:var(--text-tertiary)]">{connection.role_ref}</span>
           {isOrganizationScope(connection) ? (
             <span
               className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200"
@@ -3031,6 +3100,7 @@ function ConnectionDetailDrawer({
       }
     >
       <div className="space-y-3">
+        <ConnectionEvidenceSummary connection={connection} />
         {result ? <ScanResultPanel result={result} /> : null}
         {!result && testResult ? (
           <div className="rounded-xl border border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/20 p-3 text-xs text-emerald-700 dark:text-emerald-200">
@@ -3516,6 +3586,7 @@ type WizardStep = 0 | 1 | 2 | 3;
 type VerifyState = "idle" | "running" | "ok" | "error";
 
 function AddConnectionWizard({
+  workloadAuthModes,
   providerContracts,
   initialProvider,
   managedTrial,
@@ -3524,6 +3595,7 @@ function AddConnectionWizard({
   onClose,
   onCreated,
 }: {
+  workloadAuthModes: Record<string, string[]>;
   providerContracts: DiscoveryProvidersResponse | null;
   initialProvider?: string | undefined;
   managedTrial: boolean;
@@ -3603,6 +3675,9 @@ function AddConnectionWizard({
     [form.provider],
   );
 
+  const supportedAuthModes = workloadAuthModes[provider.value] ?? [];
+  const selectedAuthMode = form.auth.auth_mode ?? supportedAuthModes[0] ?? "";
+  const usesWorkloadBinding = supportedAuthModes.includes(selectedAuthMode);
   const isAws = provider.value === "aws";
   const managedTrialProviders = managedTrialEnvelope?.providers ?? [];
 
@@ -3772,7 +3847,13 @@ function AddConnectionWizard({
       }
       authParams[field.key] = value;
     }
-    if (!externalId.trim()) {
+    if (usesWorkloadBinding) {
+      const binding = (form.auth.credential_binding ?? "").trim();
+      if (!binding) { setFormError("Operator binding ID is required."); return; }
+      authParams.auth_mode = selectedAuthMode;
+      authParams.credential_binding = binding;
+    }
+    if (!usesWorkloadBinding && !externalId.trim()) {
       setFormError(`${provider.secretField.label} is required.`);
       return;
     }
@@ -3781,7 +3862,7 @@ function AddConnectionWizard({
       provider: form.provider,
       display_name: displayName,
       role_ref: roleRef,
-      external_id: externalId,
+      external_id: usesWorkloadBinding ? "" : externalId,
       regions,
       auth_params: authParams,
       inventory_scope: managedTrial ? "account" : isAws && awsScope === "organization" ? "organization" : "account",
@@ -3905,6 +3986,16 @@ function AddConnectionWizard({
                     );
                   })}
                 </div>
+                {supportedAuthModes.length > 0 ? (
+                  <label className="block text-sm">
+                    <span className="mb-2 block font-medium">Authentication method</span>
+                    <select aria-label="Authentication method" value={selectedAuthMode} onChange={(event) => setForm(current => ({ ...current, external_id: "", auth: { ...current.auth, auth_mode: event.target.value, credential_binding: "" } }))} className="w-full rounded-lg border border-outline bg-surface p-2">
+                      {supportedAuthModes.map((mode, index) => <option key={mode} value={mode}>{mode === "managed_identity" ? "Managed identity" : "Workload identity"}{index === 0 ? " (recommended)" : ""}</option>)}
+                      <option value="">Encrypted {provider.value === "gcp" ? "service-account key" : "client secret"} (legacy)</option>
+                    </select>
+                    <span className="mt-1 block text-xs text-ink-secondary">Workload authentication requires an operator-configured binding. Access is verified separately.</span>
+                  </label>
+                ) : null}
                 <section aria-label="Server SDK prerequisites" className="rounded-xl border border-[var(--border-subtle)] p-3 text-sm">
                   <p className="font-medium">Server SDK prerequisites</p>
                   {(providerContracts?.providers.find((item) => item.name === form.provider)?.sdk_readiness ?? []).map((sdk) => (
@@ -3918,7 +4009,14 @@ function AddConnectionWizard({
               </fieldset>
             ) : null}
 
-            {step === 1 ? (
+            {step === 1 && usesWorkloadBinding ? (
+              <section aria-label="Workload setup" className="space-y-3 text-sm">
+                <h3 className="font-semibold">Operator-managed workload binding</h3>
+                <p>Ask your operator for a read-only binding ID for this tenant, provider, identity and subscription or project. The control plane exchanges the configured workload identity for provider credentials.</p>
+                <p className="text-ink-secondary">Enter the binding ID in the next step. No password, client secret or service-account key is collected. Creating a connection does not prove access; use Verify after creation.</p>
+                <p className="text-ink-secondary">The operator manages the binding’s scope, expiry and revocation. No file path or credential should be pasted into the binding field.</p>
+              </section>
+            ) : step === 1 ? (
               <div className="space-y-3">
                 <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                   Grant read-only access
@@ -4138,6 +4236,13 @@ function AddConnectionWizard({
                     />
                   </label>
                 ))}
+                {usesWorkloadBinding ? (
+                  <label className="block text-sm">
+                    <span className="mb-2 block font-medium">Operator binding ID</span>
+                    <input aria-label="Operator binding ID" value={form.auth.credential_binding ?? ""} onChange={(event) => updateAuth("credential_binding", event.target.value)} placeholder="readonly-prod" autoComplete="off" className="w-full rounded-lg border border-outline bg-surface p-2 font-mono" />
+                    <span className="mt-1 block text-xs text-ink-secondary">An operator-supplied identifier, never a secret or file path.</span>
+                  </label>
+                ) : (
                 <label className="block">
                   <span className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
@@ -4182,6 +4287,7 @@ function AddConnectionWizard({
                       : provider.secretField.hint}
                   </span>
                 </label>
+                )}
                 <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2.5">
                   <input
                     type="checkbox"

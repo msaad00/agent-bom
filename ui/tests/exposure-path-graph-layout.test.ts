@@ -167,6 +167,18 @@ describe("buildPathGraphLayout auto-fit", () => {
     expect(layout.nodeWidth).toBeLessThan(buildPathGraphLayout(makePath(2)).nodeWidth);
   });
 
+  it("reserves a label lane that cannot overlap node cards, including long relationships", () => {
+    for (const count of [2, 4, 8, 20]) {
+      const layout = buildPathGraphLayout(makePath(count), { expanded: true });
+      for (const label of layout.relationshipLabels) {
+        expect(label.y - 11).toBeGreaterThanOrEqual(0);
+        for (const node of layout.nodes) {
+          expect(label.y + 11).toBeLessThan(node.y);
+        }
+      }
+    }
+  });
+
   it("produces one edge per hop transition", () => {
     const layout = buildPathGraphLayout(makePath(5), { expanded: true });
     expect(layout.edges).toHaveLength(4);

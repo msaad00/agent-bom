@@ -59,7 +59,7 @@ for (const theme of ["light", "dark"] as const) test.describe(theme, () => {
   });
   test("overview severity and enabled primary action contrast", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("tab", { name: "Overview", exact: true }).click();
+    await page.getByRole("tab", { name: "Posture", exact: true }).click();
     for (const [label, value] of [["Critical", "4"], ["High", "13"], ["Medium", "5"], ["Low", "1"]]) {
       const link = page.getByRole("link", { name: new RegExp(`^${label} ${value}`) });
       await readable(link.getByText(value!, { exact: true }));
@@ -67,7 +67,7 @@ for (const theme of ["light", "dark"] as const) test.describe(theme, () => {
       await expect(link).toBeFocused();
       await readable(link.getByText(value!, { exact: true }));
     }
-    const action = page.locator('main a[href="/compliance"]').filter({ hasText: /^Compliance/ }).first();
+    const action = page.getByRole("link", { name: "Manage sources", exact: false });
     await readable(action);
     await action.hover();
     await readable(action);

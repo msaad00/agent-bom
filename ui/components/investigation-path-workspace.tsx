@@ -56,14 +56,16 @@ export function InvestigationPathWorkspace({
 }) {
   const detailRef = useRef<HTMLDivElement>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [mobilePanel, setMobilePanel] = useState<"path" | "queue">("path");
 
   function handleSelect(key: string) {
     const row = rows.find((candidate) => candidate.selectionKey === key);
     onSelect(key);
+    setMobilePanel("path");
     if (row) {
       setAnnouncement(`Focused path ${row.rank}: ${row.cve ? `${row.cve} · ` : ""}${row.title}`);
     }
-    if (window.matchMedia?.("(max-width: 1279px)").matches) {
+    if (window.matchMedia?.("(max-width: 1023px)").matches) {
       window.requestAnimationFrame(() => {
         detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -85,17 +87,21 @@ export function InvestigationPathWorkspace({
     <section
       aria-label="Investigation workspace"
       data-layout={rows.length === 1 ? "focused-path" : "responsive-split"}
-      className={rows.length === 1 ? "grid gap-4" : "grid gap-4 xl:grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)] xl:items-start"}
+      data-mobile-panel={mobilePanel}
+      className="investigation-workspace"
     >
-      <details open={rows.length !== 1} className="investigation-queue rounded-xl border border-outline bg-surface p-4">
+      <div role="group" aria-label="Investigation panels" className="investigation-panel-switch">
+        <button type="button" aria-pressed={mobilePanel === "path"} aria-controls={DETAIL_REGION_ID} onClick={() => setMobilePanel("path")}>Selected path</button>
+        <button type="button" aria-pressed={mobilePanel === "queue"} aria-controls="investigation-queue" onClick={() => setMobilePanel("queue")}>Paths &amp; filters ({rows.length})</button>
+      </div>
+      <details id="investigation-queue" open={rows.length !== 1 || mobilePanel === "queue"} className="investigation-queue rounded-xl border border-outline bg-surface p-3">
         <summary className="cursor-pointer text-sm font-medium text-foreground">{rows.length === 1 ? "1 path selected · change focus or filters" : `${rows.length} paths · investigation queue`}</summary>
-        <div className="mt-3">
+        <div className="investigation-queue-body mt-3">
           <div>
             <h2 className="text-base font-semibold text-foreground">{title}</h2>
             <p className="mt-1 text-xs text-ink-tertiary">{subtitle}</p>
           </div>
 
-          <a href={`#${DETAIL_REGION_ID}`} className="mt-3 flex min-h-11 items-center text-sm font-medium text-foreground xl:hidden">View selected path</a>
           <div className="mt-3">
             <InvestigationFilterDrawer>{filters}</InvestigationFilterDrawer>
           </div>
@@ -108,7 +114,7 @@ export function InvestigationPathWorkspace({
             controlsId={DETAIL_REGION_ID}
           />
           {queueFooter}
-          {sideRail ? <div className="mt-4">{sideRail}</div> : null}
+          {sideRail ? <details className="mt-3 border-t border-outline pt-3"><summary className="cursor-pointer text-xs font-medium">Crown-jewel groups</summary><div className="mt-3">{sideRail}</div></details> : null}
         </div>
       </details>
 
@@ -118,7 +124,7 @@ export function InvestigationPathWorkspace({
         role="region"
         aria-label="Selected path detail"
         tabIndex={-1}
-        className="min-w-0 scroll-mt-24 xl:sticky xl:top-20"
+        className="investigation-selected-path min-w-0 scroll-mt-24"
       >
         {detail}
       </div>
@@ -127,4 +133,32 @@ export function InvestigationPathWorkspace({
       </p>
     </section>
   );
+}
+
+/** Secondary actions share one disclosure so the selected graph stays primary. */
+export function InvestigationTools({ scope, deployment, exposure }: {
+  scope: React.ReactNode;
+  deployment?: React.ReactNode;
+  exposure: React.ReactNode;
+}) {
+  const [active, setActive] = useState("scope");
+  const panels = [
+    { id: "scope", label: "Evidence scope", content: scope },
+    ...(deployment ? [{ id: "deployment", label: "Should I deploy?", content: deployment }] : []),
+    { id: "exposure", label: "Exposure paths", content: exposure },
+  ];
+  return <details className="rounded-xl border border-outline bg-surface p-3">
+    <summary className="cursor-pointer text-sm font-medium">Investigation tools · snapshots, correlation &amp; checks</summary>
+    <div role="group" aria-label="Investigation tools" className="my-3 flex flex-wrap gap-1">
+      {panels.map(panel => <button key={panel.id} type="button" aria-pressed={active === panel.id}
+        aria-controls="investigation-tool-panel" onClick={() => setActive(panel.id)}
+        className={`min-h-11 rounded-lg px-3 py-2 text-sm ${active === panel.id ? "bg-emerald-600 text-white" : "border border-outline text-ink-secondary"}`}>
+        {panel.label}
+      </button>)}
+    </div>
+    <section id="investigation-tool-panel" aria-label={panels.find(panel => panel.id === active)?.label}
+      className="max-h-[65svh] overflow-y-auto">
+      {panels.find(panel => panel.id === active)?.content}
+    </section>
+  </details>;
 }

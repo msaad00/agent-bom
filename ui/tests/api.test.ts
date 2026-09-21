@@ -1282,3 +1282,31 @@ describe('api.queryGraph cancellation', () => {
     expect(options.signal.aborted).toBe(true)
   })
 })
+
+describe('scoped inventory summary', () => {
+  it('preserves query scope and additive evidence qualifications', async () => {
+    const result = { scan_id: 'snapshot-a', total_assets: 2, count_exact: true,
+      filters: { type: ['agent', 'identity'], environment: 'prod', provider: 'aws', source: 'account/a', search: 'service agent', severity: 'high', min_severity: '' },
+      collection_coverage: { status: 'unknown', reason: 'No collection receipt' } }
+    const fetchMock = mockFetch(result)
+    global.fetch = fetchMock
+    expect(await api.getInventorySummary('snapshot-a', {
+      type: ['agent', 'identity'], environment: 'prod', provider: 'aws',
+      source: 'account/a', search: 'service agent', severity: 'high',
+    })).toEqual(result)
+    const query = new URL(fetchMock.mock.calls[0]![0], 'http://localhost').searchParams
+    expect(Object.fromEntries(query)).toEqual({ scan_id: 'snapshot-a', type: 'agent,identity',
+      environment: 'prod', provider: 'aws', source: 'account/a', search: 'service agent', severity: 'high' })
+  })
+})
+
+
+it('rejects an unqualified legacy aggregate for a filtered inventory query', async () => {
+  global.fetch = mockFetch({ scan_id: 'older-server', total_assets: 3000, by_type: { agent: 3000 } })
+  await expect(api.getInventorySummary(undefined, { provider: 'aws' })).rejects.toThrow('Scoped counts are unavailable')
+})
+
+it('rejects a summary that echoes a broader scope than requested', async () => {
+  global.fetch = mockFetch({ scan_id: 'snapshot-b', total_assets: 3000, filters: { type: [], provider: '' } })
+  await expect(api.getInventorySummary('snapshot-b', { provider: 'aws' })).rejects.toThrow('Scoped counts are unavailable')
+})

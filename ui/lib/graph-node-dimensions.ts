@@ -68,3 +68,18 @@ export function readableLineageDagreLr(
     fitAspect: overrides.fitAspect ?? LINEAGE_CANVAS_ASPECT,
   };
 }
+
+/** A bounded selected context keeps full labels and card-sized layout boxes. */
+export function compactInvestigationLayout(explicitContext: boolean, nodeCount: number): DagreLrOptions | undefined {
+  if (!explicitContext || nodeCount < 1 || nodeCount > 16) return undefined;
+  // Preserve the established short-chain framing. Larger contexts reserve the
+  // three-line label and metadata height while tightening unused rank space.
+  const height = nodeCount <= 4 ? 140 : 188;
+  return readableLineageDagreLr({
+    nodeWidth: 260,
+    nodeHeight: height,
+    rankSep: 32,
+    nodeSep: 24,
+    minSeparation: { width: 260, height, gap: 24 },
+  });
+}

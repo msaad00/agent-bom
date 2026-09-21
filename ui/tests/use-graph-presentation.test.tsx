@@ -75,6 +75,56 @@ describe("useGraphPresentation", () => {
     expect(result.current.restoredViewport).toBeUndefined();
   });
 
+  it("keeps legacy saved positions after pan and layout updates until explicitly reset", () => {
+    writeGraphPresentation(window.localStorage, graphPresentationStorageKey(scope), {
+      version: 1, positions: { [graphNodeStorageKey("package:a")]: { x: 120, y: 240 } },
+      viewport: { x: 0, y: 0, zoom: 1 }, layout: "dagre-lr", locked: true,
+    });
+    const { result, rerender } = renderHook(({ currentNodes }) =>
+      useGraphPresentation({ nodes: currentNodes, scope, layout: "dagre-lr" }),
+      { initialProps: { currentNodes: nodes } },
+    );
+    act(() => result.current.onMoveEnd(null, { x: 10, y: 20, zoom: 0.5 }));
+    rerender({ currentNodes: nodes.map((node) => ({ ...node, position: { x: 292, y: 106 } })) });
+    expect(result.current.nodes[0]?.position).toEqual({ x: 120, y: 240 });
+    act(() => result.current.reset());
+    expect(result.current.nodes[0]?.position).toEqual({ x: 292, y: 106 });
+  });
+
+  it("persists viewport-only moves without freezing automatic node coordinates", () => {
+    const { result, rerender } = renderHook(({ currentNodes }) =>
+      useGraphPresentation({ nodes: currentNodes, scope, layout: "dagre-lr" }),
+      { initialProps: { currentNodes: nodes } },
+    );
+    act(() => result.current.onMoveEnd(null, { x: 10, y: 20, zoom: 0.5 }));
+    expect(readGraphPresentation(window.localStorage, graphPresentationStorageKey(scope))?.positions).toEqual({});
+    const reflowed = nodes.map((node) => ({ ...node, position: { x: 292, y: 106 } }));
+    rerender({ currentNodes: reflowed });
+    expect(result.current.nodes[0]?.position).toEqual({ x: 292, y: 106 });
+    expect(result.current.viewport).toEqual({ x: 10, y: 20, zoom: 0.5 });
+    act(() => result.current.toggleEditing());
+    act(() => result.current.toggleEditing());
+    expect(readGraphPresentation(window.localStorage, graphPresentationStorageKey(scope))?.positions).toEqual({});
+  });
+
+  it("preserves only explicit dragged positions when other nodes reflow", () => {
+    const pair = [...nodes, { id: "package:b", position: { x: 476, y: 0 }, data: { label: "Package B" } }];
+    const { result, rerender } = renderHook(({ currentNodes }) =>
+      useGraphPresentation({ nodes: currentNodes, scope, layout: "dagre-lr" }),
+      { initialProps: { currentNodes: pair } },
+    );
+    act(() => result.current.toggleEditing());
+    act(() => result.current.onNodeDragStop({} as never, { ...pair[0]!, position: { x: 40, y: 50 } }, []));
+    act(() => result.current.onMoveEnd(null, { x: 0, y: 0, zoom: 0.7 }));
+    rerender({ currentNodes: pair.map((node) => ({ ...node, position: { x: 292, y: 106 } })) });
+    expect(result.current.nodes[0]?.position).toEqual({ x: 40, y: 50 });
+    expect(result.current.nodes[1]?.position).toEqual({ x: 292, y: 106 });
+    expect(Object.keys(readGraphPresentation(window.localStorage, graphPresentationStorageKey(scope))!.positions)).toEqual([graphNodeStorageKey("package:a")]);
+    act(() => result.current.autoLayout());
+    act(() => result.current.onMoveEnd(null, { x: 0, y: 0, zoom: 0.8 }));
+    expect(readGraphPresentation(window.localStorage, graphPresentationStorageKey(scope))?.positions).toEqual({});
+  });
+
   it("invalidates restored viewport on reset, including later pan and presentation updates", () => {
     writeGraphPresentation(window.localStorage, graphPresentationStorageKey(scope), {
       version: 1, positions: {}, viewport: { x: -20, y: 15, zoom: 0.3 }, layout: "dagre-lr", locked: true,

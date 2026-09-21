@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeReachability } from "@/lib/graph-reachability";
+import { summarizeReachability, describeTraversalSequence } from "@/lib/graph-reachability";
 import { EntityType, RelationshipType, type UnifiedEdge, type UnifiedNode } from "@/lib/graph-schema";
 
 function node(id: string, entityType: EntityType, label: string, riskScore = 0): UnifiedNode {
@@ -89,6 +89,9 @@ describe("graph reachability", () => {
       edges: [edge("e1", "package", "finding", false), edge("e2", "server", "package")],
     });
     expect(summary.pathPreviews.find((path) => path.targetId === "server")?.hops).toEqual(["finding", "package", "server"]);
+    const path = summary.pathPreviews.find((item) => item.targetId === "server")!;
+    expect(describeTraversalSequence(path.labels)).toBe(`Traversal order: ${path.labels.join(" · ")}`);
+    expect(describeTraversalSequence(path.labels)).not.toMatch(/->|→/);
   });
 
 });

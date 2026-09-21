@@ -442,7 +442,9 @@ function toLineageData(
         node.id,
         outgoing,
         RelationshipType.HOSTS,
+        nodeById, new Set([EntityType.AGENT]),
       );
+      data.countHopLimits = { agentCount: 1 };
       break;
     case "agent":
       data.agentType = agentType || stringAttr(node, "agent_type");
@@ -454,7 +456,9 @@ function toLineageData(
         node.id,
         outgoing,
         RelationshipType.USES,
+        nodeById, new Set([EntityType.SERVER]),
       );
+      data.countHopLimits = { serverCount: 1, packageCount: 3, vulnCount: 5 };
       data.packageCount = countReachableTypes(
         node.id,
         outgoing,
@@ -481,6 +485,7 @@ function toLineageData(
     case "environment":
     case "fleet":
     case "cluster":
+      data.countHopLimits = { agentCount: 4, serverCount: 4 };
       data.description =
         stringAttr(node, "environment") ||
         stringAttr(node, "provider") ||
@@ -502,6 +507,7 @@ function toLineageData(
       );
       break;
     case "server":
+      data.countHopLimits = { toolCount: 1, credentialCount: 1, packageCount: 1, vulnCount: 4 };
       data.command = safeGraphConnection(
         stringAttr(node, "command") ||
           stringAttr(node, "transport") ||
@@ -511,16 +517,19 @@ function toLineageData(
         node.id,
         outgoing,
         RelationshipType.PROVIDES_TOOL,
+        nodeById, new Set([EntityType.TOOL]),
       );
       data.credentialCount = countOutgoing(
         node.id,
         outgoing,
         RelationshipType.EXPOSES_CRED,
+        nodeById, new Set([EntityType.CREDENTIAL, EntityType.CREDENTIAL_REF]),
       );
       data.packageCount = countOutgoing(
         node.id,
         outgoing,
         RelationshipType.DEPENDS_ON,
+        nodeById, new Set([EntityType.PACKAGE]),
       );
       data.vulnCount = countReachableTypes(
         node.id,
@@ -531,6 +540,7 @@ function toLineageData(
       );
       break;
     case "package":
+      data.countHopLimits = { vulnCount: 1 };
       data.ecosystem = stringAttr(node, "ecosystem");
       data.version = stringAttr(node, "version");
       data.versionSource =
@@ -541,6 +551,7 @@ function toLineageData(
         node.id,
         outgoing,
         RelationshipType.VULNERABLE_TO,
+        nodeById, new Set([EntityType.VULNERABILITY, EntityType.MISCONFIGURATION]),
       );
       break;
     case "vulnerability":
@@ -660,6 +671,7 @@ function toLineageData(
       break;
   }
 
+  if (data.countHopLimits) data.countScope = "loaded_graph";
   return data;
 }
 
@@ -821,10 +833,13 @@ function countOutgoing(
   nodeId: string,
   outgoing: Map<string, UnifiedEdge[]>,
   relationship: RelationshipType,
+  nodeById: Map<string, UnifiedNode>,
+  entityTypes: Set<EntityType>,
 ): number {
-  return (outgoing.get(nodeId) ?? []).filter(
-    (edge) => edge.relationship === relationship,
-  ).length;
+  return new Set((outgoing.get(nodeId) ?? []).filter((edge) => {
+    const target = nodeById.get(edge.target);
+    return edge.relationship === relationship && target && entityTypes.has(target.entity_type as EntityType);
+  }).map((edge) => edge.target)).size;
 }
 
 function countReachableTypes(
@@ -846,6 +861,7 @@ function countReachableTypes(
       if (visited.has(next)) continue;
       visited.add(next);
       const nextNode = nodeById.get(next);
+      if (!nextNode) continue;
       if (nextNode && entityTypes.has(nextNode.entity_type as EntityType)) {
         matched.add(next);
       }

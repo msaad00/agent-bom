@@ -17,6 +17,8 @@ export function findingsHref(input: {
   cve?: string | undefined;
   agent?: string | undefined;
   scan?: string | undefined;
+  framework?: string | undefined;
+  control?: string | undefined;
   issue?: "vulnerability" | "misconfiguration" | "secret" | "pii" | "all";
 } = {}): string {
   return buildHref("/findings", [
@@ -25,6 +27,8 @@ export function findingsHref(input: {
     ["agent", input.agent],
     ["scan", input.scan],
     ["issue", input.issue],
+    ["framework", input.framework],
+    ["control", input.framework?.trim() ? input.control : undefined],
   ]);
 }
 
@@ -54,8 +58,8 @@ export function complianceHref(input: { q?: string | undefined; scan?: string | 
   return buildHref("/compliance", [["q", input.q], ["scan", input.scan]]);
 }
 
-export function remediationHref(input: { q?: string | undefined } = {}): string {
-  return buildHref("/remediation", [["q", input.q]]);
+export function remediationHref(input: { q?: string | undefined; scan?: string | undefined } = {}): string {
+  return buildHref("/remediation", [["q", input.q], ["scan", input.scan]]);
 }
 
 const GRAPH_LAYERS = new Set([

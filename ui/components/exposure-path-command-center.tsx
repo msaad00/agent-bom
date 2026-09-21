@@ -146,9 +146,15 @@ export function ExposurePathCommandCenter({
 }) {
   const [internalView, setInternalView] = useState<ExposurePathView>("path");
   const view = controlledView ?? internalView;
+  const graphViewRef = useRef<HTMLElement>(null);
   const setView = (next: ExposurePathView) => {
     if (!controlledView) setInternalView(next);
     onViewChange?.(next);
+    if (next === "graph" && window.matchMedia?.("(max-width: 639px)").matches) {
+      // Complete document positioning before graph navigation can take focus.
+      // A competing smooth scroll can jump the page away from the next node.
+      requestAnimationFrame(() => graphViewRef.current?.scrollIntoView({ block: "start", behavior: "instant" }));
+    }
   };
   const fixLabel = pathFixLabel(path);
   const evidence = path.evidence;
@@ -157,9 +163,12 @@ export function ExposurePathCommandCenter({
     "Review the ordered relationships and their source evidence for this path.";
   const primaryAction = actions[0];
   const findingLabel = path.findings[0] && !/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(path.findings[0]) ? path.findings[0] : undefined;
-  const findingSuffix = path.findings[0] ? ` through ${path.findings[0]}` : "";
-  const headline = findingSuffix && title?.endsWith(findingSuffix) ? title.slice(0, -findingSuffix.length) : title;
+  // Source prose can claim reachability or impact that the receipts do not assess.
+  const headline = `${formatExposureEntityTitle(path.source.label, path.source.role)} → ${formatExposureEntityTitle(path.target.label, path.target.role)}`;
   const packageHop = path.hops.find((hop) => hop.role === "package");
+  const contextLabel = [findingLabel, packageHop?.label]
+    .filter((label): label is string => typeof label === "string" && !headline.includes(label))
+    .join(" · ");
   const severityTone =
     path.severity === "critical"
       ? "from-red-500/80 via-red-500/20 to-transparent"
@@ -174,6 +183,7 @@ export function ExposurePathCommandCenter({
         <div className="ep-header">
           <div className="ep-header-copy">
             <div className="ep-badges">
+              <h2 className="ep-outcome-title">{headline}</h2>
               <span className="ep-severity" data-severity={String(path.severity).toLowerCase()}>
                 {String(path.severity)} severity
               </span>
@@ -183,12 +193,6 @@ export function ExposurePathCommandCenter({
                 </span>
               ) : null}
             </div>
-            <h2 className="ep-outcome-title">{headline ?? `${formatExposureEntityTitle(path.source.label, path.source.role)} → ${formatExposureEntityTitle(path.target.label, path.target.role)}`}</h2>
-            <p
-              className="ep-summary"
-            >
-              {findingLabel ? <>{findingLabel}{packageHop ? <> · {packageHop.label}</> : null} · Follow the evidence to the affected asset.</> : "Follow the ordered relationships and inspect their evidence."}
-            </p>
           </div>
           {primaryAction && (
             <div className="ep-header-action">
@@ -204,6 +208,7 @@ export function ExposurePathCommandCenter({
             </div>
           )}
           <div className="ep-metrics">
+            {contextLabel && <span className="py-1 font-medium" data-testid="path-finding-context">{contextLabel}</span>}
             <MetricPill label="Path priority" value={path.riskScore.toFixed(1)} tone="red" />
             <MetricPill label="Path span" value={pathSpanLabel(path.hops.length)} />
             <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
@@ -211,23 +216,16 @@ export function ExposurePathCommandCenter({
           </div>
         </div>
 
-        {!techniquesSlot && <details className="rounded-xl border border-[color:var(--border-subtle)] p-3">
-          <summary className="cursor-pointer text-sm font-medium">Inspect {Math.max(0, path.hops.length - 1)} hop receipts</summary>
-          <div className="mt-3"><GraphHopEvidenceInspector key={exposurePathKey(path)} hops={path.hops} receipts={path.hopEvidence} /></div>
-        </details>}
-        {path.evidenceDimensions && (
-          <section aria-label="Path evidence assessment" className="space-y-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
-            <dl className="flex flex-wrap gap-x-6 gap-y-2">
-              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-xs text-[color:var(--text-secondary)]">Reachability</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.reachability.verdict ?? "Unknown"}</dd></div>
-              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-xs text-[color:var(--text-secondary)]">Exploitability</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.exploitability.verdict?.replaceAll("_", " ") ?? "Not assessed"}</dd></div>
-              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-xs text-[color:var(--text-secondary)]">Evidence coverage</dt><dd className="text-sm font-medium capitalize">{path.evidenceDimensions.completeness.status}</dd></div>
+        <section aria-label="Path evidence assessment" className="space-y-1 border-b border-[color:var(--border-subtle)] pb-2">
+            <dl className="ep-assessment-grid">
+              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-[15px] text-[color:var(--text-secondary)]">Reachability</dt><dd className="text-[15px] font-medium capitalize">{path.evidenceDimensions?.reachability.verdict ?? "Unknown"}</dd></div>
+              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-[15px] text-[color:var(--text-secondary)]">Exploitability</dt><dd className="text-[15px] font-medium capitalize">{path.evidenceDimensions?.exploitability.verdict?.replaceAll("_", " ") ?? "Not assessed"}</dd></div>
+              <div className="flex flex-wrap items-baseline gap-x-2"><dt className="text-[15px] text-[color:var(--text-secondary)]">Assessment completeness</dt><dd className="text-[15px] font-medium capitalize">{path.evidenceDimensions?.completeness.status ?? "Unavailable"}</dd></div>
             </dl>
-            <p className="text-xs text-[color:var(--text-secondary)]">{pathSummary}</p>
-            {path.provenance?.scanId && <p className="break-all text-xs text-[color:var(--text-tertiary)]">Snapshot: {path.provenance.scanId}</p>}
           </section>
-        )}
 
-
+        <div className="ep-inspection-grid">
+        <div className="ep-inspection-main">
         <div className="ep-view-row">
           <div className="ep-view-label">
             {view === "path"
@@ -248,7 +246,7 @@ export function ExposurePathCommandCenter({
         ) : view === "list" ? (
           <ExposurePathNeighborExplorer path={path} scanId={scanId} />
         ) : graphSlot ? (
-          <section aria-label="Interactive graph">{graphSlot}</section>
+          <section ref={graphViewRef} className="scroll-mt-20" aria-label="Interactive graph">{graphSlot}</section>
         ) : (
           <section
             aria-label="Interactive graph hint"
@@ -258,6 +256,12 @@ export function ExposurePathCommandCenter({
           </section>
         )}
 
+        </div>
+        <aside aria-label="Selected path evidence" className="ep-inspection-evidence">
+        {!techniquesSlot && <details className="rounded-xl border border-[color:var(--border-subtle)] p-3">
+          <summary className="cursor-pointer text-[15px] font-medium">Inspect {Math.max(0, path.hops.length - 1)} hop receipts</summary>
+          <div className="mt-3"><GraphHopEvidenceInspector key={exposurePathKey(path)} hops={path.hops} receipts={path.hopEvidence} /></div>
+        </details>}
         {techniquesSlot}
 
 
@@ -267,7 +271,14 @@ export function ExposurePathCommandCenter({
             <ChevronDown className="ep-chevron" />
           </summary>
         <div className="ep-details-body">
-          <p className="ep-summary">{pathSummary}</p>
+          <section aria-label="Assessment scope">
+            <p className="text-[15px] text-[color:var(--text-secondary)]">Recorded relationships do not establish effective permission, exploitation or successful data access.</p>
+            {path.provenance?.scanId && <p className="break-all text-[15px] text-[color:var(--text-tertiary)]">Snapshot: {path.provenance.scanId}</p>}
+          </section>
+          <div className="text-[15px] text-ink-secondary"><p className="font-medium">Source summary · consult assessments and receipts</p><blockquote className="mt-1">{pathSummary}</blockquote></div>
+          {title && <details className="text-[15px] text-ink-secondary"><summary className="cursor-pointer">Source-provided title</summary>
+            <p className="mt-2">This label is not an assessment of reachability, exploitation, or impact.</p><blockquote className="mt-1">{title}</blockquote>
+          </details>}
           {primaryAction?.detail && <p className="ep-summary">{primaryAction.detail}</p>}
           <section aria-label="Relationship proof">
             <div className="ep-kicker mb-2">
@@ -283,7 +294,7 @@ export function ExposurePathCommandCenter({
                       {relationship.direction === "bidirectional" ? " ↔ " : relationship.direction === "directed" ? " → " : " · "}
                       {path.hops.find((hop) => hop.id === relationship.target)?.label ?? relationship.target}
                     </span>
-                    <span className="mt-1 block text-xs text-[color:var(--text-secondary)]">
+                    <span className="mt-1 block text-[15px] text-[color:var(--text-secondary)]">
                       {relationship.direction === "directed" ? "Directed" : relationship.direction === "bidirectional" ? "Bidirectional" : "Direction unrecorded"}
                       {" · "}{relationship.traversable === true ? "Traversal permitted" : relationship.traversable === false ? "Context only; not traversable" : "Traversal unrecorded"}
                     </span>
@@ -296,7 +307,7 @@ export function ExposurePathCommandCenter({
             </div>
           </section>
 
-          {path.evidenceDimensions && <section aria-label="Assessment basis" className="space-y-2 text-xs text-[color:var(--text-secondary)]">
+          {path.evidenceDimensions && <section aria-label="Assessment basis" className="space-y-2 text-[15px] text-[color:var(--text-secondary)]">
             {Object.entries(path.evidenceDimensions).map(([dimension, assessment]) => <div key={dimension}>
               <span className="font-medium capitalize">{dimension}: </span>
               {[...(assessment.basis ?? []), ...(assessment.reasonCodes ?? [])].map((reason) => reason.replaceAll("_", " ")).join(" · ") || assessment.status}
@@ -324,6 +335,8 @@ export function ExposurePathCommandCenter({
           {detailsSlot ? <div>{detailsSlot}</div> : null}
         </div>
       </details>
+        </aside>
+        </div>
       </div>
     </div>
   );
@@ -379,7 +392,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-base text-[color:var(--text-secondary)]">Solid lines: traversable. Dashed: traversal unproven. Arrows show direction, not exploitation.</p>
+      <p className="text-[15px] text-[color:var(--text-secondary)]">Solid lines: traversable. Dashed: traversal unproven. Arrows show direction, not exploitation.</p>
       <ExposurePathSequence path={path} showDesktop={collapsible && !expanded} />
       <div ref={boardRef} className="hidden sm:block">
         {collapsible && !expanded ? (
@@ -527,7 +540,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
           <span className="text-ink-tertiary">
             {expanded
               ? "Full-width diagram — scroll horizontally."
-              : `All ${layout.totalHopCount} steps shown in order.`}
+              : `All ${layout.totalHopCount} steps available in order.`}
           </span>
         </div>
       ) : null}
@@ -553,10 +566,41 @@ function ExposurePathSequence({
   path: ExposurePath;
   showDesktop: boolean;
 }) {
+  const sequenceRef = useRef<HTMLOListElement>(null);
+  const [scrollState, setScrollState] = useState({ previous: false, next: false });
+  const updateScrollState = () => {
+    const list = sequenceRef.current;
+    if (!list || list.clientWidth === 0) return;
+    const next = { previous: list.scrollLeft > 1, next: list.scrollLeft + list.clientWidth < list.scrollWidth - 1 };
+    setScrollState(current => current.previous === next.previous && current.next === next.next ? current : next);
+  };
+  useEffect(() => {
+    updateScrollState();
+    const list = sequenceRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateScrollState);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+  const moveSteps = (direction: number) => {
+    const list = sequenceRef.current;
+    list?.scrollBy({ left: direction * Math.max(200, list.clientWidth * 0.85), behavior: "smooth" });
+  };
   return (
+    <div className={showDesktop ? "ep-sequence-lane" : "ep-sequence-lane sm:hidden"}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[15px] text-ink-secondary">
+        <span>{path.hops.length} ordered steps</span>
+        <div className="flex gap-1">
+          <button type="button" disabled={!scrollState.previous} onClick={() => moveSteps(-1)} className="ep-step-control" aria-label="Previous path steps">← Previous</button>
+          <button type="button" disabled={!scrollState.next} onClick={() => moveSteps(1)} className="ep-step-control" aria-label="Next path steps">Next →</button>
+        </div>
+      </div>
     <ol
       aria-label={`Selected exposure path ordered steps for ${pathDisplayTitle(path)}`}
-      className={`ep-sequence ${showDesktop ? "ep-sequence-desktop" : "sm:hidden"}`}
+      ref={sequenceRef}
+      tabIndex={0}
+      onScroll={updateScrollState}
+      className="ep-sequence"
       data-testid="exposure-path-sequence"
     >
       {path.hops.map((hop, index) => {
@@ -606,6 +650,7 @@ function ExposurePathSequence({
         );
       })}
     </ol>
+    </div>
   );
 }
 
@@ -623,9 +668,9 @@ function EvidenceRow({
     <div className="ep-evidence-row">
       <div className="ep-evidence-label">{label}</div>
       <div className="ep-evidence-values">
-        {(values.length > 0 ? values : [emptyLabel]).slice(0, 3).map((value) => (
+        {(values.length > 0 ? values : [emptyLabel]).slice(0, 3).map((value, index) => (
           <span
-            key={`${label}-${value}`}
+            key={`${label}-${index}-${value}`}
             className="ep-evidence-chip"
           >
             {value}

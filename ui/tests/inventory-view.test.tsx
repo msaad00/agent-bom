@@ -148,6 +148,41 @@ beforeEach(() => {
 });
 
 describe("AssetInventoryView inventory projection", () => {
+  it("keeps scoped zero-result filters recoverable within the same snapshot", async () => {
+    vi.mocked(api.getInventorySummary).mockImplementation(async (_scan, filters) =>
+      filters?.search ? summary({ total_assets: 0, by_type: {} }) : summary());
+    vi.mocked(api.getInventoryAssets).mockImplementation(async (options) => options?.search
+      ? page([], { pagination: { total: 0, offset: 0, limit: 100, next_cursor: "", has_more: false, facet_filtered: true } })
+      : page());
+    render(<InventoryProvider scanId={SNAPSHOT} entityTypes={ASSET_KIND_BY_ID.packages.entityTypes}
+      initialFilters={{ search: "no-such-package", provider: "aws" }}>
+      <AssetInventoryView kind="packages" />
+    </InventoryProvider>);
+
+    expect(await screen.findByText(/No packages match/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Inventory filters" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Name, id, type, source…")).toHaveValue("no-such-package");
+    expect(screen.queryByText(/No packages discovered yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/does not establish collection coverage/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    const table = await screen.findByTestId("inventory-table-packages");
+    expect(within(table).getByText("requests")).toBeInTheDocument();
+    expect(api.getInventorySummary).toHaveBeenLastCalledWith(SNAPSHOT, expect.objectContaining({ search: "", provider: "" }));
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({ scanId: SNAPSHOT, type: ["package"] }));
+  });
+
+  it.each(["kind", "index"] as const)("qualifies retained %s results while a filter update is pending", async (view) => {
+    renderPackages(view === "kind" ? <AssetInventoryView kind="packages" /> : <InventoryIndex />);
+    await screen.findByRole("table");
+    vi.mocked(api.getInventorySummary).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(api.getInventoryAssets).mockImplementation(() => new Promise(() => {}));
+    fireEvent.change(screen.getByLabelText("Filter by provider"), { target: { value: "aws" } });
+    const notice = await screen.findByText("Updating results… showing previous results.");
+    expect(notice).toHaveAttribute("role", "status");
+    expect(notice.closest('[aria-busy="true"]')).not.toBeNull();
+    expect(within(screen.getByRole("table")).getByText("requests")).toBeInTheDocument();
+  });
+
   it("renders bounded package rows and their server-authored finding summaries", async () => {
     renderPackages(<AssetInventoryView kind="packages" />);
 
@@ -261,6 +296,14 @@ describe("InventoryIndex whole-query truth", () => {
     expect(screen.getByText("Showing 101–101 of 700 matching assets")).toBeVisible();
   });
 
+  it("uses filtered type totals for category links rather than self-excluding facets", async () => {
+    vi.mocked(api.getInventorySummary).mockResolvedValue(summary({total_assets: 100, by_type: {agent:100}}));
+    render(<InventoryProvider initialFilters={{type:"agent"}}><InventoryIndex /></InventoryProvider>);
+    expect(await screen.findByRole("link", {name:"AI entities 100"})).toHaveAttribute("href", "/inventory/agents?scan=scan-inventory-7&type=agent");
+    expect(await screen.findByRole("link", {name:"Packages 0"})).toHaveAttribute("href", "/inventory/packages?scan=scan-inventory-7&type=agent");
+    expect(await screen.findByRole("link", {name:"Servers & tools 0"})).toBeVisible();
+  });
+
   it("renders authoritative snapshot and kind totals despite a bounded first page", async () => {
     render(
       <InventoryProvider>
@@ -273,10 +316,10 @@ describe("InventoryIndex whole-query truth", () => {
     );
     expect(screen.getByText("1,000")).toBeInTheDocument();
     const packages = screen.getByRole("link", { name: /^Packages/ });
-    expect(packages).toHaveAttribute("href", "/inventory/packages");
+    expect(packages).toHaveAttribute("href", "/inventory/packages?scan=scan-inventory-7");
     expect(within(packages).getByText("700")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^MCP servers/ })).toHaveAttribute("href", "/inventory/servers");
-    expect(screen.getByRole("link", { name: /^AI agents/ })).toHaveAttribute("href", "/inventory/agents");
+    expect(screen.getByRole("link", { name: /^Servers & tools/ })).toHaveAttribute("href", "/inventory/servers?scan=scan-inventory-7");
+    expect(screen.getByRole("link", { name: /^AI entities/ })).toHaveAttribute("href", "/inventory/agents?scan=scan-inventory-7");
     expect(api.getGraph).not.toHaveBeenCalled();
   });
 
@@ -292,6 +335,7 @@ describe("InventoryIndex whole-query truth", () => {
     vi.mocked(api.getInventorySummary).mockResolvedValue(
       summary({
         total_assets: 1000 + count,
+        by_type: {package:700,server:200,agent:100,user:count},
         facets: identityFacets,
       }),
     );
@@ -308,12 +352,27 @@ describe("InventoryIndex whole-query truth", () => {
       </InventoryProvider>,
     );
 
-    const identities = await screen.findByRole("link", { name: /^Identities & credentials/ });
+    const identities = await screen.findByRole("link", { name: /^Identity & access/ });
     await waitFor(() => {
-      const current = screen.getByRole("link", { name: `Identities & credentials ${count.toLocaleString()}` });
+      const current = screen.getByRole("link", { name: `Identity & access ${count.toLocaleString()}` });
       expect(within(current).getByText(count.toLocaleString())).toBeInTheDocument();
     });
     expect(within(identities).queryByText("identitys")).not.toBeInTheDocument();
     delete document.documentElement.dataset.theme;
   });
+});
+
+it("explains incompatible category filters without claiming missing collection and clears only type", async () => {
+  const onFiltersChange = vi.fn();
+  render(<InventoryProvider entityTypes={["package"]} scanId={SNAPSHOT}
+    initialFilters={{ type: "agent", provider: "aws", environment: "production" }} onFiltersChange={onFiltersChange}>
+    <AssetInventoryView kind="packages" />
+  </InventoryProvider>);
+  expect(await screen.findByText("No assets match these filters")).toBeInTheDocument();
+  expect(screen.queryByText(/discovered yet/i)).not.toBeInTheDocument();
+  expect(api.getInventorySummary).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Clear type filter" }));
+  await waitFor(() => expect(api.getInventorySummary).toHaveBeenCalledWith(SNAPSHOT,
+    expect.objectContaining({ type: ["package"], provider: "aws", environment: "production" })));
+  expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ type: "", provider: "aws", environment: "production" }));
 });

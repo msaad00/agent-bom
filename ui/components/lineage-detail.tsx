@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
+import { Drawer } from "@/components/drawer";
 import {
   Brain,
   Bug,
@@ -187,7 +189,7 @@ export function LineageDetailPanel({
   onShowBlastRadius?: (() => void) | undefined;
   blastRadiusActive?: boolean;
   blastRadiusLoading?: boolean;
-  /** overlay = absolute side panel (mesh/lineage); inline = stacked under canvas */
+  /** overlay/docked become a full-screen dialog on mobile; inline stays in flow. */
   variant?: "overlay" | "inline" | "docked";
   relationshipSlot?: ReactNode;
   headerSlot?: ReactNode;
@@ -235,6 +237,22 @@ export function LineageDetailPanel({
   const { width, onHandlePointerDown, onHandleKeyDown } = useDrawerWidth();
   const isOverlay = variant === "overlay";
   const isDocked = variant === "docked";
+  const [mobileViewport, setMobileViewport] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 639px)");
+    const update = () => setMobileViewport(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  const mobileDialog = mobileViewport && (isOverlay || isDocked);
+  useEffect(() => {
+    if (!mobileDialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [mobileDialog]);
 
   // ---- Node-type primary block (the "what is this node" hero detail) --------
   const typeSection = (
@@ -578,16 +596,16 @@ export function LineageDetailPanel({
   const relationshipsSection = hasRelationships ? (
     <div className="space-y-2">
       {data.neighborCount != null && (
-        <Row label="Neighbors" value={data.neighborCount} />
+        <Row label={data.relationshipCountsPartial ? "Known neighbors" : "Neighbors"} value={data.neighborCount} />
       )}
       {data.sourceCount != null && (
-        <Row label="Sources" value={data.sourceCount} />
+        <Row label={data.relationshipCountsPartial ? "Known incoming neighbors" : "Incoming neighbors"} value={data.sourceCount} />
       )}
       {data.incomingEdgeCount != null && (
-        <Row label="Incoming edges" value={data.incomingEdgeCount} />
+        <Row label={data.relationshipCountsPartial ? "Returned incoming edges" : "Incoming edges"} value={data.incomingEdgeCount} />
       )}
       {data.outgoingEdgeCount != null && (
-        <Row label="Outgoing edges" value={data.outgoingEdgeCount} />
+        <Row label={data.relationshipCountsPartial ? "Returned outgoing edges" : "Outgoing edges"} value={data.outgoingEdgeCount} />
       )}
       {data.impactCount != null && (
         <Row
@@ -597,28 +615,50 @@ export function LineageDetailPanel({
         />
       )}
       {data.maxImpactDepth != null && (
-        <Row label="Impact depth" value={data.maxImpactDepth} />
+        <Row label="Upstream hops explored" value={data.maxImpactDepth} />
       )}
       {relationshipSlot}
     </div>
   ) : null;
 
-  // ---- Impact: affected nodes broken down by type --------------------------
-  const hasImpact =
-    !!data.impactByType && Object.keys(data.impactByType).length > 0;
-
+  // Reverse traversal describes recorded topology, not executed actions or loss.
+  const impactTypes = Object.entries(data.impactByType ?? {}).sort((left, right) => right[1] - left[1]);
+  const hasImpact = data.impactCount != null || impactTypes.length > 0;
+  const impactCoverage = data.impactCompleteness;
+  const impactPartial = Boolean(impactCoverage?.truncated || impactCoverage?.sampled)
+    || impactCoverage?.status === "truncated" || impactCoverage?.status === "sampled";
+  const impactComplete = impactCoverage?.complete === true && impactCoverage.status === "complete" && !impactPartial;
   const impactSection = hasImpact ? (
-    <div className="flex flex-wrap gap-1">
-      {Object.entries(data.impactByType ?? {})
-        .sort((left, right) => right[1] - left[1])
-        .map(([key, value]) => (
-          <span
-            key={key}
-            className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300 transition-colors hover:bg-orange-900"
-          >
+    <div className="space-y-3 text-sm">
+      <div className="space-y-1">
+        <p className="font-medium text-[var(--foreground)]">Upstream connected entities</p>
+        <p className="leading-5 text-[var(--text-secondary)]">
+          Reverse graph connections identify potential dependency impact. They do not establish exploitability, successful actions or observed damage.
+        </p>
+      </div>
+      <div className="space-y-1 text-[var(--text-secondary)]" data-testid="graph-impact-coverage">
+        <p className="font-medium">
+          {impactPartial
+            ? `Partial traversal · ${impactCoverage?.returned ?? data.impactCount ?? "Unknown"} entities returned`
+            : impactComplete ? "Recorded upstream traversal complete" : "Traversal completeness unavailable"}
+        </p>
+        {data.maxImpactDepth != null && <p>{data.maxImpactDepth} {data.maxImpactDepth === 1 ? "hop" : "hops"} explored</p>}
+        {impactPartial && <p>
+          {impactCoverage?.reason === "depth_limit"
+            ? "Hop limit reached; additional upstream connections may exist."
+            : impactCoverage?.reason === "traversal_budget"
+              ? "Traversal limit reached; additional upstream connections may exist."
+              : "Only part of the upstream graph was returned; additional connections may exist."}
+        </p>}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {impactTypes.map(([key, value]) => (
+          <span key={key} className="rounded border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1 text-[var(--text-secondary)]">
             {prettifyKey(key)}: {value}
           </span>
         ))}
+        {impactTypes.length === 0 && data.impactCount === 0 && <p className="text-[var(--text-secondary)]">No upstream entities returned</p>}
+      </div>
     </div>
   ) : null;
 
@@ -700,6 +740,52 @@ export function LineageDetailPanel({
   const activeContent =
     tabs.find((tab) => tab.id === activeId)?.content ?? typeSection;
 
+  const tabBar = tabs.length > 1 ? (
+    <div
+      role="tablist"
+      aria-label="Node detail sections"
+      className="flex shrink-0 gap-1 overflow-x-auto border-b border-[color:var(--border-subtle)] px-4"
+    >
+      {tabs.map((tab) => {
+        const selected = tab.id === activeId;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            data-testid={`graph-drawer-tab-${tab.id}`}
+            onClick={() => setActiveTab(tab.id)}
+            className={`-mb-px border-b-2 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              selected
+                ? "border-[color:var(--accent-border)] text-[var(--foreground)]"
+                : "border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+
+  if (mobileDialog) {
+    return createPortal(
+      <div className="fixed inset-0 z-[80]" data-testid="graph-entity-drawer">
+        <Drawer open onClose={onClose} onBack={onClose} title={data.label}
+          eyebrow={TYPE_LABELS[data.nodeType]} size="none" resizable={false}
+          bodyClassName="!p-0 flex flex-col" footer={footerSlot}>
+          {headerSlot ? <div className="shrink-0 px-4 pt-3 pb-3">{headerSlot}</div> : null}
+          {tabBar}
+          <div role="tabpanel" data-testid={`graph-drawer-panel-${activeId}`}
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            {activeContent}
+          </div>
+        </Drawer>
+      </div>, document.body,
+    );
+  }
+
   const shellClass = isOverlay
     ? `absolute right-0 top-0 bottom-0 flex max-w-full flex-col bg-[var(--background)]/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50`
     : isDocked
@@ -750,35 +836,7 @@ export function LineageDetailPanel({
       {/* Pinned summary (layer / evidence / id / counts) */}
       {headerSlot ? <div className="px-4 pb-3">{headerSlot}</div> : null}
 
-      {/* Tab bar — only when there is more than one group to switch between */}
-      {tabs.length > 1 && (
-        <div
-          role="tablist"
-          aria-label="Node detail sections"
-          className="flex gap-1 border-b border-[color:var(--border-subtle)] px-4"
-        >
-          {tabs.map((tab) => {
-            const selected = tab.id === activeId;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                data-testid={`graph-drawer-tab-${tab.id}`}
-                onClick={() => setActiveTab(tab.id)}
-                className={`-mb-px border-b-2 px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  selected
-                    ? "border-[color:var(--accent-border)] text-[var(--foreground)]"
-                    : "border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {tabBar}
 
       {/* Active tab content — scrolls independently in overlay mode */}
       <div

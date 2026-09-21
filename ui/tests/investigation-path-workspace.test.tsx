@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { InvestigationPathWorkspace } from "@/components/investigation-path-workspace";
+import { InvestigationPathWorkspace, InvestigationTools } from "@/components/investigation-path-workspace";
 import type { RankedPathRow } from "@/components/ranked-path-list";
 
 const rows: RankedPathRow[] = [
@@ -49,7 +49,7 @@ function setNarrowViewport(matches: boolean) {
     configurable: true,
     value: vi.fn().mockReturnValue({
       matches,
-      media: "(max-width: 1279px)",
+      media: "(max-width: 1023px)",
       onchange: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
@@ -78,9 +78,16 @@ describe("InvestigationPathWorkspace", () => {
     expect(screen.getByText("Filters & presets")).toBeVisible();
   });
 
-  it("offers a direct mobile jump to the selected path", () => {
+  it("switches mobile panes and returns to the selected path after selection", () => {
+    setNarrowViewport(false);
     render(<Harness />);
-    expect(screen.getByRole("link", {name: "View selected path"})).toHaveAttribute("href", "#selected-investigation-path");
+    const workspace = screen.getByRole("region", { name: "Investigation workspace" });
+    expect(workspace).toHaveAttribute("data-mobile-panel", "path");
+    fireEvent.click(screen.getByRole("button", { name: "Paths & filters (2)" }));
+    expect(workspace).toHaveAttribute("data-mobile-panel", "queue");
+    fireEvent.click(screen.getByText("#2").closest("button")!);
+    expect(workspace).toHaveAttribute("data-mobile-panel", "path");
+    expect(screen.getByRole("button", { name: "Selected path" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps the bounded path queue and selected graph detail in one desktop workspace", () => {
@@ -150,5 +157,21 @@ describe("InvestigationPathWorkspace", () => {
     expect(drawer).not.toBeNull();
     expect(drawer).not.toHaveAttribute("open");
     expect(within(drawer!).getByText("Severity and evidence filters")).toBeInTheDocument();
+  });
+});
+
+describe("InvestigationTools", () => {
+  it("keeps secondary tools behind one disclosure and mounts only the selected tool", () => {
+    render(<InvestigationTools scope={<div>Snapshot selection</div>} deployment={<div>Deploy check</div>}
+      exposure={<div>Exposure query</div>} />);
+    expect(screen.getByText("Snapshot selection")).not.toBeVisible();
+    expect(screen.queryByText("Deploy check")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Investigation tools · snapshots, correlation & checks"));
+    expect(screen.getByText("Snapshot selection")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Should I deploy?" }));
+    expect(screen.getByText("Deploy check")).toBeVisible();
+    expect(screen.queryByText("Snapshot selection")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Exposure paths" }));
+    expect(screen.getByText("Exposure query")).toBeVisible();
   });
 });

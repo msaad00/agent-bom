@@ -40,6 +40,7 @@ import type {
   GraphDiffResponse,
   GraphEdgeChangesResponse,
   InventorySummaryResponse,
+  InventorySummaryFilters,
   InventoryAssetsResponse,
   InventoryAssetDetailResponse,
   GraphExportFormat,
@@ -209,6 +210,7 @@ export type {
   GraphHistorySnapshot,
   UnifiedGraphResponse,
   InventorySummaryResponse,
+  InventorySummaryFilters,
   InventoryAssetsResponse,
   InventoryAsset,
   InventoryAssetBase,
@@ -502,7 +504,7 @@ export const PIPELINE_STEPS = [
 // prefixes so a write to /v1/scan/{id} flushes /v1/scan and any nested
 // children without each call site having to remember.
 
-import { ApiNetworkError, classifyApiResponse } from "./api-errors";
+import { ApiError, ApiNetworkError, classifyApiResponse } from "./api-errors";
 import { cachedGet, invalidate as _invalidate, type CacheOptions } from "./api-cache";
 import type {
   DatasetCardsRequest,
@@ -1106,9 +1108,34 @@ export const api = {
   },
 
   /** Read the store-backed, tenant-scoped inventory summary. */
-  getInventorySummary: (scanId?: string) => {
-    const qs = scanId ? `?scan_id=${encodeURIComponent(scanId)}` : "";
-    return get<InventorySummaryResponse>(`/v1/inventory/summary${qs}`);
+  getInventorySummary: (scanId?: string, filters?: InventorySummaryFilters) => {
+    const params = new URLSearchParams();
+    if (scanId) params.set("scan_id", scanId);
+    if (filters?.type?.length) params.set("type", filters.type.join(","));
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.environment) params.set("environment", filters.environment);
+    if (filters?.provider) params.set("provider", filters.provider);
+    if (filters?.source) params.set("source", filters.source);
+    if (filters?.severity) params.set("severity", filters.severity);
+    if (filters?.minSeverity) params.set("min_severity", filters.minSeverity);
+    const qs = params.toString();
+    const url = `/v1/inventory/summary${qs ? `?${qs}` : ""}`;
+    return get<InventorySummaryResponse>(url).then((response) => {
+      // Older servers ignore unknown query parameters. Never relabel their
+      // global aggregate as a filtered result without the resolved scope.
+      const echoed = response.filters;
+      const mismatch = (scanId && response.scan_id !== scanId) || [...params.entries()].some(([key, value]) => {
+        if (key === "scan_id") return false;
+        if (!echoed) return true;
+        if (key === "type") return value.split(",").map((type) => type.trim()).sort().join(",") !== [...echoed.type].sort().join(",");
+        const expected = key === "severity" || key === "min_severity" ? value.trim().toLowerCase() : key === "search" ? value.trim() : value;
+        return echoed[key as keyof typeof echoed] !== expected;
+      });
+      if (mismatch) throw new ApiError("The server could not confirm this inventory scope. Scoped counts are unavailable.", {
+        status: 503, statusText: "Scoped summary unavailable", url: "/v1/inventory/summary", method: "GET",
+      });
+      return response;
+    });
   },
 
   /** Read one bounded, cursor-paged inventory page from the shared store. */

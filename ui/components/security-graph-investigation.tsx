@@ -9,11 +9,12 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useNodesInitialized,
   type Edge,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Focus, GitBranch, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Focus, GitBranch, Loader2, SlidersHorizontal } from "lucide-react";
 
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { FullscreenButton, GraphInteractionToolbar, GraphLegend } from "@/components/graph-chrome";
@@ -109,6 +110,9 @@ function InvestigationFlow({
   persistenceEnabled,
   ownerActive,
   localMode,
+  embedded = false,
+  controls,
+  pathNodeIds,
 }: {
   nodes: Node<LineageNodeData>[];
   edges: Edge[];
@@ -124,16 +128,42 @@ function InvestigationFlow({
   persistenceEnabled: boolean;
   ownerActive: boolean;
   localMode: boolean;
+  embedded?: boolean;
+  controls?: React.ReactNode;
+  pathNodeIds: string[];
 }) {
   const reactFlow = useReactFlow<Node<LineageNodeData>, Edge>();
   const { fitView } = reactFlow;
+  const nodesInitialized = useNodesInitialized();
+  const [compact, setCompact] = useState(false);
+  const [navigationId, setNavigationId] = useState<string | null>(null);
+  const [overview, setOverview] = useState(false);
+  useEffect(() => {
+    if (!embedded) return;
+    const media = window.matchMedia("(max-width: 639px)");
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [embedded]);
+  const navigationNodes = useMemo(() => {
+    const byId = new Map(nodes.map(node => [node.id, node]));
+    const ordered = pathNodeIds.map(id => byId.get(id)).filter((node): node is Node<LineageNodeData> => Boolean(node));
+    const pathIds = new Set(ordered.map(node => node.id));
+    return [...ordered, ...nodes.filter(node => !pathIds.has(node.id))];
+  }, [nodes, pathNodeIds]);
+  const navigationIndex = Math.max(0, navigationNodes.findIndex(node => node.id === navigationId));
+  const navigationNode = navigationNodes[navigationIndex];
+  const responsiveScope = useMemo(() => compact
+    ? { ...presentationScope, scope: `${presentationScope.scope}:readable-mobile` }
+    : presentationScope, [compact, presentationScope]);
   const fitOptions = useMemo(() => graphFitViewOptions(viewportInput), [viewportInput]);
   const fitOptionsRef = useRef(fitOptions);
   fitOptionsRef.current = fitOptions;
 
   const presentation = useGraphPresentation({
     nodes,
-    scope: presentationScope,
+    scope: responsiveScope,
     layout: "dagre-lr",
     enabled: persistenceEnabled,
     ownerActive,
@@ -146,14 +176,21 @@ function InvestigationFlow({
     }),
     [edges, nodes, presentation.viewport.zoom],
   );
+  const focusNode = useCallback((id: string) => {
+    setNavigationId(id);
+    setOverview(false);
+    void fitView({ nodes: [{ id }], minZoom: 1, maxZoom: 1, padding: 0.08, duration: 200 });
+  }, [fitView]);
   useEffect(() => {
-    if (nodes.length === 0 || presentation.hasSavedState) return;
+    if (nodes.length === 0 || !nodesInitialized || presentation.hasSavedState) return;
     const raf = requestAnimationFrame(() => {
-      void fitView(fitOptionsRef.current);
+      if (compact && navigationNode) focusNode(navigationNode.id);
+      else void fitView(fitOptionsRef.current);
     });
     return () => cancelAnimationFrame(raf);
-  }, [fitView, nodes, presentation.hasSavedState]);
+  }, [compact, fitView, focusNode, navigationNode, nodes, nodesInitialized, presentation.hasSavedState]);
   const fitVisible = useCallback(() => {
+    setOverview(true);
     void fitView({ ...fitOptions, duration: 240 });
   }, [fitOptions, fitView]);
   const fitSelection = useCallback(() => {
@@ -170,21 +207,50 @@ function InvestigationFlow({
     window.setTimeout(fitVisible, 0);
   }, [fitVisible, presentation]);
 
+  const layoutControls = <GraphInteractionToolbar
+    editing={presentation.editing}
+    hasSelection={Boolean(selectedNodeId)}
+    onFitVisible={fitVisible}
+    onFitSelection={fitSelection}
+    onAutoLayout={autoLayout}
+    onReset={resetLayout}
+    onToggleEditing={presentation.toggleEditing}
+  />;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {presentation.enabled && nodes.length > 0 && <div
-        className="flex shrink-0 justify-end border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2"
+      {(embedded || presentation.enabled) && nodes.length > 0 && <div
+        className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2"
         data-testid="security-graph-interaction-band"
       >
-        <GraphInteractionToolbar
-          editing={presentation.editing}
-          hasSelection={Boolean(selectedNodeId)}
-          onFitVisible={fitVisible}
-          onFitSelection={fitSelection}
-          onAutoLayout={autoLayout}
-          onReset={resetLayout}
-          onToggleEditing={presentation.toggleEditing}
-        />
+        {compact ? <>
+          <span className="mr-auto text-xs text-ink-secondary" aria-live="polite"
+            title="The focused viewport shows part of the loaded graph. Navigate between nodes or pan to inspect connections.">
+            {overview ? `Overview · ${nodes.length} nodes` : `Focused view · ${navigationIndex + 1} of ${navigationNodes.length}`}
+          </span>
+          <div className="flex gap-1">
+            <button type="button" aria-label="Previous graph node" disabled={navigationIndex === 0}
+              className="graph-page-action min-h-8 px-1 disabled:opacity-40"
+              onClick={() => focusNode(navigationNodes[navigationIndex - 1]!.id)}><ChevronLeft className="h-4 w-4" /></button>
+            <button type="button" aria-label="Next graph node" disabled={navigationIndex >= navigationNodes.length - 1}
+              className="graph-page-action min-h-8 px-1 disabled:opacity-40"
+              onClick={() => focusNode(navigationNodes[navigationIndex + 1]!.id)}><ChevronRight className="h-4 w-4" /></button>
+          </div>
+          <details className="relative">
+            <summary aria-label="Graph options" title="Graph options" className="graph-page-action flex min-h-8 cursor-pointer list-none items-center [&::-webkit-details-marker]:hidden"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Graph options</span></summary>
+            <div className="absolute right-0 top-full z-20 mt-2 flex w-64 max-w-[75vw] flex-wrap gap-2 rounded-xl border border-outline bg-surface p-2 shadow-lg">
+              {controls}
+              {presentation.enabled && layoutControls}
+              <button type="button" className="graph-page-action" onClick={() => navigationNode && focusNode(navigationNode.id)}>Readable view</button>
+            </div>
+          </details>
+        </> : <>
+          {controls}
+          {presentation.enabled && (embedded ? <details className="relative">
+            <summary className="graph-page-action cursor-pointer">Layout</summary>
+            <div className="absolute right-0 top-full z-20 mt-2 rounded-xl border border-outline bg-surface p-2 shadow-lg">{layoutControls}</div>
+          </details> : layoutControls)}
+        </>}
       </div>}
       <div className="relative min-h-0 flex-1">
         <ReactFlow
@@ -192,7 +258,7 @@ function InvestigationFlow({
           nodes={presentation.nodes}
           edges={presentedEdges}
           nodeTypes={lineageNodeTypes}
-          fitView={!presentation.hasSavedState && !presentation.restoredSavedState}
+          fitView={!compact && !presentation.hasSavedState && !presentation.restoredSavedState}
           fitViewOptions={fitOptions}
           minZoom={0.2}
           maxZoom={2.5}
@@ -210,11 +276,11 @@ function InvestigationFlow({
           onNodesChange={presentation.onNodesChange}
           onNodeDragStop={presentation.onNodeDragStop}
           onMoveEnd={presentation.onMoveEnd}
-          onNodeClick={(_, node) => onNodeSelect(node.id)}
+          onNodeClick={(_, node) => { setNavigationId(node.id); onNodeSelect(node.id); }}
           proOptions={{ hideAttribution: true }}
         >
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
-          <Controls className={CONTROLS_CLASS} showInteractive={false} />
+          <Controls className={CONTROLS_CLASS} showInteractive={false} onFitView={fitVisible} orientation={embedded ? "horizontal" : "vertical"} />
           {shouldShowGraphMiniMap(viewportInput) && (
             <MiniMap
               className={MINIMAP_CLASS}
@@ -239,6 +305,7 @@ export function SecurityGraphInvestigation({
   scanId,
   onPinnedNodeChange,
   onStepHint,
+  embedded = false,
 }: {
   graph: UnifiedGraphData | null;
   attackPath: AttackPath | null;
@@ -250,6 +317,8 @@ export function SecurityGraphInvestigation({
   onPinnedNodeChange?: ((nodeId: string | null) => void) | undefined;
   /** Notify parent when expand/impact actions advance the investigation step. */
   onStepHint?: ((step: "expand" | "impact" | "fix") => void) | undefined;
+  /** The parent already supplies the selected path title and receipt assessment. */
+  embedded?: boolean;
 }) {
   const captureMode = useCaptureMode();
   const { session, loading: authLoading } = useAuthState();
@@ -445,6 +514,7 @@ export function SecurityGraphInvestigation({
           impactCount: impact.affected_count,
           maxImpactDepth: impact.max_depth_reached,
           impactByType: impact.affected_by_type,
+          impactCompleteness: impact.completeness,
         };
       });
       setBlastActive(true);
@@ -455,18 +525,8 @@ export function SecurityGraphInvestigation({
     }
   }
 
-  return (
-    <section className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border-subtle)] px-4 py-3">
-        <div>
-          <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Live investigation</h2>
-          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-            {focusMode
-              ? "Focus mode highlights the selected exposure path. Pin a node to expand neighbors and impact."
-              : "Full snapshot mode shows the persisted subgraph for this scan."}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+  const graphControls = <>
+
           <button
             type="button"
             onClick={() => onFocusModeChange(!focusMode)}
@@ -487,10 +547,27 @@ export function SecurityGraphInvestigation({
             <GitBranch className="h-3.5 w-3.5" />
           </Link>
           <FullscreenButton />
-        </div>
-      </div>
 
-      {attackPath && evidenceBadges.length > 0 ? (
+    {embedded && rendererDecision.kind === "react-flow" && layout.nodes.length > 0 ? (
+      <div data-testid="security-graph-legend-band"><GraphLegend items={legendItems} /></div>
+    ) : null}
+  </>;
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+      {!embedded && (<div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border-subtle)] px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Interactive graph</h2>
+          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+            {focusMode
+              ? "Focus mode highlights the selected exposure path. Pin a node to expand neighbors and impact."
+              : "Full snapshot mode shows the persisted subgraph for this scan."}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">{graphControls}</div>
+      </div>)}
+
+      {!embedded && attackPath && evidenceBadges.length > 0 ? (
         <div
           className="flex flex-wrap items-center gap-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2"
           data-testid="attack-path-evidence-badges"
@@ -502,12 +579,12 @@ export function SecurityGraphInvestigation({
             </span>
           ))}
           <span className="text-[10px] text-[color:var(--text-tertiary)]">
-            {completeDirectedHopCount(attackPath) ?? "Unavailable"} directed hops evidenced
+            {completeDirectedHopCount(attackPath) === null ? "Directed-hop receipt count unavailable" : `${completeDirectedHopCount(attackPath)} directed hops evidenced`}
           </span>
         </div>
       ) : null}
 
-      {rendererDecision.kind === "react-flow" && layout.nodes.length > 0 ? (
+      {!embedded && rendererDecision.kind === "react-flow" && layout.nodes.length > 0 ? (
         <div
           className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2"
           data-testid="security-graph-legend-band"
@@ -516,9 +593,11 @@ export function SecurityGraphInvestigation({
         </div>
       ) : null}
 
+      {embedded && rendererDecision.kind === "webgl" && <div className="flex flex-wrap items-center justify-end gap-2 border-b border-outline px-3 py-2">{graphControls}</div>}
+
       <div
         id="security-graph-investigation-canvas"
-        className="relative h-[clamp(32rem,56vh,42rem)] bg-[color:var(--surface-muted)]"
+        className={`relative bg-[color:var(--surface-muted)] ${embedded ? "h-[clamp(18rem,34vh,24rem)]" : "h-[clamp(32rem,56vh,42rem)]"}`}
         data-testid="security-graph-investigation"
       >
         {loading ? (
@@ -552,6 +631,9 @@ export function SecurityGraphInvestigation({
               persistenceEnabled={!authLoading && Boolean(session)}
               ownerActive={Boolean(session)}
               localMode={session?.recommended_ui_mode === "no_auth"}
+              embedded={embedded}
+              pathNodeIds={attackPath?.hops ?? []}
+              controls={embedded ? graphControls : undefined}
             />
           </ReactFlowProvider>
         )}

@@ -71,7 +71,9 @@ export function formatExposureEntityDisplay(
         title: vendor
           ? `${vendor} connector`
           : `${titleCaseWords(trimmed)}${alreadyNamesServerKind ? "" : " service"}`,
-        subtitle: transport ? `${transport} MCP server` : "MCP server",
+        subtitle: attributes.protocol === "mcp" || attributes.server_type === "mcp" || attributes.is_mcp === true
+          ? (transport ? `${transport} MCP server` : "MCP server")
+          : (transport ? `${transport} server` : "Server"),
       };
     }
     case "package": {

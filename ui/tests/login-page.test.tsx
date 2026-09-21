@@ -66,8 +66,9 @@ describe("LoginPage", () => {
     expect(screen.getByLabelText("API key")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /sign in with sso/i })).not.toBeInTheDocument();
-    // First-run help points operators at the env var, no raw mode identifiers leak.
-    expect(screen.getByText("AGENT_BOM_API_KEYS")).toBeInTheDocument();
+    // Sign-in guidance is for users; server configuration belongs in operator docs.
+    expect(screen.getByText("Need access? Contact your administrator.")).toBeInTheDocument();
+    expect(screen.queryByText("AGENT_BOM_API_KEYS")).not.toBeInTheDocument();
     expect(screen.queryByText("Configured auth modes")).not.toBeInTheDocument();
     expect(screen.queryByText("session_api_key")).not.toBeInTheDocument();
   });
@@ -253,10 +254,28 @@ describe("LoginPage", () => {
     await waitFor(() =>
       expect(
         screen.getByText(
-          "That key is not active. If the local server restarted, reload to use its new dev session; otherwise paste the current raw key without the :role suffix.",
+          "Sign-in failed. Check your API key or contact your administrator.",
         ),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("does not label an initial session failure as a rejected key", async () => {
+    apiMock.getAuthMe.mockRejectedValue(new Error("401 Unauthorized"));
+    render(<AuthProvider><LoginPage /></AuthProvider>);
+    expect(await screen.findByLabelText("API key")).toBeInTheDocument();
+    expect(screen.queryByText(/Sign-in failed|key is not active|role suffix/)).not.toBeInTheDocument();
+  });
+
+  it("never renders secret-bearing sign-in errors", async () => {
+    apiMock.createAuthSession.mockRejectedValueOnce(new Error("upstream exception secret-canary-549 db://internal-host"));
+    render(<AuthProvider><LoginPage /></AuthProvider>);
+    fireEvent.change(await screen.findByLabelText("API key"), { target: { value: "private-test-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sign-in is unavailable. Try again, or contact your administrator.");
+    expect(document.body.textContent).not.toContain("secret-canary-549");
+    expect(document.body.textContent).not.toContain("internal-host");
+    expect(screen.getByLabelText("API key")).toHaveValue("");
   });
 
   it("redirects to returnTo after a successful browser session exchange", async () => {

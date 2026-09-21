@@ -193,7 +193,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto("/findings?q=no-match&severity=high&owner=team");
       await expect(page.getByText("No findings match the selected filters.")).toBeVisible();
       await expect(page.getByRole("textbox", { name: "Search findings" })).toHaveValue("no-match");
-      await expect(page.getByText("Columns", { exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Findings controls" }).getByRole("button", { name: "Columns" })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`findings-empty-${theme}-${width}.png`), fullPage: true });
       const clearFilters = page.getByRole("button", { name: "Clear filters", exact: true });
       await clearFilters.focus();
@@ -211,7 +211,10 @@ for (const theme of ["light", "dark"] as const) {
         await expect(page.getByRole("columnheader", { name: "Remediation" })).toBeVisible();
         await expect(page.getByRole("button", { name: "Finding", exact: true })).toHaveCount(0);
         const columns = page.getByText("Columns", { exact: true });
+        const tableTop = (await page.getByRole("table").boundingBox())!.y;
         await columns.focus(); await page.keyboard.press("Enter");
+        await expect(page.getByRole("dialog", { name: "Column preferences" })).toBeVisible();
+        expect((await page.getByRole("table").boundingBox())!.y).toBe(tableTop);
         await page.getByRole("checkbox", { name: "Control mapping" }).check();
         await page.getByRole("checkbox", { name: "Disposition / attestation" }).check();
         const move = page.getByRole("button", { name: "Move Observed up" });
@@ -221,7 +224,9 @@ for (const theme of ["light", "dark"] as const) {
         await expect.poll(() => page.getByRole("columnheader").allTextContents()).toEqual(order);
         await columns.click();
         await page.getByRole("button", { name: "Reset view" }).click();
-        await columns.click();
+        await page.screenshot({ path: testInfo.outputPath(`columns-${theme}-${width}.png`) });
+        await page.keyboard.press("Escape");
+        await expect(columns).toBeFocused();
         await expect(page.getByRole("columnheader", { name: "Control mapping" })).toHaveCount(0);
       } else {
         const article = page.getByRole("article");
@@ -234,7 +239,9 @@ for (const theme of ["light", "dark"] as const) {
         await move.focus(); await page.keyboard.press("Enter");
         await expect.poll(() => article.locator("dt").allTextContents()).toEqual(["Priority", "Affected asset", "Observed", "Detection", "Remediation"]);
         await page.getByRole("button", { name: "Reset view" }).click();
-        await columns.click();
+        await page.screenshot({ path: testInfo.outputPath(`columns-${theme}-${width}.png`) });
+        await page.keyboard.press("Escape");
+        await expect(columns).toBeFocused();
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`findings-${theme}-${width}.png`), fullPage: true });
@@ -262,4 +269,37 @@ for (const theme of ["light", "dark"] as const) {
     expect((await table.locator("tbody > tr").first().boundingBox())!.height).toBeLessThan(150);
     await expect(page.locator('time[datetime="2026-07-01T12:00:00Z"]')).toHaveAttribute("title", /2026/);
   });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`incomplete collection retains readable finding evidence ${theme} ${width}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      const sample = { ...finding, observation_status: "unreconfirmed", reconfirmation: {
+        scan_id: "permission-denied-candidate", attempted_at: "2026-09-20T12:00:00Z",
+        reason_codes: ["scan_partial", "scope_permission_denied"],
+      } };
+      await routeFindings(page, sample);
+      await page.goto("/findings");
+      await expect(page.getByText("Unreconfirmed", { exact: true }).filter({ visible: true })).toBeVisible();
+      await page.getByRole("button", { name: "Investigate", exact: true }).filter({ visible: true }).click();
+      const drawer = page.getByRole("dialog");
+      await expect(drawer).toHaveCSS("opacity", "1");
+      await expect.poll(() => drawer.locator("aside").evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= window.innerWidth + 1;
+      })).toBe(true);
+      const qualifier = drawer.getByRole("note", { name: "Unreconfirmed collection evidence" });
+      await expect(qualifier).toContainText("Current presence unconfirmed");
+      await expect(qualifier).toContainText("permission-denied-candidate");
+      await expect(qualifier).toContainText("Collection permission denied");
+      await expect.poll(() => qualifier.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`unreconfirmed-${theme}-${width}.png`), fullPage: true });
+      await drawer.getByRole("tab", { name: "Evidence" }).click();
+      await expect(drawer.getByText("scan-workspace-e2e", { exact: true })).toBeVisible();
+      await expect(drawer.getByLabel(/Last observed:/)).toHaveAttribute("aria-label", /Jul 26, 2026/);
+      await expect(qualifier).toContainText("2026-09-20T12:00:00Z");
+    });
+  }
 }

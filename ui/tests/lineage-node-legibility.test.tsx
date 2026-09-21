@@ -11,6 +11,12 @@ const source = readFileSync(
 );
 
 describe("lineage node labels", () => {
+  it("qualifies partial graph counts visibly without claiming empty inventory", () => {
+    const Renderer = lineageNodeTypes.agentNode;
+    render(<ReactFlowProvider><Renderer data={{ label: "Scoped agent", nodeType: "agent", serverCount: 0, packageCount: 0, countScope: "loaded_graph", countHopLimits: { serverCount: 1, packageCount: 3 } }} /></ReactFlowProvider>);
+    expect(screen.getByText("Loaded graph")).toBeVisible();
+    expect(screen.getByTitle(/Servers: 1 hop; packages: 3 hops/)).toHaveTextContent("0 srv");
+  });
   it.each([
     { entityType: "application", nodeType: "container" as const, badge: "Application" },
     { entityType: "container", nodeType: "container" as const, badge: "Container" },

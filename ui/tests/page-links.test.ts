@@ -20,6 +20,14 @@ describe("typed page links", () => {
     expect(remediationHref({ q: "AC-2" })).toBe("/remediation?q=AC-2");
   });
 
+  it("preserves canonical compliance and snapshot filters without using text search", () => {
+    expect(findingsHref({ framework: "nist-ai-rmf", control: "GOVERN-6.1", scan: "source/1" })).toBe(
+      "/findings?scan=source%2F1&framework=nist-ai-rmf&control=GOVERN-6.1",
+    );
+    expect(remediationHref({ scan: "source/1" })).toBe("/remediation?scan=source%2F1");
+    expect(findingsHref({ control: "GOVERN-6.1" })).toBe("/findings");
+  });
+
   it("maps observed lineage entity kinds to supported graph layers", () => {
     expect(graphLayerHref("server")).toBe("/graph?layers=server");
     expect(graphLayerHref("service_account")).toBe("/graph?layers=serviceAccount");

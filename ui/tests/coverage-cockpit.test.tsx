@@ -66,3 +66,12 @@ describe("CoverageCockpit", () => {
     expect(screen.getByRole("link", { name: /Scan account/i })).toHaveAttribute("href", "/scan?connection=conn-1");
   });
 });
+
+it("keeps an unavailable account collection distinct from an empty estate", async () => {
+  vi.spyOn(api, "listCloudConnections").mockRejectedValue(new Error("unavailable"));
+  render(<CoverageCockpit counts={null} scanCount={null} latestScanLabel={null} />);
+  await waitFor(() => expect(screen.getByText("Account coverage unavailable")).toBeInTheDocument());
+  expect(screen.queryByText(/0 connected/)).not.toBeInTheDocument();
+  expect(screen.queryByText("No accounts connected")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Review connections" })).toHaveAttribute("href", "/connections");
+});

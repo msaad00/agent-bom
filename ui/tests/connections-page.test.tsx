@@ -174,7 +174,7 @@ function primeSourceApis() {
 
 beforeEach(() => {
   Object.values(apiMock).forEach((fn) => fn.mockReset());
-  navState.search = "";
+  navState.search = "tab=connect";
   replaceMock.mockReset();
   authState.authRequired = true;
   authState.authMethod = "api_key";
@@ -398,7 +398,7 @@ describe("ConnectionsPage — Connect segment", () => {
 
     expect(screen.queryByText(/Cloud accounts is not configured yet/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No completed scans yet/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Last scan")).toBeInTheDocument();
+    expect(screen.getByText("Last cloud scan")).toBeInTheDocument();
     expect(screen.getByText("Jun 27")).toBeInTheDocument();
   });
 
@@ -639,6 +639,7 @@ describe("ConnectionsPage — Connect segment", () => {
     fireEvent.change(screen.getByPlaceholderText("my-project-123"), {
       target: { value: "proj-123" },
     });
+    expect(within(wizard).queryByRole("combobox", { name: "Authentication method" })).not.toBeInTheDocument();
     const keyInput = screen.getByPlaceholderText("Paste the service-account key JSON") as HTMLTextAreaElement;
     fireEvent.change(keyInput, { target: { value: SECRET } });
 
@@ -936,6 +937,10 @@ describe("ConnectionsPage — Connect segment", () => {
     const drawer = await screen.findByRole("dialog", { name: /Connect a coding agent/ });
     expect(within(drawer).getByText("agent-bom mcp-server")).toBeInTheDocument();
     expect(within(drawer).getByText(/86 MCP tools/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Collection uses read-only source access/)).toHaveTextContent(
+      /Scan evidence and connection settings are stored in the control plane/,
+    );
+    expect(within(drawer).queryByText(/never writes.*control-plane data/)).not.toBeInTheDocument();
   });
 
   it("syncs the segmented tab to the URL", async () => {
@@ -950,6 +955,33 @@ describe("ConnectionsPage — Connect segment", () => {
 describe("ConnectionsPage — Sources segment (unified table)", () => {
   beforeEach(() => {
     navState.search = "tab=sources";
+  });
+
+  it.each([
+    ["aws", {}, "AWS AssumeRole"],
+    ["azure", { auth_mode: "managed_identity", credential_binding: "operator-binding", client_secret: SECRET }, "Managed identity"],
+    ["gcp", { auth_mode: "workload_identity", credential_binding: "operator-binding" }, "Workload identity"],
+    ["azure", {}, "Client secret (legacy)"],
+  ])("shows recorded %s configuration without implying verified coverage", async (provider, auth_params, mode) => {
+    apiMock.listCloudConnections.mockResolvedValue({ connections: [{ ...CREATED_RECORD, provider, auth_params,
+      inventory_scope: "organization", scan_interval_minutes: 60, capability_probe_status: "permission_denied",
+      credential_present: true, verified_capabilities: [],
+    }], count: 1 });
+    render(<ConnectionsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Production account" }));
+    const drawer = await screen.findByRole("dialog", { name: "Production account" });
+    const configuration = within(drawer).getByRole("region", { name: "Recorded connection configuration" });
+    expect(configuration).toHaveTextContent(mode);
+    expect(configuration).toHaveTextContent("Organization");
+    expect(configuration).toHaveTextContent("Every 60 minutes");
+    expect(configuration).toHaveTextContent("us-east-1");
+    fireEvent.click(within(drawer).getByText("Capability evidence"));
+    expect(drawer).toHaveTextContent(/permission denied/i);
+    expect(drawer).toHaveTextContent("Verification timeUnavailable");
+    expect(drawer).toHaveTextContent("Verified readsNone recorded");
+    expect(drawer).toHaveTextContent("Collection gapsNot reported by this connection record");
+    expect(drawer).not.toHaveTextContent(SECRET);
+    expect(drawer).not.toHaveTextContent("operator-binding");
   });
 
   it("queues a durable read-only scan and links to its job", async () => {
@@ -1481,7 +1513,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
   });
 
-  it("dedupes a cloud account registered as both a connection and a cloud-kind source", async () => {
+  it("retains equally named connection and source records without a stable binding", async () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",
       tenant_id: "tenant-acme",
@@ -1519,11 +1551,9 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     });
 
     render(<ConnectionsPage />);
-    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("Production account")).toHaveLength(2));
 
-    // Exactly one row for the account — the cloud connection wins the dedup, so
-    // the schedule <select> (cloud-only affordance) is present and unique.
-    expect(screen.getAllByText("Production account")).toHaveLength(1);
+    // Independent source identities survive; only the cloud row has this action.
     expect(screen.getByLabelText("Scan schedule")).toBeInTheDocument();
   });
 
@@ -1588,4 +1618,60 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     expect(screen.queryByText("Healthy repo")).not.toBeInTheDocument();
     expect(screen.getByText("Degraded lake")).toBeInTheDocument();
   });
+});
+
+describe("Connections initial workspace", () => {
+  it("opens source results first for an established estate", async () => {
+    navState.search = "";
+    apiMock.listCloudConnections.mockResolvedValue({ connections: [CREATED_RECORD], count: 1 });
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Sources/ })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect Amazon Web Services" })).not.toBeInTheDocument();
+  });
+  it("opens the catalog for a confirmed empty estate", async () => {
+    navState.search = "";
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+    expect(screen.getByRole("tab", { name: /Add source/ })).toHaveAttribute("aria-selected", "true");
+  });
+  it("keeps explicit add-source navigation even when sources exist", async () => {
+    navState.search = "tab=connect";
+    apiMock.listSources.mockResolvedValue({ sources: [SOURCE_RECORD], count: 1 });
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+    expect(screen.getByRole("tab", { name: /Add source/ })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+it.each([
+  { provider: "gcp", label: /Google Cloud/, mode: "workload_identity", role: "agent-bom@proj.iam.gserviceaccount.com", scope: { project_id: "proj-123" } },
+  { provider: "azure", label: /Microsoft Azure/, mode: "managed_identity", role: "client-123", scope: { tenant_id: "tenant-123", subscription_id: "sub-123" } },
+])("requires an operator binding for advertised $provider workload authentication", async ({ provider, label, mode, role, scope }) => {
+  apiMock.listCloudConnections.mockResolvedValue({ connections: [], count: 0, workload_auth_modes: { [provider]: [mode] } });
+  apiMock.createCloudConnection.mockResolvedValue({ ...CREATED_RECORD, provider });
+  render(<ConnectionsPage />);
+  await waitForConnectTab();
+  fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
+  const wizard = screen.getByRole("dialog", { name: "Add cloud account" });
+  fireEvent.click(within(wizard).getByRole("button", { name: label }));
+  expect(within(wizard).getByRole("combobox", { name: "Authentication method" })).toHaveValue(mode);
+  fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+  expect(within(wizard).getByText("Operator-managed workload binding")).toBeInTheDocument();
+  fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+  fireEvent.change(within(wizard).getByPlaceholderText("Production account"), { target: { value: "Bound account" } });
+  fireEvent.change(within(wizard).getByLabelText(provider === "gcp" ? "Service account email" : "Client ID (app registration)"), { target: { value: role } });
+  for (const [key, value] of Object.entries(scope)) {
+    const field = { project_id: "Project ID", tenant_id: "Tenant ID", subscription_id: "Subscription ID" }[key]!;
+    fireEvent.change(within(wizard).getByLabelText(field), { target: { value } });
+  }
+  expect(wizard.querySelector('input[type="password"], textarea')).toBeNull();
+  fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+  expect(apiMock.createCloudConnection).not.toHaveBeenCalled();
+  expect(within(wizard).getByText("Operator binding ID is required.")).toBeInTheDocument();
+  fireEvent.change(within(wizard).getByLabelText("Operator binding ID"), { target: { value: "readonly-prod" } });
+  fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+  await waitFor(() => expect(apiMock.createCloudConnection).toHaveBeenCalledWith(expect.objectContaining({
+    provider, role_ref: role, external_id: "", auth_params: { ...scope, auth_mode: mode, credential_binding: "readonly-prod" },
+  })));
 });

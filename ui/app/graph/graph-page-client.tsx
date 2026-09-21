@@ -289,7 +289,7 @@ function PulseStyles() {
 
       /* Focus-mode (#2257). Hovering or pinning a node fires CSS classes
          on the React Flow node wrapper so non-connected nodes fade out
-         and the focused node gets a sky-blue glow. The transition is
+         and focused cards get a crisp outline following their shape. The transition is
          short enough to feel responsive but long enough to read as a
          deliberate dim, not a flicker. */
       .lineage-node-dim {
@@ -297,10 +297,11 @@ function PulseStyles() {
         transition: opacity 0.2s ease;
       }
       .lineage-node-focus {
+        z-index: 5;
+      }
+      .lineage-node-focus > div {
         outline: 2px solid var(--accent);
         outline-offset: 3px;
-        transition: box-shadow 0.15s ease;
-        z-index: 5;
       }
 
       /* Sibling-aggregation cluster pill pulses subtly to suggest

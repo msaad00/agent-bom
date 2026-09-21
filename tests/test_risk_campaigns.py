@@ -1375,3 +1375,61 @@ def test_unrelated_unreconfirmed_finding_does_not_block_observed_campaign(monkey
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
     response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
     assert response.status_code == 200 and response.json()["outcome"] == "still_affected"
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+@pytest.mark.parametrize("replay", [False, True])
+@pytest.mark.parametrize("original_still_observed", [False, True])
+def test_campaign_verify_rejects_unreconfirmed_replacement_members(monkeypatch, tmp_path, persistent, replay, original_still_observed):
+    from agent_bom.api.server import app
+
+    path = str(tmp_path / "replacement-verification.db")
+    if persistent:
+        set_campaign_store(SQLiteCampaignStore(path))
+    original = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    headers = {**_headers(), "Idempotency-Key": "replacement-reconfirmation"}
+    if replay:
+        assert (
+            client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=headers).status_code == 200
+        )
+    if persistent:
+        set_campaign_store(SQLiteCampaignStore(path))
+    before = get_campaign_store().get("tenant-alpha", campaign["id"])
+    current = [
+        {
+            **original[1],
+            "id": "finding-replacement",
+            "observation_status": "unreconfirmed",
+            "reconfirmation": {"scan_id": "partial-rescan", "reason_codes": ["scope_permission_denied"]},
+        }
+    ]
+    if original_still_observed:
+        current.append({**original[0], "fixed_version": "moved-group", "observation_status": "observed"})
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=headers)
+    assert response.status_code == 409
+    assert response.json()["detail"]["outcome"] == "unavailable_evidence"
+    assert response.json()["detail"]["retry_state"] == "awaiting_fresh_scope_evidence"
+    assert response.json()["detail"]["message"] == response.json()["detail"]["reason"]
+    assert get_campaign_store().get("tenant-alpha", campaign["id"]) == before
+
+
+def test_observed_replacement_remains_verifiable_with_unrelated_unreconfirmed_group(monkeypatch):
+    from agent_bom.api.server import app
+
+    original = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    current = [
+        {**original[1], "id": "finding-replacement", "observation_status": "observed"},
+        {**original[1], "id": "unrelated-replacement", "fixed_version": "different-group", "observation_status": "unreconfirmed"},
+    ]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
+    assert response.status_code == 200
+    assert response.json()["outcome"] == "still_affected"
+    assert response.json()["remaining_finding_ids"] == ["finding-replacement"]

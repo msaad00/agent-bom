@@ -431,3 +431,12 @@ test("throws typed errors for non-2xx responses", async () => {
     return true;
   });
 });
+
+test("preserves finding reconfirmation receipts and original provenance", async () => {
+  const payload = { findings: [{ id: "old-finding", scan_id: "baseline", last_observed: "2026-08-01T00:00:00Z",
+    observation_status: "unreconfirmed", provenance: { source: "mcp-scan" },
+    reconfirmation: { scan_id: "candidate", reason_codes: ["scope_permission_denied"] },
+  }] };
+  const client = new AgentBomClient({ baseUrl: "https://example.test", fetch: async () => jsonResponse(payload) });
+  assert.deepEqual(await client.listFindings(), payload);
+});

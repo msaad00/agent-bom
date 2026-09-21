@@ -95,3 +95,37 @@ def test_mcp_campaign_absence_returns_unavailable_and_keeps_workflow(monkeypatch
     assert result["outcome"] == "unavailable_evidence"
     assert result["retry_state"] == "awaiting_fresh_scope_evidence"
     assert "alternate graph paths have not been verified" in result["reason"]
+
+
+def test_mcp_verification_preserves_unreconfirmed_evidence_rejection(monkeypatch):
+    findings = [{"id": "finding-a", "severity": "high", "observation_status": "unreconfirmed"}]
+    campaign = derive_campaigns(findings, tenant_id="tenant-alpha", workflow_by_id={})[0]
+    store = InMemoryCampaignStore()
+    store.reconcile_memberships("tenant-alpha", {campaign["id"]: (campaign["membership_fingerprint"], ("finding-a",), campaign["title"])})
+    before = store.get("tenant-alpha", campaign["id"])
+    set_campaign_store(store)
+    set_idempotency_store(InMemoryIdempotencyStore())
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
+    monkeypatch.setattr(
+        "agent_bom.mcp_tools.risk_campaigns._load_source", lambda tenant_id: {"findings": findings, "total": 1, "has_more": False}
+    )
+    try:
+        result = json.loads(
+            asyncio.run(
+                risk_campaign_workflow_impl(
+                    action="verify",
+                    campaign_id=campaign["id"],
+                    version=1,
+                    tenant_id="tenant-alpha",
+                    _authenticated_actor="mcp-admin",
+                    _truncate_response=_truncate,
+                )
+            )
+        )
+    finally:
+        set_campaign_store(None)
+        set_idempotency_store(None)
+    assert result["http_status"] == 409
+    assert result["outcome"] == "unavailable_evidence"
+    assert result["retry_state"] == "awaiting_fresh_scope_evidence"
+    assert store.get("tenant-alpha", campaign["id"]) == before

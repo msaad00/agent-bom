@@ -306,3 +306,20 @@ def test_client_raises_api_error_with_body() -> None:
 
     assert exc.value.status_code == 403
     assert exc.value.body == '{"detail":"forbidden"}'
+
+
+def test_client_preserves_finding_reconfirmation_receipt_and_original_provenance():
+    payload = {
+        "findings": [
+            {
+                "id": "old-finding",
+                "scan_id": "baseline",
+                "last_observed": "2026-08-01T00:00:00Z",
+                "observation_status": "unreconfirmed",
+                "provenance": {"source": "mcp-scan"},
+                "reconfirmation": {"scan_id": "candidate", "reason_codes": ["scope_permission_denied"]},
+            }
+        ]
+    }
+    with _client(lambda request: httpx.Response(200, json=payload)) as client:
+        assert client.list_findings() == payload

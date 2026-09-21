@@ -1340,3 +1340,38 @@ def test_campaign_remaining_count_unions_replacement_and_regrouped_members(monke
     assert result["remaining_finding_ids"] == ["finding-a", "finding-b", "finding-replacement"]
     assert result["remaining_count"] == 3
     assert result["original_member_count"] == 2
+
+
+@pytest.mark.parametrize("replay", [False, True])
+def test_campaign_verify_rejects_unreconfirmed_original_members_before_cached_outcome(monkeypatch, replay):
+    from agent_bom.api.server import app
+
+    rows = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: rows)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    headers = {**_headers(), "Idempotency-Key": "partial-rescan-verify"}
+    if replay:
+        assert (
+            client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=headers).status_code == 200
+        )
+    before = get_campaign_store().get("tenant-alpha", campaign["id"])
+    rows[0]["observation_status"] = "unreconfirmed"
+    rows[0]["fixed_version"] = "changed-group"
+    response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=headers)
+    assert response.status_code == 409
+    assert response.json()["detail"]["outcome"] == "unavailable_evidence"
+    assert response.json()["detail"]["retry_state"] == "awaiting_fresh_scope_evidence"
+    assert get_campaign_store().get("tenant-alpha", campaign["id"]) == before
+
+
+def test_unrelated_unreconfirmed_finding_does_not_block_observed_campaign(monkeypatch):
+    from agent_bom.api.server import app
+
+    rows = _findings()
+    rows[2]["observation_status"] = "unreconfirmed"
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: rows)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
+    assert response.status_code == 200 and response.json()["outcome"] == "still_affected"

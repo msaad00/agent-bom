@@ -427,13 +427,24 @@ def persisted_finding_evidence(
     # An explicit scan scope must never fall through to an unrelated local MCP
     # scan merely because the requested persisted scan is absent.
     source_available = bool(scan_jobs or bulk_rows or scan_id)
+    from agent_bom.api.findings_current import current_scan_jobs, scan_collection_incomplete_reasons
+
+    incomplete_reasons = sorted(
+        {reason for job in current_scan_jobs(scan_jobs, since=None, scan_id=scan_id) for reason in scan_collection_incomplete_reasons(job)}
+    )
     return {
         "available": source_available,
         "source": "persisted_scan_findings",
         "scope": {"tenant_id": tenant_id, "scan_id": scan_id},
         "completeness": {
-            "status": "complete",
-            "reason": "",
+            "status": "partial" if incomplete_reasons else "complete",
+            "basis": "persisted_row_enumeration",
+            "reason": (
+                "Collection was incomplete; retained earlier findings may be unreconfirmed."
+                if incomplete_reasons
+                else "Persisted rows were enumerated; this does not establish collection coverage."
+            ),
+            "reason_codes": incomplete_reasons,
         },
         "findings": matched,
     }
@@ -3474,9 +3485,9 @@ def _list_findings_impl(
     # ``scan_id``, and the in-memory store retains every completed job. Without
     # deduping, ``total`` inflated by one full copy per re-scan (Postgres reads
     # ``hub_findings_current`` which already dedupes). The shared current-scan
-    # selector first chooses the newest successful snapshot per target scope —
-    # including an empty snapshot, which retires that scope's absent findings —
-    # then resolves any cross-scope identity overlap by evidence time.
+    # selector preserves earlier findings across explicitly incomplete attempts
+    # and qualifies them as unreconfirmed. Replacement snapshots retire absent
+    # findings; cross-scope identity overlap is resolved by evidence time.
     # ``?scan_id=`` still returns that scan's rows verbatim.
     from agent_bom.api.findings_current import current_scan_findings, scan_only_findings
 
@@ -4050,6 +4061,8 @@ def _finding_occurrence_summary(row: dict[str, Any]) -> dict[str, Any]:
             "sla_due_at_source",
             "last_seen",
             "last_observed",
+            "observation_status",
+            "reconfirmation",
             "graph_reachable",
             "graph_min_hop_distance",
         )
@@ -4070,6 +4083,7 @@ def _serialize_finding_group(group: dict[str, Any]) -> dict[str, Any]:
     public["finding_group_id"] = str(group.get("finding_group_id") or "")
     public["finding_group_key"] = str(group.get("finding_group_key") or "")
     public["occurrence_count"] = int(group.get("occurrence_count") or 0)
+    public["unreconfirmed_occurrence_count"] = int(group.get("unreconfirmed_occurrence_count") or 0)
     public["occurrences_truncated"] = bool(group.get("occurrences_truncated"))
     samples = group.get("_occurrence_rows")
     public["occurrences"] = [
@@ -4187,11 +4201,14 @@ def _list_finding_groups_impl(
             representative["finding_group_id"] = group_id
             representative["finding_group_key"] = group_key
             representative["occurrence_count"] = 0
+            representative["unreconfirmed_occurrence_count"] = 0
             representative["_occurrence_rows"] = []
             representative["occurrences_truncated"] = False
             grouped[group_id] = representative
             group = representative
         group["occurrence_count"] = int(group["occurrence_count"]) + 1
+        if row.get("observation_status") == "unreconfirmed":
+            group["unreconfirmed_occurrence_count"] = int(group["unreconfirmed_occurrence_count"]) + 1
         occurrences = group["_occurrence_rows"]
         if isinstance(occurrences, list) and len(occurrences) < _FINDING_GROUP_OCCURRENCE_SAMPLE:
             occurrences.append(row)

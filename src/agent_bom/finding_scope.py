@@ -784,6 +784,23 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     if provenance is not None:
         payload["provenance"] = provenance
 
+    from agent_bom.evidence.finding_observation import FindingObservationStatus, ReconfirmationReason
+
+    observation = row.get("observation_status")
+    if isinstance(observation, str) and observation in {status.value for status in FindingObservationStatus}:
+        payload["observation_status"] = observation
+        attempt = row.get("reconfirmation")
+        if observation == FindingObservationStatus.UNRECONFIRMED.value and isinstance(attempt, Mapping):
+            allowed_reasons = {reason.value for reason in ReconfirmationReason}
+            raw_reasons = attempt.get("reason_codes")
+            payload["reconfirmation"] = {
+                "scan_id": _safe_optional_text(attempt.get("scan_id"), max_len=128),
+                "attempted_at": _safe_timestamp(attempt.get("attempted_at")),
+                "reason_codes": sorted({value for value in raw_reasons[:20] if isinstance(value, str) and value in allowed_reasons})
+                if isinstance(raw_reasons, list)
+                else [],
+            }
+
     owner = _safe_optional_text(row.get("owner"), max_len=200)
     if owner is not None:
         payload["owner"] = mask_email(owner)

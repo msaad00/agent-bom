@@ -78,7 +78,7 @@ def _print_findings_table(payload: JsonObject) -> None:
     rows = payload.get("findings")
     if not isinstance(rows, list):
         rows = []
-    click.echo("id\tseverity\tstatus\towner\tpackage\tfirst_seen\tlast_seen\tsla_due_at\ttitle")
+    click.echo("id\tseverity\tstatus\towner\tpackage\tfirst_seen\tlast_seen\tsla_due_at\ttitle\tobservation_status")
     for item in rows:
         if not isinstance(item, dict):
             continue
@@ -94,6 +94,7 @@ def _print_findings_table(payload: JsonObject) -> None:
                     _string(item.get("last_seen")),
                     _string(item.get("sla_due_at")),
                     _string(item.get("title") or item.get("summary") or item.get("message")),
+                    _string(item.get("observation_status")) or "unavailable",
                 ]
             )
         )

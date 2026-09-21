@@ -501,6 +501,31 @@ def verify_campaign_workflow(
             reason="Campaign verification requires a complete findings snapshot.",
         )
 
+    store = get_campaign_store()
+    stored = store.get(tenant_id, campaign_id)
+    if stored is None or not stored.member_ids:
+        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
+    original_ids = set(stored.member_ids)
+    if any(row.get("observation_status") == "unreconfirmed" and _canonical_finding_id(row) in original_ids for row in source["findings"]):
+        _audit_for_actor(
+            "risk_campaign.verify_unavailable",
+            tenant_id=tenant_id,
+            actor=actor,
+            campaign_id=campaign_id,
+            outcome="unavailable_evidence",
+            retry_state="awaiting_fresh_scope_evidence",
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "outcome": "unavailable_evidence",
+                "retry_state": "awaiting_fresh_scope_evidence",
+                "reason": (
+                    "Original findings remain unreconfirmed after an incomplete collection. Rescan the same scope before verification."
+                ),
+            },
+        )
+
     endpoint = f"/v1/campaigns/{campaign_id}/verify"
     request_hash = idempotency_request_fingerprint({"campaign_id": campaign_id, "version": version})
     if idempotency_key:
@@ -516,10 +541,6 @@ def verify_campaign_workflow(
         if cached is not None and cached.get("outcome") == "still_affected":
             return cast("dict[str, Any]", cached)
 
-    store = get_campaign_store()
-    stored = store.get(tenant_id, campaign_id)
-    if stored is None or not stored.member_ids:
-        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
     current_campaigns = derive_campaigns(
         source["findings"],
         tenant_id=tenant_id,

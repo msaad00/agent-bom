@@ -55,6 +55,7 @@ async def blast_radius_impl(
                             "cve_id": validated_cve,
                             "source": persisted.get("source"),
                             "scope": persisted.get("scope"),
+                            "completeness": persisted.get("completeness"),
                         },
                     )
                 results = [_finding_blast_radius(row, validated_cve) for row in persisted_matches]
@@ -152,6 +153,11 @@ def _finding_blast_radius(row: dict[str, Any], fallback_cve: str) -> dict[str, A
         "owner": row.get("owner"),
         "sla_due_at": row.get("sla_due_at"),
         "sla_due_at_source": row.get("sla_due_at_source"),
+        "observation_status": row.get("observation_status"),
+        "reconfirmation": row.get("reconfirmation"),
+        "scan_id": row.get("scan_id"),
+        "last_observed": row.get("last_observed"),
+        "provenance": row.get("provenance"),
     }
 
 

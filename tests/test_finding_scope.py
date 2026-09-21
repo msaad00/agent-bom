@@ -395,3 +395,29 @@ def test_canonical_payload_sla_none_without_anchor() -> None:
 
     payload = canonical_finding_payload({"severity": "critical"})
     assert payload["sla_due_at"] is None
+
+
+def test_reconfirmation_projection_keeps_only_structural_reason_codes():
+    from agent_bom.finding_scope import safe_finding_response_payload
+
+    row = safe_finding_response_payload(
+        {
+            "id": "finding-1",
+            "observation_status": "unreconfirmed",
+            "reconfirmation": {
+                "scan_id": "candidate-1",
+                "attempted_at": "2026-09-01T00:00:00Z",
+                "reason_codes": ["scope_permission_denied", "secret=private-value", "scope_permission_denied", {}],
+                "raw_error": "private-value",
+                "credentials": "private-value",
+            },
+        }
+    )
+    assert row["observation_status"] == "unreconfirmed"
+    assert row["reconfirmation"] == {
+        "scan_id": "candidate-1",
+        "attempted_at": "2026-09-01T00:00:00Z",
+        "reason_codes": ["scope_permission_denied"],
+    }
+    assert "private-value" not in str(row)
+    assert "observation_status" not in safe_finding_response_payload({"observation_status": {"unsafe": True}})

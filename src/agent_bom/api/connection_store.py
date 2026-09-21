@@ -128,7 +128,7 @@ class CloudConnectionRecord:
         data["auth_params"] = public_connection_params(self.provider, self.auth_params)
         data.pop("external_id_encrypted", None)
         data["has_external_id"] = bool(self.external_id_encrypted)
-        data["credential_present"] = bool(self.external_id_encrypted and self.role_ref)
+        data["credential_present"] = bool(self.role_ref and (self.external_id_encrypted or self.auth_params.get("credential_binding")))
         if data["status"] == STATUS_ACTIVE and self.capability_probe_status != "verified":
             # Legacy active rows only proved broker construction. Require a new
             # capability probe before presenting them as ready after upgrade.

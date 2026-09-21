@@ -1209,8 +1209,8 @@ components:
           title: Display Name
           type: string
         external_id:
+          default: ''
           maxLength: 8192
-          minLength: 1
           title: External Id
           type: string
         inventory_scope:
@@ -1244,7 +1244,6 @@ components:
       - provider
       - display_name
       - role_ref
-      - external_id
       title: CloudConnectionCreate
       type: object
     CloudConnectionScanAccepted:

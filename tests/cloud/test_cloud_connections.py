@@ -2179,3 +2179,53 @@ def test_connection_legacy_public_metadata_drops_undeclared_and_secret_values() 
     )
     assert record.to_public_dict()["auth_params"] == {"tenant_id": "tenant-guid"}
     assert record.auth_params["client_secret"] == "private-canary-value"
+
+
+def test_create_workload_connection_without_storing_secret(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "bindings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "bindings": {
+                    "azure-read": {
+                        "tenant_id": "tenant-alpha",
+                        "provider": "azure",
+                        "auth_mode": "managed_identity",
+                        "role_ref": "app-id",
+                        "scope_id": "sub-id",
+                        "directory_tenant_id": "directory-id",
+                        "expires_at": "2099-01-01T00:00:00Z",
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("AGENT_BOM_CONNECTION_WORKLOAD_BINDINGS_FILE", str(path))
+    monkeypatch.delenv(connection_crypto.CONNECTIONS_KEY_ENV, raising=False)
+    connection_crypto.reset_key_cache()
+    client = TestClient(_app())
+    body = {
+        "provider": "azure",
+        "display_name": "Federated",
+        "role_ref": "app-id",
+        "auto_scan_on_create": False,
+        "auth_params": {
+            "tenant_id": "directory-id",
+            "subscription_id": "sub-id",
+            "auth_mode": "managed_identity",
+            "credential_binding": "azure-read",
+        },
+    }
+    response = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers())
+    assert response.status_code == 201
+    assert response.json()["credential_present"] is True
+    assert response.json()["has_external_id"] is False
+    assert response.json()["status"] == "pending"
+    assert response.json()["capability_probe_status"] == "not_run"
+    capabilities = client.get("/v1/cloud/connections", headers=_proxy_headers()).json()["workload_auth_modes"]
+    assert capabilities == {"azure": ["managed_identity", "workload_identity"], "gcp": ["workload_identity"]}
+    assert str(path) not in response.text
+    forbidden = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers(tenant="other-tenant"))
+    assert forbidden.status_code == 400
+    assert str(path) not in forbidden.text
+    assert client.post("/v1/cloud/connections", json={**body, "external_id": "secret-canary"}, headers=_proxy_headers()).status_code == 400

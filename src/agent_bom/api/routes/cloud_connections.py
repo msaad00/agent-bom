@@ -108,7 +108,7 @@ class CloudConnectionCreate(BaseModel):
     provider: str
     display_name: str = Field(min_length=1, max_length=200)
     role_ref: str = Field(min_length=1, max_length=2048)
-    external_id: str = Field(min_length=1, max_length=8192)
+    external_id: str = Field(default="", max_length=8192)
     regions: list[str] = Field(default_factory=list)
     scan_interval_minutes: int | None = None
     # Non-secret provider-specific params (Azure tenant/subscription, GCP
@@ -313,16 +313,36 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
     if managed_trial_enabled():
         auto_scan_on_create = False
 
-    # Fail closed before doing anything if the store cannot encrypt the secret.
-    if not connections_key_configured():
-        raise HTTPException(
-            status_code=503,
-            detail="Connection secret encryption is not configured (AGENT_BOM_CONNECTIONS_KEY unset); refusing to store a secret.",
-        )
+    from agent_bom.cloud.connection_broker import ConnectionBrokerError
+    from agent_bom.cloud.connection_workload import resolve_binding, workload_mode
+
     try:
-        external_id_encrypted = encrypt_secret(body.external_id.strip())
+        mode = workload_mode(provider, auth_params)
+        if mode:
+            if body.external_id:
+                raise ConnectionBrokerError("Workload connections do not accept stored credentials.")
+            resolve_binding(
+                CloudConnectionRecord(
+                    id="pending",
+                    tenant_id=tenant_id,
+                    provider=provider,
+                    display_name=body.display_name,
+                    role_ref=body.role_ref.strip(),
+                    external_id_encrypted="",
+                    auth_params=auth_params,
+                    inventory_scope=inventory_scope,
+                )
+            )
+            external_id_encrypted = ""
+        else:
+            if not body.external_id.strip():
+                raise HTTPException(status_code=400, detail="A credential is required for this connection authentication mode.")
+            if not connections_key_configured():
+                raise HTTPException(status_code=503, detail="Connection secret encryption is not configured; refusing to store a secret.")
+            external_id_encrypted = encrypt_secret(body.external_id.strip())
+    except ConnectionBrokerError as exc:
+        raise HTTPException(status_code=400, detail="Workload connection configuration is invalid or unavailable.") from exc
     except ConnectionSecretError as exc:
-        # Never echo the secret or key detail — only the failure mode.
         _logger.warning("Connection secret encryption unavailable")
         raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
 
@@ -397,6 +417,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
 async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the authenticated tenant's connections (non-secret metadata only)."""
     from agent_bom.api.connection_scheduler import connections_scheduler_enabled
+    from agent_bom.cloud.connection_workload import supported_workload_modes
 
     tenant_id = _tenant(request)
     records = get_connection_store().list_for_tenant(tenant_id)
@@ -408,6 +429,7 @@ async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str
         # Packaging honesty for the UI schedule banner: intervals alone do not
         # run unless the control-plane scheduler process is enabled.
         "connections_scheduler_enabled": connections_scheduler_enabled(),
+        "workload_auth_modes": supported_workload_modes(),
     }
 
 
@@ -1626,7 +1648,7 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
         "tenant_id": tenant_id,
         "provider": record.provider,
         "status": "ok",
-        "credential_present": bool(record.external_id_encrypted and record.role_ref),
+        "credential_present": record.to_public_dict()["credential_present"],
         "capability_probe_status": "verified",
         "verified_capabilities": capabilities,
         "audit_metadata": _scan_audit_metadata(

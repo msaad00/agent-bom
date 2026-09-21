@@ -1657,8 +1657,8 @@
             "type": "string"
           },
           "external_id": {
+            "default": "",
             "maxLength": 8192,
-            "minLength": 1,
             "title": "External Id",
             "type": "string"
           },
@@ -1710,8 +1710,7 @@
         "required": [
           "provider",
           "display_name",
-          "role_ref",
-          "external_id"
+          "role_ref"
         ],
         "title": "CloudConnectionCreate",
         "type": "object"

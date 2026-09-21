@@ -31,7 +31,7 @@ def _record(provider: str = "aws") -> SimpleNamespace:
         auth_params={},
         capability_probe_status="not_run",
         verified_capabilities=[],
-        to_public_dict=lambda: {"id": "conn-1", "provider": provider},
+        to_public_dict=lambda: {"id": "conn-1", "provider": provider, "credential_present": True},
     )
 
 

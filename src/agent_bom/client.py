@@ -922,7 +922,7 @@ class AgentBomClient:
         provider: str,
         display_name: str,
         role_ref: str,
-        external_id: str,
+        external_id: str = "",
         regions: Sequence[str] | None = None,
         auth_params: Mapping[str, str] | None = None,
         scan_interval_minutes: int | None = None,

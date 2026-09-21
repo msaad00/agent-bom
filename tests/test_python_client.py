@@ -323,3 +323,20 @@ def test_client_preserves_finding_reconfirmation_receipt_and_original_provenance
     }
     with _client(lambda request: httpx.Response(200, json=payload)) as client:
         assert client.list_findings() == payload
+
+
+def test_client_registers_workload_binding_without_secret_argument() -> None:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(201, json={"id": "connection-a", "credential_present": True, "has_external_id": False})
+
+    client = _client(handler)
+    params = {"auth_mode": "workload_identity", "credential_binding": "reader", "project_id": "project-a"}
+    result = client.create_cloud_connection(
+        provider="gcp", display_name="Project A", role_ref="reader@project-a.iam.gserviceaccount.com", auth_params=params
+    )
+    assert captured["external_id"] == ""
+    assert captured["auth_params"] == params
+    assert result["has_external_id"] is False

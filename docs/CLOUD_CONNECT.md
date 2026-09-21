@@ -1,16 +1,79 @@
 # Connecting Clouds to agent-bom
 
-How agent-bom reads, ingests, and integrates AWS, Azure, GCP, and Snowflake —
-and **why** every step is read-only, least-privilege, and zero-trust by design.
+Connect AWS, Azure, GCP, and Snowflake to the self-hosted control plane, verify
+read access, and collect inventory and posture evidence.
 
-agent-bom is a **scanner and self-hosted control plane**, not a hosted data
-mover. It connects to each source with the least privilege that still lets it
-*see*, reads inventory and posture through control-plane list/get APIs only,
-normalizes what it sees into one graph, and emits findings. It never writes,
-never reads secret contents, never moves data out of your account, and never
-stores a password.
+Discovery uses read APIs with operator-granted permissions. Optional content
+and deep-scan collection requires explicit scope configuration. Evidence is
+normalized into the control plane's graph and findings stores. Workload identity
+avoids stored connection secrets where supported; legacy credential modes store
+encrypted provider credentials, including database connection strings. Runtime
+enforcement and export destinations have separate permissions and data boundaries.
 
 ---
+
+## Workload identity for stored connections
+
+Azure and GCP connections can use an operator-managed workload binding instead
+of a stored client secret or service-account key. AWS continues to use STS
+AssumeRole. Existing encrypted credential connections remain supported.
+
+The operator mounts a JSON file and sets
+`AGENT_BOM_CONNECTION_WORKLOAD_BINDINGS_FILE` to its path. Keep this file writable
+only by the operator and mount projected token files read-only. A binding names
+one agent-bom tenant, provider identity, target subscription/project, and expiry:
+
+```json
+{"bindings":{"azure-reader":{
+  "tenant_id":"customer-a","provider":"azure","auth_mode":"workload_identity",
+  "role_ref":"application-client-id","scope_id":"subscription-id",
+  "directory_tenant_id":"entra-tenant-id",
+  "token_file_path":"/var/run/secrets/azure/tokens/azure-identity-token",
+  "expires_at":"2027-01-01T00:00:00Z"
+}}}
+```
+
+Register it with `POST /v1/cloud/connections` using the authenticated tenant:
+
+```json
+{"provider":"azure","display_name":"Production","role_ref":"application-client-id",
+ "auth_params":{"tenant_id":"entra-tenant-id","subscription_id":"subscription-id",
+ "auth_mode":"workload_identity","credential_binding":"azure-reader"},
+ "auto_scan_on_create":false}
+```
+
+Omit `external_id` for workload modes. Then call
+`POST /v1/cloud/connections/{id}/test` to verify provider access and
+`POST /v1/cloud/connections/{id}/scan` to collect evidence. A configured binding
+is not verified access or completed assessment.
+
+For Azure user-assigned managed identity use `auth_mode=managed_identity` and
+omit the token file. For GCP use `provider=gcp`, `auth_mode=workload_identity`,
+`role_ref=<service-account>@<project>.iam.gserviceaccount.com`, `scope_id=<project>`,
+an operator-mounted JWT `token_file_path`, and the exact `audience`
+`//iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>`.
+GCP public `auth_params` contains `project_id`, `auth_mode`, and
+`credential_binding`; omit Azure-only fields. GCP exchanges the projected JWT
+with Google's fixed STS endpoint, then impersonates the bound service account
+with the read-only cloud-platform scope and a 3,600-second token lifetime.
+
+Configure issuer, subject, audience and attribute restrictions in the provider's
+federation trust and grant only required discovery permissions. The provider
+verifies the signed token; agent-bom does not treat decoded claims as proof.
+Bindings default to `inventory_scope=account`; organization fan-out requires
+`inventory_scope=organization` in both operator binding and connection.
+
+Every broker use reloads the binding. Missing, disabled, expired, malformed or
+mismatched bindings fail closed, with no fallback to stored or ambient keys.
+Disabling a binding prevents new broker sessions; revoke already-issued tokens
+through the provider when immediate revocation is required. Rotation of mounted
+projected tokens is handled by the provider SDK. This is an operator-managed
+reference, not an automatic vault integration.
+
+SDK references: [Azure workload identity](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.workloadidentitycredential),
+[Azure managed identity](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.managedidentitycredential),
+[Google identity pools](https://google-auth.readthedocs.io/en/latest/reference/google.auth.identity_pool.html),
+[Google impersonation](https://google-auth.readthedocs.io/en/latest/reference/google.auth.impersonated_credentials.html).
 
 ## 1b. Generate the read-only AWS grant
 

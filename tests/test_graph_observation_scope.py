@@ -227,3 +227,33 @@ def test_observation_sql_rejects_non_identifier_aliases(alias, parameter):
     args = {"previous": "previous", "current": "current", parameter: alias}
     with pytest.raises(ValueError, match="SQL alias"):
         comparable_observation_sql(dialect="sqlite", **args)
+
+
+@pytest.mark.parametrize(
+    ("explicit_start", "first_seen", "expected_start"),
+    [(T2, T1, T2), ("", T2, T2), (T1, T1, T1)],
+    ids=["scheduled-validity", "later-observation", "already-valid"],
+)
+def test_edge_validity_survives_storage_without_backdating(scope_store, explicit_start, first_seen, expected_start):
+    """A future grant/observation stays future and keeps its content receipt."""
+    ctx = scope_store
+    graph = _graph(ctx, "ACCT1", scan="validity-boundary", at=T1)
+    edge = graph.edges[0]
+    edge.valid_from = explicit_start
+    edge.first_seen = first_seen
+    before = correlation_graph_digest(graph)
+    ctx.store.save_graph(graph)
+    restored = _load(ctx, graph.scan_id)
+    persisted = next(item for item in restored.edges if item.canonical_id == edge.canonical_id)
+    assert persisted.valid_from == expected_start
+    assert persisted.first_seen == first_seen
+    assert correlation_graph_digest(restored) == before
+
+    def has_edge(at):
+        return any(
+            (row["source_id"], row["target_id"], row["relationship"]) == (edge.source, edge.target, edge.relationship.value)
+            for row in ctx.store.active_edges_at(at, tenant_id=ctx.tenant)
+        )
+
+    assert has_edge(T1) is (expected_start <= T1)
+    assert has_edge(T2) is True

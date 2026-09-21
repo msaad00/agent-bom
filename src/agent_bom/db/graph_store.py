@@ -961,9 +961,9 @@ def save_graph_streaming(
         for edge in edges:
             edge_count += 1
             rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+            # A snapshot may record a future grant or observation. Backdating
+            # its start changes temporal traversal and correlation receipts.
             valid_from = edge.valid_from or edge.first_seen or now
-            if valid_from > now:
-                valid_from = now
             yield (
                 edge.source,
                 edge.target,

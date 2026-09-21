@@ -46,6 +46,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.api.credential_expiry import classify_credential
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
@@ -220,7 +221,7 @@ def _node_provider(attrs: Mapping[str, Any]) -> str | None:
 
 
 def _exposed_targets(graph: UnifiedGraph, targets: set[str]) -> bool:
-    return any(graph.nodes.get(tid) is not None and bool(graph.nodes[tid].attributes.get("internet_exposed")) for tid in targets)
+    return any(graph.nodes.get(tid) is not None and coerce_truthy(graph.nodes[tid].attributes.get("internet_exposed")) for tid in targets)
 
 
 def evaluate_identity_governance(
@@ -291,7 +292,7 @@ def evaluate_identity_governance(
         # ── Privilege / exposure ──
         is_privileged = bool(attrs.get("escalates_to_admin") or attrs.get("is_admin") or attrs.get("privilege_level") == "admin")
         can_escalate = bool(attrs.get("can_escalate_privilege"))
-        internet_exposed = bool(attrs.get("internet_exposed")) or _exposed_targets(graph, set(granted))
+        internet_exposed = coerce_truthy(attrs.get("internet_exposed")) or _exposed_targets(graph, set(granted))
 
         # ── Credential staleness (reuse credential_expiry classifier) ──
         cred_state = classify_credential(

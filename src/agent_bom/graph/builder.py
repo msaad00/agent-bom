@@ -19,6 +19,7 @@ from agent_bom.api.tracing import get_tracer
 from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
 from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
+from agent_bom.cloud.normalization import coerce_bool_or_none, coerce_truthy
 from agent_bom.constants import is_credential_key as _is_credential_key
 from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
 from agent_bom.graph.container import UnifiedGraph
@@ -2856,6 +2857,21 @@ def _iter_cloud_inventories(raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _recorded_exposure_attributes(record: Mapping[str, Any], *fields: str) -> dict[str, Any]:
+    """Preserve provider flag inputs and keep absent/unknown observations nullable."""
+    inputs = {name: record[name] for name in fields if name in record}
+    values = [coerce_bool_or_none(value) for value in inputs.values()]
+    exposed = True if True in values else False if values and all(value is False for value in values) else None
+    return {
+        "internet_exposed": exposed,
+        "internet_exposure_evidence": {
+            "source": "cloud-inventory",
+            "basis": "recorded_attributes",
+            "inputs": sanitize_sensitive_payload(inputs),
+        },
+    }
+
+
 def _normalize_cloud_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
     """Map a per-provider inventory payload onto the canonical builder shape.
 
@@ -5055,7 +5071,9 @@ def _apply_gcp_firewall_exposure(
     the instance, mirroring how an AWS security group exposes an EC2 instance.
     """
     firewall_nodes = [(graph.nodes.get(node_id), node_id) for node_id in sg_node_by_id.values()]
-    permissive = [(node, node_id) for node, node_id in firewall_nodes if node is not None and node.attributes.get("internet_exposed")]
+    permissive = [
+        (node, node_id) for node, node_id in firewall_nodes if node is not None and coerce_truthy(node.attributes.get("internet_exposed"))
+    ]
     if not permissive:
         return
     for inst_node_id, instance in instance_nodes:
@@ -5216,7 +5234,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "cloud_provider": provider,
                     "cloud_service": bucket_service,
                     "location": _clean_graph_part(bucket.get("location")) or region,
-                    "internet_exposed": bool(bucket.get("publicly_accessible")),
+                    **_recorded_exposure_attributes(bucket, "publicly_accessible"),
                     "tags": bucket_tags,
                     "account_id": account_id,
                     "environment": bucket_env,
@@ -5263,7 +5281,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             "cloud_provider": provider,
             "cloud_service": "dspm-database",
             "location": _clean_graph_part(db.get("location")) or region,
-            "internet_exposed": bool(db.get("publicly_accessible")),
+            **_recorded_exposure_attributes(db, "publicly_accessible"),
             "is_data_store": True,
             "account_id": db.get("account_id") or account_id,
         }
@@ -5319,7 +5337,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "cloud_service": sg_service,
                     "location": region,
                     "vpc_id": _clean_graph_part(group.get("vpc_id")),
-                    "internet_exposed": bool(group.get("internet_exposed")),
+                    **_recorded_exposure_attributes(group, "internet_exposed"),
                     "network_exposure": list(group.get("network_exposure", []) or []),
                     # GCP firewall scoping (empty on AWS); the instance-matching
                     # pass below reads these to know which instances a rule covers.
@@ -5399,7 +5417,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             )
             # An internet-facing security group exposes the instances in it.
             sg_node = graph.nodes.get(sg_node_id)
-            if sg_node is not None and sg_node.attributes.get("internet_exposed"):
+            if sg_node is not None and coerce_truthy(sg_node.attributes.get("internet_exposed")):
                 graph.add_edge(
                     UnifiedEdge(
                         source=sg_node_id,
@@ -5467,7 +5485,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             if not name:
                 continue
             node_id = f"cloud_resource:{provider}:{svc}:{rtype}:{name}"
-            exposed = bool(item.get("publicly_accessible") or item.get("internet_exposed") or item.get("endpoint_public"))
+            exposure = _recorded_exposure_attributes(item, "publicly_accessible", "internet_exposed", "endpoint_public")
             item_env = _resource_environment(item)
             graph.add_node(
                 UnifiedNode(
@@ -5482,7 +5500,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                         "cloud_provider": provider,
                         "cloud_service": svc,
                         "location": _clean_graph_part(item.get("location")) or region,
-                        "internet_exposed": exposed,
+                        **exposure,
                         "is_data_store": is_data,
                         "engine": _clean_graph_part(item.get("engine")),
                         "runtime": _clean_graph_part(item.get("runtime")),
@@ -5502,7 +5520,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     node_id,
                     evidence={"source": "cloud-inventory"},
                 )
-            if coll_key == "elb_load_balancers" and exposed:
+            if coll_key == "elb_load_balancers" and exposure["internet_exposed"] is True:
                 internet_facing_lbs.append((node_id, _clean_graph_part(item.get("vpc_id"))))
 
     # ── GCP estate breadth (GKE / Cloud Run / Functions / Cloud SQL / VPC /
@@ -5528,7 +5546,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     continue
                 id_key = _clean_graph_part(item.get(id_field)) or name
                 node_id = f"cloud_resource:gcp:{svc}:{rtype}:{id_key}"
-                exposed = bool(item.get("publicly_accessible") or item.get("internet_exposed"))
+                exposure = _recorded_exposure_attributes(item, "publicly_accessible", "internet_exposed")
                 item_env = _resource_environment(item)
                 graph.add_node(
                     UnifiedNode(
@@ -5543,7 +5561,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                             "cloud_provider": "gcp",
                             "cloud_service": svc,
                             "location": _clean_graph_part(item.get("location")) or region,
-                            "internet_exposed": exposed,
+                            **exposure,
                             "is_data_store": is_data,
                             "engine": _clean_graph_part(item.get("database_version")),
                             "encrypted": bool(item.get("encrypted")),
@@ -5794,7 +5812,10 @@ def _add_normalized_cloud_resources(
             continue
         node_id = f"cloud_resource:{provider}:{res.resource_type.value}:{name}"
         raw = res.raw or {}
-        internet_exposed = bool(raw.get("ip_address")) or bool(raw.get("internet_facing"))
+        exposure = _recorded_exposure_attributes(raw, "internet_facing")
+        if res.resource_type is CloudResourceType.PUBLIC_IP and raw.get("ip_address"):
+            exposure["internet_exposed"] = True
+            exposure["internet_exposure_evidence"]["public_ip_address"] = sanitize_text(str(raw["ip_address"]))
         if res.resource_type is CloudResourceType.PUBLIC_IP and res.resource_id:
             pip_node_by_arm_id[res.resource_id] = node_id
         if res.resource_type is CloudResourceType.LOAD_BALANCER:
@@ -5813,7 +5834,7 @@ def _add_normalized_cloud_resources(
                     "resource_kind": res.native_type,
                     "cloud_provider": provider,
                     "location": res.region or region,
-                    "internet_exposed": internet_exposed,
+                    **exposure,
                     "is_data_store": is_data_store,
                     "tags": resource_tags,
                     "account_id": account_id,
@@ -5902,7 +5923,7 @@ def _instance_internet_reachable(graph: UnifiedGraph, inst_node_id: str, instanc
     node = graph.nodes.get(inst_node_id)
     if node is None:
         return False
-    if node.attributes.get("internet_exposed") or _clean_graph_part(instance.get("public_ip")):
+    if coerce_truthy(node.attributes.get("internet_exposed")) or _clean_graph_part(instance.get("public_ip")):
         return True
     return any(e.relationship == RelationshipType.EXPOSED_TO and e.target == inst_node_id for e in graph.edges)
 
@@ -5915,7 +5936,7 @@ def _link_internet_facing_load_balancers(
     """Link internet-facing LBs to reachable instances in the same VPC."""
     for lb_node_id, lb_vpc_id in load_balancers:
         lb_node = graph.nodes.get(lb_node_id)
-        if lb_node is None or not lb_node.attributes.get("internet_exposed"):
+        if lb_node is None or not coerce_truthy(lb_node.attributes.get("internet_exposed")):
             continue
         for inst_node_id, instance in instance_nodes:
             inst_vpc = _clean_graph_part(instance.get("vpc_id"))
@@ -6042,8 +6063,8 @@ def _add_network_edge_inventory(
                 "resource_id": sn_id,
                 "vpc_id": _clean_graph_part(sn.get("vpc_id")),
                 "cidr": _clean_graph_part(sn.get("cidr")),
-                "is_public": bool(sn.get("is_public")),
-                "internet_exposed": bool(sn.get("is_public")),
+                "is_public": coerce_bool_or_none(sn.get("is_public")),
+                **_recorded_exposure_attributes(sn, "is_public"),
             },
         )
 
@@ -6069,7 +6090,7 @@ def _add_network_edge_inventory(
                 attrs={
                     "resource_id": ident,
                     "vpc_id": _clean_graph_part(item.get("vpc_id")),
-                    "internet_exposed": bool(item.get("internet_exposed")),
+                    **_recorded_exposure_attributes(item, "internet_exposed"),
                     "has_internet_route": bool(item.get("has_internet_route")),
                     "subnet_ids": list(item.get("subnet_ids", []) or []),
                     "network_exposure": list(item.get("network_exposure", []) or []),
@@ -6236,7 +6257,7 @@ def _add_network_edge_inventory(
                     "protocol": _clean_graph_part(api.get("protocol")),
                     "endpoint": _clean_graph_part(api.get("endpoint")),
                     "stages": list(api.get("stages", []) or []),
-                    "internet_exposed": bool(api.get("internet_exposed")),
+                    **_recorded_exposure_attributes(api, "internet_exposed"),
                     "location": _clean_graph_part(api.get("location")) or region,
                     "account_id": account_id,
                     "semantic_layer": "api_gateway",
@@ -6254,7 +6275,7 @@ def _add_network_edge_inventory(
                 evidence={"source": "cloud-inventory"},
             )
         _protect(node_id, api.get("protected_targets", []), "api_gateway_frontend")
-        if api.get("internet_exposed"):
+        if coerce_truthy(api.get("internet_exposed")):
             for target_ref in api.get("protected_targets", []) or []:
                 ref = _clean_graph_part(target_ref)
                 target_node_id = ref_to_node.get(ref)
@@ -6289,7 +6310,7 @@ def _wire_network_entry_exposure_paths(
         for sn in inventory.get("subnets", []) or []
         if isinstance(sn, dict)
         for sn_id in [_clean_graph_part(sn.get("id"))]
-        if sn_id and sn.get("is_public")
+        if sn_id and coerce_truthy(sn.get("is_public"))
     }
     igw_by_vpc: dict[str, str] = {}
     for igw in inventory.get("internet_gateways", []) or []:
@@ -6342,7 +6363,7 @@ def _wire_network_entry_exposure_paths(
                 )
 
     for nacl in inventory.get("network_acls", []) or []:
-        if not isinstance(nacl, dict) or not nacl.get("internet_exposed"):
+        if not isinstance(nacl, dict) or not coerce_truthy(nacl.get("internet_exposed")):
             continue
         ident = _clean_graph_part(nacl.get("id"))
         if not ident:

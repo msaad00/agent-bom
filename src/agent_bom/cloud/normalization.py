@@ -21,18 +21,23 @@ def resolve_env_or_value(value: str | None, env_var: str, default: str = "") -> 
     return os.environ.get(env_var) or default
 
 
-def coerce_truthy(value: Any) -> bool:
-    """Coerce a provider cell (bool / 'true'/'false' string / None) to bool.
-
-    Provider views (for example Snowflake ACCOUNT_USAGE) return mixed bool and
-    string-boolean values; a plain ``bool(value)`` would treat the string
-    ``"false"`` as truthy.
-    """
+def coerce_bool_or_none(value: Any) -> bool | None:
+    """Decode an explicit provider boolean without treating unknown as false."""
     if isinstance(value, bool):
         return value
     if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in ("true", "t", "yes", "y", "1"):
+        return True
+    if text in ("false", "f", "no", "n", "0"):
         return False
-    return str(value).strip().lower() in ("true", "t", "yes", "y", "1")
+    return None
+
+
+def coerce_truthy(value: Any) -> bool:
+    """Whether a provider cell explicitly establishes true; unknown is not proof."""
+    return coerce_bool_or_none(value) is True
 
 
 def coerce_int_or_none(value: Any) -> int | None:

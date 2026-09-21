@@ -32,6 +32,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
@@ -104,7 +105,7 @@ def _rel(edge: UnifiedEdge) -> RelationshipType:
 
 def _is_entry(node: UnifiedNode) -> bool:
     """An internet-reachable foothold the chain can start from."""
-    return bool(node.attributes.get("internet_exposed"))
+    return coerce_truthy(node.attributes.get("internet_exposed"))
 
 
 def _is_crown_jewel(node: UnifiedNode) -> bool:
@@ -114,7 +115,7 @@ def _is_crown_jewel(node: UnifiedNode) -> bool:
     attrs = node.attributes
     return bool(
         attrs.get("data_sensitivity")
-        or attrs.get("toxic_exposed_sensitive")
+        or coerce_truthy(attrs.get("toxic_exposed_sensitive"))
         or attrs.get("data_regulatory_frameworks")
         or attrs.get("data_classification_tier")
     )
@@ -148,20 +149,20 @@ def _node_boost(node: UnifiedNode) -> float:
 
     attrs = node.attributes
     boost = 0.0
-    if attrs.get("toxic_exposed_vulnerable"):
+    if coerce_truthy(attrs.get("toxic_exposed_vulnerable")):
         boost += 10.0
-    elif attrs.get("toxic_exposed_vulnerable_mitigated"):
+    elif coerce_truthy(attrs.get("toxic_exposed_vulnerable_mitigated")):
         # Exposure fronted by a WAF/API gateway: a real but mitigated toxic combo.
         # Counted at a reduced weight so it ranks below a bare toxic node without
         # being silently dropped (honesty: de-prioritized, not hidden).
         boost += 4.0
-    if attrs.get("escalates_to_admin"):
+    if coerce_truthy(attrs.get("escalates_to_admin")):
         boost += 12.0
-    elif attrs.get("can_escalate_privilege"):
+    elif coerce_truthy(attrs.get("can_escalate_privilege")):
         boost += 8.0
     # Standing admin-equivalent permissions are an independent escalation prize
     # (holds admin directly, distinct from reaching admin via an assume-chain).
-    if attrs.get("admin_equivalent"):
+    if coerce_truthy(attrs.get("admin_equivalent")):
         boost += 12.0
     # Environment / asset-criticality and MCP tool capability tags feed ranking
     # without inventing a new product family.
@@ -179,7 +180,7 @@ def _jewel_reward(node: UnifiedNode) -> tuple[float, str]:
         return 30.0, f"{'/'.join(str(f) for f in frameworks)} regulated data"
     if tier == "restricted":
         return 28.0, "restricted data"
-    if attrs.get("toxic_exposed_sensitive"):
+    if coerce_truthy(attrs.get("toxic_exposed_sensitive")):
         return 26.0, "internet-exposed sensitive data"
     return 22.0, "sensitive data"
 

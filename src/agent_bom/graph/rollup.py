@@ -23,6 +23,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Optional, cast
 
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
@@ -92,7 +93,7 @@ _CONTAINER_TYPES: frozenset[str] = frozenset(
 )
 
 # Attributes that mark a node (or a descendant rolled up into a container) as
-# internet-exposed. Any one being truthy flags the container as exposed.
+# internet-exposed. Only an explicit positive flag marks the container as exposed.
 _EXPOSED_ATTRS: tuple[str, ...] = (
     "internet_exposed",
     "toxic_exposed_vulnerable",
@@ -142,12 +143,12 @@ def _severity_bucket(node: UnifiedNode) -> str:
 
 def _is_exposed(node: UnifiedNode) -> bool:
     attrs = node.attributes or {}
-    return any(bool(attrs.get(key)) for key in _EXPOSED_ATTRS)
+    return any(coerce_truthy(attrs.get(key)) for key in _EXPOSED_ATTRS)
 
 
 def _is_toxic(node: UnifiedNode) -> bool:
     attrs = node.attributes or {}
-    return any(bool(attrs.get(key)) for key in _TOXIC_ATTRS)
+    return any(coerce_truthy(attrs.get(key)) for key in _TOXIC_ATTRS)
 
 
 @dataclass(slots=True)

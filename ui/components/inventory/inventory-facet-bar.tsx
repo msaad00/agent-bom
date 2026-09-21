@@ -40,12 +40,16 @@ export function InventoryFacetBar({
     key: InventoryFilterKey,
     title: string,
     buckets: { value: string | null; count: number }[],
-  ) => (
-    <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-tertiary sm:max-w-[14rem]">
+  ) => {
+    const selectedValue = (key === "severity" && severityFilter !== undefined ? severityFilter : filters[key]) ?? "";
+    // Facets can be empty or self-excluding. An absent bucket must not make
+    // the browser visually replace an active scope with the “All” option.
+    const missingSelection = Boolean(selectedValue) && !buckets.some((bucket) => bucket.value === selectedValue);
+    return <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-tertiary sm:max-w-[14rem]">
       {title}
       <select
         aria-label={`Filter by ${title.toLowerCase()}`}
-        value={key === "severity" && severityFilter !== undefined ? severityFilter : filters[key]}
+        value={selectedValue}
         onChange={(event) => {
           const value = event.target.value;
           setFilter(key, value);
@@ -54,14 +58,17 @@ export function InventoryFacetBar({
         className="h-9 rounded-lg border border-outline bg-surface px-2.5 text-xs font-normal normal-case tracking-normal text-foreground focus:border-outline-strong focus:outline-none"
       >
         <option value="">All {title.toLowerCase()}</option>
+        {missingSelection ? <option value={selectedValue}>
+          {selectedValue.split(",").map((value) => label(value.trim())).join(", ")} (selected · count unavailable)
+        </option> : null}
         {buckets.filter((bucket) => bucket.value).map((bucket) => (
           <option key={bucket.value!} value={bucket.value!}>
             {label(bucket.value!)} ({bucket.count.toLocaleString()})
           </option>
         ))}
       </select>
-    </label>
-  );
+    </label>;
+  };
 
   return (
     <section

@@ -244,7 +244,7 @@ describe("CompliancePage (dense restyle)", () => {
     navigation.query = "scan=source%2F1";
     render(<CompliancePage />);
     await screen.findByTestId("compliance-kpi-strip");
-    if (view === "matrix") fireEvent.click(screen.getByRole("button", { name: "Matrix", exact: true }));
+    if (view === "matrix") fireEvent.click(screen.getByRole("button", { name: "Matrix" }));
     else expect(screen.getByRole("link", { name: /4 findings for LLM01/i })).toHaveAttribute(
       "href", "/findings?scan=source%2F1&framework=owasp-llm&control=LLM01",
     );

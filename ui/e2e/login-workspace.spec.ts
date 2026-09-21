@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 for (const theme of ["light", "dark"] as const) {
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
-    test(`sign-in stays readable and contains safe errors: ${theme} ${viewport.width}`, async ({ page }) => {
+    test(`sign-in stays readable and contains safe errors: ${theme} ${viewport.width}`, async ({ page }, testInfo) => {
       await page.setViewportSize(viewport);
       await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
       await page.route("**/v1/auth/me", (route) => route.fulfill({ json: {
@@ -19,6 +19,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(input).toBeVisible();
       await expect(page.getByText("Need access? Contact your administrator.")).toBeVisible();
       await expect(page.getByText(/AGENT_BOM_API_KEYS|That key is not active/)).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath(`login-${theme}-${viewport.width}.png`), fullPage: true });
       await input.fill("synthetic-invalid-key");
       await input.press("Tab");
       await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeFocused();
@@ -26,6 +27,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByText("Sign-in failed. Check your API key or contact your administrator.")).toBeVisible();
       await expect(input).toHaveValue("");
       await expect(page.getByText("private-auth-receipt", { exact: false })).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath(`login-rejected-${theme}-${viewport.width}.png`), fullPage: true });
       await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
       await expect(input).toBeVisible();
       const bounds = await input.boundingBox();

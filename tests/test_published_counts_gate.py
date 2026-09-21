@@ -68,6 +68,10 @@ class TestStaleClaimsAreCaught:
         problems = self._sweep(tmp_path, monkeypatch, "Look it up in the curated registry (999 servers, 3 verified).\n")
         assert any("999" in p for p in problems)
 
+    def test_registry_architecture_table_count_is_reported(self, tmp_path, monkeypatch):
+        problems = self._sweep(tmp_path, monkeypatch, "| Registry | `registry.py` | 999 server security metadata entries |\n")
+        assert any("999" in p and "registry entries" in p for p in problems)
+
     def test_stale_verified_claim_is_reported(self, tmp_path, monkeypatch):
         counts = gate.derive_counts()
         text = f"agent-bom's curated registry ({counts['registry entries']} servers, 3 verified)\n"
@@ -128,6 +132,51 @@ class TestNumbersThatAreNotClaims:
     def test_registry_bundle_itself_is_not_swept(self):
         """Each of its entries records that server's own tool count."""
         assert gate.REGISTRY not in gate._files()
+
+
+class TestRegistryCountRefresh:
+    def test_refresh_updates_only_contextual_registry_numbers_and_is_idempotent(self, tmp_path, monkeypatch):
+        published = tmp_path / "surface.md"
+        published.write_text(
+            "The curated registry (9,999 servers, 3 verified).\n"
+            "| Registry | `registry.py` | 999 server security metadata entries |\n"
+            "A scan found 4 MCP servers on my laptop.\n"
+            "Evicted from a 1000-entry ring buffer.\n"
+            "999 MCP tools.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gate, "SEARCH_ROOTS", (published,))
+        monkeypatch.setattr(gate, "ROOT", tmp_path)
+        counts = gate.derive_counts()
+        assert gate.refresh_registry_counts(counts) == [published]
+        text = published.read_text(encoding="utf-8")
+        assert f"registry ({counts['registry entries']:,} servers, {counts['registry verified entries']} verified)" in text
+        assert f"{counts['registry entries']} server security metadata entries" in text
+        assert "4 MCP servers on my laptop" in text
+        assert "1000-entry ring buffer" in text
+        assert "999 MCP tools" in text
+        assert gate.refresh_registry_counts(counts) == []
+        problems = gate.find_stale_claims(counts)
+        assert len(problems) == 1 and "MCP tools" in problems[0]
+
+    def test_sync_refreshes_and_stages_count_claims_before_committing(self):
+        workflow = (ROOT / ".github/workflows/mcp-registry-sync.yml").read_text(encoding="utf-8")
+        refresh = workflow.index("--write-registry-counts --changed-paths-file /tmp/registry-count-paths.json")
+        stage = workflow.index('["git", "add", "--", "src/agent_bom/mcp_registry.json", *paths]')
+        commit = workflow.index("git commit -S")
+        assert refresh < stage < commit
+
+    def test_refresh_manifest_lists_only_changed_authored_paths(self, tmp_path, monkeypatch):
+        published = tmp_path / "surface.md"
+        published.write_text("Bundled registry: 999 MCP servers.\n", encoding="utf-8")
+        unrelated = tmp_path / "uv.lock"
+        unrelated.write_text("untouched", encoding="utf-8")
+        manifest = tmp_path / "changed.json"
+        monkeypatch.setattr(gate, "SEARCH_ROOTS", (published,))
+        monkeypatch.setattr(gate, "ROOT", tmp_path)
+        assert gate.main(["--write-registry-counts", "--changed-paths-file", str(manifest)]) == 0
+        assert json.loads(manifest.read_text()) == ["surface.md"]
+        assert unrelated.read_text() == "untouched"
 
 
 class TestTheRepositoryItself:

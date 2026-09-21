@@ -886,7 +886,9 @@ def save_graph_streaming(
     if reserved_correlation is not None and snapshot_kind != "correlation":
         raise ValueError("correlation output identifier is reserved")
     batch_size = _graph_write_batch_size()
-    previous_scan = latest_snapshot_id(conn, tenant_id=tenant)
+    # Derived correlations combine evidence; they are not a new observation
+    # and must neither inherit scan continuity nor retire source-scan edges.
+    previous_scan = latest_snapshot_id(conn, tenant_id=tenant) if snapshot_kind == "scan" else ""
     if previous_scan == scan:
         previous_scan = previous_snapshot_id(conn, tenant_id=tenant, before_scan_id=scan)
     # A scan id is one complete snapshot. Retries/replays must replace that

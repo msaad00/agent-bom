@@ -61,7 +61,16 @@ def store(request, tmp_path):
 def _graph(scan_id, tenant_id, created_at, targets):
     graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id, created_at=created_at)
     for node_id in ("agent", *targets):
-        graph.add_node(UnifiedNode(id=node_id, entity_type=EntityType.AGENT, label=node_id, first_seen=created_at, last_seen=created_at))
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.AGENT,
+                label=node_id,
+                first_seen=created_at,
+                last_seen=created_at,
+                attributes={"cloud_provider": "fixture", "account_id": "account1"},
+            )
+        )
     for target in targets:
         graph.add_edge(
             UnifiedEdge(
@@ -71,7 +80,7 @@ def _graph(scan_id, tenant_id, created_at, targets):
                 first_seen=created_at,
                 last_seen=created_at,
                 valid_from=created_at,
-                evidence={"recorded_in": scan_id},
+                evidence={"source": "fixture-collector", "recorded_in": scan_id},
             )
         )
     return graph
@@ -147,5 +156,5 @@ def test_ordinary_scan_continuity_skips_derived_snapshots(store, request, retry)
     assert current_edge.first_seen == T1
     assert current_edge.valid_from == T1
     retired = next(edge for edge in store.load_graph(tenant_id=tenant, scan_id="source-a").edges if edge.target == "retired")
-    assert retired.valid_to == T4
-    assert retired.activity_id == 3
+    assert retired.valid_to is None
+    assert retired.activity_id == 1

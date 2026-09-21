@@ -506,3 +506,29 @@ a new correlation. Already-collapsed legacy mixed-account graphs cannot recover
 separate identities by correlating the merged output again. Legacy object nodes
 with exact account and FQN evidence can still join; legacy identities without
 account evidence remain specific to their snapshot.
+
+## Relationship observation intervals
+
+A later scan is not necessarily a complete replacement for the tenant: it may
+cover another account, another collector, or an incomplete grant inventory.
+Graph persistence therefore does not set an earlier edge's `valid_to` or emit
+OCSF Close activity merely because that edge is absent from a later snapshot.
+Native source-provided interval ends remain intact.
+
+Positive timestamp continuity requires the same edge key, exact collector
+source, and matching recorded provider/account namespaces for both endpoints.
+Missing, malformed or conflicting scope remains unknown. A previously bounded
+interval is not extended into a new observation. These timestamps describe
+recorded relationships; they do not establish continuous effective permission.
+
+Replay (`GET /v1/graph/edges/active`) returns observations whose recorded interval
+includes the requested time. It deduplicates only exact scoped re-observations;
+unknown scope stays specific to its source snapshot. An open interval means no
+end was recorded, not that current access is authorized. Old/new snapshot diffs
+still describe membership differences and do not establish revocation.
+
+This changes the earlier tenant-wide replacement assumption. Scope-free legacy
+snapshots no longer inherit unrelated timestamps or automatically close earlier
+observations. Existing stored interval ends are not rewritten; rebuild from
+original source evidence when an earlier version inferred an end from absence.
+Verified access removal requires fresh, scoped native evidence and evaluation.

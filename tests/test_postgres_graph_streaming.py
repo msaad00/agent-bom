@@ -355,16 +355,14 @@ def test_prior_edges_reconcile_in_postgres_without_python_materialization(monkey
         edges=iter([edge]),
     )
 
-    retirement_at = next(i for i, sql in enumerate(conn.sql_calls) if "update graph_edges as previous" in sql)
     assert conn.edge_sql is not None
     assert "left join graph_edges as previous" in conn.edge_sql
     assert conn.edge_rows[0][-1] == "prior-scan"
     assert not any("update graph_edges as current" in sql for sql in conn.sql_calls)
-    assert conn.sql_params[retirement_at][:4] == ("tenant-a", "current-scan", "tenant-a", "prior-scan")
-    assert conn.sql_params[retirement_at][5:] == ("tenant-a", "prior-scan")
+    assert not any("update graph_edges as previous" in sql for sql in conn.sql_calls)
 
 
-def test_prior_edge_continuity_is_resolved_during_insert_before_retirement(monkeypatch):
+def test_prior_edge_continuity_is_scoped_during_insert(monkeypatch):
     class _PreviousSnapshotConn(_RecordingConn):
         def execute(self, sql, params=None):
             low = " ".join(sql.strip().lower().split())
@@ -387,17 +385,18 @@ def test_prior_edge_continuity_is_resolved_during_insert_before_retirement(monke
 
     assert conn.edge_sql is not None
     continuity_sql = conn.edge_sql
-    retirement_sql = next(sql for sql in conn.sql_calls if "update graph_edges as previous" in sql)
     assert continuity_sql.startswith("insert into graph_edges")
     assert "coalesce(nullif(previous.first_seen, ''), incoming.first_seen)" in continuity_sql
     assert "incoming.evidence::jsonb" in continuity_sql
     assert "left join graph_edges as previous" in continuity_sql
     assert "previous.scan_id = %s" in continuity_sql
     assert "update graph_edges as current" not in continuity_sql
-    assert retirement_sql.startswith("with current_edge_keys as materialized")
-    assert "from current_edge_keys as current" in retirement_sql
-    assert "except select source_id, target_id, relationship from current_edge_keys as current" in retirement_sql
-    assert "from graph_edges as current" not in retirement_sql
+    assert "scope_ps.id = previous.source_id" in continuity_sql
+    assert "scope_ct.id = incoming.target_id" in continuity_sql
+    assert "'account_id'" in continuity_sql
+    assert "'cloud_provider'" in continuity_sql
+    assert "previous.valid_to is null or previous.valid_to = ''" in continuity_sql
+    assert not any("update graph_edges as previous" in sql for sql in conn.sql_calls)
 
 
 @pytest.mark.parametrize(
@@ -646,8 +645,8 @@ def test_node_read_rejects_malformed_persisted_json(row_index, malformed, messag
         PostgresGraphStore._node_from_row(row)
 
 
-def test_retired_edge_update_records_ocsf_close_activity(monkeypatch):
-    """Postgres retirement matches SQLite's canonical OCSF Close activity."""
+def test_empty_snapshot_does_not_synthesize_ocsf_close_activity(monkeypatch):
+    """Missing collection evidence cannot retire prior relationships."""
 
     class _RetirementConn(_RecordingConn):
         def __init__(self):
@@ -673,8 +672,7 @@ def test_retired_edge_update_records_ocsf_close_activity(monkeypatch):
         created_at="2026-07-17T00:00:00Z",
     )
 
-    assert "set valid_to = coalesce(previous.valid_to, %s)" in conn.retirement_sql
-    assert "activity_id = case when previous.activity_id = 1 then 3 else previous.activity_id end" in conn.retirement_sql
+    assert conn.retirement_sql == ""
 
 
 def test_streaming_does_not_run_privileged_analyze_as_runtime_role(monkeypatch):

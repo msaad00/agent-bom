@@ -668,9 +668,9 @@ function EvidenceRow({
     <div className="ep-evidence-row">
       <div className="ep-evidence-label">{label}</div>
       <div className="ep-evidence-values">
-        {(values.length > 0 ? values : [emptyLabel]).slice(0, 3).map((value) => (
+        {(values.length > 0 ? values : [emptyLabel]).slice(0, 3).map((value, index) => (
           <span
-            key={`${label}-${value}`}
+            key={`${label}-${index}-${value}`}
             className="ep-evidence-chip"
           >
             {value}

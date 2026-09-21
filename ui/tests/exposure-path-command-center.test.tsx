@@ -395,3 +395,15 @@ it("keeps unavailable assessments visible when a legacy snapshot has no dimensio
   expect(assessment).toHaveTextContent("ExploitabilityNot assessed");
   expect(assessment).toHaveTextContent("Assessment completenessUnavailable");
 });
+
+it("preserves distinct same-name agent references without duplicate render keys", () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    render(<ExposurePathCommandCenter path={{ ...basePath, affectedAgents: ["Reviewer", "Reviewer"] }} />);
+    fireEvent.click(screen.getByText("Evidence & relationships"));
+    expect(screen.getAllByText("Reviewer", { exact: true })).toHaveLength(2);
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
+  } finally {
+    error.mockRestore();
+  }
+});

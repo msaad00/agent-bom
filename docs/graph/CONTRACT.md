@@ -471,3 +471,25 @@ The campaign endpoint currently does not bind baseline/rescan coverage receipts
 or evaluate alternate graph paths, so it cannot certify access revocation from
 that comparison. Retain those source receipts and compare the new snapshot's
 qualified hop evidence before deciding whether more remediation is needed.
+
+## Snowflake account-local identity
+
+Snowflake users, roles and object names are local to the account recorded by the
+source lane. The builder stages object, service, identity and governance lanes
+by that exact account before joining their nodes. A lane without an account
+stays separate from other lanes; matching names or FQNs do not establish a shared
+account. External destination buckets keep their own provider context.
+
+Coherent single-account reports retain existing graph node IDs. Mixed-account
+reports use deterministic scoped IDs and retain `legacy_graph_id` plus the
+account-local source key (`snowflake_local_id`). Correlation joins these keys
+only with the same recorded account inside one tenant. Account aliases and case
+variants are not assumed equivalent. Historical access remains distinct from
+current authorization and active session identity.
+
+Existing snapshots and their scan/node deep links remain unchanged. Rescan or
+rebuild original source reports to populate missing identity scope, then create
+a new correlation. Already-collapsed legacy mixed-account graphs cannot recover
+separate identities by correlating the merged output again. Legacy object nodes
+with exact account and FQN evidence can still join; legacy identities without
+account evidence remain specific to their snapshot.

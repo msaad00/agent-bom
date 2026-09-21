@@ -224,7 +224,7 @@ def _exact_attribute_identity(
         return None
     scope = {
         key: str(node.attributes.get(key) or "").strip()
-        for key in ("cloud_provider", "cloud_account_id", "tenant_id", "subscription_id", "project_id")
+        for key in ("cloud_provider", "cloud_account_id", "account_id", "tenant_id", "subscription_id", "project_id")
         if str(node.attributes.get(key) or "").strip()
     }
     return _entity_value(node), _digest({"scope": scope, "value": value}), basis
@@ -239,6 +239,19 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
     """
 
     entity_type = _entity_value(node)
+    if str(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider).lower() == "snowflake":
+        account = str(node.attributes.get("account_id") or "").strip()
+        if account and entity_type == EntityType.ACCOUNT.value:
+            return entity_type, _digest({"provider": "snowflake", "account": account}), "snowflake_account_id"
+        local_id = str(node.attributes.get("snowflake_local_id") or "")
+        # Legacy object snapshots already carry account_id plus a collected FQN.
+        # Their persisted IDs remain valid. No scope is inferred for legacy users
+        # or roles whose emitting lane did not preserve their account.
+        if not local_id and node.attributes.get("fqn") and node.id.startswith(f"{entity_type}:snowflake:"):
+            local_id = node.id
+        if account and local_id:
+            return entity_type, _digest({"provider": "snowflake", "account": account, "local_id": local_id}), "snowflake_account_local_id"
+        return _snapshot_scoped_identity(node, scan_id=scan_id)
     if entity_type == EntityType.CONTAINER.value:
         attrs = node.attributes
         scope = {

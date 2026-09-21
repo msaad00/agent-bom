@@ -73,13 +73,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Start MinIO (S3-compatible object store)
+        # Docker Hub's minio/minio alias is no longer publicly pullable.
+        # Pin the upstream release and digest so the restore fixture is stable.
         run: |
           set -euo pipefail
           docker run -d --name minio \
             -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER=testuser \
             -e MINIO_ROOT_PASSWORD=testpassword \
-            minio/minio:latest \
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e \
             server /data --address :9000 --console-address :9001
           for _ in $(seq 1 30); do
             if curl -fsS "$AWS_ENDPOINT_URL/minio/health/live" >/dev/null; then

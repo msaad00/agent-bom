@@ -1099,7 +1099,7 @@ function ApiStatus({ collapsed }: { collapsed: boolean }) {
         <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} aria-hidden="true" />
         <span className="truncate" aria-hidden="true">{statusLabel}</span>
       </summary>
-      <p className="absolute right-0 top-full z-10 mt-2 w-max max-w-[calc(100vw-2rem)] rounded-lg border border-outline bg-surface p-3 shadow-lg [overflow-wrap:anywhere]">{statusLabel}</p>
+      <p className="fixed inset-x-3 z-10 mt-2 w-auto max-w-[calc(100vw-2rem)] rounded-lg border border-outline bg-surface p-3 shadow-lg [overflow-wrap:anywhere] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-max">{statusLabel}</p>
     </details>
   );
 }

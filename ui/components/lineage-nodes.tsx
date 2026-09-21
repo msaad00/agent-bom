@@ -157,10 +157,10 @@ function NodeCard({
     <div
       title={data.label}
       data-rollup-container={isRollupContainer ? "true" : undefined}
-      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[260px] shadow-xl backdrop-blur transition-opacity ${
+      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[260px] shadow-sm transition-opacity ${
         isRollupContainer
           ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)]"
-          : `${borderClass} ${bgClass}`
+          : `${borderClass} bg-[var(--surface-elevated)]`
       } ${
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? `ring-2 ${ringClass}` : ""}`}
@@ -176,7 +176,7 @@ function NodeCard({
         className={`!w-2 !h-2 !bg-current ${source ? "" : "!opacity-0"}`}
       />
       <div className="mb-1 flex min-w-0 items-start gap-2">
-        <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
+        <Icon className={`w-[18px] h-[18px] shrink-0 rounded ${iconClass} ${bgClass}`} />
         <span className="ml-auto shrink-0 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
           {/* Applications share the container layout, not its runtime identity. */}
           {data.entityType === "application" ? "Application" : NODE_TYPE_BADGES[data.nodeType]}
@@ -279,7 +279,7 @@ function AgentNode({ data }: { data: LineageNodeData }) {
             <span>{data.packageCount} pkg</span>
           )}
           {(data.vulnCount ?? 0) > 0 && (
-            <span className="text-red-400">{data.vulnCount} finding</span>
+            <span className="text-red-700 dark:text-red-300">{data.vulnCount} finding</span>
           )}
         </div>
       }
@@ -456,12 +456,12 @@ function ServerNode({ data }: { data: LineageNodeData }) {
       footer={
         <div className="flex gap-2 mt-1">
           {data.toolCount !== undefined && data.toolCount > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] text-purple-400">
+            <span className="flex items-center gap-0.5 text-[10px] text-purple-700 dark:text-purple-300">
               <Wrench className="w-2.5 h-2.5" /> {data.toolCount}
             </span>
           )}
           {data.credentialCount !== undefined && data.credentialCount > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] text-amber-400">
+            <span className="flex items-center gap-0.5 text-[10px] text-amber-800 dark:text-amber-300">
               <KeyRound className="w-2.5 h-2.5" /> {data.credentialCount}
             </span>
           )}
@@ -503,7 +503,7 @@ function PackageNode({ data }: { data: LineageNodeData }) {
       }
       footer={
         hasVulns ? (
-          <div className="mt-1 text-[10px] text-red-400">
+          <div className="mt-1 text-[10px] text-red-700 dark:text-red-300">
             <Bug className="w-2.5 h-2.5 inline mr-0.5" />
             {data.vulnCount}
           </div>
@@ -583,7 +583,7 @@ function VulnNode({ data }: { data: LineageNodeData }) {
   return (
     <FindingNode
       data={data}
-      accentClass="text-red-300"
+      accentClass="text-red-700 dark:text-red-300"
       borderClass={borderClass}
       bgClass={bgClass}
     />

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Drawer } from "@/components/drawer";
@@ -55,4 +55,43 @@ describe("Drawer", () => {
     fireEvent.keyDown(handle, { key: "Home" });
     expect(panel).toHaveStyle({ width: "360px" });
   });
+});
+
+
+it("keeps keyboard focus inside an open drawer when its close callback changes", () => {
+  const frames = new Map<number, FrameRequestCallback>();
+  let frameId = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.set(++frameId, callback);
+    return frameId;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  const flushFrames = () => act(() => {
+    const pending = [...frames.values()];
+    frames.clear();
+    pending.forEach(callback => callback(0));
+  });
+  const trigger = document.createElement("button");
+  document.body.append(trigger);
+  trigger.focus();
+  const originalClose = vi.fn();
+  const latestClose = vi.fn();
+  const view = render(<Drawer open title="Columns" onClose={originalClose}><button>Move Observed up</button></Drawer>);
+  try {
+    flushFrames();
+    const move = screen.getByRole("button", { name: "Move Observed up" });
+    move.focus();
+    view.rerender(<Drawer open title="Columns" onClose={latestClose}><button>Move Observed up</button></Drawer>);
+    flushFrames();
+    expect(move).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(latestClose).toHaveBeenCalledOnce();
+    expect(originalClose).not.toHaveBeenCalled();
+    view.rerender(<Drawer open={false} title="Columns" onClose={latestClose}><button>Move Observed up</button></Drawer>);
+    expect(trigger).toHaveFocus();
+  } finally {
+    view.unmount();
+    trigger.remove();
+    vi.unstubAllGlobals();
+  }
 });

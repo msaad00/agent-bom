@@ -20,10 +20,10 @@ def test_envelope_default_shape() -> None:
     envelope = DiscoveryEnvelope()
     payload = envelope.to_dict()
     assert payload["envelope_version"] == ENVELOPE_SCHEMA_VERSION
-    assert payload["scan_mode"] == ScanMode.LOCAL_ONLY.value
+    assert payload["scan_mode"] == ScanMode.UNKNOWN.value
     assert payload["discovery_scope"] == []
     assert payload["permissions_used"] == []
-    assert payload["redaction_status"] == RedactionStatus.NOT_APPLICABLE.value
+    assert payload["redaction_status"] == RedactionStatus.UNKNOWN.value
     # captured_at is an ISO 8601 timestamp.
     parsed = datetime.fromisoformat(payload["captured_at"])
     assert parsed.tzinfo is not None
@@ -52,9 +52,9 @@ def test_envelope_from_dict_defaults_unknown_enum_values_safely() -> None:
         "redaction_status": "weird_thing",
     }
     rebuilt = DiscoveryEnvelope.from_dict(payload)
-    # Forward-compat: unknown enum values fall back to safe defaults.
-    assert rebuilt.scan_mode == ScanMode.LOCAL_ONLY
-    assert rebuilt.redaction_status == RedactionStatus.NOT_APPLICABLE
+    # Forward-compatibility must not turn missing evidence into a safety claim.
+    assert rebuilt.scan_mode == ScanMode.UNKNOWN
+    assert rebuilt.redaction_status == RedactionStatus.UNKNOWN
 
 
 def test_envelope_from_dict_rejects_wrong_schema_version() -> None:

@@ -2,9 +2,9 @@
 
 The **discovery envelope** is the per-run trust contract attached to
 provider-backed `Agent` records when the provider supports the contract. It
-records *what the scan actually did* this run: the scan mode, the explicit
-scope, the IAM/API permissions exercised, and whether sensitive values were
-redacted or never collected.
+records collector-reported context: the scan mode, requested scope, permission
+catalog and declared redaction posture. Per-call success and collection
+completeness require separate receipts.
 
 The field is intentionally optional. Generic local discovery paths and older
 persisted records can still return an `Agent` without `discovery_envelope`.
@@ -17,7 +17,7 @@ asset came from*). Both can coexist on the same `Agent`:
 | Field | Purpose |
 |---|---|
 | `discovery_provenance` | "This Agent was pulled from AWS account 12345 via cloud_pull." |
-| `discovery_envelope`   | "This run used cloud_read_only mode, scoped to account/12345 + region/us-east-1, exercised ec2:DescribeInstances + iam:GetRole, redaction_status=central_sanitizer_applied." |
+| `discovery_envelope`   | "The collector reports cloud_read_only mode, scope account/12345 + region/us-east-1, permissions ec2:DescribeInstances + iam:GetRole, and central_sanitizer_applied." |
 
 ## Schema
 
@@ -45,6 +45,7 @@ asset came from*). Both can coexist on the same `Agent`:
 
 | Value | Meaning |
 |---|---|
+| `unknown` | Mode was not supplied or recognized; no local-only or read-only assertion |
 | `local_only` | No network egress, no cloud / SaaS read, no runtime probe |
 | `cloud_read_only` | Read-only API calls against a cloud provider (AWS, Azure, GCP, …) |
 | `saas_read_only` | Read-only API calls against a SaaS surface (Snowflake, Databricks, …) |
@@ -56,6 +57,7 @@ asset came from*). Both can coexist on the same `Agent`:
 
 | Value | Meaning |
 |---|---|
+| `unknown` | Redaction posture was not supplied or recognized |
 | `never_collected` | The provider deliberately never read the sensitive value |
 | `redacted_in_place` | The provider redacted the value before returning it |
 | `central_sanitizer_applied` | The shared `agent_bom.security` sanitizer scrubbed the value before storage |
@@ -67,9 +69,15 @@ asset came from*). Both can coexist on the same `Agent`:
 it, but `DiscoveryEnvelope.from_dict()` will refuse mismatched versions so
 old consumers detect new shapes loudly instead of silently dropping data.
 
-Within a version, unknown enum values fall back to safe defaults
-(`scan_mode = local_only`, `redaction_status = not_applicable`) so a
-forward-compatible producer doesn't crash an older consumer.
+Within a version, missing or unrecognized mode and redaction values decode as
+`unknown`. They never establish local-only collection or an inapplicable
+redaction posture. Missing capture times remain empty when decoding persisted
+records; reading a record does not refresh its collection time. New envelopes
+still record their creation time.
+
+`permissions_used` is the existing transport field for collector-reported
+permissions. Several providers populate it from a configured operation catalog;
+the list alone does not prove every call succeeded or collection was complete.
 
 ## Producers
 
@@ -135,14 +143,14 @@ TypeScript types in `ui/lib/api-types.ts` carry the canonical
 The agents page renders a `DiscoveryEnvelopeCard` on each agent's expanded
 detail view (mounted only when the envelope is present). The card shows:
 
-- a clear data-residency note explaining that provider reads run from the
-  operator's local or self-hosted deployment boundary, not from an external
-  agent-bom SaaS service,
+- collector-reported context, without asserting successful collection or
+  redaction when that evidence is missing,
 - `scan_mode` + `redaction_status` chips,
 - the `discovery_scope` list as compact mono-styled tags,
 - the `permissions_used` list collapsed by default with a `<details>`
   summary showing the count,
-- the `captured_at` timestamp + envelope version in the footer.
+- the `captured_at` timestamp + envelope version in the footer, with an explicit
+  unknown capture time when absent or invalid.
 
 Visual style mirrors the existing `DiscoveryProvenanceTags` block (same
 border-radius, same chip pattern) but in emerald to distinguish "trust

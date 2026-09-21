@@ -738,7 +738,11 @@ test("mobile ranked path selection moves the ordered path into view", async ({ p
   await expect.poll(async () => (await detail.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(120);
 });
 
-test("a priority path outside the queue page never displays unrelated graph nodes", async ({ page }) => {
+for (const theme of ["light", "dark"] as const) {
+for (const width of [1440, 390]) {
+test(`a priority path outside the queue page loads its exact graph in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 960 });
+  await page.addInitScript((value) => window.localStorage.setItem("agent-bom-theme", value), theme);
   await routeCockpit(page);
   const source = node("repo:isolated", "directory", "Isolated repository");
   const target = node("ci:isolated", "ci_job", "Isolated build");
@@ -752,14 +756,34 @@ test("a priority path outside the queue page never displays unrelated graph node
       attack_path: path, nodes: [source, target], sequence_labels: [], risk_reasons: [], next_actions: [],
       affected: { agents: [], servers: [], packages: [], findings: [], credentials: [], tools: [] } }],
   } }));
+  const queries: Record<string, unknown>[] = [];
+  await page.route("**/v1/graph/query", (route) => {
+    queries.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ...buildCockpitGraph(), nodes: [source, target],
+      edges: [edge(source.id, target.id, "contains")], attack_paths: [], truncated: false, missing_roots: [] } });
+  });
   await page.goto("/security-graph?lens=attack-path");
   await page.getByLabel("Attack path queue").getByRole("button", { name: /#1 FIX FIRST/i }).click();
   const detail = page.getByRole("region", { name: "Selected path detail" });
   await detail.getByRole("button", { name: "Graph", exact: true }).click();
   const canvas = detail.getByTestId("security-graph-investigation");
-  await expect(canvas.getByText(/Selected path nodes are not available/)).toBeVisible();
-  await expect(canvas.locator(".react-flow__node")).toHaveCount(0);
+  await expect(canvas.locator(".react-flow__node")).toHaveCount(2);
+  await expect(canvas.locator(".react-flow__edge")).toHaveCount(1);
+  await expect(canvas.getByText("Isolated repository", { exact: true })).toBeVisible();
+  await expect(canvas.getByText("Isolated build", { exact: true })).toBeVisible();
+  await expect(canvas.getByText("claude-desktop", { exact: true })).toHaveCount(0);
+  await expect.poll(async () => {
+    const bounds = await canvas.boundingBox();
+    if (!bounds) return false;
+    const boxes = await Promise.all((await canvas.locator(".react-flow__node").all()).map((node) => node.boundingBox()));
+    return boxes.every((box) => box && box.x >= bounds.x && box.x + box.width <= bounds.x + bounds.width);
+  }).toBe(true);
+  expect(queries).toHaveLength(1);
+  expect(queries[0]).toMatchObject({ roots: [source.id, target.id], scan_id: scanId, max_nodes: 2, max_depth: 1, include_attack_paths: false });
+  await page.screenshot({ path: testInfo.outputPath(`selected-path-${theme}-${width}.png`), fullPage: true });
 });
+}
+}
 
 async function openEvidenceControls(page: Page) {
   const controls = page.getByTestId("graph-evidence-controls");

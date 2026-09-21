@@ -11,7 +11,7 @@ export const MAX_NODE_HEIGHT = 92;
 export const MIN_NODE_HEIGHT = 82;
 
 const MARGIN_X = 28;
-const MARGIN_Y = 30;
+const MARGIN_Y = 42;
 const COLUMN_GAP = 48;
 // Path view is always a single horizontal kill-chain. Multi-row wrap made long
 // paths look like a broken DAG (vertical connector + orphan stubs on narrow
@@ -255,7 +255,7 @@ export function buildPathGraphLayout(
       stroke: style.stroke,
       label: truncateGraphText(relationship, 16),
       labelX: (startX + endX) / 2,
-      labelY: midY,
+      labelY: source.y - 18,
       direction: recorded?.direction,
       traversable: recorded?.traversable,
     };

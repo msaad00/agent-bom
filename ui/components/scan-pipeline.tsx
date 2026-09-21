@@ -11,7 +11,7 @@
  * on any node.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -293,23 +293,41 @@ function ScanPipelineInner({
     [edges, nodes],
   );
 
-  const { fitView, viewportInitialized } = useReactFlow();
+  const { fitView, getNode, setViewport, viewportInitialized } = useReactFlow();
+  const frameRef = useRef<HTMLDivElement>(null);
+  const focusedStageRef = useRef<string | null>(null);
+  const framingRequestRef = useRef(0);
   const [overview, setOverview] = useState(false);
-  const focusReadable = useCallback(() => {
+  const focusReadable = useCallback(async () => {
+    const request = ++framingRequestRef.current;
     setOverview(false);
-    // Queue the fit until React Flow has measured the controlled nodes. The
-    // shared stage-event updates do not carry measured dimensions themselves.
-    void fitView({ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2, duration: 200 });
-  }, [fitView, selectedStepId]);
+    // fitView waits for controlled nodes to be measured before reading bounds.
+    await fitView({ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2, duration: selectedStepId ? 200 : 0 });
+    if (selectedStepId || request !== framingRequestRef.current) return;
+    const start = getNode("discovery");
+    if (!start || !frameRef.current) return;
+    // Start at the left edge so the remaining width explains the forward flow.
+    // Later selected stages remain centered for inspection.
+    void setViewport({
+      x: 24 - start.position.x,
+      y: (frameRef.current.clientHeight - (start.measured?.height ?? 150)) / 2 - start.position.y,
+      zoom: 1,
+    }, { duration: 200 });
+  }, [fitView, getNode, selectedStepId, setViewport]);
   const fitOverview = useCallback(() => {
+    framingRequestRef.current++;
     setOverview(true);
     void fitView({ padding: 0.16, minZoom: 0.1, maxZoom: 1, duration: 200 });
   }, [fitView]);
   useEffect(() => {
-    if (!viewportInitialized) return;
-    const frame = requestAnimationFrame(focusReadable);
+    const stage = selectedStepId ?? "start";
+    if (!viewportInitialized || focusedStageRef.current === stage) return;
+    const frame = requestAnimationFrame(() => {
+      focusedStageRef.current = stage;
+      void focusReadable();
+    });
     return () => cancelAnimationFrame(frame);
-  }, [viewportInitialized, focusReadable]);
+  }, [viewportInitialized, selectedStepId, focusReadable]);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -319,14 +337,14 @@ function ScanPipelineInner({
   );
 
   return (
-    <div className={`relative h-[180px] ${className ?? ""}`}>
+    <div ref={frameRef} className={`relative h-[180px] ${className ?? ""}`}>
       <ReactFlow
         nodes={nodes}
         edges={displayEdges}
         nodeTypes={nodeTypes}
-        // React Flow fits after its own dimensions settle; keep that initial
-        // fit focused so the first frame is readable even before effects run.
-        fitView
+        // The default viewport is start-aligned after node measurement above.
+        // An explicitly selected initial stage can use React Flow's queued fit.
+        fitView={Boolean(selectedStepId)}
         fitViewOptions={{ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2 }}
         minZoom={0.1}
         maxZoom={1.5}

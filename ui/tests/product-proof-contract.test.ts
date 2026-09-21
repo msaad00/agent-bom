@@ -72,6 +72,8 @@ describe("product proof capture contract", () => {
     expect(source).toContain('step_id: "output"');
     expect(source).toContain('page.route("**/v1/agents/developer-copilot/lifecycle"');
     expect(source).toContain("/6\\/6 stages complete/i");
+    expect(source).toContain('await expect(pipeline.locator(".react-flow__node:visible")).toHaveCount(10)');
+    expect(source).toContain('await expect(pipeline.locator(".react-flow__edge")).toHaveCount(13)');
   });
 
   it("locks current and proposed Investigation Canvas proof to both audited viewports", () => {

@@ -11,6 +11,7 @@ import { remediationHref } from "@/lib/page-links";
 import { buildWhyItMatters } from "@/lib/finding-why-matters";
 import { Drawer } from "@/components/drawer";
 import { DetailTabs } from "@/components/detail-tabs";
+import { FindingReconfirmation } from "@/components/finding-reconfirmation";
 import {
   findingsDrawerEyebrow,
   findingsDrawerSubtitle,
@@ -124,6 +125,7 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
 
   return (
     <div className="space-y-4">
+      <FindingReconfirmation finding={vuln} />
       <div>
         <p className="break-words text-base font-semibold text-foreground">{packageLabel}</p>
         <p className="mt-1 text-sm leading-6 text-ink-secondary">{summary}</p>
@@ -243,6 +245,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
 
   return (
     <div className="space-y-4">
+      <FindingReconfirmation finding={vuln} />
       <EstateNodeSection vuln={vuln} />
       <IntelligencePanel vuln={vuln} />
       <ReachBadges vuln={vuln} />

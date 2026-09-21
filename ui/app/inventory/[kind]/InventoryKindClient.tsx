@@ -3,11 +3,13 @@
 import { usePathname, useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { AssetInventoryView } from "@/components/inventory/asset-inventory-view";
+import { useInventoryUrlScope } from "@/lib/inventory-url-scope";
 import { InventoryProvider } from "@/lib/inventory-context";
 import { PageEmptyState } from "@/components/states/page-state";
 import { ASSET_KIND_BY_ID, type AssetKindId } from "@/lib/inventory";
 
 export default function InventoryKindClient() {
+  const scope = useInventoryUrlScope();
   const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
@@ -40,6 +42,7 @@ export default function InventoryKindClient() {
   // about, rather than whatever survived a ranked cut of the whole estate.
   return (
     <InventoryProvider
+      {...scope}
       entityTypes={ASSET_KIND_BY_ID[kind].entityTypes}
       minSeverity={severity === "all" ? undefined : severity}
     >

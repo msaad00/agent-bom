@@ -12,6 +12,8 @@ import {
   formatDate,
   type PostureCountsResponse,
   type ComplianceResponse,
+  type InventorySummaryResponse,
+  type InventorySummaryFilters,
 } from "@/lib/api";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
@@ -20,7 +22,6 @@ import {
   type OverviewComplianceSnapshot,
   type PostureScoreFormat,
 } from "@/components/overview-cockpit";
-import { PageLaneHeader } from "@/components/page-lane";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -36,7 +37,7 @@ import {
 } from "@/lib/dashboard-data";
 import {
   ShieldAlert, ArrowRight, Clock,
-  AlertTriangle, GitBranch, Network,
+  AlertTriangle,
 } from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -61,6 +62,10 @@ export default function Dashboard() {
   const [apiErrorDetail, setApiErrorDetail] = useState<string | null>(null);
   const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
   const [posture, setPosture] = useState<PostureResponse | null>(null);
+  const [inventorySummary, setInventorySummary] = useState<InventorySummaryResponse | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventoryUnavailable, setInventoryUnavailable] = useState(false);
+  const [inventoryUnavailableHref, setInventoryUnavailableHref] = useState("/inventory");
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [overviewRefreshing, setOverviewRefreshing] = useState(false);
   const [overviewUnavailable, setOverviewUnavailable] = useState(false);
@@ -73,6 +78,31 @@ export default function Dashboard() {
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
   const seededEvidence = captureMode || Boolean(counts?.scan_sources?.some((source) => source.includes("demo")));
+
+  useEffect(() => {
+    if (importedReport) return;
+    let cancelled = false;
+    const query = new URLSearchParams(window.location.search);
+    const scanId = query.get("scan_id") ?? query.get("scan") ?? undefined;
+    setInventoryLoading(true);
+    const requestedScope = new URLSearchParams();
+    if (scanId) requestedScope.set("scan", scanId);
+    for (const key of ["environment", "provider", "source", "search", "type", "severity", "min_severity"] as const) {
+      const value = query.get(key); if (value) requestedScope.set(key, value);
+    }
+    setInventoryUnavailableHref(requestedScope.size ? `/inventory?${requestedScope}` : "/inventory");
+    const filters: InventorySummaryFilters = {};
+    for (const key of ["environment", "provider", "source", "search", "severity"] as const) {
+      const value = query.get(key); if (value) filters[key] = value;
+    }
+    const types = query.get("type"); if (types) filters.type = types.split(",").filter(Boolean);
+    const minSeverity = query.get("min_severity"); if (minSeverity) filters.minSeverity = minSeverity;
+    void api.getInventorySummary(scanId, filters).then((summary) => {
+      if (!cancelled) { setInventorySummary(summary); setInventoryUnavailable(false); }
+    }, () => { if (!cancelled) { setInventorySummary(null); setInventoryUnavailable(true); } })
+      .finally(() => { if (!cancelled) setInventoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [importedReport]);
 
   // Fetch posture grade + cross-domain overview (folded into the header scorecard)
   useEffect(() => {
@@ -398,49 +428,10 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
-      <PageLaneHeader
-        lane="command"
-        title="Overview"
-        subtitle="See what is exposed, why it matters, who should fix it, and whether the fix worked."
-        scopeChip={
-          <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-200">
-            {deploymentModeLabel(counts?.deployment_mode)} · {countActiveServices(counts?.services)} services live
-          </span>
-        }
-        actions={
-          <>
-            {/* Exec pane leads with drill-downs, not an operational scan action
-                (New Scan lives in the nav + empty states for engineers). */}
-            <Link
-              href="/compliance"
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800"
-            >
-              Compliance <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/security-graph"
-              className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-sm font-medium text-foreground hover:border-outline-strong"
-            >
-              Investigation <GitBranch className="h-4 w-4" />
-            </Link>
-            {(displayedAgentCount ?? 0) > 0 ? (
-              <Link
-                href="/agents/topology"
-                className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-sm font-medium text-foreground hover:border-outline-strong"
-              >
-                Agent mesh <Network className="h-4 w-4" />
-              </Link>
-            ) : (
-              <Link
-                href="/findings"
-                className="inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-sm font-medium text-foreground hover:border-outline-strong"
-              >
-                Findings
-              </Link>
-            )}
-          </>
-        }
-      />
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
+        <Link href="/connections" className="max-w-full text-sm text-emerald-700 dark:text-emerald-300">Manage sources →</Link>
+      </header>
 
       {!importedReport && (overviewUnavailable || (overviewRefreshing && overview)) && (
         <p role="status" className="text-sm text-ink-secondary">
@@ -450,8 +441,17 @@ export default function Dashboard() {
         </p>
       )}
 
-      <p className="text-xs text-ink-secondary">Scope: {importedReport ? "Imported report" : "Current tenant"} · No environment filter · Includes unclassified resources</p>
+      <div aria-label="Evidence scopes" className="[overflow-wrap:anywhere] flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-outline px-3 py-2 text-xs text-ink-secondary">
+        <span>Findings: {importedReport ? "Imported report" : "Current tenant · configured window"}</span>
+        <span>Inventory: {importedReport ? "Not linked to a graph snapshot" : inventoryLoading ? "Loading snapshot" : inventorySummary ? `Snapshot ${inventorySummary.scan_id}` : "Unavailable"}</span>
+        <span>{inventorySummary?.filters?.environment ? `Inventory environment: ${inventorySummary.filters.environment}` : "Inventory includes unclassified environments"}</span>
+        {inventorySummary?.filters && Object.values(inventorySummary.filters).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? <span>Inventory filters do not change the findings window</span> : null}
+      </div>
       <OverviewCockpit
+        inventorySummary={importedReport ? null : inventorySummary}
+        inventoryLoading={!importedReport && inventoryLoading}
+        inventoryUnavailable={Boolean(importedReport) || inventoryUnavailable}
+        inventoryUnavailableHref={importedReport ? "/inventory" : inventoryUnavailableHref}
         loading={!importedReport && postureOverviewLoading}
         overviewUnavailable={!importedReport && overviewUnavailable && !overview}
         complianceLoading={!importedReport && complianceLoading}
@@ -489,7 +489,8 @@ export default function Dashboard() {
         services={counts?.services ?? null}
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <details className="rounded-lg border border-outline px-4 py-3"><summary className="cursor-pointer text-sm font-medium">Recent scans & activity</summary>
+      <div className="mt-3 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <section className="lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-medium text-foreground">Recent scans</h2>
@@ -517,6 +518,7 @@ export default function Dashboard() {
           <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
         </section>
       </div>
+      </details>
     </div>
   );
 }
@@ -601,17 +603,17 @@ function JobRow({ job }: { job: JobListItem }) {
     <Link
       href={`/scan?id=${job.job_id}`}
       title={`Scan ${job.job_id}`}
-      className="flex items-center gap-4 bg-surface-muted border border-outline hover:border-outline-strong rounded-xl p-4 transition-colors group"
+      className="relative flex flex-wrap items-center gap-4 bg-surface-muted border border-outline hover:border-outline-strong rounded-xl p-4 transition-colors group"
     >
       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColors[job.status] ?? "bg-ink-tertiary"}`} />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">{scanLabel(job)}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-foreground [overflow-wrap:anywhere]">{scanLabel(job)}</span>
           {tags?.map((t) => (
             <span key={t} className="text-xs bg-surface-elevated border border-outline rounded px-1.5 py-0.5 text-ink-tertiary">{t}</span>
           ))}
         </div>
-        <div className="text-xs text-ink-tertiary flex items-center gap-1 mt-0.5">
+        <div className="text-xs text-ink-tertiary flex flex-wrap items-center gap-1 mt-0.5">
           <Clock className="w-3 h-3" />
           {formatDate(job.created_at)}
           <span aria-hidden="true">· {job.job_id.slice(0, 8)}…</span>

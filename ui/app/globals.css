@@ -674,7 +674,7 @@ body {
 .agents-intel-card { @apply rounded border border-cyan-300 bg-cyan-50 px-3 py-2 dark:border-cyan-900/60 dark:bg-cyan-950/15; }
 .agents-intel-chip { @apply rounded border border-cyan-300 bg-cyan-50 px-1.5 py-0.5 text-[10px] uppercase text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-300; }
 .agents-action-chip { @apply rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300; }
-.agents-trust-card { @apply rounded-lg border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/20; }
+.agents-trust-card { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3; }
 
 /* Compact, high-contrast topology drill-down. Presentation stays in CSS so
  * the client route does not pay JS bundle weight for long utility strings. */
@@ -794,16 +794,12 @@ main > div {
 
 /* Let the available path width, rather than the window width, set card density. */
 .ep-path-frame { container-type: inline-size; }
-.ep-sequence { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 16px; }
-.ep-sequence > li { display: flex; flex-direction: column; }
+.ep-sequence { position: relative; display: flex; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 0.5rem; }
+.ep-sequence > li { display: flex; flex: 0 0 min(14rem, 88%); flex-direction: column; scroll-snap-align: start; }
+.ep-step-control { @apply min-h-9 rounded-md border border-outline px-2 text-[15px] disabled:opacity-40; }
 .ep-identifier { margin-top: 8px; font-size: 15px; color: var(--text-secondary); }
 .ep-identifier summary { cursor: pointer; min-height: 28px; overflow-wrap: anywhere; }
 .ep-identifier code { display: block; padding-top: 8px; font-size: 13px; overflow-wrap: anywhere; }
-@media (min-width: 640px) {
-  .ep-sequence:not(.ep-sequence-desktop) { display: none; }
-}
-@container (min-width: 440px) { .ep-sequence-desktop { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container (min-width: 820px) { .ep-sequence-desktop { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .gc-impact-route { display: grid; gap: 16px; margin-top: 24px; padding: 20px 0; border-block: 1px solid var(--border-subtle); }
 .gc-impact-route strong { display: block; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
 .gc-impact-arrow { width: 20px; height: 20px; color: var(--text-tertiary); transform: rotate(90deg); }
@@ -822,3 +818,41 @@ main > div {
 .gc-open-path { min-height: 44px; }
 .ep-severity[data-severity="high"], .ep-severity[data-severity="medium"] { color: var(--status-warn); background: var(--status-warn-bg); }
 .ep-severity[data-severity="low"], .ep-severity[data-severity="none"], .ep-severity[data-severity="unavailable"] { color: var(--text-secondary); background: var(--surface-muted); }
+
+/* One working area: mobile switches panes; desktop keeps the bounded queue beside the path. */
+.investigation-workspace { @apply grid min-w-0 gap-3; }
+.investigation-panel-switch { @apply flex gap-1 rounded-lg border border-outline bg-surface p-1; }
+.investigation-panel-switch button { @apply min-h-11 flex-1 rounded-md px-3 text-sm text-ink-secondary; }
+.investigation-panel-switch button[aria-pressed="true"] { @apply bg-emerald-600 text-white; }
+.investigation-workspace[data-mobile-panel="path"] > .investigation-queue,
+.investigation-workspace[data-mobile-panel="queue"] > .investigation-selected-path { display: none; }
+.investigation-queue-body { max-height: min(38rem, 65svh); overflow: auto; }
+@media (min-width: 1024px) {
+  .investigation-panel-switch { display: none; }
+  .investigation-workspace[data-layout="responsive-split"] { grid-template-columns: minmax(16rem, 19rem) minmax(0, 1fr); align-items: start; }
+  .investigation-workspace[data-mobile-panel] > .investigation-queue,
+  .investigation-workspace[data-mobile-panel] > .investigation-selected-path { display: block; }
+  .investigation-queue { position: sticky; top: 5rem; }
+}
+
+.ep-root { container-type: inline-size; }
+.ep-inspection-grid { display: grid; gap: 0.75rem; }
+.ep-inspection-main { min-width: 0; }
+.ep-inspection-evidence { @apply min-w-0 space-y-2; }
+.ep-inspection-main > .ep-view-row { margin-bottom: 0.5rem; }
+@container (min-width: 800px) {
+  .ep-inspection-grid { grid-template-columns: minmax(0, 1fr) 17rem; align-items: start; }
+  .ep-inspection-evidence { max-height: 34rem; overflow-y: auto; }
+}
+
+/* Compact evidence remains visible while the graph gets the narrow viewport. */
+.ep-assessment-grid { @apply flex flex-wrap gap-x-6 gap-y-2; }
+@container (max-width: 440px) {
+  .ep-assessment-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+  .ep-assessment-grid > div { display: block; min-width: 0; }
+  .ep-assessment-grid dt { min-height: 2.5rem; line-height: 1.25rem; }
+  .ep-metrics { flex-wrap: nowrap; overflow-x: auto; gap: 1rem; padding-bottom: 0.25rem; }
+  .ep-metrics > * { flex-shrink: 0; white-space: nowrap; }
+  .ep-inspection-main > .ep-view-row .ep-view-label { display: none; }
+  .ep-inspection-main > .ep-view-row { justify-content: flex-end; }
+}

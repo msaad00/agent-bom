@@ -50,6 +50,17 @@ describe("attack path helpers", () => {
     expect(toExposurePathFromAttackPath(path, new Map()).relationships[0]?.evidenceCount).toBeUndefined();
   });
 
+  it.each([undefined, false, true, "true"])("requires explicit finding catalog evidence for KEV: %j", (catalogValue) => {
+    const path: AttackPath = { source: "agent", target: "finding", hops: ["agent", "finding"], edges: ["uses"],
+      composite_risk: 0, summary: "", credential_exposure: [], tool_exposure: [], vuln_ids: [] };
+    const agent = graphNode("agent", EntityType.AGENT, "kevin KEV review agent");
+    agent.attributes.is_kev = true;
+    const finding = graphNode("finding", EntityType.VULNERABILITY, "CVE-2099-KEV-label");
+    finding.attributes.is_kev = catalogValue;
+    const pathEvidence = toExposurePathFromAttackPath(path, new Map([[agent.id, agent], [finding.id, finding]])).evidence;
+    expect(pathEvidence?.isKev).toBe(catalogValue === true ? true : undefined);
+  });
+
   function graphNode(id: string, entityType: EntityType, label: string): UnifiedNode {
     return {
       id,
@@ -257,23 +268,15 @@ describe("attack path helpers", () => {
     ]);
   });
 
-  it("keeps a descriptive backend title but replaces the generic 'Exposure path' with chain endpoints", () => {
+  it("names a path from recorded endpoints without promoting source prose to a conclusion", () => {
     const nodes = [
       { type: "identity" as const, label: "billing-service-account" },
       { type: "server" as const, label: "Postgres connector" },
       { type: "data" as const, label: "customers-pii" },
     ];
-    expect(descriptiveAttackPathTitle("CVE-2026-0002 via analyst-agent", nodes)).toBe(
-      "CVE-2026-0002 via analyst-agent",
-    );
-    expect(descriptiveAttackPathTitle("Exposure path", nodes)).toBe("billing-service-account → customers-pii");
-    expect(descriptiveAttackPathTitle("Exposure path via analyst-agent", nodes)).toBe(
-      "billing-service-account → customers-pii",
-    );
-    expect(descriptiveAttackPathTitle(undefined, [{ type: "data" as const, label: "customers-pii" }])).toBe(
-      "customers-pii",
-    );
-    expect(descriptiveAttackPathTitle(undefined, [])).toBe("Exposure path");
+    expect(descriptiveAttackPathTitle(nodes)).toBe("billing-service-account → customers-pii");
+    expect(descriptiveAttackPathTitle([{ type: "data" as const, label: "customers-pii" }])).toBe("customers-pii");
+    expect(descriptiveAttackPathTitle([])).toBe("Recorded path");
   });
 
   it("stamps unique 1..N ranks by sorted position even when path keys collide", () => {
@@ -498,7 +501,7 @@ describe("attack path helpers", () => {
     const qualified = { ...exposure, reachability: "unknown", reachabilityBasis: ["incomplete_hop_evidence"] };
     expect(toExposurePathFromAttackPath({ ...path, exposure_path: qualified }, nodes)).toEqual(qualified);
     expect(exposure.relationships).toEqual([
-      expect.objectContaining({ source: "cve-1", target: "pkg-1", relationship: "related" }),
+      expect.objectContaining({ source: "cve-1", target: "pkg-1", relationship: "not_recorded" }),
       expect.objectContaining({
         source: "pkg-1",
         target: "server-1",
@@ -506,7 +509,7 @@ describe("attack path helpers", () => {
         confidence: 0.98,
         evidenceCount: 2,
       }),
-      expect.objectContaining({ source: "server-1", target: "agent-1", relationship: "related" }),
+      expect.objectContaining({ source: "server-1", target: "agent-1", relationship: "not_recorded" }),
     ]);
   });
 
@@ -1149,4 +1152,14 @@ it("counts the unique union of queue and fix-first paths without inflating the s
   expect(graphPathQueueCounts(graph, 3, [b, c, c])).toMatchObject({
     returnedRows: 3, renderedRows: 3, snapshotTotal: 100, queueRows: 2, additionalPriorityRows: 1,
   });
+});
+
+
+it("never treats an opaque edge identifier as a relationship label", () => {
+  const path = { source: "a", target: "b", hops: ["a", "b"], edges: ["a->b:uses"], composite_risk: 0, summary: "Source relationship",
+    credential_exposure: [], tool_exposure: [], vuln_ids: [] };
+  const unknown = toExposurePathFromAttackPath(path, new Map());
+  expect(unknown.relationships[0]?.relationship).toBe("not_recorded");
+  expect(unknown.edgeIds).toEqual(["a->b:uses"]);
+  expect(toExposurePathFromAttackPath({ ...path, edges: ["uses"] }, new Map()).relationships[0]?.relationship).toBe("uses");
 });

@@ -33,7 +33,7 @@ export function AttackPathCorrelationProof({
   const expectedHopCount = Math.max(path.hops.length - 1, 0);
   const completeHopCount = completeDirectedHopCount(path);
   const pathEvidenceComplete = path.reachability === "confirmed" && completeHopCount !== null;
-  const proofLabel = pathEvidenceComplete ? "Path evidence complete" : "Path evidence incomplete";
+  const proofLabel = pathEvidenceComplete ? "Hop receipts complete" : "Hop receipts incomplete";
   const missingNodes = path.hops.filter((id) => !nodeById.has(id));
   const sourceCount = new Set(receipts.flatMap((receipt) =>
     Array.isArray(receipt?.source_snapshot_ids) ? receipt.source_snapshot_ids.filter(Boolean) : [],
@@ -62,9 +62,9 @@ export function AttackPathCorrelationProof({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-base font-semibold text-[color:var(--foreground)]">{proofLabel}</p>
+          <p className="text-[15px] font-semibold text-[color:var(--foreground)]">{proofLabel}</p>
           <p className="mt-0.5 text-[15px] text-[color:var(--text-tertiary)]">
-            {completeHopCount === null ? "Unavailable" : `${completeHopCount}/${expectedHopCount}`} directed traversable hops evidenced
+            {completeHopCount === null ? "Directed-hop receipt count unavailable" : `${completeHopCount}/${expectedHopCount} directed traversable hops evidenced`}
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -76,7 +76,7 @@ export function AttackPathCorrelationProof({
         </div>
       </div>
       {missingNodes.length > 0 && <p role="status" className="mt-2 text-[15px] text-amber-700 dark:text-amber-300">{missingNodes.length} path nodes unavailable</p>}
-      <details className="mt-3 border-t border-[color:var(--border-subtle)] pt-2">
+      <details className="mt-2 border-t border-[color:var(--border-subtle)] pt-2">
         <summary className="cursor-pointer py-1 text-[15px] text-[color:var(--text-secondary)]">Exact anchors · {anchors.length} artifacts · {sourceCount} source snapshots</summary>
         <div className="mt-2 flex flex-wrap gap-2">
         {anchors.map((node) => (
@@ -86,7 +86,7 @@ export function AttackPathCorrelationProof({
         ))}
         </div>
       </details>
-      <details className="mt-3">
+      <details className="mt-2">
         <summary className="cursor-pointer py-1 text-[15px] font-medium text-[color:var(--text-secondary)]">Inspect {expectedHopCount} hop receipts</summary>
         <div className="mt-2">
           <GraphHopEvidenceInspector key={path.hops.join("->")} receipts={path.hop_evidence}

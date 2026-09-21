@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState, type ElementType } from "react";
+import { useEffect, useId, useRef, useState, type ElementType } from "react";
 import {
   ArrowRight,
   Bug,
@@ -17,16 +17,16 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 
-import type { OverviewResponse } from "@/lib/api";
+import type { InventorySummaryResponse, OverviewResponse } from "@/lib/api";
 import { sbomSourceName } from "@/lib/findings-view";
 import type {
   ExecScoreDriver,
   OverviewCoverageLane,
-  OverviewDomainStatus,
   ServiceEntry,
   ServiceId,
 } from "@/lib/api-types";
-import { AiSpendSummary } from "@/components/ai-spend-summary";
+import { OverviewAssets } from "@/components/overview-assets";
+import { Drawer } from "@/components/drawer";
 import { DetailTabs } from "@/components/detail-tabs";
 import { Collapsible } from "@/components/collapsible";
 import { isNotEvaluated } from "@/components/compliance-status";
@@ -183,6 +183,10 @@ export interface OverviewCockpitProps {
   /** True until the posture and cross-domain overview requests settle. */
   loading?: boolean | undefined;
   overviewUnavailable?: boolean | undefined;
+  inventorySummary?: InventorySummaryResponse | null | undefined;
+  inventoryLoading?: boolean | undefined;
+  inventoryUnavailable?: boolean | undefined;
+  inventoryUnavailableHref?: string | undefined;
   complianceLoading?: boolean | undefined;
   scanScopeLoading?: boolean | undefined;
   grade: string;
@@ -235,6 +239,10 @@ export interface OverviewCockpitProps {
 export function OverviewCockpit({
   loading = false,
   overviewUnavailable = false,
+  inventorySummary = null,
+  inventoryLoading = false,
+  inventoryUnavailable = false,
+  inventoryUnavailableHref = "/inventory",
   complianceLoading = false,
   scanScopeLoading = false,
   grade,
@@ -262,9 +270,8 @@ export function OverviewCockpit({
   topPath,
   exposurePaths,
   compliance = null,
-  services = null,
 }: OverviewCockpitProps) {
-  const [riskTab, setRiskTab] = useState<"risks" | "posture">("posture");
+  const [riskTab, setRiskTab] = useState<"risks" | "posture" | "assets">("risks");
   const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
   // Once scans exist the chip always renders, but an unevidenced score reads as
   // an em dash — the SAME treatment the Trust Center gives this status. Hiding
@@ -290,12 +297,13 @@ export function OverviewCockpit({
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
         </div>
         <DetailTabs ariaLabel="Risk overview views" value={riskTab} onChange={setRiskTab}
-          tabs={[{ key: "posture", label: "Overview" }, { key: "risks", label: "Top risks" }]} />
+          tabs={[{ key: "risks", label: "Top risks" }, { key: "assets", label: "Assets & coverage" }, { key: "posture", label: "Posture" }]} />
         <div role="tabpanel" aria-label="Top risks" hidden={riskTab !== "risks"}>
           <TopRisksPanel loading={loading} unavailable={overviewUnavailable} scans={scans}
             topPath={topPath} exposurePaths={exposurePaths}
             agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null} />
         </div>
+        <div role="tabpanel" aria-label="Assets & coverage" hidden={riskTab !== "assets"}><OverviewAssets summary={inventorySummary} loading={inventoryLoading} unavailable={inventoryUnavailable} unavailableHref={inventoryUnavailableHref} /></div>
         <div role="tabpanel" aria-label="Overview" hidden={riskTab !== "posture"}>
             <div className="mt-4 grid items-start gap-5 @min-[56rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @min-[56rem]:gap-6">
               <PostureHero
@@ -331,20 +339,19 @@ export function OverviewCockpit({
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
           <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
-            actions={<Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">View all frameworks <ArrowRight className="h-3 w-3" /></Link>}>
+            actions={<Link href="/compliance" aria-label="View all frameworks" title="View all frameworks" className="inline-flex min-h-8 min-w-8 items-center justify-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"><span className="hidden sm:inline">View all frameworks</span><ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>}>
             <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
               loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
           </Collapsible>
         </section>
-        <section aria-label="Coverage" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
-          <Collapsible bare title="Coverage" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
+        <section aria-label="Findings by discipline" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
+          <Collapsible bare title="Findings by discipline" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
             {loading && !domains ? (
               <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
             ) : overviewUnavailable && !domains ? (
               <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
-            ) : <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />}
+            ) : <SecurityCoverageLanes coverage={coverage} />}
           </Collapsible>
-          <AiSpendSummary domain={domains?.cost} loading={loading} />
         </section>
       </div>
     </div>
@@ -398,40 +405,6 @@ function FreshnessStatus({
   );
 }
 
-function CoverageOperationsSection({
-  coverage,
-  domains,
-  services,
-}: {
-  coverage: OverviewCoverageLane[] | null | undefined;
-  domains: OverviewResponse["domains"] | null;
-  services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
-}) {
-  const operationalTiles = buildOperationalTiles(domains);
-  if ((!coverage || coverage.length === 0) && operationalTiles.length === 0) return null;
-
-  const dataSources = services?.data_sources;
-  const dataSourceCount =
-    dataSources && (dataSources.state === "live" || dataSources.state === "connected")
-      ? dataSources.count
-      : 0;
-
-  return (
-    <div className="mt-3" data-testid="overview-coverage-operations">
-      <SecurityCoverageLanes coverage={coverage} />
-      <Collapsible bare title="Operational signals"
-        subtitle={operationalTiles.length ? `${operationalTiles.filter(opsLaneActive).length} of ${operationalTiles.length} active` : undefined}
-        defaultOpen={false} className={coverage?.length ? "mt-3 border-t border-outline" : undefined}>
-        <EstateOpsStrip tiles={operationalTiles} />
-      <Link href="/connections" className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-        {dataSourceCount > 0 ? `${dataSourceCount} connected · ` : ""}
-        Connections <ArrowRight className="h-3 w-3" />
-      </Link>
-      </Collapsible>
-    </div>
-  );
-}
-
 // Severity counts shown in each discipline, in descending order, plus
 // ``unrated`` for findings whose severity is unknown/unscored (issue #3946).
 const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; label: string }[] = [
@@ -471,7 +444,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
       <button type="button" aria-expanded={showSeverity} aria-controls={lanesId} onClick={() => setShowSeverity(!showSeverity)} className="mb-2 rounded-md py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
         {showSeverity ? "Hide severity breakdown" : "Show severity breakdown"}
       </button>
-      <div id={lanesId} className="grid grid-cols-1 divide-y divide-outline">
+      <div id={lanesId} className="grid grid-cols-1 gap-x-3 @min-[30rem]:grid-cols-2">
         {[...coverage].sort((left, right) => (SECURITY_DISCIPLINES[left.domain]?.order ?? 5) - (SECURITY_DISCIPLINES[right.domain]?.order ?? 5)).map((lane) => {
           const discipline = SECURITY_DISCIPLINES[lane.domain];
           const Icon = discipline?.icon ?? ShieldCheck;
@@ -485,7 +458,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="min-w-0 rounded-md px-1 py-2.5 transition-colors hover:bg-surface-muted"
+              className="min-w-0 rounded-md border-b border-outline px-1 py-2.5 transition-colors hover:bg-surface-muted"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <span className="flex items-start gap-2 text-sm font-semibold text-foreground"><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${discipline?.accent ?? "text-ink-secondary"}`} aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
@@ -536,116 +509,6 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
 // The genuinely-operational estate lanes — cloud / vuln / code are deliberately
 // excluded because the five security-coverage lanes above already own CSPM,
 // Vuln mgmt, and ASPM. Rendering them here too would double-count.
-const OPERATIONAL_DOMAIN_KEYS = ["runtime", "identity", "ops"] as const;
-type OperationalDomainKey = (typeof OPERATIONAL_DOMAIN_KEYS)[number];
-
-type OpsTile = {
-  key: OperationalDomainKey;
-  label: string;
-  metric: number | null;
-  metricLabel: string;
-  status: OverviewDomainStatus;
-  href: string;
-  /** One-line scope clarifier surfaced as a tooltip so the tile can stay a
-   *  terse name + count + dot instead of an always-visible sentence. */
-  hint?: string | undefined;
-};
-
-function buildOperationalTiles(domains: OverviewResponse["domains"] | null): OpsTile[] {
-  if (!domains) return [];
-  return OPERATIONAL_DOMAIN_KEYS.flatMap((key) => {
-    const domain = domains[key];
-    if (!domain) return [];
-    return [{
-      key,
-      label: domain.label,
-      metric: domain.metric,
-      metricLabel: domain.metric_label,
-      status: domain.status,
-      href: domain.graph_href ?? domain.href,
-      hint: LANE_HINTS[key],
-    }];
-  });
-}
-
-// Scope clarifiers keyed by the operational domain key, shown as tooltips only.
-const LANE_HINTS: Record<OperationalDomainKey, string> = {
-  runtime: "Live runtime surfaces — gateway, proxy, traces, and agent mesh.",
-  identity: "Non-human identities and agents under governance.",
-  ops: "Completed scan jobs feeding the estate rollup.",
-};
-
-/** A lane is "active" once it is reporting (status !== idle) or carries a
- *  non-zero metric — otherwise it's applicable-but-not-connected. */
-function opsLaneActive(tile: OpsTile): boolean {
-  return tile.status !== "idle" || (tile.metric ?? 0) > 0;
-}
-
-/**
- * Estate / operations strip — the genuinely-operational lanes (runtime, cost,
- * identity, ops) shown by activation. Active lanes get a full tile with their
- * number + status dot; applicable-but-not-connected lanes de-emphasize into a
- * muted "Connect …" prompt so the strip never fabricates a wall of zero tiles.
- * Verbose scope copy lives in tooltips, not always-visible sentences. This is a
- * lighter-weight companion to the five security-coverage lanes above.
- */
-function EstateOpsStrip({
-  tiles,
-}: {
-  tiles: OpsTile[];
-}) {
-  if (tiles.length === 0) return null;
-
-  return (
-    <div data-testid="overview-estate-ops">
-      <div className="mt-1 grid gap-2 sm:grid-cols-2">
-        {tiles.map((tile) => (
-          <OpsTileCard key={tile.key} tile={tile} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function OpsTileCard({ tile }: { tile: OpsTile }) {
-  // Applicable-but-not-connected lane: de-emphasize into a muted, available
-  // "Connect …" affordance instead of a loud zero tile.
-  if (!opsLaneActive(tile)) {
-    return (
-      <Link
-        href={tile.href}
-        title={tile.hint ?? tile.label}
-        className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-outline bg-transparent px-3 py-2 text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
-      >
-        <span className="truncate text-xs font-medium">{tile.label}</span>
-        <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium">
-          Connect <ArrowRight className="h-3 w-3" />
-        </span>
-      </Link>
-    );
-  }
-
-  const tone = domainStatusTone(tile.status);
-  return (
-    <Link
-      href={tile.href}
-      title={tile.hint ?? tile.label}
-      className="flex items-center justify-between gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-2 transition hover:border-outline-strong"
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
-        <span className="truncate text-xs font-medium text-foreground">{tile.label}</span>
-      </div>
-      <div className="flex min-w-0 flex-wrap items-baseline justify-end gap-x-1">
-        <span className={`font-mono text-base font-semibold ${tone.text}`}>{tile.metric ?? "Unavailable"}</span>
-        <span className="text-right text-[10px] text-ink-secondary" title={tile.metricLabel}>
-          {tile.metricLabel}
-        </span>
-      </div>
-    </Link>
-  );
-}
-
 function ComplianceSnapshotPanel({
   compliance,
   hasScanEvidence = false,
@@ -674,7 +537,10 @@ function ComplianceSnapshotPanel({
         <p role="status" className="mt-2 text-xs text-ink-secondary">Loading control evaluation…</p>
       ) : evidenceReady ? (
         <>
-          <p className="mt-2 text-base font-semibold tabular-nums text-foreground">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
+          <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Evaluated control results">
+            {[{ label: "Passed", value: passed, tone: "text-emerald-700 dark:text-emerald-300" }, { label: "Failed", value: scored.reduce((n, f) => n + f.fail, 0), tone: "text-red-700 dark:text-red-300" }, { label: "Review", value: scored.reduce((n, f) => n + f.warn, 0), tone: "text-amber-700 dark:text-amber-300" }].map(({label, value, tone}) => <div key={label} className="rounded-md border border-outline p-2"><strong className={`block text-lg tabular-nums ${tone}`}>{value}</strong><span className="text-xs text-ink-secondary">{label}</span></div>)}
+          </div>
+          <p className="mt-2 text-xs text-ink-secondary">{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
           <p className="mt-1 text-xs text-ink-secondary">{attention} framework{attention === 1 ? " needs" : "s need"} attention{unassessed > 0 ? ` · ${unassessed} not evaluated` : ""}</p>
 
         </>
@@ -774,34 +640,49 @@ function TopRisksPanel({
 }) {
   const allPaths = exposurePaths.length > 0 ? exposurePaths : topPath ? [topPath] : [];
   const ranked = [...allPaths].sort((a, b) => b.riskScore - a.riskScore);
-  const shown = ranked.slice(0, 3);
-  const moreCount = ranked.length - shown.length;
-
+  const shown = ranked.slice(0, 5);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [wide, setWide] = useState(false);
+  const container = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!container.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const sideBySide = (entry?.contentRect.width ?? 0) >= 960;
+      setWide(sideBySide);
+      if (sideBySide) setDrawerOpen(false);
+    });
+    observer.observe(container.current);
+    return () => observer.disconnect();
+  }, []);
+  const selected = shown.find((path) => path.key === selectedKey) ?? shown[0];
+  const detail = selected ? <RiskChainRow path={selected} rank={shown.indexOf(selected) + 1} /> : null;
   return (
-    <section aria-label="Prioritized findings">
+    <section ref={container} aria-label="Prioritized findings" className="@container">
       <p className="mb-3 text-xs text-ink-secondary">Review these findings first · {ranked.length} prioritized risks</p>
-      {loading ? (
-        <p role="status" className="text-sm text-ink-secondary">Loading prioritized findings…</p>
-      ) : shown.length > 0 ? (
-        <div className="space-y-2">
-          {shown.map((path, index) => <RiskChainRow key={path.key} path={path} rank={index + 1} />)}
+      {loading ? <p role="status" className="text-sm text-ink-secondary">Loading prioritized findings…</p>
+        : shown.length > 0 ? <div className="grid items-start gap-4 @min-[960px]:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <div role="group" aria-label="Select a risk" className="divide-y divide-outline">
+            {shown.map((path, index) => {
+              const workload = path.affectedWorkloads?.[0] ?? path.nodes.find((node) => node.type === "agent" || node.type === "server")?.label;
+              const finding = path.nodes.find((node) => node.type === "cve");
+              return <button key={path.key} type="button" aria-pressed={selected?.key === path.key}
+                onClick={() => { setSelectedKey(path.key); if (!wide) setDrawerOpen(true); }}
+                className={`flex w-full items-start gap-2 rounded-md px-2 py-3 text-left ${selected?.key === path.key ? "bg-emerald-500/10" : "hover:bg-surface-muted"}`}>
+                <span className="text-xs tabular-nums text-ink-secondary">{index + 1}</span>
+                <span className="min-w-0 flex-1"><span className="block break-words text-sm font-semibold">{workload ? (sbomSourceName(workload) ? `SBOM source: ${sbomSourceName(workload)}` : workload) : "Workload not identified"}</span>
+                  <span className="block break-words text-xs text-ink-secondary">{finding?.label ?? "Finding"} · {finding?.severity ?? "Severity unavailable"}</span></span>
+                <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-ink-secondary" aria-hidden="true" />
+              </button>;
+            })}
+          </div>
+          {wide ? <div role="region" aria-label="Selected risk" className="min-w-0 max-h-[28rem] overflow-y-auto rounded-lg border border-outline p-3">{detail}</div> : null}
+          <Drawer open={!wide && drawerOpen} onClose={() => setDrawerOpen(false)} title="Selected risk" ariaLabel="Selected risk" size="lg">{detail}</Drawer>
         </div>
-      ) : (
-        <p className="text-sm text-ink-secondary">
-          {unavailable
-            ? "Prioritized findings unavailable."
-            : scans === 0
-              ? "No completed scans. Run a scan to assess findings."
-              : "No prioritized findings in the current overview."}
-        </p>
-      )}
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-        <Link href="/security-graph" className="text-emerald-600 dark:text-emerald-400">
-          {moreCount > 0 ? `Security graph · ${moreCount} more risk paths` : "Security graph"}
-        </Link>
-        {agentMeshHref ? <Link href={agentMeshHref} className="text-emerald-600 dark:text-emerald-400">Agent mesh</Link> : null}
-        <Link href="/findings?scope=all&severity=critical" className="text-ink-secondary">Critical findings</Link>
-        <Link href="/compliance" className="text-ink-secondary">Compliance evidence</Link>
+        : <p className="text-sm text-ink-secondary">{unavailable ? "Prioritized findings unavailable." : scans === 0 ? "No completed scans. Run a scan to assess findings." : "No prioritized findings in the current overview."}</p>}
+      <div className="mt-3 flex flex-wrap gap-3 text-sm">
+        <Link href="/security-graph" className="text-emerald-700 dark:text-emerald-300">Open investigation →</Link>
+        {agentMeshHref ? <Link href={agentMeshHref} className="text-ink-secondary">Agent mesh</Link> : null}
       </div>
     </section>
   );
@@ -1324,17 +1205,4 @@ function SeverityIssueStrip({
       </Collapsible>
     </div>
   );
-}
-
-function domainStatusTone(status: OverviewDomainStatus): { dot: string; text: string } {
-  switch (status) {
-    case "critical":
-      return { dot: "bg-red-500", text: "text-red-800 dark:text-red-300" };
-    case "warn":
-      return { dot: "bg-amber-500", text: "text-amber-800 dark:text-amber-300" };
-    case "ok":
-      return { dot: "bg-emerald-500", text: "text-emerald-800 dark:text-emerald-300" };
-    default:
-      return { dot: "bg-ink-tertiary", text: "text-ink-secondary" };
-  }
 }

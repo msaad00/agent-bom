@@ -157,9 +157,19 @@ async function routeCockpit(
     fixFirstDelayMs?: number;
     rollupItemCount?: number;
     qualifiedEvidence?: boolean;
+    longPathNodeCount?: number;
   } = {},
 ) {
   const graph = buildCockpitGraph(snapshotNodeCount);
+  if (options.longPathNodeCount) {
+    const intermediates = Array.from({ length: options.longPathNodeCount - 3 }, (_, index) =>
+      node(`server:hop-${index}`, "server", `Recorded service ${index + 1}`));
+    graph.nodes = [graph.nodes[0]!, ...intermediates, graph.nodes[2]!, graph.nodes[3]!];
+    graph.edges = graph.nodes.slice(1).map((item, index) => edge(graph.nodes[index]!.id, item.id, "depends_on"));
+    graph.attack_paths = [{ ...graph.attack_paths[0]!, hops: graph.nodes.map(item => item.id), edges: graph.edges.map(item => item.id) }];
+    graph.stats.total_nodes = graph.nodes.length;
+    graph.stats.total_edges = graph.edges.length;
+  }
   const baseRollupItems = [
     {
       id: "account:production",
@@ -363,7 +373,7 @@ async function routeCockpit(
               id: "qualified-path-fixture", label: "Recorded package path", summary: "Recorded relationships do not establish effective permission, exploitation or successful data access.",
               riskScore: 9.8, severity: "critical", source: { id: "agent:desktop", label: "claude-desktop", role: "agent" },
               target: { id: "cve:form-data", label: "CVE-2025-7783", role: "finding" },
-              hops: graph.nodes.slice(0, 4).map((item, index) => ({ id: item.id, label: item.label, role: ["agent", "server", "package", "finding"][index] })),
+              hops: attackPath.hops.map(id => graph.nodes.find(item => item.id === id)!).map(item => ({ id: item.id, label: item.label, role: item.entity_type === "vulnerability" ? "finding" : item.entity_type })),
               relationships: graph.edges.slice(0, 3), nodeIds: attackPath.hops, edgeIds: attackPath.edges,
               findings: attackPath.vuln_ids, affectedAgents: ["claude-desktop"], affectedServers: ["github"], reachableTools: [], exposedCredentials: [],
               evidenceDimensions: { reachability: { status: "unavailable", verdict: "unknown" }, exploitability: { status: "unavailable", verdict: "not_assessed" },
@@ -555,7 +565,7 @@ for (const proof of [
     const overflows = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
-    expect(overflows).toBe(false);
+  expect(overflows).toBe(false);
     await page.screenshot({
       path: testInfo.outputPath(`graph-scenario-${proof.width}x${proof.height}-${proof.theme}.png`),
       fullPage: true,
@@ -577,7 +587,7 @@ test("Attack Paths keeps scenario state observed-only", async ({ page }) => {
 async function expectCockpitVisible(page: Page) {
   await expect(page.getByRole("heading", { name: "Investigation" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Critical package reachable from MCP server" }),
+    page.getByRole("heading", { name: "Claude Desktop → CVE-2025-7783" }),
   ).toBeVisible();
   // Progressive disclosure summary — avoid /Evidence/ which also matches "Evidence drawer".
   await expect(page.getByText("Evidence & relationships")).toBeVisible();
@@ -621,7 +631,7 @@ test("requested scan without a graph snapshot never falls back to another scan",
 
   await expect(page.getByText("Snapshot unavailable for requested scan")).toBeVisible();
   await expect(page.getByText(/did not substitute evidence from a different scan/i)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Claude Desktop → CVE-2025-7783" })).toHaveCount(0);
 });
 
 test("focused investigation never shows an unrelated global path", async ({ page }) => {
@@ -632,7 +642,7 @@ test("focused investigation never shows an unrelated global path", async ({ page
 
   await expect(page.getByText("No attack paths matched the current focus")).toBeVisible();
   await expect(page.getByText(/This does not establish whether the vulnerability is exploitable/)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Claude Desktop → CVE-2025-7783" })).toHaveCount(0);
 });
 
 test("unlinked finding records require an explicit move to related package paths", async ({ page }) => {
@@ -641,7 +651,7 @@ test("unlinked finding records require an explicit move to related package paths
   await expect(page.getByText("No path is linked to this finding record")).toBeVisible();
   await page.getByRole("link", { name: "Show related package and advisory paths" }).click();
   await expect(page.getByRole("note", { name: "Finding association" })).toContainText("does not establish a link to the selected finding record");
-  await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Claude Desktop → CVE-2025-7783" })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
   expect(new URL(page.url()).searchParams.get("node")).toBe("pkg:form-data");
   expect(new URL(page.url()).searchParams.has("finding")).toBe(false);
@@ -669,7 +679,7 @@ test("ranked persisted paths render before slower fix guidance", async ({ page }
   await expect(page.getByText(/Ranked paths are ready; fix guidance is still loading/)).toBeVisible();
   await expect(page.getByText("agent → server → package → finding")).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Critical package reachable from MCP server" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Claude Desktop → CVE-2025-7783" })).toBeVisible();
 });
 
 test("top-path deep links settle and keep subsequent queue selection interactive", async ({ page }) => {
@@ -681,7 +691,7 @@ test("top-path deep links settle and keep subsequent queue selection interactive
   await routeCockpit(page);
   await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&path=top`);
   const detail = page.getByTestId("selected-exposure-path");
-  await expect(detail.getByRole("heading", { name: "Critical package reachable from MCP server" })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "Claude Desktop → CVE-2025-7783" })).toBeVisible();
   await expect(detail.getByTestId("exposure-path-primary-action")).toHaveAttribute(
     "href", `/remediation?scan=${scanId}&cve=CVE-2025-7783&package=form-data%404.0.0`,
   );
@@ -731,6 +741,7 @@ test("mobile ranked path selection moves the ordered path into view", async ({ p
   await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
 
+  await page.getByRole("button", { name: /Paths & filters/ }).click();
   const queue = page.getByLabel("Attack path queue");
   await queue.getByRole("button", { name: /#2/ }).click();
   const detail = page.getByRole("region", { name: "Selected path detail" });
@@ -741,8 +752,8 @@ test("mobile ranked path selection moves the ordered path into view", async ({ p
 for (const theme of ["light", "dark"] as const) {
 for (const width of [1440, 390]) {
 test(`a priority path outside the queue page loads its exact graph in ${theme} at ${width}px`, async ({ page }, testInfo) => {
-  await page.setViewportSize({ width, height: 960 });
-  await page.addInitScript((value) => window.localStorage.setItem("agent-bom-theme", value), theme);
+  await page.setViewportSize({ width, height: width < 640 ? 844 : 960 });
+  await page.addInitScript((value) => window.localStorage.setItem("agent-bom-theme", value), theme === "light" ? "dark" : "light");
   await routeCockpit(page);
   const source = node("repo:isolated", "directory", "Isolated repository");
   const target = node("ci:isolated", "ci_job", "Isolated build");
@@ -760,9 +771,12 @@ test(`a priority path outside the queue page loads its exact graph in ${theme} a
   await page.route("**/v1/graph/query", (route) => {
     queries.push(route.request().postDataJSON());
     return route.fulfill({ json: { ...buildCockpitGraph(), nodes: [source, target],
-      edges: [edge(source.id, target.id, "contains")], attack_paths: [], truncated: false, missing_roots: [] } });
+      edges: [edge(source.id, target.id, "contains")], attack_paths: [], truncated: width < 640, missing_roots: [] } });
   });
   await page.goto("/security-graph?lens=attack-path");
+  await page.getByRole("button", { name: `Switch to ${theme} theme`, exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+  if (width < 1024) await page.getByRole("button", { name: /Paths & filters/ }).click();
   await page.getByLabel("Attack path queue").getByRole("button", { name: /#1 FIX FIRST/i }).click();
   const detail = page.getByRole("region", { name: "Selected path detail" });
   await detail.getByRole("button", { name: "Graph", exact: true }).click();
@@ -772,6 +786,25 @@ test(`a priority path outside the queue page loads its exact graph in ${theme} a
   await expect(canvas.getByText("Isolated repository", { exact: true })).toBeVisible();
   await expect(canvas.getByText("Isolated build", { exact: true })).toBeVisible();
   await expect(canvas.getByText("claude-desktop", { exact: true })).toHaveCount(0);
+  if (width < 640) {
+    await expect(detail).toContainText("Selected path loaded. Broader context was limited by the graph query budget.");
+    const inViewport = (id: string) => canvas.locator(`.react-flow__node[data-id="${id}"]`).evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return box.width >= 180 && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight;
+    });
+    await expect.poll(() => inViewport(source.id)).toBe(true);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await canvas.getByRole("button", { name: "Next graph node" }).click();
+      await expect(canvas.getByText("Focused view · 2 of 2")).toBeVisible();
+      await expect.poll(() => inViewport(target.id)).toBe(true);
+      await canvas.getByRole("button", { name: "Previous graph node" }).click();
+      await expect(canvas.getByText("Focused view · 1 of 2")).toBeVisible();
+      await expect.poll(() => inViewport(source.id)).toBe(true);
+    }
+  }
+  // Narrow panels start with readable node focus; the explicit overview still
+  // has to frame every hydrated hop without loading unrelated topology.
+  await canvas.locator(".react-flow__controls-fitview").click();
   await expect.poll(async () => {
     const bounds = await canvas.boundingBox();
     if (!bounds) return false;
@@ -805,9 +838,8 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
 
-  const evidenceScope = page.getByRole("button", { name: /Evidence scope/ });
-  await expect(evidenceScope).toHaveAttribute("aria-expanded", "false");
-  await evidenceScope.click();
+  await page.getByText("Investigation tools · snapshots, correlation & checks", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Evidence scope" })).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByText("1,241 nodes. Use a focused lens before opening the full topology."),
   ).toBeVisible();
@@ -872,7 +904,7 @@ test("200-node snapshots default to roll-up and explicit raw topology persists",
   await page.waitForLoadState("networkidle");
   await openEvidenceControls(page);
   await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
-  await expect(page.getByText(/200 nodes in snapshot/i)).toBeVisible();
+  await expect(page.getByText("2 nodes and scopes at this level · 200 nodes in snapshot", { exact: true })).toBeVisible();
 
   await page.goto(`/graph?scan=${scanId}&rollup=0`);
   await page.waitForLoadState("networkidle");
@@ -997,9 +1029,11 @@ for (const viewport of [
     expect(canvasBox).not.toBeNull();
     expect(interactionBox).not.toBeNull();
     expect(nodeBandBox).not.toBeNull();
-    expect(legendBox!.y + legendBox!.height).toBeLessThanOrEqual(canvasBox!.y + 1);
+    expect(legendBox!.y).toBeGreaterThanOrEqual(canvasBox!.y);
+    expect(legendBox!.y + legendBox!.height).toBeLessThanOrEqual(nodeBandBox!.y + 1);
     expect(interactionBox!.y + interactionBox!.height).toBeLessThanOrEqual(nodeBandBox!.y + 1);
 
+    await interactionBand.getByText("Layout", { exact: true }).click();
     const fitButton = interactionBand.getByRole("button", { name: /fit visible/i });
     await fitButton.click();
     await expect.poll(() => page.evaluate(() =>
@@ -1214,6 +1248,7 @@ for (const proof of [
       }) });
     });
     await page.goto(`/security-graph?lens=attack-path&scan=${scanId}`);
+    await page.getByText("Investigation tools · snapshots, correlation & checks", { exact: true }).click();
     await page.getByRole("button", { name: /Exposure paths/ }).click();
     const lens = page.getByTestId("exposure-path-lens");
     await expect(lens.getByRole("region", { name: "Path evidence assessment" })).toContainText("Unknown");
@@ -1280,5 +1315,188 @@ for (const theme of ["light", "dark"] as const) {
     await expect(detail.getByTestId("exposure-path-primary-action")).toBeVisible();
     await expect(detail.getByText("Evidence & relationships", { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`focused-path-${theme}.png`) });
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1568, 390]) {
+    test(`investigation workspace keeps graph primary with usable pane navigation ${theme} ${width}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      await routeCockpit(page, undefined, { qualifiedEvidence: true });
+      await page.goto(`/security-graph?lens=attack-path&scan=${scanId}`);
+      const workspace = page.getByRole("region", { name: "Investigation workspace" });
+      const detail = workspace.getByRole("region", { name: "Selected path detail" });
+      await expect(detail).toBeVisible();
+      await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText(/unknown/i);
+      await expect(detail.getByRole("heading", { level: 2 })).not.toContainText(/reachable|exploitable/i);
+      const queue = page.getByLabel("Attack path queue");
+      await expect(queue).not.toContainText(/Critical package reachable/);
+      if (width < 1024) {
+        await expect(queue).toBeHidden();
+        await page.getByRole("button", { name: /Paths & filters/ }).click();
+        await expect(queue).toBeVisible();
+        await expect(detail).toBeHidden();
+        await queue.getByRole("button", { name: /#2/ }).click();
+        await expect(queue).toBeHidden();
+        await expect(detail).toBeVisible();
+        await expect(detail.getByRole("heading", { level: 2 })).toContainText("GITHUB PERSONAL ACCESS TOKEN");
+        const steps = detail.getByTestId("exposure-path-sequence");
+        expect((await steps.boundingBox())!.height).toBeLessThan(280);
+        await detail.getByRole("button", { name: "Next path steps" }).click();
+        await expect.poll(() => steps.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+        await expect(detail.getByRole("button", { name: "Previous path steps" })).toBeEnabled();
+        await detail.getByRole("button", { name: "Previous path steps" }).click();
+        await expect.poll(() => steps.evaluate(element => element.scrollLeft)).toBe(0);
+      } else {
+        const [queueBox, detailBox] = await Promise.all([queue.boundingBox(), detail.boundingBox()]);
+        expect(queueBox!.x + queueBox!.width).toBeLessThan(detailBox!.x);
+        expect(queueBox!.height).toBeLessThanOrEqual(650);
+        const graph = detail.getByRole("region", { name: "Selected exposure path graph", exact: true });
+        const proof = detail.getByRole("complementary", { name: "Selected path evidence" });
+        const [graphBox, proofBox] = await Promise.all([graph.boundingBox(), proof.boundingBox()]);
+        expect(proofBox!.x).toBeGreaterThan(graphBox!.x);
+        expect(Math.abs(proofBox!.y - graphBox!.y)).toBeLessThan(80);
+        expect(graphBox!.y + graphBox!.height).toBeLessThan(1000);
+      }
+      await expect(page.getByRole("button", { name: "Should I deploy?" })).toBeHidden();
+      await page.getByText("Investigation tools · snapshots, correlation & checks", { exact: true }).click();
+      await page.getByRole("button", { name: "Should I deploy?" }).click();
+      await expect(page.getByPlaceholder(/agent:claude-desktop/)).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      await page.getByText("Investigation tools · snapshots, correlation & checks", { exact: true }).click();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: testInfo.outputPath(`workspace-${theme}-${width}.png`), fullPage: true });
+    });
+  }
+}
+
+for (const theme of ["light", "dark"] as const) {
+ for (const height of [800, 1000]) {
+  test(`selected Graph keeps its nodes in the first desktop viewport ${theme} ${height}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1568, height });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await routeCockpit(page, undefined, { qualifiedEvidence: true });
+    await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&node=pkg%3Aform-data&cve=CVE-2025-7783&package=form-data`);
+    const detail = page.getByTestId("selected-exposure-path");
+    await detail.getByRole("button", { name: "Graph", exact: true }).click();
+    const canvas = page.getByTestId("security-graph-investigation");
+    await expect(canvas.locator(".react-flow__node")).toHaveCount(4);
+    await expect(canvas.locator(".react-flow__edge")).toHaveCount(3);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    let previousTransform = "";
+    let unchangedSince = Date.now();
+    await expect.poll(async () => {
+      const transform = await canvas.locator(".react-flow__viewport").getAttribute("style");
+      if (transform !== previousTransform) {
+        previousTransform = transform ?? "";
+        unchangedSince = Date.now();
+      }
+      return Date.now() - unchangedSince >= 350;
+    }, { intervals: [100] }).toBe(true);
+    await expect.poll(() => canvas.locator(".react-flow__node").evaluateAll(elements =>
+      elements.every(element => {
+        const box = element.getBoundingClientRect();
+        const flow = element.closest(".react-flow")!;
+        const frame = flow.getBoundingClientRect();
+        const controls = flow.querySelector(".react-flow__controls")!.getBoundingClientRect();
+        const overlapsControls = box.left < controls.right && box.right > controls.left && box.top < controls.bottom && box.bottom > controls.top;
+        return box.top >= 0 && box.bottom <= innerHeight && box.left >= frame.left && box.right <= frame.right && !overlapsControls;
+      }),
+    )).toBe(true);
+    await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText(/unknown/i);
+    await expect(detail.getByRole("complementary", { name: "Selected path evidence" })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`selected-graph-${theme}-${height}.png`), fullPage: true });
+  });
+}
+}
+
+for (const theme of ["light", "dark"] as const) {
+ for (const width of [390, 1568]) {
+  test(`node impact qualifies bounded upstream connections in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await routeCockpit(page, undefined, { qualifiedEvidence: true });
+    const graph = buildCockpitGraph();
+    const selectedNode = graph.nodes.find(item => item.id === "pkg:form-data")!;
+    await page.route("**/v1/graph/node/*?**", route => route.fulfill({ json: {
+      node: selectedNode, edges_in: [], edges_out: [], neighbors: [], sources: ["scan"],
+      impact: { node_id: selectedNode.id, affected_nodes: ["agent:desktop", "server:github"], affected_count: 2,
+        affected_by_type: { agent: 1, server: 1 }, max_depth_reached: 2,
+        completeness: { status: "truncated", complete: false, truncated: true, sampled: false, returned: 2, reason: "depth_limit" } },
+    } }));
+    await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&node=pkg%3Aform-data&cve=CVE-2025-7783&package=form-data`);
+    await page.getByTestId("selected-exposure-path").getByRole("button", { name: "Graph", exact: true }).click();
+    await page.locator('.react-flow__node[data-id="pkg:form-data"]').click();
+    const drawer = page.getByTestId("graph-entity-drawer");
+    await drawer.getByTestId("graph-drawer-tab-impact").click();
+    const panel = drawer.getByTestId("graph-drawer-panel-impact");
+    await expect(panel).toContainText("Upstream connected entities");
+    await expect(panel).toContainText("Partial traversal · 2 entities returned");
+    await expect(panel).toContainText("additional upstream connections may exist");
+    await expect(panel).toContainText("do not establish exploitability, successful actions or observed damage");
+    await expect(panel).toContainText("Agent: 1");
+    await expect(panel).toContainText("Server: 1");
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await panel.screenshot({ path: testInfo.outputPath(`impact-scope-${theme}-${width}.png`) });
+  });
+ }
+}
+
+for (const theme of ["light", "dark"] as const) {
+  test(`mobile selected Graph navigates a long path at readable zoom in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme === "light" ? "dark" : "light");
+    await routeCockpit(page, undefined, { qualifiedEvidence: true, longPathNodeCount: 10 });
+    await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&node=pkg%3Aform-data&cve=CVE-2025-7783&package=form-data`);
+    await page.getByRole("button", { name: `Switch to ${theme} theme`, exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const detail = page.getByTestId("selected-exposure-path");
+    const sequence = detail.getByTestId("exposure-path-sequence");
+    await expect(sequence.locator("li")).toHaveCount(10);
+    await expect(sequence.locator("li").filter({ visible: true }).first()).toBeVisible();
+    expect((await sequence.locator("li").filter({ visible: true }).first().boundingBox())!.width).toBeGreaterThanOrEqual(180);
+    await detail.getByRole("button", { name: "Graph", exact: true }).click();
+    const canvas = page.getByTestId("security-graph-investigation");
+    await expect(canvas.locator(".react-flow__node")).toHaveCount(10);
+    await expect.poll(() => canvas.locator('.react-flow__node[data-id="agent:desktop"]').evaluate(element => {
+      const width = element.getBoundingClientRect().width;
+      const label = element.querySelector("p")!;
+      const zoom = new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow")!.querySelector(".react-flow__viewport")!).transform).a;
+      return width >= 180 && parseFloat(getComputedStyle(label).fontSize) * zoom >= 12 && element.getBoundingClientRect().top >= 0 && element.getBoundingClientRect().bottom <= innerHeight;
+    })).toBe(true);
+    await expect(canvas.getByText("Focused view · 1 of 10")).toBeVisible();
+    await expect.poll(() => canvas.evaluate(element => element.getBoundingClientRect().top)).toBeLessThan(250);
+    await page.screenshot({ path: testInfo.outputPath(`mobile-readable-initial-${theme}.png`), fullPage: false });
+    await expect(canvas.getByRole("button", { name: "Previous graph node" })).toBeDisabled();
+    for (let step = 2; step <= 10; step++) {
+      await canvas.getByRole("button", { name: "Next graph node" }).click();
+      await expect(canvas.getByText(`Focused view · ${step} of 10`)).toBeVisible();
+      const expectedId = step === 10 ? "cve:form-data" : step === 9 ? "pkg:form-data" : `server:hop-${step - 2}`;
+      await expect.poll(() => canvas.locator(`.react-flow__node[data-id="${expectedId}"]`).evaluate(element => {
+        const box = element.getBoundingClientRect();
+        return box.width >= 180 && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight;
+      })).toBe(true);
+    }
+    await expect(canvas.getByRole("button", { name: "Next graph node" })).toBeDisabled();
+    const last = canvas.locator('.react-flow__node[data-id="cve:form-data"]');
+    await expect.poll(() => last.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const frame = element.closest(".react-flow")!.getBoundingClientRect();
+      return box.width >= 180 && box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom;
+    })).toBe(true);
+    await canvas.getByLabel("Graph options", { exact: true }).click();
+    await canvas.getByRole("button", { name: "Fit visible graph", exact: true }).click();
+    await expect(canvas.getByText("Overview · 10 nodes")).toBeVisible();
+    await canvas.getByLabel("Graph options", { exact: true }).click();
+    await canvas.getByRole("button", { name: "Previous graph node" }).click();
+    await expect(canvas.getByText("Focused view · 9 of 10")).toBeVisible();
+    await expect.poll(() => canvas.locator('.react-flow__node[data-id="pkg:form-data"]').evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const frame = element.closest(".react-flow")!.getBoundingClientRect();
+      return box.width >= 180 && box.left >= frame.left && box.right <= frame.right;
+    })).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await canvas.screenshot({ path: testInfo.outputPath(`mobile-readable-graph-${theme}.png`) });
   });
 }

@@ -44,10 +44,12 @@ export function CoverageCockpit({
   connections: connectionsProp,
 }: CoverageCockpitProps) {
   const [fetchedConnections, setFetchedConnections] = useState<CloudConnectionRecord[]>([]);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(connectionsProp === undefined);
 
   useEffect(() => {
     if (connectionsProp !== undefined) {
+      setUnavailable(false);
       setLoading(false);
       return;
     }
@@ -56,11 +58,13 @@ export function CoverageCockpit({
       .listCloudConnections()
       .then((response) => {
         if (!mounted) return;
+        setUnavailable(false);
         setFetchedConnections(response.connections ?? []);
         setLoading(false);
       })
       .catch(() => {
         if (!mounted) return;
+        setUnavailable(true);
         setLoading(false);
       });
     return () => {
@@ -124,20 +128,20 @@ export function CoverageCockpit({
         <CoverageCard
           icon={Cloud}
           title="Cloud accounts"
-          subtitle={loading ? "Loading accounts…" : `${connections.length} connected · ${activeConnections} active`}
+          subtitle={loading ? "Loading accounts…" : unavailable ? "Account coverage unavailable" : `${connections.length} connected · ${activeConnections} active`}
           href="/connections"
           chips={
-            providers.length > 0
+            unavailable ? ["Collection status unknown"] : providers.length > 0
               ? providers
               : ["No accounts connected"]
           }
           footer={
-            connections.length === 0
+            unavailable ? "Review connection access before drawing a coverage conclusion." : connections.length === 0
               ? "Onboard AWS, Azure, GCP, or Snowflake for brokered inventory + CIS per account."
               : `${scheduledConnections} scheduled · last account scan ${formatWhen(lastAccountScan)}`
           }
-          actionHref={connections[0] ? `/scan?connection=${encodeURIComponent(connections[0].id)}` : "/connections"}
-          actionLabel={connections.length > 0 ? "Scan account" : "Connect account"}
+          actionHref={!unavailable && connections[0] ? `/scan?connection=${encodeURIComponent(connections[0].id)}` : "/connections"}
+          actionLabel={unavailable ? "Review connections" : connections.length > 0 ? "Scan account" : "Connect account"}
         />
 
         <CoverageCard

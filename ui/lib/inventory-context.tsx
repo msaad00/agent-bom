@@ -26,7 +26,7 @@ import {
 const INVENTORY_PAGE_SIZE = 100;
 
 export type InventoryErrorKind = "network" | "auth" | "forbidden" | "empty";
-export type InventoryFilterKey = "search" | "type" | "source" | "provider" | "environment" | "severity";
+export type InventoryFilterKey = "search" | "type" | "source" | "provider" | "environment" | "severity" | "minSeverity";
 
 export interface InventoryFilters {
   search: string;
@@ -35,6 +35,7 @@ export interface InventoryFilters {
   provider: string;
   environment: string;
   severity: string;
+  minSeverity?: string;
 }
 
 const EMPTY_FILTERS: InventoryFilters = {
@@ -44,6 +45,7 @@ const EMPTY_FILTERS: InventoryFilters = {
   provider: "",
   environment: "",
   severity: "",
+  minSeverity: "",
 };
 
 export interface InventoryState {
@@ -75,7 +77,7 @@ const InventoryContext = createContext<InventoryState | null>(null);
 function classifyError(err: unknown): { message: string; kind: InventoryErrorKind } {
   if (err instanceof ApiAuthError) return { message: "Sign in to view the asset inventory.", kind: "auth" };
   if (err instanceof ApiForbiddenError) return { message: "Your role cannot read the asset inventory.", kind: "forbidden" };
-  if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+  if (err instanceof ApiError && err.status === 404) {
     return {
       message: "No graph snapshot yet. Run a scan or connect an account to populate the asset inventory.",
       kind: "empty",
@@ -91,18 +93,29 @@ export function InventoryProvider({
   children,
   entityTypes,
   minSeverity,
+  scanId,
+  initialFilters,
+  onFiltersChange,
+  onSnapshotResolved,
 }: {
   children: ReactNode;
   /** Route-owned asset taxonomy scope; every page and cursor keeps it. */
   entityTypes?: readonly string[] | undefined;
   /** Backward-compatible initial severity restored from the inventory URL. */
   minSeverity?: string | undefined;
+  scanId?: string | undefined;
+  initialFilters?: Partial<InventoryFilters> | undefined;
+  onFiltersChange?: ((filters: InventoryFilters) => void) | undefined;
+  onSnapshotResolved?: ((scanId: string) => void) | undefined;
 }) {
   const [summary, setSummary] = useState<InventorySummaryResponse | null>(null);
   const [page, setPage] = useState<InventoryAssetsResponse | null>(null);
   const [pageSize, setPageSizeState] = useState(INVENTORY_PAGE_SIZE);
   const setPageSize = useCallback((size: number) => { if ([25, 50, 100].includes(size)) setPageSizeState(size); }, []);
-  const [filters, setFilters] = useState<InventoryFilters>({ ...EMPTY_FILTERS, severity: minSeverity ?? "" });
+  const [filters, setFilters] = useState<InventoryFilters>({ ...EMPTY_FILTERS, ...initialFilters, severity: minSeverity ?? initialFilters?.severity ?? "" });
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const resolvedSnapshot = useRef(scanId);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingPage, setLoadingPage] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -123,26 +136,46 @@ export function InventoryProvider({
   const entityTypesKey = (entityTypes ?? []).join(",");
   const fixedEntityTypes = useMemo(() => (entityTypesKey ? entityTypesKey.split(",") : []), [entityTypesKey]);
 
+  const initialFiltersKey = JSON.stringify(initialFilters ?? {});
   useEffect(() => {
-    setFilters((current) => ({ ...current, severity: minSeverity ?? "" }));
-  }, [minSeverity]);
+    const restored = JSON.parse(initialFiltersKey) as Partial<InventoryFilters>;
+    const next = { ...EMPTY_FILTERS, ...restored, severity: minSeverity ?? restored.severity ?? "" };
+    filtersRef.current = next;
+    setFilters(next);
+  }, [minSeverity, initialFiltersKey]);
+  const snapshotCallback = useRef(onSnapshotResolved);
+  snapshotCallback.current = onSnapshotResolved;
+
+  useEffect(() => {
+    resolvedSnapshot.current = scanId;
+    snapshotGeneration.current += 1;
+    setDetails({});
+    setDetailLoadingId("");
+    setDetailError("");
+    setSummary(null);
+    setPage(null);
+    return () => { snapshotGeneration.current += 1; };
+  }, [scanId, nonce]);
+  const queryFiltersKey = JSON.stringify(filters);
 
   useEffect(() => {
     let cancelled = false;
-    pageGeneration.current += 1;
-    snapshotGeneration.current += 1;
-    setLoadingMore(false);
-    setDetailLoadingId("");
-    setDetailError("");
     setLoadingSummary(true);
-    setLoadingPage(false);
-    setSummary(null);
-    setPage(null);
-    setDetails({});
     setError("");
-    api.getInventorySummary()
+    const restored = JSON.parse(queryFiltersKey) as InventoryFilters;
+    const selectedTypes = restored.type ? restored.type.split(",") : [];
+    const scopedTypes = fixedEntityTypes.length ? selectedTypes.filter((type) => fixedEntityTypes.includes(type)) : selectedTypes;
+    api.getInventorySummary(scanId ?? resolvedSnapshot.current, {
+      environment: restored.environment, provider: restored.provider, source: restored.source,
+      search: restored.search, type: scopedTypes.length ? scopedTypes : fixedEntityTypes.length ? fixedEntityTypes : undefined,
+      severity: minSeverity ?? restored.severity, minSeverity: restored.minSeverity,
+    })
       .then((response) => {
-        if (!cancelled) setSummary(response);
+        if (!cancelled) {
+          resolvedSnapshot.current = response.scan_id;
+          setSummary(response);
+          snapshotCallback.current?.(response.scan_id);
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -155,14 +188,15 @@ export function InventoryProvider({
       });
     return () => {
       cancelled = true;
-      snapshotGeneration.current += 1;
     };
-  }, [nonce]);
+  }, [nonce, scanId, queryFiltersKey, minSeverity, fixedEntityTypes]);
 
   const requestedTypes = useMemo(() => {
     if (!filters.type) return fixedEntityTypes;
-    if (fixedEntityTypes.length === 0 || fixedEntityTypes.includes(filters.type)) return [filters.type];
-    return fixedEntityTypes;
+    const selected = filters.type.split(",").map((type) => type.trim()).filter(Boolean);
+    if (fixedEntityTypes.length === 0) return selected;
+    const allowed = selected.filter((type) => fixedEntityTypes.includes(type));
+    return allowed.length ? allowed : fixedEntityTypes;
   }, [filters.type, fixedEntityTypes]);
 
   const requestScope = useMemo(() => ({
@@ -172,10 +206,12 @@ export function InventoryProvider({
     ...(filters.provider ? { provider: filters.provider } : {}),
     ...(filters.source ? { source: filters.source } : {}),
     ...(filters.severity ? { severity: filters.severity } : {}),
+    ...(filters.minSeverity ? { minSeverity: filters.minSeverity } : {}),
   }), [requestedTypes, filters]);
 
+  const snapshotId = summary?.scan_id;
   useEffect(() => {
-    if (!summary) return;
+    if (!snapshotId) return;
     pageCursors.current.clear();
     pageGeneration.current += 1;
     setLoadingMore(false);
@@ -184,7 +220,7 @@ export function InventoryProvider({
     setError("");
     api.getInventoryAssets({
       ...requestScope,
-      scanId: summary.scan_id,
+      scanId: snapshotId,
       limit: pageSize,
       offset: 0,
     })
@@ -204,14 +240,22 @@ export function InventoryProvider({
       cancelled = true;
       pageGeneration.current += 1;
     };
-  }, [summary, requestScope, pageSize]);
+  }, [snapshotId, requestScope, pageSize, nonce]);
 
   const model = useMemo(() => (summary && page ? buildInventoryFromApi(summary, page) : null), [summary, page]);
   const hasMore = !loadingPage && Boolean(page?.pagination.has_more);
   const setFilter = useCallback((key: InventoryFilterKey, value: string) => {
-    setFilters((current) => ({ ...current, [key]: value }));
-  }, []);
-  const clearFilters = useCallback(() => setFilters({ ...EMPTY_FILTERS, severity: minSeverity ?? "" }), [minSeverity]);
+    const next = { ...filtersRef.current, [key]: value };
+    filtersRef.current = next;
+    setFilters(next);
+    onFiltersChange?.(next);
+  }, [onFiltersChange]);
+  const clearFilters = useCallback(() => {
+    const next = { ...EMPTY_FILTERS, severity: minSeverity ?? "" };
+    filtersRef.current = next;
+    setFilters(next);
+    onFiltersChange?.(next);
+  }, [minSeverity, onFiltersChange]);
 
   const navigatePage = useCallback(async (previous: boolean) => {
     if (!summary || !page || loadingPage || loadingMore || (previous ? page.pagination.offset === 0 : !page.pagination.has_more)) return;

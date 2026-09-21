@@ -1,4 +1,4 @@
-import { EntityType, type AttackPath, type UnifiedNode } from "./graph-schema";
+import { EntityType, RelationshipType, type AttackPath, type UnifiedNode } from "./graph-schema";
 import type { GraphAttackPath, UnifiedGraphResponse } from "./api-types";
 import {
   formatExposureEntityDisplay,
@@ -241,19 +241,10 @@ export function attackPathRoleChain(path: AttackPath, nodeById: Map<string, Unif
   return roles.join(" → ");
 }
 
-const GENERIC_PATH_TITLE = /^exposure path\b/i;
-
-/**
- * Prefer a descriptive backend title, but when the API falls back to the
- * generic "Exposure path" (a path with no finding id), synthesise a concrete
- * "entry → crown-jewel" title from the correlated chain endpoints so every card
- * reads differently and scannably.
- */
-export function descriptiveAttackPathTitle(cardTitle: string | undefined, nodes: AttackPathCardNode[]): string {
-  const trimmed = (cardTitle ?? "").trim();
-  if (trimmed && !GENERIC_PATH_TITLE.test(trimmed)) return trimmed;
+/** A recorded path is named by its endpoints; a source title is not proof of impact. */
+export function descriptiveAttackPathTitle(nodes: AttackPathCardNode[]): string {
   const labels = nodes.map((node) => node.label.trim()).filter(Boolean);
-  if (labels.length === 0) return trimmed || "Exposure path";
+  if (labels.length === 0) return "Recorded path";
   const first = labels[0]!;
   const last = labels[labels.length - 1]!;
   if (labels.length === 1 || first === last) return first;
@@ -425,15 +416,14 @@ export function toExposurePathFromAttackPath(
       (candidate) => candidate.source_node_id === sourceId && candidate.target_node_id === targetId,
     );
     const edgeValue = path.edges[index]?.trim();
-    // Persisted attack paths store relationship labels in `edges`; a few
-    // legacy fixtures store opaque `edge:*` identifiers instead. Never render
-    // an opaque identifier as if it described traversal semantics.
-    const edgeRelationship = edgeValue && !edgeValue.startsWith("edge:") ? edgeValue : undefined;
+    // Only canonical relationship values can describe semantics without a receipt.
+    // Edge identifiers stay in edgeIds and must never become relationship labels.
+    const edgeRelationship = edgeValue && Object.values(RelationshipType).some(value => value === edgeValue) ? edgeValue : undefined;
     return {
       id: `${sourceId}->${targetId}`,
       source: sourceId,
       target: targetId,
-      relationship: receipt?.relationship || edgeRelationship || "related",
+      relationship: receipt?.relationship || edgeRelationship || "not_recorded",
       direction: receipt?.direction === "bidirectional" ? "bidirectional" : receipt?.direction === "directed" ? "directed" : undefined,
       traversable: receipt?.traversable,
       confidence: receipt?.confidence ?? undefined,
@@ -479,7 +469,7 @@ export function toExposurePathFromAttackPath(
         : undefined,
     },
     evidence: {
-      isKev: hops.some((hop) => String(hop.label).toLowerCase().includes("kev")),
+      isKev: hops.some((hop) => hop.role === "finding" && nodeById.get(hop.id)?.attributes.is_kev === true) ? true : undefined,
       source: "graph_attack_path",
     },
     provenance: {

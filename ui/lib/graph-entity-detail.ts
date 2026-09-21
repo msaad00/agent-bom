@@ -94,6 +94,7 @@ export function mergeGraphNodeDetail(
     impactCount: detail.impact.affected_count,
     maxImpactDepth: detail.impact.max_depth_reached,
     impactByType: detail.impact.affected_by_type,
+    impactCompleteness: detail.impact.completeness,
   };
 }
 

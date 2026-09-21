@@ -101,6 +101,42 @@ describe("graph entity drawer tabs", () => {
     expect(screen.getByText("Blast Scope")).toBeTruthy();
   });
 
+  it("qualifies structural counts without claiming successful exploitation or damage", () => {
+    render(<GraphEntityDrawer data={richNode()} onClose={noop} enrich={false} />);
+    fireEvent.click(screen.getByTestId("graph-drawer-tab-impact"));
+    expect(screen.getByText("Upstream connected entities")).toBeTruthy();
+    expect(screen.getByText(/do not establish exploitability, successful actions or observed damage/)).toBeTruthy();
+    expect(screen.getByText("Traversal completeness unavailable")).toBeTruthy();
+    expect(screen.getByText("3 hops explored")).toBeTruthy();
+  });
+
+  it.each([
+    ["depth_limit", "Hop limit reached; additional upstream connections may exist."],
+    ["traversal_budget", "Traversal limit reached; additional upstream connections may exist."],
+  ])("preserves bounded impact metadata from the node API: %s", async (reason, explanation) => {
+    vi.spyOn(api, "getGraphNode").mockResolvedValue({
+      node: { id: "vuln:cve-2024-9999", attributes: {} },
+      edges_in: [], edges_out: [], neighbors: [], sources: [],
+      impact: { affected_count: 4, affected_by_type: { package: 3, agent: 1 }, max_depth_reached: 3,
+        completeness: { status: "truncated", complete: false, truncated: true, sampled: false, returned: 4, reason } },
+    } as unknown as GraphNodeDetailResponse);
+    render(<GraphEntityDrawer data={richNode()} scanId="scan-proof" onClose={noop} />);
+    fireEvent.click(screen.getByTestId("graph-drawer-tab-impact"));
+    expect(await screen.findByText("Partial traversal · 4 entities returned")).toBeTruthy();
+    expect(screen.getByText(explanation)).toBeTruthy();
+    expect(screen.queryByText("Recorded upstream traversal complete")).toBeNull();
+  });
+
+  it("keeps a complete zero-result traversal inspectable without claiming no exposure", () => {
+    const data: LineageNodeData = { ...richNode(), impactByType: {}, impactCount: 0, maxImpactDepth: 0,
+      impactCompleteness: { status: "complete", complete: true, truncated: false, sampled: false, returned: 0, total: 0 } };
+    render(<GraphEntityDrawer data={data} onClose={noop} enrich={false} />);
+    fireEvent.click(screen.getByTestId("graph-drawer-tab-impact"));
+    expect(screen.getByText("No upstream entities returned")).toBeTruthy();
+    expect(screen.getByText("Recorded upstream traversal complete")).toBeTruthy();
+    expect(screen.getByText(/do not establish exploitability/)).toBeTruthy();
+  });
+
   it("drills a direct relationship without losing its direction or selected neighbor", async () => {
     vi.spyOn(api, "getGraphNode").mockResolvedValue({
       node: { id: "vuln:cve-2024-9999", attributes: {} },

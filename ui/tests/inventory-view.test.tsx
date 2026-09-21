@@ -273,10 +273,10 @@ describe("InventoryIndex whole-query truth", () => {
     );
     expect(screen.getByText("1,000")).toBeInTheDocument();
     const packages = screen.getByRole("link", { name: /^Packages/ });
-    expect(packages).toHaveAttribute("href", "/inventory/packages");
+    expect(packages).toHaveAttribute("href", "/inventory/packages?scan=scan-inventory-7");
     expect(within(packages).getByText("700")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^MCP servers/ })).toHaveAttribute("href", "/inventory/servers");
-    expect(screen.getByRole("link", { name: /^AI agents/ })).toHaveAttribute("href", "/inventory/agents");
+    expect(screen.getByRole("link", { name: /^Servers & tools/ })).toHaveAttribute("href", "/inventory/servers?scan=scan-inventory-7");
+    expect(screen.getByRole("link", { name: /^AI entities/ })).toHaveAttribute("href", "/inventory/agents?scan=scan-inventory-7");
     expect(api.getGraph).not.toHaveBeenCalled();
   });
 
@@ -308,9 +308,9 @@ describe("InventoryIndex whole-query truth", () => {
       </InventoryProvider>,
     );
 
-    const identities = await screen.findByRole("link", { name: /^Identities & credentials/ });
+    const identities = await screen.findByRole("link", { name: /^Identity & access/ });
     await waitFor(() => {
-      const current = screen.getByRole("link", { name: `Identities & credentials ${count.toLocaleString()}` });
+      const current = screen.getByRole("link", { name: `Identity & access ${count.toLocaleString()}` });
       expect(within(current).getByText(count.toLocaleString())).toBeInTheDocument();
     });
     expect(within(identities).queryByText("identitys")).not.toBeInTheDocument();

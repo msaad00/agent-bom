@@ -4,6 +4,7 @@ import type { ComponentType, ReactNode } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { Bug, KeyRound, Package, Wrench } from "lucide-react";
 
+import type { GraphCompleteness } from "@/lib/api-types";
 import { severityColor } from "@/lib/api";
 import type { ReachBreakdown } from "@/lib/effective-reach";
 import { NODE_COLOR_MAP } from "@/lib/graph-utils";
@@ -40,6 +41,7 @@ export type LineageNodeData = {
   impactCount?: number | undefined;
   maxImpactDepth?: number | undefined;
   impactByType?: Record<string, number> | undefined;
+  impactCompleteness?: GraphCompleteness | undefined;
   // Agent / provider
   agentType?: string | undefined;
   agentStatus?: string | undefined;
@@ -48,6 +50,8 @@ export type LineageNodeData = {
   packageCount?: number | undefined;
   vulnCount?: number | undefined;
   vulnCountPartial?: boolean | undefined;
+  countScope?: "loaded_graph" | undefined;
+  countHopLimits?: Partial<Record<"agentCount" | "serverCount" | "packageCount" | "vulnCount" | "toolCount" | "credentialCount", number>> | undefined;
   // Server / Shared Server
   toolCount?: number | undefined;
   credentialCount?: number | undefined;
@@ -188,9 +192,20 @@ function NodeCard({
           {subtitle}
         </div>
       )}
-      {footer}
+      {footer && data.countScope === "loaded_graph" ? (
+        <div className="flex flex-wrap items-baseline gap-x-2" title={graphCountDescription(data)}>
+          <span className="text-[10px] text-[var(--text-secondary)]">Loaded graph</span>
+          {footer}
+        </div>
+      ) : footer}
     </div>
   );
+}
+
+function graphCountDescription(data: LineageNodeData): string {
+  const labels = { agentCount: "agents", serverCount: "servers", packageCount: "packages", vulnCount: "findings", toolCount: "tools", credentialCount: "credentials" };
+  const limits = Object.entries(data.countHopLimits ?? {}).map(([key, depth]) => `${labels[key as keyof typeof labels]}: ${depth} hop${depth === 1 ? "" : "s"}`).join("; ");
+  return `${limits.charAt(0).toUpperCase()}${limits.slice(1)}. Distinct entities linked in the loaded graph; these bounded counts are not inventory totals or proof of access.`;
 }
 
 const NODE_TYPE_BADGES: Record<LineageNodeType, string> = {

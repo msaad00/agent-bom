@@ -137,6 +137,7 @@ async function routeProductFixture(page: Page) {
       memberships: [],
     },
   }));
+  await page.route("**/v1/inventory/summary**", (route) => route.fulfill({ status: 503, json: {detail: "No inventory snapshot in this fixture"} }));
   await page.route("**/v1/posture/counts", (route) => route.fulfill({ json: COUNTS }));
   await page.route("**/v1/posture", (route) => route.fulfill({ json: { grade: "D", score: 48, summary: OVERVIEW.posture.summary } }));
   await page.route("**/v1/overview", (route) => route.fulfill({ json: OVERVIEW }));
@@ -202,7 +203,7 @@ for (const theme of ["light", "dark"] as const) {
     await routeProductFixture(page);
 
     await page.goto("/");
-    await page.getByRole("tab", { name: "Overview", exact: true }).click();
+    await page.getByRole("tab", { name: "Posture", exact: true }).click();
     await expect(page.getByText("Current findings · configured window")).toBeVisible();
     const critical = page.getByRole("link", { name: /^Critical 7/i });
     const high = page.getByRole("link", { name: /^High 28/i });
@@ -240,7 +241,7 @@ test("overview and current-state findings remain readable without mobile overflo
   await routeProductFixture(page);
 
   await page.goto("/");
-  await page.getByRole("tab", { name: "Overview", exact: true }).click();
+  await page.getByRole("tab", { name: "Posture", exact: true }).click();
   await expect(page.getByRole("link", { name: /^Critical 7/i })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await capture(page, testInfo, "overview-reconciled-mobile.png");
@@ -265,7 +266,7 @@ test("overview and current-state findings remain readable without mobile overflo
 });
 
 for (const theme of ["light", "dark"] as const) {
-  test(`operational metrics meet text contrast in ${theme} theme`, async ({ page }, testInfo) => {
+  test(`risk rows meet text contrast in ${theme} theme`, async ({ page }, testInfo) => {
     await page.addInitScript((selectedTheme) => localStorage.setItem("agent-bom-theme", selectedTheme), theme);
     await page.setViewportSize({ width: 1440, height: 900 });
     await routeProductFixture(page);
@@ -279,9 +280,8 @@ for (const theme of ["light", "dark"] as const) {
       },
     } }));
     await page.goto("/");
-    await page.getByRole("button", { name: /Operational signals/ }).click();
-    const metrics = page.getByTestId("overview-estate-ops").locator("span.font-mono");
-    await expect(metrics).toHaveCount(3);
+    const metrics = page.getByRole("group", { name: "Select a risk" }).locator("button > span:first-child");
+    await expect(metrics).toHaveCount(2);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     // Measure settled theme colors rather than the deliberate transition frame.
     await page.waitForTimeout(500);
@@ -314,10 +314,10 @@ for (const theme of ["light", "dark"] as const) {
         return { text: node.textContent, foreground, background, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
       });
     });
-    const evidencePath = testInfo.outputPath(`operational-contrast-${theme}.json`);
+    const evidencePath = testInfo.outputPath(`risk-row-contrast-${theme}.json`);
     await writeFile(evidencePath, JSON.stringify(contrast, null, 2));
-    await testInfo.attach(`operational-contrast-${theme}`, { path: evidencePath, contentType: "application/json" });
-    await page.screenshot({ path: testInfo.outputPath(`operational-contrast-${theme}.png`) });
+    await testInfo.attach(`risk-row-contrast-${theme}`, { path: evidencePath, contentType: "application/json" });
+    await page.screenshot({ path: testInfo.outputPath(`risk-row-contrast-${theme}.png`) });
     for (const metric of contrast) expect(metric.ratio, `${theme} metric ${metric.text}`).toBeGreaterThanOrEqual(4.5);
   });
 }
@@ -339,8 +339,10 @@ for (const theme of ["light", "dark"] as const) {
       } }));
       await page.goto("/");
       await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
+      expect(await page.getByRole("button", {name: /^Compliance & frameworks/}).getByText("Compliance & frameworks", {exact: true}).evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await page.waitForTimeout(350);
-      const panels = await Promise.all(["Risk overview", "Compliance & frameworks", "Coverage"].map((name) => page.getByRole("region", { name, exact: true }).boundingBox()));
+      await page.getByRole("tab", { name: "Posture", exact: true }).click();
+      const panels = await Promise.all(["Risk overview", "Compliance & frameworks", "Findings by discipline"].map((name) => page.getByRole("region", { name, exact: true }).boundingBox()));
       const [risks, compliance, coverage] = panels;
       const score = (await page.getByTestId("overview-posture-score").boundingBox())!;
       const issues = (await page.getByTestId("overview-severity-issue-strip").boundingBox())!;
@@ -359,8 +361,7 @@ for (const theme of ["light", "dark"] as const) {
         }
       }
       await page.screenshot({ path: testInfo.outputPath(`overview-two-row-${theme}-${width}.png`) });
-      const operations = page.getByRole("button", { name: /Operational signals/ });
-      await expect(operations).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("button", { name: /Operational signals/ })).toHaveCount(0);
       await page.getByRole("tab", { name: "Top risks", exact: true }).click();
       if (width === 1440) {
         expect((await page.getByRole("region", { name: "Prioritized findings" }).boundingBox())!.y).toBeLessThan(850);
@@ -370,10 +371,15 @@ for (const theme of ["light", "dark"] as const) {
       expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(112);
       const cloudBox = (await unavailableLane.boundingBox())!;
       const appBox = (await page.getByTestId("coverage-lane-aspm").boundingBox())!;
-      expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
-      expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
+      if (width === 1440) {
+        expect(appBox.x).toBeGreaterThan(cloudBox.x + cloudBox.width);
+        expect(Math.abs(cloudBox.y - appBox.y)).toBeLessThan(2);
+      } else {
+        expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
+        expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
+      }
       await expect(unavailableLane.getByText("0", { exact: true })).toHaveCount(0);
-      await page.getByRole("tab", { name: "Overview", exact: true }).click();
+      await page.getByRole("tab", { name: "Posture", exact: true }).click();
       const scoreToggle = page.getByRole("button", { name: /What influences this score/ });
       await scoreToggle.focus();
       await page.keyboard.press("Enter");
@@ -385,7 +391,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByTestId("overview-score-explainer").screenshot({ path: testInfo.outputPath(`score-pressure-${theme}-${width}.png`) });
       await scoreToggle.focus();
       await page.keyboard.press("Enter");
-      const coverageToggle = page.getByRole("button", { name: /^Coverage/ });
+      const coverageToggle = page.getByRole("button", { name: /^Findings by discipline/ });
       await coverageToggle.focus();
       await page.keyboard.press("Enter");
       await expect(unavailableLane).not.toBeVisible();
@@ -398,7 +404,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByText("6/6 evaluated controls pass")).not.toBeVisible();
       await expect(complianceToggle).toBeFocused();
       await expect(coverageToggle).toHaveAttribute("aria-expanded", "true");
-      await expect(page.getByRole("tab", { name: "Overview", exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "Posture", exact: true })).toHaveAttribute("aria-selected", "true");
       await page.keyboard.press("Space");
       await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
       const disclosure = page.getByRole("button", { name: /^Control frameworks/i });
@@ -459,3 +465,80 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+for (const theme of ["light", "dark"] as const) {
+  for (const viewport of [{ width: 1568, height: 900 }, { width: 390, height: 844 }]) {
+    test(`risk-first scope workspace ${theme} ${viewport.width}`, async ({ page }, testInfo) => {
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      await page.setViewportSize(viewport);
+      await routeProductFixture(page);
+      await page.route("**/v1/overview", (route) => route.fulfill({ json: { ...OVERVIEW, finding_counts: COUNTS,
+        top_risks: Array.from({length: 7}, (_, i) => ({...OVERVIEW.top_risks[0], vulnerability_id: `CVE-2026-${7100+i}`, risk_score: 10-i, affected_agents: [`scope-agent-${i}`]})),
+      } }));
+      await page.route("**/v1/inventory/summary**", (route) => route.fulfill({json: {
+        schema_version: "inventory.summary.v1", scan_id: "scope-snapshot", total_assets: 127,
+        by_type: {agent: 2, server: 3, tool: 10, tool_call: 50, model: 40, framework: 20, user: 2},
+      }}));
+      await page.goto("/");
+      await expect(page.getByRole("tab", {name: "Top risks"})).toHaveAttribute("aria-selected", "true");
+      const risks = page.getByRole("group", {name: "Select a risk"});
+      await expect(risks.getByRole("button")).toHaveCount(5);
+      await risks.getByRole("button", {name: /scope-agent-4/}).click();
+      const detail = viewport.width >= 960 ? page.getByRole("region", {name: "Selected risk"}) : page.getByRole("dialog", {name: "Selected risk"});
+      await expect(detail.getByText("Affected workload: scope-agent-4")).toBeVisible();
+      await expect(detail.getByRole("link", {name: /Affected workload/})).toHaveAttribute("href", /CVE-2026-7104/);
+      if (viewport.width >= 960) {
+        const listBox = await risks.boundingBox(); const detailBox = await detail.boundingBox();
+        expect(listBox).not.toBeNull(); expect(detailBox).not.toBeNull();
+        expect(detailBox!.x).toBeGreaterThan(listBox!.x + listBox!.width);
+        expect(Math.abs(detailBox!.y - listBox!.y)).toBeLessThan(5);
+      } else {
+        await page.keyboard.press("Escape");
+        await expect(detail).toBeHidden();
+        await expect(risks.getByRole("button", {name: /scope-agent-4/})).toBeFocused();
+      }
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const firstScreen = await risks.boundingBox();
+      expect(firstScreen!.y + firstScreen!.height).toBeLessThanOrEqual(viewport.height);
+      await page.screenshot({path: testInfo.outputPath(`overview-${theme}-${viewport.width}.png`)});
+      await page.getByRole("tab", {name: "Assets & coverage"}).click();
+      await expect(page.getByRole("tab", {name: "Assets & coverage"})).toHaveAttribute("aria-selected", "true");
+      const agents = page.getByRole("link", {name: "At least 2 Agents", exact: true});
+      await expect(agents).toBeVisible();
+      await expect(agents).toHaveAttribute("href", "/inventory?scan=scope-snapshot&type=agent");
+      await expect(page.getByRole("link", {name: "At least 3 Servers", exact: true})).toBeVisible();
+      await expect(page.getByText(/Coverage not established by asset counts/)).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({path: testInfo.outputPath(`overview-assets-${theme}-${viewport.width}.png`), animations: "disabled"});
+      await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const navigation = page.getByRole("button", {name: "Open navigation menu"});
+      if (viewport.width === 390) {
+        const bounds = await navigation.boundingBox();
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+      }
+      const status = page.locator("header summary", {hasText: "Control plane"});
+      await status.focus(); await page.keyboard.press("Enter");
+      const statusDetails = page.locator("header details[open] p");
+      await expect(statusDetails).toHaveText("Control plane · v9.8.7");
+      const statusBounds = await statusDetails.boundingBox();
+      expect(statusBounds!.x).toBeGreaterThanOrEqual(0);
+      expect(statusBounds!.x + statusBounds!.width).toBeLessThanOrEqual(viewport.width);
+      await page.keyboard.press("Enter");
+      for (const tile of await page.getByRole("region", {name: "Recorded assets"}).getByRole("link").all()) {
+        expect(await tile.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      }
+      await page.getByRole("region", {name: "Recorded assets"}).screenshot({path: testInfo.outputPath(`overview-assets-zoom-${theme}-${viewport.width}.png`), animations: "disabled"});
+    });
+  }
+}
+
+test("failed asset summary keeps its requested snapshot and filters", async ({ page }) => {
+  await routeProductFixture(page);
+  await page.route("**/v1/inventory/summary**", route => route.fulfill({status: 503, json: {detail: "Unavailable"}}));
+  await page.goto("/?scan=locked-snapshot&provider=aws&environment=production&type=agent&min_severity=high");
+  await page.getByRole("tab", {name: "Assets & coverage"}).click();
+  await expect(page.getByRole("status").filter({hasText: "Recorded asset summary unavailable"})).toBeVisible();
+  const link = page.getByRole("link", {name: "Open asset inventory"});
+  await expect(link).toHaveAttribute("href", "/inventory?scan=locked-snapshot&environment=production&provider=aws&type=agent&min_severity=high");
+});

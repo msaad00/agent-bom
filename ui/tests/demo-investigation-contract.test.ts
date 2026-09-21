@@ -8,18 +8,13 @@ const page = readFileSync(join(process.cwd(), "app/security-graph/page.tsx"), "u
 describe("investigation demo hierarchy", () => {
   it("puts the ranked decision workspace before secondary evidence controls", () => {
     const workspace = page.indexOf("<InvestigationPathWorkspace");
-    const evidenceScope = page.indexOf('title="Evidence scope"');
-    const deployGate = page.indexOf('title="Should I deploy?"');
-    const exposureLens = page.indexOf('title="Exposure paths"');
-
+    const tools = page.indexOf("<InvestigationTools");
     expect(workspace).toBeGreaterThan(-1);
-    expect(evidenceScope).toBeGreaterThan(workspace);
-    expect(deployGate).toBeGreaterThan(workspace);
-    expect(exposureLens).toBeGreaterThan(workspace);
+    expect(tools).toBeGreaterThan(workspace);
   });
 
   it("describes snapshots as supporting evidence instead of the page identity", () => {
-    expect(page).toContain("Evidence scope");
+    expect(page).toContain("InvestigationTools");
     expect(page).toContain("Current scan evidence");
     expect(page).toContain("Manage snapshots");
     expect(page).not.toContain(">Snapshot</p>");

@@ -44,6 +44,7 @@ export function GraphEmptyState({
 }) {
   return (
     <PageEmptyState
+      compact
       title={title}
       detail={detail}
       suggestions={suggestions}

@@ -50,6 +50,7 @@ describe("graph-entity-detail", () => {
         affected_by_type: { agent: 1 },
         affected_count: 3,
         max_depth_reached: 2,
+        completeness: { status: "truncated", complete: false, truncated: true, sampled: false, returned: 3, reason: "depth_limit" },
       },
     } as unknown as GraphNodeDetailResponse;
 
@@ -58,6 +59,7 @@ describe("graph-entity-detail", () => {
     expect(merged.outgoingEdgeCount).toBe(1);
     expect(merged.neighborCount).toBe(2);
     expect(merged.impactCount).toBe(3);
+    expect(merged.impactCompleteness).toEqual(detail.impact.completeness);
     expect(merged.description).toBe("Cross-host token disclosure");
     expect(merged.fixedVersion).toBe("1.6.0");
     expect(merged.cvssScore).toBe(6.5);

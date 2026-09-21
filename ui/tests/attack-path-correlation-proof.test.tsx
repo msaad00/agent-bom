@@ -75,7 +75,7 @@ describe("AttackPathCorrelationProof", () => {
 
     render(<AttackPathCorrelationProof path={path} nodes={nodes} />);
 
-    expect(screen.getByText("Path evidence complete")).toBeInTheDocument();
+    expect(screen.getByText("Hop receipts complete")).toBeInTheDocument();
     expect(screen.queryByText("Path verified")).not.toBeInTheDocument();
     expect(screen.getByText("3/3 directed traversable hops evidenced")).toBeInTheDocument();
     expect(screen.getByText(`reference-api@${digest}`)).toBeInTheDocument();
@@ -121,8 +121,8 @@ describe("AttackPathCorrelationProof", () => {
 
     render(<AttackPathCorrelationProof path={path} />);
 
-    expect(screen.getByText("Path evidence incomplete")).toBeInTheDocument();
-    expect(screen.getByText("Unavailable directed traversable hops evidenced")).toBeInTheDocument();
+    expect(screen.getByText("Hop receipts incomplete")).toBeInTheDocument();
+    expect(screen.getByText("Directed-hop receipt count unavailable")).toBeInTheDocument();
     expect(screen.getByText("Stale allowed")).toHaveClass("text-amber-700");
     expect(screen.queryByText("Path verified")).not.toBeInTheDocument();
   });
@@ -172,7 +172,7 @@ describe("AttackPathCorrelationProof", () => {
 
     render(<AttackPathCorrelationProof path={path} />);
 
-    expect(screen.getByText("Path evidence incomplete")).toBeInTheDocument();
+    expect(screen.getByText("Hop receipts incomplete")).toBeInTheDocument();
     expect(screen.getByText("Stale allowed")).toBeInTheDocument();
     expect(screen.queryByText("Path verified")).not.toBeInTheDocument();
   });
@@ -183,11 +183,11 @@ it("discloses missing canonical path nodes instead of silently omitting anchors"
   render(<AttackPathCorrelationProof path={path} nodes={[{id: "a", label: "image", entity_type: "container"} as UnifiedNode]} />);
   expect(screen.getByText("1 path nodes unavailable")).toBeInTheDocument();
   expect(screen.getByText("image")).toBeInTheDocument();
-  expect(screen.getByText("Path evidence incomplete")).toBeInTheDocument();
+  expect(screen.getByText("Hop receipts incomplete")).toBeInTheDocument();
 });
 
 it("renders malformed legacy receipts without granting proof", () => {
   const path = {source: "a", target: "b", hops: ["a", "b"], edges: ["uses"], hop_evidence: [null, {source_snapshot_ids: null}]} as unknown as GraphAttackPath;
   render(<AttackPathCorrelationProof path={path} />);
-  expect(screen.getByText("Path evidence incomplete")).toBeInTheDocument();
+  expect(screen.getByText("Hop receipts incomplete")).toBeInTheDocument();
 });

@@ -1,7 +1,10 @@
 import type { Vulnerability } from "@/lib/api";
-import type { FindingFacets, FindingOccurrenceSummary, WorkloadRuntimeEvidence } from "@/lib/api-types";
+import type { FindingFacets, FindingOccurrenceSummary, FindingReconfirmation, WorkloadRuntimeEvidence } from "@/lib/api-types";
 
 export interface EnrichedVuln extends Vulnerability {
+  observation_status?: "observed" | "unreconfirmed" | undefined;
+  reconfirmation?: FindingReconfirmation | undefined;
+  unreconfirmed_occurrence_count?: number | undefined;
   /**
    * Unique per-finding identifier (UUID). Distinct from `id`, which carries the
    * vulnerability label (CVE/GHSA) shown to users. The same CVE can affect many

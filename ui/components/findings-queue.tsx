@@ -1,10 +1,13 @@
 "use client";
 
 import { ChevronDown, ChevronRight, ChevronUp, ExternalLink } from "lucide-react";
+import { createPortal } from "react-dom";
 import { Fragment, useLayoutEffect, useState, type ReactNode } from "react";
 import { FINDING_COLUMN_LABELS, defaultFindingColumns, readFindingColumns, writeFindingColumns, type FindingColumnKey, type FindingColumnPreferences } from "@/lib/finding-columns";
 
 import { useAuthState } from "@/components/auth-provider";
+import { Drawer } from "@/components/drawer";
+import { ReconfirmationBadge } from "@/components/finding-reconfirmation";
 import { severityColor, severityDot, type FindingTriageItem } from "@/lib/api";
 import type { FindingsLens } from "@/lib/findings-lens";
 import type { EnrichedVuln, SortKey } from "@/lib/findings-view";
@@ -123,6 +126,7 @@ export function FindingsQueueTable({
   selectedId,
   onSelect,
   triageByKey = new Map(),
+  controlsContainerId,
 }: {
   vulns: EnrichedVuln[];
   sortKey: SortKey;
@@ -136,12 +140,15 @@ export function FindingsQueueTable({
   showLifecycle?: boolean;
   lens?: FindingsLens;
   triageByKey?: ReadonlyMap<string, FindingTriageItem>;
+  controlsContainerId?: string;
 }) {
   const { hasCapability } = useAuthState();
   const canManageExceptions = hasCapability("exceptions.manage");
   const compactLayout = useCompactFindingsLayout();
   const [preferences, setPreferences] = useState<FindingColumnPreferences>(defaultFindingColumns);
   useLayoutEffect(() => { setPreferences(readFindingColumns()); }, []);
+  const [controlsContainer, setControlsContainer] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => { setControlsContainer(controlsContainerId ? document.getElementById(controlsContainerId) : null); }, [controlsContainerId]);
   const columns = preferences.order.filter((key) => !preferences.hidden.includes(key));
   const updateColumns = (next: FindingColumnPreferences) => { setPreferences(next); writeFindingColumns(next); };
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -157,7 +164,8 @@ export function FindingsQueueTable({
 
   return (
     <div className="overflow-hidden rounded-xl border border-outline">
-      <FindingColumnsChooser preferences={preferences} onChange={updateColumns} />
+      {controlsContainer ? createPortal(<FindingColumnsChooser preferences={preferences} onChange={updateColumns} inline />, controlsContainer)
+        : <FindingColumnsChooser preferences={preferences} onChange={updateColumns} />}
       {compactLayout ? (
       <div className="divide-y divide-outline bg-background">
         {vulns.map((vuln) => {
@@ -339,6 +347,7 @@ function MobileFindingCard({
         </span>
       </button>
 
+      <ReconfirmationBadge finding={vuln} />
       <OccurrenceDisclosure
         vuln={vuln}
         expanded={occurrencesExpanded}
@@ -456,6 +465,7 @@ function FindingIdentity({
               {secondary}
             </p>
           ) : null}
+          <ReconfirmationBadge finding={vuln} />
           <OccurrenceDisclosure
             vuln={vuln}
             expanded={occurrencesExpanded}
@@ -516,6 +526,7 @@ function OccurrenceList({ vuln }: { vuln: EnrichedVuln }) {
           const key = occurrence.finding_id ?? occurrence.occurrence_id ?? asset?.stable_id ?? String(index);
           return (
             <li key={key} className="min-w-0 rounded border border-outline bg-surface px-2.5 py-2">
+              <ReconfirmationBadge finding={occurrence} />
               <span className="block truncate font-mono text-foreground" title={asset?.name || asset?.stable_id || undefined}>
                 {asset?.name || asset?.stable_id || "Asset unavailable"}
               </span>
@@ -741,7 +752,10 @@ function ObservationDate({ label, value }: { label: string; value: string | null
 function DetectionEvidence({ vuln }: { vuln: EnrichedVuln }) {
   return <span className="flex flex-col gap-1 break-words"><span>Source: {vuln.detection_source || "Unavailable"}</span><span>Type: {vuln.finding_type || "Unavailable"}</span></span>;
 }
-function FindingColumnsChooser({ preferences, onChange }: { preferences: FindingColumnPreferences; onChange: (next: FindingColumnPreferences) => void }) {
+function FindingColumnsChooser({ preferences, onChange, inline = false }: { preferences: FindingColumnPreferences; onChange: (next: FindingColumnPreferences) => void; inline?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const compact = useCompactFindingsLayout();
+  const [anchorTop, setAnchorTop] = useState(80);
   const move = (key: FindingColumnKey, delta: number) => {
     const order = [...preferences.order];
     const index = order.indexOf(key);
@@ -750,9 +764,12 @@ function FindingColumnsChooser({ preferences, onChange }: { preferences: Finding
     [order[index], order[target]] = [order[target]!, order[index]!];
     onChange({ ...preferences, order });
   };
-  return <details className="border-b border-outline p-3">
-    <summary className="w-fit cursor-pointer rounded text-sm font-medium text-ink-secondary focus-visible:outline-2 focus-visible:outline-emerald-600">Columns</summary>
-    <div className="mt-3 max-w-lg space-y-2" aria-label="Column preferences">
+  return <div className={inline ? "" : "flex justify-end border-b border-outline px-3 py-2"}>
+    <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={(event) => { setAnchorTop(Math.min(event.currentTarget.getBoundingClientRect().bottom, window.innerHeight * 0.18)); setOpen(true); }} className="rounded-lg border border-outline px-3 py-2 text-sm font-medium text-ink-secondary focus-visible:outline-2 focus-visible:outline-emerald-600">Columns</button>
+    <Drawer open={open} onClose={() => setOpen(false)} title="Column preferences" ariaLabel="Column preferences" closeLabel="Close column preferences" backdropLabel="Dismiss column preferences" size="md" resizable={false}
+      panelClassName={compact ? "" : "!h-auto self-start rounded-xl border !max-h-[min(80dvh,44rem)]"}
+      panelStyle={compact ? {} : { marginTop: anchorTop, marginRight: 16 }}>
+    <div className="space-y-3" aria-label="Column preferences">
       <p className="text-xs text-ink-secondary">Finding and Action stay visible. Preferences apply to both the table and mobile cards.</p>
       <ul className="space-y-1">
         {preferences.order.map((key, index) => <li key={key} className="flex items-center gap-2">
@@ -763,5 +780,6 @@ function FindingColumnsChooser({ preferences, onChange }: { preferences: Finding
       </ul>
       <button type="button" onClick={() => onChange(defaultFindingColumns())} className="rounded border border-outline px-3 py-1.5 text-sm text-ink-secondary">Reset view</button>
     </div>
-  </details>;
+    </Drawer>
+  </div>;
 }

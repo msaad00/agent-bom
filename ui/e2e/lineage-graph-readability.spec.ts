@@ -662,3 +662,59 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({path: testInfo.outputPath(`short-investigation-${theme}.png`)});
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  test(`mobile lineage keeps canvas and scoped controls accessible in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme === "light" ? "dark" : "light");
+    const graph = buildDenseGraph();
+    const searched: { query: string; scanId: string | null }[] = [];
+    await routeGraphPage(page, graph);
+    await page.route("**/v1/graph?**", route => route.fulfill({ json: {
+      ...graph, scan_id: new URL(route.request().url()).searchParams.get("scan_id") ?? scanId,
+    } }));
+    await page.route("**/v1/graph/search?**", route => {
+      const url = new URL(route.request().url());
+      searched.push({ query: url.searchParams.get("q") ?? "", scanId: url.searchParams.get("scan_id") });
+      return route.fulfill({ json: { results: [graph.nodes[0]], total: 1, offset: 0, limit: 16 } });
+    });
+    await page.goto(`/graph?scan=${scanId}&rollup=0`);
+    await page.getByRole("button", { name: `Switch to ${theme} theme`, exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const header = page.locator(".graph-page-header");
+    await expect(header.getByTestId("graph-analysis-status")).toContainText("Analysis status unavailable");
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(() => page.locator('.react-flow__node[data-id="agent:desktop"]').evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const label = element.querySelector("p")!;
+      const zoom = new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a;
+      return box.width >= 180 && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight && parseFloat(getComputedStyle(label).fontSize) * zoom >= 12;
+    })).toBe(true);
+    const headerBox = (await header.boundingBox())!;
+    const canvasBox = (await page.getByRole("application").boundingBox())!;
+    await testInfo.attach("mobile-lineage-geometry", { body: JSON.stringify({ headerBox, canvasBox }), contentType: "application/json" });
+    await page.screenshot({ path: testInfo.outputPath(`lineage-compact-${theme}.png`) });
+    expect(headerBox.height).toBeLessThanOrEqual(240);
+    expect(canvasBox.y).toBeLessThan(390);
+    await expect(header.getByLabel("Graph snapshot", { exact: true })).toBeHidden();
+    await header.getByText("Snapshot & view", { exact: true }).click();
+    await expect(header.getByLabel("Graph snapshot", { exact: true })).toHaveValue(scanId);
+    await header.getByLabel("Graph snapshot", { exact: true }).selectOption(previousScanId);
+    await expect.poll(() => new URL(page.url()).searchParams.get("scan")).toBe(previousScanId);
+    await header.getByLabel("Graph snapshot", { exact: true }).selectOption(scanId);
+    await expect.poll(() => new URL(page.url()).searchParams.get("scan")).toBe(scanId);
+    await header.getByText("Snapshot & view", { exact: true }).click();
+    await header.getByText("Search graph", { exact: true }).click();
+    await header.getByPlaceholder("Search nodes, tags, severities, or attributes").fill("Desktop Agent");
+    await header.getByRole("button", { name: "Search", exact: true }).click();
+    await expect(page.getByTestId("graph-search-result-agent:desktop")).toContainText("Desktop Agent");
+    expect(searched).toEqual([{ query: "Desktop Agent", scanId }]);
+    await header.getByText("Search graph", { exact: true }).click();
+    const settings = header.getByTestId("graph-evidence-controls");
+    await settings.locator(":scope > summary").click();
+    await expect(settings).toHaveAttribute("open", "");
+    await expect(settings.getByText("Advanced controls", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}

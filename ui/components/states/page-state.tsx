@@ -21,6 +21,8 @@ type PageStateProps = {
   actions?: PageStateAction[] | undefined;
   tone?: "neutral" | "warning" | "danger" | "success" | undefined;
   children?: ReactNode;
+  /** In-panel graph states avoid reserving an empty page-sized canvas. */
+  compact?: boolean;
   "data-testid"?: string | undefined;
 };
 
@@ -45,13 +47,14 @@ export function PageState({
   actions,
   tone = "neutral",
   children,
+  compact = false,
   "data-testid": testId,
 }: PageStateProps) {
   const resolvedActions = actions ?? (action ? [action] : []);
 
   return (
-    <div className="flex min-h-[18rem] items-center justify-center px-4 py-10" data-testid={testId}>
-      <div className={`w-full max-w-2xl rounded-2xl border p-6 elev-2 ${TONE_CLASS[tone]}`}>
+    <div className={compact ? "py-1" : "flex min-h-[18rem] items-center justify-center px-4 py-10"} data-testid={testId}>
+      <div className={compact ? "w-full text-ink-secondary" : `w-full max-w-2xl rounded-2xl border p-6 elev-2 ${TONE_CLASS[tone]}`}>
         <div className="flex items-start gap-3">
           <div className="rounded-xl border border-outline bg-surface-elevated p-2">
             <Icon className="h-5 w-5 text-ink-secondary" />

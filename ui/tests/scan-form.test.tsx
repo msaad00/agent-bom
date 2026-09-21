@@ -51,8 +51,9 @@ vi.mock("@/components/auth-provider", () => ({
   },
 }));
 
+const pushMock = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
 }));
 
 vi.mock("@/hooks/use-deployment-context", () => ({
@@ -230,6 +231,7 @@ describe("ScanForm", () => {
 
     expect(startScan).toHaveBeenCalledWith(expect.objectContaining({ agent_projects: ["projects/agent"] }));
     expect(startScan.mock.calls[0]?.[0]).not.toHaveProperty("discover_host");
+    expect(pushMock).toHaveBeenCalledWith("/scan?id=job-project-1");
   });
 
   it("runs a brokered cloud scan for the selected connection", async () => {
@@ -249,6 +251,7 @@ describe("ScanForm", () => {
     });
     await user.click(screen.getByRole("button", { name: /Run cloud scan/i }));
     expect(scanCloudConnection).toHaveBeenCalledWith("conn-aws-1");
+    expect(pushMock).toHaveBeenCalledWith("/scan?id=scan-abc");
   });
 
   it("keeps direct cloud-scan routes read-only without scan.run", async () => {
@@ -416,4 +419,12 @@ describe("ScanForm", () => {
     await user.click(screen.getByRole("checkbox", { name: /Scan pods in current kube context/i }));
     expect(screen.getByLabelText("Namespace filter")).toBeInTheDocument();
   });
+});
+
+it("leads the scan rail with selected evidence scope before generic boundary prose", async () => {
+  render(<ScanForm />);
+  await waitFor(() => expect(screen.getByRole("heading", { name: "Scope now" })).toBeInTheDocument());
+  const scope = screen.getByRole("heading", { name: "Scope now" });
+  const boundary = screen.getByRole("region", { name: "Read-only boundary" });
+  expect(scope.compareDocumentPosition(boundary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

@@ -3,6 +3,39 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 const scanId = "scan-large-overview";
 const createdAt = "2026-05-08T16:00:00Z";
 
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`shared scope counts stay readable in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+      await routeLargeGraphPage(page);
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      await page.route("**/v1/graph/rollup?**", route => route.fulfill({ json: {
+        scan_id: scanId, tenant_id: "default", created_at: createdAt, mode: "rollup", filters: {},
+        top_level: ["one", "two"].map(name => ({
+          id: `account:${name}`, label: `Scope ${name}`, entity_type: "account", severity: "high",
+          is_container: true, has_children: true, direct_child_count: 1,
+          aggregate: { descendant_count: 1, by_type: { package: 1 }, severity_counts: { high: 1 },
+            worst_severity: "high", worst_severity_rank: 3, internet_exposed: false,
+            toxic_combo: false, exposed_count: 0, toxic_count: 0 },
+        })),
+        edges: [], summary: { total_nodes: 3, total_edges: 2, top_level_count: 2, container_count: 2 },
+        aggregate_count_metadata: { basis: "returned_entry_descendants", definition: "Descendants of returned scopes.",
+          distinct_descendants: 1, descendant_memberships: 2, shared_descendants: 1, extra_memberships: 1,
+          additive: false, source_truncated: false, reason: "" },
+        completeness: { status: "complete", complete: true, truncated: false, returned: 2, total: 2 },
+      } }));
+      await page.goto(`/graph?scan=${scanId}&rollup=1`);
+      const notice = page.getByText(/This level: 1 unique descendant · 2 scope memberships/);
+      await expect(notice).toBeVisible();
+      await expect(page.getByTestId("graph-evidence-controls").locator("summary").first()).toContainText("2 nodes and scopes · 1,241 nodes in snapshot");
+      await expect(page.getByTestId("graph-evidence-controls").locator("summary").first()).not.toContainText("bounded canvas");
+      expect(await notice.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await notice.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`shared-scopes-${theme}-${width}.png`) });
+    });
+  }
+}
+
 type GraphNode = {
   id: string;
   entity_type: string;

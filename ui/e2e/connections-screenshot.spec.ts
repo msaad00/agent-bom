@@ -121,9 +121,10 @@ test("captures connections page and wizard", async ({ page }, testInfo) => {
 
   await page.goto("/connections");
   await page.waitForLoadState("networkidle");
-  // Consolidated hub: default Connect segment shows the connector gallery.
+  // Established estates open their recorded sources first.
   await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Connect/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Sources/ })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: /Add source/ }).click();
   await expect(page.getByRole("button", { name: "Connect Amazon Web Services" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("connections-page.png"), fullPage: true });
   // Also write a stable copy under the worktree for reporting.
@@ -151,3 +152,63 @@ test("captures connections page and wizard", async ({ page }, testInfo) => {
   await expect(dialog.getByText("A display name is required.")).toHaveCount(0);
   await page.screenshot({ path: ".screenshots/connections-wizard.png" });
 });
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`source-first workspace and readable catalog ${theme} ${width}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      await routeConnections(page);
+      await page.goto("/connections");
+      const sourcesTab = page.getByRole("tab", { name: /Sources/ });
+      await expect(sourcesTab).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("table")).toBeVisible();
+      await expect(page.getByText("Production account", { exact: true })).toBeVisible();
+      const table = await page.getByRole("table").boundingBox();
+      expect(table!.y).toBeLessThan(width === 390 ? 760 : 620);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await sourcesTab.focus();
+      await page.keyboard.press("Home");
+      const addTab = page.getByRole("tab", { name: /Add source/ });
+      await expect(addTab).toHaveAttribute("aria-selected", "true");
+      await expect(addTab).toBeFocused();
+      await expect(page.getByRole("button", { name: "Connect Amazon Web Services" })).toBeVisible();
+      const label = page.getByText("Amazon Web Services", { exact: true });
+      expect(await label.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`source-catalog-${theme}-${width}.png`), fullPage: true });
+      await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    });
+  }
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`advertised workload binding wizard ${theme} ${width}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      await routeConnections(page);
+      await page.route("**/v1/cloud/connections", route => route.fulfill({ json: {
+        connections: [], count: 0, workload_auth_modes: { gcp: ["workload_identity"] },
+      } }));
+      await page.goto("/connections");
+      await page.getByRole("button", { name: "Add cloud account" }).click();
+      const wizard = page.getByRole("dialog", { name: "Add cloud account" });
+      await wizard.getByRole("button", { name: /Google Cloud/ }).click();
+      await expect(wizard.getByRole("combobox", { name: "Authentication method" })).toHaveValue("workload_identity");
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(wizard.getByText("Operator-managed workload binding")).toBeVisible();
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await wizard.getByPlaceholder("Production account").fill("Bound GCP account");
+      await wizard.getByLabel("Service account email").fill("agent-bom@project.iam.gserviceaccount.com");
+      await wizard.getByLabel("Project ID").fill("project");
+      await wizard.getByLabel("Operator binding ID", { exact: true }).fill("readonly-prod");
+      await expect(wizard.locator('input[type="password"], textarea')).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`workload-binding-${theme}-${width}.png`), fullPage: true });
+      await page.keyboard.press("Escape");
+      await expect(wizard).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Add cloud account" })).toBeFocused();
+    });
+  }
+}

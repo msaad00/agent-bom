@@ -390,8 +390,31 @@ export interface UnifiedGraphResponse extends Omit<
 }
 
 /** Shared HTTP/MCP inventory projection over the tenant-scoped graph store. */
+export interface InventorySummaryFilters {
+  type?: string[] | undefined;
+  search?: string | undefined;
+  environment?: string | undefined;
+  provider?: string | undefined;
+  source?: string | undefined;
+  severity?: string | undefined;
+  minSeverity?: string | undefined;
+}
+
 export interface InventorySummaryResponse {
   schema_version: string;
+  count_exact?: boolean | undefined;
+  count_basis?: string | undefined;
+  finding_count_scope?: "selected_snapshot" | undefined;
+  filters?: {
+    type: string[];
+    search: string;
+    environment: string;
+    provider: string;
+    source: string;
+    severity: string;
+    min_severity: string;
+  } | undefined;
+  collection_coverage?: { status: "unknown"; reason: string } | undefined;
   tenant_id: string;
   scan_id: string;
   created_at?: string | undefined;
@@ -719,6 +742,7 @@ export interface GraphQueryResponse extends UnifiedGraphData {
 }
 
 export interface GraphImpactResponse {
+  completeness?: GraphCompleteness | undefined;
   node_id: string;
   affected_nodes: string[];
   affected_by_type: Record<string, number>;
@@ -842,6 +866,8 @@ export interface GraphRollupResponse {
    * completeness. `source_total` is exact for the graph used to build this
    * roll-up; `source_truncated` says when that source graph was already bounded. */
   edge_count_metadata?: GraphRollupEdgeCountMetadata;
+  /** Reconciles returned-entry descendant counts when containment scopes overlap. */
+  aggregate_count_metadata?: GraphRollupAggregateCountMetadata;
   node?: {
     id: string;
     label: string;
@@ -851,6 +877,19 @@ export interface GraphRollupResponse {
   summary: GraphRollupSummary;
   /** Completeness of the returned roll-up nodes/containers. */
   completeness: GraphCompleteness;
+}
+
+export interface GraphRollupAggregateCountMetadata {
+  basis: "returned_entry_descendants";
+  definition: string;
+  distinct_descendants: number;
+  descendant_memberships: number;
+  shared_descendants: number;
+  extra_memberships: number;
+  /** True only for the returned entries over the loaded source, not the whole estate. */
+  additive: boolean;
+  source_truncated: boolean;
+  reason: string;
 }
 
 export interface GraphRollupEdgeCountMetadata {
@@ -1357,7 +1396,16 @@ export interface Vulnerability {
   match_confidence_tier?: string | undefined;
 }
 
+/** An incomplete attempt does not replace the original observation's provenance. */
+export interface FindingReconfirmation {
+  scan_id: string | null;
+  attempted_at: string | null;
+  reason_codes: Array<"scan_partial" | "scan_failed" | "scan_not_executed" | "scope_partial" | "scope_permission_denied" | "scope_unavailable" | "scope_unsupported" | "scope_skipped" | "scope_incomplete" | "coverage_issue">;
+}
+
 export interface FindingOccurrenceSummary {
+  observation_status?: "observed" | "unreconfirmed" | undefined;
+  reconfirmation?: FindingReconfirmation | undefined;
   finding_id?: string | undefined;
   occurrence_id?: string | undefined;
   canonical_id?: string | undefined;
@@ -1380,6 +1428,9 @@ export interface FindingOccurrenceSummary {
 }
 
 export interface UnifiedFinding {
+  observation_status?: "observed" | "unreconfirmed" | undefined;
+  reconfirmation?: FindingReconfirmation | undefined;
+  unreconfirmed_occurrence_count?: number | undefined;
   id: string;
   finding_id?: string | undefined;
   occurrence_id?: string | undefined;
@@ -3639,6 +3690,9 @@ export interface GovernanceReport {
     columns: string[];
     operation: string;
     is_write: boolean;
+    /** ACCESS_HISTORY array; legacy records may omit this field. */
+    source_field?: string;
+    base_objects?: string[];
   }>;
   privilege_grants: Array<{
     grantee: string;
@@ -4481,7 +4535,7 @@ export interface CloudConnectionCreateRequest {
   provider: string;
   display_name: string;
   role_ref: string;
-  external_id: string;
+  external_id?: string;
   regions: string[];
   /** Non-secret provider-specific params. Never carries a secret (that is `external_id`). */
   auth_params?: Record<string, string>;

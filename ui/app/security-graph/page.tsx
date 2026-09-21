@@ -7,8 +7,6 @@ import {
   ArrowRight,
   GitBranch,
   Loader2,
-  Rocket,
-  Route,
 } from "lucide-react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -20,7 +18,6 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
   if (err instanceof ApiForbiddenError) return "forbidden";
   return "network";
 }
-import { PageLaneHeader } from "@/components/page-lane";
 import type { RankedPathRow } from "@/components/ranked-path-list";
 import { AttackPathTechniqueChain } from "@/components/attack-path-technique-chain";
 import { AttackPathCorrelationProof } from "@/components/attack-path-correlation-proof";
@@ -28,12 +25,12 @@ import { ExposurePathCommandCenter, type ExposurePathView } from "@/components/e
 import {
   InvestigationFilterDrawer,
   InvestigationPathWorkspace,
+  InvestigationTools,
 } from "@/components/investigation-path-workspace";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { DeployGatePanel } from "@/components/deploy-gate-panel";
 import { ExposurePathLens } from "@/components/exposure-path-lens";
-import { Collapsible } from "@/components/collapsible";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import { GraphAnalysisStatusBanner, graphAnalysisStatusCopy } from "@/components/graph-analysis-status";
 import { GraphCampaignPanel } from "@/components/graph-campaign-panel";
@@ -523,7 +520,7 @@ function AttackPathInvestigationContent() {
           key,
           selectionKey: attackPathKey(path),
           rank,
-          title: descriptiveAttackPathTitle(card?.title, pathNodes),
+          title: descriptiveAttackPathTitle(pathNodes),
           cve: path.vuln_ids[0] ?? null,
           riskScore: path.composite_risk,
           scoreLabel: card ? "Evidence priority" : "Queue score",
@@ -677,7 +674,8 @@ function AttackPathInvestigationContent() {
     };
   }, [fixFirstView?.scan_id, graphData?.scan_id, graphNodeById, selectedAttackPath, selectedFixFirstCard, selectedPathActions, selectedScanId]);
 
-  const showCorrelationOverview = latestCorrelationRun?.output_scan_id === selectedScanId
+  const showCorrelationOverview = searchParams.get("correlation") === "1"
+    && latestCorrelationRun?.output_scan_id === selectedScanId
     && Boolean(correlationOutcome)
     && requestedPathMode !== "top"
     && (!hasFocusContext || correlationCaptureMode);
@@ -801,13 +799,10 @@ function AttackPathInvestigationContent() {
 
   return (
     <div className={captureMode ? "space-y-2" : "space-y-4"}>
-      <PageLaneHeader
-        lane="command"
-        title="Investigation"
-        subtitle="Evidence-linked attack paths for the selected finding or asset; switch to Estate for current-state topology."
-        actions={
-          captureMode ? undefined : (
-          <>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Investigation</h1>
+        {captureMode ? undefined : (
+          <div className="hidden flex-wrap items-center gap-2 sm:flex">
             <GraphEvidenceExportButton
               scanId={selectedScanId || undefined}
               filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
@@ -826,12 +821,15 @@ function AttackPathInvestigationContent() {
               Remediation
               <ArrowRight className="h-4 w-4" />
             </Link>
-          </>
-          )
-        }
-      />
+          </div>
+          )}
+      </header>
 
-      <GraphLensSwitcher variant="compact" />
+      <div className="hidden sm:block"><GraphLensSwitcher variant="compact" /></div>
+      <details className="rounded-lg border border-outline bg-surface p-3 sm:hidden">
+        <summary className="cursor-pointer text-sm">Graph lenses · Attack Paths</summary>
+        <div className="mt-2"><GraphLensSwitcher variant="compact" /></div>
+      </details>
 
       {searchParams.get("related_finding") ? (
         <p role="note" aria-label="Finding association" className="graph-callout-sky">
@@ -851,7 +849,7 @@ function AttackPathInvestigationContent() {
           stacked eight such bands above the graph, pushing the ranked paths —
           the reason the page exists — below the fold. */}
       {!captureMode ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 [&_nav]:relative [&_nav]:max-w-full [&_nav]:overflow-x-auto [&_ol]:flex-nowrap [&_li]:shrink-0">
           <InvestigationStepStrip
             step={investigationStep}
             onStepChange={setInvestigationStep}
@@ -1108,6 +1106,7 @@ function AttackPathInvestigationContent() {
                       {selectedPathGraph.loading ? <GraphPanelSkeleton title="Loading selected path" detail="Reading its nodes and relationships from this snapshot…" /> : null}
                       {selectedPathGraph.graph ? (
                         <SecurityGraphInvestigation
+                          embedded
                           graph={selectedPathGraph.graph}
                           attackPath={selectedAttackPath}
                           focusMode={investigationFocusMode}
@@ -1142,16 +1141,29 @@ function AttackPathInvestigationContent() {
         />
       )}
 
-      <Collapsible
-        title="Evidence scope"
-        subtitle={selectedSnapshot
-          ? `Current scan evidence · ${formatDate(selectedSnapshot.created_at)} · ${selectedSnapshot.node_count} nodes · ${selectedSnapshot.edge_count} edges`
-          : "No persisted graph evidence selected."
-        }
-        icon={GitBranch}
-        defaultOpen={false}
-      >
+      <InvestigationTools
+        scope={
         <div className="space-y-4">
+          {!captureMode ? <div className="flex flex-wrap gap-2 sm:hidden">
+            <GraphEvidenceExportButton
+              scanId={selectedScanId || undefined}
+              filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
+            />
+            <Link
+              href={fullGraphHref}
+              className="sg-action"
+            >
+              Open lineage lens
+              <GitBranch className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/remediation"
+              className="sg-action"
+            >
+              Remediation
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div> : null}
           {!showCorrelationOverview && (!captureMode || correlationCaptureMode) && snapshots.length > 0 ? (
             <GraphCorrelationWorkflow
               snapshots={snapshots}
@@ -1168,6 +1180,7 @@ function AttackPathInvestigationContent() {
               <p className="mt-1 font-mono text-sm text-[color:var(--foreground)]">
                 {selectedSnapshot ? selectedSnapshot.scan_id : "No scan selected"}
               </p>
+              {selectedSnapshot ? <p className="mt-1 text-xs text-ink-tertiary">{formatDate(selectedSnapshot.created_at)} · {selectedSnapshot.node_count} nodes · {selectedSnapshot.edge_count} edges</p> : null}
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               {posture ? <QuickStat label="Posture" value={`${posture.grade} ${posture.score}`} tone="red" /> : null}
@@ -1250,27 +1263,11 @@ function AttackPathInvestigationContent() {
             </div>
           ) : null}
         </div>
-      </Collapsible>
 
-      {!captureMode ? (
-        <Collapsible
-          title="Should I deploy?"
-          subtitle="Check an agent, service, image, or package against the selected evidence scope."
-          icon={Rocket}
-          defaultOpen={false}
-        >
-          <DeployGatePanel scanId={selectedScanId || undefined} />
-        </Collapsible>
-      ) : null}
-
-      <Collapsible
-        title="Exposure paths"
-        subtitle="Broader agent-native exposure analysis over the selected evidence scope."
-        icon={Route}
-        defaultOpen={false}
-      >
-        <ExposurePathLens scanId={selectedScanId || undefined} />
-      </Collapsible>
+        }
+        deployment={!captureMode ? <DeployGatePanel scanId={selectedScanId || undefined} /> : undefined}
+        exposure={<ExposurePathLens scanId={selectedScanId || undefined} />}
+      />
     </div>
   );
 }

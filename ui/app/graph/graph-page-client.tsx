@@ -1,6 +1,7 @@
 "use client";
 
 import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
+import { GraphRollupCountNotice } from "@/components/graph-rollup-count-notice";
 import { completeDirectedHopCount } from "@/lib/security-graph-focus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -547,6 +548,7 @@ function mergeNodeDetail(
     impactCount: detail.impact.affected_count,
     maxImpactDepth: detail.impact.max_depth_reached,
     impactByType: detail.impact.affected_by_type,
+    impactCompleteness: detail.impact.completeness,
     description:
       base.description ||
       stringAttribute(mergedAttributes, "description") ||
@@ -2960,6 +2962,106 @@ function GraphPageInner() {
           />
   );
 
+  const snapshotViewControls = (
+    <>
+      {!investigationMode && flow.summary && (
+        <div
+          data-testid="graph-headline-metrics"
+          className="rounded-xl border border-outline bg-surface/80 px-3 py-1.5 text-xs text-ink-secondary"
+        >
+          <span className="font-mono text-red-700 dark:text-red-200">
+            {flow.summary.critical.toLocaleString()}
+          </span>{" "}
+          critical ·{" "}
+          <span className="font-mono text-orange-700 dark:text-orange-200">
+            {flow.summary.findings.toLocaleString()}
+          </span>{" "}
+          findings ·{" "}
+          <span className="font-mono text-sky-700 dark:text-sky-200">
+            {snapshotAttackPathCount.toLocaleString()}
+          </span>{" "}
+          snapshot paths
+          {flow.summary.costUsd30d > 0 && (
+            <>
+              {" · "}
+              <span className="font-mono text-foreground">
+                {flow.summary.costUsd30d.toLocaleString(undefined, {
+                  style: "currency",
+                  currency: "USD",
+                  maximumFractionDigits:
+                    flow.summary.costUsd30d < 100 ? 2 : 0,
+                })}
+              </span>{" "}
+              spend 30d
+            </>
+          )}
+          {flow.summary.expensiveExposed > 0 && (
+            <>
+              {" · "}
+              <span className="font-mono text-red-700 dark:text-red-200">
+                {flow.summary.expensiveExposed.toLocaleString()}
+              </span>{" "}
+              expensive & exposed
+            </>
+          )}
+        </div>
+      )}
+
+      <select
+        aria-label="Graph snapshot"
+        value={selectedScanId}
+        onChange={(event) => setSelectedScanId(event.target.value)}
+        className="graph-page-select max-w-full"
+      >
+        {snapshots.map((snapshot) => (
+          <option key={snapshot.scan_id} value={snapshot.scan_id}>
+            {snapshot.scan_id.slice(0, 12)} ·{" "}
+            {new Date(snapshot.created_at).toLocaleString()}
+          </option>
+        ))}
+      </select>
+
+      {!rollupDecisionActive && <FullscreenButton />}
+      {!rollupDecisionActive && presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <details>
+        <summary className="graph-page-action cursor-pointer">Layout</summary>
+        <GraphInteractionToolbar
+        editing={presentation.editing}
+        hasSelection={Boolean(selectedNodeId)}
+        onFitVisible={fitVisible}
+        onFitSelection={fitSelection}
+        onAutoLayout={autoLayout}
+        onReset={resetLayout}
+        onToggleEditing={presentation.toggleEditing}
+      /></details>}
+    </>
+  );
+  const graphSearchForm = (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void runSearch();
+      }}
+      className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+    >
+      <input
+        aria-label="Search nodes, tags, severities, or attributes"
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.target.value)}
+        placeholder="Search nodes, tags, severities, or attributes"
+        className="graph-page-search"
+        style={{ minWidth: 0 }}
+      />
+      <button
+        type="submit"
+        disabled={searching || !selectedScanId}
+        className="graph-page-action"
+      >
+        {searching ? "Searching..." : "Search"}
+      </button>
+    </form>
+  );
+
+
   return (
     // min-h instead of h so the page can grow taller than the viewport
     // when the snapshot diff cards / how-to-read prose / findings
@@ -2972,18 +3074,26 @@ function GraphPageInner() {
 
       <div className="graph-page-header">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
-              Unified graph
-            </p>
-            <h1 className="mt-1 text-lg font-semibold text-foreground">
-              {canvasLens === "estate" ? "Investigation Canvas" : "Lineage Graph"}
-            </h1>
-            <p className="text-xs text-ink-tertiary">
-              {canvasLens === "estate"
-                ? "Review priority findings, then follow their connections and evidence."
-                : "Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings."}
-            </p>
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="hidden text-[10px] uppercase tracking-[0.24em] text-sky-400 sm:block">
+                Unified graph
+              </p>
+              <h1 className="text-lg font-semibold text-foreground sm:mt-1">
+                {canvasLens === "estate" ? "Investigation Canvas" : "Lineage Graph"}
+              </h1>
+              <p className="hidden text-xs text-ink-tertiary sm:block">
+                {canvasLens === "estate"
+                  ? "Review priority findings, then follow their connections and evidence."
+                  : "Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings."}
+              </p>
+            </div>
+            {narrowViewport && <details className="relative shrink-0" data-testid="mobile-graph-view">
+              <summary className="graph-page-action cursor-pointer">Snapshot &amp; view</summary>
+              <div className="absolute right-0 top-full z-30 mt-2 flex w-72 max-w-[calc(100vw-4rem)] flex-wrap gap-2 rounded-xl border border-outline bg-surface p-3 shadow-lg">
+                {snapshotViewControls}
+              </div>
+            </details>}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
@@ -2991,79 +3101,12 @@ function GraphPageInner() {
               status={graphData?.stats.analysis_status?.attack_path_fusion}
               compact
             />}
-            {!investigationMode && flow.summary && (
-              <div
-                data-testid="graph-headline-metrics"
-                className="rounded-xl border border-outline bg-surface/80 px-3 py-1.5 text-xs text-ink-secondary"
-              >
-                <span className="font-mono text-red-700 dark:text-red-200">
-                  {flow.summary.critical.toLocaleString()}
-                </span>{" "}
-                critical ·{" "}
-                <span className="font-mono text-orange-700 dark:text-orange-200">
-                  {flow.summary.findings.toLocaleString()}
-                </span>{" "}
-                findings ·{" "}
-                <span className="font-mono text-sky-700 dark:text-sky-200">
-                  {snapshotAttackPathCount.toLocaleString()}
-                </span>{" "}
-                snapshot paths
-                {flow.summary.costUsd30d > 0 && (
-                  <>
-                    {" · "}
-                    <span className="font-mono text-foreground">
-                      {flow.summary.costUsd30d.toLocaleString(undefined, {
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits:
-                          flow.summary.costUsd30d < 100 ? 2 : 0,
-                      })}
-                    </span>{" "}
-                    spend 30d
-                  </>
-                )}
-                {flow.summary.expensiveExposed > 0 && (
-                  <>
-                    {" · "}
-                    <span className="font-mono text-red-700 dark:text-red-200">
-                      {flow.summary.expensiveExposed.toLocaleString()}
-                    </span>{" "}
-                    expensive & exposed
-                  </>
-                )}
-              </div>
-            )}
-
-            <select
-              value={selectedScanId}
-              onChange={(event) => setSelectedScanId(event.target.value)}
-              className="graph-page-select"
-            >
-              {snapshots.map((snapshot) => (
-                <option key={snapshot.scan_id} value={snapshot.scan_id}>
-                  {snapshot.scan_id.slice(0, 12)} ·{" "}
-                  {new Date(snapshot.created_at).toLocaleString()}
-                </option>
-              ))}
-            </select>
-
-            {!rollupDecisionActive && <FullscreenButton />}
-            {!rollupDecisionActive && presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <details>
-              <summary className="graph-page-action cursor-pointer">Layout</summary>
-              <GraphInteractionToolbar
-              editing={presentation.editing}
-              hasSelection={Boolean(selectedNodeId)}
-              onFitVisible={fitVisible}
-              onFitSelection={fitSelection}
-              onAutoLayout={autoLayout}
-              onReset={resetLayout}
-              onToggleEditing={presentation.toggleEditing}
-            /></details>}
+            {!narrowViewport && snapshotViewControls}
           </div>
         </div>
 
         <div className="mt-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center gap-2">
           {scenarioState === "current" && !rollupUnavailable && (rollupView || investigationMode || selectedAttackPath) && <div className="shrink-0">
             <InvestigationViewSwitch summary={rollupDecisionActive} onSummary={returnToSummary} onGraph={() => setRollupMapExpanded(true)} />
             {rollupStack.length > 0 && <nav aria-label="Investigation scope" className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -3071,28 +3114,12 @@ function GraphPageInner() {
               {rollupStack.map((crumb, index) => <button key={crumb.id} type="button" onClick={() => navigateRollupBreadcrumb(index)} className="graph-chip-neutral">{crumb.label}</button>)}
             </nav>}
           </div>}
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runSearch();
-            }}
-            className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
-          >
-            <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search nodes, tags, severities, or attributes"
-              className="graph-page-search"
-              style={{ minWidth: 0 }}
-            />
-            <button
-              type="submit"
-              disabled={searching || !selectedScanId}
-              className="graph-page-action"
-            >
-              {searching ? "Searching..." : "Search"}
-            </button>
-          </form>
+          {narrowViewport ? <details className="relative ml-auto" data-testid="mobile-graph-search">
+            <summary className="graph-page-action cursor-pointer">Search graph</summary>
+            <div className="absolute right-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-4rem)] rounded-xl border border-outline bg-surface p-3 shadow-lg">
+              {graphSearchForm}
+            </div>
+          </details> : graphSearchForm}
           </div>
 
           {searchResults.length > 0 && (
@@ -3185,13 +3212,17 @@ function GraphPageInner() {
             data-testid="graph-evidence-controls"
             className="mt-2 border-t border-outline group"
           >
-            <summary className="graph-drawer-summary !px-0">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <summary className="graph-drawer-summary !flex-nowrap !px-0">
+              <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
                   Graph settings
                 </span>
                 <p className="text-xs text-ink-secondary">
-                  {graphScopeLabelForFilters(filters)} ·{" "}
+                  {rollupCanvasOwnsPresentation ? <>
+                    {rollupItems.length.toLocaleString()} nodes and scopes · {estateNodeCount.toLocaleString()} nodes in snapshot
+                    {rollupView?.completeness?.truncated ? " · incomplete scope" : ""}
+                  </> : <>
+                    {graphScopeLabelForFilters(filters)} ·{" "}
                   {activeSnapshot
                     ? `${activeSnapshot.node_count.toLocaleString()} nodes · ${activeSnapshot.edge_count.toLocaleString()} edges`
                     : "Snapshot metadata unavailable"}
@@ -3199,6 +3230,7 @@ function GraphPageInner() {
                   {compressedGroupCount > 0
                     ? ` · ${compressedGroupCount.toLocaleString()} grouped scopes`
                     : ""}
+                  </>}
                 </p>
               </div>
               <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:hidden">
@@ -3879,6 +3911,7 @@ function GraphPageInner() {
               </div>
             </section>
           )}
+          {rollupNavigationActive && !loadingRollup && <GraphRollupCountNotice metadata={rollupView?.aggregate_count_metadata} />}
           {!rollupDecisionActive && (selectedScenarioId || investigationMode || initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
             <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
               <span>{scenarioContextIds ? `Changes and neighbors · ${displayNodes.length} of ${aggregated.nodes.length} nodes` : graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>

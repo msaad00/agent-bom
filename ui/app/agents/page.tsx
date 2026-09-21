@@ -1600,6 +1600,7 @@ export default function AgentsPage() {
 // ─── Discovery envelope card (#2083) ──────────────────────────────────────
 
 const SCAN_MODE_LABEL: Record<string, string> = {
+  unknown: "unknown",
   local_only: "local only",
   cloud_read_only: "cloud read-only",
   saas_read_only: "SaaS read-only",
@@ -1609,6 +1610,7 @@ const SCAN_MODE_LABEL: Record<string, string> = {
 };
 
 const REDACTION_LABEL: Record<string, string> = {
+  unknown: "unknown",
   never_collected: "never collected",
   redacted_in_place: "redacted in place",
   central_sanitizer_applied: "central sanitizer",
@@ -1616,22 +1618,21 @@ const REDACTION_LABEL: Record<string, string> = {
 };
 
 function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
-  const captured = envelope.captured_at
-    ? new Date(envelope.captured_at).toLocaleString()
-    : null;
-  const mode = SCAN_MODE_LABEL[envelope.scan_mode] ?? envelope.scan_mode;
-  const redaction = REDACTION_LABEL[envelope.redaction_status] ?? envelope.redaction_status;
+  const captureDate = envelope.captured_at ? new Date(envelope.captured_at) : null;
+  const captured = captureDate && Number.isFinite(captureDate.getTime()) ? captureDate.toLocaleString() : null;
+  const mode = SCAN_MODE_LABEL[envelope.scan_mode] ?? "unknown";
+  const redaction = REDACTION_LABEL[envelope.redaction_status] ?? "unknown";
   return (
     <div className="agents-trust-card">
-      <div className="agents-section-label-emerald">
+      <div className="agents-section-label mb-2">
         <Shield className="h-3.5 w-3.5" />
-        Scan trust contract
+        Collection context
       </div>
-      <p className="mb-2 text-[11px] text-emerald-200/80">
-        Scan ran from your local or self-hosted deployment boundary with read-only roles. Sensitive values are never collected or are redacted before storage.
+      <p className="mb-2 text-sm text-[color:var(--text-secondary)]">
+        Collector-reported scope and handling. Listed permissions do not prove that every collection call succeeded.
       </p>
       <div className="mb-2 flex flex-wrap gap-1.5">
-        <span className="agents-status-chip">
+        <span className="agents-section-chip">
           {mode}
         </span>
         <span className="agents-section-chip">
@@ -1653,7 +1654,7 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
       {envelope.permissions_used.length > 0 && (
         <details className="mt-2 text-[11px] text-[color:var(--text-secondary)]">
           <summary className="agents-collapse-toggle">
-            Permissions used ({envelope.permissions_used.length})
+            Reported permissions ({envelope.permissions_used.length})
           </summary>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {envelope.permissions_used.map((p) => (
@@ -1664,11 +1665,9 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
           </div>
         </details>
       )}
-      {captured && (
-        <div className="mt-2 text-[10px] text-[color:var(--text-tertiary)]">
-          Captured {captured} · envelope v{envelope.envelope_version}
-        </div>
-      )}
+      <div className="mt-2 text-xs text-[color:var(--text-tertiary)]">
+        {captured ? `Captured ${captured}` : "Capture time unknown"} · envelope v{envelope.envelope_version}
+      </div>
     </div>
   );
 }

@@ -597,28 +597,50 @@ export function LineageDetailPanel({
         />
       )}
       {data.maxImpactDepth != null && (
-        <Row label="Impact depth" value={data.maxImpactDepth} />
+        <Row label="Upstream hops explored" value={data.maxImpactDepth} />
       )}
       {relationshipSlot}
     </div>
   ) : null;
 
-  // ---- Impact: affected nodes broken down by type --------------------------
-  const hasImpact =
-    !!data.impactByType && Object.keys(data.impactByType).length > 0;
-
+  // Reverse traversal describes recorded topology, not executed actions or loss.
+  const impactTypes = Object.entries(data.impactByType ?? {}).sort((left, right) => right[1] - left[1]);
+  const hasImpact = data.impactCount != null || impactTypes.length > 0;
+  const impactCoverage = data.impactCompleteness;
+  const impactPartial = Boolean(impactCoverage?.truncated || impactCoverage?.sampled)
+    || impactCoverage?.status === "truncated" || impactCoverage?.status === "sampled";
+  const impactComplete = impactCoverage?.complete === true && impactCoverage.status === "complete" && !impactPartial;
   const impactSection = hasImpact ? (
-    <div className="flex flex-wrap gap-1">
-      {Object.entries(data.impactByType ?? {})
-        .sort((left, right) => right[1] - left[1])
-        .map(([key, value]) => (
-          <span
-            key={key}
-            className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300 transition-colors hover:bg-orange-900"
-          >
+    <div className="space-y-3 text-sm">
+      <div className="space-y-1">
+        <p className="font-medium text-[var(--foreground)]">Upstream connected entities</p>
+        <p className="leading-5 text-[var(--text-secondary)]">
+          Reverse graph connections identify potential dependency impact. They do not establish exploitability, successful actions or observed damage.
+        </p>
+      </div>
+      <div className="space-y-1 text-[var(--text-secondary)]" data-testid="graph-impact-coverage">
+        <p className="font-medium">
+          {impactPartial
+            ? `Partial traversal · ${impactCoverage?.returned ?? data.impactCount ?? "Unknown"} entities returned`
+            : impactComplete ? "Recorded upstream traversal complete" : "Traversal completeness unavailable"}
+        </p>
+        {data.maxImpactDepth != null && <p>{data.maxImpactDepth} {data.maxImpactDepth === 1 ? "hop" : "hops"} explored</p>}
+        {impactPartial && <p>
+          {impactCoverage?.reason === "depth_limit"
+            ? "Hop limit reached; additional upstream connections may exist."
+            : impactCoverage?.reason === "traversal_budget"
+              ? "Traversal limit reached; additional upstream connections may exist."
+              : "Only part of the upstream graph was returned; additional connections may exist."}
+        </p>}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {impactTypes.map(([key, value]) => (
+          <span key={key} className="rounded border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1 text-[var(--text-secondary)]">
             {prettifyKey(key)}: {value}
           </span>
         ))}
+        {impactTypes.length === 0 && data.impactCount === 0 && <p className="text-[var(--text-secondary)]">No upstream entities returned</p>}
+      </div>
     </div>
   ) : null;
 

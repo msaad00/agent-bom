@@ -265,6 +265,13 @@ for (const theme of ["light", "dark"] as const) {
         Number.parseFloat(getComputedStyle(element).fontSize) *
         new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a);
       await expect.poll(renderedSize).toBeGreaterThanOrEqual(12);
+      const discoveryInset = () => firstLabel.evaluate(element => {
+        const node = element.closest(".react-flow__node")!.getBoundingClientRect();
+        const frame = element.closest(".react-flow")!.getBoundingClientRect();
+        return node.left - frame.left;
+      });
+      await expect.poll(discoveryInset).toBeGreaterThanOrEqual(16);
+      await expect.poll(discoveryInset).toBeLessThanOrEqual(32);
       await panel.locator(".react-flow").scrollIntoViewIfNeeded();
       await expect(firstLabel).toBeInViewport();
       const zoom = panel.getByRole("button", { name: "Zoom In", exact: true });
@@ -295,6 +302,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect(panel.getByRole("button", { name: "Readable view", exact: true })).toBeVisible();
       await panel.getByRole("button", { name: "Readable view", exact: true }).click();
       await expect.poll(renderedSize).toBeGreaterThanOrEqual(12);
+      await expect.poll(discoveryInset).toBeGreaterThanOrEqual(16);
+      await expect.poll(discoveryInset).toBeLessThanOrEqual(32);
       await panel.locator(".react-flow").scrollIntoViewIfNeeded();
       await expect(firstLabel).toBeInViewport();
       await panel.scrollIntoViewIfNeeded();

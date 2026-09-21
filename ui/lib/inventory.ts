@@ -81,10 +81,10 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
   },
   {
     id: "servers",
-    label: "MCP servers",
-    singular: "MCP server",
+    label: "Servers & tools",
+    singular: "server or tool",
     description:
-      "Model Context Protocol servers your agents connect to, with transport, tools, and correlated findings.",
+      "Recorded servers, tool capabilities and tool-call observations, with their correlated findings.",
     entityTypes: ["server", "tool", "tool_call"],
     lane: "ai-estate",
     primaryColumn: "Server",
@@ -94,8 +94,8 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
   },
   {
     id: "agents",
-    label: "AI agents",
-    singular: "agent",
+    label: "AI entities",
+    singular: "AI entity",
     description:
       "AI agents and clients discovered in the estate, correlated to the servers, credentials, and findings they touch.",
     entityTypes: ["agent", "model", "framework", "dataset"],
@@ -131,9 +131,9 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
   },
   {
     id: "identities",
-    label: "Identities & credentials",
+    label: "Identity & access",
     singular: "identity",
-    countPlural: "identities",
+    countPlural: "identity and access records",
     description:
       "Human and non-human identities, credentials, roles, and access policies (NHI) linked to your estate.",
     entityTypes: [

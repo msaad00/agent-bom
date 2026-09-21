@@ -1,10 +1,19 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OverviewCockpit } from "@/components/overview-cockpit";
 import { buildExecExposurePaths } from "@/lib/dashboard-data";
 import type { OverviewResponse, OverviewTopRisk } from "@/lib/api";
+
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe() { this.callback([{ contentRect: { width: 1000 } } as ResizeObserverEntry], this as unknown as ResizeObserver); }
+    unobserve() {}
+    disconnect() {}
+  });
+});
 
 function domain(
   label: string,
@@ -55,28 +64,20 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
-  it("opens the full overview first and switches to risks in the same container", async () => {
-    const user = userEvent.setup();
-    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
-    const posture = screen.getByRole("region", { name: "Risk overview" });
-    const coverage = screen.getByRole("region", { name: /^Coverage$/ });
-    const risks = document.querySelector<HTMLElement>('[role="tabpanel"][aria-label="Top risks"]')!;
-    expect(posture).toContainElement(risks);
-    expect(risks).not.toBeVisible();
-    expect(within(posture).getByText("Posture score · 0–100, higher is better")).toBeVisible();
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Overview", "Top risks"]);
-    await user.click(screen.getByRole("tab", { name: "Top risks" }));
-    expect(within(posture).getByText("Posture score · 0–100, higher is better")).not.toBeVisible();
-    expect(risks).toBeVisible();
-    const compliance = screen.getByRole("region", { name: "Compliance & frameworks" });
-    expect(coverage.parentElement).toBe(compliance.parentElement);
-    expect(posture).not.toContainElement(coverage);
-    expect(within(coverage).queryByText(/Control evaluation unavailable/i)).not.toBeInTheDocument();
-    expect(within(compliance).getByText(/Control evaluation unavailable/i)).toBeVisible();
-    expect(risks.compareDocumentPosition(coverage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(coverage).getByText("Operational signals")).toBeVisible();
+  it("starts with prioritized risks and exposes recorded assets separately", () => {
+    render(<OverviewCockpit {...baseProps} />);
+    expect(screen.getByRole("tab", { name: "Top risks" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Assets & coverage" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "AI spend & usage" })).not.toBeInTheDocument();
+  });
 
-    expect(within(coverage).queryByText("9", { selector: "span" })).not.toBeInTheDocument();
+  it("places risks first and keeps posture available without duplicating the detail", async () => {
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+    expect(screen.getByRole("tabpanel", { name: "Top risks" })).toBeVisible();
+    expect(screen.getAllByRole("region", { name: "Selected risk" })).toHaveLength(1);
+    await userEvent.click(screen.getByRole("tab", { name: "Posture" }));
+    expect(screen.getByText("Posture score · 0–100, higher is better")).toBeVisible();
+    expect(screen.getByRole("region", { name: "Findings by discipline" }).parentElement).toBe(screen.getByRole("region", { name: "Compliance & frameworks" }).parentElement);
   });
 
   it("keeps risk mappings in a separate disclosure when evaluated controls are available", async () => {
@@ -145,8 +146,7 @@ describe("OverviewCockpit", () => {
     expect(lanes).toBeVisible();
     expect(within(lanes).getAllByRole("link")[0]).toHaveTextContent("Cloud security (CSPM)");
     expect(within(lanes).getByText("AI security (AISPM)")).toBeVisible();
-    expect(lanes.compareDocumentPosition(screen.getByTestId("overview-estate-ops")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const toggle = screen.getByRole("button", { name: /^Coverage/ });
+    const toggle = screen.getByRole("button", { name: /^Findings by discipline/ });
     expect(toggle).toHaveTextContent("2 security disciplines");
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     toggle.focus();
@@ -168,21 +168,14 @@ describe("OverviewCockpit", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveFocus();
     expect(screen.getByText(/Control evaluation unavailable/i)).not.toBeVisible();
-    expect(screen.getByRole("button", { name: /^Coverage/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: /^Findings by discipline/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("tab", { name: "Top risks" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("keeps operational details closed until requested without hiding their summary", async () => {
-    const user = userEvent.setup();
+  it("does not mix runtime operations into the findings discipline panel", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
-    const toggle = screen.getByRole("button", { name: /Operational signals.*3 of 3 active/i });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("Runtime")).not.toBeVisible();
-    toggle.focus();
-    await user.keyboard("{Enter}");
-    expect(screen.getByText("Runtime")).toBeVisible();
-    expect(screen.getByRole("link", { name: /Connections/ })).toHaveAttribute("href", "/connections");
-    expect(toggle).toHaveFocus();
+    expect(screen.queryByTestId("overview-estate-ops")).not.toBeInTheDocument();
+    expect(screen.queryByText("Operational signals")).not.toBeInTheDocument();
   });
 
   it("shows one grade and one numeric score in the posture summary", () => {
@@ -201,7 +194,7 @@ describe("OverviewCockpit", () => {
       nodes: [{ type: "cve", label: "CVE-2020-14343" }, { type: "agent", label: source }],
     }} />);
     fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
-    expect(screen.getByText("SBOM source: model.cdx.json")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Selected risk" })).getByText("SBOM source: model.cdx.json")).toBeVisible();
     expect(screen.queryByText(/Affected workload:/)).not.toBeInTheDocument();
     expect(screen.getByText(source)).not.toBeVisible();
     await user.click(screen.getByText("Technical details"));
@@ -300,27 +293,10 @@ describe("OverviewCockpit", () => {
     );
   });
 
-  it("shows operational signals without a combined discipline and operation count", () => {
+  it("does not label configured services as collection coverage", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
-    const section = screen.getByTestId("overview-coverage-operations");
-    expect(screen.queryByRole("button", { name: /Findings by discipline/i })).not.toBeInTheDocument();
-
-    const strip = within(section).getByTestId("overview-estate-ops");
-    // The old 7-lane cross-lane grid no longer exists as such.
-    expect(screen.queryByTestId("overview-cross-lane-coverage")).not.toBeInTheDocument();
-    // Cloud posture / Vuln / SCA / Code / repo duplicate the five security
-    // coverage lanes above, so they must NOT appear as operational tiles.
-    expect(within(strip).queryByText("Cloud posture")).not.toBeInTheDocument();
-    expect(within(strip).queryByText("Vuln / SCA")).not.toBeInTheDocument();
-    expect(within(strip).queryByText("Code / repo")).not.toBeInTheDocument();
-    // Only the genuinely-operational lanes render.
-    expect(within(strip).getByText("Runtime")).toBeInTheDocument();
-    expect(within(strip).getByText("NHI / Identity")).toBeInTheDocument();
-    expect(within(strip).getByText("Ops")).toBeInTheDocument();
-    // Spend has its own visible summary outside operational signals.
-    expect(screen.getByText(/3 of 3 active/i)).toBeInTheDocument();
-    expect(within(strip).queryByText("LLM Cost")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Coverage" })).getByRole("region", { name: "AI spend & usage" })).toBeVisible();
+    expect(screen.queryByText(/3 of 3 active/)).not.toBeInTheDocument();
+    expect(screen.queryByText("LLM Cost")).not.toBeInTheDocument();
   });
 
   it("renders the five security coverage lanes with reconciled severity counts", async () => {
@@ -333,7 +309,7 @@ describe("OverviewCockpit", () => {
     ].map((lane) => ({ ...lane, evidence_status: "complete" as const, count_exact: true }));
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} coverage={coverage} />);
 
-    expect(screen.queryByRole("button", { name: /Findings by discipline/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Findings by discipline/i })).toBeVisible();
     const section = screen.getByTestId("overview-security-coverage");
     expect(section).toBeInTheDocument();
     // Lanes are labeled as overlapping disciplines so a user never sums them.
@@ -380,21 +356,15 @@ describe("OverviewCockpit", () => {
     expect(within(screen.getByTestId("coverage-lane-aispm")).getByText(evidenceStatus === "partial" ? "Partial count" : "Count unavailable")).toBeInTheDocument();
   });
 
-  it("keeps connected data sources out of leadership lanes and links to connections", () => {
-    render(
-      <OverviewCockpit
-        {...baseProps}
-        domains={sampleDomains}
-        services={{ data_sources: { state: "connected", count: 2 } }}
-      />,
-    );
-
-    expect(screen.queryByText("Data sources")).not.toBeInTheDocument();
-    expect(screen.getByText(/3 of 3 active/i)).toBeInTheDocument();
-    expect(screen.getByText(/2 connected/i)).toBeInTheDocument();
+  it("keeps asset read failures distinct from an empty estate", async () => {
+    render(<OverviewCockpit {...baseProps} inventoryUnavailable />);
+    await userEvent.click(screen.getByRole("tab", { name: "Assets & coverage" }));
+    expect(screen.getByText("Recorded asset summary unavailable.")).toBeVisible();
+    expect(screen.queryByText("0 recorded asset records")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open asset inventory" })).toHaveAttribute("href", "/inventory");
   });
 
-  it("renders the top-risk strip from overview.top_risks for a bulk estate with no scans (#4063)", () => {
+  it("renders the top-risk strip from overview.top_risks for a bulk estate with no scans (#4063)", async () => {
     // A hub/bulk-ingested estate has no scan jobs, so the scan-derived blast path
     // is empty. The strip must still populate from the server-reconciled
     // top_risks and each row must drill to real finding rows.
@@ -415,7 +385,9 @@ describe("OverviewCockpit", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByRole("link", { name: /Affected workload: Ingest Bot/ })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: /Workload not identified/ }));
     expect(screen.getByRole("link", { name: /Affected workload not identified/ })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: /Ingest Bot/ }));
     // Worst-first row drills to the exact CVE's finding rows (non-empty target).
     const worst = screen.getByRole("link", { name: /Affected workload: Ingest Bot/ });
     expect(worst).toHaveAttribute("href", "/findings?cve=CVE-2026-5555");
@@ -429,20 +401,10 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/CVE-/)).not.toBeInTheDocument();
   });
 
-  it("surfaces risk themes and links into findings / compliance", () => {
+  it("keeps risk evidence scoped to its original navigation target", () => {
     render(<OverviewCockpit {...baseProps} findingsScopeLabel="Current findings · configured window" />);
-
-    fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
-    expect(screen.getByRole("link", { name: /Affected workload: cursor/i })).toBeVisible();
-    expect(screen.getByRole("link", { name: "Critical findings" })).toHaveAttribute(
-      "href",
-      "/findings?scope=all&severity=critical",
-    );
-    expect(screen.getByText("Current findings · configured window")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Compliance evidence" })).toHaveAttribute(
-      "href",
-      "/compliance",
-    );
+    expect(screen.getByRole("link", {name: /Affected workload: cursor/i})).toHaveAttribute("href", "/security-graph");
+    expect(screen.getByRole("link", {name: /Open investigation/})).toHaveAttribute("href", "/security-graph");
   });
 
   it("shows compliance and open-issue chips when evidence exists", () => {
@@ -591,14 +553,13 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/improved|declined/i)).not.toBeInTheDocument();
   });
 
-  it("carries operational lane scope hints as tooltips, not visible sentences", () => {
-    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
-
-    const strip = screen.getByTestId("overview-estate-ops");
-    // The scope clarifier is a title tooltip on the tile, not always-visible copy.
-    const runtimeTile = within(strip).getByText("Runtime").closest("a");
-    expect(runtimeTile).toHaveAttribute("title", expect.stringMatching(/Live runtime surfaces/i));
-    expect(within(strip).queryByText(/Live runtime surfaces — gateway/i)).not.toBeInTheDocument();
+  it("bounds the risk list to five and keeps only the selected detail mounted", async () => {
+    render(<OverviewCockpit {...baseProps} exposurePaths={Array.from({length: 8}, (_, i) => ({...baseProps.topPath, key: `risk-${i}`, riskScore: 8-i, nodes: [{type: "agent" as const, label: `agent-${i}`}]}))} />);
+    const list = screen.getByRole("group", {name: "Select a risk"});
+    expect(within(list).getAllByRole("button")).toHaveLength(5);
+    await userEvent.click(within(list).getByRole("button", {name: /agent-3/}));
+    expect(screen.getAllByRole("region", {name: "Selected risk"})).toHaveLength(1);
+    expect(within(screen.getByRole("region", {name: "Selected risk"})).getByText("Affected workload: agent-3")).toBeVisible();
   });
 
   it("does not show green compliance pass tiles without scan evidence", () => {
@@ -762,7 +723,7 @@ describe("OverviewCockpit", () => {
       { driver: "high", label: "High findings", count: 10, weight: 6, contribution: 60 },
       { driver: "other", label: "Other findings", count: 61, weight: 2, contribution: 122 },
     ]} />);
-    await user.click(screen.getByRole("tab", { name: "Overview" }));
+    await user.click(screen.getByRole("tab", { name: "Posture" }));
     await user.click(screen.getByRole("button", { name: /What influences this score/ }));
     expect(screen.getByText("Total weighted pressure: 206.0")).toBeVisible();
     expect(screen.getByText(/nonlinear/i)).toBeVisible();
@@ -809,7 +770,7 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "Overview" }));
+    await user.click(screen.getByRole("tab", { name: "Posture" }));
     const toggle = screen.getByTestId("score-format-toggle");
     await user.click(within(toggle).getByRole("button", { name: "Grade" }));
     expect(onScoreFormatChange).toHaveBeenCalledWith("grade");

@@ -859,7 +859,7 @@ export function Nav() {
             {deploymentModeLabel(counts.deployment_mode)}
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex min-w-0 items-center gap-2">
           <button
             onClick={() => setSearchOpen(true)}
             className="hidden items-center gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-1.5 text-xs text-ink-secondary transition-colors hover:border-outline-strong hover:text-foreground lg:flex"
@@ -871,12 +871,12 @@ export function Nav() {
               ⌘K
             </kbd>
           </button>
-          <ThemeToggle compact />
+          <ThemeToggle compact className="shrink-0" />
           <ApiStatus collapsed={false} />
           <button
             ref={mobileMenuButtonRef}
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="rounded-lg p-2 text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-foreground lg:hidden"
+            className="shrink-0 rounded-lg p-2 text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-foreground lg:hidden"
             aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={mobileOpen}
             aria-controls="mobile-navigation-dialog"
@@ -1092,12 +1092,14 @@ function ApiStatus({ collapsed }: { collapsed: boolean }) {
     );
   }
 
+  const statusLabel = status === "online" ? `Control plane · v${version}` : status === "offline" ? "Control plane offline" : "Connecting…";
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-ink-secondary">
-      <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
-      <span className="truncate">
-        {status === "online" ? `Control plane · v${version}` : status === "offline" ? "Control plane offline" : "Connecting…"}
-      </span>
-    </div>
+    <details className="relative min-w-0 text-xs text-ink-secondary">
+      <summary aria-label={statusLabel} title={statusLabel} className="flex min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 marker:hidden [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-emerald-500">
+        <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} aria-hidden="true" />
+        <span className="truncate" aria-hidden="true">{statusLabel}</span>
+      </summary>
+      <p className="absolute right-0 top-full z-10 mt-2 w-max max-w-[calc(100vw-2rem)] rounded-lg border border-outline bg-surface p-3 shadow-lg [overflow-wrap:anywhere]">{statusLabel}</p>
+    </details>
   );
 }

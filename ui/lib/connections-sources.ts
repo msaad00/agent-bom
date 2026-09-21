@@ -6,9 +6,8 @@ import type {
 
 // One display model over two backends: `/v1/cloud/connections`
 // (CloudConnectionRecord) and `/v1/sources` (SourceRecord). The Connections hub
-// renders both in a single dense table; a cloud account that is registered in
-// both places is deduped so it appears once (the richer cloud-connection row
-// wins). This module is pure so the merge/dedup/filter rules stay unit-tested
+// retains origin-prefixed records: display names do not establish account identity.
+// This module is pure so the merge/filter rules stay unit-tested
 // independent of React.
 
 export type SourceCategory = "cloud" | "code" | "ai" | "data" | "runtime" | "ingest";
@@ -113,18 +112,8 @@ export function sourceKindLabel(kind: SourceKind | string): string {
   return SOURCE_KIND_LABEL[kind as SourceKind] ?? String(kind);
 }
 
-function normalizeName(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-/**
- * Merge cloud connections and registered sources into one display list.
- *
- * Cloud connections lead. A registered source that is a cloud-kind source AND
- * shares a (case-insensitive) display name with a cloud connection is treated
- * as the same underlying account and dropped, so a cloud account that was
- * registered in both surfaces appears exactly once.
- */
+/** Combine independently recorded sources. No stable cross-store binding is
+ * supplied by these contracts, so equally named records remain distinct. */
 export function buildUnifiedRows(
   connections: CloudConnectionRecord[],
   sources: SourceRecord[],
@@ -150,16 +139,9 @@ export function buildUnifiedRows(
     connectionId: connection.id,
   }));
 
-  const cloudNames = new Set(cloudRows.map((row) => normalizeName(row.name)));
-
   const sourceRows: UnifiedSourceRow[] = [];
   for (const source of sources) {
     const category = sourceKindCategory(source.kind);
-    // Dedup: a cloud-kind source that mirrors an already-listed cloud
-    // connection is the same account registered twice — keep the cloud row.
-    if (category === "cloud" && cloudNames.has(normalizeName(source.display_name))) {
-      continue;
-    }
     sourceRows.push({
       id: `source:${source.source_id}`,
       origin: "source",

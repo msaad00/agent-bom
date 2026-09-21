@@ -11,11 +11,11 @@ describe("entity-display", () => {
       title: "Claude Desktop",
       subtitle: "Claude Desktop",
     });
-    expect(formatExposureEntityDisplay("github", "server", { transport: "stdio" })).toEqual({
+    expect(formatExposureEntityDisplay("github", "server", { transport: "stdio", protocol: "mcp" })).toEqual({
       title: "GitHub connector",
       subtitle: "stdio MCP server",
     });
-    expect(formatExposureEntityDisplay("github-enterprise MCP", "server", { transport: "sse" })).toEqual({
+    expect(formatExposureEntityDisplay("github-enterprise MCP", "server", { transport: "sse", protocol: "mcp" })).toEqual({
       title: "Github Enterprise MCP",
       subtitle: "sse MCP server",
     });
@@ -43,4 +43,9 @@ describe("entity-display", () => {
 it("entity kinds do not assert reachability or secret exposure without assessment", () => {
   expect(formatExposureEntityDisplay("CVE-fixture", "finding").subtitle).toBe("Vulnerability finding");
   expect(formatExposureEntityDisplay("TOKEN_REF", "credential").subtitle).toBe("Credential reference");
+});
+
+it("requires structured protocol evidence before calling a generic server MCP", () => {
+  expect(formatExposureEntityDisplay("internal-api", "server").subtitle).toBe("Server");
+  expect(formatExposureEntityDisplay("MCP production", "server", { transport: "http" }).subtitle).toBe("http server");
 });

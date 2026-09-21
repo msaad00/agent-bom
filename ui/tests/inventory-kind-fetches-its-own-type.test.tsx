@@ -220,7 +220,7 @@ describe("inventory API route scope", () => {
     expect(api.getGraph).not.toHaveBeenCalled();
   });
 
-  it("refetches the list without refetching summary when the routed kind changes", async () => {
+  it("refetches the list and summary when the routed kind changes", async () => {
     const { rerender } = render(
       <InventoryProvider entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}>
         <InventoryProbe />
@@ -235,7 +235,7 @@ describe("inventory API route scope", () => {
     );
 
     await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(2));
-    expect(api.getInventorySummary).toHaveBeenCalledTimes(1);
+    expect(api.getInventorySummary).toHaveBeenCalledTimes(2);
     expect(api.getInventoryAssets).toHaveBeenLastCalledWith(
       expect.objectContaining({ type: ASSET_KIND_BY_ID.containers.entityTypes, scanId: SNAPSHOT }),
     );
@@ -350,5 +350,17 @@ describe("inventory snapshot request lifecycle", () => {
     await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(2));
     await act(async () => pending.resolve(detail("same-snapshot")));
     expect(screen.getByTestId("detail-name")).toHaveTextContent("same-snapshot");
+  });
+});
+
+
+describe("shared inventory scope", () => {
+  it("restores exact URL scope for both summary and rows", async () => {
+    const onSnapshotResolved = vi.fn();
+    render(<InventoryProvider scanId={SNAPSHOT} initialFilters={{ type: "agent", environment: "production", provider: "aws", source: "runtime", search: "payments", minSeverity: "high" }} onSnapshotResolved={onSnapshotResolved}><InventoryProbe /></InventoryProvider>);
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(1));
+    expect(api.getInventorySummary).toHaveBeenLastCalledWith(SNAPSHOT, expect.objectContaining({ type: ["agent"], environment: "production", provider: "aws", source: "runtime", search: "payments", minSeverity: "high" }));
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith(expect.objectContaining({ scanId: SNAPSHOT, type: ["agent"], environment: "production", provider: "aws", source: "runtime", search: "payments", minSeverity: "high" }));
+    expect(onSnapshotResolved).toHaveBeenCalledWith(SNAPSHOT);
   });
 });

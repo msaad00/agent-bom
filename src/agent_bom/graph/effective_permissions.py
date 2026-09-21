@@ -29,6 +29,7 @@ from agent_bom.cloud.aws_iam_evidence import (
     NormalizedIamPolicy,
     normalize_iam_policy_document,
 )
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import InteractionRisk, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
@@ -419,7 +420,9 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
             to_admin = bool(assumed & admin_principals)
             if to_admin:
                 principal.attributes["escalates_to_admin"] = True
-            exposed = sorted(rid for rid in escalated if graph.nodes.get(rid) and graph.nodes[rid].attributes.get("internet_exposed"))
+            exposed = sorted(
+                rid for rid in escalated if graph.nodes.get(rid) and coerce_truthy(graph.nodes[rid].attributes.get("internet_exposed"))
+            )
             risk = 9.5 if exposed else (9.0 if to_admin else 8.5)
             graph.interaction_risks.append(
                 InteractionRisk(

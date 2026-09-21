@@ -36,9 +36,10 @@ class AccessRecord:
     object_name: str  # e.g. DB.SCHEMA.TABLE
     object_type: str  # TABLE, VIEW, STAGE, etc.
     columns: list[str] = field(default_factory=list)
-    operation: str = ""  # SELECT, INSERT, UPDATE, DELETE
+    operation: str = ""  # READ/WRITE observation; not an inferred SQL verb
     is_write: bool = False
     base_objects: list[str] = field(default_factory=list)  # underlying objects for views
+    source_field: str = ""  # ACCESS_HISTORY array; empty for legacy records
 
 
 @dataclass
@@ -256,6 +257,7 @@ class GovernanceReport:
                     "columns": r.columns,
                     "operation": r.operation,
                     "is_write": r.is_write,
+                    "source_field": r.source_field,
                     # A view reads as one innocuous object name; the base
                     # objects are the data actually touched.
                     "base_objects": r.base_objects,

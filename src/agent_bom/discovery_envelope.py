@@ -1,9 +1,9 @@
 """Per-run discovery envelope (#2083).
 
 The envelope is the **per-run trust contract** for an Agent. It records
-*what the scan actually did* on this run: which mode it ran in, what scope
-was requested, which IAM/API permissions were exercised, and whether
-sensitive values were redacted or never collected at all.
+the collector-reported context of this run: its mode, requested scope,
+permission catalog and declared redaction posture. Per-call success and
+collection coverage require separate receipts.
 
 This is distinct from `discovery_provenance` (the sanitized record of
 *where the asset came from*) — both can coexist on the same Agent:
@@ -40,6 +40,9 @@ class ScanMode(str, Enum):
     added here intentionally; ad hoc strings are not accepted.
     """
 
+    UNKNOWN = "unknown"
+    """The producer did not supply a recognized scan mode."""
+
     LOCAL_ONLY = "local_only"
     """No network egress, no cloud / SaaS read, no runtime probe."""
 
@@ -61,6 +64,9 @@ class ScanMode(str, Enum):
 
 class RedactionStatus(str, Enum):
     """Redaction posture for sensitive values seen during this run."""
+
+    UNKNOWN = "unknown"
+    """The producer did not supply a recognized redaction posture."""
 
     NEVER_COLLECTED = "never_collected"
     """The provider deliberately never read the sensitive value (e.g. a token)."""
@@ -85,16 +91,17 @@ class DiscoveryEnvelope:
     """
 
     envelope_version: int = ENVELOPE_SCHEMA_VERSION
-    scan_mode: ScanMode = ScanMode.LOCAL_ONLY
+    scan_mode: ScanMode = ScanMode.UNKNOWN
     discovery_scope: tuple[str, ...] = ()
     """Strings describing what was explicitly in scope, e.g.
     ``("aws:account/123456789012", "aws:region/us-east-1")``."""
 
     permissions_used: tuple[str, ...] = ()
-    """Actual IAM/API permissions exercised, e.g.
-    ``("ec2:DescribeInstances", "iam:ListRoles")``."""
+    """Collector-reported IAM/API permissions, e.g.
+    ``("ec2:DescribeInstances", "iam:ListRoles")``. A configured permission
+    catalog does not establish per-call success or complete collection."""
 
-    redaction_status: RedactionStatus = RedactionStatus.NOT_APPLICABLE
+    redaction_status: RedactionStatus = RedactionStatus.UNKNOWN
     captured_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
@@ -118,8 +125,9 @@ class DiscoveryEnvelope:
 
         Strict on schema version (only `1` accepted today) so an envelope
         emitted by a newer producer can be detected and routed; loose on
-        unknown enum values (falls back to LOCAL_ONLY / NOT_APPLICABLE so a
-        future producer doesn't crash old consumers).
+        unknown enum values (retained as UNKNOWN without asserting local-only
+        collection or an inapplicable redaction posture). Decoding an older
+        record never generates a new capture timestamp.
         """
         if not isinstance(payload, dict):
             raise ValueError("DiscoveryEnvelope payload must be a JSON object")
@@ -127,13 +135,13 @@ class DiscoveryEnvelope:
         if version != ENVELOPE_SCHEMA_VERSION:
             raise ValueError(f"Unsupported envelope_version: {version!r} (expected {ENVELOPE_SCHEMA_VERSION})")
         try:
-            scan_mode = ScanMode(payload.get("scan_mode", ScanMode.LOCAL_ONLY.value))
+            scan_mode = ScanMode(payload.get("scan_mode", ScanMode.UNKNOWN.value))
         except ValueError:
-            scan_mode = ScanMode.LOCAL_ONLY
+            scan_mode = ScanMode.UNKNOWN
         try:
-            redaction_status = RedactionStatus(payload.get("redaction_status", RedactionStatus.NOT_APPLICABLE.value))
+            redaction_status = RedactionStatus(payload.get("redaction_status", RedactionStatus.UNKNOWN.value))
         except ValueError:
-            redaction_status = RedactionStatus.NOT_APPLICABLE
+            redaction_status = RedactionStatus.UNKNOWN
 
         scope = payload.get("discovery_scope") or ()
         if not isinstance(scope, (list, tuple)):
@@ -141,14 +149,15 @@ class DiscoveryEnvelope:
         perms = payload.get("permissions_used") or ()
         if not isinstance(perms, (list, tuple)):
             raise ValueError("permissions_used must be a list of strings")
-        captured_at = payload.get("captured_at") or datetime.now(timezone.utc).isoformat()
+        recorded_capture = payload.get("captured_at")
+        captured_at = recorded_capture if isinstance(recorded_capture, str) else ""
         return cls(
             envelope_version=version,
             scan_mode=scan_mode,
             discovery_scope=tuple(str(s) for s in scope),
             permissions_used=tuple(str(p) for p in perms),
             redaction_status=redaction_status,
-            captured_at=str(captured_at),
+            captured_at=captured_at,
         )
 
 

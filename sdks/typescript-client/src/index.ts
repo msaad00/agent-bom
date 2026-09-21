@@ -35,6 +35,24 @@ export interface ExposurePathQuery {
   minRisk?: number;
 }
 
+/** One server-resolved snapshot and scope shared by inventory counts and rows. */
+export interface InventoryQuery {
+  scanId?: string;
+  type?: string;
+  search?: string;
+  environment?: string;
+  provider?: string;
+  source?: string;
+  severity?: string;
+  minSeverity?: string;
+}
+
+export interface InventoryAssetsQuery extends InventoryQuery {
+  limit?: number;
+  offset?: number;
+  cursor?: string;
+}
+
 export interface FindingsQuery {
   severity?: string;
   sort?: string;
@@ -315,6 +333,19 @@ export class AgentBomClient {
 
   health(): Promise<HealthResponse> {
     return this.request<HealthResponse>("GET", "/health");
+  }
+
+  /** Return server qualifications unchanged, including additive collection fields. */
+  inventorySummary(query: InventoryQuery = {}): Promise<Record<string, JsonValue>> {
+    return this.request<Record<string, JsonValue>>("GET", `/v1/inventory/summary${formatSearch(inventorySearch(query))}`);
+  }
+
+  inventoryAssets(query: InventoryAssetsQuery = {}): Promise<Record<string, JsonValue>> {
+    const search = inventorySearch(query);
+    if (query.limit !== undefined) search.set("limit", String(query.limit));
+    if (query.offset !== undefined) search.set("offset", String(query.offset));
+    if (query.cursor !== undefined) search.set("cursor", query.cursor);
+    return this.request<Record<string, JsonValue>>("GET", `/v1/inventory/assets${formatSearch(search)}`);
   }
 
   exposurePaths(query: ExposurePathQuery = {}): Promise<ExposurePathEnvelope> {
@@ -809,4 +840,15 @@ function parseActivityFrame(lines: string[]): GatewayActivityFrame | undefined {
     }
   } else if (!["gap", "unavailable", "reconnect"].includes(event)) throw new Error("Unknown activity stream event");
   return { event: event as GatewayActivityFrame["event"], id, data: payload };
+}
+
+function inventorySearch(query: InventoryQuery): URLSearchParams {
+  const search = new URLSearchParams();
+  const fields = { scan_id: query.scanId, type: query.type, search: query.search,
+    environment: query.environment, provider: query.provider, source: query.source,
+    severity: query.severity, min_severity: query.minSeverity };
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) search.set(key, value);
+  }
+  return search;
 }

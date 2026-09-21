@@ -4,41 +4,29 @@ Derives network-exposure and data-at-rest structure from signals already in
 the graph (CIS/IaC misconfigurations + cloud resources), without needing new
 scanner inputs:
 
-- Cloud resources flagged public/internet-reachable by a misconfiguration are
+- Cloud resources with structured public-network evidence are
   marked ``internet_exposed`` and linked ``EXPOSED_TO`` the data stores they can
   reach.
 - Data-store-like cloud resources (buckets, databases, lakes, warehouses) gain a
   ``DATA_STORE`` companion node via ``STORES`` so path-to-sensitive-data is
   traversable.
-- An exposed + vulnerable resource is recorded as a toxic combination — the
-  classic "internet-reachable and exploitable" chain.
+- An exposed resource with qualified vulnerability reachability is recorded as
+  a toxic combination; this is not proof of successful exploitation.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
 
+from agent_bom.cloud.normalization import coerce_bool_or_none, coerce_truthy
 from agent_bom.graph.container import InteractionRisk, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.reachability_truth import node_reachability
 from agent_bom.graph.types import EntityType, NodeStatus, RelationshipType
+from agent_bom.security import sanitize_sensitive_payload
 
 _OVERLAY_SOURCE = "cnapp-overlay"
-
-# Keywords that, in a misconfiguration label/finding, indicate public exposure.
-_EXPOSURE_KEYWORDS = (
-    "public",
-    "0.0.0.0/0",
-    "::/0",
-    "internet",
-    "anonymous",
-    "unauthenticated",
-    "publicly accessible",
-    "world-readable",
-    "open to the world",
-    "allow_all",
-)
 
 # Keywords that mark a cloud resource as a data store.
 _DATA_STORE_KEYWORDS = (
@@ -283,20 +271,35 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
 
     exposed_ids: set[str] = set()
     for mc in misconfigs:
-        # Prefer structured network_exposure (open ports/CIDR to the internet,
-        # emitted by the cloud scanner) over keyword-matching the evidence text.
+        # A descriptive name or finding title is search context, not a network
+        # exposure receipt. Only explicitly scoped collector evidence qualifies.
         structured = [e for e in (mc.attributes.get("network_exposure") or []) if isinstance(e, dict) and e.get("scope") == "internet"]
-        if not structured and not _matches(_text_of(mc), _EXPOSURE_KEYWORDS):
+        if not structured:
             continue
         ports = [{"from_port": e.get("from_port"), "to_port": e.get("to_port"), "protocol": e.get("protocol", "tcp")} for e in structured]
         for target_id in affected_by_misconfig.get(mc.id, []):
             node = graph.nodes.get(target_id)
             if node is not None:
+                # Keep the original inventory flags alongside the independent
+                # rule that justifies this derived exposure flag.
+                receipt = node.attributes.setdefault(
+                    "internet_exposure_evidence", {"source": _OVERLAY_SOURCE, "basis": "recorded_network_rules", "inputs": {}}
+                )
+                if isinstance(receipt, dict):
+                    rules = receipt.setdefault("network_rules", [])
+                    rule_receipt = {
+                        "finding_id": mc.id,
+                        "sources": list(mc.data_sources),
+                        "rules": sanitize_sensitive_payload(structured),
+                    }
+                    if isinstance(rules, list) and rule_receipt not in rules:
+                        rules.append(rule_receipt)
                 node.attributes["internet_exposed"] = True
                 exposed_ids.add(target_id)
                 if ports:
                     node.attributes.setdefault("exposed_ports", []).extend(ports)
-    # Also mark cloud resources whose own attributes/label signal public exposure.
+    # Read explicit resource flags without turning string false/unknown values
+    # or resource names into observed exposure.
     # Re-resolve through the graph before mutating so the write persists on a
     # store-backed container (a held subset object may have been evicted from the
     # LRU during the scan above); in-RAM this returns the same object, byte-identical.
@@ -304,8 +307,7 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
         node = graph.nodes.get(resource.id)
         if node is None:
             continue
-        if node.attributes.get("internet_exposed") or _matches(_text_of(node), _EXPOSURE_KEYWORDS):
-            node.attributes["internet_exposed"] = True
+        if coerce_truthy(node.attributes.get("internet_exposed")):
             exposed_ids.add(node.id)
 
     # Record exposure mitigation on every protected + exposed resource so its
@@ -350,7 +352,12 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
                     data_sources=[_OVERLAY_SOURCE],
                     attributes={
                         "backed_by": node.id,
-                        "internet_exposed": bool(node.attributes.get("internet_exposed")),
+                        "internet_exposed": coerce_bool_or_none(node.attributes.get("internet_exposed")),
+                        **(
+                            {"internet_exposure_evidence": dict(node.attributes["internet_exposure_evidence"])}
+                            if isinstance(node.attributes.get("internet_exposure_evidence"), dict)
+                            else {}
+                        ),
                         **{
                             key: value
                             for key in ("cloud_provider", "account_id", "location", "environment", "resource_name")
@@ -502,7 +509,7 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
     exposed_sensitive = 0
     for node_id in sorted(sensitive_ids):
         node = graph.nodes.get(node_id)
-        if node is None or not node.attributes.get("internet_exposed"):
+        if node is None or not coerce_truthy(node.attributes.get("internet_exposed")):
             continue
         node.attributes["toxic_exposed_sensitive"] = True
         if node.risk_score < 9.5:

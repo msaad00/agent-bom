@@ -3429,8 +3429,8 @@ class TestGraphStoreBackendSelection:
         assert response.json()["detail"]["missing_roots"] == ["agent:missing"]
 
 
-def test_removed_edge_route_emits_ocsf_close_activity(tmp_path) -> None:
-    """The edge-change API emits the same Close(3) activity as Postgres."""
+def test_absent_edge_diff_preserves_observed_activity(tmp_path) -> None:
+    """Snapshot membership differences do not fabricate native Close activity."""
     store = SQLiteGraphStore(tmp_path / "edge-close-graph.db")
     g1 = UnifiedGraph(scan_id="close-s1", created_at="2026-07-16T00:00:00Z")
     g1.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
@@ -3450,7 +3450,8 @@ def test_removed_edge_route_emits_ocsf_close_activity(tmp_path) -> None:
         assert response.status_code == 200
         removed = response.json()["edges_removed"]
         assert len(removed) == 1
-        assert removed[0]["activity_id"] == 3
+        assert removed[0]["activity_id"] == 1
+        assert removed[0]["valid_to"] is None
     finally:
         set_graph_store(original)
 

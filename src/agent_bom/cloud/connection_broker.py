@@ -6,7 +6,11 @@ short-lived, read-only cloud session / credential / connection that discovery
 runs against — the control plane never holds long-lived customer keys beyond the
 single encrypted secret per connection, which is decrypted only at broker time.
 
-All four providers are broker-enabled:
+Stored-secret brokers remain backward compatible. Explicit operator-bound Azure
+managed/workload identity and GCP workload identity also use the broker; those
+modes neither decrypt a stored secret nor fall back to ambient credentials.
+
+The stored-secret paths are:
 
 - **AWS** — ``sts:AssumeRole(RoleArn=role_ref, ExternalId=<decrypted
   external_id>)`` returns a ``boto3.Session`` backed by temporary credentials.
@@ -427,7 +431,11 @@ def broker_session(
         CloudDiscoveryError: the provider SDK extra is not installed.
         ValueError: provider is unknown.
     """
+    from agent_bom.cloud.connection_workload import broker_workload, workload_mode
+
     provider = (record.provider or "").strip().lower()
+    if workload_mode(provider, record.auth_params):
+        return broker_workload(record)
     if provider == "aws":
         return _broker_aws(record, session_name=session_name, duration_seconds=duration_seconds)
     if provider == "azure":

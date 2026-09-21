@@ -501,6 +501,36 @@ def verify_campaign_workflow(
             reason="Campaign verification requires a complete findings snapshot.",
         )
 
+    store = get_campaign_store()
+    stored = store.get(tenant_id, campaign_id)
+    if stored is None or not stored.member_ids:
+        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
+    original_ids = set(stored.member_ids)
+    current_campaigns = derive_campaigns(
+        source["findings"],
+        tenant_id=tenant_id,
+        workflow_by_id={},
+        window_days=90,
+        finding_limit=1000,
+        truncated=False,
+    )
+    current = next((item for item in current_campaigns if item["id"] == campaign_id), None)
+    # Replacements in the selected remediation group contribute to remaining
+    # exposure just like original members. Their retained old observations
+    # cannot become a fresh still-affected verdict or replay a cached outcome.
+    relevant_ids = original_ids | (set(current["finding_ids"]) if current else set())
+    if any(row.get("observation_status") == "unreconfirmed" and _canonical_finding_id(row) in relevant_ids for row in source["findings"]):
+        _verification_unavailable(
+            tenant_id=tenant_id,
+            actor=actor,
+            campaign_id=campaign_id,
+            retry_state="awaiting_fresh_scope_evidence",
+            reason=(
+                "Original or replacement findings remain unreconfirmed after an incomplete collection. "
+                "Rescan the same scope before verification."
+            ),
+        )
+
     endpoint = f"/v1/campaigns/{campaign_id}/verify"
     request_hash = idempotency_request_fingerprint({"campaign_id": campaign_id, "version": version})
     if idempotency_key:
@@ -516,19 +546,6 @@ def verify_campaign_workflow(
         if cached is not None and cached.get("outcome") == "still_affected":
             return cast("dict[str, Any]", cached)
 
-    store = get_campaign_store()
-    stored = store.get(tenant_id, campaign_id)
-    if stored is None or not stored.member_ids:
-        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
-    current_campaigns = derive_campaigns(
-        source["findings"],
-        tenant_id=tenant_id,
-        workflow_by_id={},
-        window_days=90,
-        finding_limit=1000,
-        truncated=False,
-    )
-    current = next((item for item in current_campaigns if item["id"] == campaign_id), None)
     # Campaign grouping depends on mutable enrichment (fixed version, purl,
     # package identity). An original finding moving to another group is not a
     # remediation. Check its persisted identity as well as any replacements in

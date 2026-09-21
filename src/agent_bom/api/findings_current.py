@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from agent_bom.api.models import JobStatus
+from agent_bom.evidence.finding_observation import FindingObservationStatus, ReconfirmationReason
 
 
 class _ScanJobLike(Protocol):
@@ -289,24 +290,28 @@ def current_scan_findings(
     require executed evidence, excluding skipped/dry-run/failed outcomes.
     """
     retained_jobs = list(jobs)
-    deduped: dict[str, tuple[tuple[str, str, str], dict[str, Any], _ScanJobLike]] = {}
-    for job in current_scan_jobs(
-        retained_jobs,
-        since=since,
-        scan_id=scan_id,
-        require_authoritative_evidence=require_authoritative_evidence,
-    ):
+    if scan_id:
+        selected_jobs = current_scan_jobs(
+            retained_jobs, since=since, scan_id=scan_id, require_authoritative_evidence=require_authoritative_evidence
+        )
+        attempts: dict[tuple[str, str], tuple[_ScanJobLike, list[str]]] = {}
+    else:
+        selected_jobs, attempts = _finding_snapshot_jobs(
+            retained_jobs, since=since, require_authoritative_evidence=require_authoritative_evidence
+        )
+    deduped: dict[tuple[str, str], tuple[tuple[str, str, str], dict[str, Any], _ScanJobLike]] = {}
+    for job in selected_jobs:
         authority = scan_evidence_authority_key(job)
         for row in iter_findings(job):
-            identity = finding_identity(row)
+            identity = (str(getattr(job, "tenant_id", "default")), finding_identity(row))
             existing = deduped.get(identity)
             if existing is None or authority > existing[0]:
                 deduped[identity] = (authority, row, job)
     if scan_id:
         return [deduped[key][1] for key in sorted(deduped)]
 
-    # Membership is already settled by the latest snapshots, including empty
-    # snapshots. History can supply dates only for those surviving identities.
+    # Membership retains prior observations only across explicitly incomplete
+    # attempts. History can supply dates only for those surviving identities.
     selected = [deduped[key] for key in sorted(deduped)]
     wanted = {key for _, row, job in selected if (key := _retained_finding_key(job, row)) is not None}
     history = _retained_finding_history(retained_jobs, wanted, require_authoritative_evidence=require_authoritative_evidence)
@@ -314,6 +319,17 @@ def current_scan_findings(
 
     rows = []
     for _, row, job in selected:
+        row = dict(row)
+        row.pop("reconfirmation", None)
+        row["observation_status"] = FindingObservationStatus.OBSERVED.value
+        attempt, reasons = attempts[_tenant_scope(job)]
+        if attempt.job_id != job.job_id and reasons:
+            row["observation_status"] = FindingObservationStatus.UNRECONFIRMED.value
+            row["reconfirmation"] = {
+                "scan_id": attempt.job_id,
+                "attempted_at": _normalized_evidence_timestamp(attempt.completed_at, attempt.created_at) or None,
+                "reason_codes": reasons,
+            }
         key = _retained_finding_key(job, row)
         previous = history.get(key) if key is not None else None
         if previous:
@@ -323,6 +339,70 @@ def current_scan_findings(
             row["first_seen"] = first_seen
         rows.append(row)
     return rows
+
+
+def _tenant_scope(job: _ScanJobLike) -> tuple[str, str]:
+    return str(getattr(job, "tenant_id", "default")), scan_scope_key(job)
+
+
+def scan_collection_incomplete_reasons(job: _ScanJobLike) -> list[str]:
+    """Read explicit coverage receipts; absent legacy metadata proves nothing."""
+    result = job.result or {}
+    raw = result.get("scan_run")
+    run = raw if isinstance(raw, dict) else {}
+    reasons: set[str] = set()
+    outcome = run.get("outcome")
+    if outcome in ("partial", "failed"):
+        reasons.add(f"scan_{outcome}")
+    if any(result.get(key) is True for key in ("scan_skipped", "dry_run", "no_scan")):
+        reasons.add(ReconfirmationReason.SCAN_NOT_EXECUTED.value)
+    scopes = run.get("scopes")
+    for scope in scopes if isinstance(scopes, list) else []:
+        if not isinstance(scope, dict) or scope.get("requested") is not True:
+            continue
+        status = scope.get("status")
+        if isinstance(status, str) and status in {"partial", "permission_denied", "unavailable", "unsupported", "skipped"}:
+            reasons.add(f"scope_{status}")
+    issues = run.get("issues")
+    if isinstance(issues, list) and any(isinstance(issue, dict) and issue.get("affects_coverage") is True for issue in issues):
+        reasons.add(ReconfirmationReason.COVERAGE_ISSUE.value)
+    incomplete = run.get("incomplete_scope_count")
+    if isinstance(incomplete, int) and not isinstance(incomplete, bool) and incomplete > 0:
+        reasons.add(ReconfirmationReason.SCOPE_INCOMPLETE.value)
+    return sorted(reasons)
+
+
+def _finding_snapshot_jobs(
+    jobs: list[_ScanJobLike], *, since: str | None, require_authoritative_evidence: bool
+) -> tuple[list[_ScanJobLike], dict[tuple[str, str], tuple[_ScanJobLike, list[str]]]]:
+    """Retain the last replacement plus subsequent incomplete observations.
+
+    Legacy snapshots without explicit incompleteness keep their existing
+    replacement behavior. This compatibility rule is not a coverage receipt
+    and cannot establish remediation verification. Selection uses resident
+    tenant history within the requested window; it performs no extra reads.
+    """
+    selected: dict[tuple[str, str], list[_ScanJobLike]] = {}
+    attempts: dict[tuple[str, str], tuple[_ScanJobLike, list[str]]] = {}
+    for job in sorted(jobs, key=scan_evidence_authority_key):
+        if (
+            job.status != JobStatus.DONE
+            or not isinstance(job.result, dict)
+            or getattr(job, "child_job_ids", None)
+            or not job_in_window(job, since)
+        ):
+            continue
+        reasons = scan_collection_incomplete_reasons(job)
+        executed = not require_authoritative_evidence or job_has_authoritative_scan_evidence(job)
+        if not executed and not reasons:
+            continue
+        scope = _tenant_scope(job)
+        attempts[scope] = (job, reasons)
+        if not reasons:
+            selected[scope] = []
+        if executed:
+            selected.setdefault(scope, []).append(job)
+    return [job for group in selected.values() for job in group], attempts
 
 
 def _retained_finding_key(job: _ScanJobLike, row: dict[str, Any], *, scope: str | None = None) -> tuple[str, str, str, str] | None:

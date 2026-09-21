@@ -45,6 +45,13 @@ async def inventory_summary_impl(
     *,
     tenant_id: str = "default",
     scan_id: str | None = None,
+    type: str | None = None,
+    search: str | None = None,
+    environment: str | None = None,
+    provider: str | None = None,
+    source: str | None = None,
+    severity: str | None = None,
+    min_severity: str | None = None,
     _get_graph_store: Optional[Callable[[], Any]] = None,
     _truncate_response: Optional[Callable[[str], str]] = None,
 ) -> str:
@@ -54,7 +61,18 @@ async def inventory_summary_impl(
     tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
     try:
         store = _resolve_store(_get_graph_store)
-        payload = await inventory_service.build_summary(store=store, tenant_id=tenant_id, scan_id=scan_id)
+        payload = await inventory_service.build_summary(
+            store=store,
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            type=type,
+            search=search,
+            environment=environment,
+            provider=provider,
+            source=source,
+            severity=severity,
+            min_severity=min_severity,
+        )
         return _encode(payload, _truncate_response)
     except inventory_service.InventoryError as exc:
         return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, exc.detail)

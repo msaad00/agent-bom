@@ -7,6 +7,8 @@ used for current-state views, traversal, attack paths, and temporal diffs.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections import defaultdict
 from collections.abc import Mapping
@@ -17,10 +19,11 @@ from agent_bom.api.tracing import get_tracer
 from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
 from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
+from agent_bom.cloud.normalization import coerce_bool_or_none, coerce_truthy
 from agent_bom.constants import is_credential_key as _is_credential_key
 from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
 from agent_bom.graph.container import UnifiedGraph
-from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.severity import SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, RelationshipType
@@ -1144,29 +1147,7 @@ def build_unified_graph_from_report(
 
     _add_aws_organization(graph, report_json.get("aws_organization"), data_source_tag)
     _add_cloud_org_architecture_findings(graph, report_json, data_source_tag)
-    _add_snowflake_object_graph(graph, report_json.get("snowflake_object_graph"), data_source_tag)
-    _add_snowflake_exfil(graph, report_json.get("snowflake_exfil_graph"), data_source_tag)
-    _add_snowflake_identity(
-        graph,
-        report_json.get("snowflake_login_anomalies"),
-        report_json.get("snowflake_auth_posture"),
-        data_source_tag,
-    )
-    _add_snowflake_services(graph, report_json.get("snowflake_services"), data_source_tag)
-    # Snowflake estate roll-up backbone (organization → accounts). Carried on the
-    # services payload under ``organization``; promoted after the services layer so
-    # the account node(s) the CONTAINS tree references already exist to stitch onto.
-    _sf_services_payload = report_json.get("snowflake_services")
-    _add_snowflake_organization(
-        graph,
-        _sf_services_payload.get("organization") if isinstance(_sf_services_payload, dict) else None,
-        data_source_tag,
-    )
-    _add_snowflake_pipeline(graph, report_json.get("snowflake_pipeline"), data_source_tag)
-    _add_snowflake_integrations(graph, report_json.get("snowflake_integrations"), data_source_tag)
-    _add_snowflake_external_data(graph, report_json.get("snowflake_external_data"), data_source_tag)
-    _add_snowflake_governance(graph, report_json.get("snowflake_governance"), data_source_tag)
-    _add_snowflake_activity(graph, report_json.get("snowflake_activity"), data_source_tag)
+    _add_snowflake_source_lanes(graph, report_json, data_source_tag)
 
     # ── Cloud audit-trail behavioral edges (opt-in, read-only) ───────────
     # Observed-reach edges derived from each cloud's native audit trail
@@ -2876,6 +2857,21 @@ def _iter_cloud_inventories(raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _recorded_exposure_attributes(record: Mapping[str, Any], *fields: str) -> dict[str, Any]:
+    """Preserve provider flag inputs and keep absent/unknown observations nullable."""
+    inputs = {name: record[name] for name in fields if name in record}
+    values = [coerce_bool_or_none(value) for value in inputs.values()]
+    exposed = True if True in values else False if values and all(value is False for value in values) else None
+    return {
+        "internet_exposed": exposed,
+        "internet_exposure_evidence": {
+            "source": "cloud-inventory",
+            "basis": "recorded_attributes",
+            "inputs": sanitize_sensitive_payload(inputs),
+        },
+    }
+
+
 def _normalize_cloud_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
     """Map a per-provider inventory payload onto the canonical builder shape.
 
@@ -2963,6 +2959,122 @@ def _normalize_gcp_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
         "users": principals,
         "groups": identity_groups,
     }
+
+
+def _add_snowflake_source_lanes(graph: UnifiedGraph, report_json: dict[str, Any], data_source: str) -> None:
+    """Stage account-local lanes before any same-name nodes can merge.
+
+    Single-account reports retain their existing node IDs. Mixed or missing
+    account scopes get separate local IDs; labels and FQNs are never account
+    equivalence evidence. Original persisted snapshots are not rewritten.
+    """
+    lane_keys = (
+        "snowflake_object_graph",
+        "snowflake_exfil_graph",
+        "snowflake_login_anomalies",
+        "snowflake_auth_posture",
+        "snowflake_services",
+        "snowflake_pipeline",
+        "snowflake_integrations",
+        "snowflake_external_data",
+        "snowflake_governance",
+        "snowflake_activity",
+    )
+    scopes: dict[tuple[str, str], dict[str, Any]] = {}
+    for key in lane_keys:
+        payload = report_json.get(key)
+        if not isinstance(payload, dict):
+            continue
+        organization = payload.get("organization") if key == "snowflake_services" else None
+        # Organization collection has its own status; retain that independent
+        # evidence even when the containing services inventory is unavailable.
+        organization_ok = isinstance(organization, dict) and organization.get("status") == "ok"
+        if payload.get("status") != "ok" and not organization_ok:
+            continue
+        account = _clean_graph_part(payload.get("account"))
+        scope = ("account", account) if account else ("source", key)
+        scopes.setdefault(scope, {})[key] = payload
+
+    if not scopes:
+        return
+    from contextlib import nullcontext
+    from copy import deepcopy
+
+    from agent_bom.graph.store_backed import StoreBackedUnifiedGraph, open_store_backed_unified_graph
+
+    store_backed = isinstance(graph, StoreBackedUnifiedGraph)
+    for scope, lanes in scopes.items():
+        stage_context = (
+            open_store_backed_unified_graph(scan_id=graph.scan_id, tenant_id=graph.tenant_id, created_at=graph.created_at, backend="sqlite")
+            if store_backed
+            else nullcontext(UnifiedGraph(scan_id=graph.scan_id, tenant_id=graph.tenant_id, created_at=graph.created_at))
+        )
+        with stage_context as staged:
+            _project_snowflake_lanes(staged, lanes, data_source)
+            remap: dict[str, str] = {}
+            account = scope[1] if scope[0] == "account" else ""
+            for staged_node in staged.nodes.values():
+                # Store-backed cached identities must retain their original key.
+                # Clone only the current output node, never the whole graph.
+                node = deepcopy(staged_node) if store_backed else staged_node
+                original_id = node.id
+                provider = _clean_graph_part(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider)
+                account_local = provider == "snowflake" and node.entity_type not in {EntityType.ACCOUNT, EntityType.ORG}
+                if account_local:
+                    node.attributes["snowflake_local_id"] = original_id
+                    node.attributes["snowflake_scope_version"] = "account-lanes.v1"
+                    if account:
+                        node.attributes["account_id"] = account
+                    existing = graph.nodes.get(original_id)
+                    collides = existing is not None and (not account or _clean_graph_part(existing.attributes.get("account_id")) != account)
+                    if len(scopes) > 1 or collides:
+                        # Content framing and SHA-256 preserve case and separators;
+                        # stable_node_id lowercases its inputs and is unsuitable for
+                        # quoted Snowflake identifiers or unproven account aliases.
+                        key = json.dumps([*scope, original_id], separators=(",", ":"))
+                        suffix = hashlib.sha256(key.encode()).hexdigest()
+                        node.id = f"{node.entity_type.value}:snowflake:scoped:{suffix}"
+                        node.attributes["legacy_graph_id"] = original_id
+                if store_backed:
+                    # Persist the mapping in the private staging workspace so
+                    # a large source does not retain an O(nodes) remap in RAM.
+                    staged_node.attributes["_snowflake_projection_id"] = node.id
+                else:
+                    remap[original_id] = node.id
+                graph.add_node(node)
+            for edge in staged.edges:
+                if store_backed:
+                    edge.source = staged.nodes[edge.source].attributes["_snowflake_projection_id"]
+                    edge.target = staged.nodes[edge.target].attributes["_snowflake_projection_id"]
+                else:
+                    edge.source = remap[edge.source]
+                    edge.target = remap[edge.target]
+                graph.add_edge(edge)
+            graph.analysis_status.update(staged.analysis_status)
+
+
+def _project_snowflake_lanes(graph: UnifiedGraph, report_json: dict[str, Any], data_source: str) -> None:
+    """Project lanes sharing one explicitly recorded account (or one unknown source)."""
+    _add_snowflake_object_graph(graph, report_json.get("snowflake_object_graph"), data_source)
+    _add_snowflake_exfil(graph, report_json.get("snowflake_exfil_graph"), data_source)
+    _add_snowflake_identity(
+        graph,
+        report_json.get("snowflake_login_anomalies"),
+        report_json.get("snowflake_auth_posture"),
+        data_source,
+    )
+    _add_snowflake_services(graph, report_json.get("snowflake_services"), data_source)
+    _sf_services_payload = report_json.get("snowflake_services")
+    _add_snowflake_organization(
+        graph,
+        _sf_services_payload.get("organization") if isinstance(_sf_services_payload, dict) else None,
+        data_source,
+    )
+    _add_snowflake_pipeline(graph, report_json.get("snowflake_pipeline"), data_source)
+    _add_snowflake_integrations(graph, report_json.get("snowflake_integrations"), data_source)
+    _add_snowflake_external_data(graph, report_json.get("snowflake_external_data"), data_source)
+    _add_snowflake_governance(graph, report_json.get("snowflake_governance"), data_source)
+    _add_snowflake_activity(graph, report_json.get("snowflake_activity"), data_source)
 
 
 def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
@@ -3522,12 +3634,10 @@ def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source:
 def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
     """Promote Snowflake account integrations into the graph (external-trust layer).
 
-    Each integration is the account's connection to the outside world. They
-    become ``CLOUD_RESOURCE`` nodes owned by the account, carrying the category
-    (STORAGE / API / EXTERNAL_ACCESS / SECURITY / NOTIFICATION / CATALOG) and an
-    ``internet_exposed`` flag for the egress-bearing kinds, so blast-radius and
-    the visual surface the account's outbound/federation surface. Never raises;
-    a non-ok payload is a no-op.
+    Account-owned nodes retain category and enabled configuration for outbound
+    connections and federation. SHOW INTEGRATIONS does not establish inbound
+    internet reachability, effective authorization or successful data transfer.
+    A non-ok payload is a no-op.
     """
     prepared = _prepare_cloud_payload(payload, data_source, "snowflake-integrations")
     if prepared is None:
@@ -3554,7 +3664,8 @@ def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: 
         name = _clean_graph_part(integ.get("name"))
         if not name:
             continue
-        category = str(integ.get("category", "") or "").upper()
+        category = str(integ.get("category", "") or "").strip().upper().replace(" ", "_")
+        enabled = coerce_bool_or_none(integ.get("enabled"))
         node_id = f"cloud_resource:snowflake:integration:{name}"
         graph.add_node(
             UnifiedNode(
@@ -3568,8 +3679,21 @@ def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: 
                     "cloud_provider": "snowflake",
                     "integration_type": integ.get("type"),
                     "integration_category": category,
-                    "enabled": bool(integ.get("enabled")),
-                    "internet_exposed": bool(integ.get("enabled")) and category in egress_categories,
+                    "enabled": enabled,
+                    "internet_exposed": None,
+                    "outbound_access_configured": enabled if category in egress_categories else None,
+                    "integration_evidence": {
+                        "source": "snowflake-integrations",
+                        "basis": "recorded_configuration",
+                        "network_direction": "outbound" if category in egress_categories else "not_assessed",
+                        "access_outcome": "not_observed",
+                        "inputs": sanitize_sensitive_payload({key: integ[key] for key in ("category", "type", "enabled") if key in integ}),
+                        **(
+                            {"enabled_observation": sanitize_sensitive_payload(integ["enabled_evidence"])}
+                            if isinstance(integ.get("enabled_evidence"), dict)
+                            else {}
+                        ),
+                    },
                     "external_access": category == "EXTERNAL_ACCESS",
                     "identity_federation": category == "SECURITY",
                 },
@@ -4037,8 +4161,8 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
       ``ACCESSED`` the object's ``DATA_STORE`` node. The data-store id matches the
       scheme the object/exfil layers emit (``data_store:snowflake:{fqn}``), so the
       edge lands on the existing object node rather than a duplicate. Records are
-      collapsed per ``(user, object, write?)`` so a year of reads becomes a handful
-      of edges, not thousands.
+      collapsed per ``(user, object)`` with distinct query/action/role receipts.
+      Historical observations do not establish current permission or row impact.
     - **CORTEX_AGENT_USAGE_HISTORY** → one ``AGENT`` node per distinct agent name,
       ``OWNS``-attached to the account, carrying aggregate telemetry (calls, tokens,
       credits) as attributes — not one node per call.
@@ -4069,7 +4193,7 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
 
     # ── ACCESS_HISTORY: user ACCESSED data store (collapsed per user+object) ──
     seen_users: set[str] = set()
-    seen_access: set[tuple[str, str, bool]] = set()
+    access_records_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
 
     def _ensure_user(name: str) -> str:
         node_id = f"user:snowflake:{name}"
@@ -4095,11 +4219,14 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
         object_name = _clean_graph_part(rec.get("object_name"))
         if not user_name or not object_name:
             continue
-        is_write = bool(rec.get("is_write"))
-        key = (user_name, object_name, is_write)
-        if key in seen_access:
-            continue
-        seen_access.add(key)
+        receipt: dict[str, Any] = {"source": "snowflake-governance", "account": account}
+        for field_name in ("query_id", "user_name", "role_name", "query_start", "object_name", "object_type", "operation", "source_field"):
+            receipt[field_name] = _clean_graph_part(rec.get(field_name))
+        receipt["is_write"] = rec.get("is_write") if isinstance(rec.get("is_write"), bool) else None
+        for field_name in ("columns", "base_objects"):
+            values = rec.get(field_name)
+            receipt[field_name] = sorted({value for value in values if isinstance(value, str)}) if isinstance(values, list) else []
+        access_records_by_pair[(user_name, object_name)].append(receipt)
         object_node_id = f"data_store:snowflake:{object_name}"
         if object_node_id not in graph.nodes:
             # Thin object node — the object/exfil layers, if also run, own the
@@ -4126,18 +4253,17 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
                     object_node_id,
                     evidence={"source": "snowflake-governance"},
                 )
-        _add_rel_edge(
-            graph,
-            _ensure_user(user_name),
-            object_node_id,
-            RelationshipType.ACCESSED,
-            {
-                "source": "snowflake-governance",
-                "operation": _clean_graph_part(rec.get("operation")),
-                "is_write": is_write,
-                "role_name": _clean_graph_part(rec.get("role_name")),
-            },
-        )
+    for (user_name, object_name), receipts in access_records_by_pair.items():
+        evidence: dict[str, Any] = {
+            "source": "snowflake-governance",
+            "evidence_kind": "historical_access",
+            "authorization_state": "not_evaluated",
+            "data_impact_state": "unknown",
+        }
+        # Aggregate once per edge rather than repeatedly merging its growing
+        # history. Keep whole records so different queries/roles cannot combine.
+        merge_edge_evidence(evidence, {"access_receipts": receipts})
+        _add_rel_edge(graph, _ensure_user(user_name), f"data_store:snowflake:{object_name}", RelationshipType.ACCESSED, evidence)
 
     # ── CORTEX_AGENT_USAGE_HISTORY: one AGENT node per name, aggregated ──────
     agent_aggregate: dict[str, dict[str, Any]] = {}
@@ -4957,7 +5083,9 @@ def _apply_gcp_firewall_exposure(
     the instance, mirroring how an AWS security group exposes an EC2 instance.
     """
     firewall_nodes = [(graph.nodes.get(node_id), node_id) for node_id in sg_node_by_id.values()]
-    permissive = [(node, node_id) for node, node_id in firewall_nodes if node is not None and node.attributes.get("internet_exposed")]
+    permissive = [
+        (node, node_id) for node, node_id in firewall_nodes if node is not None and coerce_truthy(node.attributes.get("internet_exposed"))
+    ]
     if not permissive:
         return
     for inst_node_id, instance in instance_nodes:
@@ -5118,7 +5246,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "cloud_provider": provider,
                     "cloud_service": bucket_service,
                     "location": _clean_graph_part(bucket.get("location")) or region,
-                    "internet_exposed": bool(bucket.get("publicly_accessible")),
+                    **_recorded_exposure_attributes(bucket, "publicly_accessible"),
                     "tags": bucket_tags,
                     "account_id": account_id,
                     "environment": bucket_env,
@@ -5165,7 +5293,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             "cloud_provider": provider,
             "cloud_service": "dspm-database",
             "location": _clean_graph_part(db.get("location")) or region,
-            "internet_exposed": bool(db.get("publicly_accessible")),
+            **_recorded_exposure_attributes(db, "publicly_accessible"),
             "is_data_store": True,
             "account_id": db.get("account_id") or account_id,
         }
@@ -5221,7 +5349,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "cloud_service": sg_service,
                     "location": region,
                     "vpc_id": _clean_graph_part(group.get("vpc_id")),
-                    "internet_exposed": bool(group.get("internet_exposed")),
+                    **_recorded_exposure_attributes(group, "internet_exposed"),
                     "network_exposure": list(group.get("network_exposure", []) or []),
                     # GCP firewall scoping (empty on AWS); the instance-matching
                     # pass below reads these to know which instances a rule covers.
@@ -5301,7 +5429,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             )
             # An internet-facing security group exposes the instances in it.
             sg_node = graph.nodes.get(sg_node_id)
-            if sg_node is not None and sg_node.attributes.get("internet_exposed"):
+            if sg_node is not None and coerce_truthy(sg_node.attributes.get("internet_exposed")):
                 graph.add_edge(
                     UnifiedEdge(
                         source=sg_node_id,
@@ -5369,7 +5497,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             if not name:
                 continue
             node_id = f"cloud_resource:{provider}:{svc}:{rtype}:{name}"
-            exposed = bool(item.get("publicly_accessible") or item.get("internet_exposed") or item.get("endpoint_public"))
+            exposure = _recorded_exposure_attributes(item, "publicly_accessible", "internet_exposed", "endpoint_public")
             item_env = _resource_environment(item)
             graph.add_node(
                 UnifiedNode(
@@ -5384,7 +5512,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                         "cloud_provider": provider,
                         "cloud_service": svc,
                         "location": _clean_graph_part(item.get("location")) or region,
-                        "internet_exposed": exposed,
+                        **exposure,
                         "is_data_store": is_data,
                         "engine": _clean_graph_part(item.get("engine")),
                         "runtime": _clean_graph_part(item.get("runtime")),
@@ -5404,7 +5532,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     node_id,
                     evidence={"source": "cloud-inventory"},
                 )
-            if coll_key == "elb_load_balancers" and exposed:
+            if coll_key == "elb_load_balancers" and exposure["internet_exposed"] is True:
                 internet_facing_lbs.append((node_id, _clean_graph_part(item.get("vpc_id"))))
 
     # ── GCP estate breadth (GKE / Cloud Run / Functions / Cloud SQL / VPC /
@@ -5430,7 +5558,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     continue
                 id_key = _clean_graph_part(item.get(id_field)) or name
                 node_id = f"cloud_resource:gcp:{svc}:{rtype}:{id_key}"
-                exposed = bool(item.get("publicly_accessible") or item.get("internet_exposed"))
+                exposure = _recorded_exposure_attributes(item, "publicly_accessible", "internet_exposed")
                 item_env = _resource_environment(item)
                 graph.add_node(
                     UnifiedNode(
@@ -5445,7 +5573,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                             "cloud_provider": "gcp",
                             "cloud_service": svc,
                             "location": _clean_graph_part(item.get("location")) or region,
-                            "internet_exposed": exposed,
+                            **exposure,
                             "is_data_store": is_data,
                             "engine": _clean_graph_part(item.get("database_version")),
                             "encrypted": bool(item.get("encrypted")),
@@ -5696,7 +5824,10 @@ def _add_normalized_cloud_resources(
             continue
         node_id = f"cloud_resource:{provider}:{res.resource_type.value}:{name}"
         raw = res.raw or {}
-        internet_exposed = bool(raw.get("ip_address")) or bool(raw.get("internet_facing"))
+        exposure = _recorded_exposure_attributes(raw, "internet_facing")
+        if res.resource_type is CloudResourceType.PUBLIC_IP and raw.get("ip_address"):
+            exposure["internet_exposed"] = True
+            exposure["internet_exposure_evidence"]["public_ip_address"] = sanitize_text(str(raw["ip_address"]))
         if res.resource_type is CloudResourceType.PUBLIC_IP and res.resource_id:
             pip_node_by_arm_id[res.resource_id] = node_id
         if res.resource_type is CloudResourceType.LOAD_BALANCER:
@@ -5715,7 +5846,7 @@ def _add_normalized_cloud_resources(
                     "resource_kind": res.native_type,
                     "cloud_provider": provider,
                     "location": res.region or region,
-                    "internet_exposed": internet_exposed,
+                    **exposure,
                     "is_data_store": is_data_store,
                     "tags": resource_tags,
                     "account_id": account_id,
@@ -5804,7 +5935,7 @@ def _instance_internet_reachable(graph: UnifiedGraph, inst_node_id: str, instanc
     node = graph.nodes.get(inst_node_id)
     if node is None:
         return False
-    if node.attributes.get("internet_exposed") or _clean_graph_part(instance.get("public_ip")):
+    if coerce_truthy(node.attributes.get("internet_exposed")) or _clean_graph_part(instance.get("public_ip")):
         return True
     return any(e.relationship == RelationshipType.EXPOSED_TO and e.target == inst_node_id for e in graph.edges)
 
@@ -5817,7 +5948,7 @@ def _link_internet_facing_load_balancers(
     """Link internet-facing LBs to reachable instances in the same VPC."""
     for lb_node_id, lb_vpc_id in load_balancers:
         lb_node = graph.nodes.get(lb_node_id)
-        if lb_node is None or not lb_node.attributes.get("internet_exposed"):
+        if lb_node is None or not coerce_truthy(lb_node.attributes.get("internet_exposed")):
             continue
         for inst_node_id, instance in instance_nodes:
             inst_vpc = _clean_graph_part(instance.get("vpc_id"))
@@ -5944,8 +6075,8 @@ def _add_network_edge_inventory(
                 "resource_id": sn_id,
                 "vpc_id": _clean_graph_part(sn.get("vpc_id")),
                 "cidr": _clean_graph_part(sn.get("cidr")),
-                "is_public": bool(sn.get("is_public")),
-                "internet_exposed": bool(sn.get("is_public")),
+                "is_public": coerce_bool_or_none(sn.get("is_public")),
+                **_recorded_exposure_attributes(sn, "is_public"),
             },
         )
 
@@ -5971,7 +6102,7 @@ def _add_network_edge_inventory(
                 attrs={
                     "resource_id": ident,
                     "vpc_id": _clean_graph_part(item.get("vpc_id")),
-                    "internet_exposed": bool(item.get("internet_exposed")),
+                    **_recorded_exposure_attributes(item, "internet_exposed"),
                     "has_internet_route": bool(item.get("has_internet_route")),
                     "subnet_ids": list(item.get("subnet_ids", []) or []),
                     "network_exposure": list(item.get("network_exposure", []) or []),
@@ -6138,7 +6269,7 @@ def _add_network_edge_inventory(
                     "protocol": _clean_graph_part(api.get("protocol")),
                     "endpoint": _clean_graph_part(api.get("endpoint")),
                     "stages": list(api.get("stages", []) or []),
-                    "internet_exposed": bool(api.get("internet_exposed")),
+                    **_recorded_exposure_attributes(api, "internet_exposed"),
                     "location": _clean_graph_part(api.get("location")) or region,
                     "account_id": account_id,
                     "semantic_layer": "api_gateway",
@@ -6156,7 +6287,7 @@ def _add_network_edge_inventory(
                 evidence={"source": "cloud-inventory"},
             )
         _protect(node_id, api.get("protected_targets", []), "api_gateway_frontend")
-        if api.get("internet_exposed"):
+        if coerce_truthy(api.get("internet_exposed")):
             for target_ref in api.get("protected_targets", []) or []:
                 ref = _clean_graph_part(target_ref)
                 target_node_id = ref_to_node.get(ref)
@@ -6191,7 +6322,7 @@ def _wire_network_entry_exposure_paths(
         for sn in inventory.get("subnets", []) or []
         if isinstance(sn, dict)
         for sn_id in [_clean_graph_part(sn.get("id"))]
-        if sn_id and sn.get("is_public")
+        if sn_id and coerce_truthy(sn.get("is_public"))
     }
     igw_by_vpc: dict[str, str] = {}
     for igw in inventory.get("internet_gateways", []) or []:
@@ -6244,7 +6375,7 @@ def _wire_network_entry_exposure_paths(
                 )
 
     for nacl in inventory.get("network_acls", []) or []:
-        if not isinstance(nacl, dict) or not nacl.get("internet_exposed"):
+        if not isinstance(nacl, dict) or not coerce_truthy(nacl.get("internet_exposed")):
             continue
         ident = _clean_graph_part(nacl.get("id"))
         if not ident:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.graph import SEVERITY_RANK, AttackPath, EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.reachability_truth import node_reachability
 
@@ -63,17 +64,17 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
         # (set by the CNAPP overlay). Honesty (§11): a mitigated node is NOT
         # counted as a full-weight toxic/exposed foothold, but it is NOT hidden
         # either — it surfaces as an explicitly *mitigated* signal at lower rank.
-        exposure_mitigated = bool(attrs.get("exposure_mitigated") or attrs.get("protected_by_waf"))
-        if attrs.get("toxic_exposed_vulnerable"):
+        exposure_mitigated = coerce_truthy(attrs.get("exposure_mitigated")) or coerce_truthy(attrs.get("protected_by_waf"))
+        if coerce_truthy(attrs.get("toxic_exposed_vulnerable")):
             add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label}: exposed{port_detail} + vulnerable.", 20.0)
-        elif attrs.get("toxic_exposed_vulnerable_mitigated"):
+        elif coerce_truthy(attrs.get("toxic_exposed_vulnerable_mitigated")):
             add(
                 "toxic_exposed_vulnerable_mitigated",
                 "Toxic (mitigated): exposed + vulnerable behind WAF",
                 f"{node.label}: internet-exposed{port_detail} + vulnerable but fronted by a WAF/API gateway (exposure mitigated).",
                 8.0,
             )
-        elif attrs.get("internet_exposed"):
+        elif coerce_truthy(attrs.get("internet_exposed")):
             if exposure_mitigated:
                 add(
                     "internet_exposed_mitigated",
@@ -83,14 +84,14 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
                 )
             else:
                 add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet{port_detail}.", 15.0)
-        if attrs.get("escalates_to_admin"):
+        if coerce_truthy(attrs.get("escalates_to_admin")):
             add("privilege_escalation_admin", "Admin escalation", f"{node.label} can assume an admin-privileged role.", 20.0)
-        elif attrs.get("can_escalate_privilege"):
+        elif coerce_truthy(attrs.get("can_escalate_privilege")):
             add("privilege_escalation", "Privilege escalation", f"{node.label} can assume a role with broader effective access.", 16.0)
         # Standing admin-equivalent permissions (holds admin directly) — an
         # independent CIEM signal from the assume-chain escalation above, so it
         # is added, not chained via elif. Basis provenance stays visible.
-        if attrs.get("admin_equivalent"):
+        if coerce_truthy(attrs.get("admin_equivalent")):
             basis = attrs.get("admin_equivalence_basis")
             basis_detail = f" (basis: {basis})" if basis else ""
             add(
@@ -99,7 +100,7 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
                 f"{node.label} holds admin-equivalent permissions{basis_detail}.",
                 18.0,
             )
-        if attrs.get("toxic_exposed_sensitive"):
+        if coerce_truthy(attrs.get("toxic_exposed_sensitive")):
             reach = attrs.get("sensitive_data_access_count")
             reach_detail = f", reachable by {reach} identity/tool path(s)" if isinstance(reach, int) and reach > 0 else ""
             add(
@@ -138,7 +139,7 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
                 add("behavioral_drift", "Behavioral drift", f"{node.label} has an open drift incident.", 12.0)
             elif rel == RelationshipType.AUTHENTICATES_AS.value and not target.attributes.get("scope_bound", True):
                 add("broad_identity_scope", "Unscoped identity", f"{node.label} runs as an identity with no per-tool scope.", 8.0)
-            elif rel == RelationshipType.STORES.value and target.attributes.get("internet_exposed"):
+            elif rel == RelationshipType.STORES.value and coerce_truthy(target.attributes.get("internet_exposed")):
                 add("exposed_data_store", "Exposed data store", f"{node.label} backs an internet-exposed data store.", 14.0)
     return signals
 
@@ -254,7 +255,7 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
 
         # Privilege escalation: effective access gained only by assuming a role.
         if rel == RelationshipType.HAS_PERMISSION.value and (edge.evidence or {}).get("access") == "assume_chain":
-            exposed = bool(tgt.attributes.get("internet_exposed"))
+            exposed = coerce_truthy(tgt.attributes.get("internet_exposed"))
             emit(
                 "privilege_escalation",
                 src.id,
@@ -426,11 +427,15 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
         # (CNAPP overlay). Honesty (§11): the node still surfaces (marked
         # mitigated), but its exposure factor is not counted at full weight and
         # the composite band is capped below an unmitigated peer's.
-        exposure_mitigated = bool(attrs.get("exposure_mitigated") or attrs.get("protected_by_waf"))
+        exposure_mitigated = coerce_truthy(attrs.get("exposure_mitigated")) or coerce_truthy(attrs.get("protected_by_waf"))
         factors: list[str] = []
-        if attrs.get("internet_exposed"):
+        if coerce_truthy(attrs.get("internet_exposed")):
             factors.append("internet-exposed (WAF-mitigated)" if exposure_mitigated else "internet-exposed")
-        if node.id in vulnerable or attrs.get("toxic_exposed_vulnerable") or attrs.get("toxic_exposed_vulnerable_mitigated"):
+        if (
+            node.id in vulnerable
+            or coerce_truthy(attrs.get("toxic_exposed_vulnerable"))
+            or coerce_truthy(attrs.get("toxic_exposed_vulnerable_mitigated"))
+        ):
             factors.append("exploitable vulnerability")
         sens_ids = sensitive_neighbors.get(node.id, [])
         if attrs.get("data_sensitivity") or sens_ids:

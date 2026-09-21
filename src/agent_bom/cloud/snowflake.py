@@ -56,13 +56,14 @@ from agent_bom.governance import (
     QueryHistoryRecord,
 )
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
-from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
 
 from .aws_inventory import record_discovery_failure
 from .base import CloudDiscoveryError
 from .normalization import (
     build_cloud_origin,
     build_package_purl,
+    coerce_bool_or_none,
     coerce_int_or_none,
     coerce_truthy,
     resolve_env_or_value,
@@ -1396,15 +1397,13 @@ def _mine_access_history(
             objects_modified = _parse_json_field(row_dict.get("objects_modified", "[]"))
 
             base_names = [b.get("objectName", "") for b in base_objects if b.get("objectName")]
-            # Tables written by this query — writes surface in objects_modified,
-            # not direct_objects_accessed (which captures reads).
-            modified_names = {m.get("objectName", "") for m in objects_modified if m.get("objectName")}
 
             for obj in direct_objects:
                 obj_name = obj.get("objectName", "")
                 obj_type = obj.get("objectDomain", "")
                 col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
-                is_write = obj_name in modified_names or _is_write_operation(obj)
+                if not obj_name:
+                    continue
 
                 records.append(
                     AccessRecord(
@@ -1415,18 +1414,19 @@ def _mine_access_history(
                         object_name=obj_name,
                         object_type=obj_type,
                         columns=col_list,
-                        operation=_infer_operation(obj),
-                        is_write=is_write,
+                        operation="READ",
+                        is_write=False,
                         base_objects=base_names,
+                        source_field="direct_objects_accessed",
                     )
                 )
 
-            # Surface write targets that only appear in objects_modified (e.g. an
-            # INSERT/COPY into a table not present in direct_objects_accessed).
-            direct_names = {o.get("objectName", "") for o in direct_objects}
+            # A query can read and write the same object. Keep those observations
+            # separate, including their distinct column lists. These arrays do
+            # not establish the SQL verb, rows changed, or current authorization.
             for obj in objects_modified:
                 obj_name = obj.get("objectName", "")
-                if not obj_name or obj_name in direct_names:
+                if not obj_name:
                     continue
                 col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
                 records.append(
@@ -1441,6 +1441,7 @@ def _mine_access_history(
                         operation="WRITE",
                         is_write=True,
                         base_objects=base_names,
+                        source_field="objects_modified",
                     )
                 )
 
@@ -1666,38 +1667,56 @@ def _derive_findings(report: GovernanceReport) -> list[GovernanceFinding]:
     return findings
 
 
+def _access_actor(rec: AccessRecord, record_index: int) -> tuple[str, str]:
+    """Group only on a recorded actor, or keep unattributed query scopes apart."""
+    for kind, name in (("role", rec.role_name), ("user", rec.user_name), ("query", rec.query_id)):
+        if name and name.strip():
+            return kind, name
+    # No actor or query identifier is available. Do not turn unrelated missing
+    # values into one principal or infer that these records share a session.
+    return "record", str(record_index + 1)
+
+
+def _access_actor_context(actor: tuple[str, str]) -> tuple[str, str, str]:
+    """Return a typed title, observation context and known principal name."""
+    kind, name = actor
+    if kind == "role":
+        return f"role {name}", f"under recorded role '{name}'", name
+    if kind == "user":
+        return f"user {name}", f"for user '{name}' (query role unavailable)", name
+    return f"{kind} {name}", f"for {kind} '{name}' (identity unavailable)", ""
+
+
 def _find_write_access_risks(report: GovernanceReport) -> list[GovernanceFinding]:
-    """Flag roles/users performing DML (INSERT/UPDATE/DELETE) on production tables."""
+    """Flag historical write observations without inventing an unknown actor."""
     findings: list[GovernanceFinding] = []
-    write_ops: dict[str, set[str]] = {}  # role -> set of tables written to
+    write_ops: dict[tuple[str, str], set[str]] = {}
 
-    for rec in report.access_records:
+    for index, rec in enumerate(report.access_records):
         if rec.is_write:
-            write_ops.setdefault(rec.role_name, set()).add(rec.object_name)
+            write_ops.setdefault(_access_actor(rec, index), set()).add(rec.object_name)
 
-    for role, tables in write_ops.items():
-        if len(tables) >= 5:
-            findings.append(
-                GovernanceFinding(
-                    category=GovernanceCategory.ACCESS,
-                    severity=GovernanceSeverity.HIGH,
-                    title=f"Broad write access: {role}",
-                    description=(f"Role '{role}' performed write operations on {len(tables)} distinct tables in the analysis window."),
-                    agent_or_role=role,
-                    details={"tables": sorted(tables)[:20]},
-                )
+    for actor, tables in write_ops.items():
+        actor_label, context, principal = _access_actor_context(actor)
+        broad = len(tables) >= 5
+        findings.append(
+            GovernanceFinding(
+                category=GovernanceCategory.ACCESS,
+                severity=GovernanceSeverity.HIGH if broad else GovernanceSeverity.MEDIUM,
+                title=f"{'Broad write observations' if broad else 'Write observation'}: {actor_label}",
+                description=(
+                    f"Access history records write-related activity {context} on {len(tables)} distinct object(s) "
+                    f"in the analysis window: {', '.join(sorted(tables)[:5])}"
+                ),
+                agent_or_role=principal,
+                details={
+                    "tables": sorted(tables)[:20],
+                    "actor_type": actor[0],
+                    "actor_id": actor[1],
+                    "evidence_kind": "historical_access",
+                },
             )
-        elif len(tables) >= 1:
-            findings.append(
-                GovernanceFinding(
-                    category=GovernanceCategory.ACCESS,
-                    severity=GovernanceSeverity.MEDIUM,
-                    title=f"Write access detected: {role}",
-                    description=(f"Role '{role}' performed write operations on: {', '.join(sorted(tables)[:5])}"),
-                    agent_or_role=role,
-                    details={"tables": sorted(tables)},
-                )
-            )
+        )
 
     return findings
 
@@ -1763,26 +1782,30 @@ def _find_sensitive_data_access(report: GovernanceReport) -> list[GovernanceFind
         return findings
 
     # Check which access records touch sensitive objects
-    sensitive_access: dict[str, dict[str, set[str]]] = {}  # role -> {object -> {tags}}
-    for rec in report.access_records:
+    sensitive_access: dict[tuple[str, str], dict[str, set[str]]] = {}
+    for index, rec in enumerate(report.access_records):
         obj_upper = rec.object_name.upper()
         if obj_upper in sensitive_objects:
             tags_for_obj = sensitive_objects[obj_upper]
             tag_names = {t.tag_name for t in tags_for_obj}
-            sa = sensitive_access.setdefault(rec.role_name, {})
+            sa = sensitive_access.setdefault(_access_actor(rec, index), {})
             sa.setdefault(obj_upper, set()).update(tag_names)
 
-    for role, obj_tags in sensitive_access.items():
+    for actor, obj_tags in sensitive_access.items():
+        actor_label, context, principal = _access_actor_context(actor)
+        actor_evidence = {"actor_type": actor[0], "actor_id": actor[1], "evidence_kind": "historical_access"}
         pii_tables = [obj for obj, tags in obj_tags.items() if any("PII" in t.upper() or "PHI" in t.upper() for t in tags)]
         if pii_tables:
             findings.append(
                 GovernanceFinding(
                     category=GovernanceCategory.DATA_CLASSIFICATION,
                     severity=GovernanceSeverity.CRITICAL,
-                    title=f"PII/PHI data access: {role}",
-                    description=(f"Role '{role}' accessed {len(pii_tables)} PII/PHI-tagged table(s): {', '.join(pii_tables[:5])}"),
-                    agent_or_role=role,
-                    details={"pii_tables": pii_tables[:20]},
+                    title=f"PII/PHI-tagged object access: {actor_label}",
+                    description=(
+                        f"Access history {context} references {len(pii_tables)} PII/PHI-tagged object(s): {', '.join(pii_tables[:5])}"
+                    ),
+                    agent_or_role=principal,
+                    details={"pii_tables": pii_tables[:20], **actor_evidence},
                 )
             )
 
@@ -1795,14 +1818,16 @@ def _find_sensitive_data_access(report: GovernanceReport) -> list[GovernanceFind
                 GovernanceFinding(
                     category=GovernanceCategory.DATA_CLASSIFICATION,
                     severity=GovernanceSeverity.HIGH,
-                    title=f"Sensitive data access: {role}",
+                    title=f"Classified object access: {actor_label}",
                     description=(
-                        f"Role '{role}' accessed {len(other_sensitive)} classified table(s) with tags: {', '.join(sorted(all_tags))}"
+                        f"Access history {context} references {len(other_sensitive)} classified object(s) "
+                        f"with tags: {', '.join(sorted(all_tags))}"
                     ),
-                    agent_or_role=role,
+                    agent_or_role=principal,
                     details={
                         "tables": other_sensitive[:20],
                         "tags": sorted(all_tags),
+                        **actor_evidence,
                     },
                 )
             )
@@ -1954,28 +1979,6 @@ def _parse_json_object(value: Any) -> dict:
         except (json.JSONDecodeError, TypeError):
             return {}
     return {}
-
-
-def _infer_operation(obj: dict) -> str:
-    """Infer the SQL operation from an ACCESS_HISTORY direct_objects_accessed entry."""
-    # Snowflake ACCESS_HISTORY may include objectDomain and columns with DML type
-    columns = obj.get("columns", [])
-    if not columns:
-        return "SELECT"
-    # Check if any column access indicates a write
-    for col in columns:
-        dml_types = col.get("directSources", [])
-        for src in dml_types:
-            op = src.get("type", "").upper()
-            if op in ("INSERT", "UPDATE", "DELETE", "MERGE", "COPY"):
-                return op
-    return "SELECT"
-
-
-def _is_write_operation(obj: dict) -> bool:
-    """Check if an ACCESS_HISTORY object was written to."""
-    op = _infer_operation(obj)
-    return op in ("INSERT", "UPDATE", "DELETE", "MERGE", "COPY")
 
 
 # ---------------------------------------------------------------------------
@@ -3630,7 +3633,12 @@ def discover_snowflake_integrations(
                         "name": name,
                         "type": itype,
                         "category": category,
-                        "enabled": _sf_truthy(r.get("enabled")),
+                        "enabled": coerce_bool_or_none(r.get("enabled")),
+                        "enabled_evidence": {
+                            "source": "SHOW INTEGRATIONS",
+                            "recorded": "enabled" in r,
+                            "value": sanitize_sensitive_payload(r.get("enabled")),
+                        },
                         "comment": str(r.get("comment", "") or "")[:200],
                     }
                 )
@@ -3646,7 +3654,10 @@ def discover_snowflake_integrations(
                 {
                     "severity": "medium",
                     "title": "External-access integrations enabled",
-                    "detail": f"{len(ext_access)} external-access integration(s) let UDFs/procedures make outbound network calls.",
+                    "detail": (
+                        f"{len(ext_access)} external-access integration(s) configure outbound connections for UDFs/procedures. "
+                        "Effective permissions, network rules and successful calls require separate evidence."
+                    ),
                 }
             )
         security = [i["name"] for i in result["integrations"] if i["enabled"] and i["category"] == "SECURITY"]

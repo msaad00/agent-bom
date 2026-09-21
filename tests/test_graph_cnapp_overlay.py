@@ -28,6 +28,7 @@ def test_overlay_marks_exposure_classifies_data_store_and_flags_toxic():
             id="mc:public",
             entity_type=EntityType.MISCONFIGURATION,
             label="S3 bucket is publicly accessible",
+            attributes={"network_exposure": [{"scope": "internet", "protocol": "tcp", "from_port": 443, "to_port": 443}]},
         )
     )
     graph.add_node(

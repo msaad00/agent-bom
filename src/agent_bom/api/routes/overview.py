@@ -777,16 +777,16 @@ def _cost_snapshot(request: Request) -> dict[str, Any]:
 def _identity_snapshot(request: Request) -> dict[str, Any]:
     """NHI / fleet counts from the identity + fleet stores."""
     tenant_id = _tenant_id(request)
-    identities = 0
+    identities: int | None = None
     try:
         from agent_bom.api.agent_identity_store import get_agent_identity_store
 
-        identities = len(get_agent_identity_store().list(tenant_id, limit=1000))
+        identities = get_agent_identity_store().count(tenant_id)
     except Exception:  # pragma: no cover - identity store optional
         _logger.debug("identity snapshot failed", exc_info=False)
 
-    fleet_total = 0
-    low_trust = 0
+    fleet_total: int | None = None
+    low_trust: int | None = None
     try:
         agents = _get_fleet_store().list_by_tenant(tenant_id)
         fleet_total = len(agents)
@@ -795,6 +795,9 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
         _logger.debug("fleet snapshot failed", exc_info=False)
 
     return {
+        "count_definition": "managed identity records by lifecycle status; fleet registrations are separate",
+        "managed_identities_available": identities is not None,
+        "fleet_agents_available": fleet_total is not None,
         "managed_identities": identities,
         "fleet_agents": fleet_total,
         "low_trust_agents": low_trust,
@@ -1620,8 +1623,8 @@ def _compose_overview(
             "label": "NHI / Identity",
             "href": "/identity",
             "graph_href": _graph_drill_href(layers="agent,user,role,policy", relationships="governance"),
-            "metric": identity["managed_identities"] + identity["fleet_agents"],
-            "metric_label": "identities + agents",
+            "metric": identity["managed_identities"],
+            "metric_label": "managed identity records",
             "status": _identity_status(identity),
             "detail": identity,
         },
@@ -1732,7 +1735,9 @@ def _status_for(critical: int, high: int) -> str:
 
 
 def _identity_status(identity: dict[str, Any]) -> str:
-    if identity["low_trust_agents"] > 0:
+    if identity["managed_identities"] is None or identity["fleet_agents"] is None:
+        return "unavailable"
+    if (identity["low_trust_agents"] or 0) > 0:
         return "warn"
     if identity["fleet_agents"] or identity["managed_identities"]:
         return "ok"

@@ -306,3 +306,75 @@ def test_client_raises_api_error_with_body() -> None:
 
     assert exc.value.status_code == 403
     assert exc.value.body == '{"detail":"forbidden"}'
+
+
+def test_client_preserves_finding_reconfirmation_receipt_and_original_provenance():
+    payload = {
+        "findings": [
+            {
+                "id": "old-finding",
+                "scan_id": "baseline",
+                "last_observed": "2026-08-01T00:00:00Z",
+                "observation_status": "unreconfirmed",
+                "provenance": {"source": "mcp-scan"},
+                "reconfirmation": {"scan_id": "candidate", "reason_codes": ["scope_permission_denied"]},
+            }
+        ]
+    }
+    with _client(lambda request: httpx.Response(200, json=payload)) as client:
+        assert client.list_findings() == payload
+
+
+def test_client_registers_workload_binding_without_secret_argument() -> None:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(201, json={"id": "connection-a", "credential_present": True, "has_external_id": False})
+
+    client = _client(handler)
+    params = {"auth_mode": "workload_identity", "credential_binding": "reader", "project_id": "project-a"}
+    result = client.create_cloud_connection(
+        provider="gcp", display_name="Project A", role_ref="reader@project-a.iam.gserviceaccount.com", auth_params=params
+    )
+    assert captured["external_id"] == ""
+    assert captured["auth_params"] == params
+    assert result["has_external_id"] is False
+
+
+@pytest.mark.parametrize(
+    "method,path,paging",
+    [
+        ("inventory_summary", "/v1/inventory/summary", {}),
+        ("inventory_assets", "/v1/inventory/assets", {"limit": 25, "offset": 0, "cursor": "cursor/+="}),
+    ],
+)
+def test_inventory_scope_filters_and_qualification_round_trip(method, path, paging) -> None:
+    seen = {}
+    payload = {
+        "scan_id": "snapshot/a",
+        "total_assets": 17,
+        "count_exact": True,
+        "collection": {"state": "partial", "reason_codes": ["permission_denied"], "future_field": None},
+        "completeness": {"returned": 17, "total": None, "truncated": True},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["params"] = dict(request.url.params)
+        seen["tenant"] = request.headers["x-agent-bom-tenant-id"]
+        return httpx.Response(200, json=payload)
+
+    client = _client(handler)
+    filters = {
+        "scan_id": "snapshot/a",
+        "type": "agent,server",
+        "search": "data + agent",
+        "environment": "prod",
+        "provider": "gcp",
+        "source": "source/a",
+        "severity": "high",
+        "min_severity": "medium",
+    }
+    assert getattr(client, method)(**filters, **paging) == payload
+    assert seen == {"path": path, "params": {**filters, **{key: str(value) for key, value in paging.items()}}, "tenant": "tenant-a"}

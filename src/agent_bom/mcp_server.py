@@ -1253,6 +1253,13 @@ def create_mcp_server(
     async def inventory_summary(
         tenant_id: Annotated[str, Field(description="Tenant scope for the snapshot. Defaults to 'default'.")] = "default",
         scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+        type: Annotated[str | None, Field(description="Comma-separated asset entity types; finding types are rejected.")] = None,
+        search: Annotated[str | None, Field(description="Free-text search over asset name / label / attributes.")] = None,
+        environment: Annotated[str | None, Field(description="Filter by environment facet.")] = None,
+        provider: Annotated[str | None, Field(description="Filter by provider facet.")] = None,
+        source: Annotated[str | None, Field(description="Filter by data-source / provenance facet.")] = None,
+        severity: Annotated[str | None, Field(description="Highest directly linked finding severity.")] = None,
+        min_severity: Annotated[str | None, Field(description="Minimum directly linked finding severity.")] = None,
     ) -> str:
         """Return unified asset-inventory counts by type and source group.
 
@@ -1268,6 +1275,13 @@ def create_mcp_server(
             inventory_summary_impl,
             tenant_id=tenant_id,
             scan_id=scan_id,
+            type=type,
+            search=search,
+            environment=environment,
+            provider=provider,
+            source=source,
+            severity=severity,
+            min_severity=min_severity,
             _truncate_response=_truncate_response,
         )
 

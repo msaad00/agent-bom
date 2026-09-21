@@ -114,7 +114,7 @@ def test_streaming_persist_matches_save_graph(tmp_path) -> None:
 
 
 def test_streaming_persist_preserves_temporal_reconciliation(tmp_path) -> None:
-    """The streamed path reconciles valid_from/valid_to against the prior snapshot."""
+    """Exact positive observations retain history; absence does not end it."""
     from datetime import datetime, timedelta, timezone
 
     # Recent timestamps within the retention window so the prior snapshot is not
@@ -127,16 +127,37 @@ def test_streaming_persist_preserves_temporal_reconciliation(tmp_path) -> None:
         # prior snapshot has edge a->b and a->c
         g1 = UnifiedGraph(scan_id="v1", tenant_id="acme", created_at=t1)
         for nid in ("a", "b", "c"):
-            g1.add_node(UnifiedNode(id=nid, entity_type=EntityType.PACKAGE, label=nid))
-        g1.add_edge(UnifiedEdge(source="a", target="b", relationship=RelationshipType.DEPENDS_ON, first_seen=t1))
-        g1.add_edge(UnifiedEdge(source="a", target="c", relationship=RelationshipType.DEPENDS_ON, first_seen=t1))
+            g1.add_node(
+                UnifiedNode(
+                    id=nid, entity_type=EntityType.PACKAGE, label=nid, attributes={"cloud_provider": "fixture", "account_id": "account1"}
+                )
+            )
+        g1.add_edge(
+            UnifiedEdge(
+                source="a", target="b", relationship=RelationshipType.DEPENDS_ON, first_seen=t1, evidence={"source": "fixture-collector"}
+            )
+        )
+        g1.add_edge(
+            UnifiedEdge(
+                source="a", target="c", relationship=RelationshipType.DEPENDS_ON, first_seen=t1, evidence={"source": "fixture-collector"}
+            )
+        )
         gs.save_graph(conn, g1)
 
-        # new snapshot keeps a->b (should preserve first_seen/valid_from), drops a->c (valid_to set on prior)
+        # Re-observing a->b in the same namespace preserves its first observation.
+        # Omitting a->c does not establish a native end or revocation.
         g2 = UnifiedGraph(scan_id="v2", tenant_id="acme", created_at=t2)
         for nid in ("a", "b"):
-            g2.add_node(UnifiedNode(id=nid, entity_type=EntityType.PACKAGE, label=nid))
-        g2.add_edge(UnifiedEdge(source="a", target="b", relationship=RelationshipType.DEPENDS_ON, first_seen=t2))
+            g2.add_node(
+                UnifiedNode(
+                    id=nid, entity_type=EntityType.PACKAGE, label=nid, attributes={"cloud_provider": "fixture", "account_id": "account1"}
+                )
+            )
+        g2.add_edge(
+            UnifiedEdge(
+                source="a", target="b", relationship=RelationshipType.DEPENDS_ON, first_seen=t2, evidence={"source": "fixture-collector"}
+            )
+        )
         gs.save_graph_streaming(
             conn,
             scan_id="v2",
@@ -155,8 +176,8 @@ def test_streaming_persist_preserves_temporal_reconciliation(tmp_path) -> None:
         dropped = conn.execute(
             "SELECT valid_to, activity_id FROM graph_edges WHERE scan_id='v1' AND source_id='a' AND target_id='c'"
         ).fetchone()
-        assert dropped["valid_to"] == t2
-        assert dropped["activity_id"] == 3
+        assert dropped["valid_to"] is None
+        assert dropped["activity_id"] == 1
 
 
 def test_streaming_load_iterators_match_load_graph(tmp_path) -> None:

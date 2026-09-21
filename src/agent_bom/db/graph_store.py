@@ -43,6 +43,7 @@ from agent_bom.graph.analysis import (
 )
 from agent_bom.graph.container import GraphCompleteness, resolve_node_budget
 from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun, validate_correlation_update
+from agent_bom.graph.observation_scope import comparable_observation_sql, observation_scope
 from agent_bom.graph.severity_floor import severity_floor_sql
 from agent_bom.security import sanitize_text
 
@@ -886,7 +887,9 @@ def save_graph_streaming(
     if reserved_correlation is not None and snapshot_kind != "correlation":
         raise ValueError("correlation output identifier is reserved")
     batch_size = _graph_write_batch_size()
-    previous_scan = latest_snapshot_id(conn, tenant_id=tenant)
+    # Derived correlations combine evidence; they are not a new observation
+    # and must neither inherit scan continuity nor retire source-scan edges.
+    previous_scan = latest_snapshot_id(conn, tenant_id=tenant) if snapshot_kind == "scan" else ""
     if previous_scan == scan:
         previous_scan = previous_snapshot_id(conn, tenant_id=tenant, before_scan_id=scan)
     # A scan id is one complete snapshot. Retries/replays must replace that
@@ -958,9 +961,9 @@ def save_graph_streaming(
         for edge in edges:
             edge_count += 1
             rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+            # A snapshot may record a future grant or observation. Backdating
+            # its start changes temporal traversal and correlation receipts.
             valid_from = edge.valid_from or edge.first_seen or now
-            if valid_from > now:
-                valid_from = now
             yield (
                 edge.source,
                 edge.target,
@@ -1001,8 +1004,9 @@ def save_graph_streaming(
         # every previous edge into a Python dict + set, making the supposedly
         # streamed path retain O(previous-edge-count) heap. Exact-key correlated
         # lookups use graph_edges' primary key and keep Python memory batch-sized.
+        scope_predicate = comparable_observation_sql(dialect="sqlite", previous="previous", current="current")
         conn.execute(
-            """
+            f"""
             UPDATE graph_edges AS current
             SET first_seen = COALESCE(
                     (
@@ -1047,8 +1051,10 @@ def save_graph_streaming(
                       AND previous.relationship = current.relationship
                       AND previous.scan_id = ?
                       AND previous.tenant_id = ?
+                      AND (previous.valid_to IS NULL OR previous.valid_to = '')
+                      AND {scope_predicate}
               )
-            """,
+            """,  # nosec B608 - static aliases and internally generated SQL predicates
             (
                 previous_scan,
                 tenant,
@@ -1062,25 +1068,8 @@ def save_graph_streaming(
                 tenant,
             ),
         )
-        conn.execute(
-            """
-            UPDATE graph_edges AS previous
-            SET valid_to = COALESCE(previous.valid_to, ?),
-                activity_id = CASE WHEN previous.activity_id = 1 THEN 3 ELSE previous.activity_id END
-            WHERE previous.tenant_id = ?
-              AND previous.scan_id = ?
-              AND NOT EXISTS (
-                    SELECT 1
-                    FROM graph_edges AS current
-                    WHERE current.source_id = previous.source_id
-                      AND current.target_id = previous.target_id
-                      AND current.relationship = previous.relationship
-                      AND current.scan_id = ?
-                      AND current.tenant_id = ?
-              )
-            """,
-            (now, tenant, previous_scan, scan, tenant),
-        )
+    # A later snapshot does not prove a removed native relationship. Preserve
+    # source-supplied ends; unknown/partial collection never synthesizes Close.
 
     # ── Attack paths ──
     attack_path_count = 0
@@ -1761,9 +1750,12 @@ def active_edges_at(conn: sqlite3.Connection, at: str, *, tenant_id: str = "") -
     tenant_id = normalize_graph_tenant_id(tenant_id)
     rows = conn.execute(
         """
-        SELECT ge.*
+        SELECT ge.*, ns.attributes AS scope_source_attributes, ns.dimensions AS scope_source_dimensions,
+               nt.attributes AS scope_target_attributes, nt.dimensions AS scope_target_dimensions
         FROM graph_edges ge
         JOIN graph_snapshots gs ON gs.tenant_id = ge.tenant_id AND gs.scan_id = ge.scan_id
+        LEFT JOIN graph_nodes ns ON ns.tenant_id = ge.tenant_id AND ns.scan_id = ge.scan_id AND ns.id = ge.source_id
+        LEFT JOIN graph_nodes nt ON nt.tenant_id = ge.tenant_id AND nt.scan_id = ge.scan_id AND nt.id = ge.target_id
         WHERE ge.tenant_id = ?
           AND gs.created_at <= ?
           AND COALESCE(NULLIF(ge.valid_from, ''), ge.first_seen) <= ?
@@ -1772,10 +1764,18 @@ def active_edges_at(conn: sqlite3.Connection, at: str, *, tenant_id: str = "") -
         """,
         (tenant_id, at, at, at),
     ).fetchall()
-    active_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
+    active_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
     for row in rows:
         edge = _edge_history_row(row)
-        key = (edge["source_id"], edge["target_id"], edge["relationship"])
+        scope = observation_scope(
+            edge["evidence"],
+            row["scope_source_attributes"],
+            row["scope_source_dimensions"],
+            row["scope_target_attributes"],
+            row["scope_target_dimensions"],
+        )
+        namespace = ("recorded", *scope) if scope is not None else ("snapshot", edge["scan_id"])
+        key = (namespace, edge["source_id"], edge["target_id"], edge["relationship"])
         active_by_key[key] = edge
     return [active_by_key[key] for key in sorted(active_by_key)]
 

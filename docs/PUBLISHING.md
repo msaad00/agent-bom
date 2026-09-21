@@ -63,16 +63,26 @@ creates an external release using:
 must never point at Smithery's hosted proxy URL. Freshness monitoring no longer
 depends on that variable; it uses the Smithery catalog API directly.
 
-Do not add the upstream bearer token to Smithery `configSchema`. Smithery
-reserves the `Authorization` header for OAuth. If a capability scan pauses as
-`AUTH_REQUIRED`, the workflow reads the release through Smithery's authenticated
-API, accepts only an authorization URL on the configured Agent-Bom origin,
-follows the bounded machine-to-machine PKCE callback without logging its OAuth
-state. The only permitted redirect is the configured authorization endpoint to
-Smithery's exact HTTPS callback; a second redirect or alternate host, port, or
-path fails closed. The workflow never creates a duplicate while a matching
-release remains active, retries every six hours, and fails honestly if the
-provider still requires authorization or the exact catalog does not converge.
+Protected URL publishing requires an authorized external OAuth upstream.
+Agent-Bom's bearer-only MCP transport does not supply an OAuth issuer; dashboard
+SSO and discovery metadata do not provide this client authorization flow.
+Configure and verify the upstream's approved client, scopes, token audience,
+expiry and refresh behavior before running `gh workflow run publish-registries.yml`.
+Do not add the upstream bearer token to Smithery `configSchema`: Smithery reserves
+the `Authorization` header for OAuth. See the
+[protected MCP recovery checks](RELEASE_VERIFICATION.md#protected-mcp-deployment-and-registry-recovery).
+
+If a capability scan pauses as `AUTH_REQUIRED`, the workflow reads the release
+through Smithery's authenticated API and attempts a bounded callback through
+`scripts/authorize_smithery_release.py`. This helper does not issue tokens or grant client access.
+It can complete only an already-authorized flow that exposes `/oauth/authorize`
+on the configured upstream HTTPS origin and redirects directly to
+`https://server.smithery.ai/oauth/callback`. Interactive login, additional
+redirects, and authorization endpoints on another origin are unsupported by this
+helper; use the upstream's approved authorization process and verify its result.
+Never add automatic grants to satisfy the helper. OAuth state is not logged.
+The workflow avoids duplicate active releases and fails if authorization remains
+required or the exact released catalog does not converge.
 
 ### Verification
 

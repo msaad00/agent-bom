@@ -122,10 +122,13 @@ class CloudConnectionRecord:
         surfaces ``has_external_id`` so a client can tell a secret is configured
         without ever seeing it. ``auth_params`` is non-secret and is included.
         """
+        from agent_bom.cloud.connection_metadata import public_connection_params
+
         data = asdict(self)
+        data["auth_params"] = public_connection_params(self.provider, self.auth_params)
         data.pop("external_id_encrypted", None)
         data["has_external_id"] = bool(self.external_id_encrypted)
-        data["credential_present"] = bool(self.external_id_encrypted and self.role_ref)
+        data["credential_present"] = bool(self.role_ref and (self.external_id_encrypted or self.auth_params.get("credential_binding")))
         if data["status"] == STATUS_ACTIVE and self.capability_probe_status != "verified":
             # Legacy active rows only proved broker construction. Require a new
             # capability probe before presenting them as ready after upgrade.

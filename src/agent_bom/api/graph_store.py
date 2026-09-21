@@ -2330,7 +2330,7 @@ class SQLiteGraphStore:
         _assert_offset_within_cap(offset, cursor)
         conn = self._open_ro_conn()
         if conn is None:
-            return self._empty_inventory_result(scan_id=scan_id)
+            return self._empty_inventory_result(scan_id="")
         try:
             effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
             if not effective_scan_id:

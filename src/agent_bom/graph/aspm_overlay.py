@@ -39,6 +39,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
@@ -273,11 +274,9 @@ def _node_is_exposed(node: UnifiedNode | None) -> bool:
     if node is None:
         return False
     attrs = node.attributes
-    return bool(
-        attrs.get("internet_exposed")
-        or attrs.get("toxic_exposed_vulnerable")
-        or attrs.get("toxic_exposed_sensitive")
-        or attrs.get("on_attack_path")
+    return any(
+        coerce_truthy(attrs.get(key))
+        for key in ("internet_exposed", "toxic_exposed_vulnerable", "toxic_exposed_sensitive", "on_attack_path")
     )
 
 

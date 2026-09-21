@@ -34,7 +34,14 @@ def test_exposed_sensitive_data_store_is_toxic_and_scored():
             attributes={"resource_type": "s3"},
         )
     )
-    g.add_node(UnifiedNode(id="mc:public", entity_type=EntityType.MISCONFIGURATION, label="S3 bucket is publicly accessible"))
+    g.add_node(
+        UnifiedNode(
+            id="mc:public",
+            entity_type=EntityType.MISCONFIGURATION,
+            label="S3 bucket is publicly accessible",
+            attributes={"network_exposure": [{"scope": "internet", "from_port": 443, "to_port": 443, "protocol": "tcp"}]},
+        )
+    )
     g.add_edge(UnifiedEdge(source="mc:public", target="cloud:bucket", relationship=RelationshipType.AFFECTS))
 
     stats = apply_cnapp_overlay(g)

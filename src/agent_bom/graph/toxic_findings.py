@@ -33,6 +33,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Optional
 
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
@@ -226,7 +227,7 @@ def _match_public_exposed_vulnerability_where(
 ) -> list[ToxicMatch]:
     matches: list[ToxicMatch] = []
     for node in graph.nodes.values():
-        if not node.attributes.get("toxic_exposed_vulnerable"):
+        if not coerce_truthy(node.attributes.get("toxic_exposed_vulnerable")):
             continue
         vuln_ids = [
             e.target
@@ -284,7 +285,7 @@ def _match_public_to_sensitive_data(graph: UnifiedGraph) -> list[ToxicMatch]:
         if store.entity_type != EntityType.DATA_STORE:
             continue
         is_crown = _is_crown_jewel(store)
-        directly_exposed = bool(store.attributes.get("toxic_exposed_sensitive"))
+        directly_exposed = coerce_truthy(store.attributes.get("toxic_exposed_sensitive"))
         if not is_crown and not directly_exposed:
             continue
         # Find an internet-exposed node that reaches this store via STORES/EXPOSED_TO/HAS_PERMISSION.
@@ -293,7 +294,7 @@ def _match_public_to_sensitive_data(graph: UnifiedGraph) -> list[ToxicMatch]:
             for e in graph.reverse_adjacency.get(store.id, [])
             if e.relationship in (RelationshipType.STORES, RelationshipType.EXPOSED_TO, RelationshipType.HAS_PERMISSION)
             and (src := graph.nodes.get(e.source)) is not None
-            and src.attributes.get("internet_exposed")
+            and coerce_truthy(src.attributes.get("internet_exposed"))
         ]
         node_ids: tuple[str, ...]
         sevs: tuple[str, ...]
@@ -407,7 +408,7 @@ def _match_public_permission_lateral(graph: UnifiedGraph) -> list[ToxicMatch]:
     """Internet-exposed node with permission/assume edges enabling lateral movement."""
     matches: list[ToxicMatch] = []
     for node in graph.nodes.values():
-        if not node.attributes.get("internet_exposed"):
+        if not coerce_truthy(node.attributes.get("internet_exposed")):
             continue
         lateral_targets: list[str] = []
         path_rels: set[str] = set()

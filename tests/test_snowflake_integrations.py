@@ -41,7 +41,8 @@ def test_external_access_flagged() -> None:
     g, _ = _build()
     n = g.nodes["cloud_resource:snowflake:integration:UDF_EGRESS"]
     assert n.attributes["external_access"] is True
-    assert n.attributes["internet_exposed"] is True
+    assert n.attributes["outbound_access_configured"] is True
+    assert n.attributes["internet_exposed"] is None
 
 
 def test_security_integration_marks_federation() -> None:
@@ -51,7 +52,8 @@ def test_security_integration_marks_federation() -> None:
 
 def test_disabled_integration_not_internet_exposed() -> None:
     g, _ = _build()
-    assert g.nodes["cloud_resource:snowflake:integration:OLD_API"].attributes["internet_exposed"] is False
+    assert g.nodes["cloud_resource:snowflake:integration:OLD_API"].attributes["outbound_access_configured"] is False
+    assert g.nodes["cloud_resource:snowflake:integration:OLD_API"].attributes["internet_exposed"] is None
 
 
 def test_non_ok_payload_is_noop() -> None:
@@ -118,3 +120,29 @@ def test_no_account_is_graceful(monkeypatch) -> None:
 
     monkeypatch.delenv("SNOWFLAKE_ACCOUNT", raising=False)
     assert sf.discover_snowflake_integrations()["status"] == "no_account"
+
+
+@pytest.mark.parametrize("raw,expected", [("true", True), ("false", False), ("unknown", None), (None, None)])
+def test_show_integrations_enabled_receipt_reaches_graph_without_unknown_coercion(monkeypatch, raw, expected):
+    from agent_bom.cloud import snowflake as sf
+
+    original_execute = _FakeCursor.execute
+
+    def execute(cursor, sql, *args, **kwargs):
+        original_execute(cursor, sql, *args, **kwargs)
+        if "SHOW INTEGRATIONS" in sql:
+            cursor._rows = [("UDF_EGRESS", "EXTERNAL_ACCESS", "EXTERNAL_ACCESS", raw, "")]
+
+    monkeypatch.setattr(_FakeCursor, "execute", execute)
+    monkeypatch.setattr(sf, "_get_connection", lambda *a, **k: _FakeConn())
+    out = sf.discover_snowflake_integrations(account="acct1")
+    integration = out["integrations"][0]
+    assert integration["enabled"] is expected
+    assert integration["enabled_evidence"] == {"source": "SHOW INTEGRATIONS", "recorded": True, "value": raw}
+    assert bool(out["findings"]) is (expected is True)
+    graph = build_unified_graph_from_report({"snowflake_integrations": out})
+    attrs = graph.nodes["cloud_resource:snowflake:integration:UDF_EGRESS"].attributes
+    assert attrs["enabled"] is expected
+    assert attrs["outbound_access_configured"] is expected
+    assert attrs["internet_exposed"] is None
+    assert attrs["integration_evidence"]["enabled_observation"] == integration["enabled_evidence"]

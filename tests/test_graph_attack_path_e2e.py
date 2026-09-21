@@ -57,7 +57,12 @@ def _scenario() -> UnifiedGraph:
 
     # public PII bucket that is also vulnerable, reached by a misconfiguration
     add("cloud:bucket", EntityType.CLOUD_RESOURCE, "customer-pii prod S3 bucket", resource_type="s3")
-    add("mc:public", EntityType.MISCONFIGURATION, "S3 bucket is publicly accessible")
+    add(
+        "mc:public",
+        EntityType.MISCONFIGURATION,
+        "S3 bucket is publicly accessible",
+        network_exposure=[{"scope": "internet", "from_port": 443, "to_port": 443, "protocol": "tcp"}],
+    )
     add(
         "vuln:CVE-2",
         EntityType.VULNERABILITY,

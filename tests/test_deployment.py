@@ -1159,3 +1159,12 @@ def test_deployment_workflow_verdict_requires_explicit_success(overrides, expect
     assert "steps.railway.outputs.probe_failed == 'false'" in closer["if"]
     assert "steps.railway.outcome == 'success'" in closer["if"]
     assert "steps.railway.outputs.railway_version == steps.expected.outputs.version" in closer["if"]
+
+
+def test_smithery_recovery_guidance_requires_external_authorization() -> None:
+    guide = (ROOT / "docs" / "PUBLISHING.md").read_text()
+    helper = (ROOT / "scripts" / "authorize_smithery_release.py").read_text()
+    assert "authorized external OAuth upstream" in guide
+    assert "does not issue tokens or grant client access" in guide
+    assert "does not issue tokens or grant client access" in helper
+    assert "a valid registered PKCE client is granted" not in helper

@@ -216,7 +216,36 @@ agent-bom's graph is a static analytical artifact derived from inventory plus ca
 
 ---
 
+### Snowflake historical access receipts
+
+Snowflake ACCESS_HISTORY observations collapse into one `ACCESSED` edge per user
+and object while retaining distinct `access_receipts`. Each receipt keeps its
+query ID/time, recorded query role (empty when unavailable), account, object,
+columns, base objects and source array. A query that reads and writes the same
+object retains both observations. `READ` and `WRITE` describe the source arrays;
+they do not infer a SELECT/INSERT/UPDATE statement, current permission, or rows
+changed. See [Snowflake ACCESS_HISTORY](https://docs.snowflake.com/en/sql-reference/account-usage/access_history).
+
+Graph JSON and persisted edge evidence retain these records without combining
+one query's role with another query's action. Historical access does not establish
+an exact agent/session binding or current authorization; data impact remains
+unknown. Collection is bounded by the configured lookback and the collector's
+1,000-query limit, and source visibility/latency still apply.
+
 ## 3. Scaling boundaries
+
+`GET /v1/graph/rollup` returns `aggregate_count_metadata` for roll-up and
+drill-down views. Each card's descendant count is unique within that scope;
+shared assets can belong to several scopes. `distinct_descendants` counts
+unique matching descendants across returned entries, while
+`descendant_memberships` is the sum of their descendant counts.
+`shared_descendants`, `extra_memberships`, and `additive` identify overlap.
+These counts exclude each entry itself, apply the same filters as the cards,
+and describe the returned level rather than the whole estate.
+`source_truncated` and `reason` preserve an incomplete source's limits.
+The graph shows a compact overlap explanation when memberships exceed unique
+descendants. Missing metadata in older responses does not establish disjoint
+scopes.
 
 The graph renderer ships deterministic focused and expanded modes. Operators can override per-tenant; defaults match the table below.
 
@@ -455,3 +484,51 @@ The campaign endpoint currently does not bind baseline/rescan coverage receipts
 or evaluate alternate graph paths, so it cannot certify access revocation from
 that comparison. Retain those source receipts and compare the new snapshot's
 qualified hop evidence before deciding whether more remediation is needed.
+
+## Snowflake account-local identity
+
+Snowflake users, roles and object names are local to the account recorded by the
+source lane. The builder stages object, service, identity and governance lanes
+by that exact account before joining their nodes. A lane without an account
+stays separate from other lanes; matching names or FQNs do not establish a shared
+account. External destination buckets keep their own provider context.
+
+Coherent single-account reports retain existing graph node IDs. Mixed-account
+reports use deterministic scoped IDs and retain `legacy_graph_id` plus the
+account-local source key (`snowflake_local_id`). Correlation joins these keys
+only with the same recorded account inside one tenant. Account aliases and case
+variants are not assumed equivalent. Historical access remains distinct from
+current authorization and active session identity.
+
+Existing snapshots and their scan/node deep links remain unchanged. Rescan or
+rebuild original source reports to populate missing identity scope, then create
+a new correlation. Already-collapsed legacy mixed-account graphs cannot recover
+separate identities by correlating the merged output again. Legacy object nodes
+with exact account and FQN evidence can still join; legacy identities without
+account evidence remain specific to their snapshot.
+
+## Relationship observation intervals
+
+A later scan is not necessarily a complete replacement for the tenant: it may
+cover another account, another collector, or an incomplete grant inventory.
+Graph persistence therefore does not set an earlier edge's `valid_to` or emit
+OCSF Close activity merely because that edge is absent from a later snapshot.
+Native source-provided interval ends remain intact.
+
+Positive timestamp continuity requires the same edge key, exact collector
+source, and matching recorded provider/account namespaces for both endpoints.
+Missing, malformed or conflicting scope remains unknown. A previously bounded
+interval is not extended into a new observation. These timestamps describe
+recorded relationships; they do not establish continuous effective permission.
+
+Replay (`GET /v1/graph/edges/active`) returns observations whose recorded interval
+includes the requested time. It deduplicates only exact scoped re-observations;
+unknown scope stays specific to its source snapshot. An open interval means no
+end was recorded, not that current access is authorized. Old/new snapshot diffs
+still describe membership differences and do not establish revocation.
+
+This changes the earlier tenant-wide replacement assumption. Scope-free legacy
+snapshots no longer inherit unrelated timestamps or automatically close earlier
+observations. Existing stored interval ends are not rewritten; rebuild from
+original source evidence when an earlier version inferred an end from absence.
+Verified access removal requires fresh, scoped native evidence and evaluation.

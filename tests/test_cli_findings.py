@@ -343,3 +343,25 @@ def test_findings_triage_list_connection_refused_is_friendly(monkeypatch) -> Non
     assert "Connection refused" not in result.output
     assert "requires the API server" in result.output
     assert "agent-bom api" in result.output
+
+
+def test_findings_cli_keeps_unreconfirmed_qualifier_in_table_and_json(monkeypatch):
+    fake = _install_fake_client(monkeypatch)
+    payload = {
+        "findings": [
+            {
+                "id": "old-finding",
+                "scan_id": "baseline",
+                "last_observed": "2026-08-01T00:00:00Z",
+                "observation_status": "unreconfirmed",
+                "reconfirmation": {"scan_id": "candidate", "reason_codes": ["scope_permission_denied"]},
+            }
+        ]
+    }
+    monkeypatch.setattr(fake, "list_findings", lambda self, **kwargs: payload)
+    table = CliRunner().invoke(main, ["findings", "list"])
+    assert table.exit_code == 0
+    assert table.output.strip().splitlines()[0].endswith("observation_status")
+    assert table.output.strip().splitlines()[1].endswith("unreconfirmed")
+    encoded = CliRunner().invoke(main, ["findings", "list", "--format", "json"])
+    assert encoded.exit_code == 0 and json.loads(encoded.output) == payload

@@ -131,7 +131,7 @@ def _make_cnapp_estate(g: UnifiedGraph, *, resources: int, fillers: int) -> None
                 id=rid,
                 entity_type=EntityType.CLOUD_RESOURCE,
                 label=f"public prod-data S3 bucket {i}",
-                attributes={"resource_type": "s3"},
+                attributes={"resource_type": "s3", "internet_exposed": True},
                 first_seen=_FIXED_CREATED_AT,
                 last_seen=_FIXED_CREATED_AT,
             )

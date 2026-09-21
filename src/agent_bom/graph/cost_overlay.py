@@ -28,6 +28,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.graph.container import InteractionRisk, UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
@@ -133,9 +134,9 @@ def _is_high_risk(node: UnifiedNode) -> bool:
     node's resolved severity / risk score.
     """
     attrs = node.attributes
-    if attrs.get("internet_exposed"):
+    if coerce_truthy(attrs.get("internet_exposed")):
         return True
-    if attrs.get("toxic_exposed_vulnerable") or attrs.get("toxic_exposed_sensitive"):
+    if coerce_truthy(attrs.get("toxic_exposed_vulnerable")) or coerce_truthy(attrs.get("toxic_exposed_sensitive")):
         return True
     if (node.severity or "").lower() == "critical":
         return True

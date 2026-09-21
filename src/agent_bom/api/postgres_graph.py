@@ -40,6 +40,7 @@ from agent_bom.graph.completeness import (
     impact_completeness,
 )
 from agent_bom.graph.correlation import CorrelationRunStatus, GraphCorrelationRun, validate_correlation_update
+from agent_bom.graph.observation_scope import comparable_observation_sql, observation_scope
 from agent_bom.graph.severity_floor import severity_floor_sql
 from agent_bom.security import sanitize_text
 
@@ -817,29 +818,34 @@ class PostgresGraphStore:
             ).fetchone()
             if reserved_correlation is not None and snapshot_kind != "correlation":
                 raise ValueError("correlation output identifier is reserved")
-            previous_row = conn.execute(
-                """
-                SELECT scan_id, created_at
-                FROM graph_snapshots
-                WHERE tenant_id = %s
-                ORDER BY created_at DESC, scan_id DESC
-                LIMIT 1
-                """,
-                (tenant,),
-            ).fetchone()
-            previous_scan = str(previous_row[0]) if previous_row else ""
-            if previous_row and previous_scan == scan:
-                prior_row = conn.execute(
+            # Only ordinary scans advance ordinary scan history. Derived
+            # correlations preserve their source observations and remain
+            # immutable when later scans (or scan retries) are persisted.
+            previous_scan: str | None = None
+            if snapshot_kind == "scan":
+                previous_row = conn.execute(
                     """
-                    SELECT scan_id
+                    SELECT scan_id, created_at
                     FROM graph_snapshots
-                    WHERE tenant_id = %s AND created_at < %s
+                    WHERE tenant_id = %s AND snapshot_kind = 'scan'
                     ORDER BY created_at DESC, scan_id DESC
                     LIMIT 1
                     """,
-                    (tenant, previous_row[1]),
+                    (tenant,),
                 ).fetchone()
-                previous_scan = str(prior_row[0]) if prior_row else ""
+                previous_scan = str(previous_row[0]) if previous_row else None
+                if previous_row and previous_scan == scan:
+                    prior_row = conn.execute(
+                        """
+                        SELECT scan_id
+                        FROM graph_snapshots
+                        WHERE tenant_id = %s AND snapshot_kind = 'scan' AND created_at < %s
+                        ORDER BY created_at DESC, scan_id DESC
+                        LIMIT 1
+                        """,
+                        (tenant, previous_row[1]),
+                    ).fetchone()
+                    previous_scan = str(prior_row[0]) if prior_row else None
             # A scan id represents a complete immutable snapshot. A retry is a
             # replacement, not a merge; remove its old rows inside this same
             # transaction before consuming the new one-shot producers.
@@ -921,9 +927,9 @@ class PostgresGraphStore:
                 for edge in edges:
                     edge_count += 1
                     rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+                    # A snapshot may record a future grant or observation. Backdating
+                    # its start changes temporal traversal and correlation receipts.
                     valid_from = edge.valid_from or edge.first_seen or now
-                    if valid_from > now:
-                        valid_from = now
                     yield (
                         edge.source,
                         edge.target,
@@ -981,9 +987,10 @@ class PostgresGraphStore:
                         tenant,
                     )
 
+            scope_predicate = comparable_observation_sql(dialect="postgres", previous="previous", current="incoming")
             _execute_many_batched(
                 conn,
-                """
+                f"""
                 INSERT INTO graph_edges (
                     source_id, target_id, relationship, direction, weight,
                     traversable, first_seen, last_seen, valid_from, valid_to,
@@ -1027,6 +1034,8 @@ class PostgresGraphStore:
                  AND previous.source_id = incoming.source_id
                  AND previous.target_id = incoming.target_id
                  AND previous.relationship = incoming.relationship
+                 AND (previous.valid_to IS NULL OR previous.valid_to = '')
+                 AND {scope_predicate}
                 ON CONFLICT (source_id, target_id, relationship, scan_id, tenant_id) DO UPDATE SET
                     direction = EXCLUDED.direction,
                     weight = EXCLUDED.weight,
@@ -1041,42 +1050,12 @@ class PostgresGraphStore:
                     source_run_id = EXCLUDED.source_run_id,
                     evidence = EXCLUDED.evidence,
                     activity_id = EXCLUDED.activity_id
-                """,
+                """,  # nosec B608 - static aliases and internally generated SQL predicates
                 edge_rows(),
                 batch_size=batch_size,
             )
-            if previous_scan:
-                # Continuity is resolved while each bounded insert batch is
-                # written, avoiding a second full-snapshot UPDATE. Compute only
-                # the missing prior-edge set here so retired edges can be closed
-                # without materializing the snapshot in application memory.
-                conn.execute(
-                    """
-                    WITH current_edge_keys AS MATERIALIZED (
-                        SELECT source_id, target_id, relationship
-                        FROM graph_edges
-                        WHERE tenant_id = %s AND scan_id = %s
-                    ),
-                    retired_edge_keys AS MATERIALIZED (
-                        SELECT source_id, target_id, relationship
-                        FROM graph_edges
-                        WHERE tenant_id = %s AND scan_id = %s
-                        EXCEPT
-                        SELECT source_id, target_id, relationship
-                        FROM current_edge_keys AS current
-                    )
-                    UPDATE graph_edges AS previous
-                    SET valid_to = COALESCE(previous.valid_to, %s),
-                        activity_id = CASE WHEN previous.activity_id = 1 THEN 3 ELSE previous.activity_id END
-                    FROM retired_edge_keys AS retired
-                    WHERE previous.tenant_id = %s
-                      AND previous.scan_id = %s
-                      AND previous.source_id = retired.source_id
-                      AND previous.target_id = retired.target_id
-                      AND previous.relationship = retired.relationship
-                    """,
-                    (tenant, scan, tenant, previous_scan, now, tenant, previous_scan),
-                )
+            # Collection absence does not prove native revocation. Keep prior
+            # observations intact; only source-supplied interval ends are stored.
             _execute_many_batched(
                 conn,
                 """
@@ -2329,9 +2308,12 @@ class PostgresGraphStore:
                 """
                 SELECT ge.source_id, ge.target_id, ge.relationship, ge.direction, ge.weight, ge.traversable,
                        ge.first_seen, ge.last_seen, ge.valid_from, ge.valid_to, ge.confidence, ge.provenance,
-                       ge.source_scan_id, ge.source_run_id, ge.evidence, ge.activity_id, ge.scan_id, ge.tenant_id
+                       ge.source_scan_id, ge.source_run_id, ge.evidence, ge.activity_id, ge.scan_id, ge.tenant_id,
+                       ns.attributes, ns.dimensions, nt.attributes, nt.dimensions
                 FROM graph_edges ge
                 JOIN graph_snapshots gs ON gs.tenant_id = ge.tenant_id AND gs.scan_id = ge.scan_id
+                LEFT JOIN graph_nodes ns ON ns.tenant_id = ge.tenant_id AND ns.scan_id = ge.scan_id AND ns.id = ge.source_id
+                LEFT JOIN graph_nodes nt ON nt.tenant_id = ge.tenant_id AND nt.scan_id = ge.scan_id AND nt.id = ge.target_id
                 WHERE ge.tenant_id = %s
                   AND gs.created_at <= %s
                   AND COALESCE(NULLIF(ge.valid_from, ''), ge.first_seen) <= %s
@@ -2340,10 +2322,12 @@ class PostgresGraphStore:
                 """,
                 (tenant_id, at, at, at),
             ).fetchall()
-        active_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
+        active_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
         for row in rows:
             edge = self._edge_history_dict(row)
-            active_by_key[(edge["source_id"], edge["target_id"], edge["relationship"])] = edge
+            scope = observation_scope(edge["evidence"], row[18], row[19], row[20], row[21])
+            namespace = ("recorded", *scope) if scope is not None else ("snapshot", edge["scan_id"])
+            active_by_key[(namespace, edge["source_id"], edge["target_id"], edge["relationship"])] = edge
         return [active_by_key[key] for key in sorted(active_by_key)]
 
     def changed_edges_between_scans(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:

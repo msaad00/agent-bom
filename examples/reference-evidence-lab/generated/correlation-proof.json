@@ -10,7 +10,7 @@
       ]
     }
   ],
-  "artifact_sha256": "sha256:35f05ca794d22960dde040b74fe2dab7f5d870a576d67c9dc40e91b07bbcaade",
+  "artifact_sha256": "sha256:8351c66fd0db6a29fd9aea3f49594d3b93728be9bd137d8ef46474af17e4eb64",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -272,7 +272,7 @@
       "created_at": "2026-08-30T04:06:00+00:00",
       "edges": [
         {
-          "activity_id": 3,
+          "activity_id": 1,
           "canonical_id": "63563a89-3eda-5322-9b21-e1ee6cd9546d",
           "confidence": 1.0,
           "direction": "directed",
@@ -319,11 +319,11 @@
           "target_id": "package:iac:pillow",
           "traversable": true,
           "valid_from": "2026-08-30T04:02:00+00:00",
-          "valid_to": "2026-08-30T04:03:00+00:00",
+          "valid_to": null,
           "weight": 1.0
         },
         {
-          "activity_id": 3,
+          "activity_id": 1,
           "canonical_id": "ef950a5c-c480-546b-9da6-22395f43f227",
           "confidence": 1.0,
           "direction": "directed",
@@ -367,7 +367,7 @@
           "target_id": "package:iac:pillow",
           "traversable": true,
           "valid_from": "2026-08-30T04:01:00+00:00",
-          "valid_to": "2026-08-30T04:02:00+00:00",
+          "valid_to": null,
           "weight": 1.0
         },
         {
@@ -420,7 +420,7 @@
           "weight": 1.0
         },
         {
-          "activity_id": 3,
+          "activity_id": 1,
           "canonical_id": "dedcc298-6bcc-5beb-925a-e8a1df5a67c5",
           "confidence": 1.0,
           "direction": "directed",
@@ -464,11 +464,11 @@
           "target_id": "vulnerability:mcp:cve-2023-4863",
           "traversable": true,
           "valid_from": "2026-08-30T04:01:00+00:00",
-          "valid_to": "2026-08-30T04:02:00+00:00",
+          "valid_to": null,
           "weight": 1.0
         },
         {
-          "activity_id": 3,
+          "activity_id": 1,
           "canonical_id": "b1f39f9a-639a-55cb-9316-d809046bdf97",
           "confidence": 1.0,
           "direction": "directed",
@@ -513,11 +513,11 @@
           "target_id": "workload:reference-api",
           "traversable": true,
           "valid_from": "2026-08-30T04:02:00+00:00",
-          "valid_to": "2026-08-30T04:03:00+00:00",
+          "valid_to": null,
           "weight": 1.0
         },
         {
-          "activity_id": 3,
+          "activity_id": 1,
           "canonical_id": "5b2cd6e0-e972-5ec6-9778-5244a88f65d2",
           "confidence": 1.0,
           "direction": "directed",
@@ -561,11 +561,11 @@
           "target_id": "package:iac:pillow",
           "traversable": true,
           "valid_from": "2026-08-30T04:00:00+00:00",
-          "valid_to": "2026-08-30T04:01:00+00:00",
+          "valid_to": null,
           "weight": 1.0
         },
         {
-          "activity_id": 3,
+          "activity_id": 1,
           "canonical_id": "bf7718f0-cfb8-5300-9f37-a853d5b9faf3",
           "confidence": 1.0,
           "direction": "directed",
@@ -611,11 +611,11 @@
           "target_id": "identity:model:reference-workload",
           "traversable": true,
           "valid_from": "2026-08-30T04:04:00+00:00",
-          "valid_to": "2026-08-30T04:05:00+00:00",
+          "valid_to": null,
           "weight": 1.0
         },
         {
-          "activity_id": 3,
+          "activity_id": 1,
           "canonical_id": "7bf4aaf9-2c84-5173-98fc-2d034470f7b8",
           "confidence": 1.0,
           "direction": "directed",
@@ -659,11 +659,11 @@
           "target_id": "tool:runtime:render-untrusted-image",
           "traversable": true,
           "valid_from": "2026-08-30T04:03:00+00:00",
-          "valid_to": "2026-08-30T04:04:00+00:00",
+          "valid_to": null,
           "weight": 1.0
         },
         {
-          "activity_id": 3,
+          "activity_id": 1,
           "canonical_id": "aa4d2615-05db-55c9-b11e-980c9343fb21",
           "confidence": 1.0,
           "direction": "directed",
@@ -708,7 +708,7 @@
           "target_id": "container:iac:reference-api",
           "traversable": true,
           "valid_from": "2026-08-30T04:02:00+00:00",
-          "valid_to": "2026-08-30T04:03:00+00:00",
+          "valid_to": null,
           "weight": 1.0
         }
       ],
@@ -1401,7 +1401,7 @@
       {
         "age_hours": 0.083333,
         "created_at": "2026-08-30T04:01:00+00:00",
-        "digest": "sha256:05cc7f026527282428afea8d2ad300715e518b21b321282225528508e9abaaa1",
+        "digest": "sha256:8f913edfc42a6ddadee29d2ed8270b2e369841753898cdb758d1059462f9617a",
         "edge_count": 2,
         "freshness": "fresh",
         "node_count": 3,
@@ -1410,7 +1410,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:b64122d7d131d174c3c8fddcc0b93b367d6503ec6fd03ca6faf9303597181a6d"
+          "value": "sha256:095ede60e0b2b8f7f5040de8ea40e3c2a53fd02e34a25dcfdaf28c450ec482d6"
         },
         "source_kinds": [
           "bundled_advisory_scanner",
@@ -1420,7 +1420,7 @@
       {
         "age_hours": 0.066667,
         "created_at": "2026-08-30T04:02:00+00:00",
-        "digest": "sha256:be60fbb0f40fd72933e3ee9ab477bef418a63a6052defe3116b5377cd0fabb3f",
+        "digest": "sha256:bc368c8b8fe754f7b57201199e0d5a961d583d6baf84161f51dda3429d5cc51a",
         "edge_count": 3,
         "freshness": "fresh",
         "node_count": 4,
@@ -1429,7 +1429,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:eb39ce7d38c54be542af00f352ef45d6e10b8056c396097f2838b17943c12215"
+          "value": "sha256:9546858cd8d5a2d25b3abcab04fd7435742b3e9c2dff56fcc90e9fa810bc760c"
         },
         "source_kinds": [
           "kubernetes_iac",
@@ -1439,7 +1439,7 @@
       {
         "age_hours": 0.05,
         "created_at": "2026-08-30T04:03:00+00:00",
-        "digest": "sha256:44370d37a9b084d5b0ed10e04e5ee5987db627e1a60472117a37b2f9e2dd37bd",
+        "digest": "sha256:4a0ce3acb289c4162a52aecbe72b969ed343aeb13c2b6997cea0d5b9ce63f721",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1448,7 +1448,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:7df4bb15cb75105bd6dabe5093411c3fb26241c22c8d7ad2074729ad4b43e432"
+          "value": "sha256:08d7f0c0272e7cbef90ab1b460444c3a5d25623986f7cf2ee542622807632317"
         },
         "source_kinds": [
           "mcp_config"
@@ -1457,7 +1457,7 @@
       {
         "age_hours": 0.1,
         "created_at": "2026-08-30T04:00:00+00:00",
-        "digest": "sha256:88a545ff01ca49388dc1af6ccd0119c62acbae032905795842911c1521dbaf95",
+        "digest": "sha256:86451b91950b244ab99ce8bba8a646ee0244f7388f0b0a7e395a1313e292ec40",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1466,7 +1466,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:3910cd4cbfcd65cfa05a47e1abf8b6fcc31ffc060530bdfa907c9ce9cae52560"
+          "value": "sha256:bd4df594aea8df7b9c214e833eba6c2b13ae82c1c6c17b2f06037a3078c65171"
         },
         "source_kinds": [
           "repository_parser"
@@ -1475,7 +1475,7 @@
       {
         "age_hours": 0.033333,
         "created_at": "2026-08-30T04:04:00+00:00",
-        "digest": "sha256:a18e6616997dade12ec3f365d88236da77ac140381c52e811412525fbe765d9c",
+        "digest": "sha256:0f6fc932b61fad39584c9ff6852b568498f9e9c33c1bf8595d64c68420d76310",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1484,14 +1484,14 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:6193d044136e4d9103685f622028bd0487aed39f8d05a7e345e78af9b8d5e360"
+          "value": "sha256:c6e6a5c48ae85d78441af6bb402918e92555aa0f5bb1424f5736c898c284f141"
         },
         "source_kinds": [
           "gateway_runtime"
         ]
       }
     ],
-    "manifest_sha256": "sha256:cc9f3fe5ed5e792bcd69e96a35c120b90aaf3d34ead006b130e1db2a7a8135ff",
+    "manifest_sha256": "sha256:910de3f1540690deedcbcbfeec4cbf8e6e073f8de7d7bcdef46b956f559015ff",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -1561,7 +1561,7 @@
         {
           "age_hours": 0.083333,
           "created_at": "2026-08-30T04:01:00+00:00",
-          "digest": "sha256:05cc7f026527282428afea8d2ad300715e518b21b321282225528508e9abaaa1",
+          "digest": "sha256:8f913edfc42a6ddadee29d2ed8270b2e369841753898cdb758d1059462f9617a",
           "edge_count": 2,
           "freshness": "fresh",
           "node_count": 3,
@@ -1570,7 +1570,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:b64122d7d131d174c3c8fddcc0b93b367d6503ec6fd03ca6faf9303597181a6d"
+            "value": "sha256:095ede60e0b2b8f7f5040de8ea40e3c2a53fd02e34a25dcfdaf28c450ec482d6"
           },
           "source_kinds": [
             "bundled_advisory_scanner",
@@ -1580,7 +1580,7 @@
         {
           "age_hours": 0.066667,
           "created_at": "2026-08-30T04:02:00+00:00",
-          "digest": "sha256:be60fbb0f40fd72933e3ee9ab477bef418a63a6052defe3116b5377cd0fabb3f",
+          "digest": "sha256:bc368c8b8fe754f7b57201199e0d5a961d583d6baf84161f51dda3429d5cc51a",
           "edge_count": 3,
           "freshness": "fresh",
           "node_count": 4,
@@ -1589,7 +1589,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:eb39ce7d38c54be542af00f352ef45d6e10b8056c396097f2838b17943c12215"
+            "value": "sha256:9546858cd8d5a2d25b3abcab04fd7435742b3e9c2dff56fcc90e9fa810bc760c"
           },
           "source_kinds": [
             "kubernetes_iac",
@@ -1599,7 +1599,7 @@
         {
           "age_hours": 0.05,
           "created_at": "2026-08-30T04:03:00+00:00",
-          "digest": "sha256:44370d37a9b084d5b0ed10e04e5ee5987db627e1a60472117a37b2f9e2dd37bd",
+          "digest": "sha256:4a0ce3acb289c4162a52aecbe72b969ed343aeb13c2b6997cea0d5b9ce63f721",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1608,7 +1608,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:7df4bb15cb75105bd6dabe5093411c3fb26241c22c8d7ad2074729ad4b43e432"
+            "value": "sha256:08d7f0c0272e7cbef90ab1b460444c3a5d25623986f7cf2ee542622807632317"
           },
           "source_kinds": [
             "mcp_config"
@@ -1617,7 +1617,7 @@
         {
           "age_hours": 0.1,
           "created_at": "2026-08-30T04:00:00+00:00",
-          "digest": "sha256:88a545ff01ca49388dc1af6ccd0119c62acbae032905795842911c1521dbaf95",
+          "digest": "sha256:86451b91950b244ab99ce8bba8a646ee0244f7388f0b0a7e395a1313e292ec40",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1626,7 +1626,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:3910cd4cbfcd65cfa05a47e1abf8b6fcc31ffc060530bdfa907c9ce9cae52560"
+            "value": "sha256:bd4df594aea8df7b9c214e833eba6c2b13ae82c1c6c17b2f06037a3078c65171"
           },
           "source_kinds": [
             "repository_parser"
@@ -1635,7 +1635,7 @@
         {
           "age_hours": 0.033333,
           "created_at": "2026-08-30T04:04:00+00:00",
-          "digest": "sha256:a18e6616997dade12ec3f365d88236da77ac140381c52e811412525fbe765d9c",
+          "digest": "sha256:0f6fc932b61fad39584c9ff6852b568498f9e9c33c1bf8595d64c68420d76310",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1644,7 +1644,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:6193d044136e4d9103685f622028bd0487aed39f8d05a7e345e78af9b8d5e360"
+            "value": "sha256:c6e6a5c48ae85d78441af6bb402918e92555aa0f5bb1424f5736c898c284f141"
           },
           "source_kinds": [
             "gateway_runtime"
@@ -1654,7 +1654,7 @@
       "output": {
         "attack_path_count": 1,
         "edge_count": 9,
-        "graph_digest_sha256": "sha256:39e949eddaba8ab8d23a3403c771a1640083b362a1cdd975bb5ebfd95b70e21c",
+        "graph_digest_sha256": "sha256:56e4c6dfc561c2ac5fa033d0ad71d63f67af3e9ae0a77678cd680e2eea28090b",
         "node_count": 10,
         "scan_id": "reference-evidence-correlation-v1"
       },
@@ -1942,7 +1942,7 @@
     "correlation_id": "reference-evidence-correlation-v1",
     "failure_mode": "deny",
     "global_default": "off",
-    "manifest_sha256": "sha256:cc9f3fe5ed5e792bcd69e96a35c120b90aaf3d34ead006b130e1db2a7a8135ff",
+    "manifest_sha256": "sha256:910de3f1540690deedcbcbfeec4cbf8e6e073f8de7d7bcdef46b956f559015ff",
     "observed_event": "live-jsonrpc-allow",
     "policy_id": "strict-correlated-evidence",
     "policy_source": "graph_reachability",

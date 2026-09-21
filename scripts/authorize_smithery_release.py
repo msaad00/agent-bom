@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Complete a Smithery scan authorization against the trusted MCP origin.
+"""Follow an already-authorized Smithery scan callback at a trusted MCP origin.
 
-Smithery pauses authenticated external-server scans and records the OAuth
-authorization URL in the release log. Agent-Bom's broker authorization endpoint
-is deliberately machine-to-machine: a valid registered PKCE client is granted
-and redirected immediately. This helper follows that one bounded flow without
-printing the URL, whose query contains ephemeral OAuth state.
+This helper does not issue tokens or grant client access. An operator must first
+configure an authorized external OAuth upstream and its approved client flow.
+Recovery supports only the exact upstream /oauth/authorize endpoint redirecting
+directly to Smithery's HTTPS callback. Interactive login, other endpoints and
+additional redirects fail closed. OAuth state is never printed.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ def complete_authorization(
     *,
     opener: Callable[..., Any] = _default_opener,
 ) -> None:
-    """Follow the registered PKCE authorization callback with strict bounds."""
+    """Follow an already-authorized callback without changing client permissions."""
     callback_url = _authorization_callback_url(authorization_url)
     redirect_handler = _BoundedRedirectHandler(authorization_url=authorization_url, callback_url=callback_url)
     request = Request(

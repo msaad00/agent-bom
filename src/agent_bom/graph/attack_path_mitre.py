@@ -19,6 +19,7 @@ detections. Nothing in this module asserts observed attacker activity.
 
 from __future__ import annotations
 
+from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.graph.container import AttackPath, TechniqueMapping, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -105,7 +106,7 @@ def _candidate(
     # Exploiting a vulnerability. From an internet-exposed entry it maps to
     # Exploit Public-Facing Application; elsewhere to Exploitation for Priv Esc.
     if rel in _VULN_RELS or target_type == EntityType.VULNERABILITY:
-        if source is not None and source.attributes.get("internet_exposed"):
+        if source is not None and coerce_truthy(source.attributes.get("internet_exposed")):
             return "T1190", _ATTACK, 0.85, f"observed {rel.value} edge from internet-exposed entry into {prov_target} '{target_ref}'"
         return "T1068", _ATTACK, 0.8, f"observed {rel.value} edge into {prov_target} '{target_ref}'"
 

@@ -252,13 +252,13 @@ _RESOURCE_PROBES: dict[AuthorizationProvider, tuple[str, ...]] = {
     ),
 }
 
-_ASSUME_PROBES: dict[AuthorizationProvider, tuple[str, ...]] = {
+_IDENTITY_ATTACHMENT_PROBES: dict[AuthorizationProvider, tuple[str, ...]] = {
     AuthorizationProvider.AZURE: ("Microsoft.ManagedIdentity/userAssignedIdentities/assign/action",),
     AuthorizationProvider.GCP: ("iam.serviceAccounts.actAs",),
 }
 
 
-def _assumable_principals(
+def _attachable_principals(
     graph: UnifiedGraph,
     bundle: AuthorizationEvidenceBundle,
 ) -> list[tuple[UnifiedNode, str]]:
@@ -280,10 +280,10 @@ def _assumable_principals(
     return sorted(candidates, key=lambda item: item[0].id)
 
 
-def _assume_actions(bundle: AuthorizationEvidenceBundle, binding: AuthorizationBinding) -> tuple[str, ...]:
+def _identity_attachment_actions(bundle: AuthorizationEvidenceBundle, binding: AuthorizationBinding) -> tuple[str, ...]:
     permissions = _permission_values(bundle, binding)
     actions: set[str] = set()
-    for probe in _ASSUME_PROBES[bundle.provider]:
+    for probe in _IDENTITY_ATTACHMENT_PROBES[bundle.provider]:
         if probe in permissions or any(_pattern_allows(bundle.provider, probe, pattern) for pattern in permissions if "*" in pattern):
             actions.add(probe)
     return tuple(sorted(actions))
@@ -321,9 +321,10 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
     indeterminate = 0
     unmapped = 0
     capped = False
+    identity_attachment_edges = 0
     seen_requests: set[tuple[str, str, str]] = set()
     resources = _resource_nodes(graph, bundle)
-    assumable_principals = _assumable_principals(graph, bundle)
+    attachable_principals = _attachable_principals(graph, bundle)
     provider = bundle.provider.value
 
     for binding in bundle.bindings:
@@ -331,7 +332,7 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
             continue
         principal_node_id = _principal_node(graph, binding, provider)
         matched_resource = False
-        assume_actions = _assume_actions(bundle, binding)
+        attachment_actions = _identity_attachment_actions(bundle, binding)
         for resource_node, resource in resources:
             actions = _concrete_actions(bundle, binding, resource_node)
             if not actions:
@@ -389,16 +390,17 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
                     allow_edges += 1
             if capped:
                 break
-        if not matched_resource and not assume_actions:
+        if not matched_resource and not attachment_actions:
             unmapped += 1
         if capped:
             break
 
-        # A provider-native impersonation primitive is the only authorization
-        # evidence that becomes ASSUMES. Role names, owner labels, and broad
-        # admin classifications never create this escalation hop.
-        for action in assume_actions:
-            for target_node, resource in assumable_principals:
+        # actAs / assign grant attachment authority, not a usable identity
+        # session. Workload control, attachment and credential access need their
+        # own evidence. Keep the evaluated action as context without making the
+        # caller inherit every permission held by the target identity.
+        for action in attachment_actions:
+            for target_node, resource in attachable_principals:
                 if target_node.id == principal_node_id:
                     continue
                 key = (binding.principal_id.casefold(), action.casefold(), resource.casefold())
@@ -426,15 +428,22 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
                         UnifiedEdge(
                             source=principal_node_id,
                             target=target_node.id,
-                            relationship=RelationshipType.ASSUMES,
+                            relationship=RelationshipType.CAN_ACCESS,
+                            traversable=False,
                             weight=6.0,
                             confidence=1.0,
                             provenance={"source": _SOURCE},
-                            evidence={**receipt, "authorization_decisions": [receipt]},
+                            evidence={
+                                **receipt,
+                                "authorization_decisions": [receipt],
+                                "authority_effect": "identity_attachment",
+                                "required_context": ["workload_control", "identity_attachment", "credential_access"],
+                            },
                         )
                     )
                     if len(graph.edges) > before:
                         allow_edges += 1
+                        identity_attachment_edges += 1
                 elif result.decision in {AuthorizationDecision.EXPLICIT_DENY, AuthorizationDecision.IMPLICIT_DENY}:
                     denied += 1
                 else:
@@ -453,6 +462,8 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
         reason_codes.append("unmapped_resources")
     if capped:
         reason_codes.append("evaluation_cap_exceeded")
+    if identity_attachment_edges:
+        reason_codes.append("identity_attachment_requires_workload_context")
     state = GraphAnalysisState.LIMITED if reason_codes else GraphAnalysisState.COMPLETE
     observed = {
         "allow_edges": allow_edges,

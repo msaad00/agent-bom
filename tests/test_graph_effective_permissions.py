@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.effective_permissions import apply_effective_permissions
@@ -425,3 +427,51 @@ def test_nontraversable_membership_and_delegation_cannot_confer_authority():
         assert _perm(graph, "user:a") == {}, relationship
         assert _perm(graph, "principal:b") == {"resource:a": "direct"}
         assert not graph.nodes["user:a"].attributes.get("can_escalate_privilege")
+
+
+def test_malformed_inline_condition_does_not_prove_admin_equivalence():
+    g = UnifiedGraph(scan_id="invalid-policy-condition", tenant_id="tenant")
+    g.add_node(
+        UnifiedNode(
+            id="role:helper",
+            entity_type=EntityType.ROLE,
+            label="helper",
+            attributes={
+                "policy_document": {
+                    "Statement": [
+                        {"Effect": "Allow", "Action": "*", "Resource": "*", "Condition": {"Bool": {"aws:MultiFactorAuthPresent": []}}}
+                    ]
+                }
+            },
+        )
+    )
+    stats = apply_effective_permissions(g)
+    assert stats["admin_via_evaluation"] == 0
+    assert g.nodes["role:helper"].attributes.get("admin_equivalent") is not True
+
+
+@pytest.mark.parametrize("operator", ["StringEqualsIfExists", "BogusIfExists", "Null"])
+def test_missing_condition_context_does_not_prove_admin_equivalence(operator):
+    g = UnifiedGraph(scan_id="missing-policy-context", tenant_id="tenant")
+    g.add_node(
+        UnifiedNode(
+            id="role:helper",
+            entity_type=EntityType.ROLE,
+            label="helper",
+            attributes={
+                "policy_document": {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "*",
+                            "Resource": "*",
+                            "Condition": {operator: {"aws:PrincipalTag/team": "true" if operator == "Null" else "team"}},
+                        }
+                    ]
+                }
+            },
+        )
+    )
+    stats = apply_effective_permissions(g)
+    assert stats["admin_via_evaluation"] == 0
+    assert g.nodes["role:helper"].attributes.get("admin_equivalent") is not True

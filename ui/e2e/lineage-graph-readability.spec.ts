@@ -555,7 +555,10 @@ for (const width of [1440, 390]) {
       await page.setViewportSize({ width: width === 390 ? 1440 : 390, height: 811 });
       await expect(page.getByRole("heading", { name: "pillow@9.0.0", exact: true })).toBeVisible();
       expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
-      await page.getByRole("button", { name: "Close", exact: true }).click();
+      const detailPanel = page.getByTestId("graph-entity-drawer");
+      const detailHeader = width === 1440 ? detailPanel.locator("aside") : detailPanel;
+      await detailHeader.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(detailPanel).not.toBeVisible();
       await page.goto("/findings");
       await expect.poll(() => new URL(page.url()).pathname).toBe("/findings");
       await page.goBack();

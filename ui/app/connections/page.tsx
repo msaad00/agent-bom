@@ -2957,8 +2957,7 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         </section>
 
         <p className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 dark:border-emerald-900/50 bg-emerald-500/10 dark:bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-700 dark:text-emerald-300">
-          <Lock className="h-3.5 w-3.5 shrink-0" /> Read-only. The server never writes to your cloud, repos, or
-          control-plane data.
+          <Lock className="h-3.5 w-3.5 shrink-0" /> Collection uses read-only source access. Scan evidence and connection settings are stored in the control plane.
         </p>
       </div>
     </Drawer>

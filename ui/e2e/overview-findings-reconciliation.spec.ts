@@ -472,6 +472,8 @@ for (const theme of ["light", "dark"] as const) {
       await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
       await page.setViewportSize(viewport);
       await routeProductFixture(page);
+      const version = "9.8.7-preview.20260921.abcdef";
+      await page.route("**/health", route => route.fulfill({ json: { status: "ok", version } }));
       await page.route("**/v1/overview", (route) => route.fulfill({ json: { ...OVERVIEW, finding_counts: COUNTS,
         top_risks: Array.from({length: 7}, (_, i) => ({...OVERVIEW.top_risks[0], vulnerability_id: `CVE-2026-${7100+i}`, risk_score: 10-i, affected_agents: [`scope-agent-${i}`]})),
       } }));
@@ -520,7 +522,7 @@ for (const theme of ["light", "dark"] as const) {
       const status = page.locator("header summary", {hasText: "Control plane"});
       await status.focus(); await page.keyboard.press("Enter");
       const statusDetails = page.locator("header details[open] p");
-      await expect(statusDetails).toHaveText("Control plane · v9.8.7");
+      await expect(statusDetails).toHaveText(`Control plane · v${version}`);
       const statusBounds = await statusDetails.boundingBox();
       expect(statusBounds!.x).toBeGreaterThanOrEqual(0);
       expect(statusBounds!.x + statusBounds!.width).toBeLessThanOrEqual(viewport.width);

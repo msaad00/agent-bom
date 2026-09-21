@@ -218,7 +218,12 @@ for (const theme of ["light", "dark"] as const) {
         await page.getByRole("checkbox", { name: "Control mapping" }).check();
         await page.getByRole("checkbox", { name: "Disposition / attestation" }).check();
         const move = page.getByRole("button", { name: "Move Observed up" });
-        await move.focus(); await page.keyboard.press("Enter");
+        await move.focus();
+        // Preference updates must not schedule a later drawer focus reset.
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        await expect(move).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(move).toBeFocused();
         const order = await page.getByRole("columnheader").allTextContents();
         await page.reload();
         await expect.poll(() => page.getByRole("columnheader").allTextContents()).toEqual(order);
@@ -236,7 +241,12 @@ for (const theme of ["light", "dark"] as const) {
         await expect(article.getByText("Source: osv", { exact: true })).toHaveCount(0);
         await page.getByRole("checkbox", { name: "Detection" }).check();
         const move = page.getByRole("button", { name: "Move Observed up" });
-        await move.focus(); await page.keyboard.press("Enter");
+        await move.focus();
+        // Preference updates must not schedule a later drawer focus reset.
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        await expect(move).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(move).toBeFocused();
         await expect.poll(() => article.locator("dt").allTextContents()).toEqual(["Priority", "Affected asset", "Observed", "Detection", "Remediation"]);
         await page.getByRole("button", { name: "Reset view" }).click();
         await page.screenshot({ path: testInfo.outputPath(`columns-${theme}-${width}.png`) });

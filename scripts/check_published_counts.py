@@ -19,8 +19,9 @@ artifact that ships:
 
 then sweeps every published surface — docs, site docs, integrations, READMEs,
 SVG diagrams, and the shipped Python package — for sentences that state one of
-those counts, and fails if any disagrees. Adding an entry to the registry is
-then a two-line change: the data, and whatever prose the gate points at.
+those counts, and fails if any disagrees. Registry sync runs this script with
+``--write-registry-counts`` to refresh authored registry claims from the bundle
+and validate all published counts before committing the data and prose together.
 
 Note that SVGs are swept here deliberately. ``check_release_consistency.py``
 skips every image suffix, which is exactly why a stale count sat unnoticed
@@ -102,6 +103,7 @@ RULES: tuple[CountRule, ...] = (
             re.compile(rf"{_NUMBER}[-\s]entry\s+(?:\S+\s+){{0,3}}?(?:server|registry)", re.I),
             re.compile(rf"{_NUMBER}\s+MCP\s+servers?\b", re.I),
             re.compile(rf"{_NUMBER}\s+MCP\s+server\s+(?:security\s+)?metadata\s+records", re.I),
+            re.compile(rf"{_NUMBER}\s+(?:MCP\s+)?server\s+security\s+metadata\s+entries", re.I),
             re.compile(rf"registry\s*\(\s*{_NUMBER}\s+servers", re.I),
             re.compile(rf"{_NUMBER}\s+servers?\s*,\s*[0-9][0-9,]*\s+verified", re.I),
         ),
@@ -222,15 +224,60 @@ def find_stale_claims(counts: dict[str, int]) -> list[str]:
     return sorted(set(problems))
 
 
+def refresh_registry_counts(counts: dict[str, int]) -> list[Path]:
+    """Refresh authored registry-count claims from the bundled source of truth.
+
+    Only numeric capture groups in contextual registry rules are replaced.
+    Other inventory claims and numbers in scan examples remain untouched.
+    """
+    changed: list[Path] = []
+    for path in _files():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        lines = text.splitlines()
+        replacements: dict[tuple[int, int], str] = {}
+        for rule in RULES:
+            if rule.name not in {"registry entries", "registry verified entries"}:
+                continue
+            for pattern in rule.patterns:
+                for match in pattern.finditer(text):
+                    if not _has_context(rule, lines, _line_of(text, match.start())):
+                        continue
+                    expected = counts[rule.name]
+                    if int(match.group(1).replace(",", "")) != expected:
+                        replacements[match.span(1)] = f"{expected:,}" if "," in match.group(1) else str(expected)
+        for (start, end), replacement in sorted(replacements.items(), reverse=True):
+            text = text[:start] + replacement + text[end:]
+        if replacements:
+            path.write_text(text, encoding="utf-8")
+            changed.append(path)
+    return changed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--print-counts", action="store_true", help="Print the derived counts and exit.")
+    parser.add_argument(
+        "--write-registry-counts", action="store_true", help="Refresh authored registry count claims, then validate all counts."
+    )
+    parser.add_argument("--changed-paths-file", type=Path, help="Write refreshed repository-relative paths as JSON for scoped staging.")
     args = parser.parse_args(argv)
+    if args.changed_paths_file and not args.write_registry_counts:
+        parser.error("--changed-paths-file requires --write-registry-counts")
 
     counts = derive_counts()
     if args.print_counts:
         print(json.dumps(counts, indent=2))
         return 0
+
+    if args.write_registry_counts:
+        changed = refresh_registry_counts(counts)
+        if args.changed_paths_file:
+            args.changed_paths_file.write_text(json.dumps([str(path.relative_to(ROOT)) for path in changed]) + "\n", encoding="utf-8")
+        for path in changed:
+            print(f"Refreshed registry counts: {path.relative_to(ROOT)}")
 
     problems = find_stale_claims(counts)
     if problems:

@@ -843,7 +843,7 @@ export function Nav() {
     <>
       {/* Product chrome — Snowflake-style top bar with canonical agent-bom lockup */}
       <header className="fixed inset-x-0 top-0 z-[60] flex h-16 items-center gap-3 border-b border-outline bg-surface/95 px-4 backdrop-blur-sm">
-        <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
+        <Link href="/" aria-label="agent-bom" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
           <BrandLogo
             showWordmark={!collapsed}
             markClassName="h-9 w-9"

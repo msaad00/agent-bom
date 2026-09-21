@@ -17,6 +17,11 @@ Helm owns the `agent-bom` workloads inside the cluster.
 - IAM roles and policies for scanner + backup IRSA
 - Secrets Manager secret containers / generated secret references
 
+The scanner policy reads attached managed-policy metadata and documents with
+`iam:GetPolicy` and `iam:GetPolicyVersion`. Review and apply the Terraform plan
+to update an existing scanner role; denied document reads leave IAM evidence
+incomplete. This does not grant the permissions described by the policies read.
+
 The scanner IRSA role is the **keyless control-plane cloud identity**. Besides
 reading the account it runs in, it is granted a least-privilege `sts:AssumeRole`
 policy (`connect_role_arns`, default `agent-bom-readonly*` / `abom-readonly*`) so

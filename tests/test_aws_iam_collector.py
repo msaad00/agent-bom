@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -72,6 +74,41 @@ class IamClient:
                 }
             }
         }
+
+
+@pytest.mark.parametrize(
+    "policy_path",
+    [
+        "scripts/provision/aws_readonly_policy.json",
+        "deploy/terraform/aws/baseline/aws_readonly_policy.json",
+    ],
+)
+@pytest.mark.parametrize("missing_action", [None, "iam:GetPolicy", "iam:GetPolicyVersion"])
+def test_packaged_scanner_policy_can_read_attached_documents(policy_path: str, missing_action: str | None) -> None:
+    policy = json.loads((Path(__file__).resolve().parents[1] / policy_path).read_text())
+    actions = {action for statement in policy["Statement"] if statement["Effect"] == "Allow" for action in statement["Action"]}
+    if missing_action:
+        actions.discard(missing_action)
+
+    class PolicyLimitedIam(IamClient):
+        def get_policy(self, **kwargs: str) -> dict[str, Any]:
+            if "iam:GetPolicy" not in actions:
+                raise ProviderError("AccessDenied")
+            return super().get_policy(**kwargs)
+
+        def get_policy_version(self, **kwargs: str) -> dict[str, Any]:
+            if "iam:GetPolicyVersion" not in actions:
+                raise ProviderError("AccessDenied")
+            return super().get_policy_version(**kwargs)
+
+    evidence = collect_iam_role_evidence(PolicyLimitedIam(), principal_arn="arn:aws:iam::123456789012:role/scanner", role_name="scanner")
+    if missing_action:
+        assert evidence.policy_completeness is EvidenceCompleteness.PARTIAL
+        assert evidence.policies[0].completeness is EvidenceCompleteness.UNAVAILABLE
+        assert evidence.policies[0].diagnostics == ("attached_policy_read_failed",)
+    else:
+        assert evidence.policy_completeness is EvidenceCompleteness.COMPLETE
+        assert evidence.policies[0].statements[0].actions == ("s3:GetObject",)
 
 
 def test_collects_attached_inline_and_usage_evidence() -> None:

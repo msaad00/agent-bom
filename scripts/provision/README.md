@@ -40,6 +40,13 @@ The files in this directory are tailored per-provider — not generic templates.
 
 Covers: EC2, ECS, EKS, Lambda, Bedrock, SageMaker, ECR, CloudTrail, GPU instances.
 
+The packaged IAM policy includes `iam:GetPolicy` and `iam:GetPolicyVersion`
+so the scanner can read attached managed-policy documents, as well as inline
+role policies. Existing installations must update their customer-managed policy
+from the current JSON. An attachment listing alone does not contain the policy
+document; denied document reads remain incomplete evidence. These metadata
+reads do not grant the actions described inside the inspected policies.
+
 EKS is an AWS-managed Kubernetes service — it uses IAM for cluster-level auth and
 Kubernetes RBAC for pod-level auth. Both are required.
 

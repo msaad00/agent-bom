@@ -39,6 +39,7 @@ import {
 
 interface MatrixRow {
   framework: string;
+  frameworkId: string;
   code: string;
   name: string;
   status: "pass" | "warning" | "fail";
@@ -59,6 +60,7 @@ interface MatrixRow {
 export interface ComplianceMatrixSelection {
   control: ComplianceControl;
   frameworkLabel: string;
+  frameworkId: string;
   catalog: Record<string, string>;
 }
 
@@ -66,24 +68,26 @@ export interface ComplianceMatrixSelection {
 
 const FRAMEWORK_MAP: Array<{
   key: keyof ComplianceResponse;
+  id: string;
   label: string;
   catalog: Record<string, string>;
 }> = [
-  { key: "owasp_llm_top10", label: "OWASP LLM", catalog: OWASP_LLM_TOP10 },
-  { key: "owasp_mcp_top10", label: "OWASP MCP", catalog: OWASP_MCP_TOP10 },
-  { key: "owasp_agentic_top10", label: "OWASP Agentic", catalog: OWASP_AGENTIC_TOP10 },
-  { key: "mitre_atlas", label: "MITRE ATLAS", catalog: MITRE_ATLAS },
-  { key: "nist_ai_rmf", label: "NIST AI RMF", catalog: NIST_AI_RMF },
-  { key: "eu_ai_act", label: "EU AI Act", catalog: EU_AI_ACT },
+  { key: "owasp_llm_top10", id: "owasp-llm", label: "OWASP LLM", catalog: OWASP_LLM_TOP10 },
+  { key: "owasp_mcp_top10", id: "owasp-mcp", label: "OWASP MCP", catalog: OWASP_MCP_TOP10 },
+  { key: "owasp_agentic_top10", id: "owasp-agentic", label: "OWASP Agentic", catalog: OWASP_AGENTIC_TOP10 },
+  { key: "mitre_atlas", id: "atlas", label: "MITRE ATLAS", catalog: MITRE_ATLAS },
+  { key: "nist_ai_rmf", id: "nist-ai-rmf", label: "NIST AI RMF", catalog: NIST_AI_RMF },
+  { key: "eu_ai_act", id: "eu-ai-act", label: "EU AI Act", catalog: EU_AI_ACT },
 ];
 
 function flattenControls(data: ComplianceResponse): MatrixRow[] {
   const rows: MatrixRow[] = [];
-  for (const { key, label, catalog } of FRAMEWORK_MAP) {
+  for (const { key, id, label, catalog } of FRAMEWORK_MAP) {
     const controls = data[key] as ComplianceControl[];
     for (const c of controls) {
       rows.push({
         framework: label,
+        frameworkId: id,
         code: c.code,
         name: catalog[c.code] ?? c.name,
         status: c.status,
@@ -446,6 +450,7 @@ export function ComplianceMatrix({
                       onSelectControl({
                         control: row.original.control,
                         frameworkLabel: row.original.framework,
+                        frameworkId: row.original.frameworkId,
                         catalog: row.original.catalog,
                       })
                   : undefined;

@@ -31,6 +31,7 @@ import {
   Download,
   Loader2,
 } from "lucide-react";
+import { findingsHref } from "@/lib/page-links";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
 import {
   controlStatusLabel,
@@ -153,6 +154,7 @@ function CompliancePageContent() {
   const [selectedControl, setSelectedControl] = useState<{
     control: ComplianceControl;
     frameworkLabel: string;
+    frameworkId: string;
     catalog?: Record<string, string> | undefined;
   } | null>(null);
 
@@ -578,7 +580,7 @@ function CompliancePageContent() {
           // control's framework + control id. stopPropagation keeps the row
           // click (which opens the evidence drawer) from also firing.
           <Link
-            href={`/findings?framework=${encodeURIComponent(selectedSection?.id ?? "")}&control=${encodeURIComponent(c.code)}`}
+            href={findingsHref({ framework: selectedSection?.id, control: c.code, scan: scanParam })}
             onClick={(e) => e.stopPropagation()}
             aria-label={`View ${c.findings} findings for ${c.code}`}
             className="font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
@@ -658,6 +660,7 @@ function CompliancePageContent() {
               setSelectedControl({
                 control,
                 frameworkLabel: selectedSection.title,
+                frameworkId: selectedSection.id,
                 catalog: selectedSection.catalog,
               })
             }
@@ -813,6 +816,8 @@ function CompliancePageContent() {
         <ComplianceControlDrawer
           control={selectedControl.control}
           frameworkLabel={selectedControl.frameworkLabel}
+          frameworkId={selectedControl.frameworkId}
+          scanId={scanParam}
           catalogName={selectedControl.catalog?.[selectedControl.control.code]}
           onClose={() => setSelectedControl(null)}
         />

@@ -17,12 +17,16 @@ import { findingsHref, remediationHref, securityGraphHref } from "@/lib/page-lin
 
 export function ComplianceControlDrawer({
   control,
+  frameworkId,
   frameworkLabel,
+  scanId,
   catalogName,
   onClose,
 }: {
   control: ComplianceControl;
+  frameworkId: string;
   frameworkLabel: string;
+  scanId?: string | undefined;
   catalogName?: string | undefined;
   onClose: () => void;
 }) {
@@ -167,13 +171,14 @@ export function ComplianceControlDrawer({
       {tab === "actions" ? (
         <div className="flex flex-wrap gap-2">
           <Link
-            href={findingsHref({ q: control.code })}
+            href={findingsHref({ framework: frameworkId, control: control.code, scan: scanId })}
             className="rounded-lg border border-emerald-700/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-600"
           >
             View findings
           </Link>
           <Link
             href={securityGraphHref({
+              scan: scanId,
               packageName: control.affected_packages[0],
               agent: control.affected_agents[0],
             })}
@@ -182,10 +187,10 @@ export function ComplianceControlDrawer({
             Evidence in security graph
           </Link>
           <Link
-            href={remediationHref({ q: control.code })}
+            href={remediationHref({ scan: scanId })}
             className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition hover:text-[color:var(--foreground)]"
           >
-            Remediation
+            Browse remediation
           </Link>
         </div>
       ) : null}

@@ -23,9 +23,10 @@ session context and alternate paths are required. Missing or partial collection
 cannot become complete through an empty graph or an empty findings list.
 
 Principal and resource receipts bind graph nodes to native identifiers. Each
-traversed identity hop also needs its own complete receipt. The request pins the
-exact baseline edge sequence, principal, resource, action, plane and grant
-identifiers. Read and write actions are compared independently.
+traversed identity hop also needs its own complete receipt and a native principal
+binding for its destination. An unbound reachable identity is unknown, not an
+empty permission set. The request pins the exact baseline edge sequence,
+principal, resource, action, plane and grant identifiers. Read and write actions are compared independently.
 
 A removal additionally requires an explicit observed revocation receipt for
 every selected grant. A grant disappearing from a payload is insufficient.
@@ -57,6 +58,7 @@ all possible paths or affected assets.
 Traversal covers `authenticates_as`, `assumes`, `member_of`, `can_access` and
 `has_permission`. Identity transitions require their own context receipts;
 access to a different resource does not imply authority to use its identity.
+Identity transitions cannot substitute for the terminal action edge.
 Terminal access requires an exact action, principal and resource receipt that
 agrees with the native evaluator. Reverse, nontraversable and expired edges do
 not establish a route. Missing selected authority, missing materialized allows,

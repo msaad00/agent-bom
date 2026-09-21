@@ -369,6 +369,11 @@ def _hop_allowed(index: _ComparisonIndex, edge: UnifiedEdge) -> tuple[bool, Comp
             if (is_end and instant <= snapshot.receipt.completed_at) or (not is_end and instant > snapshot.receipt.completed_at):
                 return False, None
     if edge.relationship in _IDENTITY_RELATIONSHIPS:
+        # Every reached identity needs a native principal binding so alternate
+        # policy evaluation cannot silently skip it. An identity transition is
+        # never the terminal action witness, even with a complete hop receipt.
+        if edge.target == request.target_node_id or edge.target not in index.principals:
+            return False, ComparisonReason.HOP
         receipt = index.identity_hops.get(edge.canonical_id)
         return (True, None) if receipt and receipt.state == EvidenceSourceState.COMPLETE else (False, ComparisonReason.HOP)
     if edge.target != request.target_node_id:

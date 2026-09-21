@@ -524,3 +524,80 @@ def test_deserialized_result_cannot_erase_required_proof_fields():
     ):
         with pytest.raises(ValidationError):
             AccessComparisonReceipt.model_validate(payload)
+
+
+@pytest.mark.parametrize("with_allow", [False, True])
+def test_unbound_reachable_identity_cannot_prove_no_alternate(with_allow):
+    bindings = [_binding("alternate-read", OTHER)] if with_allow else []
+    baseline, candidate, request = _pair(alternate=True, candidate_bindings=bindings)
+    candidate.graph.edges = [edge for edge in candidate.graph.edges if edge.target != "data"]
+    candidate = replace(
+        candidate,
+        receipt=candidate.receipt.model_copy(
+            update={"principals": tuple(item for item in candidate.receipt.principals if item.node_id != "alternate")}
+        ),
+    )
+    candidate = _reseal(candidate)
+    request = request.model_copy(update={"candidate_graph_digest": candidate.receipt.graph_digest})
+    result = _compare(baseline, candidate, request)
+    assert result.outcome == "unavailable_evidence"
+    assert result.reason_codes == ("hop_receipt_unavailable",)
+    assert result.selected_authorization_removed is None
+
+
+@pytest.mark.parametrize("relationship", [RelationshipType.AUTHENTICATES_AS, RelationshipType.ASSUMES, RelationshipType.MEMBER_OF])
+def test_identity_relationship_to_resource_is_not_a_remaining_action_witness(relationship):
+    baseline, candidate, request = _pair()
+    edge = UnifiedEdge(
+        source="agent",
+        target="data",
+        relationship=relationship,
+        source_scan_id=candidate.receipt.scan_id,
+        first_seen=candidate.receipt.completed_at.isoformat(),
+        last_seen=candidate.receipt.completed_at.isoformat(),
+    )
+    candidate.graph.add_edge(edge)
+    candidate = replace(
+        candidate,
+        receipt=candidate.receipt.model_copy(
+            update={
+                "identity_hops": (
+                    *candidate.receipt.identity_hops,
+                    IdentityHopReceipt(edge_id=edge.canonical_id, evidence_ref="rescan:identity-only", state="complete"),
+                ),
+            }
+        ),
+    )
+    candidate = _reseal(candidate)
+    request = request.model_copy(update={"candidate_graph_digest": candidate.receipt.graph_digest})
+    result = _compare(baseline, candidate, request)
+    assert result.outcome == "unavailable_evidence"
+    assert result.reason_codes == ("hop_receipt_unavailable",)
+    assert not result.remaining_path
+
+
+def test_baseline_identity_relationship_cannot_substitute_for_action_authority():
+    baseline, candidate, request = _pair()
+    terminal = baseline.graph.edges[-1]
+    terminal.relationship = RelationshipType.MEMBER_OF
+    baseline = replace(
+        baseline,
+        receipt=baseline.receipt.model_copy(
+            update={
+                "identity_hops": (
+                    *baseline.receipt.identity_hops,
+                    IdentityHopReceipt(edge_id=terminal.canonical_id, evidence_ref="baseline:identity-only", state="complete"),
+                ),
+            }
+        ),
+    )
+    baseline = _reseal(baseline)
+    request = request.model_copy(
+        update={
+            "baseline_graph_digest": baseline.receipt.graph_digest,
+            "baseline_edge_ids": tuple(edge.canonical_id for edge in baseline.graph.edges),
+        }
+    )
+    result = _compare(baseline, candidate, request)
+    assert result.outcome == "unavailable_evidence"
+    assert result.reason_codes == ("baseline_access_not_established",)

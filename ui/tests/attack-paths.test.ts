@@ -585,8 +585,10 @@ describe("attack path helpers", () => {
       "Application workload",
       "Digest sha256:abc",
       "Service account",
-      "Sensitive data asset",
+      "Data asset",
     ]);
+    nodes.get("data-store:records")!.attributes.data_sensitivity = "restricted";
+    expect(toExposurePathFromAttackPath(path, nodes).hops.at(-1)?.subtitle).toBe("Restricted data asset");
   });
 
   it("corrects broad fix-first roles from canonical graph taxonomy without losing remediation", () => {

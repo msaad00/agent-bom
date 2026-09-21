@@ -324,11 +324,11 @@ function exposureRefFromUnifiedNode(node: UnifiedNode): ExposureEntityRef {
     kindLabel = "Container";
   } else if (node.entity_type === EntityType.DATA_STORE || node.entity_type === EntityType.DATASET) {
     const sensitivity = typeof attributes.data_sensitivity === "string"
-      ? attributes.data_sensitivity.replaceAll("_", " ")
-      : "Sensitive";
+      ? attributes.data_sensitivity.trim().replaceAll("_", " ")
+      : "";
     display = {
       title: node.label,
-      subtitle: `${sensitivity.charAt(0).toUpperCase()}${sensitivity.slice(1)} data asset`,
+      subtitle: sensitivity ? `${sensitivity.charAt(0).toUpperCase()}${sensitivity.slice(1)} data asset` : "Data asset",
     };
     kindLabel = "Data asset";
   } else if (node.entity_type === EntityType.CLOUD_RESOURCE || node.entity_type === EntityType.RESOURCE) {

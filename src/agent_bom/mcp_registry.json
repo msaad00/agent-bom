@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-09-14",
-  "_total_servers": 1142,
+  "_updated": "2026-09-21",
+  "_total_servers": 1151,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "_sources": [
@@ -783,7 +783,7 @@
     "mongodb-mcp-server": {
       "package": "mongodb-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "2.1.1",
+      "latest_version": "3.0.4",
       "description": "Query and modify MongoDB collections",
       "name": "MongoDB",
       "risk_justification": "Executes arbitrary MongoDB queries via MONGODB_URI. Full data read/write/delete possible across all collections.",
@@ -815,7 +815,7 @@
     "@supabase/mcp-server-supabase": {
       "package": "@supabase/mcp-server-supabase",
       "ecosystem": "npm",
-      "latest_version": "0.12.0",
+      "latest_version": "0.13.0",
       "description": "Read/write Supabase tables, storage, Edge Functions",
       "name": "Supabase",
       "risk_justification": "Executes raw SQL and manages Edge Functions via SUPABASE_SERVICE_ROLE_KEY. Key exposure enables full database and serverless function control.",
@@ -1012,7 +1012,7 @@
     "@notionhq/notion-mcp-server": {
       "package": "@notionhq/notion-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "2.5.1",
+      "latest_version": "2.5.2",
       "description": "Read and write Notion pages, databases, blocks",
       "name": "Notion",
       "risk_justification": "Read/write access to Notion pages and databases via NOTION_API_KEY. Token exposure enables workspace-wide content manipulation.",
@@ -1149,7 +1149,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "1.4.1",
+      "latest_version": "1.5.1",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -1206,7 +1206,7 @@
     "mcp-server-playwright": {
       "package": "@playwright/mcp",
       "ecosystem": "npm",
-      "latest_version": "0.0.80",
+      "latest_version": "0.0.82",
       "description": "Browser automation via Playwright",
       "name": "Playwright",
       "risk_justification": "Controls a headless browser with script execution. Can steal cookies, automate phishing, exfiltrate DOM content.",
@@ -2730,7 +2730,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.9.4",
+      "latest_version": "2026.9.5",
       "description": "OpenClaw personal AI assistant — multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessag…",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2790,7 +2790,7 @@
     "mcp-clickhouse": {
       "package": "mcp-clickhouse",
       "ecosystem": "pypi",
-      "latest_version": "0.6.0",
+      "latest_version": "0.7.0",
       "description": "ClickHouse MCP server — SQL query, database/table listing, chDB embedded engine (691 GitHub stars)",
       "name": "ClickHouse",
       "risk_justification": "Executes raw SQL queries via CLICKHOUSE_PASSWORD. Arbitrary data read/write/delete possible across all databases.",
@@ -2940,7 +2940,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.20.1",
+      "latest_version": "2.22.0",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",
@@ -23003,9 +23003,207 @@
       "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
       "version_source": "official-registry",
       "auto_enriched": true
+    },
+    "ai.aard/aard": {
+      "package": "ai.aard/aard",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Official statistics from 170+ publishers, resolved from natural language with provenance.",
+      "name": "ai.aard/aard",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.aard/aard",
+        "aard"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.adsap/adsap": {
+      "package": "ai.adsap/adsap",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.73.0",
+      "description": "Launch and manage Meta and Google Ads from your AI assistant. You approve every change first.",
+      "name": "ai.adsap/adsap",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.adsap/adsap",
+        "adsap"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.aeviamodeler/aevia": {
+      "package": "ai.aeviamodeler/aevia",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "AI-powered life cycle assessment and modelling: connect to LCA databases, build and analyze systems",
+      "name": "ai.aeviamodeler/aevia",
+      "category": "database",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.aeviamodeler/aevia",
+        "aevia"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.agenticbooks/books": {
+      "package": "ai.agenticbooks/books",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Startup books from live bank and billing feeds: P&L, balances, approvals, period close.",
+      "name": "ai.agenticbooks/books",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agenticbooks/books",
+        "books"
+      ],
+      "source_url": "https://github.com/AgenticBooks/agenticbooks",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.apatero/studio": {
+      "package": "ai.apatero/studio",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.0",
+      "description": "AI image and video generation, talking avatars, consistent characters and photo packs from Claude.",
+      "name": "ai.apatero/studio",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.apatero/studio",
+        "studio"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.audiopod/audiopod": {
+      "package": "ai.audiopod/audiopod",
+      "ecosystem": "mcp-registry",
+      "latest_version": "2026.9.19",
+      "description": "Audio AI tools: text-to-speech, voice cloning, music generation, stem separation, transcription.",
+      "name": "ai.audiopod/audiopod",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.audiopod/audiopod",
+        "audiopod"
+      ],
+      "source_url": "https://github.com/AudiopodAI/audiopod-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.bcited/bcited": {
+      "package": "ai.bcited/bcited",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.6.0",
+      "description": "AEO tools: scan any URL for AI-citation readiness, read the public leaderboard and citation panel.",
+      "name": "ai.bcited/bcited",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bcited/bcited",
+        "bcited"
+      ],
+      "source_url": "https://github.com/cmunkres/bcited-cf",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.beatra/beatra": {
+      "package": "ai.beatra/beatra",
+      "ecosystem": "mcp-registry",
+      "latest_version": "2.8.8",
+      "description": "Images, video, music, speech, and public social data for AI agents.",
+      "name": "ai.beatra/beatra",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.beatra/beatra",
+        "beatra"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.botinfo/robot-market-data": {
+      "package": "ai.botinfo/robot-market-data",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Checkout-verified prices, stock, US FCC status and buy routes for humanoid and quadruped robots",
+      "name": "ai.botinfo/robot-market-data",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.botinfo/robot-market-data",
+        "robot-market-data"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-21T15:23:16Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
     }
   },
-  "_mcp_registry_sync": "2026-09-14T15:18:29Z",
+  "_mcp_registry_sync": "2026-09-21T15:23:19Z",
   "_mcp_registry_sync_source": "mcp-official",
   "_cve_enriched": "2026-08-24"
 }

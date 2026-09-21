@@ -150,6 +150,11 @@ jobs:
           registry_path.write_text(dumps_registry_json(registry), encoding="utf-8")
           EOF
 
+      - name: Refresh and validate published registry counts
+        run: >-
+          uv run python scripts/check_published_counts.py
+          --write-registry-counts --changed-paths-file /tmp/registry-count-paths.json
+
       - name: Read counts
         id: count
         run: |
@@ -204,7 +209,15 @@ jobs:
         run: |
           BRANCH="chore/mcp-registry-$(date +%Y%m%d)"
           git switch -C "$BRANCH" origin/main
-          git add src/agent_bom/mcp_registry.json
+          # Stage only registry data and the exact authored paths refreshed above.
+          python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          paths = json.loads(Path("/tmp/registry-count-paths.json").read_text())
+          subprocess.run(["git", "add", "--", "src/agent_bom/mcp_registry.json", *paths], check=True)
+          PY
           git commit -S -m "chore: sync MCP registry — ${NEW_COUNT} new, ${CORRECTED_COUNT} trust corrections, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE updates"
           git push --force-with-lease origin "$BRANCH"
           BODY="Automated weekly sync from the official MCP server registry.

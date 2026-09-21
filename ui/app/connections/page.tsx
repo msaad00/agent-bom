@@ -2965,6 +2965,51 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   );
 }
 
+function ConnectionEvidenceSummary({ connection }: { connection: CloudConnectionRecord }) {
+  const mode = connection.auth_params?.auth_mode;
+  const recordedCredential = connection.credential_present || connection.has_external_id;
+  const authentication = connection.provider === "azure" && mode === "managed_identity" ? "Managed identity"
+    : ["azure", "gcp"].includes(connection.provider) && mode === "workload_identity" ? "Workload identity"
+    : mode ? "Unrecognized authentication mode"
+    : !recordedCredential ? "Not recorded"
+    : connection.provider === "aws" ? "AWS AssumeRole"
+    : connection.provider === "azure" ? "Client secret (legacy)"
+    : connection.provider === "gcp" ? "Service-account key (legacy)"
+    : connection.provider === "snowflake" ? "Key-pair authentication"
+    : "Not recorded";
+  const scope = connection.inventory_scope === "organization" ? "Organization"
+    : connection.inventory_scope === "account" ? "Account" : "Unavailable";
+  const cadence = connection.scan_interval_minutes === null ? "Manual"
+    : typeof connection.scan_interval_minutes === "number" && connection.scan_interval_minutes > 0
+      ? `Every ${connection.scan_interval_minutes} minutes` : "Unavailable";
+  const fields = [
+    ["Authentication", authentication], ["Inventory scope", scope],
+    ["Regions", connection.regions?.length ? connection.regions.join(", ") : "Not recorded"],
+    ["Scan schedule", cadence],
+  ];
+  const probeStatus = connection.capability_probe_status?.replaceAll("_", " ") ?? "Unavailable";
+  return (
+    <section aria-label="Recorded connection configuration" className="space-y-3">
+      <dl className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 text-sm">
+        {fields.map(([label, value]) => <div key={label} className="min-w-0">
+          <dt className="text-xs text-[color:var(--text-tertiary)]">{label}</dt>
+          <dd className="mt-0.5 break-words font-medium text-[color:var(--foreground)]">{value}</dd>
+        </div>)}
+      </dl>
+      <details className="border-y border-[color:var(--border-subtle)] py-2 text-sm">
+        <summary className="cursor-pointer font-medium">Capability evidence</summary>
+        <dl className="mt-3 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
+          <div><dt className="text-xs text-[color:var(--text-tertiary)]">Last probe</dt><dd className="capitalize">{probeStatus}</dd></div>
+          <div><dt className="text-xs text-[color:var(--text-tertiary)]">Verification time</dt><dd>Unavailable</dd></div>
+          <div className="min-w-0 sm:col-span-2"><dt className="text-xs text-[color:var(--text-tertiary)]">Verified reads</dt><dd className="break-words">{connection.verified_capabilities?.length ? connection.verified_capabilities.join(", ") : "None recorded"}</dd></div>
+          <div className="sm:col-span-2"><dt className="text-xs text-[color:var(--text-tertiary)]">Collection gaps</dt><dd>Not reported by this connection record</dd></div>
+        </dl>
+        <p className="mt-2 text-xs text-[color:var(--text-secondary)]">Configuration does not establish read access. Open the scan result for collection coverage and failures.</p>
+      </details>
+    </section>
+  );
+}
+
 // ── Cloud connection detail drawer ────────────────────────────────────────────
 
 function ConnectionDetailDrawer({
@@ -3009,7 +3054,7 @@ function ConnectionDetailDrawer({
       title={connection.display_name}
       subtitle={
         <span className="inline-flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[11px] text-[color:var(--text-tertiary)]">{connection.role_ref}</span>
+          <span className="min-w-0 break-all font-mono text-[11px] text-[color:var(--text-tertiary)]">{connection.role_ref}</span>
           {isOrganizationScope(connection) ? (
             <span
               className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200"
@@ -3056,6 +3101,7 @@ function ConnectionDetailDrawer({
       }
     >
       <div className="space-y-3">
+        <ConnectionEvidenceSummary connection={connection} />
         {result ? <ScanResultPanel result={result} /> : null}
         {!result && testResult ? (
           <div className="rounded-xl border border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/20 p-3 text-xs text-emerald-700 dark:text-emerald-200">

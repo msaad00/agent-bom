@@ -953,6 +953,33 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     navState.search = "tab=sources";
   });
 
+  it.each([
+    ["aws", {}, "AWS AssumeRole"],
+    ["azure", { auth_mode: "managed_identity", credential_binding: "operator-binding", client_secret: SECRET }, "Managed identity"],
+    ["gcp", { auth_mode: "workload_identity", credential_binding: "operator-binding" }, "Workload identity"],
+    ["azure", {}, "Client secret (legacy)"],
+  ])("shows recorded %s configuration without implying verified coverage", async (provider, auth_params, mode) => {
+    apiMock.listCloudConnections.mockResolvedValue({ connections: [{ ...CREATED_RECORD, provider, auth_params,
+      inventory_scope: "organization", scan_interval_minutes: 60, capability_probe_status: "permission_denied",
+      credential_present: true, verified_capabilities: [],
+    }], count: 1 });
+    render(<ConnectionsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Production account" }));
+    const drawer = await screen.findByRole("dialog", { name: "Production account" });
+    const configuration = within(drawer).getByRole("region", { name: "Recorded connection configuration" });
+    expect(configuration).toHaveTextContent(mode);
+    expect(configuration).toHaveTextContent("Organization");
+    expect(configuration).toHaveTextContent("Every 60 minutes");
+    expect(configuration).toHaveTextContent("us-east-1");
+    fireEvent.click(within(drawer).getByText("Capability evidence"));
+    expect(drawer).toHaveTextContent(/permission denied/i);
+    expect(drawer).toHaveTextContent("Verification timeUnavailable");
+    expect(drawer).toHaveTextContent("Verified readsNone recorded");
+    expect(drawer).toHaveTextContent("Collection gapsNot reported by this connection record");
+    expect(drawer).not.toHaveTextContent(SECRET);
+    expect(drawer).not.toHaveTextContent("operator-binding");
+  });
+
   it("queues a durable read-only scan and links to its job", async () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",

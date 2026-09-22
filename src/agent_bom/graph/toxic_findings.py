@@ -336,7 +336,7 @@ def _match_overpermissioned_to_sensitive(graph: UnifiedGraph) -> list[ToxicMatch
             continue
         if principal.entity_type not in _PRINCIPAL_TYPES:
             continue
-        sensitive = target.entity_type == EntityType.DATA_STORE and (_is_crown_jewel(target) or target.attributes.get("data_sensitivity"))
+        sensitive = target.entity_type == EntityType.DATA_STORE and _is_crown_jewel(target)
         if not sensitive:
             continue
         if not _is_write_permission(edge.evidence):

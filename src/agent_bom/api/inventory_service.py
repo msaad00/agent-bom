@@ -87,6 +87,12 @@ _TYPE_TO_GROUP: dict[str, str] = {value: group for group, values in _TYPE_GROUPS
 
 MAX_PAGE_LIMIT = 200
 
+# Upper bounds on caller-supplied filter strings. Enforced here rather than in
+# each transport's parameter signature so the HTTP routes and the MCP tools get
+# the same limit from the one shared code path.
+MAX_FILTER_LENGTH = 1024
+MAX_SCAN_ID_LENGTH = 256
+
 _ESSENTIAL_ATTRIBUTE_KEYS = frozenset(
     {
         "account_id",
@@ -136,6 +142,33 @@ class InventoryError(Exception):
 async def default_store_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
     """Run a sync graph-store method off the event loop (no backpressure)."""
     return await asyncio.to_thread(fn, *args, **kwargs)
+
+
+def check_filter_lengths(
+    *,
+    type: Optional[str] = None,
+    search: Optional[str] = None,
+    environment: Optional[str] = None,
+    provider: Optional[str] = None,
+    source: Optional[str] = None,
+    severity: Optional[str] = None,
+    min_severity: Optional[str] = None,
+    scan_id: Optional[str] = None,
+) -> None:
+    """Reject over-long filter strings before they reach the graph store."""
+    limits = (
+        ("type", type, MAX_FILTER_LENGTH),
+        ("search", search, MAX_FILTER_LENGTH),
+        ("environment", environment, MAX_FILTER_LENGTH),
+        ("provider", provider, MAX_FILTER_LENGTH),
+        ("source", source, MAX_FILTER_LENGTH),
+        ("severity", severity, MAX_FILTER_LENGTH),
+        ("min_severity", min_severity, MAX_FILTER_LENGTH),
+        ("scan_id", scan_id, MAX_SCAN_ID_LENGTH),
+    )
+    for name, value, maximum in limits:
+        if value is not None and len(value) > maximum:
+            raise InventoryError(f"{name} must be at most {maximum} characters", status_code=422)
 
 
 def parse_types(raw: Optional[str]) -> set[str] | None:
@@ -315,6 +348,16 @@ async def build_asset_list(
             status_code=422,
         )
 
+    check_filter_lengths(
+        type=type,
+        search=search,
+        environment=environment,
+        provider=provider,
+        source=source,
+        severity=severity,
+        min_severity=min_severity,
+        scan_id=scan_id,
+    )
     entity_types = parse_types(type)
     query = (search or "").strip()
     normalized_severity = (severity or "").strip().lower()
@@ -423,6 +466,7 @@ async def build_asset_detail(
     agents both render config, relationships, and blast-radius impact. Returns
     ``None`` when the asset is not in the tenant's snapshot.
     """
+    check_filter_lengths(scan_id=scan_id)
     context = await store_call(
         store.node_context,
         scan_id=scan_id or "",

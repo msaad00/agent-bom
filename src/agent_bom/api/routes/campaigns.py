@@ -541,8 +541,15 @@ def verify_campaign_workflow(
             idempotency_key,
             request_hash=request_hash,
         )
-        # Older results treated absence from a time window as proof of a fix.
-        # Do not replay that unsupported success after the fail-closed repair.
+        # Only "still_affected" outcomes are replayed from the idempotency cache.
+        # "verified_fixed" outcomes are intentionally NOT replayed: older results
+        # may have been computed under a pre-repair logic that treated absence
+        # from a time window as proof of remediation. Replaying such a cached
+        # "fixed" outcome would bypass a fresh verification check — fail-closed
+        # means each positive claim re-earns its result. The cache write still
+        # happens (below) so the store is populated; the read guard here is the
+        # asymmetry. This is expected and must not be "fixed" to replay all
+        # outcomes.
         if cached is not None and cached.get("outcome") == "still_affected":
             return cast("dict[str, Any]", cached)
 

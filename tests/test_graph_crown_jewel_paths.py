@@ -142,3 +142,35 @@ def test_two_factor_is_a_toxic_combination_not_crown_jewel():
     assert len(paths) == 1
     assert "Toxic combination" in paths[0].summary
     assert 80 <= paths[0].composite_risk < 95
+
+
+def test_open_sensitivity_vocabulary_marks_a_store_as_a_crown_jewel():
+    """``data_sensitivity`` is a label, not a boolean — any verdict counts."""
+    from agent_bom.graph.attack_path_fusion import _is_crown_jewel
+
+    for label in ("sensitive", "review", "restricted", "high", "pii"):
+        node = UnifiedNode(
+            id="ds:x",
+            entity_type=EntityType.DATA_STORE,
+            label="store",
+            attributes={"data_sensitivity": label},
+        )
+        assert _is_crown_jewel(node), label
+
+
+def test_explicit_non_sensitive_verdict_is_not_a_crown_jewel():
+    """A store the classifier sampled and cleared is not sensitive data.
+
+    "none" means sampled-and-clean and "unevaluable" means not sampled; reading
+    either as truthy would make every unclassified data store a crown jewel.
+    """
+    from agent_bom.graph.attack_path_fusion import _is_crown_jewel
+
+    for label in ("", "none", "unevaluable", "unknown", "false", None):
+        node = UnifiedNode(
+            id="ds:x",
+            entity_type=EntityType.DATA_STORE,
+            label="store",
+            attributes={"data_sensitivity": label},
+        )
+        assert not _is_crown_jewel(node), label

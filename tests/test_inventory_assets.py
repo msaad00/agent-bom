@@ -486,3 +486,33 @@ async def test_uninitialized_inventory_store_does_not_confirm_empty_scope(tmp_pa
     with pytest.raises(InventoryError) as error:
         await build_summary(store=store, tenant_id="default", scan_id="requested-snapshot")
     assert error.value.status_code == 404
+
+
+@pytest.mark.parametrize("endpoint", ["summary", "assets"])
+@pytest.mark.parametrize("param", ["type", "search", "environment", "provider", "source", "severity", "min_severity"])
+def test_over_long_filter_is_rejected_before_it_reaches_the_store(inventory_store, endpoint, param):
+    from agent_bom.api.inventory_service import MAX_FILTER_LENGTH
+
+    oversized = "x" * (MAX_FILTER_LENGTH + 1)
+    response = TestClient(app).get(f"/v1/inventory/{endpoint}", params={param: oversized})
+    assert response.status_code == 422
+    assert param in str(response.json()["detail"])
+
+
+@pytest.mark.parametrize("endpoint", ["summary", "assets", "assets/server:mcp"])
+def test_over_long_scan_id_is_rejected(inventory_store, endpoint):
+    from agent_bom.api.inventory_service import MAX_SCAN_ID_LENGTH
+
+    oversized = "x" * (MAX_SCAN_ID_LENGTH + 1)
+    response = TestClient(app).get(f"/v1/inventory/{endpoint}", params={"scan_id": oversized})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("param", ["search", "environment", "provider", "source"])
+def test_filter_at_the_length_limit_is_still_accepted(inventory_store, param):
+    from agent_bom.api.inventory_service import MAX_FILTER_LENGTH
+
+    at_limit = "x" * MAX_FILTER_LENGTH
+    response = TestClient(app).get("/v1/inventory/assets", params={param: at_limit})
+    assert response.status_code == 200
+    assert response.json()["pagination"]["total"] == 0

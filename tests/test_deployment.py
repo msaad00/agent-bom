@@ -1133,9 +1133,12 @@ def test_smithery_release_uses_oauth_discovery_not_bearer_config():
         ({"RAILWAY_PROBE_FAILED": "true"}, 1),
         ({"RAILWAY_PROBE_FAILED": ""}, 1),
         ({"RAILWAY_OUTCOME": "failure"}, 1),
-        ({"PUBLIC_OUTCOME": "failure"}, 1),
-        ({"PUBLIC_PROBE_FAILED": "true"}, 1),
-        ({"PUBLIC_VERSION": "stale"}, 1),
+        # Smithery/"public" staleness is a known, accepted, structural OAuth
+        # gap (see PR #5317's non-blocking release gate) -- it must not fail
+        # this job. Only Railway continues to gate exactly as before.
+        ({"PUBLIC_OUTCOME": "failure"}, 0),
+        ({"PUBLIC_PROBE_FAILED": "true"}, 0),
+        ({"PUBLIC_VERSION": "stale"}, 0),
         ({"RAILWAY_VERSION": "0.104.0"}, 1),
         ({"EXPECTED_VERSION": ""}, 1),
     ],
@@ -1166,6 +1169,10 @@ def test_deployment_workflow_verdict_requires_explicit_success(overrides, expect
     assert "steps.railway.outputs.probe_failed == 'false'" in closer["if"]
     assert "steps.railway.outcome == 'success'" in closer["if"]
     assert "steps.railway.outputs.railway_version == steps.expected.outputs.version" in closer["if"]
+    # Smithery's OAuth gap (PR #5317) must never gate this close condition.
+    assert "steps.public.outputs.public_version" not in closer["if"]
+    assert "steps.public.outcome" not in closer["if"]
+    assert "steps.public.outputs.probe_failed" not in closer["if"]
 
 
 def test_smithery_recovery_guidance_requires_external_authorization() -> None:

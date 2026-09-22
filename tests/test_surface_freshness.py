@@ -1086,7 +1086,16 @@ def test_monitor_rejects_unbound_server_card(monkeypatch, tmp_path, fault):
     assert not dest.exists()
 
 
-def test_smithery_schema_drift_keeps_consolidated_issue_open(monkeypatch, tmp_path, capsys):
+def test_smithery_only_drift_does_not_block_fail_on_stale_gate(monkeypatch, tmp_path, capsys):
+    """Smithery's OAuth gap (PR #5317) makes it a known, non-blocking surface.
+
+    Smithery schema/tool-count drift must still be reported honestly in the
+    JSON report, but it must never flip ``all_fresh`` to False or make
+    ``--fail-on-stale`` exit non-zero: Smithery's catalog can structurally
+    never be re-published fresh until real per-user OAuth exists. This
+    replaces the old assertion that Smithery-only drift failed the gate --
+    that was exactly the "permanent accusation" bug this policy fixes.
+    """
     script = _load_script("check_surface_freshness.py")
 
     def unavailable(*_a, **_kw):
@@ -1123,11 +1132,83 @@ def test_smithery_schema_drift_keeps_consolidated_issue_open(monkeypatch, tmp_pa
                 "--fail-on-stale",
             ]
         )
-        == 1
+        == 0
     )
     result = json.loads(capsys.readouterr().out)
-    assert result["all_fresh"] is False
+    assert result["all_fresh"] is True
+    # Still reported honestly -- never hidden or faked as fresh.
+    assert result["surfaces"][0]["status"] == "stale"
     assert result["surfaces"][0]["exact_input_schemas"] is False
+
+
+def test_non_smithery_drift_still_blocks_fail_on_stale_gate(monkeypatch, tmp_path):
+    """A real surface (PyPI here) going stale must still gate exactly as before.
+
+    Regression coverage in the other direction from the Smithery-only test
+    above: only Smithery is exempted, every other surface still blocks.
+    """
+    script = _load_script("check_surface_freshness.py")
+
+    monkeypatch.setattr(
+        script,
+        "probe_pypi",
+        lambda expected, **_kw: {"surface": "PyPI", "status": "stale", "version": "0.1.0", "expected": expected},
+    )
+    monkeypatch.setattr(
+        script,
+        "probe_docker",
+        lambda expected, image, **_kw: {"surface": "Docker", "status": "fresh", "version": expected, "expected": expected},
+    )
+    monkeypatch.setattr(
+        script,
+        "probe_glama",
+        lambda expected, **_kw: {"surface": "Glama", "status": "fresh", "version": expected, "expected": expected},
+    )
+    monkeypatch.setattr(
+        script,
+        "probe_smithery",
+        lambda expected, qualified_name, **_kw: {
+            "surface": "Smithery",
+            "status": "fresh",
+            "version": "catalog-live",
+            "expected": expected,
+        },
+    )
+
+    out = tmp_path / "report.json"
+    assert script.main(["--expected", "0.103.2", "--out", str(out), "--fail-on-stale"]) == 1
+    report = json.loads(out.read_text())
+    assert report["all_fresh"] is False
+
+
+def test_smithery_drift_among_other_fresh_surfaces_still_reports_all_fresh(monkeypatch, tmp_path):
+    """Smithery drift alongside otherwise-fresh surfaces must not flip all_fresh."""
+    script = _load_script("check_surface_freshness.py")
+
+    def fresh(name):
+        return lambda expected, *args, **kwargs: {"surface": name, "status": "fresh", "version": expected, "expected": expected}
+
+    monkeypatch.setattr(script, "probe_pypi", fresh("PyPI"))
+    monkeypatch.setattr(script, "probe_docker", fresh("Docker"))
+    monkeypatch.setattr(script, "probe_glama", fresh("Glama"))
+    monkeypatch.setattr(
+        script,
+        "probe_smithery",
+        lambda expected, qualified_name, **_kw: {
+            "surface": "Smithery",
+            "status": "stale",
+            "version": "catalog-live",
+            "expected": expected,
+            "error": "structural OAuth gap",
+        },
+    )
+
+    out = tmp_path / "report.json"
+    assert script.main(["--expected", "0.103.2", "--out", str(out)]) == 0
+    report = json.loads(out.read_text())
+    assert report["all_fresh"] is True
+    smithery_row = next(s for s in report["surfaces"] if s["surface"] == "Smithery")
+    assert smithery_row["status"] == "stale"
 
 
 def test_both_daily_monitors_require_exact_schema_evidence():
@@ -1201,8 +1282,13 @@ def test_glama_monitor_forwards_required_schema_contract(monkeypatch, tmp_path):
 def test_deployment_issue_closure_requires_explicit_verified_success():
     workflow = (ROOT / ".github/workflows/deployment-freshness.yml").read_text()
     close_step = workflow.split("- name: Close supply-chain drift issue when deployment is fresh", 1)[1]
-    assert "steps.public.outputs.public_version == 'fresh'" in close_step
-    assert "steps.public.outputs.probe_failed == 'false'" in close_step
+    assert "steps.railway.outputs.railway_version == steps.expected.outputs.version" in close_step
+    assert "steps.railway.outcome == 'success'" in close_step
+    assert "steps.railway.outputs.probe_failed == 'false'" in close_step
+    # Smithery's OAuth gap (PR #5317) is a known, accepted, structural
+    # limitation -- it must never gate this close condition.
+    assert "steps.public.outputs.public_version == 'fresh'" not in close_step
+    assert "steps.public.outputs.probe_failed == 'false'" not in close_step
 
 
 def _smithery_public_page(tools, *, qualified_name="agentbom/agent-bom", prefix=""):

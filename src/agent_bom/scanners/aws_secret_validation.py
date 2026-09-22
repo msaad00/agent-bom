@@ -65,8 +65,10 @@ def _build_sts_client(access_key_id: str, secret_access_key: str) -> Any:
         aws_access_key_id=access_key_id,
         aws_secret_access_key=secret_access_key,
         region_name=_STS_REGION,
+        endpoint_url="https://sts.us-east-1.amazonaws.com",
         config=Config(
-            retries={"max_attempts": 1},
+            retries={"total_max_attempts": 1},
+            proxies={},
             connect_timeout=_CONNECT_TIMEOUT_SECONDS,
             read_timeout=_READ_TIMEOUT_SECONDS,
         ),
@@ -103,7 +105,7 @@ class AwsCredentialValidator:
     def _check(self, access_key_id: str, secret_access_key: str) -> ValidationStatus:
         try:
             client = _build_sts_client(access_key_id, secret_access_key)
-        except ImportError:
+        except Exception:  # noqa: BLE001 - SDK setup failures must not fail the scan.
             self._blocked = True
             return "unknown"
 

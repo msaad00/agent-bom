@@ -120,3 +120,35 @@ def test_secret_values_never_stored_on_validator(monkeypatch):
     validator.validate(ACCESS_KEY, SECRET_KEY)
     assert SECRET_KEY not in repr(vars(validator))
     assert ACCESS_KEY not in repr(vars(validator))
+
+
+def test_client_setup_error_is_unknown_and_blocks_scan_budget(monkeypatch):
+    calls = []
+
+    def fail_setup(*args):
+        calls.append(args)
+        raise ValueError("invalid SDK configuration")
+
+    monkeypatch.setattr(validation, "_build_sts_client", fail_setup)
+    validator = validation.AwsCredentialValidator()
+    assert validator.validate(ACCESS_KEY, SECRET_KEY) == "unknown"
+    assert validator.validate("AKIA" + "B" * 16, SECRET_KEY) == "unknown"
+    assert len(calls) == 1
+
+
+def test_sts_client_uses_fixed_endpoint_and_one_attempt(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    captured = {}
+
+    def client(service, **kwargs):
+        captured.update(kwargs)
+        return _FakeSts("ok")
+
+    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=client))
+    monkeypatch.setitem(sys.modules, "botocore.config", SimpleNamespace(Config=lambda **kwargs: SimpleNamespace(**kwargs)))
+    validation._build_sts_client(ACCESS_KEY, SECRET_KEY)
+    assert captured["endpoint_url"] == "https://sts.us-east-1.amazonaws.com"
+    assert captured["config"].retries == {"total_max_attempts": 1}
+    assert captured["config"].proxies == {}

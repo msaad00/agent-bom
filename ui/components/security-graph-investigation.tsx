@@ -17,6 +17,7 @@ import "@xyflow/react/dist/style.css";
 import { ChevronLeft, ChevronRight, Focus, GitBranch, Loader2, SlidersHorizontal } from "lucide-react";
 
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
+import { relationshipEdgeTypes } from "@/components/relationship-edge";
 import { FullscreenButton, GraphInteractionToolbar, GraphLegend } from "@/components/graph-chrome";
 import { useAuthState } from "@/components/auth-provider";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
@@ -258,6 +259,7 @@ function InvestigationFlow({
           nodes={presentation.nodes}
           edges={presentedEdges}
           nodeTypes={lineageNodeTypes}
+          edgeTypes={relationshipEdgeTypes}
           fitView={!compact && !presentation.hasSavedState && !presentation.restoredSavedState}
           fitViewOptions={fitOptions}
           minZoom={0.2}

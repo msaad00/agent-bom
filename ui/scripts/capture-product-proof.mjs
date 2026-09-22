@@ -2646,7 +2646,7 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
         }
       }
       if (options.minGraphEdgeLabelFontPx) {
-        const edgeLabelFonts = await page.locator(".react-flow__edge-text").evaluateAll((labels) =>
+        const edgeLabelFonts = await page.locator(".react-flow__edge-text, .relationship-badge").evaluateAll((labels) =>
           labels
             .filter((label) => {
               const rect = label.getBoundingClientRect();
@@ -2663,7 +2663,7 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
               );
             })
             .map((label) => {
-              const viewport = label.closest(".react-flow__viewport");
+              const viewport = label.closest(".react-flow__viewport, .react-flow__edgelabel-renderer");
               const transform = viewport ? getComputedStyle(viewport).transform : "none";
               const scale = transform === "none" ? 1 : new DOMMatrixReadOnly(transform).a;
               return Number.parseFloat(getComputedStyle(label).fontSize) * scale;
@@ -2711,7 +2711,7 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
           const nodes = [...document.querySelectorAll(".react-flow__node")]
             .map((node) => ({ label: (node.textContent ?? "").trim(), rect: node.getBoundingClientRect() }))
             .filter(({ rect }) => rect.width > 0 && rect.height > 0);
-          return [...document.querySelectorAll(".react-flow__edge-text")]
+          return [...document.querySelectorAll(".react-flow__edge-text, .relationship-badge")]
             .map((label) => ({ label: (label.textContent ?? "").trim(), rect: label.getBoundingClientRect() }))
             .filter(({ label, rect }) => label && rect.width > 0 && rect.height > 0)
             .flatMap((edgeLabel) => nodes

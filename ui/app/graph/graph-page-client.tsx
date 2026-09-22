@@ -1,6 +1,7 @@
 "use client";
 
 import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
+import { relationshipEdgeTypes } from "@/components/relationship-edge";
 import { GraphRollupCountNotice } from "@/components/graph-rollup-count-notice";
 import { completeDirectedHopCount } from "@/lib/security-graph-focus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -3998,6 +3999,7 @@ function GraphPageInner() {
               nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}
+              edgeTypes={relationshipEdgeTypes}
               fitView={!presentation.hasSavedState && !presentation.restoredSavedState}
               fitViewOptions={initialViewportOptions}
               defaultViewport={presentation.restoredViewport ?? presentation.viewport}

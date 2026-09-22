@@ -52,6 +52,7 @@ Explore [Top risks](docs/images/dashboard-risks-live.png) and [scoped Inventory]
 
 Review controls passed, failed and needing review. Pass rate describes evaluated results;
 assessment coverage counts evaluated framework control entries, which may overlap across frameworks.
+Raised count cards pair each result with a label and status icon for quick reading in either theme.
 Select a framework to inspect controls, evidence and linked findings. **Risk mappings** show
 OWASP and MITRE ATLAS applicability separately from control pass/fail. Open **Compliance**
 for the [framework catalog and control evidence](site-docs/features/compliance.md).
@@ -75,6 +76,8 @@ path does not by itself prove exploitation or successful data access.
 
 Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity,
 set traversal direction and hop limit, and expand relevant relationships.
+Relationship badges pair the recorded verb with an icon: ownership, usage, containment,
+authentication and permissions stay distinguishable without relying on line color.
 The ordered path and hop inspector expose evidence freshness and unknowns.
 Large scopes use bounded pages and disclose when the current view is incomplete.
 

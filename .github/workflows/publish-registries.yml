@@ -12,6 +12,12 @@ name: Publish to Registries
 # Agent-Bom's configured bearer transport alone does not provide OAuth issuance.
 # A server-card scheme declaration is not proof that authorization works. Keep
 # publication fail-closed until the configured upstream and live scan succeed.
+# Smithery's marketplace model manages per-user OAuth on the publisher's behalf;
+# agent-bom's single operator-provisioned bearer token cannot honestly satisfy
+# that until real per-user OAuth is built (tracked separately). The `smithery`
+# job below is `continue-on-error: true` for that reason: it still runs the
+# full honest verification and reports its own failure, it just no longer
+# blocks the release gate or main-failure-alert while that gap is open.
 # Optional vars:
 #   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
 on:
@@ -138,6 +144,11 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Best-effort: see the Smithery/OAuth note at the top of this file. This
+    # job's own verification stays fail-closed; it just doesn't gate the
+    # release or trigger main-failure-alert while agent-bom has no per-user
+    # OAuth to honestly offer Smithery's marketplace model.
+    continue-on-error: true
     permissions:
       contents: read
     if: ${{ needs.release.outputs.publish_current == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success') }}

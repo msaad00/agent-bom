@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
+import shutil
+import subprocess
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -13,6 +17,33 @@ from scripts import check_release_consistency
 from scripts.render_docker_storefront import render_published_readme
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@contextlib.contextmanager
+def _mutate_repo_file(path: Path, transform: Callable[[bytes], bytes]) -> Iterator[None]:
+    """Temporarily mutate a REAL, git-tracked repo file and restore it after.
+
+    The capture-inputs digest is computed from actual `git ls-files` output
+    and on-disk bytes, so exercising it precisely requires mutating real
+    tracked files rather than a synthetic tmp_path tree. Restoration is
+    guaranteed even if the test body raises.
+    """
+    original = path.read_bytes()
+    try:
+        path.write_bytes(transform(original))
+        yield
+    finally:
+        path.write_bytes(original)
+
+
+def _bump_json_string_field(section: str, name: str) -> Callable[[bytes], bytes]:
+    def transform(original: bytes) -> bytes:
+        data = json.loads(original)
+        assert name in data.get(section, {}), f"fixture assumption stale: {name!r} is no longer in ui/package.json {section!r}"
+        data[section][name] = f"{data[section][name]}-test-bump"
+        return (json.dumps(data, indent=2) + "\n").encode("utf-8")
+
+    return transform
 
 
 def test_release_storefront_context_distinguishes_candidate_from_published_release() -> None:
@@ -155,3 +186,148 @@ def test_floating_refresh_preserves_published_storefront_status() -> None:
     assert 'AGENT_BOM_DOCKER_README_PATH="$PUBLISHED_README"' in workflow
     assert 'DESCRIPTION=$(jq -Rs . < "$PUBLISHED_README")' in workflow
     assert "DESCRIPTION=$(jq -Rs . < DOCKER_HUB_README.md)" not in workflow
+
+
+# ---------------------------------------------------------------------------
+# Product-screenshot capture-input scoping.
+#
+# PRODUCT_SCREENSHOT_INPUTS used to be the whole "ui" directory, so a pure
+# devDependency bump (e.g. PR #5319, @types/node 26.6.1 -> 26.6.2) tripped
+# "Version Alignment" CI even though a TypeScript-only type-definitions
+# package can never affect a rendered pixel. These tests pin the narrowed
+# scope: a devDependency/lockfile/test/tooling-config change must NOT move
+# the digest, while a `dependencies` bump or a real UI source change MUST.
+# ---------------------------------------------------------------------------
+
+
+def test_capture_input_digest_ignores_a_dev_dependency_only_package_json_bump() -> None:
+    package_json = ROOT / "ui" / "package.json"
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(package_json, _bump_json_string_field("devDependencies", "@types/node")):
+        during = check_release_consistency._compute_product_screenshot_inputs_digest()
+    after = check_release_consistency._compute_product_screenshot_inputs_digest()
+    assert during == before
+    assert after == before
+
+
+def test_assert_product_screenshots_current_tolerates_a_dev_dependency_only_bump() -> None:
+    """End-to-end repro of PR #5319: a devDependency bump must not fail the gate."""
+    package_json = ROOT / "ui" / "package.json"
+    version = check_release_consistency._load_version()
+    with _mutate_repo_file(package_json, _bump_json_string_field("devDependencies", "@types/node")):
+        check_release_consistency._assert_product_screenshots_current(version)  # must not raise
+
+
+def test_capture_input_digest_still_moves_for_a_direct_dependency_bump() -> None:
+    """The critical regression guard: `dependencies` (not `devDependencies`) must still trip the gate."""
+    package_json = ROOT / "ui" / "package.json"
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(package_json, _bump_json_string_field("dependencies", "next")):
+        during = check_release_consistency._compute_product_screenshot_inputs_digest()
+    assert during != before
+
+
+def test_assert_product_screenshots_current_still_rejects_a_direct_dependency_bump(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package_json = ROOT / "ui" / "package.json"
+    version = check_release_consistency._load_version()
+    with _mutate_repo_file(package_json, _bump_json_string_field("dependencies", "next")):
+        with pytest.raises(SystemExit):
+            check_release_consistency._assert_product_screenshots_current(version)
+    assert "capture inputs changed" in capsys.readouterr().err
+
+
+def test_capture_input_digest_ignores_package_lock_json_changes() -> None:
+    lockfile = ROOT / "ui" / "package-lock.json"
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(lockfile, lambda original: original + b"\n"):
+        during = check_release_consistency._compute_product_screenshot_inputs_digest()
+    assert during == before
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "ui/tsconfig.json",
+        "ui/eslint.config.mjs",
+        "ui/vitest.config.ts",
+        "ui/playwright.config.ts",
+    ],
+)
+def test_capture_input_digest_ignores_tooling_config(relative_path: str) -> None:
+    target = ROOT / relative_path
+    assert target.is_file(), f"fixture assumption stale: {relative_path} no longer exists"
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(target, lambda original: original + b"\n"):
+        during = check_release_consistency._compute_product_screenshot_inputs_digest()
+    assert during == before
+
+
+def test_capture_input_digest_ignores_test_files() -> None:
+    test_files = sorted((ROOT / "ui" / "tests").glob("*.test.tsx"))
+    assert test_files, "fixture assumption stale: ui/tests/*.test.tsx no longer exists"
+    target = test_files[0]
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(target, lambda original: original + b"\n"):
+        during = check_release_consistency._compute_product_screenshot_inputs_digest()
+    assert during == before
+
+    e2e_files = sorted((ROOT / "ui" / "e2e").glob("*.spec.ts"))
+    assert e2e_files, "fixture assumption stale: ui/e2e/*.spec.ts no longer exists"
+    target = e2e_files[0]
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(target, lambda original: original + b"\n"):
+        during = check_release_consistency._compute_product_screenshot_inputs_digest()
+    assert during == before
+
+
+def test_capture_input_digest_still_moves_for_a_real_component_source_change() -> None:
+    target = ROOT / "ui" / "components" / "activity-feed.tsx"
+    assert target.is_file(), "fixture assumption stale: ui/components/activity-feed.tsx no longer exists"
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(target, lambda original: original + b"\n// regression-probe\n"):
+        during = check_release_consistency._compute_product_screenshot_inputs_digest()
+    assert during != before
+
+
+def test_capture_input_digest_still_moves_for_a_public_asset_change() -> None:
+    public_files = sorted((ROOT / "ui" / "public").rglob("*"))
+    candidates = [p for p in public_files if p.is_file()]
+    assert candidates, "fixture assumption stale: ui/public has no files"
+    target = candidates[0]
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(target, lambda original: original + b"\x00"):
+        during = check_release_consistency._compute_product_screenshot_inputs_digest()
+    assert during != before
+
+
+def test_capture_input_digest_matches_the_javascript_mirror() -> None:
+    """scripts/check_release_consistency.py and ui/scripts/product-proof-provenance.mjs
+    must compute byte-identical digests, since the recorded manifest value is
+    produced by the JS side and verified by the Python side."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not available in this environment")
+    python_digest = check_release_consistency._compute_product_screenshot_inputs_digest()
+    script = (
+        "import('./ui/scripts/product-proof-provenance.mjs')"
+        ".then(m => m.computeCaptureInputsDigest(process.cwd()))"
+        ".then(d => { process.stdout.write(d); });"
+    )
+    result = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.strip() == python_digest
+
+
+def test_release_manifest_capture_inputs_digest_is_current() -> None:
+    """The committed manifest's capture_inputs_sha256 must already reflect the
+    narrowed input scope — regenerated via `npm run capture:inputs-digest`,
+    never hand-edited."""
+    manifest = json.loads((ROOT / "docs/images/product-screenshots.json").read_text(encoding="utf-8"))
+    assert manifest["capture_inputs_sha256"] == check_release_consistency._compute_product_screenshot_inputs_digest()

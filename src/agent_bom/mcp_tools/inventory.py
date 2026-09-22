@@ -75,6 +75,11 @@ async def inventory_summary_impl(
         )
         return _encode(payload, _truncate_response)
     except inventory_service.InventoryError as exc:
+        # Mirrors the HTTP route: an unpinned request on a pre-first-scan estate
+        # gets zero counts, but a pinned-yet-missing scan_id stays an error so a
+        # requested scope is never confirmed as empty-and-clean.
+        if exc.status_code == 404 and scan_id is None:
+            return _encode(inventory_service.empty_summary(tenant_id=tenant_id), _truncate_response)
         return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, exc.detail)
     except Exception:
         logger.exception("MCP inventory_summary error")

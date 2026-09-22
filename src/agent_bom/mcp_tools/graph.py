@@ -519,6 +519,12 @@ async def deploy_decision_impl(
     else:
         reasons.append("No matching exposure path evidence was found for the candidate; this is not an approval to deploy.")
 
+    # Deliberately two-valued. A CI gate that needs to tell "no paths matched"
+    # from "paths matched but reachability is unverified" reads matchedPathCount
+    # alongside this; adding a third value here would break every consumer that
+    # switches on the two.
+    evidence_status = "evaluated" if evidence_evaluated and evidence_complete else "not_evaluated"
+
     encoded = json.dumps(
         {
             "schema_version": "v1",
@@ -528,7 +534,7 @@ async def deploy_decision_impl(
             "candidate": {"value": candidate_value},
             "decision": decision,
             "maxRisk": max_risk,
-            "evidenceStatus": "evaluated" if evidence_evaluated and evidence_complete else "not_evaluated",
+            "evidenceStatus": evidence_status,
             "thresholds": {"warnRisk": warn_risk, "blockRisk": block_risk},
             "reasons": reasons,
             "matchedPathCount": len(matched_paths),

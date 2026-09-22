@@ -26,6 +26,14 @@ it("keeps relationship labels screen-readable across zoom levels", () => {
   expect(Number(distant.labelStyle?.fontSize)).toBeGreaterThan(Number(close.labelStyle?.fontSize));
 });
 
+it("uses opaque theme-aware relationship labels in the app and captures", () => {
+  for (const captureMode of [false, true]) {
+    const presentation = relationshipEdgeLabelPresentation({ captureMode });
+    expect(presentation.labelBgStyle).toMatchObject({ fill: "var(--surface-metric)", fillOpacity: 1 });
+    expect(presentation.labelStyle?.fill).toBe("var(--foreground)");
+  }
+});
+
 describe("graph utility metadata", () => {
   it("uses generated schema metadata for production node legends", () => {
     expect(legendItemForNodeType("vulnerability")).toMatchObject({

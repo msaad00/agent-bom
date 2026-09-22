@@ -309,6 +309,38 @@ async def build_summary(
     }
 
 
+def empty_summary(*, tenant_id: str) -> dict[str, Any]:
+    """Zero-count summary returned when no graph snapshot exists yet.
+
+    Callers that need to distinguish "no data" from "no snapshot" can check
+    ``scan_id == ""`` or ``status == "no_snapshot"``.
+    """
+    return {
+        "schema_version": "inventory.summary.v1",
+        "scope": "unified_graph_estate",
+        "count_definition": "typed graph nodes excluding finding entity types in the selected tenant and scan snapshot",
+        "tenant_id": tenant_id,
+        "scan_id": "",
+        "created_at": "",
+        "total_assets": 0,
+        "by_type": {},
+        "by_group": {group: 0 for group in _TYPE_GROUPS},
+        "finding_count": 0,
+        "finding_count_scope": "selected_snapshot",
+        "filters": {},
+        "count_exact": True,
+        "count_basis": "persisted_graph_nodes",
+        "collection_coverage": {
+            "status": "unknown",
+            "reason": "No graph snapshot is available yet.",
+        },
+        "facets": {},
+        "facet_metadata": {},
+        "completeness": graph_completeness(returned=0, total=0),
+        "status": "no_snapshot",
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Faceted list
 # ═══════════════════════════════════════════════════════════════════════════

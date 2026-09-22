@@ -270,3 +270,19 @@ async def test_inventory_summary_filters_match_list_receipts(seeded_store):
     assert summary["filters"] == page["filters"]
     assert summary["collection_coverage"]["status"] == "unknown"
     assert summary["finding_count_scope"] == "selected_snapshot"
+
+
+@pytest.mark.asyncio
+async def test_mcp_inventory_summary_matches_the_http_no_snapshot_behaviour(tmp_path):
+    """Same empty-summary fallback and same pinned-scan_id error as the route."""
+    from agent_bom.api.graph_store import SQLiteGraphStore
+
+    store = SQLiteGraphStore(tmp_path / "mcp-no-snapshot.db")
+    body = json.loads(await inventory_summary_impl(_get_graph_store=_store_factory(store), _truncate_response=lambda v: v))
+    assert body["status"] == "no_snapshot"
+    assert body["total_assets"] == 0
+
+    pinned = json.loads(
+        await inventory_summary_impl(scan_id="nope", _get_graph_store=_store_factory(store), _truncate_response=lambda v: v)
+    )
+    assert "error" in pinned

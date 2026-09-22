@@ -465,18 +465,19 @@ export function relationshipEdgeLabelPresentation(options?: {
   | "labelBgStyle"
   | "labelStyle"
 > {
-  const captureMode = options?.captureMode ?? false;
   const zoom = Math.max(0.2, Math.min(options?.zoom ?? 1, 2.5));
   return {
     labelShowBg: true,
     labelBgPadding: [8, 4],
     labelBgBorderRadius: 6,
     labelBgStyle: {
-      fill: captureMode ? "#0a0a0a" : "rgba(24,24,27,0.92)",
-      fillOpacity: 0.94,
+      fill: "var(--surface-metric)",
+      fillOpacity: 1,
+      stroke: "var(--border-strong)",
+      strokeWidth: 1,
     },
     labelStyle: {
-      fill: "#f4f4f5",
+      fill: "var(--foreground)",
       fontSize: Math.max(10, Math.min(24, 12 / zoom)),
       fontWeight: 650,
     },

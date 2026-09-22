@@ -342,6 +342,29 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto("/");
       await expect(page.getByText("6/6 evaluated controls pass")).toBeVisible();
       await expect(page.getByLabel("Evaluated control results").locator("dt")).toHaveText(["Controls passed", "Controls failed", "Controls need review"]);
+      const metricContrast = await page.locator(".compliance-metric dd").evaluateAll((metrics) => {
+        const luminance = (color: string) => {
+          const channels = (color.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map(value => {
+            const channel = value / 255;
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+          return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+        };
+        return metrics.map(metric => {
+          // Canvas resolves modern CSS colors (including oklch) to sRGB.
+          const ctx = document.createElement("canvas").getContext("2d")!;
+          const rgb = (color: string) => {
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, 1, 1);
+            return `rgb(${[...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3).join(",")})`;
+          };
+          const foreground = luminance(rgb(getComputedStyle(metric).color));
+          const background = luminance(rgb(getComputedStyle(metric.parentElement!).backgroundColor));
+          return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+        });
+      });
+      expect(metricContrast).toHaveLength(3);
+      for (const contrast of metricContrast) expect(contrast).toBeGreaterThanOrEqual(4.5);
       await expect(page.getByText("100% pass rate", { exact: true })).toBeVisible();
       await expect(page.getByText("Assessment: 6/6 framework control entries evaluated (100%)", { exact: true })).toBeVisible();
       expect(await page.getByRole("button", {name: /^Compliance & frameworks/}).getByText("Compliance & frameworks", {exact: true}).evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);

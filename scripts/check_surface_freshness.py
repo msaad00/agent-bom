@@ -55,6 +55,19 @@ DEFAULT_BACKOFF = 5.0
 
 OK_STATUSES = {"fresh"}
 
+# Smithery's marketplace model manages per-user OAuth on the publisher's
+# behalf; agent-bom's single operator-provisioned bearer token cannot
+# honestly satisfy that until real per-user OAuth is built (separate,
+# larger backlog item). That makes Smithery catalog staleness a known,
+# accepted, structural limitation rather than a real regression -- the
+# release gate already treats it that way (`continue-on-error` on the
+# Smithery job in publish-registries.yml, PR #5317). This mirrors that
+# policy here: Smithery's real probe result still appears in `surfaces`
+# for visibility, but it never counts toward `drift`/`all_fresh`, so it can
+# never block, (re)open, or fail a freshness gate on its own. Every other
+# surface keeps gating exactly as before.
+NON_BLOCKING_SURFACES = {"Smithery"}
+
 
 def expected_tool_count() -> int:
     """Return the shipped MCP tool inventory size, from the one place it lives.
@@ -662,7 +675,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
 
-    drift = [s for s in surfaces if s["status"] not in OK_STATUSES]
+    drift = [s for s in surfaces if s["status"] not in OK_STATUSES and s["surface"] not in NON_BLOCKING_SURFACES]
     report = {
         "expected": expected,
         "all_fresh": len(drift) == 0,

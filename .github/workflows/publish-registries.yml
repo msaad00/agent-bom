@@ -15,7 +15,7 @@ name: Publish to Registries
 # Smithery's marketplace model manages per-user OAuth on the publisher's behalf;
 # agent-bom's single operator-provisioned bearer token cannot honestly satisfy
 # that until real per-user OAuth is built (tracked separately). The `smithery`
-# job below is `continue-on-error: true` for that reason: it still runs the
+# job below is marked non-blocking for that reason: it still runs the
 # full honest verification and reports its own failure, it just no longer
 # blocks the release gate or main-failure-alert while that gap is open.
 # Optional vars:

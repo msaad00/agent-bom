@@ -106,6 +106,13 @@ async def inventory_summary(
             store_call=_store_call,
         )
     except InventoryError as exc:
+        # No snapshot yet (fresh install, pre-first-scan) and no snapshot pinned
+        # — return empty counts so dashboards and healthchecks see a stable 200.
+        # A caller that pinned an explicit scan_id still gets a 404: confirming
+        # an empty success for a snapshot that does not exist would report a
+        # requested scope as clean rather than as unavailable.
+        if exc.status_code == 404 and scan_id is None:
+            return inventory_service.empty_summary(tenant_id=tenant)
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 

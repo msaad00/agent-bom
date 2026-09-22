@@ -516,3 +516,25 @@ def test_filter_at_the_length_limit_is_still_accepted(inventory_store, param):
     response = TestClient(app).get("/v1/inventory/assets", params={param: at_limit})
     assert response.status_code == 200
     assert response.json()["pagination"]["total"] == 0
+
+
+def test_no_snapshot_yet_returns_an_empty_summary_not_a_404(tmp_path):
+    """Fresh install, pre-first-scan: dashboards get zero counts, not a 404."""
+    from agent_bom.api.stores import _get_graph_store
+
+    original = _get_graph_store()
+    set_graph_store(SQLiteGraphStore(tmp_path / "no-snapshot.db"))
+    try:
+        client = TestClient(app)
+        response = client.get("/v1/inventory/summary")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "no_snapshot"
+        assert body["total_assets"] == 0
+        assert body["scan_id"] == ""
+        assert body["completeness"]["status"] == "complete"
+        # Pinning a snapshot that does not exist is still an honest 404: the
+        # fallback must never confirm a requested scope as empty-and-clean.
+        assert client.get("/v1/inventory/summary?scan_id=nope").status_code == 404
+    finally:
+        set_graph_store(original)

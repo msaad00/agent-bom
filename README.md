@@ -50,14 +50,13 @@ Explore [Top risks](docs/images/dashboard-risks-live.png) and [scoped Inventory]
 
 ### GRC and audit: investigate assessment gaps
 
-Review controls passed, failed and needing review. Pass rate describes evaluated results;
-assessment coverage counts evaluated framework control entries, which may overlap across frameworks.
-Raised count cards pair each result with a label and status icon for quick reading in either theme.
-Select a framework to inspect controls, evidence and linked findings. **Risk mappings** show
-OWASP and MITRE ATLAS applicability separately from control pass/fail. Open **Compliance**
-for the [framework catalog and control evidence](site-docs/features/compliance.md).
-The offline synthetic enterprise estate below includes evaluated checks and risk mappings.
-These results do not establish certification or an audit opinion.
+Review controls passed, failed and needing review. Pass rate describes evaluated results; assessment
+coverage counts evaluated framework control entries, which may overlap across frameworks. Select a framework
+to inspect controls, evidence and linked findings; count cards show a label and status icon per result,
+readable in either theme. **Risk mappings** show OWASP and MITRE ATLAS applicability separately from control
+pass/fail. Open **Compliance** for the [framework catalog and control
+evidence](site-docs/features/compliance.md). The offline synthetic enterprise estate below includes
+evaluated checks and risk mappings. These results do not establish certification or an audit opinion.
 
 <p align="center">
   <a href="docs/images/dashboard-paths-live.png"><img src="docs/images/dashboard-paths-live.png" alt="Compact Overview assessment summary with four priority frameworks, evaluated-control counts, and expandable risk mappings in a labeled sample environment" width="920"></a>
@@ -74,11 +73,9 @@ path does not by itself prove exploitation or successful data access.
   <a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab application graph connecting a real Pillow advisory to modeled infrastructure and its remediation action" width="920"></a>
 </p>
 
-Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity,
-set traversal direction and hop limit, and expand relevant relationships.
-Relationship badges pair the recorded verb with an icon: ownership, usage, containment,
-authentication and permissions stay distinguishable without relying on line color.
-The ordered path and hop inspector expose evidence freshness and unknowns.
+Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity, set traversal
+direction and hop limit, and expand relevant relationships; badges pair each verb with an icon so types stay
+distinguishable without color. The ordered path and hop inspector expose evidence freshness and unknowns.
 Large scopes use bounded pages and disclose when the current view is incomplete.
 
 ### Engineers and GRC: prioritize findings and verify fixes

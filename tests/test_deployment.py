@@ -701,7 +701,14 @@ def test_publish_registries_workflow_validates_registry_gates_and_curated_clawhu
     assert "server.smithery.ai" in workflow
     assert "avoid publishing the proxy back to itself" in workflow
     assert "--forbid-auth-required" not in workflow
-    assert "continue-on-error: true" not in workflow
+    # Smithery's marketplace model manages per-user OAuth on the publisher's
+    # behalf; agent-bom's single operator bearer token cannot honestly satisfy
+    # that yet. The smithery job is deliberately continue-on-error so it no
+    # longer gates the release, but its own verification stays fail-closed —
+    # and no OTHER job may silently gain the same escape hatch.
+    smithery_job = workflow.split("  smithery:\n", 1)[1].split("  glama:\n", 1)[0]
+    assert "continue-on-error: true" in smithery_job
+    assert workflow.count("continue-on-error: true") == 1
     assert "integrations/openclaw/scan" in workflow
     assert "integrations/openclaw/compliance" in workflow
     assert "integrations/openclaw/registry" in workflow

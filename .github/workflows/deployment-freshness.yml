@@ -149,9 +149,15 @@ jobs:
             echo "::warning::Smithery catalog differs from the published tool-name and input-schema contract"
           fi
 
+      # Smithery/"public" outcome, staleness, and probe failures never open this
+      # tracker: Smithery's catalog is OAuth-gated and can structurally never
+      # be verified fresh by agent-bom's single operator-provisioned bearer
+      # token (known, accepted limitation -- see PR #5317's non-blocking
+      # release gate). Only Railway drift opens this issue; Smithery's real
+      # status still renders in the issue body below for visibility.
       - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
         shell: bash
-        if: steps.railway.outcome != 'success' || steps.public.outcome != 'success' || steps.railway.outputs.stale == 'true' || steps.railway.outputs.probe_failed == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true'
+        if: steps.railway.outcome != 'success' || steps.railway.outputs.stale == 'true' || steps.railway.outputs.probe_failed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -258,8 +264,10 @@ jobs:
             gh issue close "$EXISTING" --comment "All deployment surfaces are now configured for monitoring; closing the misconfiguration alert."
           fi
 
+      # Smithery/"public" freshness is deliberately excluded from this close
+      # condition -- see the "Open issue" step above for why (PR #5317).
       - name: Close supply-chain drift issue when deployment is fresh
-        if: steps.expected.outputs.version != '' && steps.railway.outputs.railway_version == steps.expected.outputs.version && steps.railway.outcome == 'success' && steps.public.outcome == 'success' && steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed == 'false' && steps.public.outputs.public_version == 'fresh' && steps.public.outputs.probe_failed == 'false'
+        if: steps.expected.outputs.version != '' && steps.railway.outputs.railway_version == steps.expected.outputs.version && steps.railway.outcome == 'success' && steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -288,9 +296,13 @@ jobs:
           PUBLIC_VERSION: ${{ steps.public.outputs.public_version }}
         run: |
           if [ -z "$EXPECTED_VERSION" ] || [ "$RAILWAY_VERSION" != "$EXPECTED_VERSION" ] ||
-             [ "$RAILWAY_OUTCOME" != "success" ] || [ "$RAILWAY_PROBE_FAILED" != "false" ] ||
-             [ "$PUBLIC_OUTCOME" != "success" ] || [ "$PUBLIC_PROBE_FAILED" != "false" ] ||
-             [ "$PUBLIC_VERSION" != "fresh" ]; then
+             [ "$RAILWAY_OUTCOME" != "success" ] || [ "$RAILWAY_PROBE_FAILED" != "false" ]; then
             echo "::error::Deployment freshness failed; recording an incident does not make a failed or missing probe pass"
             exit 1
+          fi
+          # Smithery/"public" is a known, accepted, structural OAuth gap (see
+          # PR #5317) and must never fail this gate -- only Railway does. Still
+          # surface it loudly so it stays visible, never silently swallowed.
+          if [ "$PUBLIC_OUTCOME" != "success" ] || [ "$PUBLIC_PROBE_FAILED" != "false" ] || [ "$PUBLIC_VERSION" != "fresh" ]; then
+            echo "::warning::Smithery/public marketplace is not verified fresh (structural OAuth gap, non-blocking; see PR #5317)"
           fi

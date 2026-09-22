@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
@@ -108,13 +109,33 @@ def _is_entry(node: UnifiedNode) -> bool:
     return coerce_truthy(node.attributes.get("internet_exposed"))
 
 
+_NON_SENSITIVE_DATA_LABELS = frozenset({"", "0", "false", "no", "none", "null", "unevaluable", "unknown"})
+
+
+def has_sensitive_data_label(value: Any) -> bool:
+    """Whether a ``data_sensitivity`` label establishes sensitive data.
+
+    The label is an open vocabulary ("sensitive", "review", "restricted",
+    "pii", …) rather than a boolean, so any other non-empty value counts. The
+    exceptions are the verdicts that establish the opposite or say nothing was
+    determined: classifiers emit "none" for a store they sampled and found
+    clean, and "unevaluable" when they could not sample it. Treating either as
+    sensitive would make every unclassified data store a crown jewel.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() not in _NON_SENSITIVE_DATA_LABELS
+
+
 def _is_crown_jewel(node: UnifiedNode) -> bool:
     """A sensitive / regulated data store — the goal of the kill-chain."""
     if node.entity_type not in _CROWN_JEWEL_TYPES:
         return False
     attrs = node.attributes
     return bool(
-        attrs.get("data_sensitivity")
+        has_sensitive_data_label(attrs.get("data_sensitivity"))
         or coerce_truthy(attrs.get("toxic_exposed_sensitive"))
         or attrs.get("data_regulatory_frameworks")
         or attrs.get("data_classification_tier")

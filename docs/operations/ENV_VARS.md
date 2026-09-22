@@ -129,14 +129,14 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_DSPM_AZURE_BLOB_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
 | `AGENT_BOM_DSPM_AZURE_BLOB_MAX_CONTAINERS` | `int` | `25` | — |
-| `AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER` | `int` | `10` | — |
+| `AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER` | `int` | `50` | — |
 | `AGENT_BOM_DSPM_DB_MAX_CELL_CHARS` | `int` | `4096` | — |
-| `AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE` | `int` | `100` | — |
+| `AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE` | `int` | `500` | — |
 | `AGENT_BOM_DSPM_DB_MAX_TABLES` | `int` | `200` | — |
 | `AGENT_BOM_DSPM_GCS_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
-| `AGENT_BOM_DSPM_GCS_MAX_OBJECTS_PER_BUCKET` | `int` | `10` | — |
+| `AGENT_BOM_DSPM_GCS_MAX_OBJECTS_PER_BUCKET` | `int` | `50` | — |
 | `AGENT_BOM_DSPM_S3_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
-| `AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET` | `int` | `10` | Content reads are opt-in at the caller/module level. These caps bound the amount of object-store data read when an operator enables object-store sampling. |
+| `AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET` | `int` | `50` | Content reads are opt-in at the caller/module level. These caps bound the amount of object-store data read when an operator enables object-store sampling. |
 
 ## Default Read Window
 | Env var | Type | Default | Description |

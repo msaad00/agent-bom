@@ -375,6 +375,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_SCANNER_MAX_CONCURRENT` | `int` | `10` | Used by scanners/__init__.py for OSV batch API concurrency.  10 concurrent requests with 500ms delay between batches keeps us well under OSV.dev's rate limit while still being fast for large inventories. |
 | `AGENT_BOM_SCANNER_OSV_BATCH_CONCURRENCY` | `int` | `3` | — |
 
+## Secret Scanner: Live AWS Credential Validation (opt-in)
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_SECRET_LIVE_VALIDATION_ENABLED` | `bool` | `False` | When enabled, a discovered AWS access key (paired with a discovered AWS secret key in the same file) is checked with a single read-only sts:GetCallerIdentity call to tell a live credential from a dead/rotated one. Off by default: the scanne |
+
 ## Server Risk Scoring
 | Env var | Type | Default | Description |
 |---|---|---|---|

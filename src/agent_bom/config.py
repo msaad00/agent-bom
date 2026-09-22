@@ -330,6 +330,15 @@ ICEBERG_SCOPE = _str("AGENT_BOM_ICEBERG_SCOPE", "")
 ICEBERG_OAUTH2_SERVER_URI = _str("AGENT_BOM_ICEBERG_OAUTH2_SERVER_URI", "")
 
 
+# ── Secret Scanner: Live AWS Credential Validation (opt-in) ─────────────────
+# When enabled, a discovered AWS access key (paired with a discovered AWS
+# secret key in the same file) is checked with a single read-only
+# sts:GetCallerIdentity call to tell a live credential from a dead/rotated
+# one. Off by default: the scanner never makes an outbound call unless an
+# operator explicitly opts in. See agent_bom.scanners.aws_secret_validation.
+SECRET_LIVE_VALIDATION_ENABLED = _bool("AGENT_BOM_SECRET_LIVE_VALIDATION_ENABLED", False)
+
+
 # ── Default Read Window ───────────────────────────────────────────────────
 # Default time-window (days) applied to list / graph / snapshot read surfaces.
 # Views default to the last ``RETENTION_DAYS`` so counts are honestly scoped to

@@ -102,6 +102,14 @@ class DependencySymbolReach:
     entrypoint_kind: str = "mcp_tool"
     entrypoint_framework: str = ""
     entrypoint_provenance: str = ""
+    # One-hop taint evidence: True when an argument passed at this call site
+    # traces to a parameter of the function making the call, or to a direct
+    # call to a known untrusted-source primitive (e.g. ``input()``). This is
+    # deliberately scoped to a single hop — it does not prove the calling
+    # function's own parameter is itself externally controlled beyond this
+    # one function boundary. Python-only today; other language parsers leave
+    # this at the honest default.
+    tainted_argument: bool = False
 
 
 @dataclass

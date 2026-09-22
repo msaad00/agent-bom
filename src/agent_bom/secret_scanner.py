@@ -24,14 +24,20 @@ Compliance:
 from __future__ import annotations
 
 import ipaddress
+import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
+from agent_bom import config
 from agent_bom.runtime.patterns import CODE_CALL_ASSIGNMENT, CREDENTIAL_PATTERNS, PII_PATTERNS
+from agent_bom.scanners.aws_secret_validation import AwsCredentialValidator
 from agent_bom.scanners.credential_validation import CredentialValidator, ValidationStatus
 from agent_bom.scanners.repo_ignore import GITIGNORE_FILENAME, SCANNER_IGNORE_FILENAME, RepositoryIgnore
 from agent_bom.traversal import iter_discovery_files
+
+logger = logging.getLogger(__name__)
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
@@ -180,6 +186,58 @@ _FILE_SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
     (".env token", re.compile(r"^(?:AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN|SESSION_SECRET)\s*=\s*\S+", re.MULTILINE | re.IGNORECASE)),
 ]
+
+# ── AWS live-secret validation (opt-in) ─────────────────────────────────────
+# sts:GetCallerIdentity needs both halves of an AWS credential pair. The
+# access key id is already captured by the "AWS Access Key" credential
+# pattern's own match; this second, capturing regex locates the paired secret
+# key's *value* so the pair can be handed to boto3 for a single read-only
+# call. The captured value is used only in-process for that call — it is
+# never stored on a SecretFinding, returned, or logged.
+_AWS_SECRET_VALUE_RE = re.compile(
+    r"(?:aws_secret_access_key|secret_?key)['\"]?\s*[=:]\s*['\"]?([A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])",
+    re.IGNORECASE,
+)
+
+
+def _aws_secret_candidates(lines: list[str]) -> list[tuple[int, str]]:
+    """Return (line_number, secret_value) pairs found anywhere in the file."""
+    candidates: list[tuple[int, str]] = []
+    for line_num, line in enumerate(lines, 1):
+        match = _AWS_SECRET_VALUE_RE.search(line)
+        if match:
+            candidates.append((line_num, match.group(1)))
+    return candidates
+
+
+def _nearest_aws_secret(candidates: list[tuple[int, str]], line_num: int) -> str | None:
+    """Pair an AWS Access Key finding with the secret key value closest to it.
+
+    AWS credentials are conventionally written as two adjacent lines (e.g.
+    ``AWS_ACCESS_KEY_ID=`` / ``AWS_SECRET_ACCESS_KEY=`` in a ``.env`` file); the
+    nearest candidate by line distance is the most likely pair in a file that
+    may hold more than one credential set.
+    """
+    if not candidates:
+        return None
+    return min(candidates, key=lambda c: abs(c[0] - line_num))[1]
+
+
+def _log_aws_validation_attempt(file_path: str, line_number: int, outcome: str) -> None:
+    """Audit-log a live AWS credential validation attempt.
+
+    Logs only the provider, a finding identifier (file:line), a timestamp, and
+    the true/false/unknown outcome — never the access key id, the secret
+    access key, or any field of the STS response (account id, ARN, user id).
+    """
+    logger.info(
+        "secret live-validation attempt provider=aws finding=%s:%s outcome=%s timestamp=%s",
+        file_path,
+        line_number,
+        outcome,
+        datetime.now(timezone.utc).isoformat(),
+    )
+
 
 # ── Entropy detection (opt-in) ───────────────────────────────────────────────
 # The named patterns above catch known credential *formats*. Entropy detection
@@ -373,7 +431,12 @@ class FileNotScannedError(Exception):
 
 
 def _scan_file(
-    file_path: Path, rel_path: str, *, detect_entropy: bool = False, validator: CredentialValidator | None = None
+    file_path: Path,
+    rel_path: str,
+    *,
+    detect_entropy: bool = False,
+    validator: CredentialValidator | None = None,
+    aws_validator: AwsCredentialValidator | None = None,
 ) -> list[SecretFinding]:
     """Scan a single file for secrets.
 
@@ -398,6 +461,7 @@ def _scan_file(
 
     findings: list[SecretFinding] = []
     lines = content.split("\n")
+    aws_secrets = _aws_secret_candidates(lines) if aws_validator is not None else []
 
     # Check each line against all patterns
     for line_num, line in enumerate(lines, 1):
@@ -423,6 +487,19 @@ def _scan_file(
                 # call-shaped here, so it is preserved.
                 if line[match.end() :].lstrip().startswith("(") and CODE_CALL_ASSIGNMENT.search(line):
                     break
+                validation_status: ValidationStatus | None = validator.validate(name, match.group(0)) if validator is not None else None
+                if name == "AWS Access Key" and aws_validator is not None:
+                    paired_secret = _nearest_aws_secret(aws_secrets, line_num)
+                    if paired_secret is not None:
+                        validation_status = aws_validator.validate(match.group(0), paired_secret)
+                        _log_aws_validation_attempt(rel_path, line_num, validation_status)
+                    else:
+                        # Enrichment was requested but no secret key value could
+                        # be paired in this file, so no sts:GetCallerIdentity
+                        # call was possible — consistent with the "unsupported
+                        # credential type" verdict the generic validator already
+                        # returns, not a distinct failure state.
+                        validation_status = "unknown"
                 findings.append(
                     SecretFinding(
                         file_path=rel_path,
@@ -431,7 +508,7 @@ def _scan_file(
                         severity="critical",
                         matched_preview="[CREDENTIAL_REDACTED]",
                         category="credential",
-                        validation_status=validator.validate(name, match.group(0)) if validator is not None else None,
+                        validation_status=validation_status,
                     )
                 )
                 break  # One finding per line for credentials
@@ -535,7 +612,13 @@ def _should_scan_pii_line(file_path: Path, line: str) -> bool:
     return suffix in _PII_CODE_EXTENSIONS and bool(_PII_CONTEXT_RE.search(line))
 
 
-def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False, validate_credentials: bool = False) -> SecretScanResult:
+def scan_secrets(
+    project_path: str | Path,
+    *,
+    detect_entropy: bool = False,
+    validate_credentials: bool = False,
+    aws_live_validation: bool | None = None,
+) -> SecretScanResult:
     """Scan a project directory for hardcoded secrets and PII.
 
     Uses the same 31 credential + 11 PII patterns from the runtime
@@ -545,10 +628,18 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False, vali
     Args:
         project_path: Root directory to scan.
         validate_credentials: Explicit opt-in to bounded read-only authentication
-            checks of supported credentials. Default makes no outbound calls.
+            checks of supported credentials (GitHub tokens, Stripe keys).
+            Default makes no outbound calls.
         detect_entropy: Also flag high-entropy values assigned to
             secret-suggesting keys (novel/unknown secrets no fixed pattern
             names). Opt-in — higher recall, some false positives.
+        aws_live_validation: Explicit opt-in to a single, bounded, read-only
+            sts:GetCallerIdentity call per discovered AWS access key (paired
+            with a discovered AWS secret key in the same file), to tell a
+            live credential from a dead/rotated one. Defaults to the
+            ``AGENT_BOM_SECRET_LIVE_VALIDATION_ENABLED`` operator setting
+            (off unless explicitly enabled) when left unset. Independent of
+            ``validate_credentials`` — AWS is the only provider this checks.
 
     Returns:
         SecretScanResult with findings, file count, and statistics.
@@ -557,9 +648,13 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False, vali
     if not project.is_dir():
         return SecretScanResult(warnings=[f"{project_path} is not a directory"])
 
+    if aws_live_validation is None:
+        aws_live_validation = config.SECRET_LIVE_VALIDATION_ENABLED
+
     result = SecretScanResult()
     file_count = 0
     validator = CredentialValidator() if validate_credentials else None
+    aws_validator = AwsCredentialValidator() if aws_live_validation else None
 
     def traversal_error(_exc: OSError) -> None:
         warning = "Directory traversal incomplete; one or more paths could not be read"
@@ -593,13 +688,14 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False, vali
 
         rel = str(f.relative_to(project))
         try:
-            if validator is None:
+            if validator is None and aws_validator is None:
                 findings = _scan_file(f, rel, detect_entropy=detect_entropy)
             else:
-                findings = _scan_file(f, rel, detect_entropy=detect_entropy, validator=validator)
-                for finding in findings:
-                    if finding.category != "pii" and finding.validation_status is None:
-                        finding.validation_status = "unknown"
+                findings = _scan_file(f, rel, detect_entropy=detect_entropy, validator=validator, aws_validator=aws_validator)
+                if validator is not None:
+                    for finding in findings:
+                        if finding.category != "pii" and finding.validation_status is None:
+                            finding.validation_status = "unknown"
         except FileNotScannedError as skipped:
             # Named, and deliberately not counted: `files_scanned` is a coverage
             # claim, and a file nobody opened is not coverage.

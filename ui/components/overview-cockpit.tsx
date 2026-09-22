@@ -14,6 +14,9 @@ import {
   Flame,
   KeyRound,
   ShieldCheck,
+  CircleCheck,
+  CircleX,
+  SearchCheck,
   SlidersHorizontal,
 } from "lucide-react";
 
@@ -544,7 +547,18 @@ function ComplianceSnapshotPanel({
       ) : evidenceReady ? (
         <>
           <dl className="mt-3 grid grid-cols-3 gap-2" aria-label="Evaluated control results">
-            {[{ label: "Controls passed", value: passed, tone: "text-emerald-700 dark:text-emerald-300" }, { label: "Controls failed", value: scored.reduce((n, f) => n + f.fail, 0), tone: "text-red-700 dark:text-red-300" }, { label: "Controls need review", value: scored.reduce((n, f) => n + f.warn, 0), tone: "text-amber-700 dark:text-amber-300" }].map(({label, value, tone}) => <div key={label} className="min-w-0 rounded-md border border-outline p-2"><dt className="text-xs leading-snug text-ink-secondary">{label}</dt><dd className={`mt-1 text-lg font-semibold tabular-nums ${tone}`}>{value}</dd></div>)}
+            {[
+              { label: "Controls passed", value: passed, tone: "text-emerald-700 dark:text-emerald-200", Icon: CircleCheck },
+              { label: "Controls failed", value: scored.reduce((n, f) => n + f.fail, 0), tone: "text-red-700 dark:text-red-200", Icon: CircleX },
+              { label: "Controls need review", value: scored.reduce((n, f) => n + f.warn, 0), tone: "text-amber-800 dark:text-amber-200", Icon: SearchCheck },
+            ].map(({ label, value, tone, Icon }) => (
+              <div key={label} className="compliance-metric min-w-0 rounded-lg border border-outline p-3">
+                <dt className="text-xs leading-snug text-ink-secondary">{label}</dt>
+                <dd className={`mt-2 flex flex-wrap items-center gap-2 text-2xl font-semibold tabular-nums ${tone}`}>
+                  <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />{value}
+                </dd>
+              </div>
+            ))}
           </dl>
           <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-ink-secondary">
             <p>{passed}/{compliance.evaluatedControls} evaluated controls pass</p>

@@ -15,8 +15,10 @@ export interface ContextNeighborhood {
   hiddenGroups: Record<string, HiddenContextGroup[]>;
 }
 
-const NODE_LIMIT = 40;
-const EDGE_LIMIT = 80;
+export const CONTEXT_NEIGHBOR_BATCH_SIZE = 4;
+const NODE_LIMIT = 24;
+const EDGE_LIMIT = 36;
+export const contextExpansionKey = (id: string, kind: string) => JSON.stringify([id, kind]);
 
 /** Bounded recorded topology. Expansion is not evidence of effective access. */
 export function projectContextNeighborhood(
@@ -24,7 +26,8 @@ export function projectContextNeighborhood(
   seedId: string,
   expandedIds: string[] = [],
   direction: ContextNeighborhoodDirection = "both",
-  depth = 2,
+  depth = 1,
+  expansionBatches: Readonly<Record<string, number>> = {},
 ): ContextNeighborhood {
   const nodesById = new Map<string, ContextGraphNode>();
   for (const node of data.nodes) if (!nodesById.has(node.id)) nodesById.set(node.id, node);
@@ -46,7 +49,7 @@ export function projectContextNeighborhood(
   const expanded = new Set(expandedIds);
   const distance = new Map<string, number>();
   const queue: string[] = [];
-  const maxDepth = Number.isFinite(depth) ? Math.max(1, Math.min(3, Math.floor(depth))) : 2;
+  const maxDepth = Number.isFinite(depth) ? Math.max(1, Math.min(3, Math.floor(depth))) : 1;
   let truncated = false;
   if (nodesById.has(seedId)) {
     visible.add(seedId);
@@ -56,14 +59,33 @@ export function projectContextNeighborhood(
   for (let index = 0; index < queue.length; index++) {
     const current = queue[index]!;
     const currentDepth = distance.get(current)!;
-    if (currentDepth >= maxDepth && !expanded.has(current)) continue;
+    const groups = new Map<string, Array<{ id: string; edge: number }>>();
+    const seenNeighbors = new Set<string>();
     for (const neighbor of adjacency.get(current) ?? []) {
-      if (visible.has(neighbor.id)) continue;
-      if (visible.size >= NODE_LIMIT) { truncated = true; continue; }
-      visible.add(neighbor.id);
-      distance.set(neighbor.id, currentDepth + 1);
-      discoveryEdges.add(neighbor.edge);
-      queue.push(neighbor.id);
+      const node = nodesById.get(neighbor.id)!;
+      const kind = node.entity_type ?? node.kind;
+      const group = groups.get(kind) ?? [];
+      // Parallel recorded relationships must not spend the batch twice.
+      if (seenNeighbors.has(neighbor.id)) continue;
+      seenNeighbors.add(neighbor.id);
+      group.push(neighbor);
+      groups.set(kind, group);
+    }
+    for (const [kind, neighbors] of groups) {
+      const requested = expansionBatches[contextExpansionKey(current, kind)] ?? 0;
+      const batches = Number.isFinite(requested) ? Math.max(0, Math.min(6, Math.floor(requested))) : 0;
+      const allowance = ((currentDepth < maxDepth ? 1 : 0) + (expanded.has(current) ? 1 : 0) + batches) * CONTEXT_NEIGHBOR_BATCH_SIZE;
+      let added = 0;
+      for (const neighbor of neighbors) {
+        if (visible.has(neighbor.id)) continue;
+        if (added >= allowance) continue;
+        if (visible.size >= NODE_LIMIT) { truncated = true; continue; }
+        visible.add(neighbor.id);
+        distance.set(neighbor.id, currentDepth + 1);
+        discoveryEdges.add(neighbor.edge);
+        queue.push(neighbor.id);
+        added++;
+      }
     }
   }
   // Keep each node's discovery edge before optional cross-links so edge limits

@@ -197,6 +197,8 @@ CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan ON graph_edges(tenant_id, scan_id)
 -- every open, so existing stores pick them up too.
 CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_source ON graph_edges(tenant_id, scan_id, source_id);
 CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_target ON graph_edges(tenant_id, scan_id, target_id);
+CREATE INDEX IF NOT EXISTS idx_ge_adjacency_out ON graph_edges(tenant_id, scan_id, source_id, target_id, relationship);
+CREATE INDEX IF NOT EXISTS idx_ge_adjacency_in ON graph_edges(tenant_id, scan_id, target_id, source_id, relationship);
 
 -- ── Snapshots ──
 CREATE TABLE IF NOT EXISTS graph_snapshots (
@@ -421,6 +423,8 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     # Backfill the per-hop traversal indexes onto stores created before them.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_source ON graph_edges(tenant_id, scan_id, source_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_adjacency_out ON graph_edges(tenant_id, scan_id, source_id, target_id, relationship)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_adjacency_in ON graph_edges(tenant_id, scan_id, target_id, source_id, relationship)")
     # Materialise the per-snapshot entity-type breakdown so inventory/summary
     # reads a cached count instead of a per-request GROUP BY over every node.
     # NULL marks pre-migration snapshots, which fall back to the live GROUP BY.

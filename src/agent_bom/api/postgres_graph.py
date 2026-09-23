@@ -374,6 +374,14 @@ class PostgresGraphStore:
                 "ON graph_edges(tenant_id, scan_id, source_id, target_id, relationship)"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pg_adjacency_out ON graph_edges(tenant_id, scan_id, "
+                'source_id COLLATE "C", target_id COLLATE "C", relationship COLLATE "C")'
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pg_adjacency_in ON graph_edges(tenant_id, scan_id, "
+                'target_id COLLATE "C", source_id COLLATE "C", relationship COLLATE "C")'
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_valid ON graph_edges(tenant_id, valid_from, valid_to)")
             conn.execute(
                 """
@@ -2040,6 +2048,35 @@ class PostgresGraphStore:
             ],
             int((total_row[0] if total_row else 0) or 0),
         )
+
+    def incident_edges_page(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+        direction: str = "both",
+        limit: int = 24,
+        cursor: str | None = None,
+    ) -> dict[str, Any] | None:
+        """One tenant-scoped MVCC read, without full incident or impact reads."""
+        from agent_bom.graph.adjacency_page import incident_edge_page
+
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool, repeatable_read=True) as conn:
+            _apply_graph_search_timeout(conn)
+            return incident_edge_page(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                node_id=node_id,
+                direction=direction,
+                limit=limit,
+                cursor=cursor,
+                marker="%s",
+                node_from_row=self._node_from_row,
+                edge_from_row=self._edge_from_row,
+            )
 
     def node_context(
         self,

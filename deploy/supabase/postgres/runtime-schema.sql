@@ -2,6 +2,18 @@
 -- from API process startup. This file is safe to replay. Keep readiness marker
 -- rows last: their presence means every preceding DDL statement committed.
 
+-- Incident-edge keyset indexes match the migration-owned graph paging path.
+DO $$
+BEGIN
+  IF to_regclass('public.graph_edges') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_pg_adjacency_out ON graph_edges
+      (tenant_id, scan_id, source_id COLLATE "C", target_id COLLATE "C", relationship COLLATE "C");
+    CREATE INDEX IF NOT EXISTS idx_pg_adjacency_in ON graph_edges
+      (tenant_id, scan_id, target_id COLLATE "C", source_id COLLATE "C", relationship COLLATE "C");
+  END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS control_plane_schema_versions (
   component TEXT PRIMARY KEY, version INTEGER NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

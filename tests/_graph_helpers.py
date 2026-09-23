@@ -48,7 +48,7 @@ def synthetic_inventory() -> dict[str, Any]:
     Designed to exercise every ``EdgeKind`` produced by the builder:
 
     - USES, PROVIDES, EXPOSES, VULNERABLE_TO
-    - SHARES_SERVER (agents A & B both use ``filesystem``)
+    - SHARES_SERVER (agents A & B record the same remote ``filesystem`` endpoint)
     - ATTACHED_TO (agent A has a cloud_principal in metadata)
     """
     return {
@@ -68,8 +68,8 @@ def synthetic_inventory() -> dict[str, Any]:
                 "mcp_servers": [
                     {
                         "name": "filesystem",
-                        "command": "npx",
-                        "transport": "stdio",
+                        "transport": "streamable-http",
+                        "url": "https://filesystem.example.test/mcp",
                         "env": {"GITHUB_TOKEN": "***", "DEBUG": "1"},
                         "tools": [
                             {"name": "read_file", "description": "Read a file"},
@@ -90,8 +90,8 @@ def synthetic_inventory() -> dict[str, Any]:
                 "mcp_servers": [
                     {
                         "name": "filesystem",
-                        "command": "npx",
-                        "transport": "stdio",
+                        "transport": "streamable-http",
+                        "url": "https://filesystem.example.test/mcp",
                         "env": {"GITHUB_TOKEN": "***"},
                         "tools": [
                             {"name": "read_file", "description": "Read a file"},

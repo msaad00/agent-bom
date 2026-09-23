@@ -11,14 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Bounded relationship paging in SQLite and Postgres graph stores, with tenant-scoped cursors invalidated by snapshot replacement. API and dashboard paging integration follow separately.
+- Bounded relationship paging across SQLite, Postgres, REST, and persisted Context exploration. Tenant-scoped cursors and generation checks prevent combining evidence across replaced snapshots.
 - Inspect recorded authority and source receipts at each graph path hop, with bounded pagination and preserved investigation scope.
 - Optional, bounded AWS credential validation through STS, disabled by default and suppressed by offline scans. Validation errors remain unknown without removing findings.
 - Python one-hop tainted-argument evidence for function-reachable CVEs. This additive signal does not establish exploitability or full interprocedural data flow.
 
 ### Fixed
 
-- Explore Context connections in bounded groups with exact-ID search, focus/back navigation, and selection-based relationship labels. Preserve snapshot identity and unknown neighbor totals during graph expansion.
+- Explore persisted Context connections with canonical agent IDs, compact canvases, explicit paging and collapse, and selected relationship labels. Clear stale or account-scoped evidence and resolve graph IDs without downloading full scan reports.
 - Persist tenant-scoped export destinations on Postgres and preserve unknown vulnerability scores in warehouse feeds.
 - Preserve shared scan jobs across replica startup and bind dispatch lease updates to the owning claim.
 - Connect scoped agent investigation to permission receipts, advisory prerequisites, directional neighbor expansion, and exact-agent runtime activity; retain recorded runtime event references consistently in REST and MCP.

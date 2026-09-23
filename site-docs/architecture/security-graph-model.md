@@ -192,7 +192,7 @@ generation check prevents mixing graph data across a replaced snapshot.
 execution. Completeness covers the current recorded page, and totals stay unknown.
 On a stale-cursor or generation-mismatch 400, discard the accumulated view and
 restart from the first page; unsupported backends return 501.
-This endpoint is independent of the existing dashboard neighbor lookup.
+Context uses these pages for progressive persisted-neighborhood exploration.
 
 ## Scale and readability
 
@@ -262,25 +262,35 @@ runtime evidence, and remediation.
 
 ## Investigate an agent from Context
 
-Context starts with a compact, one-hop neighborhood from the selected scan.
-Select a node to inspect its relationships; **Show** adds up to four recorded
-neighbors of one type. **Collapse added neighbors** rolls that expansion back.
-**Focus here** changes the center, **Back** returns to the previous center, and
-**Reset neighborhood** returns to the selected agent. Search a name or exact
-identifier in **Find loaded entity** to locate an entity outside the current view.
-Direction and hop depth are under **Advanced view**.
+Context defaults to **Persisted snapshot**. Choose a completed scan, then search
+or page the agent selector. The scan status response supplies the graph snapshot ID without downloading the
+full report. Selection uses the server's canonical node ID, so
+identically named agents from different sources remain distinct.
 
-The canvas retains at most 24 nodes and 36 relationships, including a discovery
-edge for every displayed neighbor. Counts and search cover the loaded scan
-snapshot; they do not measure the whole estate. This view still loads its graph
-snapshot before projecting the neighborhood. These display limits are not
-server-side pagination or an end-to-end enterprise performance guarantee.
-Labels appear for a selected or hovered node, selected relationship, or focused
-path. Shared infrastructure is not evidence that agents communicated.
+The initial view requests one page of up to 24 recorded relationships. Select a
+node and choose **Expand connections** for its first page, or **Load more
+relationships** for its continuation. **Collapse connections** removes that
+expansion and later expansions; **Focus here** shows the selected node and its immediate recorded neighbors.
+**Restart neighborhood** clears the workspace and reloads the selected agent.
+Direction filters recorded incoming/outgoing endpoints, not effective permissions.
 
-Source truncation is disclosed separately; expansion is client-side and does not
-collect additional evidence. Permissions and execution remain unknown in this
-static projection.
+The canvas initially shows at most eight nodes and 12 relationships.
+**Expand canvas** raises that limit to 24 nodes and 36 relationships;
+**Compact canvas** restores the smaller view. The loaded workspace has a budget of 240 relationships or 10 pages. The **Loaded entities** section makes
+cached nodes selectable without fitting the whole graph on screen. Counts cover
+loaded evidence only; unqueried relationships and collection coverage remain
+unknown. A new snapshot generation clears the workspace and requires a restart.
+There is no automatic multi-hop collection or full-graph download in this mode.
+These bounds do not establish an end-to-end enterprise performance guarantee.
+
+**Scan-derived (unpersisted)** explicitly opens the older scan projection when
+needed. It loads a bounded scan snapshot before filtering locally and does not
+fetch additional evidence when expanding. Authentication or network failures do
+not silently switch to this mode.
+
+Shared infrastructure is not evidence that agents communicated. Inspect a
+relationship for its recorded direction and evidence; permissions, exploitation,
+and execution must have their own supporting evidence.
 
 Select an agent and scan in Context, then choose **Investigate reach & permissions**.
 The investigation retains that scope and presents recorded paths. Select a path,

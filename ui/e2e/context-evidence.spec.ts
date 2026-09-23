@@ -25,6 +25,7 @@ for (const theme of ["light", "dark"] as const) {
       return route.fulfill({ status: 503, json: { detail: "Outside graph evidence fixture" } });
     });
     await page.goto("/graph?lens=context");
+    await page.getByRole("button", { name: "Scan-derived (unpersisted)", exact: true }).click();
     await expect(page.getByText(/Paths are investigation leads/)).toBeVisible();
     await expect(page.getByText(/Sampled paths · analysis limit reached/)).toBeVisible();
     await page.getByText("Advanced view", { exact: true }).click();
@@ -94,6 +95,7 @@ for (const scenario of [
       return route.fulfill({ status: 503, json: { detail: "Outside neighborhood fixture" } });
     });
     await page.goto("/graph?lens=context");
+    await page.getByRole("button", { name: "Scan-derived (unpersisted)", exact: true }).click();
     await page.locator("select").filter({ has: page.locator('option[value="a"]') }).selectOption("a");
     await page.getByRole("button", { name: "Paths", exact: true }).click();
     await page.getByRole("button", { name: /Inspect path:/ }).first().click();

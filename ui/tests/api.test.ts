@@ -1310,3 +1310,36 @@ it('rejects a summary that echoes a broader scope than requested', async () => {
   global.fetch = mockFetch({ scan_id: 'snapshot-b', total_assets: 3000, filters: { type: [], provider: '' } })
   await expect(api.getInventorySummary('snapshot-b', { provider: 'aws' })).rejects.toThrow('Scoped counts are unavailable')
 })
+
+describe('persisted graph owner-bound requests', () => {
+  it('bypasses warm scan/job caches and forwards caller cancellation', async () => {
+    const { clearCache } = await import('@/lib/api-cache')
+    clearCache()
+    const fetchMock = mockFetch({ owner: 'a' })
+    global.fetch = fetchMock
+    await api.listJobs()
+    await api.getScanStatus('owner-bound-job')
+    fetchMock.mockImplementation(() => Promise.resolve({ ok: true, status: 200, statusText: 'OK', json: () => Promise.resolve({ owner: 'b' }) }))
+    const controller = new AbortController()
+    expect(await api.listJobs(undefined, controller.signal)).toEqual({ owner: 'b' })
+    expect(await api.getScanStatus('owner-bound-job', controller.signal)).toEqual({ owner: 'b' })
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    controller.abort()
+    expect((fetchMock.mock.calls.at(-1)?.[1] as RequestInit).signal?.aborted).toBe(true)
+    clearCache()
+  })
+  it('sends exact canonical IDs and generation for paged expansion without path interpolation', async () => {
+    const fetchMock = mockFetch({ found: false })
+    global.fetch = fetchMock
+    const controller = new AbortController()
+    await api.getGraphIncidentEdges('agent:endpoint/a:desktop', { scanId: 'saved/scan', direction: 'in', snapshotGeneration: 'a'.repeat(32), cursor: 'opaque/+cursor', signal: controller.signal })
+    const url = new URL(fetchMock.mock.calls[0]![0] as string, 'https://fixture.invalid')
+    expect(url.pathname).toBe('/v1/graph/incident-edges')
+    expect(url.searchParams.get('node_id')).toBe('agent:endpoint/a:desktop')
+    expect(url.searchParams.get('scan_id')).toBe('saved/scan')
+    expect(url.searchParams.get('snapshot_generation')).toBe('a'.repeat(32))
+    expect(url.searchParams.get('cursor')).toBe('opaque/+cursor')
+    expect(url.searchParams.get('direction')).toBe('in')
+    expect(url.searchParams.get('limit')).toBe('24')
+  })
+})

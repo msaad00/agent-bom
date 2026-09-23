@@ -1262,6 +1262,8 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
     request_payload = sanitize_sensitive_payload(job.request.model_dump(exclude_defaults=True, exclude_none=True))
     return {
         "job_id": job.job_id,
+        # Locator only: graph persistence may still be unavailable or incomplete.
+        "graph_scan_id": str(result.get("scan_id") or job.job_id) if job.status == JobStatus.DONE else None,
         "tenant_id": job.tenant_id,
         "batch_id": job.batch_id,
         "correlation_cohort_id": job.correlation_cohort_id,

@@ -73,6 +73,7 @@ export interface ScanJob {
 }
 
 export interface ScanResult {
+  scan_id?: string | undefined;
   finding_summary?: { total: number; by_severity: Record<string, number> } | undefined;
   agents: Agent[];
   blast_radius: BlastRadius[];
@@ -2469,7 +2470,7 @@ export interface JobListItem {
   error?: string | undefined;
 }
 
-export type ScanJobStatus = JobListItem;
+export type ScanJobStatus = JobListItem & { graph_scan_id?: string | null | undefined };
 
 export interface AgentsResponse {
   scope?: string;
@@ -5367,4 +5368,19 @@ export interface RiskCampaignTicketSyncResult {
   next_cursor: string | null;
   has_more: boolean;
   action_limit: number;
+}
+
+/** A page of recorded relationships; totals and source coverage remain unknown. */
+export interface GraphIncidentPage {
+  scan_id: string;
+  snapshot_generation: string | null;
+  node_id: string;
+  found: boolean;
+  direction: "in" | "out" | "both";
+  limit: number;
+  node: import("./graph-schema").UnifiedNode | null;
+  nodes: import("./graph-schema").UnifiedNode[];
+  edges: import("./graph-schema").UnifiedEdge[];
+  next_cursor: string | null;
+  completeness: Omit<GraphCompleteness, "total"> & { total: null; scope: "incident_edge_page"; missing_endpoint_count: number };
 }

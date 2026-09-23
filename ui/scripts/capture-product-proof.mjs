@@ -221,9 +221,9 @@ function buildGraph() {
     edge("server:filesystem", "pkg:urllib3", "depends_on"),
     edge("server:snowflake", "pkg:protobuf", "depends_on"),
     edge("server:snowflake", "pkg:langchain", "depends_on"),
-    edge("pkg:next", "cve:next", "vulnerable_to", 1.6, { cvss_score: 9.8 }),
-    edge("pkg:urllib3", "cve:urllib3", "vulnerable_to", 1.4, { cvss_score: 8.8 }),
-    edge("pkg:protobuf", "cve:protobuf", "vulnerable_to", 1.2, { cvss_score: 8.1 }),
+    edge("pkg:next", "cve:next", "vulnerable_to", 1.6, { cvss_score: advisory("CVE-2025-29927").cvss_score }),
+    edge("pkg:urllib3", "cve:urllib3", "vulnerable_to", 1.4, { cvss_score: advisory("CVE-2024-37891").cvss_score }),
+    edge("pkg:protobuf", "cve:protobuf", "vulnerable_to", 1.2, { cvss_score: advisory("CVE-2025-4565").cvss_score }),
     edge("server:snowflake", "dataset:finance-docs", "accessed"),
     edge("agent:finance-rag", "model:gpt-prod", "uses"),
     edge("policy:gateway-default-deny", "tool:exec", "manages"),
@@ -1619,6 +1619,42 @@ async function fulfill(route, body, status = 200) {
 }
 
 async function installRoutes(page) {
+  // Canonical persisted neighborhood fixture. IDs and edges come from the same
+  // demo snapshot used by the other graph surfaces; no label-based joins.
+  const generation = "0123456789abcdef0123456789abcdef";
+  await page.route((url) => url.pathname === "/v1/graph/agents", (route) => {
+    const url = new URL(route.request().url());
+    const query = (url.searchParams.get("q") ?? "").toLowerCase();
+    const agents = graph.nodes.filter(item => item.entity_type === "agent" && `${item.id} ${item.label}`.toLowerCase().includes(query));
+    return fulfill(route, {
+      scan_id: SCAN_ID, tenant_id: "default", created_at: CREATED_AT, agents,
+      pagination: { total: agents.length, offset: 0, limit: 24, has_more: false, next_cursor: null },
+      completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: agents.length, total: agents.length },
+    });
+  });
+  await page.route((url) => url.pathname === "/v1/graph/incident-edges", (route) => {
+    const url = new URL(route.request().url());
+    const nodeId = url.searchParams.get("node_id");
+    const direction = url.searchParams.get("direction") ?? "both";
+    const limit = Math.min(100, Number(url.searchParams.get("limit") ?? 24));
+    const expected = url.searchParams.get("snapshot_generation");
+    if (url.searchParams.get("scan_id") !== SCAN_ID || (expected && expected !== generation)) {
+      return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ detail: "Invalid or stale incident relationship page; restart from the first page" }) });
+    }
+    const seed = graph.nodes.find(item => item.id === nodeId);
+    const incident = graph.edges.filter(item => (direction !== "in" && item.source === nodeId) || (direction !== "out" && item.target === nodeId));
+    // This fixture fits one bounded page; paging stress is covered by UI tests.
+    if (incident.length > limit || url.searchParams.has("cursor")) throw new Error("Capture incident fixture exceeded its single-page contract");
+    const ids = new Set([nodeId, ...incident.flatMap(item => [item.source, item.target])]);
+    return fulfill(route, {
+      scan_id: SCAN_ID, snapshot_generation: seed ? generation : null, node_id: nodeId,
+      found: Boolean(seed), direction, limit, node: seed ?? null,
+      nodes: seed ? graph.nodes.filter(item => ids.has(item.id)) : [], edges: seed ? incident : [], next_cursor: null,
+      completeness: { scope: "incident_edge_page", status: seed ? "complete" : "truncated", complete: Boolean(seed), sampled: false,
+        truncated: !seed, returned: seed ? incident.length : 0, total: null, missing_endpoint_count: 0,
+        reason: seed ? null : "node_or_snapshot_not_found" },
+    });
+  });
   // The gateway live-feed panel opens the proxy metrics WebSocket on mount. With
   // no backend behind the capture dev server the handshake would fail and emit a
   // fatal console error, so mock the socket here: accept the client connection
@@ -1929,6 +1965,9 @@ async function installRoutes(page) {
       return false;
     }
   }, (route) => fulfill(route, scanJob()));
+  await page.route((url) => url.pathname === `/v1/scan/${SCAN_ID}/status`, (route) => fulfill(route, {
+    job_id: SCAN_ID, status: "done", graph_scan_id: SCAN_ID, created_at: CREATED_AT,
+  }));
   await page.route("**/v1/graph/snapshots?**", (route) => fulfill(route, [
     ...referenceSnapshots,
     { scan_id: SCAN_ID, created_at: CREATED_AT, node_count: graph.nodes.length, edge_count: graph.edges.length, risk_summary: graph.stats.severity_counts },
@@ -2877,7 +2916,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "context-map-live.png",
       page: "/graph?lens=context&capture=1",
-      scope: "Context investigation path backed by recorded agent, server, and affected-package relationships",
+      scope: "Progressive persisted neighborhood with canonical IDs and an explicitly expanded package vulnerability branch",
     },
     {
       path: "inventory-live.png",
@@ -3487,54 +3526,31 @@ async function main() {
           state: "visible",
           timeout: 30_000,
         });
-        const agentScope = contextPage.locator("select").first();
-        if ((await agentScope.count()) > 0) {
-          await agentScope.selectOption("developer-copilot");
-          await contextPage.waitForTimeout(600);
-        }
-        const pathsToggle = contextPage.getByRole("button", { name: "Paths", exact: true });
-        await pathsToggle.click();
-        const secondPath = contextPage.getByRole("button", { name: /Inspect path:/ }).nth(1);
-        await secondPath.focus();
-        await secondPath.press("Enter");
-        await contextPage.waitForFunction(() => {
-          const selected = document.querySelectorAll('button[aria-label^="Inspect path:"][aria-pressed="true"]');
-          const nodes = [...document.querySelectorAll('.react-flow__node')].map((node) => node.getAttribute('data-id'));
-          return selected.length === 1 && nodes.includes('server:filesystem') && !nodes.includes('server:github');
-        });
-        await contextPage.getByRole("button", { name: /Inspect path:/ }).first().click();
-        await contextPage.locator('[data-id="server:github"]').waitFor({ state: "visible" });
-        await pathsToggle.click();
-        await contextPage.getByRole("button", { name: "Neighborhood", exact: true }).click();
-        await contextPage.getByRole("complementary", { name: "Agent neighborhood inspector" }).waitFor({ state: "visible" });
-        await contextPage.locator('[data-id="server:github"]').waitFor({ state: "visible" });
+        const agentScope = contextPage.getByLabel("Agent scope", { exact: true });
+        await agentScope.selectOption("agent:developer-copilot");
+        await contextPage.getByRole("button", { name: "Expand canvas", exact: true }).click();
+        const inspector = contextPage.getByRole("complementary", { name: "Agent neighborhood inspector" });
         await contextPage.locator('[data-id="server:github"]').click();
-        const neighborhoodInspector = contextPage.getByRole("complementary", { name: "Agent neighborhood inspector" });
-        for (const kind of ["tool", "vulnerability", "credential"]) {
-          const expand = neighborhoodInspector.getByRole("button", { name: new RegExp(`^Show \\d+ ${kind} ·`) });
-          if (await expand.count()) await expand.click();
-        }
-        await contextPage.locator('[data-id="tool:repo-write"]').waitFor({ state: "visible" });
-        await neighborhoodInspector.evaluate(element => { element.scrollTop = 0; });
-        await expect(neighborhoodInspector.getByRole("heading", { name: "github-enterprise MCP", exact: true })).toBeInViewport();
+        await inspector.getByRole("button", { name: "Expand connections", exact: true }).click();
+        await contextPage.locator('[data-id="pkg:next"]').click();
+        await inspector.getByRole("button", { name: "Expand connections", exact: true }).click();
+        await contextPage.locator('[data-id="cve:next"]').waitFor({ state: "visible" });
+        await contextPage.locator('[data-id="pkg:next"]').click();
+        await inspector.getByRole("button", { name: "Focus here", exact: true }).click();
         await fitReactFlow(contextPage);
         for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
         await scrollTo(contextPage, 0);
       },
       {
-        awaitResponses: [(response) => response.url().includes("/context-graph") && response.ok()],
-        expectedText: [
-          "Context Map",
-          "developer-copilot",
-          "CVE-2025-29927",
-          "Affected package:",
-          /Scan neighborhood/i,
-        ],
-        expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],
-        minGraphNodes: 5,
-        maxGraphNodes: 12,
-        minGraphEdges: 4,
-        maxGraphEdges: 16,
+        awaitResponses: [(response) => response.url().includes("/graph/incident-edges") && response.ok()],
+        expectedText: ["Context Map", "developer-copilot", "CVE-2025-29927", "Persisted snapshot"],
+        expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}/status`, "/v1/graph/agents", "/v1/graph/incident-edges"],
+        minGraphNodes: 3,
+        maxGraphNodes: 3,
+        minGraphEdges: 2,
+        maxGraphEdges: 2,
+        minGraphNodeFontPx: 12,
+        assertEdgeLabelsClearOfNodes: true,
       },
     );
     await page.setViewportSize({ width: 1440, height: 980 });

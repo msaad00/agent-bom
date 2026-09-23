@@ -528,7 +528,7 @@ function withTimeout(timeoutMs: number = FETCH_TIMEOUT_MS): AbortSignal {
   return AbortSignal.timeout(timeoutMs);
 }
 
-type GetOptions = CacheOptions & { timeoutMs?: number };
+type GetOptions = CacheOptions & { timeoutMs?: number; signal?: AbortSignal };
 
 async function _parseBody(res: Response): Promise<unknown> {
   // Only called on the error path; caller never reads the body again, so we
@@ -577,20 +577,18 @@ function _runInvalidations(path: string): void {
 }
 
 async function get<T>(path: string, options: GetOptions = {}): Promise<T> {
-  const { timeoutMs, ...cacheOptions } = options;
+  const { timeoutMs, signal, ...cacheOptions } = options;
   const key = `GET ${path}`;
-  return cachedGet<T>(
-    key,
-    async () => {
+  const fetcher = async () => {
       const res = await _doFetch(path, {
         credentials: "include",
         headers: getSessionAuthHeaders(),
-        signal: withTimeout(timeoutMs ?? FETCH_TIMEOUT_MS),
+        signal: signal ? AbortSignal.any([signal, withTimeout(timeoutMs ?? FETCH_TIMEOUT_MS)]) : withTimeout(timeoutMs ?? FETCH_TIMEOUT_MS),
       }, "GET");
       return res.json() as Promise<T>;
-    },
-    cacheOptions,
-  );
+    };
+  // A caller-owned cancellation must never abort another subscriber.
+  return signal ? fetcher() : cachedGet<T>(key, fetcher, cacheOptions);
 }
 
 async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
@@ -884,10 +882,10 @@ export const api = {
     post<ScanJob>("/v1/scan", req, { "Idempotency-Key": mutationIdempotencyKey("ui-scan") }),
 
   /** Poll scan status + results */
-  getScan: (jobId: string) => get<ScanJob>(`/v1/scan/${jobId}`),
+  getScan: (jobId: string, signal?: AbortSignal) => get<ScanJob>(`/v1/scan/${jobId}`, signal ? { signal } : {}),
 
   /** Poll scan status without loading large result payloads */
-  getScanStatus: (jobId: string) => get<ScanJobStatus>(`/v1/scan/${jobId}/status`),
+  getScanStatus: (jobId: string, signal?: AbortSignal) => get<ScanJobStatus>(`/v1/scan/${jobId}/status`, signal ? { signal } : {}),
 
   /** Export a completed scan graph in a graph-native format. */
   downloadScanGraph: (jobId: string, format: GraphExportFormat = "json") =>
@@ -923,7 +921,7 @@ export const api = {
     offset?: number;
     query?: string | undefined;
     status?: JobStatus | undefined;
-  }) => {
+  }, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (options?.includeDetails) params.set("include_details", "true");
     if (typeof options?.limit === "number") params.set("limit", String(options.limit));
@@ -931,7 +929,7 @@ export const api = {
     if (options?.query?.trim()) params.set("q", options.query.trim());
     if (options?.status) params.set("status", options.status);
     const qs = params.toString();
-    return get<JobsResponse>(`/v1/jobs${qs ? `?${qs}` : ""}`);
+    return get<JobsResponse>(`/v1/jobs${qs ? `?${qs}` : ""}`, signal ? { signal } : {});
   },
 
   /** Fetch every server-filtered job page for a complete JSON export. */
@@ -1294,7 +1292,7 @@ export const api = {
   },
 
   /** List agent nodes for large graph selectors without loading the full graph */
-  listGraphAgents: (filters?: { query?: string; scanId?: string; offset?: number; limit?: number; cursor?: string }) => {
+  listGraphAgents: (filters?: { query?: string; scanId?: string; offset?: number; limit?: number; cursor?: string }, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (filters?.query) params.set("q", filters.query);
     if (filters?.scanId) params.set("scan_id", filters.scanId);
@@ -1302,7 +1300,14 @@ export const api = {
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.cursor) params.set("cursor", filters.cursor);
     const qs = params.toString();
-    return get<GraphAgentsResponse>(`/v1/graph/agents${qs ? `?${qs}` : ""}`);
+    return get<GraphAgentsResponse>(`/v1/graph/agents${qs ? `?${qs}` : ""}`, signal ? { signal } : {});
+  },
+
+  getGraphIncidentEdges: (nodeId: string, options: { scanId: string; direction: "in" | "out" | "both"; cursor?: string; snapshotGeneration?: string; signal: AbortSignal }) => {
+    const params = new URLSearchParams({ node_id: nodeId, scan_id: options.scanId, direction: options.direction, limit: "24" });
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.snapshotGeneration) params.set("snapshot_generation", options.snapshotGeneration);
+    return get<import("./api-types").GraphIncidentPage>(`/v1/graph/incident-edges?${params}`, { signal: options.signal });
   },
 
   /** Load one graph node plus impact and neighbor context */

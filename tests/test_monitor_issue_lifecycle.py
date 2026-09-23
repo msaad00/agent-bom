@@ -15,21 +15,26 @@ NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="Node is required to execute GitHub Actions scripts")
 
 
-def run_monitor(workflow, job, issues, *, fresh=False):
+def run_monitor(
+    workflow, job, issues, *, fresh=False, latest_id=99, latest_attempt=1, main_sha="a" * 40, workflow_name="Publish to Registries"
+):
     data = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text())
     script = next(step["with"]["script"] for step in data["jobs"][job]["steps"] if "github-script@" in step.get("uses", ""))
     harness = """
     const fs = require('node:fs');
-    const {script, issues, fresh} = JSON.parse(fs.readFileSync(0, 'utf8'));
+    const {script, issues, fresh, latest_id, latest_attempt, main_sha, workflow_name} = JSON.parse(fs.readFileSync(0, 'utf8'));
     const events = [];
-    const github = {paginate: async () => issues, rest: {issues: {
+    const github = {paginate: async () => issues, rest: {
+      actions: {listWorkflowRuns: async () => ({data: {workflow_runs: [{id: latest_id, run_attempt: latest_attempt}]}})},
+      repos: {getBranch: async () => ({data: {commit: {sha: main_sha}}})},
+      issues: {
       listForRepo: () => {}, createLabel: async () => {},
       create: async value => events.push({kind: 'create', ...value}),
       update: async value => events.push({kind: 'update', ...value}),
       createComment: async value => events.push({kind: 'comment', ...value}),
     }}};
     const context = {repo: {owner: 'owner', repo: 'repo'}, serverUrl: 'https://github.com', runId: 99,
-      payload: {workflow_run: {name: 'Publish to Registries', html_url: 'https://github.com/run/99',
+      payload: {workflow_run: {id: 99, run_attempt: 1, workflow_id: 42, name: workflow_name, html_url: 'https://github.com/run/99',
         head_sha: 'a'.repeat(40), actor: {login: 'owner'}}}};
     process.env.REPORT = JSON.stringify({expected: '0.103.2', all_fresh: fresh, surfaces: []});
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
@@ -38,7 +43,17 @@ def run_monitor(workflow, job, issues, *, fresh=False):
     """
     result = subprocess.run(
         [NODE, "-e", harness],
-        input=json.dumps({"script": script, "issues": issues, "fresh": fresh}),
+        input=json.dumps(
+            {
+                "script": script,
+                "issues": issues,
+                "fresh": fresh,
+                "latest_id": latest_id,
+                "latest_attempt": latest_attempt,
+                "main_sha": main_sha,
+                "workflow_name": workflow_name,
+            }
+        ),
         text=True,
         capture_output=True,
         check=True,
@@ -122,3 +137,16 @@ def test_freshness_reconciles_after_success_and_failure(filename, job, upstream)
     assert trigger["workflow_run"]["types"] == ["completed"]
     condition = data["jobs"][job]["if"]
     assert '["success","failure"]' in condition
+
+
+@pytest.mark.parametrize("job", ["alert", "resolve"])
+@pytest.mark.parametrize("latest", [{"latest_id": 100}, {"latest_attempt": 2}])
+def test_obsolete_completion_cannot_change_regression_tracker(job, latest):
+    issues = [{"number": 123, "title": "ci-regression: Publish to Registries failing on main", "state": "open"}]
+    assert run_monitor("main-failure-alert.yml", job, issues, **latest) == []
+
+
+@pytest.mark.parametrize("job", ["alert", "resolve"])
+def test_ci_completion_for_old_main_sha_cannot_change_tracker(job):
+    issues = [{"number": 123, "title": "ci-regression: CI/CD Pipeline failing on main", "state": "open"}]
+    assert run_monitor("main-failure-alert.yml", job, issues, workflow_name="CI/CD Pipeline", main_sha="b" * 40) == []

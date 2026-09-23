@@ -145,18 +145,41 @@ def test_idempotency_key_rejects_a_different_request(correlation_client) -> None
     assert "different correlation request" not in response.text
 
 
-def test_runtime_facts_rejects_incomplete_or_missing_signing_configuration(correlation_client) -> None:
+def test_runtime_facts_rejects_missing_signing_configuration_after_completion(correlation_client, monkeypatch) -> None:
     client, _store = correlation_client
+    monkeypatch.setattr("agent_bom.config.RUNTIME_FACTS_HMAC_KEY", "")
+    monkeypatch.setattr("agent_bom.config.RUNTIME_FACTS_HMAC_KEY_FILE", "")
     created = client.post(
         "/v1/graph/correlations",
         headers={"Idempotency-Key": "idem-runtime"},
         json={"name": "runtime", "scan_ids": ["repo-scan", "image-scan"], "max_age_hours": 168},
     ).json()
 
-    response = client.get(f"/v1/graph/correlations/{created['correlation_id']}/runtime-facts")
+    deadline = time.monotonic() + 2
+    status = created
+    while status["status"] not in {"complete", "failed"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+        status = client.get(f"/v1/graph/correlations/{created['correlation_id']}").json()
+    assert status["status"] == "complete"
 
-    assert response.status_code in {409, 503}
-    assert "signing" not in response.text.lower() or "not configured" in response.text.lower()
+    response = client.get(f"/v1/graph/correlations/{created['correlation_id']}/runtime-facts")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "signing_key_not_configured"
+
+
+def test_runtime_facts_rejects_incomplete_correlation(correlation_client, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from agent_bom.graph.correlation import CorrelationRunStatus
+
+    client, _store = correlation_client
+    monkeypatch.setattr(
+        "agent_bom.api.routes.graph_correlations._get_run",
+        lambda *_: SimpleNamespace(status=CorrelationRunStatus.RUNNING),
+    )
+    response = client.get("/v1/graph/correlations/pending/runtime-facts")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "correlation_not_complete"
 
 
 def test_runtime_facts_returns_a_tenant_bound_verifiable_bundle(correlation_client, monkeypatch) -> None:

@@ -6,6 +6,7 @@ export interface ContextNeighborhood {
   nodes: ContextGraphNode[];
   edges: ContextGraphEdge[];
   seedFound: boolean;
+  depthById: Record<string, number>;
   /** Hidden counts describe only the loaded graph, never the whole estate. */
   hiddenNodeCount: number;
   hiddenEdgeCount: number;
@@ -87,6 +88,7 @@ export function projectContextNeighborhood(
   return {
     nodes: [...visible].map(id => nodesById.get(id)!), edges,
     seedFound: nodesById.has(seedId),
+    depthById: Object.fromEntries(distance),
     hiddenNodeCount: nodesById.size - visible.size,
     hiddenEdgeCount: validEdges.length - edges.length,
     truncated,

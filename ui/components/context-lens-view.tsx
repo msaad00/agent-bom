@@ -78,6 +78,8 @@ import { useContextGraph } from "@/hooks/use-context-graph";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const contextEdgeTypes = { contextEvidence: ContextEvidenceEdge };
+const EMPTY_NODES: Node[] = [];
+const EMPTY_EDGES: Edge[] = [];
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
 
@@ -440,10 +442,24 @@ export function ContextLensView() {
     return lateralPathToExposure(path, selectedAgent);
   }, [focusedPath, graphData, selectedAgent]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
+  const { nodes: pathLayoutNodes, edges: pathLayoutEdges } = useGraphLayout("dagre-lr", pathFocusEnabled ? rawNodes : EMPTY_NODES, pathFocusEnabled ? rawEdges : EMPTY_EDGES, {
     // Slightly tighter ranks so small context chains fill the centered canvas.
     dagreLr: readableLineageDagreLr({ rankSep: 110, nodeSep: 56 }),
   });
+
+  const layoutNodes = useMemo(() => {
+    if (pathFocusEnabled || !neighborhood) return pathLayoutNodes;
+    const columns = new Map<number, Node[]>();
+    for (const node of rawNodes) {
+      const level = neighborhood.depthById[node.id] ?? 0;
+      columns.set(level, [...(columns.get(level) ?? []), node]);
+    }
+    const height = Math.max(1, ...[...columns.values()].map(nodes => nodes.length)) * 172;
+    return [...columns].flatMap(([level, nodes]) => nodes.map((node, index) => ({
+      ...node, position: { x: level * 380, y: (height - nodes.length * 172) / 2 + index * 172 },
+    })));
+  }, [pathFocusEnabled, neighborhood, pathLayoutNodes, rawNodes]);
+  const layoutEdges = pathFocusEnabled ? pathLayoutEdges : rawEdges;
 
   // Search highlighting
   const searchMatches = useMemo(
@@ -822,7 +838,7 @@ export function ContextLensView() {
                   instead of parking a wide short chain in a tall empty pane. */}
               <div
                 ref={graphFrameRef}
-                className="relative h-full min-h-0 w-full md:max-h-[32rem]"
+                className="relative h-full min-h-0 w-full"
               >
             <ReactFlow
               key={captureMode ? "context-capture" : presentation.storageKey}

@@ -3519,7 +3519,7 @@ async function main() {
           "developer-copilot",
           "CVE-2025-29927",
           "Affected package:",
-          "Recorded neighborhood",
+          /Recorded neighborhood/i,
           "Evidence gaps",
         ],
         expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],

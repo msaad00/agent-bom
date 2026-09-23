@@ -14,6 +14,7 @@ describe("projectContextNeighborhood", () => {
   it("starts with two recorded hops and groups the next hidden neighbors", () => {
     const result = projectContextNeighborhood(chain, "a");
     expect(result.nodes.map(n => n.id)).toEqual(["a", "b", "c"]);
+    expect(result.depthById).toEqual({ a: 0, b: 1, c: 2 });
     expect(result.hiddenGroups.c).toEqual([{ kind: "credential", count: 1, nodeIds: ["d"], nodeIdsTruncated: false }]);
     expect(result.hiddenNodeCount).toBe(2);
     expect(result.hiddenEdgeCount).toBe(1);
@@ -22,6 +23,7 @@ describe("projectContextNeighborhood", () => {
   it("expands selected visible nodes one hop without joining names or disconnected IDs", () => {
     const result = projectContextNeighborhood(chain, "a", ["c", "other"]);
     expect(result.nodes.map(n => n.id)).toEqual(["a", "b", "c", "d"]);
+    expect(result.depthById).toEqual({ a: 0, b: 1, c: 2, d: 3 });
     expect(result.hiddenNodeCount).toBe(1);
     expect(projectContextNeighborhood(chain, "same label").seedFound).toBe(false);
   });

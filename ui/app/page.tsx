@@ -293,7 +293,16 @@ export default function Dashboard() {
   // exception because no server-side canonical view exists for them.
   const importedSeverity = useMemo(() => aggregateSeverity(allBlast), [allBlast]);
   const canonicalSeverity = useMemo(() => {
-    if (importedReport) return importedSeverity;
+    if (importedReport) {
+      const summary = importedReport.finding_summary;
+      return summary ? {
+        critical: summary.by_severity.critical ?? 0,
+        high: summary.by_severity.high ?? 0,
+        medium: summary.by_severity.medium ?? 0,
+        low: summary.by_severity.low ?? 0,
+        total: summary.total,
+      } : importedSeverity;
+    }
     if (overview?.finding_counts) return overview.finding_counts;
     if (counts) {
       return {
@@ -441,6 +450,7 @@ export default function Dashboard() {
         {!importedReport && inventorySummary?.filters && Object.values(inventorySummary.filters).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? <span>Inventory filters do not change the findings window</span> : null}
       </div>
       <OverviewCockpit
+        localReport={Boolean(importedReport)}
         inventorySummary={importedReport ? null : inventorySummary}
         inventoryLoading={!importedReport && inventoryLoading}
         inventoryUnavailable={Boolean(importedReport) || inventoryUnavailable}

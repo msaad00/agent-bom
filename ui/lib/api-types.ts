@@ -73,6 +73,7 @@ export interface ScanJob {
 }
 
 export interface ScanResult {
+  finding_summary?: { total: number; by_severity: Record<string, number> } | undefined;
   agents: Agent[];
   blast_radius: BlastRadius[];
   remediation_plan?: RemediationItem[] | undefined;

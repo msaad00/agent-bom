@@ -278,7 +278,7 @@ test("compliance view, filter, search, and evidence-pack actions are wired", asy
   );
   await page.getByTestId("compliance-export-pack").click();
   await packRequest;
-  await expect(page.getByTestId("compliance-export-pack")).toContainText("Export pack");
+  await expect(page.getByTestId("compliance-export-pack")).toContainText("Export tenant pack");
 });
 
 for (const theme of ["light", "dark"] as const) {

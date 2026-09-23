@@ -9,6 +9,9 @@ function report(score: unknown = null) {
 }
 
 describe("CLI JSON report import", () => {
+  it("rejects malformed canonical totals instead of rendering them", () => {
+    expect(validateScanReport(JSON.stringify({ ...report(), finding_summary: { total: 1, by_severity: { high: "one" } } })).ok).toBe(false);
+  });
   it.each([null, undefined, 0, 0.5, 9.8])("accepts unavailable or finite enrichment scores: %s", (score) => {
     expect(validateScanReport(JSON.stringify(report(score))).ok).toBe(true);
   });

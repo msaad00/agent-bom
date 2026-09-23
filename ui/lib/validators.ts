@@ -172,6 +172,17 @@ export function validateScanReport(jsonText: string): ValidationResult {
     };
   }
 
+  // Canonical totals are rendered directly for an imported report.
+  if (parsed.finding_summary !== undefined) {
+    const summary = parsed.finding_summary;
+    if (!isPlainObject(summary) || !isFiniteNum(summary.total) || summary.total < 0 || !isPlainObject(summary.by_severity)) {
+      return { ok: false, error: "finding_summary: must contain numeric total and severity counts" };
+    }
+    if (Object.values(summary.by_severity).some((count) => !isFiniteNum(count) || count < 0)) {
+      return { ok: false, error: "finding_summary.by_severity: counts must be finite non-negative numbers" };
+    }
+  }
+
   // 6. Validate agents (cap validation at first 200 for perf)
   const agentLimit = Math.min(parsed.agents.length, 200);
   for (let i = 0; i < agentLimit; i++) {

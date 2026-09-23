@@ -138,7 +138,7 @@ describe("Overview canonical finding counts", () => {
     apiMock.listJobs.mockRejectedValue(new Error("jobs unavailable"));
     render(<Dashboard />);
     const input = await screen.findByLabelText("Choose report.json");
-    const report = new File([JSON.stringify({ agents: [], blast_radius: [], scan_timestamp: timestamp })], "report.json", { type: "application/json" });
+    const report = new File([JSON.stringify({ agents: [], blast_radius: [], scan_timestamp: timestamp, finding_summary: { total: 23, by_severity: { critical: 2, high: 16, medium: 5, low: 0 } } })], "report.json", { type: "application/json" });
     fireEvent.change(input, { target: { files: [report] } });
     await waitFor(() => expect(screen.getByLabelText("Evidence scopes")).toHaveTextContent("Findings: Imported report"));
     expect(screen.queryByText("Canonical posture")).not.toBeInTheDocument();
@@ -147,6 +147,15 @@ describe("Overview canonical finding counts", () => {
     expect(screen.queryByText("12 scans")).not.toBeInTheDocument();
     expect(screen.queryByText("Recent scans & activity")).not.toBeInTheDocument();
     expect(screen.queryByText("Activity fixture")).not.toBeInTheDocument();
+    expect(cockpitProps.mock.lastCall?.[0]).toMatchObject({ localReport: true, critical: 2, high: 16, severity: { total: 23, high: 16 } });
+    expect(screen.getByText("Posture unavailable")).toBeVisible();
+    expect(screen.getByText(/Tenant posture cannot be assessed from an imported report/)).toBeVisible();
+    for (const tab of ["Posture", "Top risks", "Assets & coverage"]) {
+      fireEvent.click(screen.getByRole("tab", { name: tab }));
+      for (const link of screen.queryAllByRole("link")) {
+        expect(link.getAttribute("href")).not.toMatch(/^\/(findings|compliance|inventory|security-graph|agents\/topology)([/?]|$)/);
+      }
+    }
     expect(cockpitProps.mock.lastCall?.[0]).toMatchObject({ services: null, scans: 1, latestScan: timestamp ? new Date(timestamp).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null });
   });
 

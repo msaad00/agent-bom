@@ -7,6 +7,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.106.0] - 2026-09-23
+
+### Added
+
+- Inspect recorded authority and source receipts at each graph path hop, with bounded pagination and preserved investigation scope.
+- Optional, bounded AWS credential validation through STS, disabled by default and suppressed by offline scans. Validation errors remain unknown without removing findings.
+- Python one-hop tainted-argument evidence for function-reachable CVEs. This additive signal does not establish exploitability or full interprocedural data flow.
+
+### Fixed
+
+- Preserve distinct authorization receipts, action-specific evidence, workload connections, and source witnesses across graph and exposure responses.
+- Require evidence before reporting verified remediation, and keep runtime outcomes separate from exploitability signals.
+- Improve scoped inventory, findings, compliance drilldowns, graph framing, and light/dark metric readability. Empty API snapshots now return an empty summary.
+- Preserve dashboard metadata in refreshed images and enforce deployment and registry freshness checks while retaining Smithery as an explicitly non-blocking surface.
+- Keep screenshot proof sensitive to rendering toolchain and resolved dependency changes while allowing Node type-only maintenance updates.
+
+### Changed
+
+- Increase opt-in DSPM object sampling from 10 to 50 objects per bucket/container and database sampling from 100 to 500 rows per table; byte and cell limits remain bounded.
+- Update dependency and CI action pins, registry metadata, and operator documentation.
+
 ## [0.105.0] - 2026-09-15
 
 This release makes scan coverage and finding evidence clearer, adds explicit

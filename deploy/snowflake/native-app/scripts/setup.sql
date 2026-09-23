@@ -10,6 +10,59 @@ CREATE APPLICATION ROLE IF NOT EXISTS app_user;
 CREATE SCHEMA IF NOT EXISTS core;
 GRANT USAGE ON SCHEMA core TO APPLICATION ROLE app_user;
 
+-- Consumer reference binding uses Snowflake-issued references, never raw object SQL.
+CREATE OR REPLACE PROCEDURE core.register_reference(ref_name VARCHAR, operation VARCHAR, ref_or_alias VARCHAR)
+    RETURNS VARCHAR
+    LANGUAGE SQL
+AS
+$$
+BEGIN
+    IF (ref_name NOT IN ('cloud_asset_tables', 'iam_tables', 'vuln_tables', 'log_tables', 'artifact_stages', 'osv_dev', 'cisa_kev', 'first_epss', 'github_ghsa', 'nvd_api', 'deps_dev', 'package_registries')) THEN
+        RETURN 'Unknown reference.';
+    END IF;
+    CASE (operation)
+        WHEN 'ADD' THEN
+            SELECT SYSTEM$SET_REFERENCE(:ref_name, :ref_or_alias);
+        WHEN 'REMOVE' THEN
+            SELECT SYSTEM$REMOVE_REFERENCE(:ref_name, :ref_or_alias);
+        WHEN 'CLEAR' THEN
+            SELECT SYSTEM$REMOVE_ALL_REFERENCES(:ref_name);
+        ELSE
+            RETURN 'Unsupported reference operation.';
+    END CASE;
+    RETURN NULL;
+END;
+$$;
+GRANT USAGE ON PROCEDURE core.register_reference(VARCHAR, VARCHAR, VARCHAR) TO APPLICATION ROLE app_user;
+
+CREATE OR REPLACE PROCEDURE core.get_reference_configuration(ref_name VARCHAR)
+    RETURNS VARCHAR
+    LANGUAGE SQL
+AS
+$$
+BEGIN
+    CASE (ref_name)
+        WHEN 'osv_dev' THEN
+            RETURN '{"type":"CONFIGURATION","payload":{"host_ports":["api.osv.dev","osv.dev"],"allowed_secrets":"NONE"}}';
+        WHEN 'cisa_kev' THEN
+            RETURN '{"type":"CONFIGURATION","payload":{"host_ports":["www.cisa.gov"],"allowed_secrets":"NONE"}}';
+        WHEN 'first_epss' THEN
+            RETURN '{"type":"CONFIGURATION","payload":{"host_ports":["api.first.org"],"allowed_secrets":"NONE"}}';
+        WHEN 'github_ghsa' THEN
+            RETURN '{"type":"CONFIGURATION","payload":{"host_ports":["api.github.com"],"allowed_secrets":"NONE"}}';
+        WHEN 'nvd_api' THEN
+            RETURN '{"type":"CONFIGURATION","payload":{"host_ports":["services.nvd.nist.gov"],"allowed_secrets":"NONE"}}';
+        WHEN 'deps_dev' THEN
+            RETURN '{"type":"CONFIGURATION","payload":{"host_ports":["api.deps.dev","deps.dev"],"allowed_secrets":"NONE"}}';
+        WHEN 'package_registries' THEN
+            RETURN '{"type":"CONFIGURATION","payload":{"host_ports":["registry.npmjs.org","api.npmjs.org","pypi.org","proxy.golang.org","sum.golang.org","search.maven.org"],"allowed_secrets":"NONE"}}';
+        ELSE
+            RETURN '{"type":"ERROR","payload":{"message":"Unknown advisory reference."}}';
+    END CASE;
+END;
+$$;
+GRANT USAGE ON PROCEDURE core.get_reference_configuration(VARCHAR) TO APPLICATION ROLE app_user;
+
 -- 2b. Core DCM schema (V001__core_schema.sql)
 -- Materialises the full internal schema — including the compliance-hub tables
 -- (core.compliance_hub_findings, core.findings_by_framework) that the Phase 2
@@ -189,22 +242,18 @@ END;
 GRANT USAGE ON PROCEDURE core.set_config(VARCHAR, VARIANT) TO APPLICATION ROLE app_user;
 GRANT USAGE ON PROCEDURE core.get_config(VARCHAR) TO APPLICATION ROLE app_user;
 
--- 9. Trigger scan stored procedure
+-- 9. Reject scan dispatch until an authenticated Native App adapter exists.
 CREATE OR REPLACE PROCEDURE core.trigger_scan()
     RETURNS VARCHAR
     LANGUAGE SQL
 AS
+$$
 DECLARE
-    job_id VARCHAR DEFAULT UUID_STRING();
+    scan_unavailable EXCEPTION (-20001, 'Native App scan dispatch is unavailable. Run agent-bom scan --snowflake from an authenticated external CLI; this procedure creates no scan job.');
 BEGIN
-    INSERT INTO core.scan_jobs (job_id, status, created_at, data)
-    VALUES (:job_id, 'pending', CURRENT_TIMESTAMP(), PARSE_JSON('{}'));
-
-    INSERT INTO core.activity_events (event_id, event_type, detail, created_at)
-    VALUES (UUID_STRING(), 'scan_started', PARSE_JSON('{"job_id": "' || :job_id || '"}'), CURRENT_TIMESTAMP());
-
-    RETURN 'Scan queued: ' || :job_id;
+    RAISE scan_unavailable;
 END;
+$$;
 
 GRANT USAGE ON PROCEDURE core.trigger_scan() TO APPLICATION ROLE app_user;
 
@@ -243,29 +292,42 @@ GRANT USAGE ON PROCEDURE core.health_check() TO APPLICATION ROLE app_user;
 -- Creates core.apply_compliance_hub() and core.compliance_posture view.
 EXECUTE IMMEDIATE FROM 'dcm/V002__compliance_proc.sql';
 
--- 11. SPCS compute pool + service — API + Next.js UI (Phase 3)
--- Marketplace apps with containers create their declared resources during
--- installation. The requested CREATE COMPUTE POOL privilege is explicit in
--- manifest.yml and the matching requirement is disclosed in marketplace.yml.
-CREATE COMPUTE POOL IF NOT EXISTS agent_bom_consumer_pool
-    MIN_NODES = 1
-    MAX_NODES = 1
-    INSTANCE_FAMILY = CPU_X64_XS
-    AUTO_SUSPEND_SECS = 300
-    INITIALLY_SUSPENDED = FALSE;
+-- 11. Provision only after consumer approval; repeated grants are idempotent.
+CREATE OR REPLACE PROCEDURE core.grant_callback(privileges ARRAY)
+    RETURNS VARCHAR
+    LANGUAGE SQL
+AS
+$$
+BEGIN
+    -- Inspect current grants rather than assuming this callback contains every grant.
+    IF (SYSTEM$HOLD_PRIVILEGE_ON_ACCOUNT('CREATE COMPUTE POOL')
+        AND SYSTEM$HOLD_PRIVILEGE_ON_ACCOUNT('BIND SERVICE ENDPOINT')) THEN
+        CREATE COMPUTE POOL IF NOT EXISTS agent_bom_consumer_pool
+            MIN_NODES = 1
+            MAX_NODES = 1
+            INSTANCE_FAMILY = CPU_X64_XS
+            AUTO_SUSPEND_SECS = 300
+            INITIALLY_SUSPENDED = FALSE;
 
--- manifest.yml default_web_endpoint → ui endpoint (port 3000) opens on app launch.
-CREATE SERVICE IF NOT EXISTS core.agent_bom_api
-    IN COMPUTE POOL agent_bom_consumer_pool
-    FROM SPECIFICATION_FILE = '/service-spec.yaml'
-    MIN_INSTANCES = 1
-    MAX_INSTANCES = 1;
+        -- manifest.yml default_web_endpoint → ui endpoint (port 3000) opens on app launch.
+        CREATE SERVICE IF NOT EXISTS core.agent_bom_api
+            IN COMPUTE POOL agent_bom_consumer_pool
+            FROM SPECIFICATION_FILE = '/service-spec.yaml'
+            MIN_INSTANCES = 1
+            MAX_INSTANCES = 1;
 
-GRANT USAGE ON SERVICE core.agent_bom_api TO APPLICATION ROLE app_user;
--- Service roles surface each endpoint independently so consumers can grant
--- API or UI access without exposing both.
-GRANT SERVICE ROLE core.agent_bom_api!api TO APPLICATION ROLE app_user;
-GRANT SERVICE ROLE core.agent_bom_api!ui  TO APPLICATION ROLE app_user;
+        GRANT USAGE ON SERVICE core.agent_bom_api TO APPLICATION ROLE app_user;
+        -- Service roles surface each endpoint independently so consumers can grant
+        -- API or UI access without exposing both.
+        GRANT SERVICE ROLE core.agent_bom_api!api TO APPLICATION ROLE app_user;
+        GRANT SERVICE ROLE core.agent_bom_api!ui  TO APPLICATION ROLE app_user;
+    ELSE
+        RETURN 'Awaiting CREATE COMPUTE POOL and BIND SERVICE ENDPOINT approval.';
+    END IF;
+    RETURN 'API and UI resources configured.';
+END;
+$$;
+GRANT USAGE ON PROCEDURE core.grant_callback(ARRAY) TO APPLICATION ROLE app_user;
 
 -- 12. Phase 4 opt-in SPCS scanner service
 -- Egress is not available to this container unless the customer binds all

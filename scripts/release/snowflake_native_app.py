@@ -99,6 +99,37 @@ def package_files() -> dict[str, Path]:
     return files
 
 
+def validate_install_contract(manifest: dict[str, Any], setup: str) -> None:
+    """Check supported manifest shapes and required consumer approval callbacks."""
+    config = manifest.get("configuration", {})
+    if config.get("log_level") != "INFO" or config.get("grant_callback") != "core.grant_callback":
+        raise ValueError("manifest requires scalar log_level and core.grant_callback")
+    if set(config) != {"log_level", "grant_callback"} or "external_access_integrations" in manifest:
+        raise ValueError("application settings and EAI configuration do not belong in manifest configuration")
+    if "service_roles" in manifest.get("artifacts", {}):
+        raise ValueError("service roles must be declared in service specifications")
+    references = {name: body for entry in manifest.get("references", []) for name, body in entry.items()}
+    used = set(re.findall(r"reference\('([^']+)'\)", setup))
+    if not used <= references.keys():
+        raise ValueError("setup uses undeclared references")
+    for name, body in references.items():
+        if body.get("register_callback") != "core.register_reference" or body.get("multi_valued") is not False:
+            raise ValueError(f"reference {name} requires a single-value registration callback")
+        if body.get("object_type") == "EXTERNAL ACCESS INTEGRATION":
+            if (
+                body.get("configuration_callback") != "core.get_reference_configuration"
+                or body.get("privileges") != ["USAGE"]
+                or body.get("required_at_setup") is not False
+            ):
+                raise ValueError(f"EAI {name} requires optional consumer-approved configuration")
+    for callback in ("grant_callback", "register_reference", "get_reference_configuration"):
+        if f"CREATE OR REPLACE PROCEDURE core.{callback}(" not in setup:
+            raise ValueError(f"missing setup callback: {callback}")
+    before_callback = setup.split("CREATE OR REPLACE PROCEDURE core.grant_callback(")[0]
+    if "CREATE COMPUTE POOL IF NOT EXISTS" in before_callback or "CREATE SERVICE IF NOT EXISTS" in before_callback:
+        raise ValueError("container resources must wait for consumer privilege approval")
+
+
 def validate(version: str | None = None) -> None:
     tag = package_version(version)
     contract = image_contract(version)
@@ -106,6 +137,7 @@ def validate(version: str | None = None) -> None:
     marketplace = _yaml(APP / "marketplace.yml")
     listing = _yaml(LISTING)
     package = _project_package()
+    validate_install_contract(manifest, (APP / "scripts/setup.sql").read_text(encoding="utf-8"))
 
     if package.get("distribution") != "external" or package.get("enable_release_channels") is not True:
         raise ValueError("snowflake.yml must declare external distribution with release channels")
@@ -122,7 +154,11 @@ def validate(version: str | None = None) -> None:
         text = spec.read_text(encoding="utf-8")
         if ":latest" in text or f":{tag}" not in text:
             raise ValueError(f"{spec.relative_to(ROOT)} must use the immutable release tag {tag}")
-        _yaml(spec)
+        service_spec = _yaml(spec)
+        endpoints = {entry["name"] for entry in service_spec["spec"].get("endpoints", [])}
+        roles = service_spec.get("serviceRoles", [])
+        if not roles or any(not set(role.get("endpoints", [])) <= endpoints for role in roles):
+            raise ValueError(f"{spec.name} requires serviceRoles bound to declared endpoints")
         placeholders = set(re.findall(r"\{\{\s*([^} ]+)\s*\}\}", text))
         allowed_placeholders = {"mcp_bearer_token", "mcp_bearer_token_expires_at"} if spec.name == "mcp-runtime-service.yaml" else set()
         if placeholders != allowed_placeholders:

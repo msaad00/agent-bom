@@ -33,3 +33,7 @@ spec:
     - name: mcp_runtime
       port: 8423
       public: false
+
+serviceRoles:
+  - name: mcp_runtime
+    endpoints: [mcp_runtime]

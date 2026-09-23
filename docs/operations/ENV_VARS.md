@@ -129,14 +129,14 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_DSPM_AZURE_BLOB_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
 | `AGENT_BOM_DSPM_AZURE_BLOB_MAX_CONTAINERS` | `int` | `25` | — |
-| `AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER` | `int` | `10` | — |
+| `AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER` | `int` | `50` | — |
 | `AGENT_BOM_DSPM_DB_MAX_CELL_CHARS` | `int` | `4096` | — |
-| `AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE` | `int` | `100` | — |
+| `AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE` | `int` | `500` | — |
 | `AGENT_BOM_DSPM_DB_MAX_TABLES` | `int` | `200` | — |
 | `AGENT_BOM_DSPM_GCS_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
-| `AGENT_BOM_DSPM_GCS_MAX_OBJECTS_PER_BUCKET` | `int` | `10` | — |
+| `AGENT_BOM_DSPM_GCS_MAX_OBJECTS_PER_BUCKET` | `int` | `50` | — |
 | `AGENT_BOM_DSPM_S3_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
-| `AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET` | `int` | `10` | Content reads are opt-in at the caller/module level. These caps bound the amount of object-store data read when an operator enables object-store sampling. |
+| `AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET` | `int` | `50` | Content reads are opt-in at the caller/module level. These caps bound the amount of object-store data read when an operator enables object-store sampling. |
 
 ## Default Read Window
 | Env var | Type | Default | Description |
@@ -374,6 +374,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_SCANNER_BATCH_SIZE` | `int` | `1000` | OSV API max is 1000 |
 | `AGENT_BOM_SCANNER_MAX_CONCURRENT` | `int` | `10` | Used by scanners/__init__.py for OSV batch API concurrency.  10 concurrent requests with 500ms delay between batches keeps us well under OSV.dev's rate limit while still being fast for large inventories. |
 | `AGENT_BOM_SCANNER_OSV_BATCH_CONCURRENCY` | `int` | `3` | — |
+
+## Secret Scanner: Live AWS Credential Validation (opt-in)
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_SECRET_LIVE_VALIDATION_ENABLED` | `bool` | `False` | When enabled, a discovered AWS access key (paired with a discovered AWS secret key in the same file) is checked with a single read-only sts:GetCallerIdentity call to tell a live credential from a dead/rotated one. Off by default: the scanne |
 
 ## Server Risk Scoring
 | Env var | Type | Default | Description |

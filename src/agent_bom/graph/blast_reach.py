@@ -167,6 +167,7 @@ def apply_symbol_reachability_to_blast_radii(
         br.reachable_affected_symbols = list(signal.matched_symbols)
         br.symbol_reachability_reason = signal.reason
         br.runtime_dependency_chain = list(signal.runtime_dependency_chain)
+        br.symbol_reachability_tainted_argument = signal.tainted_argument
         if rescore:
             br.calculate_risk_score()
         stamped += 1

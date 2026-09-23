@@ -33,3 +33,28 @@ def test_explicit_cli_validation_surfaces_verdict_without_changing_exit(tmp_path
         assert json.loads(result.stdout)["findings"][0]["validation_status"] == "invalid"
     else:
         assert "validation: invalid" in result.stdout
+
+
+@pytest.mark.parametrize("command", ["secrets", "scan"])
+def test_offline_overrides_aws_live_validation_setting(tmp_path, monkeypatch, command):
+    from agent_bom import config
+    from agent_bom.scanners import aws_secret_validation
+
+    (tmp_path / "settings.env").write_text('AWS_ACCESS_KEY_ID="AKIA' + "A" * 16 + '"\nAWS_SECRET_ACCESS_KEY="' + "s" * 40 + '"\n')
+    monkeypatch.setattr(config, "SECRET_LIVE_VALIDATION_ENABLED", True)
+    calls = []
+
+    def forbidden(*args):
+        calls.append(args)
+        raise RuntimeError("offline request attempted")
+
+    monkeypatch.setattr(aws_secret_validation, "_build_sts_client", forbidden)
+    args = (
+        ["secrets", str(tmp_path), "--offline", "--format", "json"]
+        if command == "secrets"
+        else ["scan", "--demo", "--project", str(tmp_path), "--offline", "--format", "json"]
+    )
+    result = CliRunner().invoke(main, args)
+    assert result.exit_code in (0, 1), result.output
+    assert calls == []
+    assert "AWS Access Key" in result.output

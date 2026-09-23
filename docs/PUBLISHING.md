@@ -32,8 +32,11 @@ Do not generate a new expiry at boot for an unchanged token. The MCP server does
 not expose an embedded OAuth issuer; registry capability inspection must use an
 operator-provisioned credential. Keep TLS at your ingress or platform edge.
 
-The daily deployment-freshness workflow probes this protected Railway `/health`
-surface with the configured bearer token, and probes Smithery through
+The daily deployment-freshness workflow requires an authenticated MCP `initialize`
+exchange with the configured bearer token and a 401/403 rejection for the same
+anonymous request, then checks the public server card
+against the exact published tool schemas. Public health or metadata alone cannot
+close a protected-deployment drift alert. It also probes Smithery through
 `https://api.smithery.ai/servers/agentbom/agent-bom` for catalog liveness,
 remote deployment metadata, and the exact released tool inventory.
 

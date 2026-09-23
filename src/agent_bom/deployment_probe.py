@@ -60,6 +60,99 @@ def resolve_server_card_url(base_url: str | None) -> str:
     return urlunsplit((parts.scheme, parts.netloc, "/.well-known/mcp/server-card.json", "", ""))
 
 
+class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        raise ValueError("Authenticated MCP probe does not follow redirects")
+
+
+def verify_mcp_auth(base_url: str | None, *, bearer_token: str | None, expected_version: str | None, timeout: float) -> None:
+    """Require an authenticated initialize exchange; public metadata is not proof."""
+    if not bearer_token:
+        raise ValueError("Authenticated MCP probe requires an operator-provisioned bearer token")
+    parts = urlsplit((base_url or DEFAULT_BASE_URL).strip())
+    if parts.scheme != "https" or not parts.netloc or parts.username or parts.password:
+        raise ValueError("Authenticated MCP probe requires an HTTPS origin without URL credentials")
+    path = parts.path.rstrip("/")
+    if not path.endswith("/mcp"):
+        path += "/mcp"
+    url = urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+    body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "agent-bom-deployment-probe", "version": "1"},
+            },
+        }
+    ).encode()
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {bearer_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "User-Agent": _USER_AGENT,
+        },
+    )
+    try:
+        opener = urllib.request.build_opener(_NoAuthRedirect())
+        with opener.open(request, timeout=timeout) as response:  # nosec B310 - HTTPS validated; redirects rejected
+            if response.headers.get_content_type() == "text/event-stream":
+                chunks: list[str] = []
+                consumed = 0
+                while consumed <= 1_048_576:
+                    line = response.readline(65_537)
+                    if not line:
+                        break
+                    consumed += len(line)
+                    if len(line) > 65_536:
+                        raise ValueError("Oversized event")
+                    if not line.strip() and chunks:
+                        break
+                    if line.startswith(b"data:"):
+                        chunks.append(line[5:].decode().strip())
+                if consumed > 1_048_576:
+                    raise ValueError("Oversized response")
+                payload = json.loads("\n".join(chunks))
+            else:
+                raw = response.read(1_048_577)
+                if len(raw) > 1_048_576:
+                    raise ValueError("Oversized response")
+                payload = json.loads(raw)
+        result = payload.get("result") if isinstance(payload, dict) else None
+        info = result.get("serverInfo") if isinstance(result, dict) else None
+        if (
+            payload.get("jsonrpc") != "2.0"
+            or payload.get("id") != 1
+            or "error" in payload
+            or not isinstance(info, dict)
+            or not isinstance(result, dict)
+            or not isinstance(result.get("capabilities"), dict)
+            or not result.get("protocolVersion")
+            or (expected_version and info.get("version") != expected_version)
+        ):
+            raise ValueError("Invalid initialize response")
+        anonymous = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "User-Agent": _USER_AGENT},
+        )
+        try:
+            with opener.open(anonymous, timeout=timeout):  # nosec B310 - same validated origin; no credentials
+                raise ValueError("Anonymous MCP initialize must be rejected")
+        except urllib.error.HTTPError as exc:
+            exc.close()
+            if exc.code not in {401, 403}:
+                raise ValueError("Anonymous MCP rejection could not be verified") from exc
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        # Never print response bodies, headers, request URLs or credential-bearing exceptions.
+        raise RuntimeError("Authenticated MCP initialize failed; check credential validity and deployed release") from exc
+
+
 def _fetch_json(
     url: str,
     *,
@@ -230,6 +323,9 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Probe the public MCP server card instead of /health.",
     )
+    parser.add_argument(
+        "--require-mcp-auth", action="store_true", help="Also require authenticated MCP initialize; public metadata alone cannot pass."
+    )
     parser.add_argument("--expected-version", default=None, help="Exact release version required from the server card.")
     parser.add_argument("--expected-tool-count", type=int, default=None, help="Exact released MCP tool count required.")
     return parser
@@ -243,6 +339,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.resolve_only:
             sys.stdout.write(f"{resolve_health_url(args.base_url)}\n")
             return 0
+
+        if args.require_mcp_auth:
+            verify_mcp_auth(args.base_url, bearer_token=args.bearer_token, expected_version=args.expected_version, timeout=args.timeout)
 
         if args.server_card:
             if not args.expected_version or args.expected_tool_count is None:

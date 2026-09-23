@@ -321,7 +321,8 @@ def test_generation_backfill_under_non_superuser_migration_owner(monkeypatch, up
     admin_db = urlunsplit((parts.scheme, parts.netloc, f"/{database}", parts.query, parts.fragment))
     owner_url = urlunsplit((parts.scheme, f"{owner}:{password}@{parts.netloc.rsplit('@', 1)[-1]}", f"/{database}", "", ""))
     root = Path(__file__).resolve().parents[1]
-    cfg = Config(str(root / "deploy/supabase/postgres/alembic.ini"))
+    # Programmatic migrations must not apply CLI logging configuration to pytest.
+    cfg = Config()
     cfg.set_main_option("script_location", str(root / "deploy/supabase/postgres/alembic"))
     with psycopg.connect(dsn, autocommit=True) as admin:
         admin.execute(sql.SQL("CREATE ROLE {} LOGIN SUPERUSER PASSWORD {}").format(sql.Identifier(owner), sql.Literal(password)))
@@ -372,7 +373,8 @@ def test_queue_only_legacy_upgrade_does_not_require_or_advertise_graph(monkeypat
     database = f"adjacency_legacy_{uuid.uuid4().hex[:12]}"
     url = urlunsplit((parts.scheme, parts.netloc, f"/{database}", parts.query, parts.fragment))
     root = Path(__file__).resolve().parents[1]
-    cfg = Config(str(root / "deploy/supabase/postgres/alembic.ini"))
+    # Programmatic migrations must not apply CLI logging configuration to pytest.
+    cfg = Config()
     cfg.set_main_option("script_location", str(root / "deploy/supabase/postgres/alembic"))
     with psycopg.connect(dsn, autocommit=True) as admin:
         admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))

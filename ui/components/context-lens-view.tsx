@@ -77,6 +77,8 @@ import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { useContextGraph } from "@/hooks/use-context-graph";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
+import { PersistedContextView } from "@/components/persisted-context-view";
+
 const contextEdgeTypes = { contextEvidence: ContextEvidenceEdge };
 const EMPTY_NODES: Node[] = [];
 const EMPTY_EDGES: Edge[] = [];
@@ -312,6 +314,14 @@ export function LateralPanel({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export function ContextLensView() {
+  const [persisted, setPersisted] = useState(true);
+  return <><div className="flex flex-wrap gap-2 border-b border-[var(--border-subtle)] p-3" aria-label="Context evidence source">
+    <button className="context-action" aria-pressed={persisted} onClick={() => setPersisted(true)}>Persisted snapshot</button>
+    <button className="context-action" aria-pressed={!persisted} onClick={() => setPersisted(false)}>Scan-derived (unpersisted)</button>
+  </div>{persisted ? <PersistedContextView /> : <><p className="p-3 text-sm text-[var(--text-secondary)]">Scan-derived evidence rebuilt from the report; this mode does not page the persisted graph.</p><ScanDerivedContextView /></>}</>;
+}
+
+function ScanDerivedContextView() {
   const graphFrameRef = useRef<HTMLDivElement>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");

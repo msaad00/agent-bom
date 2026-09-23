@@ -559,13 +559,16 @@ def collect_lateral_paths(
     """
     paths: list[LateralPath] = []
     sources_seen = 0
+    truncated = False
     for source_id in source_node_ids:
         if sources_seen >= max_sources or len(paths) >= max_paths:
             return paths[:max_paths], True
         sources_seen += 1
         remaining = max_paths - len(paths)
-        paths.extend(find_lateral_paths(graph, source_id, max_depth=max_depth)[:remaining])
-    return paths[:max_paths], False
+        source_paths, source_truncated = _find_lateral_paths(graph, source_id, max_depth=max_depth)
+        truncated = truncated or source_truncated or len(source_paths) > remaining
+        paths.extend(source_paths[:remaining])
+    return paths[:max_paths], truncated
 
 
 def find_lateral_paths(
@@ -573,7 +576,7 @@ def find_lateral_paths(
     source_node_id: str,
     max_depth: int = 4,
 ) -> list[LateralPath]:
-    """BFS from a node to find all lateral movement paths.
+    """BFS from a node to find bounded lateral investigation paths.
 
     A lateral path is one that reaches a *different* agent node, or reaches
     a credential/tool belonging to a different agent.
@@ -586,8 +589,18 @@ def find_lateral_paths(
     Returns:
         Up to 100 ``LateralPath`` objects, sorted by composite_risk desc.
     """
+    paths, _ = _find_lateral_paths(graph, source_node_id, max_depth=max_depth)
+    return paths
+
+
+def _find_lateral_paths(
+    graph: ContextGraph,
+    source_node_id: str,
+    max_depth: int = 4,
+) -> tuple[list[LateralPath], bool]:
+    """Retain per-source budget exhaustion for multi-source/API completeness."""
     if source_node_id not in graph.nodes:
-        return []
+        return [], False
 
     source_node = graph.nodes[source_node_id]
     source_agent = source_node.label if source_node.kind == NodeKind.AGENT else source_node.metadata.get("agent", "")
@@ -598,6 +611,7 @@ def find_lateral_paths(
     queue.append((source_node_id, [source_node_id], [], frozenset([source_node_id])))
 
     visited_paths: set[tuple[str, ...]] = set()
+    truncated = False
 
     while queue and len(paths) < _MAX_PATHS:
         current_id, path_nodes, path_edges, visited = queue.popleft()
@@ -632,12 +646,16 @@ def find_lateral_paths(
                         paths.append(lp)
                         continue  # Don't expand further from this target
 
-        # Expand neighbors (bounded queue prevents OOM on dense graphs)
-        if len(queue) >= _MAX_QUEUE_SIZE:
+        # The requested hop depth is query scope, not an omitted queue entry.
+        if len(path_nodes) >= max_depth + 1:
             continue
+        # Check each append: one high-degree node can exceed the entire budget.
         for edge in graph.adjacency.get(current_id, []):
             neighbor = edge.target
             if neighbor not in visited:  # O(1) cycle check via frozenset
+                if len(queue) >= _MAX_QUEUE_SIZE:
+                    truncated = True
+                    break
                 queue.append(
                     (
                         neighbor,
@@ -648,7 +666,7 @@ def find_lateral_paths(
                 )
 
     paths.sort(key=lambda p: p.composite_risk, reverse=True)
-    return paths[:_MAX_PATHS]
+    return paths[:_MAX_PATHS], truncated or bool(queue)
 
 
 def _build_lateral_path(

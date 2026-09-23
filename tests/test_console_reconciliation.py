@@ -157,3 +157,30 @@ def test_verbose_posture_headline_matches_unified_stream(demo_verbose_console_ou
     assert int(match.group(1)) == by_sev["critical"]
     assert int(match.group(2)) == by_sev["high"]
     assert int(match.group(3)) == by_sev["medium"]
+
+
+def test_final_totals_include_project_ast_findings(tmp_path, monkeypatch):
+    """Project AST findings arrive after graph analysis but belong in final totals."""
+    import agent_bom.db.schema as db_schema
+
+    monkeypatch.setattr(db_schema, "DB_PATH", tmp_path / "empty-vulns.db")
+    project = tmp_path / "sample"
+    output = tmp_path / "report.json"
+    runner = CliRunner()
+    generated = runner.invoke(main, ["samples", "first-run", "-o", str(project)], catch_exceptions=False)
+    assert generated.exit_code == 0
+    result = runner.invoke(
+        main,
+        ["scan", "--demo", "-p", str(project), "--offline", "--no-auto-update-db", "-f", "json", "-o", str(output)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output  # Curated critical CVEs produce the expected scan verdict.
+    report = json.loads(output.read_text())
+    assert report["scan_run"]["outcome"] == "complete"
+    assert report["finding_summary"]["by_type"]["SAST"] > 0
+    terminal = " ".join(re.sub(r"\x1b\[[0-9;]*m", "", result.output).split())
+    headline = re.search(r"Findings — (.*?) \(all finding categories\)", terminal)
+    assert headline, terminal
+    expected = report["finding_summary"]["by_severity"]
+    actual = {severity: int(count) for count, severity in re.findall(r"(\d+) (critical|high|medium|low|unknown)", headline.group(1))}
+    assert actual == {severity: count for severity, count in expected.items() if count}

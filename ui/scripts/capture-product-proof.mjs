@@ -3492,6 +3492,19 @@ async function main() {
           await agentScope.selectOption("developer-copilot");
           await contextPage.waitForTimeout(600);
         }
+        const pathsToggle = contextPage.getByRole("button", { name: "Paths", exact: true });
+        await pathsToggle.click();
+        const secondPath = contextPage.getByRole("button", { name: /Inspect path:/ }).nth(1);
+        await secondPath.focus();
+        await secondPath.press("Enter");
+        await contextPage.waitForFunction(() => {
+          const selected = document.querySelectorAll('button[aria-label^="Inspect path:"][aria-pressed="true"]');
+          const nodes = [...document.querySelectorAll('.react-flow__node')].map((node) => node.getAttribute('data-id'));
+          return selected.length === 1 && nodes.includes('server:filesystem') && !nodes.includes('server:github');
+        });
+        await contextPage.getByRole("button", { name: /Inspect path:/ }).first().click();
+        await contextPage.locator('[data-id="server:github"]').waitFor({ state: "visible" });
+        await pathsToggle.click();
         const showAll = contextPage.getByRole("button", { name: "Show all", exact: true });
         if (await showAll.count()) {
           await showAll.click();

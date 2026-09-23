@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type ElementType } from "react";
+import { useEffect, useId, useRef, useState, type ElementType, type ComponentProps } from "react";
 import {
   ArrowRight,
   Bug,
@@ -183,6 +183,7 @@ function derivePostureBlurb({
 }
 
 export interface OverviewCockpitProps {
+  localReport?: boolean | undefined;
   /** True until the posture and cross-domain overview requests settle. */
   loading?: boolean | undefined;
   overviewUnavailable?: boolean | undefined;
@@ -240,6 +241,7 @@ export interface OverviewCockpitProps {
 }
 
 export function OverviewCockpit({
+  localReport = false,
   loading = false,
   overviewUnavailable = false,
   inventorySummary = null,
@@ -294,6 +296,7 @@ export function OverviewCockpit({
 
   return (
     <div className="space-y-7">
+      {localReport && <p className="text-sm text-ink-secondary">Local report only. Findings are not linked to tenant investigations or live coverage.</p>}
       <section aria-label="Risk overview" className="@container min-w-0 rounded-2xl border border-outline-strong bg-surface p-4 sm:p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className={SECTION_TITLE_CLASS}>Risk overview</h2>
@@ -302,14 +305,15 @@ export function OverviewCockpit({
         <DetailTabs ariaLabel="Risk overview views" value={riskTab} onChange={setRiskTab}
           tabs={[{ key: "posture", label: "Posture" }, { key: "risks", label: "Top risks" }, { key: "assets", label: "Assets & coverage" }]} />
         <div role="tabpanel" aria-label="Top risks" hidden={riskTab !== "risks"}>
-          <TopRisksPanel loading={loading} unavailable={overviewUnavailable} scans={scans}
+          <TopRisksPanel localReport={localReport} loading={loading} unavailable={overviewUnavailable} scans={scans}
             topPath={topPath} exposurePaths={exposurePaths}
             agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null} />
         </div>
-        <div role="tabpanel" aria-label="Assets & coverage" hidden={riskTab !== "assets"}><OverviewAssets summary={inventorySummary} loading={inventoryLoading} unavailable={inventoryUnavailable} unavailableHref={inventoryUnavailableHref} /></div>
+        <div role="tabpanel" aria-label="Assets & coverage" hidden={riskTab !== "assets"}>{localReport ? <p className="mt-4 text-sm text-ink-secondary">This report is not linked to a live inventory snapshot.</p> : <OverviewAssets summary={inventorySummary} loading={inventoryLoading} unavailable={inventoryUnavailable} unavailableHref={inventoryUnavailableHref} />}</div>
         <div role="tabpanel" aria-label="Posture" hidden={riskTab !== "posture"}>
             <div className="mt-4 grid items-start gap-5 @min-[56rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @min-[56rem]:gap-6">
               <PostureHero
+                localReport={localReport}
                 loading={loading}
                 grade={grade}
                 score={score}
@@ -322,6 +326,7 @@ export function OverviewCockpit({
                 cves={cves}
               />
               <SeverityIssueStrip
+                localReport={localReport}
                 summaryReady={summaryReady}
                 critical={critical}
                 high={high}
@@ -342,9 +347,9 @@ export function OverviewCockpit({
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
           <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
-            actions={<Link href="/compliance" aria-label="View all frameworks" title="View all frameworks" className="inline-flex min-h-8 min-w-8 items-center justify-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"><span className="hidden sm:inline">View all frameworks</span><ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>}>
-            <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
-              loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />
+            actions={localReport ? undefined : <Link href="/compliance" aria-label="View all frameworks" title="View all frameworks" className="inline-flex min-h-8 min-w-8 items-center justify-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"><span className="hidden sm:inline">View all frameworks</span><ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>}>
+            {localReport ? <p className="text-sm text-ink-secondary">Tenant compliance assessment is unavailable for this local report.</p> : <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence}
+              loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />}
           </Collapsible>
         </section>
         <section aria-label="Findings by discipline" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
@@ -657,6 +662,7 @@ function FrameworkCards({ frameworks }: { frameworks: OverviewComplianceSnapshot
 }
 
 function TopRisksPanel({
+  localReport = false,
   loading,
   unavailable,
   scans,
@@ -664,6 +670,7 @@ function TopRisksPanel({
   exposurePaths,
   agentMeshHref = null,
 }: {
+  localReport?: boolean | undefined;
   loading: boolean;
   unavailable: boolean;
   scans: number | null;
@@ -689,7 +696,7 @@ function TopRisksPanel({
     return () => observer.disconnect();
   }, []);
   const selected = shown.find((path) => path.key === selectedKey) ?? shown[0];
-  const detail = selected ? <RiskChainRow path={selected} rank={shown.indexOf(selected) + 1} /> : null;
+  const detail = selected ? <RiskChainRow localReport={localReport} path={selected} rank={shown.indexOf(selected) + 1} /> : null;
   return (
     <section ref={container} aria-label="Prioritized findings" className="@container">
       <p className="mb-3 text-xs text-ink-secondary">Review these findings first · {ranked.length} prioritized risks</p>
@@ -713,15 +720,15 @@ function TopRisksPanel({
           <Drawer open={!wide && drawerOpen} onClose={() => setDrawerOpen(false)} title="Selected risk" ariaLabel="Selected risk" size="lg">{detail}</Drawer>
         </div>
         : <p className="text-sm text-ink-secondary">{unavailable ? "Prioritized findings unavailable." : scans === 0 ? "No completed scans. Run a scan to assess findings." : "No prioritized findings in the current overview."}</p>}
-      <div className="mt-3 flex flex-wrap gap-3 text-sm">
-        <Link href="/security-graph" className="text-emerald-700 dark:text-emerald-300">Open investigation →</Link>
-        {agentMeshHref ? <Link href={agentMeshHref} className="text-ink-secondary">Agent mesh</Link> : null}
-      </div>
+      {!localReport && <div className="mt-3 flex flex-wrap gap-3 text-sm">
+        <ReportEvidenceLink localReport={localReport} href="/security-graph" className="text-emerald-700 dark:text-emerald-300">Open investigation →</ReportEvidenceLink>
+        {agentMeshHref ? <ReportEvidenceLink localReport={localReport} href={agentMeshHref} className="text-ink-secondary">Agent mesh</ReportEvidenceLink> : null}
+      </div>}
     </section>
   );
 }
 
-function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) {
+function RiskChainRow({ path, rank, localReport = false }: { path: ExposurePathView; rank: number; localReport?: boolean }) {
   const finding = path.nodes.find((node) => node.type === "cve");
   const workload = path.nodes.find((node) => node.type === "agent") ?? path.nodes.find((node) => node.type === "server");
   const sbomSource = workload ? sbomSourceName(workload.label) : null;
@@ -750,7 +757,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
 
   return (
     <article className="@container border-b border-outline py-1 last:border-b-0">
-      <Link href={path.href} className="group block rounded-md px-1 py-3 transition hover:bg-surface-muted">
+      <ReportEvidenceLink localReport={localReport} href={path.href} className="group block rounded-md px-1 py-3 transition hover:bg-surface-muted">
         <div className="flex items-start gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-outline font-mono text-xs text-ink-secondary">{rank}</span>
           <div className="grid min-w-0 flex-1 gap-x-4 @min-[42rem]:grid-cols-[minmax(0,1fr)_auto]">
@@ -766,7 +773,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
             </div>
           </div>
         </div>
-      </Link>
+      </ReportEvidenceLink>
       <details className="pb-3 pl-9 text-xs">
         <summary className="cursor-pointer text-ink-secondary">Technical details</summary>
         <p className="mt-2 text-ink-secondary">Dependency evidence; exploitation of this workload is not established.</p>
@@ -899,6 +906,7 @@ function ScoreFormatToggle({
 }
 
 function PostureHero({
+  localReport = false,
   loading,
   grade,
   score,
@@ -910,6 +918,7 @@ function PostureHero({
   high,
   cves,
 }: {
+  localReport?: boolean | undefined;
   loading: boolean;
   grade: string;
   score?: number | undefined;
@@ -931,7 +940,7 @@ function PostureHero({
       : "border-outline-strong bg-surface-muted text-foreground";
   const blurb = loading
     ? "Refreshing the current posture and evidence summary."
-    : derivePostureBlurb({ summary, critical, high, cves, graded });
+    : localReport ? "Tenant posture cannot be assessed from an imported report. Review its findings below." : derivePostureBlurb({ summary, critical, high, cves, graded });
 
   return (
     <div className="flex items-center gap-4">
@@ -959,7 +968,7 @@ function PostureHero({
               ) : null}
             </>
           ) : (
-            "Awaiting scan"
+            localReport ? "Posture unavailable" : "Awaiting scan"
           )}
         </p>
         {graded && <p className="mt-2 text-sm font-medium text-foreground">Posture score · 0–100, higher is better</p>}
@@ -1014,12 +1023,14 @@ const ISSUE_TYPE_BAR: Record<IssueType, string> = {
  * severity band; the glyph carries the category meaning. Works in both themes.
  */
 function CategoryChip({
+  localReport = false,
   href,
   icon: Icon,
   label,
   value,
   title,
 }: {
+  localReport?: boolean | undefined;
   href: string;
   icon: ElementType;
   label: string;
@@ -1027,18 +1038,19 @@ function CategoryChip({
   title?: string | undefined;
 }) {
   return (
-    <Link
+    <ReportEvidenceLink localReport={localReport}
       href={href}
       title={title}
       className="inline-flex items-center gap-1 rounded-full border border-outline bg-surface-muted px-2 py-0.5 text-[10px] font-semibold text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
     >
       <Icon className="h-3 w-3 text-ink-secondary" aria-hidden="true" />
       {label} {value}
-    </Link>
+    </ReportEvidenceLink>
   );
 }
 
 function SeverityIssueStrip({
+  localReport = false,
   summaryReady,
   critical,
   high,
@@ -1049,6 +1061,7 @@ function SeverityIssueStrip({
   matrix,
   scopeLabel,
 }: {
+  localReport?: boolean | undefined;
   summaryReady: boolean;
   critical: number;
   high: number;
@@ -1113,6 +1126,7 @@ function SeverityIssueStrip({
                 green pass). The glyph carries the distinction. */}
             {summaryReady && kev != null ? (
               <CategoryChip
+                localReport={localReport}
                 href={findingsHref({ scope: "all", kev: true })}
                 icon={Flame}
                 label="KEV"
@@ -1122,6 +1136,7 @@ function SeverityIssueStrip({
             ) : null}
             {summaryReady && credentials != null ? (
               <CategoryChip
+                localReport={localReport}
                 href={findingsHref({ scope: "all", issue: "secret" })}
                 icon={KeyRound}
                 label="Secrets"
@@ -1131,6 +1146,7 @@ function SeverityIssueStrip({
             ) : null}
             {complianceScore ? (
               <CategoryChip
+                localReport={localReport}
                 href="/compliance"
                 icon={ShieldCheck}
                 label="Compliance"
@@ -1170,7 +1186,7 @@ function SeverityIssueStrip({
 
       <div className="grid grid-cols-2 gap-2 @min-[36rem]:grid-cols-4">
         {bands.map((band) => (
-          <Link
+          <ReportEvidenceLink localReport={localReport}
             key={band.key}
             href={findingsHref({ scope: "all", severity: band.key })}
             className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg border px-2.5 py-2 transition ${band.tint}`}
@@ -1212,7 +1228,7 @@ function SeverityIssueStrip({
                 </div>
               </div>
             ) : null}
-          </Link>
+          </ReportEvidenceLink>
         ))}
       </div>
 
@@ -1223,14 +1239,14 @@ function SeverityIssueStrip({
             if (total <= 0) return null;
             const Glyph = ISSUE_TYPE_GLYPH[issue];
             return (
-              <Link
+              <ReportEvidenceLink localReport={localReport}
                 key={issue}
                 href={findingsHref({ scope: "all", issue })}
                 className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface px-2 py-0.5 text-[10px] text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
               >
                 <Glyph className="h-3 w-3 text-ink-secondary" aria-hidden="true" />
                 {ISSUE_TYPE_SHORT[issue]} {total}
-              </Link>
+              </ReportEvidenceLink>
             );
           })}
         </div>
@@ -1238,4 +1254,8 @@ function SeverityIssueStrip({
       </Collapsible>
     </div>
   );
+}
+
+function ReportEvidenceLink({ localReport, children, className, title, ...props }: ComponentProps<typeof Link> & { localReport: boolean }) {
+  return localReport ? <div className={className} title={title}>{children}</div> : <Link {...props} className={className} title={title}>{children}</Link>;
 }

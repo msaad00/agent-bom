@@ -23,6 +23,14 @@ describe("GraphLensSwitcher", () => {
     push.mockClear();
   });
 
+  it("keeps the specialized-view menu closed until requested", () => {
+    params = new URLSearchParams({ lens: "context" });
+    render(<GraphLensSwitcher variant="compact" />);
+    const menu = screen.getByText("More views").closest("details");
+    expect(menu).toHaveAttribute("data-active-view", "true");
+    expect(menu).not.toHaveAttribute("open");
+  });
+
   it("renders the compact lens bar without overlay marketing copy", () => {
     render(<GraphLensSwitcher variant="compact" />);
 

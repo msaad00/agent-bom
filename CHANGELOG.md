@@ -7,6 +7,31 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.106.0] - 2026-09-23
+
+### Added
+
+- Inspect recorded authority and source receipts at each graph path hop, with bounded pagination and preserved investigation scope.
+- Optional, bounded AWS credential validation through STS, disabled by default and suppressed by offline scans. Validation errors remain unknown without removing findings.
+- Python one-hop tainted-argument evidence for function-reachable CVEs. This additive signal does not establish exploitability or full interprocedural data flow.
+
+### Fixed
+
+- Reconcile final terminal severity totals with JSON after SAST scanning, enrichment, and filtering.
+- Accept nullable advisory scores and current CLI tool fields when importing JSON reports.
+- Keep imported report findings separate from tenant posture, coverage, services, and scan freshness; label tenant-wide compliance exports explicitly.
+- Select ranked Context Map paths with keyboard support, discard stale scan responses, and preserve readable path drawers and graph framing across themes and viewport sizes.
+- Preserve distinct authorization receipts, action-specific evidence, workload connections, and source witnesses across graph and exposure responses.
+- Require evidence before reporting verified remediation, and keep runtime outcomes separate from exploitability signals.
+- Improve scoped inventory, findings, compliance drilldowns, graph framing, and light/dark metric readability. Empty API snapshots now return an empty summary.
+- Preserve dashboard metadata in refreshed images and enforce deployment and registry freshness checks while retaining Smithery as an explicitly non-blocking surface.
+- Keep screenshot proof sensitive to rendering toolchain and resolved dependency changes while allowing Node type-only maintenance updates.
+
+### Changed
+
+- Increase opt-in DSPM object sampling from 10 to 50 objects per bucket/container and database sampling from 100 to 500 rows per table; byte and cell limits remain bounded.
+- Update dependency and CI action pins, registry metadata, and operator documentation.
+
 ## [0.105.0] - 2026-09-15
 
 This release makes scan coverage and finding evidence clearer, adds explicit
@@ -3646,7 +3671,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.105.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.106.0...HEAD
+[0.106.0]: https://github.com/msaad00/agent-bom/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/msaad00/agent-bom/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/msaad00/agent-bom/compare/v0.103.2...v0.104.0
 [0.103.2]: https://github.com/msaad00/agent-bom/compare/v0.103.1...v0.103.2

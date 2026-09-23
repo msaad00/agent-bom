@@ -73,6 +73,7 @@ export interface ScanJob {
 }
 
 export interface ScanResult {
+  finding_summary?: { total: number; by_severity: Record<string, number> } | undefined;
   agents: Agent[];
   blast_radius: BlastRadius[];
   remediation_plan?: RemediationItem[] | undefined;
@@ -1375,9 +1376,9 @@ export interface Vulnerability {
   references?: string[] | undefined;
   advisory_sources?: string[] | undefined;
   aliases?: string[] | undefined;
-  cvss_score?: number | undefined;
+  cvss_score?: number | null | undefined;
   cvss_vector?: string | undefined;
-  epss_score?: number | undefined;
+  epss_score?: number | null | undefined;
   epss_percentile?: number | undefined;
   /** API v2 field — same as cisa_kev */
   is_kev?: boolean | undefined;
@@ -1658,8 +1659,8 @@ export interface BlastRadius {
   /** API v2 field — same as blast_score (0-100) */
   risk_score?: number | undefined;
   blast_score: number;
-  cvss_score?: number | undefined;
-  epss_score?: number | undefined;
+  cvss_score?: number | null | undefined;
+  epss_score?: number | null | undefined;
   is_kev?: boolean | undefined;
   cisa_kev?: boolean | undefined;
   fixed_version?: string | undefined;

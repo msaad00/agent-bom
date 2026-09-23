@@ -181,6 +181,11 @@ export function displayContextDescription(raw: string | undefined): string | und
   return text || undefined;
 }
 
+/** Stable evidence identity; risk re-ranking must not change the selected path. */
+export function lateralPathKey(path: LateralPath): string {
+  return JSON.stringify([path.source, path.target, path.hops, path.edges, [...path.vuln_ids].sort()]);
+}
+
 export function topLateralPathForAgent(
   paths: LateralPath[],
   selectedAgent: string | undefined,
@@ -201,11 +206,13 @@ export function topLateralPathForAgent(
 export function buildContextFlowGraph(
   data: ContextGraphData,
   selectedAgent?: string,
-  options?: { topPathOnly?: boolean },
+  options?: { topPathOnly?: boolean; selectedPathKey?: string | undefined },
 ): { nodes: Node[]; edges: Edge[]; focusedPath: LateralPath | null } {
   const focusedPath =
     options?.topPathOnly && selectedAgent
-      ? topLateralPathForAgent(data.lateral_paths, selectedAgent)
+      ? data.lateral_paths.find((path) =>
+          path.source === `agent:${selectedAgent}` && lateralPathKey(path) === options.selectedPathKey,
+        ) ?? topLateralPathForAgent(data.lateral_paths, selectedAgent)
       : null;
 
   // Collect IDs on the selected agent's lateral paths

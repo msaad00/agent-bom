@@ -6,7 +6,7 @@
  * vulnerabilities without implying observed runtime causality.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -36,6 +36,7 @@ import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
 import {
   buildContextFlowGraph,
+  lateralPathKey,
   type ContextGraphData,
   type LateralPath,
   type InteractionRisk,
@@ -69,6 +70,7 @@ import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/comp
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
+import { useContextGraph } from "@/hooks/use-context-graph";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
@@ -145,88 +147,103 @@ function agentScopeHeading(agentId: string | null, agents: Agent[]): string {
   return typeLabel ? `Paths from ${label} · ${typeLabel}` : `Paths from ${label}`;
 }
 
-function LateralPanel({
+export function LateralPanel({
   paths,
   risks,
   selectedAgent,
   pathFocusActive,
+  focusedPathKey,
+  onSelectPath,
   agents,
 }: {
   paths: LateralPath[];
   risks: InteractionRisk[];
   selectedAgent: string | null;
   pathFocusActive: boolean;
+  focusedPathKey: string | null;
+  onSelectPath: (path: LateralPath) => void;
   agents: Agent[];
 }) {
   const [risksOpen, setRisksOpen] = useState(false);
+  const [pathLimit, setPathLimit] = useState(5);
   const filtered = selectedAgent
     ? paths.filter((p) => p.source === `agent:${selectedAgent}`)
     : paths;
   const distinctPaths = Array.from(
-    new Map(filtered.map((path) => [`${path.hops.join("->")}::${path.vuln_ids.join(",")}`, path])).values(),
+    new Map(filtered.map((path) => [lateralPathKey(path), path])).values(),
   ).sort((left, right) => right.composite_risk - left.composite_risk);
-  const topPaths = distinctPaths.slice(0, pathFocusActive ? 3 : 5);
+  const topPaths = distinctPaths.slice(0, pathLimit);
 
   return (
-    <div className="w-80 shrink-0 overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)]">
+    <div className="w-full max-h-[45%] shrink-0 overflow-y-auto border-t md:max-h-none md:w-80 md:border-t-0 md:border-l border-[var(--border-subtle)] bg-[var(--background)]">
       <div className="p-3 border-b border-[var(--border-subtle)]">
         <h3 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">
           {agentScopeHeading(selectedAgent, agents)}
         </h3>
-        <p className="text-[10px] text-[var(--text-tertiary)]">
+        <p className="text-xs text-[var(--text-tertiary)]">
           {pathFocusActive
-            ? "Canvas shows the top lateral path only. Other agents appear when they share reachability — not because they are the same workload."
+            ? "Select a path to inspect its recorded reachability. Other agents appear when they share reachability — not because they are the same workload."
             : "Ranked reachability chains from scan evidence."}
         </p>
         {topPaths.length === 0 ? (
-          <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">No lateral paths found</p>
+          <p className="mt-2 text-xs text-[var(--text-tertiary)]">No lateral paths found</p>
         ) : (
           <div className="mt-2 space-y-2">
-            {topPaths?.map((p, i) => (
-              <div
-                key={i}
-                className={`rounded-lg border p-2 ${
-                  i === 0 && pathFocusActive
-                    ? "border-orange-500/40 bg-orange-950/20"
+            {topPaths.map((p) => (
+              <button
+                type="button"
+                key={lateralPathKey(p)}
+                aria-pressed={pathFocusActive && focusedPathKey === lateralPathKey(p)}
+                aria-label={`Inspect path: ${pathDisplayTitle(lateralPathToExposure(p, selectedAgent ?? "agent"))}`}
+                onClick={() => onSelectPath(p)}
+                className={`w-full rounded-lg border p-2 text-left focus-visible:outline-2 focus-visible:outline-orange-500 ${
+                  focusedPathKey === lateralPathKey(p) && pathFocusActive
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
                     : "border-[var(--border-subtle)] bg-[var(--surface)]"
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-[var(--text-tertiary)]">
+                  <span className="text-xs text-[var(--text-tertiary)]">
                     {p.hops.length - 1} hop{p.hops.length - 1 !== 1 ? "s" : ""}
                   </span>
                   <span
-                    className={`text-[10px] font-semibold ${
+                    className={`text-xs font-semibold ${
                       p.composite_risk >= 7
-                        ? "text-red-400"
+                        ? "text-[var(--graph-finding)]"
                         : p.composite_risk >= 4
-                        ? "text-amber-400"
+                        ? "text-[var(--graph-package)]"
                         : "text-[var(--text-secondary)]"
                     }`}
                   >
                     Risk {p.composite_risk.toFixed(1)}
                   </span>
                 </div>
-                <p className="break-words text-[11px] leading-relaxed text-[var(--foreground)]">
+                <p className="break-words text-xs leading-relaxed text-[var(--foreground)]">
                   {pathDisplayTitle(lateralPathToExposure(p, selectedAgent ?? "agent"))}
                 </p>
                 {p.credential_exposure.length > 0 && (
-                  <p className="mt-1 break-words text-[10px] text-amber-400">
+                  <p className="mt-1 break-words text-xs text-[var(--graph-package)]">
                     Creds: {formatExposureList(p.credential_exposure)}
                   </p>
                 )}
                 {p.tool_exposure.length > 0 && (
-                  <p className="mt-1 break-words text-[10px] text-purple-400">
+                  <p className="mt-1 break-words text-xs text-[var(--graph-tool)]">
                     Tools: {formatExposureList(p.tool_exposure)}
                   </p>
                 )}
                 {p.vuln_ids.length > 0 && (
-                  <p className="mt-1 break-words text-[10px] text-red-400">
+                  <p className="mt-1 break-words text-xs text-[var(--graph-finding)]">
                     Findings: {formatExposureList(p.vuln_ids, 3)}
                   </p>
                 )}
-              </div>
+              </button>
             ))}
+            <p className="text-xs text-[var(--text-tertiary)]">Showing {topPaths.length} of {distinctPaths.length} recorded paths</p>
+            {topPaths.length < distinctPaths.length && (
+              <button type="button" className="text-xs text-[var(--foreground)] underline focus-visible:outline-2" onClick={() => setPathLimit((limit) => limit + 5)}>
+                Show more paths
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -252,22 +269,22 @@ function LateralPanel({
                 className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg p-2"
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-[var(--text-tertiary)] capitalize">
+                  <span className="text-xs text-[var(--text-tertiary)] capitalize">
                     {r.pattern.replace(/_/g, " ")}
                   </span>
                   <span
-                    className={`text-[10px] font-semibold ${
+                    className={`text-xs font-semibold ${
                       r.risk_score >= 7
-                        ? "text-red-400"
+                        ? "text-[var(--graph-finding)]"
                         : r.risk_score >= 5
-                        ? "text-amber-400"
+                        ? "text-[var(--graph-package)]"
                         : "text-[var(--text-secondary)]"
                     }`}
                   >
                     {r.risk_score.toFixed(1)}
                   </span>
                 </div>
-                <p className="break-words text-[10px] leading-relaxed text-[var(--text-secondary)]">
+                <p className="break-words text-xs leading-relaxed text-[var(--text-secondary)]">
                   {r.description}
                 </p>
                 {r.owasp_agentic_tag && (
@@ -287,17 +304,20 @@ function LateralPanel({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export function ContextLensView() {
+  const graphFrameRef = useRef<HTMLDivElement>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
-  const [graphData, setGraphData] = useState<ContextGraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [scanError, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<LineageNodeData>, Edge> | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedPathKey, setSelectedPathKey] = useState<string | undefined>();
+  const { data: graphData, error: contextError } = useContextGraph(selectedJobId, selectedAgent);
+  const error = contextError ?? scanError;
   const [searchQuery, setSearchQuery] = useState("");
   const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
   // Canvas is the hero — paths list opens on demand (drawer), not by default.
@@ -374,19 +394,6 @@ export function ContextLensView() {
     return () => window.clearTimeout(timer);
   }, [agentNames]);
 
-  // Fetch context graph when job changes
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (!selectedJobId) return;
-      setGraphData(null);
-      api
-        .getContextGraph(selectedJobId, selectedAgent ?? undefined)
-        .then((resp) => setGraphData(resp as unknown as ContextGraphData))
-        .catch((e) => setError(e.message));
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [selectedJobId, selectedAgent]);
-
   // Build ReactFlow graph
   const { rawNodes, rawEdges, focusedPath } = useMemo(() => {
     if (!graphData) {
@@ -399,10 +406,10 @@ export function ContextLensView() {
     const { nodes, edges, focusedPath: path } = buildContextFlowGraph(
       graphData,
       selectedAgent ?? undefined,
-      { topPathOnly: pathFocusEnabled },
+      { topPathOnly: pathFocusEnabled, selectedPathKey },
     );
     return { rawNodes: nodes, rawEdges: edges, focusedPath: path };
-  }, [graphData, selectedAgent, pathFocusEnabled]);
+  }, [graphData, selectedAgent, pathFocusEnabled, selectedPathKey]);
 
   const topExposurePath = useMemo(() => {
     if (!graphData || !selectedAgent) return null;
@@ -541,6 +548,27 @@ export function ContextLensView() {
   }, []);
 
   const fitVisible = useCallback(() => void flowInstance?.fitView({ ...viewportOptions, duration: 240 }), [flowInstance, viewportOptions]);
+  // Drawer and viewport resizing must not leave the focused graph off-screen.
+  useEffect(() => {
+    const frame = graphFrameRef.current;
+    if (!frame || !flowInstance) return;
+    let previousSize = "";
+    let animationFrame = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const size = `${entry.contentRect.width}:${entry.contentRect.height}`;
+      if (previousSize && size !== previousSize) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = window.requestAnimationFrame(() => {
+          void flowInstance.fitView({ ...viewportOptions, duration: 0 });
+        });
+      }
+      previousSize = size;
+    });
+    observer.observe(frame);
+    return () => { observer.disconnect(); window.cancelAnimationFrame(animationFrame); };
+  }, [flowInstance, viewportOptions]);
+
   const fitSelection = useCallback(() => {
     const node = selectedNodeId ? flowInstance?.getNode(selectedNodeId) : undefined;
     if (node) void flowInstance?.fitView({ nodes: [node], padding: 0.7, duration: 240, maxZoom: 1.4 });
@@ -702,9 +730,9 @@ export function ContextLensView() {
       )}
 
       {/* Main area: graph + optional paths drawer */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {/* Graph */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
           {detailLoading && graphData && (
             <GraphRefreshOverlay label="Updating context graph" />
@@ -730,6 +758,7 @@ export function ContextLensView() {
               {/* Cap canvas height for small graphs so fitView fills the frame
                   instead of parking a wide short chain in a tall empty pane. */}
               <div
+                ref={graphFrameRef}
                 className={`relative w-full min-h-0 ${
                   displayNodes.length <= 20
                     ? "h-[min(100%,38rem)]"
@@ -797,6 +826,16 @@ export function ContextLensView() {
             risks={graphData.interaction_risks}
             selectedAgent={selectedAgent}
             pathFocusActive={pathFocusEnabled}
+            focusedPathKey={focusedPath ? lateralPathKey(focusedPath) : null}
+            onSelectPath={(path) => {
+              setSelectedPathKey(lateralPathKey(path));
+              setSelectedAgent(path.source.replace(/^agent:/, ""));
+              setPathFocusEnabled(true);
+              setSearchQuery("");
+              setHoveredNodeId(null);
+              setSelectedNode(null);
+              setSelectedNodeId(null);
+            }}
             agents={activeJob?.result?.agents ?? []}
           />
         )}

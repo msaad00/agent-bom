@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildContextFlowGraph, displayContextDescription, topLateralPathForAgent, type ContextGraphData, type LateralPath } from "@/lib/context-graph";
+import { buildContextFlowGraph, lateralPathKey, displayContextDescription, topLateralPathForAgent, type ContextGraphData, type LateralPath } from "@/lib/context-graph";
 import { RELATIONSHIP_COLOR_MAP, RelationshipType } from "@/lib/graph-schema";
 import { relationshipEdgeLabelText } from "@/lib/graph-utils";
 
@@ -117,6 +117,13 @@ describe("buildContextFlowGraph", () => {
       },
     };
 
+    const selected = buildContextFlowGraph(data, "desktop", { topPathOnly: true, selectedPathKey: lateralPathKey(paths[1]!) });
+    expect(selected.focusedPath?.vuln_ids).toEqual(["CVE-LOW"]);
+    expect(selected.nodes.map((node) => node.id)).toEqual(["agent:desktop", "server:notes", "vuln:low"]);
+    expect(selected.edges).toHaveLength(2);
+    expect(buildContextFlowGraph(data, "desktop", { topPathOnly: true, selectedPathKey: "stale" }).focusedPath).toBe(paths[0]);
+    expect(buildContextFlowGraph(data, "other", { topPathOnly: true, selectedPathKey: lateralPathKey(paths[1]!) }).focusedPath).toBeNull();
+    expect(buildContextFlowGraph(data, "desktop", { topPathOnly: false, selectedPathKey: lateralPathKey(paths[1]!) }).nodes).toHaveLength(5);
     expect(topLateralPathForAgent(paths, "desktop")?.composite_risk).toBe(9.6);
     const focused = buildContextFlowGraph(data, "desktop", { topPathOnly: true });
     expect(focused.focusedPath?.vuln_ids).toEqual(["CVE-CRIT"]);

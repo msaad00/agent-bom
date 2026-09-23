@@ -3,7 +3,10 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 // Browser-computed colors include each translucent ancestor surface.
 async function readable(target: Locator) {
   await expect(target).toBeVisible();
-  await target.scrollIntoViewIfNeeded();
+  // Inventory refresh can replace a row between visibility and scrolling.
+  await expect(async () => {
+    await target.scrollIntoViewIfNeeded();
+  }).toPass({ timeout: 5_000 });
   const result = await target.evaluate(node => {
     const ctx = document.createElement("canvas").getContext("2d")!;
     const rgba = (color: string) => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data]; };

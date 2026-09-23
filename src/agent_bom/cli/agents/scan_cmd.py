@@ -2275,25 +2275,6 @@ def scan(
                 for _gf in report.to_findings():
                     if _gf.source is _FindingSource.GRAPH_ANALYSIS:
                         con.print(f"      [dim]{str(_gf.severity).upper()}[/dim] {_gf.title}")
-            # One labeled all-categories totals line reconciles the
-            # package-CVE progress breakdown above with the unified findings
-            # stream every machine surface (JSON/API/MCP) reports.
-            _unified = report.to_findings()
-            if _unified:
-                _u_counts: dict[str, int] = {}
-                for _uf in _unified:
-                    _u_sev = str(_uf.effective_severity() or "unknown").lower()
-                    _u_counts[_u_sev] = _u_counts.get(_u_sev, 0) + 1
-                _u_order = ["critical", "high", "medium", "low", "unknown"]
-                _u_color = {
-                    "critical": "red bold",
-                    "high": "red",
-                    "medium": "yellow",
-                    "low": "blue",
-                    "unknown": "dim",
-                }
-                _u_str = " · ".join(f"[{_u_color[s]}]{_u_counts[s]} {s}[/{_u_color[s]}]" for s in _u_order if s in _u_counts)
-                con.print(f"  [red]⚠[/red] Findings — {_u_str} [dim](all finding categories)[/dim]")
 
     # ── Context graph: lateral movement analysis ────────────────────
     # Build whenever requested — credential exposure and tool-reach edges exist
@@ -3077,6 +3058,26 @@ def scan(
                 logger.warning("Delta baseline error: %s — skipping delta filter", exc)
 
     ctx.report_json = current_report_json
+
+    if not quiet:
+        # Print only after late scanners, AI enrichment, and filters finalize
+        # the report, so every machine surface shares these severity totals.
+        _unified = report.to_findings()
+        if _unified:
+            _u_counts: dict[str, int] = {}
+            for _uf in _unified:
+                _u_sev = str(_uf.effective_severity() or "unknown").lower()
+                _u_counts[_u_sev] = _u_counts.get(_u_sev, 0) + 1
+            _u_order = ["critical", "high", "medium", "low", "unknown"]
+            _u_color = {
+                "critical": "red bold",
+                "high": "red",
+                "medium": "yellow",
+                "low": "blue",
+                "unknown": "dim",
+            }
+            _u_str = " · ".join(f"[{_u_color[s]}]{_u_counts[s]} {s}[/{_u_color[s]}]" for s in _u_order if s in _u_counts)
+            con.print(f"  [red]⚠[/red] Findings — {_u_str} [dim](all finding categories)[/dim]")
 
     if not save_report:
         try:

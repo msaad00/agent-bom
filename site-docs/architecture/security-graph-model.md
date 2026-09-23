@@ -38,7 +38,9 @@ hop or promote a structural candidate into an executable path.
 ## Reading Context Map evidence
 
 Open **Context** for a completed scan, then select a relationship label to inspect
-its source, target, and affected package. These links describe scan evidence:
+its source, target, and affected package. Repository and SBOM imports remain
+static inventory in Repository/Lineage; they are not MCP agent configurations.
+These links describe scan evidence:
 
 - **Configured server** records an agent configuration, not an invocation.
 - **Advertises tool** records a tool declaration, not successful execution.

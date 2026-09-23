@@ -764,13 +764,13 @@ export function ContextLensView() {
           ) : displayNodes.length === 0 ? (
             <GraphEmptyState
               title="No context relationships match this scope"
-              detail="The selected scan loaded, but this agent scope does not have enough server, credential, or lateral path evidence to draw a context map."
+              detail="No recorded MCP configuration relationships are available in this scope. Repository and SBOM imports belong in Repository or Lineage views."
               suggestions={[
                 "Choose another agent from the scope selector.",
                 "Switch to all agents to inspect shared infrastructure.",
-                "Run a broader scan when you expect MCP server or credential relationships.",
+                "Scan a discovered MCP client configuration to populate Context.",
               ]}
-              command="agent-bom scan -p . -f graph"
+              command="agent-bom scan -f graph"
             />
           ) : (
             <div className="flex h-full min-h-0 w-full items-center justify-center bg-[var(--background)]">

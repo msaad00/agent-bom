@@ -438,8 +438,8 @@ function contextGraph() {
     { id: "tool:repo-write", kind: "tool", label: "create_pull_request", metadata: { severity: "high" } },
     { id: "tool:exec", kind: "tool", label: "execute_command", metadata: { severity: "critical" } },
     { id: "tool:query", kind: "tool", label: "run_sql", metadata: { severity: "high" } },
-    { id: "cve:next", kind: "vulnerability", label: "CVE-2025-29927", metadata: { severity: "critical", cvss_score: 9.8 } },
-    { id: "cve:urllib3", kind: "vulnerability", label: "CVE-2024-37891", metadata: { severity: "high", cvss_score: 8.8 } },
+    { id: "cve:next", kind: "vulnerability", label: "CVE-2025-29927", metadata: { severity: advisory("CVE-2025-29927").severity, cvss_score: advisory("CVE-2025-29927").cvss_score } },
+    { id: "cve:urllib3", kind: "vulnerability", label: "CVE-2024-37891", metadata: { severity: advisory("CVE-2024-37891").severity, cvss_score: advisory("CVE-2024-37891").cvss_score } },
   ];
   const edges = [
     { source: "iam:jit-review", target: "agent:developer-copilot", kind: "member_of", relationship: "member_of", weight: 1, metadata: {} },
@@ -3708,6 +3708,12 @@ async function main() {
 
 function checkAdvisoryFixtures() {
   const context = contextGraph();
+  for (const node of context.nodes.filter(node => node.kind === "vulnerability")) {
+    const facts = advisory(node.label);
+    if (node.metadata.cvss_score !== facts.cvss_score || node.metadata.severity !== facts.severity) {
+      throw new Error(`Context advisory disagrees with verified fixture: ${node.label}`);
+    }
+  }
   const links = new Set(context.edges.flatMap(edge => [`${edge.source}→${edge.target}`, `${edge.target}→${edge.source}`]));
   for (const path of context.lateral_paths) {
     if (path.source !== path.hops[0] || path.target !== path.hops.at(-1)

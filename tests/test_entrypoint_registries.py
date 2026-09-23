@@ -206,3 +206,79 @@ def test_fake_connector_and_parser_entry_points_load_when_enabled(monkeypatch):
     assert "jira" in connectors
     assert parsers["custom-lock"].manifest_names == ("custom.lock",)
     assert "pip" in parsers
+
+
+def test_custom_connector_scan_saves_reusable_tenant_graph(tmp_path, monkeypatch):
+    """Exercise registry -> scan report -> durable graph, without a provider account."""
+    from agent_bom.api import pipeline
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+    from agent_bom.cloud.normalization import build_cloud_origin
+    from agent_bom.connectors.base import ConnectorRegistration
+    from agent_bom.models import Agent, AgentType, MCPServer, Package
+
+    monkeypatch.setenv(ENTRYPOINTS_ENABLED_ENV, "true")
+    monkeypatch.setenv("AGENT_BOM_GRAPH_STORE_BACKED_BUILD", "false")
+    module_name = "agent_bom.tests.customer_inventory_connector"
+    source = types.ModuleType(module_name)
+    calls = []
+    origin = build_cloud_origin(
+        provider="customer",
+        service="inventory",
+        resource_type="agent",
+        resource_id="inventory-agent-42",
+        resource_name="review-agent",
+        account_id="sandbox-account",
+    )
+
+    def discover(**kwargs):
+        calls.append(kwargs)
+        return [
+            Agent(
+                name="review-agent",
+                agent_type=AgentType.CUSTOM,
+                config_path="inventory:agent-42",
+                source="customer-inventory",
+                metadata={"cloud_origin": origin},
+                mcp_servers=[MCPServer(name="review-tools", packages=[Package(name="sample-lib", version="1.0", ecosystem="pypi")])],
+            )
+        ], []
+
+    source.discover = discover
+    monkeypatch.setitem(sys.modules, module_name, source)
+    registration = ConnectorRegistration(
+        name="customer-inventory",
+        module=module_name,
+        source="entry_point",
+        capabilities=ExtensionCapabilities(writes=False, network_access=False, data_boundary="agentless_read_only"),
+    )
+    _patch_entry_points(monkeypatch, {"agent_bom.connectors": [FakeEntryPoint("customer-inventory", lambda: lambda: registration)]})
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda agents, **kwargs: [])
+    monkeypatch.setattr(pipeline, "_sync_scan_agents_to_fleet", lambda *args, **kwargs: None)
+    path = tmp_path / "customer-evidence.db"
+    store = SQLiteGraphStore(path)
+    monkeypatch.setattr(pipeline, "_get_graph_store", lambda: store)
+    job = ScanJob(
+        job_id="custom-source-scan",
+        tenant_id="customer-a",
+        created_at="2026-09-23T00:00:00Z",
+        request=ScanRequest(connectors=["customer-inventory"], enrich=False, offline=True),
+    )
+    pipeline._run_scan_sync(job)
+    assert job.status == JobStatus.DONE
+    assert calls == [{}]  # Destination credentials are not forwarded to discovery.
+    assert job.result["graph_persistence"]["status"] == "persisted"
+    reopened = SQLiteGraphStore(path)
+    graph = reopened.load_graph(tenant_id="customer-a", scan_id=job.job_id)
+    assert graph.nodes and graph.edges
+    resource_id = "cloud_resource:customer:inventory:agent:inventory-agent-42"
+    assert graph.nodes[resource_id].attributes["cloud_origin"] == origin
+    assert graph.has_edge(resource_id, "agent:review-agent")
+    assert not reopened.load_graph(tenant_id="customer-b", scan_id=job.job_id).nodes
+    before = (set(graph.nodes), {(e.source, e.target, e.relationship) for e in graph.edges})
+    # Re-saving the same report must replace the snapshot without duplicating edges.
+    pipeline._persist_graph_snapshot(job, job.result)
+    replay = SQLiteGraphStore(path).load_graph(tenant_id="customer-a", scan_id=job.job_id)
+    assert (set(replay.nodes), {(e.source, e.target, e.relationship) for e in replay.edges}) == before
+    assert len(replay.edges) == len(graph.edges)

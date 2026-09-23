@@ -1,5 +1,25 @@
 # Warehouse export publication contract
 
+Warehouse feed scores preserve missing evidence: absent or null `cvss_score`
+and `epss_score` values export as null; measured zero remains `0.0`. Queries
+should retain that distinction instead of coalescing unknown scores to zero.
+Snowflake, BigQuery, and Databricks feed score columns are nullable. ClickHouse
+uses `Nullable(Float32)` and upgrades the configured staging table before
+writing when schema management is enabled; a failed upgrade stops publication.
+With `ensure_schema=False`, operators must upgrade both score columns on
+`<feed_table>_staged` before exporting missing scores:
+
+```sql
+ALTER TABLE findings_feed_staged
+  MODIFY COLUMN cvss_score Nullable(Float32),
+  MODIFY COLUMN epss_score Nullable(Float32);
+```
+
+Previously exported zeroes cannot be distinguished from missing scores after
+the fact. Publish a new export from source evidence to correct the current
+snapshot. Keep the nullable columns when rolling back exporter code; older
+exporters will again write zero for missing scores.
+
 ClickHouse, BigQuery, and Databricks write each invocation to
 `<feed_table>_staged` with a new `publication_attempt_id`. After every batch
 completes, one row is appended to `<feed_table>_runs`. The manifest row is the

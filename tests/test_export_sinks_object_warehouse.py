@@ -541,8 +541,27 @@ def test_databricks_insert_values_carry_tenant_run_and_finding_fields():
     assert row[1] == "rid"
     assert row[2] == "f-1"
     # cvss_score / epss_score are the trailing float columns.
-    assert isinstance(row[-1], float)
+    assert row[-1] is None  # EPSS was not provided.
     assert isinstance(row[-2], float)
+
+
+@pytest.mark.parametrize("warehouse", ["bigquery", "databricks"])
+def test_warehouse_export_preserves_unknown_scores_and_measured_zero(warehouse):
+    findings = [
+        {"finding_id": "absent"},
+        {"finding_id": "null", "cvss_score": None, "epss_score": None},
+        {"finding_id": "zero", "cvss_score": 0, "epss_score": 0.0},
+        {"finding_id": "scored", "cvss_score": 7.5, "epss_score": 0.25},
+    ]
+    if warehouse == "bigquery":
+        client = FakeBqClient()
+        BigQueryWarehouseDestination(client, project="p", dataset="d").write_findings(findings, tenant_id="t", run_id="scores")
+        scores = [(row["cvss_score"], row["epss_score"]) for row in client.loads[0]["rows"]]
+    else:
+        conn = FakeDatabricksConnection()
+        DatabricksWarehouseDestination(lambda: conn, catalog="main", schema="sec").write_findings(findings, tenant_id="t", run_id="scores")
+        scores = [row[-2:] for row in conn.executemany_calls[0][1]]
+    assert scores == [(None, None), (None, None), (0.0, 0.0), (7.5, 0.25)]
 
 
 def test_databricks_same_run_retry_publishes_one_complete_attempt_pointer():

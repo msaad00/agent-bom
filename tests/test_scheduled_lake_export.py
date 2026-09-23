@@ -241,6 +241,65 @@ def test_clickhouse_row_shape_carries_tenant_run_and_finding_fields():
     assert isinstance(row["cvss_score"], float)
 
 
+@pytest.mark.parametrize("warehouse", ["clickhouse", "snowflake"])
+def test_warehouse_export_preserves_unknown_scores_and_measured_zero(warehouse):
+    findings = [
+        {"finding_id": "absent"},
+        {"finding_id": "null", "cvss_score": None, "epss_score": None},
+        {"finding_id": "zero", "cvss_score": 0, "epss_score": 0.0},
+        {"finding_id": "scored", "cvss_score": 7.5, "epss_score": 0.25},
+    ]
+    if warehouse == "clickhouse":
+        client = FakeClickHouseClient()
+        ClickHouseWarehouseDestination(client).write_findings(findings, tenant_id="tenant", run_id="scores")
+        rows = client.batches[0]
+    else:
+        conn = FakeSnowflakeConnection()
+        SnowflakeWarehouseDestination(lambda: conn, database="DB").write_findings(findings, tenant_id="tenant", run_id="scores")
+        rows = conn.staged_rows
+        ddl = next(sql for sql in conn.executed if sql.startswith('CREATE TABLE IF NOT EXISTS "findings_feed"'))
+        assert '"cvss_score" FLOAT' in ddl and '"epss_score" FLOAT' in ddl
+        assert "NOT NULL" not in ddl
+    assert [(row["cvss_score"], row["epss_score"]) for row in rows] == [(None, None), (None, None), (0.0, 0.0), (7.5, 0.25)]
+
+
+def test_clickhouse_feed_schema_accepts_null_scores_and_upgrades_existing_staging():
+    from agent_bom.cloud.clickhouse import _TABLE_DDL
+
+    client = FakeClickHouseClient()
+    ClickHouseWarehouseDestination(client, table="custom_feed").write_findings([], tenant_id="t", run_id="r")
+    runtime_ddl = next(sql for sql in client.commands if sql.startswith("CREATE TABLE IF NOT EXISTS custom_feed_staged"))
+    deploy_ddl = (Path(__file__).parents[1] / "deploy/supabase/clickhouse/init.sql").read_text()
+    for table in ("findings_feed", "findings_feed_staged"):
+        packaged = next(sql for sql in _TABLE_DDL if sql.startswith(f"CREATE TABLE IF NOT EXISTS {table} ("))
+        deployed = deploy_ddl.split(f"CREATE TABLE IF NOT EXISTS agent_bom.{table} (", 1)[1].split("ENGINE", 1)[0]
+        for column in ("cvss_score", "epss_score"):
+            assert f"{column} Nullable(Float32)" in packaged
+            assert f"{column} Nullable(Float32)" in deployed
+            assert f"{column} Nullable(Float32)" in runtime_ddl
+    assert any(sql.startswith("ALTER TABLE custom_feed_staged MODIFY COLUMN cvss_score Nullable(Float32)") for sql in client.commands)
+
+
+def test_clickhouse_score_schema_upgrade_failure_prevents_publication():
+    class FailingUpgrade(FakeClickHouseClient):
+        def execute(self, sql):
+            if "MODIFY COLUMN" in sql:
+                raise RuntimeError("schema upgrade denied")
+            return super().execute(sql)
+
+    client = FailingUpgrade()
+    with pytest.raises(RuntimeError, match="schema upgrade denied"):
+        ClickHouseWarehouseDestination(client).write_findings([{"finding_id": "unknown"}], tenant_id="t", run_id="r")
+    assert not client.batches
+    assert not client.committed_runs
+
+
+def test_clickhouse_operator_managed_schema_skips_score_upgrade():
+    client = FakeClickHouseClient()
+    ClickHouseWarehouseDestination(client, ensure_schema=False).write_findings([], tenant_id="t", run_id="r")
+    assert not any("MODIFY COLUMN" in sql for sql in client.commands)
+
+
 # --------------------------------------------------------------------------
 # build_destination — connect-once credential resolution
 # --------------------------------------------------------------------------
@@ -469,7 +528,9 @@ def test_clickhouse_failed_later_batch_is_cleaned_without_commit_marker():
         dest.write_findings([_finding(1), _finding(2)], tenant_id="tenant-a", run_id="run-failed")
     assert client.committed_runs == []
     assert any(command.startswith("ALTER TABLE findings_feed_staged DELETE") for command in client.commands)
-    assert all("mutations_sync = 1" in command for command in client.commands if command.startswith("ALTER TABLE"))
+    assert all(
+        "mutations_sync = 1" in command for command in client.commands if command.startswith("ALTER TABLE") and " DELETE WHERE " in command
+    )
 
 
 def test_clickhouse_custom_table_creates_matching_manifest_and_escapes_scope():
@@ -511,7 +572,7 @@ def test_clickhouse_staging_cleanup_failure_preserves_primary_error():
             super().insert_json(table, rows)
 
         def execute(self, sql):
-            if sql.startswith("ALTER TABLE"):
+            if sql.startswith("ALTER TABLE") and " DELETE WHERE " in sql:
                 raise RuntimeError("cleanup failure")
             return super().execute(sql)
 

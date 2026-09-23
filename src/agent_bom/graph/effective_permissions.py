@@ -106,13 +106,11 @@ def _iter_policy_documents(attrs: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return docs
 
 
-def _is_admin_equivalent(policies: Sequence[NormalizedIamPolicy]) -> bool:
-    """True when real IAM evaluation ALLOWs an unrestricted admin/escalation action."""
-    for action, resource in _ADMIN_EQUIVALENCE_PROBES:
-        result = evaluate_identity_policies(policies, action=action, resource=resource)
-        if result.decision is IamDecision.ALLOW:
-            return True
-    return False
+def _admin_equivalence_decisions(policies: Sequence[NormalizedIamPolicy]) -> set[IamDecision]:
+    """Retain explicit-deny precedence and indeterminate results for admin probes."""
+    return {
+        evaluate_identity_policies(policies, action=action, resource=resource).decision for action, resource in _ADMIN_EQUIVALENCE_PROBES
+    }
 
 
 def _normalized_policies_for(principal: UnifiedNode, attached_policies: Sequence[UnifiedNode]) -> list[NormalizedIamPolicy]:
@@ -201,6 +199,7 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
     attached_policy_labels: dict[str, list[str]] = defaultdict(list)
     attached_policy_nodes: dict[str, list[UnifiedNode]] = defaultdict(list)
     admin_by_policy_actions: set[str] = set()
+    admin_with_unavailable_policy: set[str] = set()
     validity: dict[str, tuple[datetime, datetime | None]] = {}
     invalid_validity = 0
     inactive_edges = 0
@@ -248,6 +247,8 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
                 # Action-derived privilege from the scanner (precise, beats name match).
                 if policy.attributes.get("privilege_level") == "admin":
                     admin_by_policy_actions.add(edge.source)
+                    if not _normalized_policies_for(policy, ()):
+                        admin_with_unavailable_policy.add(edge.source)
 
     # Admin-equivalence is derived, in priority order, from:
     #   1. REAL IAM evaluation of attached/inline policy documents (policy
@@ -255,8 +256,9 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
     #      conditions). This replaces the name/keyword guess for every identity
     #      the evaluator has policy evidence for.
     #   2. The scanner's action-derived ``privilege_level == "admin"`` classification
-    #      (already computed from real actions upstream) for policies with no
-    #      inline document on the node.
+    #      when collected documents are missing or incomplete. This fallback
+    #      ignores Deny, resource scope and conditions, so it cannot override
+    #      evaluation of COMPLETE documents.
     #   3. A name/keyword heuristic (AdministratorAccess / *FullAccess / wildcard),
     #      used as a degraded fallback when neither a scanner classification nor
     #      AUTHORITATIVE (COMPLETE) policy evidence is available — the basis is
@@ -276,21 +278,26 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
         # inconclusive, not a real "not admin" — it must not gate out the heuristic.
         evidence_authoritative = bool(docs) and all(d.completeness is EvidenceCompleteness.COMPLETE for d in docs)
         basis: str | None = None
-        if docs and _is_admin_equivalent(docs):
+        decisions = _admin_equivalence_decisions(docs) if docs else set()
+        if IamDecision.ALLOW in decisions:
             # Real policy evaluation ALLOWs an unrestricted admin/escalation action.
             basis = "policy_evaluation"
             admin_via_evaluation += 1
-        elif p.id in admin_by_policy_actions:
-            basis = "scanner_actions"
-            admin_via_scanner += 1
-        elif evidence_authoritative:
-            # Evaluated on COMPLETE evidence and authoritatively NOT admin — record
-            # the (non-admin) evaluation basis and do NOT consult the keyword
-            # heuristic (this was a real verdict, not a missing guess). Re-resolve
+        elif decisions == {IamDecision.EXPLICIT_DENY} or (evidence_authoritative and p.id not in admin_with_unavailable_policy):
+            # COMPLETE documents did not prove unconditional admin-equivalence.
+            # Deny, resource scope and unresolved conditions must not be bypassed
+            # by an action-only scanner classification or a policy-name guess.
+            # Record the evaluation basis without inventing a request context.
+            # An unfetched admin policy remains a degraded signal unless every
+            # admin probe is explicitly denied by the collected documents.
+            # Re-resolve
             # through the graph before writing so the mutation persists on a
             # store-backed container (the held principal may have been evicted from
             # the LRU during the scan above); in-RAM this is the same object.
             (graph.nodes.get(p.id) or p).attributes["admin_equivalence_basis"] = "policy_evaluation"
+        elif p.id in admin_by_policy_actions:
+            basis = "scanner_actions"
+            admin_via_scanner += 1
         else:
             # No documents, OR only PARTIAL/incomplete evidence (non-authoritative):
             # fall back to the name/keyword heuristic and fail toward flagging.

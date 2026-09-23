@@ -360,6 +360,89 @@ def test_scanner_privilege_level_admin_is_honored_without_document():
     assert g.nodes["role:svc"].attributes.get("admin_equivalence_basis") == "scanner_actions"
 
 
+@pytest.mark.parametrize(
+    "statements",
+    [
+        [{"Effect": "Allow", "Action": "*", "Resource": "*"}, {"Effect": "Deny", "Action": "*", "Resource": "*"}],
+        [{"Effect": "Allow", "Action": "iam:*", "Resource": "arn:aws:iam::111122223333:user/self-service"}],
+        [{"Effect": "Allow", "Action": "*", "Resource": "*", "Condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}}}],
+    ],
+    ids=["explicit-deny", "resource-scoped", "condition-unresolved"],
+)
+def test_policy_evaluation_precedes_scanner_admin_classification(statements):
+    from agent_bom.cloud.aws import _classify_policy_actions, _policy_actions_from_document
+
+    document = {"Version": "2012-10-17", "Statement": statements}
+    # The AWS collector emits both the action-only classification and raw document.
+    privilege = _classify_policy_actions(_policy_actions_from_document(document))
+    assert privilege == "admin"
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    for node_id, kind in [("user:alice", EntityType.USER), ("role:restricted", EntityType.ROLE), ("cloud:x", EntityType.CLOUD_RESOURCE)]:
+        g.add_node(UnifiedNode(id=node_id, entity_type=kind, label=node_id))
+    g.add_node(
+        UnifiedNode(
+            id="pol:restricted",
+            entity_type=EntityType.POLICY,
+            label="restricted",
+            attributes={"privilege_level": privilege, "policy_document": document},
+        )
+    )
+    g.add_edge(UnifiedEdge(source="user:alice", target="role:restricted", relationship=RelationshipType.ASSUMES))
+    g.add_edge(UnifiedEdge(source="role:restricted", target="pol:restricted", relationship=RelationshipType.ATTACHED))
+    g.add_edge(UnifiedEdge(source="role:restricted", target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
+
+    stats = apply_effective_permissions(g)
+
+    assert g.nodes["role:restricted"].attributes.get("admin_equivalent") is not True
+    assert g.nodes["role:restricted"].attributes.get("admin_equivalence_basis") == "policy_evaluation"
+    assert g.nodes["user:alice"].attributes.get("escalates_to_admin") is not True
+    assert stats["admin_via_scanner"] == 0
+    assert all("admin-privileged" not in risk.description for risk in g.interaction_risks)
+
+
+def test_partial_policy_retains_degraded_scanner_admin_classification():
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:svc", entity_type=EntityType.ROLE, label="svc"))
+    g.add_node(
+        UnifiedNode(
+            id="pol:partial",
+            entity_type=EntityType.POLICY,
+            label="partial",
+            attributes={"privilege_level": "admin", "policy_document": _PARTIAL_DOC},
+        )
+    )
+    g.add_edge(UnifiedEdge(source="role:svc", target="pol:partial", relationship=RelationshipType.ATTACHED))
+
+    apply_effective_permissions(g)
+
+    assert g.nodes["role:svc"].attributes.get("admin_equivalent") is True
+    assert g.nodes["role:svc"].attributes.get("admin_equivalence_basis") == "scanner_actions"
+
+
+@pytest.mark.parametrize("effect,expected_admin", [("Allow", True), ("Deny", False)])
+def test_unfetched_admin_policy_is_suppressed_only_by_explicit_deny(effect, expected_admin):
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:svc", entity_type=EntityType.ROLE, label="svc"))
+    for policy_id, attrs in [
+        ("pol:unfetched", {"privilege_level": "admin"}),
+        (
+            "pol:fetched",
+            {
+                "policy_document": {
+                    "Statement": [{"Effect": effect, "Action": "*" if effect == "Deny" else "s3:GetObject", "Resource": "*"}]
+                }
+            },
+        ),
+    ]:
+        g.add_node(UnifiedNode(id=policy_id, entity_type=EntityType.POLICY, label=policy_id, attributes=attrs))
+        g.add_edge(UnifiedEdge(source="role:svc", target=policy_id, relationship=RelationshipType.ATTACHED))
+
+    apply_effective_permissions(g)
+
+    assert (g.nodes["role:svc"].attributes.get("admin_equivalent") is True) is expected_admin
+    assert g.nodes["role:svc"].attributes.get("admin_equivalence_basis") == ("scanner_actions" if expected_admin else "policy_evaluation")
+
+
 def test_capped_graph_surfaces_skipped_signal():
     # Past the principal cap, the overlay returns 0 escalations but must mark the
     # result 'skipped' so consumers do not read a large estate as 'genuinely none'.

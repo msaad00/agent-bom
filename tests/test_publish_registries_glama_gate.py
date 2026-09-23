@@ -50,11 +50,11 @@ def test_glama_job_verifies_provider_managed_sync_without_inventing_an_api() -> 
     assert '--expected-tool-count "$EXPECTED_TOOL_COUNT"' in job
     assert "--write-tool-names /tmp/glama-expected-tool-names.json" in job
     assert '--git-ref "${{ needs.release.outputs.release_sha }}"' in job
-    assert "Validate released public server card for Glama" in job
+    assert "Export published release schemas for Glama" in job
+    assert "scripts/export_release_mcp_contract.py" in job
+    assert "server-card.json" not in job
     assert "glama-expected-tool-names.json" in job
     assert "--expected-tool-names-file /tmp/glama-expected-tool-names.json" in job
-    assert "glama-actual-server-card-tool-names.json" in job
-    assert "cmp -s /tmp/glama-expected-tool-names.json /tmp/glama-actual-server-card-tool-names.json" in job
     assert "glama-expected-tool-contract.json" in job
     assert "--expected-tool-contract-file /tmp/glama-expected-tool-contract.json" in job
 

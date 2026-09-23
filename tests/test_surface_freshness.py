@@ -1090,7 +1090,7 @@ def test_smithery_only_drift_does_not_block_fail_on_stale_gate(monkeypatch, tmp_
     """Smithery's OAuth gap (PR #5317) makes it a known, non-blocking surface.
 
     Smithery schema/tool-count drift must still be reported honestly in the
-    JSON report, but it must never flip ``all_fresh`` to False or make
+    JSON report, but it must never flip ``all_required_fresh`` to False or make
     ``--fail-on-stale`` exit non-zero: Smithery's catalog can structurally
     never be re-published fresh until real per-user OAuth exists. This
     replaces the old assertion that Smithery-only drift failed the gate --
@@ -1135,7 +1135,9 @@ def test_smithery_only_drift_does_not_block_fail_on_stale_gate(monkeypatch, tmp_
         == 0
     )
     result = json.loads(capsys.readouterr().out)
-    assert result["all_fresh"] is True
+    assert result["all_fresh"] is False
+    assert result["all_required_fresh"] is True
+    assert result["surfaces"][0]["required"] is False
     # Still reported honestly -- never hidden or faked as fresh.
     assert result["surfaces"][0]["status"] == "stale"
     assert result["surfaces"][0]["exact_input_schemas"] is False
@@ -1181,8 +1183,8 @@ def test_non_smithery_drift_still_blocks_fail_on_stale_gate(monkeypatch, tmp_pat
     assert report["all_fresh"] is False
 
 
-def test_smithery_drift_among_other_fresh_surfaces_still_reports_all_fresh(monkeypatch, tmp_path):
-    """Smithery drift alongside otherwise-fresh surfaces must not flip all_fresh."""
+def test_smithery_drift_among_other_fresh_surfaces_preserves_required_gate(monkeypatch, tmp_path):
+    """Smithery drift stays visible while required surfaces can pass."""
     script = _load_script("check_surface_freshness.py")
 
     def fresh(name):
@@ -1206,7 +1208,8 @@ def test_smithery_drift_among_other_fresh_surfaces_still_reports_all_fresh(monke
     out = tmp_path / "report.json"
     assert script.main(["--expected", "0.103.2", "--out", str(out)]) == 0
     report = json.loads(out.read_text())
-    assert report["all_fresh"] is True
+    assert report["all_fresh"] is False
+    assert report["all_required_fresh"] is True
     smithery_row = next(s for s in report["surfaces"] if s["surface"] == "Smithery")
     assert smithery_row["status"] == "stale"
 
@@ -1214,7 +1217,8 @@ def test_smithery_drift_among_other_fresh_surfaces_still_reports_all_fresh(monke
 def test_both_daily_monitors_require_exact_schema_evidence():
     for name in ("surface-freshness.yml", "deployment-freshness.yml"):
         workflow = (ROOT / ".github/workflows" / name).read_text()
-        assert "--write-tool-contract" in workflow
+        assert "scripts/export_release_mcp_contract.py" in workflow
+        assert "--write-tool-contract" not in workflow
         assert "--expected-tool-contract-file" in workflow
         assert "--expected-tool-names-file" in workflow
 
@@ -1527,3 +1531,38 @@ def test_glama_current_focused_tool_wording_is_recognized(word):
 def test_repository_readme_retains_glama_release_marker():
     script = _load_script("check_glama_listing.py")
     assert script._check((ROOT / "README.md").read_text(), script._load_version(), 8) == []
+
+
+def test_glama_profile_release_metadata_does_not_hide_empty_api(monkeypatch, capsys, tmp_path):
+    script = _load_script("check_glama_listing.py")
+    expected = [{"name": "scan", "inputSchema": {"type": "object"}}]
+    schema = _glama_schema_state(expected, description="agent-bom v0.105.0 MCP server mode exposes 1 MCP tools.")
+    monkeypatch.setattr(
+        script, "_fetch", lambda url, _: schema if url.endswith("/schema") else "v0.106.0 The full catalog has 86 MCP tools."
+    )
+    monkeypatch.setattr(script, "_fetch_json", lambda *_a: {"tools": []})
+    contract = tmp_path / "release.json"
+    contract.write_text(json.dumps(expected))
+    result = script.main(
+        [
+            "--expected",
+            "0.105.0",
+            "--expected-tool-count",
+            "1",
+            "--expected-tool-contract-file",
+            str(contract),
+            "--json",
+            "--retries",
+            "1",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert result == 1
+    assert payload["status"] == "stale"
+    assert payload["profile_version"] == "0.105.0"
+    assert payload["listing_version"] == "0.106.0"
+    assert payload["exact_input_schemas"] is False
+    assert "public API exposes 0 tools" in payload["error"]
+    assert "missing expected tools: scan" in payload["error"]
+    assert "missing current Glama listing token" not in payload["error"]
+    assert "input schema differs" not in payload["error"]

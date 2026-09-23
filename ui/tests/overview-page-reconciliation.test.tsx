@@ -145,6 +145,8 @@ describe("Overview canonical finding counts", () => {
     expect(screen.queryByText("49%")).not.toBeInTheDocument();
     expect(screen.queryByText("Current findings · configured window")).not.toBeInTheDocument();
     expect(screen.queryByText("12 scans")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent scans & activity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Activity fixture")).not.toBeInTheDocument();
     expect(cockpitProps.mock.lastCall?.[0]).toMatchObject({ services: null, scans: 1, latestScan: timestamp ? new Date(timestamp).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null });
   });
 

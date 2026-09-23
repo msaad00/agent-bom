@@ -239,7 +239,7 @@ export default function Dashboard() {
   // so all downstream useMemo aggregators work without changes.
   const effectiveJobs = useMemo<ScanJob[]>(() => {
     if (!apiError || !importedReport) return detailJobs;
-    const importedGeneratedAt = importedReport.scan_timestamp ?? importedReport.generated_at ?? new Date().toISOString();
+    const importedGeneratedAt = importedReport.scan_timestamp ?? importedReport.generated_at ?? "";
     return [{
       job_id: "imported",
       status: "done",
@@ -263,18 +263,7 @@ export default function Dashboard() {
         };
       });
     }
-    const importedGeneratedAt = importedReport.scan_timestamp ?? importedReport.generated_at ?? new Date().toISOString();
-    return [{
-      job_id: "imported",
-      status: "done",
-      created_at: importedGeneratedAt,
-      request: {},
-      summary: importedReport.summary,
-      scan_timestamp: importedReport.scan_timestamp ?? importedGeneratedAt,
-      generated_at: importedReport.generated_at ?? importedGeneratedAt,
-      scan_run: importedReport.scan_run,
-      pushed: false,
-    }];
+    return [];
   }, [jobs, detailJobs, apiError, importedReport]);
 
   const doneJobs = useMemo(
@@ -493,7 +482,7 @@ export default function Dashboard() {
         services={importedReport ? null : counts?.services ?? null}
       />
 
-      <details className="rounded-lg border border-outline px-4 py-3"><summary className="cursor-pointer text-sm font-medium">Recent scans & activity</summary>
+      {!importedReport && <details className="rounded-lg border border-outline px-4 py-3"><summary className="cursor-pointer text-sm font-medium">Recent scans & activity</summary>
       <div className="mt-3 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <section className="lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
@@ -522,7 +511,7 @@ export default function Dashboard() {
           <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
         </section>
       </div>
-      </details>
+      </details>}
     </div>
   );
 }

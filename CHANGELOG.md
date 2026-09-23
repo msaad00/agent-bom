@@ -18,6 +18,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Reconcile final terminal severity totals with JSON after SAST scanning, enrichment, and filtering.
+- Accept nullable advisory scores and current CLI tool fields when importing JSON reports.
 - Keep imported report findings separate from tenant posture, coverage, services, and scan freshness; label tenant-wide compliance exports explicitly.
 - Select ranked Context Map paths with keyboard support, discard stale scan responses, and preserve readable path drawers and graph framing across themes and viewport sizes.
 - Preserve distinct authorization receipts, action-specific evidence, workload connections, and source witnesses across graph and exposure responses.

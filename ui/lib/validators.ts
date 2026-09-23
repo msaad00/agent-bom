@@ -63,9 +63,9 @@ function validateVuln(v: unknown, path: string): string | null {
   const SEVERITIES = ["critical", "high", "medium", "low", "none"];
   if (!SEVERITIES.includes(v.severity as string))
     return `${path}.severity: must be one of ${SEVERITIES.join(", ")}`;
-  if (v.cvss_score !== undefined && !isFiniteNum(v.cvss_score))
+  if (v.cvss_score != null && !isFiniteNum(v.cvss_score))
     return `${path}.cvss_score: must be a finite number`;
-  if (v.epss_score !== undefined && !isFiniteNum(v.epss_score))
+  if (v.epss_score != null && !isFiniteNum(v.epss_score))
     return `${path}.epss_score: must be a finite number`;
   return null;
 }
@@ -119,12 +119,17 @@ function validateBlast(b: unknown, path: string): string | null {
   if (!isString(b.severity)) return `${path}.severity: must be a string`;
   if (!isArray(b.affected_agents)) return `${path}.affected_agents: must be an array`;
   if (!isArray(b.exposed_credentials)) return `${path}.exposed_credentials: must be an array`;
+  // Current CLI exports expose this relationship as exposed_tools; normalize
+  // the older UI name only when absent, without hiding malformed input.
+  if (b.reachable_tools === undefined && isArray(b.exposed_tools)) {
+    b.reachable_tools = b.exposed_tools;
+  }
   if (!isArray(b.reachable_tools)) return `${path}.reachable_tools: must be an array`;
   if (b.blast_score !== undefined && !isFiniteNum(b.blast_score))
     return `${path}.blast_score: must be a finite number`;
-  if (b.cvss_score !== undefined && !isFiniteNum(b.cvss_score))
+  if (b.cvss_score != null && !isFiniteNum(b.cvss_score))
     return `${path}.cvss_score: must be a finite number`;
-  if (b.epss_score !== undefined && !isFiniteNum(b.epss_score))
+  if (b.epss_score != null && !isFiniteNum(b.epss_score))
     return `${path}.epss_score: must be a finite number`;
   return null;
 }

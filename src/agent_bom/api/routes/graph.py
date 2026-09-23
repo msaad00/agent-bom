@@ -43,7 +43,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import Response
 
 from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, containment_drilldown_graph
-from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationError
+from agent_bom.api.neptune_graph import NeptuneGraphStore, NeptuneGraphStoreUnsupportedOperationError
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
@@ -2908,6 +2908,10 @@ async def get_graph_node_neighbors(
 
     tenant = _tenant(request)
     store = _get_graph_store_or_503()
+    if isinstance(store, NeptuneGraphStore):
+        # Unsupported traversal stays 501 even when the backend has no snapshot.
+        # The adapter owns the capability error; the wrapper sanitizes it.
+        await _graph_store_call(store.node_context, scan_id=scan_id or "", tenant_id=tenant, node_id=node_id)
     effective_scan_id = scan_id or await _graph_store_call(store.latest_snapshot_id, tenant_id=tenant)
     context = (
         await _graph_store_call(store.node_context, scan_id=effective_scan_id, tenant_id=tenant, node_id=node_id)

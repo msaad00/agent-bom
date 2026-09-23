@@ -73,6 +73,7 @@ OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [
 
 # Patterns that reference the version in docs/tests (updated separately)
 DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
+    ("README.md", re.compile(r"(Source version: \*\*v)\d+\.\d+\.\d+(\*\*)"), r"\g<1>{v}\g<2>"),
     # README.md + docs — GitHub Action version references
     ("README.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     (

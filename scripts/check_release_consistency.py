@@ -21,12 +21,8 @@ DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
 PRODUCT_SCREENSHOTS = ROOT / "docs" / "images" / "product-screenshots.json"
 REFERENCE_LAB_DIGEST = ROOT / "examples" / "reference-evidence-lab" / "generated" / "correlation-proof.sha256"
-# Narrow, deliberately: only paths that can affect a rendered/screenshotted
-# pixel belong here. This is mirrored byte-for-byte in
-# ui/scripts/product-proof-provenance.mjs — keep both in sync on any change.
-# Lockfiles, tests, and tooling config are excluded on purpose: they cannot
-# change what a browser renders, and hashing them made every devDependency
-# bump and config tweak re-trip release CI for no reason (see PR history).
+# Rendering source, build configuration, and normalized dependency inputs.
+# Keep the Python and JavaScript digest algorithms identical.
 PRODUCT_SCREENSHOT_INPUTS = (
     "ui/app",
     "ui/components",
@@ -36,6 +32,7 @@ PRODUCT_SCREENSHOT_INPUTS = (
     "ui/server",
     "ui/fixtures",
     "ui/next.config.ts",
+    "ui/tsconfig.json",
     "ui/postcss.config.mjs",
     "ui/scripts/capture-product-proof.mjs",
     "ui/scripts/product-proof-scope.mjs",
@@ -47,7 +44,6 @@ PRODUCT_SCREENSHOT_INPUTS = (
 # Defensive: none of the directories above currently contain colocated tests,
 # but a future one must not silently start counting toward the digest.
 _PRODUCT_SCREENSHOT_TEST_FILE = re.compile(r"(?:^|/)(?:tests|e2e)/|\.(?:test|spec)\.[jt]sx?$")
-UI_PACKAGE_JSON = ROOT / "ui" / "package.json"
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
 SITE_INDEX = ROOT / "site-docs" / "index.md"
@@ -340,17 +336,19 @@ def _compute_product_screenshot_inputs_digest() -> str:
         digest.update(b"\0")
         digest.update((ROOT / relative_path).read_bytes())
         digest.update(b"\0")
-    # ui/package.json is not fully tracked above: only its `dependencies`
-    # object can affect rendered output (devDependencies/scripts cannot).
-    # package-lock.json is excluded entirely — see PR description for the
-    # accepted precision/false-negative trade-off.
-    package_json = json.loads(UI_PACKAGE_JSON.read_text(encoding="utf-8"))
-    dependencies = package_json.get("dependencies") or {}
-    dependencies_content = "\n".join(f"{name}={dependencies[name]}" for name in sorted(dependencies)).encode("utf-8")
-    digest.update(b"ui/package.json#dependencies")
-    digest.update(b"\0")
-    digest.update(dependencies_content)
-    digest.update(b"\0")
+    # Ignore only the Node type package: preserve CSS/build dependencies,
+    # overrides, and resolved transitive versions even without range changes.
+    for filename in ("package.json", "package-lock.json"):
+        data = json.loads((ROOT / "ui" / filename).read_text(encoding="utf-8"))
+        data.get("devDependencies", {}).pop("@types/node", None)
+        packages = data.get("packages", {})
+        packages.pop("node_modules/@types/node", None)
+        packages.get("", {}).get("devDependencies", {}).pop("@types/node", None)
+        content = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        digest.update(f"ui/{filename}#render-inputs".encode())
+        digest.update(b"\0")
+        digest.update(content.encode("utf-8"))
+        digest.update(b"\0")
     return f"sha256:{digest.hexdigest()}"
 
 
@@ -393,13 +391,13 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
 
     lab_digest = REFERENCE_LAB_DIGEST.read_text(encoding="utf-8").strip()
     by_path = {entry.get("path"): entry for entry in screenshots if isinstance(entry, dict)}
-    for rel_path in ("correlation-receipts-live.png", "correlation-path-live.png"):
-        entry = by_path[rel_path]
+    for lab_path in ("correlation-receipts-live.png", "correlation-path-live.png"):
+        entry = by_path[lab_path]
         if entry.get("evidence_sha256") != lab_digest:
-            _fail(f"docs/images/{rel_path} is not bound to the current reference lab artifact")
+            _fail(f"docs/images/{lab_path} is not bound to the current reference lab artifact")
         manifest_hash = entry.get("correlation_manifest_sha256")
         if not isinstance(manifest_hash, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", manifest_hash) is None:
-            _fail(f"docs/images/{rel_path} is missing the correlation manifest hash")
+            _fail(f"docs/images/{lab_path} is missing the correlation manifest hash")
 
     expected_parts = tuple(int(part) for part in expected_version.split("."))
     for entry in screenshots:

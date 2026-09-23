@@ -22,10 +22,10 @@ describe("product proof capture contract", () => {
     for (const included of ["ui/app", "ui/components", "ui/hooks", "ui/lib", "ui/public", "ui/server", "ui/fixtures"]) {
       expect(provenanceSource).toContain(`"${included}"`);
     }
-    expect(provenanceSource).toContain("dependenciesDigestEntry");
-    expect(provenanceSource).toContain("packageJson.dependencies ?? {}");
-    expect(provenanceSource).not.toContain("packageJson.devDependencies");
-    expect(provenanceSource).toContain("ui/package.json#dependencies");
+    expect(provenanceSource).toContain("dependencyDigestEntries");
+    expect(provenanceSource).toContain('delete data.packages["node_modules/@types/node"]');
+    expect(provenanceSource).toContain('"package-lock.json"');
+    expect(provenanceSource).toContain("#render-inputs");
   });
 
   it("uses published advisories in simulated gallery workloads and a hash-pinned correlation lab", () => {

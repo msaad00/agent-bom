@@ -249,7 +249,6 @@ def test_capture_input_digest_ignores_package_lock_json_changes() -> None:
 @pytest.mark.parametrize(
     "relative_path",
     [
-        "ui/tsconfig.json",
         "ui/eslint.config.mjs",
         "ui/vitest.config.ts",
         "ui/playwright.config.ts",
@@ -331,3 +330,41 @@ def test_release_manifest_capture_inputs_digest_is_current() -> None:
     never hand-edited."""
     manifest = json.loads((ROOT / "docs/images/product-screenshots.json").read_text(encoding="utf-8"))
     assert manifest["capture_inputs_sha256"] == check_release_consistency._compute_product_screenshot_inputs_digest()
+
+
+@pytest.mark.parametrize(
+    "section,name", [("devDependencies", "tailwindcss"), ("devDependencies", "lightningcss"), ("overrides", "postcss")]
+)
+def test_capture_digest_tracks_rendering_toolchain(section, name):
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(ROOT / "ui/package.json", _bump_json_string_field(section, name)):
+        assert check_release_consistency._compute_product_screenshot_inputs_digest() != before
+
+
+def test_capture_digest_tracks_resolved_runtime_dependency():
+    def change(original):
+        data = json.loads(original)
+        data["packages"]["node_modules/next"]["version"] = "99.0.0"
+        return json.dumps(data).encode()
+
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(ROOT / "ui/package-lock.json", change):
+        assert check_release_consistency._compute_product_screenshot_inputs_digest() != before
+
+
+def test_capture_digest_tracks_typescript_build_config():
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(ROOT / "ui/tsconfig.json", lambda content: content + b"\n"):
+        assert check_release_consistency._compute_product_screenshot_inputs_digest() != before
+
+
+def test_capture_digest_ignores_only_node_types_lock_entry():
+    def change(original):
+        data = json.loads(original)
+        data["packages"]["node_modules/@types/node"]["version"] = "99.0.0"
+        data["packages"][""]["devDependencies"]["@types/node"] = "99.0.0"
+        return json.dumps(data).encode()
+
+    before = check_release_consistency._compute_product_screenshot_inputs_digest()
+    with _mutate_repo_file(ROOT / "ui/package-lock.json", change):
+        assert check_release_consistency._compute_product_screenshot_inputs_digest() == before

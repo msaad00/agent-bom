@@ -7,10 +7,7 @@
 //   - scripts/check_release_consistency.py (a byte-for-byte Python mirror of
 //     this same algorithm — keep both in sync on any change here)
 //
-// Scope is deliberately narrow: only paths that can affect a rendered/
-// screenshotted pixel belong here. Lockfiles, tests, and tooling config
-// cannot change what a screenshot shows and must stay OUT, or every
-// dependency bump and config tweak re-trips release CI for no reason.
+// Preserve build dependencies and resolved versions; exclude only Node types.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
@@ -28,6 +25,7 @@ export const PRODUCT_SCREENSHOT_INPUTS = [
   "ui/server",
   "ui/fixtures",
   "ui/next.config.ts",
+  "ui/tsconfig.json",
   "ui/postcss.config.mjs",
   "ui/scripts/capture-product-proof.mjs",
   "ui/scripts/product-proof-scope.mjs",
@@ -41,21 +39,26 @@ export const PRODUCT_SCREENSHOT_INPUTS = [
 // tests, but if one is ever added it must not silently start counting.
 const TEST_FILE_PATTERN = /(?:^|\/)(?:tests|e2e)\/|\.(?:test|spec)\.[jt]sx?$/;
 
-/**
- * Hash the "dependencies" object of ui/package.json as a single virtual
- * input. devDependencies, scripts, and every other field are excluded on
- * purpose: they cannot affect what a browser renders. package-lock.json is
- * excluded too — see the PR description for the accepted trade-off.
- */
-async function dependenciesDigestEntry(repoRoot) {
-  const packageJsonPath = path.join(repoRoot, "ui", "package.json");
-  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
-  const dependencies = packageJson.dependencies ?? {};
-  const lines = Object.keys(dependencies)
-    .sort()
-    .map((name) => `${name}=${dependencies[name]}`)
-    .join("\n");
-  return { label: "ui/package.json#dependencies", content: Buffer.from(lines, "utf8") };
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+async function dependencyDigestEntries(repoRoot) {
+  const entries = [];
+  for (const filename of ["package.json", "package-lock.json"]) {
+    const data = JSON.parse(await fs.readFile(path.join(repoRoot, "ui", filename), "utf8"));
+    if (data.devDependencies) delete data.devDependencies["@types/node"];
+    if (data.packages) {
+      delete data.packages["node_modules/@types/node"];
+      if (data.packages[""]?.devDependencies) delete data.packages[""].devDependencies["@types/node"];
+    }
+    entries.push({ label: `ui/${filename}#render-inputs`, content: Buffer.from(canonicalJson(data), "utf8") });
+  }
+  return entries;
 }
 
 /** Recompute the capture-inputs digest for the current working tree. */
@@ -78,11 +81,12 @@ export async function computeCaptureInputsDigest(repoRoot) {
     digest.update(await fs.readFile(path.join(repoRoot, relativePath)));
     digest.update("\0");
   }
-  const dependenciesEntry = await dependenciesDigestEntry(repoRoot);
-  digest.update(dependenciesEntry.label);
-  digest.update("\0");
-  digest.update(dependenciesEntry.content);
-  digest.update("\0");
+  for (const entry of await dependencyDigestEntries(repoRoot)) {
+    digest.update(entry.label);
+    digest.update("\0");
+    digest.update(entry.content);
+    digest.update("\0");
+  }
   return `sha256:${digest.digest("hex")}`;
 }
 

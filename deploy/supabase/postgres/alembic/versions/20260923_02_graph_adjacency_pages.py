@@ -14,7 +14,20 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_generation TEXT NOT NULL DEFAULT ''")
-    op.execute("UPDATE graph_snapshots SET snapshot_generation = replace(gen_random_uuid()::text, '-', '') WHERE snapshot_generation = ''")
+    # FORCE RLS also applies to the non-superuser migration owner. The trusted
+    # maintenance marker role is still required by abom_rls_bypass(). Restore
+    # the caller's transaction setting immediately after this cross-tenant write.
+    op.execute("""
+        DO $$
+        DECLARE previous_bypass TEXT := current_setting('app.bypass_rls', true);
+        BEGIN
+            PERFORM set_config('app.bypass_rls', '1', true);
+            UPDATE graph_snapshots SET snapshot_generation = replace(gen_random_uuid()::text, '-', '')
+                WHERE snapshot_generation = '';
+            PERFORM set_config('app.bypass_rls', COALESCE(previous_bypass, '0'), true);
+        END
+        $$
+    """)
     op.execute(
         "INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('graph',5,now()) "
         "ON CONFLICT(component) DO UPDATE SET "

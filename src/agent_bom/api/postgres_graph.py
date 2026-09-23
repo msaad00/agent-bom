@@ -413,9 +413,6 @@ class PostgresGraphStore:
             # Additive and nullable, matching the SQLite column: snapshots written
             # before it existed read NULL and fall back to the live GROUP BY.
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_generation TEXT NOT NULL DEFAULT ''")
-            conn.execute(
-                "UPDATE graph_snapshots SET snapshot_generation = replace(gen_random_uuid()::text, '-', '') WHERE snapshot_generation = ''"
-            )
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS node_type_counts TEXT DEFAULT NULL")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_kind TEXT NOT NULL DEFAULT 'scan'")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS correlation_id TEXT DEFAULT NULL")
@@ -564,6 +561,10 @@ class PostgresGraphStore:
             conn.commit()
             with bypass_tenant_rls(audit=False), _maintenance_connection(self._maintenance_pool) as maintenance_conn:
                 _backfill_empty_tenant_ids(maintenance_conn)
+                maintenance_conn.execute(
+                    "UPDATE graph_snapshots SET snapshot_generation = replace(gen_random_uuid()::text, '-', '') "
+                    "WHERE snapshot_generation = ''"
+                )
                 maintenance_conn.commit()
             _apply_tenant_session(conn)
             _ensure_tenant_rls(conn, "graph_nodes", "tenant_id")

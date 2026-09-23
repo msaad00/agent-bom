@@ -298,3 +298,57 @@ def test_sqlite_legacy_generation_backfill_is_durable(tmp_path):
         second = conn.execute("SELECT snapshot_generation FROM graph_snapshots").fetchone()[0]
     assert len(first) == 32 and first == second
     assert SQLiteGraphStore(path).incident_edges_page(tenant_id="acme", node_id="hub")
+
+
+@pytest.mark.parametrize("upgrade_path", ["migration", "runtime"])
+def test_generation_backfill_under_non_superuser_migration_owner(monkeypatch, upgrade_path):
+    """Existing tenants must survive a separate, non-superuser upgrade transaction."""
+    dsn = os.environ.get("AGENT_BOM_ADJACENCY_TEST_POSTGRES_URL")
+    if not dsn:
+        pytest.skip("isolated adjacency Postgres URL not set")
+    from pathlib import Path
+    from urllib.parse import urlsplit, urlunsplit
+
+    import psycopg
+    from alembic import command
+    from alembic.config import Config
+    from psycopg import sql
+
+    parts = urlsplit(dsn)
+    suffix = uuid.uuid4().hex[:12]
+    owner, database = f"adjacency_owner_{suffix}", f"adjacency_upgrade_{suffix}"
+    password = "adjacency-fixture-only"
+    admin_db = urlunsplit((parts.scheme, parts.netloc, f"/{database}", parts.query, parts.fragment))
+    owner_url = urlunsplit((parts.scheme, f"{owner}:{password}@{parts.netloc.rsplit('@', 1)[-1]}", f"/{database}", "", ""))
+    root = Path(__file__).resolve().parents[1]
+    cfg = Config(str(root / "deploy/supabase/postgres/alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "deploy/supabase/postgres/alembic"))
+    with psycopg.connect(dsn, autocommit=True) as admin:
+        admin.execute(sql.SQL("CREATE ROLE {} LOGIN SUPERUSER PASSWORD {}").format(sql.Identifier(owner), sql.Literal(password)))
+        admin.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(database), sql.Identifier(owner)))
+        try:
+            monkeypatch.setenv("ALEMBIC_DATABASE_URL", owner_url.replace("postgresql://", "postgresql+psycopg://", 1))
+            command.upgrade(cfg, "20260923_01")
+            with psycopg.connect(owner_url) as conn:
+                flags = conn.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user").fetchone()
+                assert flags == (False, False)
+            with psycopg.connect(admin_db) as conn:
+                conn.execute(
+                    "INSERT INTO graph_snapshots(scan_id,tenant_id,created_at) "
+                    "VALUES ('legacy','tenant-a','2026-09-23'), ('legacy','tenant-b','2026-09-23')"
+                )
+            if upgrade_path == "migration":
+                command.upgrade(cfg, "head")
+            else:
+                with psycopg.connect(owner_url) as conn:
+                    conn.execute((root / "deploy/supabase/postgres/runtime-schema.sql").read_text())
+                    assert conn.execute("SELECT COALESCE(current_setting('app.bypass_rls',true),'0')").fetchone()[0] in {"", "0"}
+            with psycopg.connect(admin_db) as conn:
+                generations = conn.execute("SELECT snapshot_generation FROM graph_snapshots ORDER BY tenant_id").fetchall()
+                assert len(generations) == 2
+                assert all(len(row[0]) == 32 for row in generations)
+                assert generations[0] != generations[1]
+                assert conn.execute("SELECT version FROM control_plane_schema_versions WHERE component='graph'").fetchone()[0] == 5
+        finally:
+            admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database)))
+            admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(owner)))

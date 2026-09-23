@@ -4,10 +4,13 @@
 
 -- Incident-edge keyset indexes match the migration-owned graph paging path.
 DO $$
+DECLARE previous_graph_bypass TEXT := current_setting('app.bypass_rls', true);
 BEGIN
   IF to_regclass('public.graph_snapshots') IS NOT NULL THEN
     ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_generation TEXT NOT NULL DEFAULT '';
+    PERFORM set_config('app.bypass_rls', '1', true);
     UPDATE graph_snapshots SET snapshot_generation=replace(gen_random_uuid()::text, '-', '') WHERE snapshot_generation='';
+    PERFORM set_config('app.bypass_rls', COALESCE(previous_graph_bypass, '0'), true);
   END IF;
   IF to_regclass('public.graph_edges') IS NOT NULL THEN
     CREATE INDEX IF NOT EXISTS idx_pg_adjacency_out ON graph_edges

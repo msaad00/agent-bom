@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Bounded relationship paging in SQLite and Postgres graph stores, with tenant-scoped cursors invalidated by snapshot replacement. API and dashboard paging integration follow separately.
 - Inspect recorded authority and source receipts at each graph path hop, with bounded pagination and preserved investigation scope.
 - Optional, bounded AWS credential validation through STS, disabled by default and suppressed by offline scans. Validation errors remain unknown without removing findings.
 - Python one-hop tainted-argument evidence for function-reachable CVEs. This additive signal does not establish exploitability or full interprocedural data flow.

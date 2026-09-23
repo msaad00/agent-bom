@@ -240,6 +240,15 @@ CREATE TABLE IF NOT EXISTS hub_cve_intel (tenant_id TEXT NOT NULL,cve_id TEXT NO
 CREATE TABLE IF NOT EXISTS hub_framework_refs (tenant_id TEXT NOT NULL,framework_ref TEXT NOT NULL,payload JSONB NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(tenant_id,framework_ref));
 CREATE TABLE IF NOT EXISTS agent_bom_hub_backfills (name TEXT PRIMARY KEY,completed_at TEXT NOT NULL);
 
+CREATE TABLE IF NOT EXISTS export_destinations (
+ id TEXT NOT NULL, tenant_id TEXT NOT NULL, kind TEXT NOT NULL,
+ display_name TEXT NOT NULL, config JSONB NOT NULL DEFAULT '{}'::jsonb,
+ secret_encrypted TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
+ status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ last_run_at TEXT, last_run_status TEXT, PRIMARY KEY (tenant_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_export_dest_tenant ON export_destinations(tenant_id, created_at);
+
 -- Apply identical FORCE RLS policy semantics to all tenant-owned additions.
 DO $rls$
 DECLARE t TEXT;
@@ -248,7 +257,7 @@ BEGIN
     'access_review_campaigns','access_review_items','agent_identities','agent_identity_jit_grants','agent_conditional_access_policies',
     'ai_system_blueprints','ai_system_blueprint_versions','runtime_observations','runtime_sessions','gateway_activity_events','gateway_activity_sequences',
     'gateway_activity_tombstones','runtime_workload_evidence','scim_users','scim_groups',
-    'idempotency_keys','proxy_replay_log','tenant_quota_overrides','tenant_graph_retention_overrides','tenant_score_config_overrides','graph_scenarios',
+    'export_destinations','idempotency_keys','proxy_replay_log','tenant_quota_overrides','tenant_graph_retention_overrides','tenant_score_config_overrides','graph_scenarios',
     'mcp_client_configs','model_provider_keys','model_virtual_keys','risk_campaign_workflows','governance_audit_log','cloud_connections','ticketing_connections','ticket_links',
     'control_plane_sources','credential_refs','audit_chain_checkpoint','managed_trial_invitations','managed_trial_tenants','compliance_hub_findings','hub_overview_revisions','hub_findings_current',
     'hub_findings_current_observations','hub_cve_intel','hub_framework_refs','fleet_endpoints'
@@ -365,7 +374,7 @@ SELECT component,1,now() FROM unnest(ARRAY[
  'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
  'tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
  'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','model_provider_keys','tenant_score_config',
- 'ticketing_connections','graph_scenarios'
+ 'ticketing_connections','graph_scenarios','export_destinations'
 ]) component
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
 INSERT INTO control_plane_schema_versions(component,version,updated_at)

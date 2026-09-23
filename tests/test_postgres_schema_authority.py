@@ -287,6 +287,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
             "middleware.py",
             "proxy_replay_store.py",
             "report_job_store.py",
+            "export_destination_store.py",
             "shared_auth_state.py",
         )
     )

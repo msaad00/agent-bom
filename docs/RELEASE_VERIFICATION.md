@@ -42,6 +42,14 @@ report is stale or unmonitored. Registry rebuilds may finish asynchronously;
 rerun the check until Glama and every configured public surface reflect the
 released version and expected inventory.
 
+Glama Directory API reads require bearer authentication ([provider reference](https://glama.ai/mcp/reference)).
+Configure `GLAMA_API_KEY` as a managed GitHub Actions secret for registry and
+surface verification; never commit its value. The verifier sends it only to
+`https://glama.ai/api/mcp/`, rejects redirects, and leaves public page requests
+anonymous. Rotate or revoke the key in Glama and update/remove the Actions
+secret together. This integration does not assume provider keys expire or
+claim they are short-lived. Missing credentials do not waive freshness checks.
+
 ### Protected MCP deployment and registry recovery
 
 Run `gh workflow run deployment-freshness.yml` after deploying the exact

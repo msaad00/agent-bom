@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const source = fs.readFileSync(path.join(process.cwd(), "scripts", "capture-product-proof.mjs"), "utf8");
+const provenanceSource = fs.readFileSync(path.join(process.cwd(), "scripts", "product-proof-provenance.mjs"), "utf8");
 const findingsQueue = fs.readFileSync(path.join(process.cwd(), "components", "findings-queue.tsx"), "utf8");
 const graphPage = fs.readFileSync(path.join(process.cwd(), "app", "graph", "graph-page-client.tsx"), "utf8");
 const exposurePath = fs.readFileSync(path.join(process.cwd(), "components", "exposure-path-command-center.tsx"), "utf8");
@@ -11,6 +12,20 @@ describe("product proof capture contract", () => {
   it("verifies its own spawned listener before opening a capture browser", () => {
     expect(source).toContain("await waitForOwnedServer(BASE_URL, server)");
     expect(source.indexOf("await waitForOwnedServer(BASE_URL, server)")).toBeLessThan(source.indexOf("browser = await chromium.launch()"));
+  });
+
+  it("scopes capture inputs to paths that can affect a rendered pixel, not the whole ui/ tree", () => {
+    // Regression guard for a devDependency-only bump (e.g. @types/node) no
+    // longer re-tripping release CI: PRODUCT_SCREENSHOT_INPUTS must be a
+    // narrow, explicit allowlist, never the bare "ui" directory.
+    expect(provenanceSource).not.toMatch(/PRODUCT_SCREENSHOT_INPUTS\s*=\s*\[\s*"ui"\s*,/);
+    for (const included of ["ui/app", "ui/components", "ui/hooks", "ui/lib", "ui/public", "ui/server", "ui/fixtures"]) {
+      expect(provenanceSource).toContain(`"${included}"`);
+    }
+    expect(provenanceSource).toContain("dependencyDigestEntries");
+    expect(provenanceSource).toContain('delete data.packages["node_modules/@types/node"]');
+    expect(provenanceSource).toContain('"package-lock.json"');
+    expect(provenanceSource).toContain("#render-inputs");
   });
 
   it("uses published advisories in simulated gallery workloads and a hash-pinned correlation lab", () => {
@@ -48,8 +63,10 @@ describe("product proof capture contract", () => {
     expect(source).toContain('requestUrl.searchParams.has("_rsc")');
     expect(source).toContain("successfulApiPaths.has(expectedPath)");
     expect(source).toContain("assertNoHorizontalOverflow");
-    expect(source).toContain('execFileAsync("git", ["status", "--porcelain"]');
-    expect(source).toContain("Release product proof requires a clean committed source tree");
+    expect(source).toContain('import { captureSourceProvenance } from "./product-proof-provenance.mjs"');
+    expect(source).toContain("await captureSourceProvenance(REPO_ROOT)");
+    expect(provenanceSource).toContain('execFileAsync("git", ["status", "--porcelain"]');
+    expect(provenanceSource).toContain("Release product proof requires a clean committed source tree");
     expect(source).toContain("CAPTURE_BASE_URL is not allowed for release product proof");
     expect(source).toContain("screenshotSha256");
     expect(source).not.toContain("actualPath.startsWith(expectedPath)");

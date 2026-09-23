@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { chromium, expect } from "@playwright/test";
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { once } from "node:events";
@@ -10,18 +10,12 @@ import path from "node:path";
 import process from "node:process";
 import { assertCaptureSnapshotScope } from "./product-proof-scope.mjs";
 import { waitForOwnedServer } from "./product-proof-server.mjs";
-import { promisify } from "node:util";
+import { captureSourceProvenance } from "./product-proof-provenance.mjs";
 
 const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const REPO_ROOT = path.resolve(UI_ROOT, "..");
-const execFileAsync = promisify(execFile);
 const IMAGE_DIR = path.join(REPO_ROOT, "docs", "images");
 const SCREENSHOT_MANIFEST = path.join(IMAGE_DIR, "product-screenshots.json");
-const PRODUCT_SCREENSHOT_INPUTS = [
-  "ui",
-  "examples/reference-evidence-lab",
-  "scripts/generate_reference_evidence_lab.py",
-];
 const REFERENCE_LAB_PROOF_PATH = path.join(
   REPO_ROOT,
   "examples",
@@ -115,38 +109,6 @@ if (baseUrlFromEnv) {
 const PORT = Number(process.env.CAPTURE_PORT || "3137");
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 let captureOutputDir = IMAGE_DIR;
-
-async function captureSourceProvenance() {
-  const [{ stdout: commit }, { stdout: status }] = await Promise.all([
-    execFileAsync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT }),
-    execFileAsync("git", ["status", "--porcelain"], { cwd: REPO_ROOT }),
-  ]);
-  if (status.trim()) {
-    throw new Error("Release product proof requires a clean committed source tree, including no untracked inputs");
-  }
-  const { stdout: trackedOutput } = await execFileAsync(
-    "git",
-    ["ls-files", "-z", "--", ...PRODUCT_SCREENSHOT_INPUTS],
-    { cwd: REPO_ROOT, encoding: "buffer" },
-  );
-  const digest = createHash("sha256");
-  const trackedPaths = trackedOutput
-    .toString("utf8")
-    .split("\0")
-    .filter(Boolean)
-    .sort();
-  for (const relativePath of trackedPaths) {
-    digest.update(relativePath);
-    digest.update("\0");
-    digest.update(await fs.readFile(path.join(REPO_ROOT, relativePath)));
-    digest.update("\0");
-  }
-  return {
-    source_commit: commit.trim(),
-    source_tree: "clean",
-    capture_inputs_sha256: `sha256:${digest.digest("hex")}`,
-  };
-}
 
 async function screenshotSha256(filePath) {
   const digest = createHash("sha256").update(await fs.readFile(filePath)).digest("hex");
@@ -2963,7 +2925,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       sha256: await screenshotSha256(path.join(outputDir, entry.path)),
     })),
   );
-  const provenance = await captureSourceProvenance();
+  const provenance = await captureSourceProvenance(REPO_ROOT);
   const manifest = {
     release_version: RELEASE_VERSION,
     captured_at: new Date().toISOString(),

@@ -428,6 +428,7 @@ class GraphStoreProtocol(Protocol):
         direction: str = "both",
         limit: int = 24,
         cursor: str | None = None,
+        snapshot_generation: str | None = None,
     ) -> dict[str, Any] | None: ...
 
     def node_context(
@@ -1466,6 +1467,7 @@ class SQLiteGraphStore:
         direction: str = "both",
         limit: int = 24,
         cursor: str | None = None,
+        snapshot_generation: str | None = None,
     ) -> dict[str, Any] | None:
         """One snapshot read, bounded incident edges, no impact traversal."""
         from agent_bom.graph.adjacency_page import incident_edge_page
@@ -1473,7 +1475,7 @@ class SQLiteGraphStore:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
-            if cursor:
+            if cursor or snapshot_generation:
                 raise ValueError("Incident-edge cursor snapshot is unavailable")
             return None
         try:
@@ -1486,6 +1488,7 @@ class SQLiteGraphStore:
                 direction=direction,
                 limit=limit,
                 cursor=cursor,
+                snapshot_generation=snapshot_generation,
                 marker="?",
                 node_from_row=self._node_from_row,
                 edge_from_row=self._edge_from_row,

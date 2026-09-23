@@ -122,6 +122,7 @@ def test_missing_and_stale_snapshots_never_claim_complete(boundary):
     _, store, _, _ = boundary
     missing = fetch(boundary, node_id="missing").json()
     assert not missing["found"] and not missing["completeness"]["complete"]
+    assert missing["snapshot_generation"] is None
     page = fetch(boundary, limit=1).json()
     store.save_graph(graph())  # Same ID, timestamp and manifest; new durable generation.
     assert fetch(boundary, cursor=page["next_cursor"]).status_code == 400
@@ -138,6 +139,7 @@ def test_latest_cursor_requires_returned_snapshot_id(boundary):
 
 def test_missing_generation_and_endpoints_are_honest(boundary):
     _, _, db, _ = boundary
+    initial = fetch(boundary, limit=1).json()
     with sqlite3.connect(db) as conn:
         conn.execute("DELETE FROM graph_nodes WHERE tenant_id='tenant-a' AND id='peer'")
     body = fetch(boundary).json()
@@ -147,6 +149,7 @@ def test_missing_generation_and_endpoints_are_honest(boundary):
     with sqlite3.connect(db) as conn:
         conn.execute("UPDATE graph_snapshots SET snapshot_generation='' WHERE tenant_id='tenant-a'")
     assert fetch(boundary).status_code == 400
+    assert fetch(boundary, cursor=initial["next_cursor"]).status_code == 400
 
 
 def test_neptune_is_explicitly_unsupported(boundary, monkeypatch):
@@ -154,3 +157,20 @@ def test_neptune_is_explicitly_unsupported(boundary, monkeypatch):
     response = fetch(boundary)
     assert response.status_code == 501
     assert response.json()["detail"] == "Incident relationship paging is not supported by this graph backend"
+
+
+def test_cross_node_expansion_requires_same_snapshot_generation(boundary):
+    _, store, _, _ = boundary
+    first = fetch(boundary).json()
+    assert first["next_cursor"] is None  # Even an exhausted root page must pin future expansions.
+    generation = first["snapshot_generation"]
+    assert len(generation) == 32
+    assert fetch(boundary, node_id="peer", snapshot_generation=generation, scan_id=first["scan_id"]).status_code == 200
+    store.save_graph(graph())
+    response = fetch(boundary, node_id="peer", snapshot_generation=generation, scan_id=first["scan_id"])
+    assert response.status_code == 400
+    current = fetch(boundary).json()
+    assert current["snapshot_generation"] != generation
+    assert (
+        fetch(boundary, node_id="peer", snapshot_generation=current["snapshot_generation"], scan_id=current["scan_id"]).status_code == 200
+    )

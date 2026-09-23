@@ -6205,9 +6205,21 @@
           "scan_id": {
             "title": "Scan Id",
             "type": "string"
+          },
+          "snapshot_generation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Generation"
           }
         },
         "required": [
+          "snapshot_generation",
           "scan_id",
           "node_id",
           "found",
@@ -27158,7 +27170,7 @@
     },
     "/v1/graph/incident-edges": {
       "get": {
-        "description": "Page recorded incident relationships without loading the full neighborhood.\n\nKeep scan_id, node_id and direction fixed while following next_cursor.\nSnapshot replacement invalidates cursors; restart from the first page on 400.\nCompleteness describes only recorded page rows, never source collection,\npermissions, execution, or the whole estate. Total relationship count is unknown.",
+        "description": "Page recorded incident relationships without loading the full neighborhood.\n\nReuse scan_id and snapshot_generation on every node expansion to avoid mixing\nsnapshots. Keep node_id and direction fixed while following next_cursor.\nSnapshot replacement invalidates cursors; restart from the first page on 400.\nCompleteness describes only recorded page rows, never source collection,\npermissions, execution, or the whole estate. Total relationship count is unknown.",
         "operationId": "get_graph_incident_edges_v1_graph_incident_edges_get",
         "parameters": [
           {
@@ -27191,6 +27203,25 @@
               ],
               "description": "Snapshot ID; latest initially. Reuse the returned ID for subsequent pages.",
               "title": "Scan Id"
+            }
+          },
+          {
+            "description": "Expected generation returned by the initial page; reuse on every node expansion.",
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-f0-9]{32}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Expected generation returned by the initial page; reuse on every node expansion.",
+              "title": "Snapshot Generation"
             }
           },
           {

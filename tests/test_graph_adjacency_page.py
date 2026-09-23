@@ -138,6 +138,7 @@ def test_page_uses_one_snapshot_during_concurrent_replacement(store, monkeypatch
     assert {n.label for n in page["nodes"]} == {"same label"}
     fresh = store.incident_edges_page(tenant_id=tenant, node_id="hub", limit=10)
     assert "replacement" in {n.label for n in fresh["nodes"]}
+    assert fresh["snapshot_generation"] != page["snapshot_generation"]
 
 
 @pytest.mark.parametrize("direction", ["in", "out"])
@@ -418,3 +419,18 @@ def test_queue_only_legacy_upgrade_does_not_require_or_advertise_graph(monkeypat
                 assert marker == (None if partial_marker is None else (partial_marker,))
         finally:
             admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database)))
+
+
+def test_cross_node_expansion_pins_generation_without_continuation_cursor(store):
+    tenant = uuid.uuid4().hex
+    graph = save_fixture(store, tenant)
+    first = store.incident_edges_page(tenant_id=tenant, scan_id=graph.scan_id, node_id="hub", limit=100)
+    assert first["next_cursor"] is None
+    generation = first["snapshot_generation"]
+    peer = store.incident_edges_page(tenant_id=tenant, scan_id=graph.scan_id, node_id="A", snapshot_generation=generation)
+    assert peer["snapshot_generation"] == generation
+    store.save_graph(graph)
+    with pytest.raises(ValueError, match="generation"):
+        store.incident_edges_page(tenant_id=tenant, scan_id=graph.scan_id, node_id="A", snapshot_generation=generation)
+    current = store.incident_edges_page(tenant_id=tenant, scan_id=graph.scan_id, node_id="A")
+    assert current["snapshot_generation"] != generation

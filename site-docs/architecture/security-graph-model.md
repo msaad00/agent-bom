@@ -184,11 +184,14 @@ curl --get "$AGENT_BOM_API_URL/v1/graph/incident-edges" \
 ```
 
 The response contains the seed, endpoint nodes, recorded edges, and `next_cursor`.
-Follow that cursor with the returned `scan_id` and the same node and direction.
+Reuse the returned `scan_id` and `snapshot_generation` on every node expansion.
+Follow `next_cursor` with those values and the same node and direction; the
+generation check prevents mixing graph data across a replaced snapshot.
 `limit` counts relationships (1–100), so parallel edges can share a neighbor.
 `in` and `out` filter recorded endpoints; they do not establish permission or
 execution. Completeness covers the current recorded page, and totals stay unknown.
-On a stale-cursor 400, restart the page sequence; unsupported backends return 501.
+On a stale-cursor or generation-mismatch 400, discard the accumulated view and
+restart from the first page; unsupported backends return 501.
 This endpoint is independent of the existing dashboard neighbor lookup.
 
 ## Scale and readability

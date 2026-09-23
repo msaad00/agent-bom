@@ -159,6 +159,7 @@ class IncidentEdgePageCompleteness(GraphCompletenessResponse):
 class IncidentEdgePageResponse(BaseModel):
     """Recorded relationship page, not a permission or collection-coverage verdict."""
 
+    snapshot_generation: str | None
     scan_id: str
     node_id: str
     found: bool
@@ -2907,6 +2908,9 @@ async def get_graph_incident_edges(
     scan_id: str | None = Query(
         None, max_length=4096, description="Snapshot ID; latest initially. Reuse the returned ID for subsequent pages."
     ),
+    snapshot_generation: str | None = Query(
+        None, pattern="^[a-f0-9]{32}$", description="Expected generation returned by the initial page; reuse on every node expansion."
+    ),
     direction: Literal["in", "out", "both"] = Query(
         "both", description="Filter recorded target/source endpoints; not effective permissions."
     ),
@@ -2917,7 +2921,8 @@ async def get_graph_incident_edges(
 ) -> dict[str, Any]:
     """Page recorded incident relationships without loading the full neighborhood.
 
-    Keep scan_id, node_id and direction fixed while following next_cursor.
+    Reuse scan_id and snapshot_generation on every node expansion to avoid mixing
+    snapshots. Keep node_id and direction fixed while following next_cursor.
     Snapshot replacement invalidates cursors; restart from the first page on 400.
     Completeness describes only recorded page rows, never source collection,
     permissions, execution, or the whole estate. Total relationship count is unknown.
@@ -2934,12 +2939,14 @@ async def get_graph_incident_edges(
             direction=direction,
             limit=limit,
             cursor=cursor,
+            snapshot_generation=snapshot_generation,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid or stale incident relationship page; restart from the first page") from exc
     if page is None:
         return {
             "scan_id": scan_id or "",
+            "snapshot_generation": None,
             "node_id": node_id,
             "found": False,
             "direction": direction,
@@ -2956,6 +2963,7 @@ async def get_graph_incident_edges(
         }
     return {
         "scan_id": page["scan_id"],
+        "snapshot_generation": page["snapshot_generation"],
         "node_id": node_id,
         "found": True,
         "direction": direction,

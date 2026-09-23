@@ -1308,7 +1308,12 @@ for (const theme of ["light", "dark"] as const) {
     await expect(detail).toBeVisible();
     const diagram = detail.getByRole("img", { name: /Selected exposure path graph/ });
     await expect(diagram).toBeVisible();
-    await expect.poll(async () => (await diagram.boundingBox())!.y + (await diagram.boundingBox())!.height).toBeLessThanOrEqual(900);
+    // Resolving the parent scan scope can briefly remount this diagram. Read
+    // one box per attempt and retry missing geometry without accepting it.
+    await expect.poll(async () => {
+      const bounds = await diagram.boundingBox();
+      return bounds ? bounds.y + bounds.height : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(900);
     await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Reachability");
     await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Exploitability");
     await expect(detail.getByRole("region", { name: "Path evidence assessment" })).toContainText("Assessment completeness");

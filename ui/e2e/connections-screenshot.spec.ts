@@ -176,7 +176,9 @@ for (const theme of ["light", "dark"] as const) {
       await drawer.getByText("Capability evidence", { exact: true }).click();
       await expect(drawer.getByText("Not reported by this connection record", { exact: true })).toBeVisible();
       await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
-      expect(await drawer.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      // The slide-over can still be entering when the font-size reflow runs.
+      // Keep the overflow check, but let the transform settle before measuring.
+      await expect.poll(() => drawer.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       const titleBounds = await drawer.getByRole("heading", { name: "Production account", exact: true }).boundingBox();
       const drawerBounds = await drawer.locator("aside").boundingBox();
       expect(titleBounds!.width).toBeGreaterThan(drawerBounds!.width * 0.6);

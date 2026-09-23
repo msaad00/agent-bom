@@ -9,8 +9,10 @@ Requires ``pip install 'agent-bom[postgres]'``.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from agent_bom.api import job_status_count_cache
 from agent_bom.api.postgres_common import (
@@ -27,7 +29,7 @@ from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY, _literal_like_pattern,
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterator
 
     from psycopg import Connection
     from psycopg_pool import ConnectionPool
@@ -691,6 +693,7 @@ class PostgresJobStore:
         claimers on other replicas never block or double-claim. Returns ``None``
         when nothing is claimable.
         """
+        claim_owner = f"{worker_id}:{uuid4().hex}"
         # Dispatch polling is a high-frequency internal maintenance loop. The
         # queue/job lifecycle emits its own business audit events; do not emit
         # a signed RLS-scope activation record on every idle poll.
@@ -714,37 +717,44 @@ class PostgresJobStore:
                     f"""UPDATE scan_dispatch_queue
                         SET status = 'running', claimed_by = %s, lease_expires_at = {self._LEASE_ISO}
                         WHERE job_id = %s""",  # nosec B608 - _LEASE_ISO is a fixed SQL fragment
-                    (worker_id, int(lease_seconds), job_id),
+                    (claim_owner, int(lease_seconds), job_id),
                 )
                 conn.commit()
         # Load the full job under its own tenant context so the RLS-scoped read
         # succeeds and the running job carries the correct tenant.
         token = set_current_tenant(tenant_id)
         try:
-            return self.get(job_id, tenant_id=tenant_id)
+            job = self.get(job_id, tenant_id=tenant_id)
+            if job is not None:
+                job._dispatch_claim_owner = claim_owner
+            return job
         finally:
             reset_current_tenant(token)
 
-    def renew_leases(self, job_ids: Iterable[str], lease_seconds: int) -> None:
-        """Extend the lease on the given in-flight jobs (heartbeat)."""
-        ids = [j for j in job_ids]
-        if not ids:
+    def renew_leases(self, claims: Mapping[str, str], lease_seconds: int) -> None:
+        """Heartbeat only exact claim owners; stale workers cannot renew successors."""
+        if not isinstance(claims, Mapping) or any(not isinstance(owner, str) or not owner for owner in claims.values()):
+            raise ValueError("Dispatch lease renewal requires claim ownership")
+        if not claims:
             return
         with bypass_tenant_rls(audit=False, warn=False):
             with _maintenance_connection(self._maintenance_pool) as conn:
                 conn.execute(
                     f"""UPDATE scan_dispatch_queue
                         SET lease_expires_at = {self._LEASE_ISO}
-                        WHERE status = 'running' AND job_id = ANY(%s)""",  # nosec B608 - fixed fragment
-                    (int(lease_seconds), ids),
+                        WHERE status = 'running' AND (job_id, claimed_by) IN
+                            (SELECT * FROM unnest(%s::text[], %s::text[]))""",  # nosec B608 - fixed fragment
+                    (int(lease_seconds), list(claims), list(claims.values())),
                 )
                 conn.commit()
 
-    def complete_dispatch(self, job_id: str) -> None:
-        """Remove a finished job from the dispatch queue."""
+    def complete_dispatch(self, job_id: str, *, claim_owner: str) -> None:
+        """Remove only the finished claim, leaving any successor claim intact."""
+        if not isinstance(claim_owner, str) or not claim_owner:
+            raise ValueError("Dispatch completion requires claim ownership")
         with bypass_tenant_rls(audit=False, warn=False):
             with _maintenance_connection(self._maintenance_pool) as conn:
-                conn.execute("DELETE FROM scan_dispatch_queue WHERE job_id = %s", (job_id,))
+                conn.execute("DELETE FROM scan_dispatch_queue WHERE job_id = %s AND claimed_by = %s", (job_id, claim_owner))
                 conn.commit()
 
     def requeue_expired_leases(self) -> int:

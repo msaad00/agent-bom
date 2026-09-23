@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, computed_field, field_serializer, field_validator, model_validator
 
 from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
 from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
@@ -291,6 +291,9 @@ class ScanRequest(BaseModel):
 
 class ScanJob(BaseModel):
     """Represents a running or completed scan job."""
+
+    # Ephemeral dispatch ownership, never accepted from or serialized to clients.
+    _dispatch_claim_owner: str | None = PrivateAttr(default=None)
 
     job_id: str
     tenant_id: str = "default"

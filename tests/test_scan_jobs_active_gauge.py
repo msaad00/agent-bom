@@ -151,6 +151,39 @@ def test_startup_orphan_cleanup_fails_active_jobs() -> None:
     assert metrics.scan_jobs_active() == 0
 
 
+@pytest.mark.parametrize("distributed", [True, False])
+def test_startup_preserves_shared_jobs_only_when_distributed_dispatch_is_enabled(monkeypatch, distributed) -> None:
+    from agent_bom.api.postgres_job_store import PostgresJobStore
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgres://unused/dispatch-test")
+    monkeypatch.setenv("AGENT_BOM_DISTRIBUTED_SCANS", "1" if distributed else "0")
+    # Use the real dispatch-capable store type, replacing only database I/O.
+    store = object.__new__(PostgresJobStore)
+    jobs = [
+        _job("queued", JobStatus.PENDING).model_copy(update={"tenant_id": "tenant-a"}),
+        _job("other-worker", JobStatus.RUNNING).model_copy(update={"tenant_id": "tenant-b"}),
+        _job("failed", JobStatus.FAILED).model_copy(update={"tenant_id": "tenant-b", "error": "source failure"}),
+        _job("done", JobStatus.DONE).model_copy(update={"tenant_id": "tenant-a"}),
+    ]
+    writes = []
+    monkeypatch.setattr(store, "list_all", lambda **kwargs: jobs)
+    monkeypatch.setattr(store, "put", lambda job: writes.append(job.job_id))
+    assert fail_orphaned_active_scan_jobs(store) == (0 if distributed else 2)
+    assert [job.status for job in jobs[:2]] == ([JobStatus.PENDING, JobStatus.RUNNING] if distributed else [JobStatus.FAILED] * 2)
+    assert writes == ([] if distributed else ["queued", "other-worker"])
+    assert jobs[2].status == JobStatus.FAILED and jobs[2].error == "source failure"
+    assert jobs[3].status == JobStatus.DONE
+
+
+def test_distributed_environment_does_not_preserve_in_process_store_orphans(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgres://unused/dispatch-test")
+    monkeypatch.setenv("AGENT_BOM_DISTRIBUTED_SCANS", "1")
+    store = InMemoryJobStore()
+    store.put(_job("local-orphan", JobStatus.RUNNING))
+    assert fail_orphaned_active_scan_jobs(store) == 1
+    assert store.get("local-orphan", all_tenants=True).status == JobStatus.FAILED
+
+
 @pytest.mark.parametrize("cleanup", [fail_stale_active_scan_jobs, fail_orphaned_active_scan_jobs])
 def test_cross_tenant_reconciliation_rebinds_each_job_before_write(cleanup) -> None:
     from datetime import datetime, timezone

@@ -1,8 +1,8 @@
 # Plugin Entry Points
 
-`agent-bom` v0.88 introduces a metadata-only foundation for plugin authors.
-The entry-point loader discovers plugin registrations, validates bounded
-metadata, and reports sanitized loading warnings. It does not execute or attach
+`agent-bom` provides opt-in entry-point registration for plugin authors.
+The loader imports registrations, validates bounded metadata, and reports
+sanitized loading warnings. It does not execute or attach
 third-party plugins to MCP, advisory, or runtime paths by default.
 
 Third-party entry-point loading is opt-in:
@@ -32,8 +32,13 @@ installed entry-point declarations, and whether opt-in loading is enabled.
 
 ## Runtime Activation
 
-Discovery is metadata-only: it never imports or runs third-party plugin code.
-Runtime activation is a **second, explicit opt-in** on top of discovery. A group
+The status commands inspect installed entry-point metadata without importing
+plugins. Enabling registration loading imports third-party code and invokes
+registration factories; install and enable only trusted packages. Declared
+capabilities describe the extension but do not sandbox its Python code.
+
+Runtime activation is a **second, explicit opt-in** on top of registration loading
+for the three groups below. A group
 activates only when both `AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS` (discovery) and
 that group's activation flag are set. With no activation flag set, every surface
 below is a no-op and default behavior is unchanged.

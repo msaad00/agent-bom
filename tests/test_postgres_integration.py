@@ -324,7 +324,7 @@ def test_postgres_app_cannot_self_authorize_maintenance_and_dispatch_claim_is_te
         assert claimed is not None
         assert claimed.job_id == queued.job_id
         assert claimed.tenant_id == tenant_id
-        store.complete_dispatch(queued.job_id)
+        store.complete_dispatch(queued.job_id, claim_owner=claimed._dispatch_claim_owner)
     finally:
         cleanup_token = set_current_tenant(tenant_id)
         try:
@@ -332,6 +332,81 @@ def test_postgres_app_cannot_self_authorize_maintenance_and_dispatch_claim_is_te
             store.delete(cross_write.job_id, tenant_id=tenant_id)
         finally:
             reset_current_tenant(cleanup_token)
+
+
+@pytest.mark.parametrize("reuse_worker_id", [False, True])
+def test_postgres_dispatch_stale_claim_cannot_mutate_successor(reuse_worker_id):
+    """Concurrent stale heartbeats/completion cannot affect a reclaimed lease."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+    from agent_bom.api.postgres_common import _maintenance_connection, bypass_tenant_rls, reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    suffix = uuid4().hex
+    tenant_id = f"dispatch-fence-{suffix}"
+    job = ScanJob(
+        job_id=f"dispatch-fence-{suffix}",
+        tenant_id=tenant_id,
+        status=JobStatus.PENDING,
+        created_at="1900-01-01T00:00:00Z",
+        request=ScanRequest(format="json"),
+    )
+    store = PostgresJobStore()
+    token = set_current_tenant(tenant_id)
+    try:
+        store.put(job)
+        store.enqueue_for_dispatch(job)
+        first = store.claim_next(f"worker-{suffix}", 30)
+        assert first is not None and first.job_id == job.job_id
+        old_owner = first._dispatch_claim_owner
+        assert old_owner
+        with bypass_tenant_rls(audit=False):
+            with _maintenance_connection() as conn:
+                conn.execute(
+                    "UPDATE scan_dispatch_queue SET lease_expires_at = '1900-01-01T00:00:00Z' WHERE job_id = %s",
+                    (job.job_id,),
+                )
+                conn.commit()
+        next_worker = f"worker-{suffix}" if reuse_worker_id else f"successor-{suffix}"
+        successor = store.claim_next(next_worker, 30)
+        assert successor is not None and successor.job_id == job.job_id
+        current_owner = successor._dispatch_claim_owner
+        assert current_owner and current_owner != old_owner
+        barrier = threading.Barrier(3)
+
+        def stale_heartbeat():
+            barrier.wait(timeout=5)
+            store.renew_leases({job.job_id: old_owner}, 900)
+
+        def stale_completion():
+            barrier.wait(timeout=5)
+            store.complete_dispatch(job.job_id, claim_owner=old_owner)
+
+        def current_heartbeat():
+            barrier.wait(timeout=5)
+            store.renew_leases({job.job_id: current_owner}, 120)
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(action) for action in (stale_heartbeat, stale_completion, current_heartbeat)]
+            for future in futures:
+                future.result(timeout=10)
+        with bypass_tenant_rls(audit=False):
+            with _maintenance_connection() as conn:
+                row = conn.execute(
+                    "SELECT claimed_by, lease_expires_at::timestamptz BETWEEN clock_timestamp() + interval '60 seconds' "
+                    "AND clock_timestamp() + interval '150 seconds' FROM scan_dispatch_queue WHERE job_id = %s",
+                    (job.job_id,),
+                ).fetchone()
+        assert row == (current_owner, True)
+        store.complete_dispatch(job.job_id, claim_owner=current_owner)
+        with bypass_tenant_rls(audit=False):
+            with _maintenance_connection() as conn:
+                row = conn.execute("SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (job.job_id,)).fetchone()
+        assert row is None
+    finally:
+        store.delete(job.job_id, tenant_id=tenant_id)
+        reset_current_tenant(token)
 
 
 def test_postgres_tenant_binding_verifier_keeps_keys_out_of_the_app_role():

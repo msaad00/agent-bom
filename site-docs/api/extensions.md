@@ -105,3 +105,37 @@ for parser in list_registered_inventory_parsers():
     print(parser.name, parser.module, parser.source)
 PY
 ```
+
+## Save connector evidence in a control plane
+
+An installed, trusted `agent_bom.connectors` extension can be selected by its
+registered name in a scan request. Configure source credentials on the server
+through the extension's documented mechanism; keep them scoped to source reads.
+Configure the control plane's destination store separately. A source connection
+does not authorize writes back to that source.
+
+```bash
+curl --fail-with-body -X POST http://localhost:8422/v1/scan \
+  -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"connectors":["customer-inventory"],"enrich":false}'
+```
+
+Replace `customer-inventory` with the installed registration name. The response
+provides a job identifier. Poll `/v1/scan/{job_id}` until completion, then inspect
+the report's `graph_persistence` status before querying that scan's saved graph.
+`persisted` confirms graph storage succeeded; a completed scan alone does not.
+Source warnings and missing enrichment remain evidence gaps.
+
+Extensions return the existing `Agent`, `MCPServer`, and `Package` models.
+Cloud assets can use `agent_bom.cloud.normalization` envelopes to preserve source
+identity and produce typed resource relationships. This reuses the product's
+report and graph schemas; it does not register a new database backend or migrate
+arbitrary source tables. Optional advisory enrichment follows the configured
+scan and network policy.
+
+The local integration regression
+`tests/test_entrypoint_registries.py::test_custom_connector_scan_saves_reusable_tenant_graph`
+exercises registration, scan execution, SQLite persistence, tenant isolation, and
+replay without duplicate edges. It uses a local connector fixture; authenticated
+provider collection and other storage backends need their own deployment checks.

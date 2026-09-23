@@ -9,7 +9,7 @@ the API (see :meth:`ExportDestinationRecord.to_public_dict`). The non-secret
 ``config`` (bucket/prefix/region, or url/user/database/table) is safe to return.
 
 Backends mirror the connection store: in-memory for tests, SQLite as the durable
-single-node default. Postgres (tenant RLS) is a tracked follow-up.
+single-node default, and Postgres with tenant RLS for shared deployments.
 """
 
 from __future__ import annotations
@@ -235,6 +235,86 @@ class SQLiteExportDestinationStore:
         return cursor.rowcount > 0
 
 
+class PostgresExportDestinationStore:
+    """Durable shared destinations; tenant context and SQL predicates both apply."""
+
+    def __init__(self, pool: Any = None) -> None:
+        from agent_bom.api.postgres_common import _get_pool
+
+        self._pool = pool or _get_pool()
+        self.init_schema()
+
+    def init_schema(self) -> None:
+        from agent_bom.api.postgres_common import _ensure_tenant_rls
+        from agent_bom.api.storage_schema import ensure_postgres_schema_version
+
+        with self._pool.connection() as conn:
+            if not ensure_postgres_schema_version(conn, "export_destinations"):
+                return
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS export_destinations ("
+                "id TEXT NOT NULL, tenant_id TEXT NOT NULL, kind TEXT NOT NULL, "
+                "display_name TEXT NOT NULL, config JSONB NOT NULL DEFAULT '{}'::jsonb, "
+                "secret_encrypted TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', "
+                "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+                "last_run_at TEXT, last_run_status TEXT, PRIMARY KEY (tenant_id, id))"
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_export_dest_tenant ON export_destinations(tenant_id, created_at)")
+            _ensure_tenant_rls(conn, "export_destinations", "tenant_id")
+            conn.commit()
+
+    def put(self, record: ExportDestinationRecord) -> None:
+        from agent_bom.api.postgres_common import _tenant_connection
+
+        with _tenant_connection(self._pool) as conn:
+            conn.execute(
+                "INSERT INTO export_destinations (id, tenant_id, kind, display_name, config, secret_encrypted, "
+                "status, status_detail, created_at, updated_at, last_run_at, last_run_status) "
+                "VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (tenant_id, id) DO UPDATE SET kind=excluded.kind, display_name=excluded.display_name, "
+                "config=excluded.config, secret_encrypted=excluded.secret_encrypted, status=excluded.status, "
+                "status_detail=excluded.status_detail, created_at=excluded.created_at, updated_at=excluded.updated_at, "
+                "last_run_at=excluded.last_run_at, last_run_status=excluded.last_run_status",
+                (
+                    record.id,
+                    record.tenant_id,
+                    record.kind,
+                    record.display_name,
+                    json.dumps(record.config),
+                    record.secret_encrypted,
+                    record.status,
+                    record.status_detail,
+                    record.created_at,
+                    record.updated_at,
+                    record.last_run_at,
+                    record.last_run_status,
+                ),
+            )
+            conn.commit()
+
+    def get(self, tenant_id: str, destination_id: str) -> ExportDestinationRecord | None:
+        from agent_bom.api.postgres_common import _tenant_connection
+
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(f"{_SELECT} WHERE tenant_id = %s AND id = %s", (tenant_id, destination_id)).fetchone()
+        return _row_to_record(row) if row else None
+
+    def list_for_tenant(self, tenant_id: str) -> list[ExportDestinationRecord]:
+        from agent_bom.api.postgres_common import _tenant_connection
+
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(f"{_SELECT} WHERE tenant_id = %s ORDER BY created_at, id", (tenant_id,)).fetchall()
+        return [_row_to_record(row) for row in rows]
+
+    def delete(self, tenant_id: str, destination_id: str) -> bool:
+        from agent_bom.api.postgres_common import _tenant_connection
+
+        with _tenant_connection(self._pool) as conn:
+            deleted = conn.execute("DELETE FROM export_destinations WHERE tenant_id = %s AND id = %s", (tenant_id, destination_id))
+            conn.commit()
+            return bool(deleted.rowcount > 0)
+
+
 _DESTINATION_STORE: ExportDestinationStore | None = None
 
 
@@ -249,9 +329,9 @@ def get_export_destination_store() -> ExportDestinationStore:
     selection = resolve_backend(mode="env")
     if selection.backend is BackendKind.SQLITE and selection.sqlite_path:
         _DESTINATION_STORE = SQLiteExportDestinationStore(selection.sqlite_path)
+    elif selection.backend is BackendKind.POSTGRES:
+        _DESTINATION_STORE = PostgresExportDestinationStore()
     else:
-        # Postgres backend is a tracked follow-up; fall back to in-memory so the
-        # slice never silently persists to the wrong tier.
         _DESTINATION_STORE = InMemoryExportDestinationStore()
     return _DESTINATION_STORE
 

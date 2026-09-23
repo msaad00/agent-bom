@@ -152,14 +152,15 @@ def _feed_row(finding: dict[str, Any], *, tenant_id: str, run_id: str) -> dict[s
     """Normalize a finding into the shared ``findings_feed`` row shape.
 
     Every warehouse adapter lands the same columns so the feed is identical
-    across destinations; ``tenant_id`` / ``run_id`` scope each row.
+    across destinations; ``tenant_id`` / ``run_id`` scope each row. Missing
+    scores remain null: unavailable enrichment is not a measured zero.
     """
     row: dict[str, Any] = {
         "tenant_id": tenant_id,
         "run_id": run_id,
         "finding_id": _finding_id(finding),
-        "cvss_score": float(finding.get("cvss_score") or 0.0),
-        "epss_score": float(finding.get("epss_score") or 0.0),
+        "cvss_score": float(finding["cvss_score"]) if finding.get("cvss_score") is not None else None,
+        "epss_score": float(finding["epss_score"]) if finding.get("epss_score") is not None else None,
     }
     for field in _FEED_STRING_FIELDS:
         row[field] = str(finding.get(field, "") or "")
@@ -392,13 +393,19 @@ class ClickHouseWarehouseDestination:
         self._client.execute(
             f"CREATE TABLE IF NOT EXISTS {staged_table} ("
             "tenant_id String, run_id String, publication_attempt_id String, exported_at DateTime DEFAULT now(), "
-            "finding_id String, canonical_id String, severity LowCardinality(String), cvss_score Float32, "
-            "epss_score Float32, package_name String, package_version String, ecosystem LowCardinality(String), "
+            "finding_id String, canonical_id String, severity LowCardinality(String), cvss_score Nullable(Float32), "
+            "epss_score Nullable(Float32), package_name String, package_version String, ecosystem LowCardinality(String), "
             "cve_id String, source LowCardinality(String), status LowCardinality(String), effective_reach String, "
             "first_seen String, last_seen String"
             ") ENGINE = MergeTree() ORDER BY (tenant_id, run_id, publication_attempt_id, finding_id) "
             "PARTITION BY toYYYYMM(exported_at)"
         )
+        if self._ensure_schema:
+            # CREATE IF NOT EXISTS does not upgrade pre-existing staging tables.
+            # Fail before staging/publication if nullable scores cannot be stored.
+            self._client.execute(
+                f"ALTER TABLE {staged_table} MODIFY COLUMN cvss_score Nullable(Float32), MODIFY COLUMN epss_score Nullable(Float32)"
+            )
         cleanup_attempt = (
             f"ALTER TABLE {staged_table} DELETE WHERE tenant_id = '{escaped_tenant}' "
             f"AND run_id = '{escaped_run}' AND publication_attempt_id = '{escaped_attempt}' SETTINGS mutations_sync = 1"
@@ -881,7 +888,7 @@ class DatabricksWarehouseDestination:
     @staticmethod
     def _row_tuple(feed: dict[str, Any], attempt_id: str) -> tuple[Any, ...]:
         strings = tuple(str(feed.get(c, "") or "") for c in _SF_STRING_COLUMNS)
-        floats = tuple(float(feed.get(c) or 0.0) for c in _SF_FLOAT_COLUMNS)
+        floats = tuple(feed.get(c) for c in _SF_FLOAT_COLUMNS)
         return strings + (attempt_id,) + floats
 
     def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:

@@ -205,6 +205,10 @@ def _run_claimed_scan_sync(job: ScanJob) -> None:
     """
     from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
 
+    # A finished job can retain its queue row if dispatch cleanup failed or the
+    # process stopped after persisting the result. Reclaim must not rerun it.
+    if job.status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+        return
     token = set_current_tenant(job.tenant_id or "default")
     try:
         _run_scan_sync(job)

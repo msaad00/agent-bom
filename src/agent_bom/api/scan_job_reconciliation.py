@@ -92,12 +92,16 @@ def fail_orphaned_active_scan_jobs(
     *,
     reason: str = "Interrupted before completion; in-process executor state was lost",
 ) -> int:
-    """Fail active jobs found during process startup.
+    """Fail orphaned in-process jobs without invalidating shared dispatch jobs.
 
-    Scan execution is in-process. If a new API process sees PENDING/RUNNING
-    rows in the durable store, those rows belonged to a previous executor and
-    will not resume automatically.
+    Local executor state does not survive restart. Distributed dispatch instead
+    owns pending jobs and running leases across replicas; a newly started
+    replica must leave those jobs to the current worker or lease reclaimer.
     """
+    from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+    if distributed_scans_enabled() and store_supports_dispatch(store):
+        return 0
     now = datetime.now(timezone.utc)
     failed = 0
     for job in store.list_all(all_tenants=True):

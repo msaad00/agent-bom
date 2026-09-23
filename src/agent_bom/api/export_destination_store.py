@@ -312,7 +312,7 @@ class PostgresExportDestinationStore:
         with _tenant_connection(self._pool) as conn:
             deleted = conn.execute("DELETE FROM export_destinations WHERE tenant_id = %s AND id = %s", (tenant_id, destination_id))
             conn.commit()
-            return deleted.rowcount > 0
+            return bool(deleted.rowcount > 0)
 
 
 _DESTINATION_STORE: ExportDestinationStore | None = None

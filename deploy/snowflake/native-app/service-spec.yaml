@@ -51,3 +51,9 @@ spec:
     - name: ui
       port: 3000
       public: false
+
+serviceRoles:
+  - name: api
+    endpoints: [api]
+  - name: ui
+    endpoints: [ui]

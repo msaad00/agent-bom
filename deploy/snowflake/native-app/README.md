@@ -8,7 +8,7 @@ the corresponding external access integrations and enables the scanner.
 ## Required privileges
 
 - `CREATE COMPUTE POOL` creates one bounded `CPU_X64_XS` pool for the app.
-- `CREATE SERVICE` creates the API and dashboard service.
+- Services are created in the app-owned schema; no global `CREATE SERVICE` privilege is requested.
 - `BIND SERVICE ENDPOINT` exposes the app's declared API and UI endpoints.
 - Customer table references request `SELECT`; stage references request `READ`.
 
@@ -22,15 +22,15 @@ token file. The app does not request a user password or private key.
 
 1. Bind only the cloud, IAM, vulnerability, log, and artifact objects the app
    should read.
-2. Open the app UI and call `core.health_check()` to confirm the default posture.
+2. Approve the requested compute-pool and endpoint privileges. The grant callback then creates API/UI resources. `core.health_check()` reports configuration flags, not live service health.
 3. Leave advisory external access integrations unbound for an air-gapped install,
    or approve the named feeds before enabling the scanner service.
-4. Run `CALL core.trigger_scan()` for the first read-only scan.
+4. Native App scan dispatch is currently unavailable. Use an authenticated external `agent-bom scan --snowflake -f json -o snowflake-report.json` invocation to produce a local report; it is not automatically ingested into this app.
 
 ## Procedures
 
-- `core.health_check()` reports service and advisory-egress state.
-- `core.trigger_scan()` starts a read-only evidence scan.
+- `core.health_check()` reports configured service and advisory-egress flags.
+- `core.trigger_scan()` raises an explicit unsupported-dispatch error without creating a job.
 - `core.enable_scanner_service()` creates the default-off scanner after all
   advisory-feed integrations are bound.
 - `core.enable_mcp_runtime_service(token, expires_at)` creates the default-off MCP service
@@ -47,5 +47,12 @@ SHOW SERVICES IN APPLICATION agent_bom;
 SHOW GRANTS TO APPLICATION ROLE app_user;
 ```
 
-Expected immediately after install: the API/UI service exists; scanner and MCP
+Expected after consumer privilege approval: the API/UI service exists; scanner and MCP
 services are disabled; advisory egress is disabled.
+
+The scanner spec is an unsupported one-shot prototype: it has no persistent job
+dispatcher or result ingestion, and its declared HTTP readiness endpoint is not
+served by the CLI. Do not enable it as a production scanning service.
+Authenticated consumer installation, service readiness, reference binding, and a
+completed scan with persisted findings remain required before claiming Native
+App deployment readiness. Package validation alone does not establish these.

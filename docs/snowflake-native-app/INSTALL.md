@@ -38,7 +38,7 @@ The trust contract:
 | What we ask for | What we DON'T ask for |
 |---|---|
 | `CREATE COMPUTE POOL` (run our containers) | USAGE on any of your databases |
-| `CREATE SERVICE`, `BIND SERVICE ENDPOINT` | Schema-level grants |
+| `BIND SERVICE ENDPOINT` | Global `CREATE SERVICE` (services use the app-owned schema) |
 | `SELECT` on tables YOU bind at install | Any write privilege on your tables |
 | `READ` on stages YOU bind at install | `MANAGE GRANTS`, `ACCOUNTADMIN` access |
 | Outbound HTTPS to seven named advisory/package-metadata integrations (per-EAI consent) | Any other outbound network |
@@ -101,16 +101,13 @@ These are the **only** outbound calls; each is gated by a per-feed EAI you
 toggle in the install UI.
 
 If you want fully air-gapped (no outbound network at all): leave all seven EAIs
-OFF. agent-bom still scans and classifies; CVE/package enrichment is less
-complete.
+unbound. Native App scan dispatch is currently unavailable; binding these
+references does not establish a working scanner.
 
-The packaged scanner service is also off by default. To run the SPCS scanner
-with advisory enrichment, bind all seven EAI references first, then opt in:
-
-```sql
-CALL agent_bom.core.enable_scanner_service();
-ALTER SERVICE agent_bom.core.agent_bom_scanner RESUME;
-```
+The packaged scanner service is off by default and is not a supported scanning
+lifecycle. Its one-shot CLI command does not serve the declared HTTP readiness
+endpoint or persist a completed scan into the app. Do not enable it for production.
+A real job adapter and authenticated completion proof are required first.
 
 The scanner service attaches only these EAIs:
 
@@ -180,17 +177,26 @@ export SNOWFLAKE_ACCOUNT=<your_account>
 agent-bom snowflake test-connection
 ```
 
-## 8 — Trigger your first scan
+## 8 — Scan dispatch availability
 
-```sql
-CALL agent_bom.core.trigger_scan();
+`CALL agent_bom.core.trigger_scan()` raises an explicit unsupported-dispatch error.
+It does not create a pending job or claim a scan started. Do not schedule this
+procedure. An authenticated Native App job adapter remains required.
+
+For an external scan, configure your own read-only Snowflake authentication and run:
+
+```bash
+agent-bom scan --snowflake -f json -o snowflake-report.json
 ```
 
-The package does not assume access to a consumer warehouse and therefore does
-not create a hard-coded Snowflake task. Schedule this procedure from the
-customer-owned orchestrator or warehouse policy already used for security jobs.
+This produces a local report, not automatic ingestion into the Native App.
 
 ## 9 — Open the dashboard
+
+After the consumer approves both requested privileges, the grant callback creates
+the compute pool and API/UI service. Installation alone does not prove service
+readiness. Authenticated consumer installation, binding, readiness, and completed
+scan persistence still require validation.
 
 The dashboard URL is exposed via the Native App's service endpoint. From Snowsight:
 
@@ -203,6 +209,7 @@ The dashboard URL is exposed via the Native App's service endpoint. From Snowsig
 ```sql
 -- Confirm the app installed and Phase 4 services remain default-off
 CALL agent_bom.core.health_check();
+-- Configuration flags only; status=ok does not prove service readiness.
 -- Expected: status=ok, scanner_service_enabled=false,
 -- mcp_runtime_service_enabled=false, advisory_egress_enabled=false
 

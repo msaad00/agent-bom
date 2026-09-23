@@ -22,65 +22,16 @@ artifacts:
       - /agent_bom_provider/spcs/agent_bom_repo/agent-bom-ui:v0_106_0
       - /agent_bom_provider/spcs/agent_bom_repo/agent-bom-scanner:v0_106_0
       - /agent_bom_provider/spcs/agent_bom_repo/agent-bom-mcp-runtime:v0_106_0
-  service_roles:
-    - name: api
-      comment: >-
-        Grants USAGE on the FastAPI backend service endpoint (port 8422).
-        Assign to roles that need programmatic access to the agent-bom REST API.
-    - name: ui
-      comment: >-
-        Grants USAGE on the Next.js dashboard service endpoint (port 3000).
-        Assign to roles that need browser-based access to the agent-bom UI.
-    - name: scanner
-      comment: >-
-        Grants USAGE on the opt-in scanner service endpoint (port 8424).
-        Assign only after core.enable_scanner_service() has created the
-        service in the consumer account.
-    - name: mcp_runtime
-      comment: >-
-        Grants USAGE on the optional MCP runtime service endpoint (port 8423).
-        Assign only after core.enable_mcp_runtime_service() has created the
-        bearer-token protected runtime service.
 
 privileges:
   - CREATE COMPUTE POOL:
       description: Required to run the agent-bom API container
-  - CREATE SERVICE:
-      description: Required to deploy Snowpark Container Service
   - BIND SERVICE ENDPOINT:
       description: Required to expose the API endpoint internally
 
 configuration:
-  log_level:
-    type: STRING
-    default: INFO
-  scan_interval_hours:
-    type: NUMBER
-    default: 6
-  network_policy_name:
-    type: STRING
-    default: ""
-  fail_open:
-    type: BOOLEAN
-    default: false
-  prefer_local_db:
-    type: BOOLEAN
-    default: true
-  retention_days:
-    type: NUMBER
-    default: 90
-  enable_scanner_service:
-    type: BOOLEAN
-    default: false
-  enable_mcp_runtime_service:
-    type: BOOLEAN
-    default: false
-  scanner_service_name:
-    type: STRING
-    default: core.agent_bom_scanner
-  mcp_runtime_service_name:
-    type: STRING
-    default: core.agent_bom_mcp_runtime
+  log_level: INFO
+  grant_callback: core.grant_callback
 
 references:
   - cloud_asset_tables:
@@ -89,6 +40,8 @@ references:
         SELECT access to the customer's cloud asset inventory tables.
         agent-bom reads these tables to discover cloud resources for scanning.
         No write access is requested or granted.
+      multi_valued: false
+      register_callback: core.register_reference
       object_type: TABLE
       privileges:
         - SELECT
@@ -98,6 +51,8 @@ references:
         SELECT access to the customer's IAM/identity tables.
         agent-bom reads these to map principal-to-resource relationships.
         No write access is requested or granted.
+      multi_valued: false
+      register_callback: core.register_reference
       object_type: TABLE
       privileges:
         - SELECT
@@ -107,6 +62,8 @@ references:
         SELECT access to the customer's existing vulnerability data tables
         (optional — agent-bom can populate these itself).
         No write access is requested or granted.
+      multi_valued: false
+      register_callback: core.register_reference
       object_type: TABLE
       privileges:
         - SELECT
@@ -116,6 +73,8 @@ references:
         SELECT access to the customer's audit log / CloudTrail tables.
         agent-bom reads these to correlate access patterns with findings.
         No write access is requested or granted.
+      multi_valued: false
+      register_callback: core.register_reference
       object_type: TABLE
       privileges:
         - SELECT
@@ -125,72 +84,71 @@ references:
         READ access to the customer's artifact stages (container images,
         model files). agent-bom reads manifest files to enumerate packages.
         No write access is requested or granted.
+      multi_valued: false
+      register_callback: core.register_reference
       object_type: STAGE
       privileges:
         - READ
-
-external_access_integrations:
   - osv_dev:
       label: "OSV.dev Advisory Feed"
-      description: >-
-        Allows agent-bom to query the OSV.dev vulnerability database for
-        open-source package CVEs. Disabled by default — enable only if you
-        want agent-bom to enrich findings with OSV data.
-      enabled: false
-      egress_destinations:
-        - api.osv.dev
-        - osv.dev
+      description: "Optional advisory/package egress; bind explicitly before enabling the scanner."
+      object_type: EXTERNAL ACCESS INTEGRATION
+      privileges: [USAGE]
+      multi_valued: false
+      required_at_setup: false
+      register_callback: core.register_reference
+      configuration_callback: core.get_reference_configuration
   - cisa_kev:
       label: "CISA KEV Feed"
-      description: >-
-        Allows agent-bom to fetch the CISA Known Exploited Vulnerabilities
-        catalogue. Disabled by default.
-      enabled: false
-      egress_destinations:
-        - www.cisa.gov
+      description: "Optional advisory/package egress; bind explicitly before enabling the scanner."
+      object_type: EXTERNAL ACCESS INTEGRATION
+      privileges: [USAGE]
+      multi_valued: false
+      required_at_setup: false
+      register_callback: core.register_reference
+      configuration_callback: core.get_reference_configuration
   - first_epss:
       label: "FIRST EPSS Feed"
-      description: >-
-        Allows agent-bom to query FIRST EPSS scores for CVE prioritisation.
-        Disabled by default.
-      enabled: false
-      egress_destinations:
-        - api.first.org
+      description: "Optional advisory/package egress; bind explicitly before enabling the scanner."
+      object_type: EXTERNAL ACCESS INTEGRATION
+      privileges: [USAGE]
+      multi_valued: false
+      required_at_setup: false
+      register_callback: core.register_reference
+      configuration_callback: core.get_reference_configuration
   - github_ghsa:
       label: "GitHub Advisory Database (GHSA)"
-      description: >-
-        Allows agent-bom to query the GitHub Advisory Database for package
-        vulnerabilities. Disabled by default.
-      enabled: false
-      egress_destinations:
-        - api.github.com
+      description: "Optional advisory/package egress; bind explicitly before enabling the scanner."
+      object_type: EXTERNAL ACCESS INTEGRATION
+      privileges: [USAGE]
+      multi_valued: false
+      required_at_setup: false
+      register_callback: core.register_reference
+      configuration_callback: core.get_reference_configuration
   - nvd_api:
       label: "NVD REST API"
-      description: >-
-        Allows agent-bom to query the NVD REST API for CVSS enrichment.
-        Disabled by default.
-      enabled: false
-      egress_destinations:
-        - services.nvd.nist.gov
+      description: "Optional advisory/package egress; bind explicitly before enabling the scanner."
+      object_type: EXTERNAL ACCESS INTEGRATION
+      privileges: [USAGE]
+      multi_valued: false
+      required_at_setup: false
+      register_callback: core.register_reference
+      configuration_callback: core.get_reference_configuration
   - deps_dev:
       label: "deps.dev"
-      description: >-
-        Allows agent-bom to resolve package versions via deps.dev.
-        Disabled by default.
-      enabled: false
-      egress_destinations:
-        - api.deps.dev
-        - deps.dev
+      description: "Optional advisory/package egress; bind explicitly before enabling the scanner."
+      object_type: EXTERNAL ACCESS INTEGRATION
+      privileges: [USAGE]
+      multi_valued: false
+      required_at_setup: false
+      register_callback: core.register_reference
+      configuration_callback: core.get_reference_configuration
   - package_registries:
       label: "Package registries"
-      description: >-
-        Allows agent-bom to resolve package metadata from public registries.
-        Disabled by default.
-      enabled: false
-      egress_destinations:
-        - registry.npmjs.org
-        - api.npmjs.org
-        - pypi.org
-        - proxy.golang.org
-        - sum.golang.org
-        - search.maven.org
+      description: "Optional advisory/package egress; bind explicitly before enabling the scanner."
+      object_type: EXTERNAL ACCESS INTEGRATION
+      privileges: [USAGE]
+      multi_valued: false
+      required_at_setup: false
+      register_callback: core.register_reference
+      configuration_callback: core.get_reference_configuration

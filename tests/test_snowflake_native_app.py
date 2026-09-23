@@ -12,7 +12,10 @@ PR can't quietly weaken the read-only contract.
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -113,8 +116,8 @@ def test_manifest_declares_advisory_feed_eais(manifest: dict):
     declared in the manifest so the customer can toggle them at install.
     These are the only outbound calls agent-bom makes — they must be
     explicit consent, not silently active."""
-    eais = manifest.get("external_access_integrations")
-    assert eais, "manifest must declare external_access_integrations"
+    eais = [entry for entry in manifest["references"] if next(iter(entry.values()))["object_type"] == "EXTERNAL ACCESS INTEGRATION"]
+    assert eais, "manifest must declare advisory EAI references"
 
     expected = {"osv_dev", "cisa_kev", "first_epss", "github_ghsa"}
     declared = {next(iter(e.keys())) for e in eais}
@@ -125,12 +128,14 @@ def test_manifest_declares_advisory_feed_eais(manifest: dict):
 def test_advisory_feed_eais_are_default_off(manifest: dict):
     """Phase 4 scanner enrichment must stay opt-in. A future manifest change
     that enables outbound vulnerability feeds during install is a regression."""
-    for eai in manifest.get("external_access_integrations", []):
+    for eai in manifest["references"]:
+        if next(iter(eai.values()))["object_type"] != "EXTERNAL ACCESS INTEGRATION":
+            continue
         name, body = next(iter(eai.items()))
-        assert body.get("enabled") is False, f"EAI {name!r} must be disabled by default"
+        assert body.get("required_at_setup") is False, f"EAI {name!r} must be disabled by default"
 
 
-def test_no_eai_egresses_to_unexpected_destinations(manifest: dict):
+def test_no_eai_egresses_to_unexpected_destinations(manifest: dict, setup_sql: str):
     """Every EAI's egress destination list must match a known advisory/package feed.
     A future PR adding a fifth destination would surface here so we can
     review whether the new outbound call is actually metadata-only."""
@@ -150,9 +155,16 @@ def test_no_eai_egresses_to_unexpected_destinations(manifest: dict):
         "sum.golang.org",
         "search.maven.org",
     }
-    for eai in manifest.get("external_access_integrations", []):
-        body = next(iter(eai.values()))
-        destinations = set(body.get("egress_destinations", []))
+    for eai in manifest["references"]:
+        if next(iter(eai.values()))["object_type"] != "EXTERNAL ACCESS INTEGRATION":
+            continue
+        name = next(iter(eai))
+        payload = re.search(r"WHEN '" + name + r"' THEN\s+RETURN '([^']+)';", setup_sql)
+        assert payload, f"Missing EAI configuration for {name}"
+        config = json.loads(payload.group(1))
+        assert config["payload"]["allowed_secrets"] == "NONE"
+        destinations = set(config["payload"]["host_ports"])
+        assert destinations
         unknown = destinations - allowed
         assert not unknown, f"EAI declares unknown egress destinations: {unknown}. Update this test if the new destination is intended."
 
@@ -195,10 +207,9 @@ def test_setup_sql_grants_only_target_application_role(setup_sql: str):
 # ─── Phase 4 service contract ───────────────────────────────────────────────
 
 
-def test_manifest_declares_phase4_services_default_off(manifest: dict):
-    config = manifest.get("configuration", {})
-    assert config["enable_scanner_service"]["default"] is False
-    assert config["enable_mcp_runtime_service"]["default"] is False
+def test_manifest_declares_phase4_services_default_off(manifest: dict, setup_sql: str):
+    for name in ("enable_scanner_service", "enable_mcp_runtime_service"):
+        assert f"SELECT '{name}', PARSE_JSON('false')" in setup_sql
 
     images = set(manifest.get("artifacts", {}).get("container_services", {}).get("images", []))
     repository = "/agent_bom_provider/spcs/agent_bom_repo"
@@ -513,3 +524,65 @@ def test_mcp_runtime_repeat_configuration_updates_both_credentials_before_explic
     assert "mcp_bearer_token => :mcp_bearer_token" in spec_update
     assert "mcp_bearer_token_expires_at => :mcp_bearer_token_expires_at" in spec_update
     assert "\n    ALTER SERVICE core.agent_bom_mcp_runtime RESUME;" not in procedure
+
+
+def _release_module():
+    spec = importlib.util.spec_from_file_location("native_release", RELEASE_TOOL_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_install_callbacks_are_present_and_consumer_gated(manifest, setup_sql):
+    _release_module().validate_install_contract(manifest, setup_sql)
+    callback = setup_sql.split("CREATE OR REPLACE PROCEDURE core.grant_callback(")[1].split("$$;")[0]
+    assert "ARRAY_CONTAINS('CREATE COMPUTE POOL'::VARIANT, privileges)" in callback
+    assert "ARRAY_CONTAINS('BIND SERVICE ENDPOINT'::VARIANT, privileges)" in callback
+    assert "CREATE COMPUTE POOL IF NOT EXISTS" in callback
+    for operation in ("SET_REFERENCE", "REMOVE_REFERENCE", "REMOVE_ALL_REFERENCES"):
+        assert f"SYSTEM${operation}" in setup_sql
+
+
+@pytest.mark.parametrize(
+    "mutation", ["typed_log", "missing_grant", "missing_registration", "undeclared_eai", "required_egress", "old_roles"]
+)
+def test_release_validator_rejects_broken_install_contract(manifest, setup_sql, mutation):
+    broken = copy.deepcopy(manifest)
+    if mutation == "typed_log":
+        broken["configuration"]["log_level"] = {"type": "STRING", "default": "INFO"}
+    elif mutation == "missing_grant":
+        del broken["configuration"]["grant_callback"]
+    elif mutation == "missing_registration":
+        del broken["references"][0]["cloud_asset_tables"]["register_callback"]
+    elif mutation == "undeclared_eai":
+        broken["references"] = [entry for entry in broken["references"] if "osv_dev" not in entry]
+    elif mutation == "required_egress":
+        next(entry["osv_dev"] for entry in broken["references"] if "osv_dev" in entry)["required_at_setup"] = True
+    else:
+        broken["artifacts"]["service_roles"] = []
+    with pytest.raises(ValueError):
+        _release_module().validate_install_contract(broken, setup_sql)
+
+
+def test_named_service_roles_exist_in_owning_spec(core_service_spec, service_specs):
+    for spec, expected in [
+        (core_service_spec, {"api", "ui"}),
+        (service_specs["scanner-service.yaml"], {"scanner"}),
+        (service_specs["mcp-runtime-service.yaml"], {"mcp_runtime"}),
+    ]:
+        roles = {item["name"]: item["endpoints"] for item in spec["serviceRoles"]}
+        assert set(roles) == expected
+        assert all(roles.values())
+        assert set().union(*map(set, roles.values())) == {item["name"] for item in spec["spec"]["endpoints"]}
+
+
+def test_native_trigger_scan_fails_without_creating_invalid_job(setup_sql):
+    procedure = setup_sql.split("CREATE OR REPLACE PROCEDURE core.trigger_scan()")[1].split("GRANT USAGE ON PROCEDURE core.trigger_scan()")[
+        0
+    ]
+    assert "RAISE scan_unavailable" in procedure
+    assert "Native App scan dispatch is unavailable" in procedure
+    assert "INSERT INTO" not in procedure
+    assert "scan_started" not in procedure
+    assert "Scan queued" not in procedure
+    assert "PARSE_JSON('{}')" not in procedure

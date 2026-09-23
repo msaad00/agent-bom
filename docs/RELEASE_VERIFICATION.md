@@ -37,9 +37,9 @@ signed release evidence.
 | Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
 
 Do not publish a release as hosted-ready when any required line above is red.
-After publishing, keep required-surface incidents open while a required surface
-is stale or unmonitored. Registry rebuilds may finish asynchronously; rerun the
-check until required surfaces reflect the released version and expected
+After publishing, do not mark the release complete or close required-surface
+incidents while a required surface is stale or unmonitored. Registry rebuilds
+may finish asynchronously; rerun the check until required surfaces reflect the released version and expected
 inventory. Advisory results remain visible and do not establish hosted readiness.
 
 Schema expectations come from an isolated installation of the exact published

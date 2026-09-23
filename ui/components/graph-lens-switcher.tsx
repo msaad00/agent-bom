@@ -232,12 +232,12 @@ export function GraphLensSwitcher({
         <InsightLayerToggle layers={canonicalLayers} onToggle={onToggle} />
         <details
           className="group relative"
-          open={specializedViewActive}
+          data-active-view={specializedViewActive || undefined}
         >
           <summary className="graph-chip-neutral cursor-pointer select-none whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.12em] hover:border-[color:var(--border-strong)]">
             More views
           </summary>
-          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 flex min-w-72 flex-wrap items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--background)] p-3 shadow-xl">
+          <div className="absolute left-0 top-[calc(100%+0.5rem)] sm:left-auto sm:right-0 z-40 flex min-w-72 flex-wrap items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--background)] p-3 shadow-xl">
             <InsightLayerToggle
               layers={specializedViews}
               label="Views"

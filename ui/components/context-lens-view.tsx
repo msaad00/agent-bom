@@ -198,7 +198,7 @@ export function LateralPanel({
                 onClick={() => onSelectPath(p)}
                 className={`w-full rounded-lg border p-2 text-left focus-visible:outline-2 focus-visible:outline-orange-500 ${
                   focusedPathKey === lateralPathKey(p) && pathFocusActive
-                    ? "border-orange-500/40 bg-orange-950/20"
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
                     : "border-[var(--border-subtle)] bg-[var(--surface)]"
                 }`}
               >
@@ -209,9 +209,9 @@ export function LateralPanel({
                   <span
                     className={`text-xs font-semibold ${
                       p.composite_risk >= 7
-                        ? "text-red-400"
+                        ? "text-[var(--graph-finding)]"
                         : p.composite_risk >= 4
-                        ? "text-amber-400"
+                        ? "text-[var(--graph-package)]"
                         : "text-[var(--text-secondary)]"
                     }`}
                   >
@@ -222,17 +222,17 @@ export function LateralPanel({
                   {pathDisplayTitle(lateralPathToExposure(p, selectedAgent ?? "agent"))}
                 </p>
                 {p.credential_exposure.length > 0 && (
-                  <p className="mt-1 break-words text-xs text-amber-400">
+                  <p className="mt-1 break-words text-xs text-[var(--graph-package)]">
                     Creds: {formatExposureList(p.credential_exposure)}
                   </p>
                 )}
                 {p.tool_exposure.length > 0 && (
-                  <p className="mt-1 break-words text-xs text-purple-400">
+                  <p className="mt-1 break-words text-xs text-[var(--graph-tool)]">
                     Tools: {formatExposureList(p.tool_exposure)}
                   </p>
                 )}
                 {p.vuln_ids.length > 0 && (
-                  <p className="mt-1 break-words text-xs text-red-400">
+                  <p className="mt-1 break-words text-xs text-[var(--graph-finding)]">
                     Findings: {formatExposureList(p.vuln_ids, 3)}
                   </p>
                 )}
@@ -275,9 +275,9 @@ export function LateralPanel({
                   <span
                     className={`text-xs font-semibold ${
                       r.risk_score >= 7
-                        ? "text-red-400"
+                        ? "text-[var(--graph-finding)]"
                         : r.risk_score >= 5
-                        ? "text-amber-400"
+                        ? "text-[var(--graph-package)]"
                         : "text-[var(--text-secondary)]"
                     }`}
                   >

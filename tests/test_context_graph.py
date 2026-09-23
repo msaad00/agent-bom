@@ -987,3 +987,76 @@ def test_same_label_static_package_finding_does_not_leak_into_real_context():
     )
     assert "vuln:CVE-STATIC" not in graph.nodes
     assert "vuln:CVE-REAL" in graph.nodes
+
+
+def test_single_source_path_limit_reports_incomplete_analysis():
+    agents = [_agent(name=f"agent-{i:04}", servers=[_server(url="https://mcp.example/shared")]) for i in range(1_000)]
+    graph = build_context_graph(agents, [])
+    paths, truncated = collect_lateral_paths(graph, ["agent:agent-0000"])
+    assert len(paths) == 100
+    assert truncated is True
+
+
+def test_last_source_exceeding_aggregate_budget_reports_incomplete_analysis():
+    agents = [_agent(name=f"agent-{i}", servers=[_server(url="https://mcp.example/shared")]) for i in range(4)]
+    graph = build_context_graph(agents, [])
+    paths, truncated = collect_lateral_paths(graph, ["agent:agent-0"], max_paths=2)
+    assert len(paths) == 2
+    assert truncated is True
+
+
+def test_exact_exhaustion_does_not_report_path_sampling():
+    agents = [_agent(name=f"agent-{i}", servers=[_server(url="https://mcp.example/shared")]) for i in range(3)]
+    paths, truncated = collect_lateral_paths(build_context_graph(agents, []), ["agent:agent-0"], max_paths=2)
+    assert len(paths) == 2
+    assert truncated is False
+
+
+def test_single_high_degree_expansion_obeys_queue_budget(monkeypatch):
+    import agent_bom.context_graph as context
+
+    agents = [_agent(name=f"agent-{i}", servers=[_server(url="https://mcp.example/shared")]) for i in range(20)]
+    monkeypatch.setattr(context, "_MAX_QUEUE_SIZE", 3)
+    paths, truncated = collect_lateral_paths(build_context_graph(agents, []), ["agent:agent-0"])
+    assert len(paths) <= 3
+    assert truncated is True
+
+
+def test_api_payload_preserves_single_source_sampling():
+    from agent_bom.api.routes.scan import _context_graph_payload
+
+    agents = [_agent(name=f"agent-{i:04}", servers=[_server(url="https://mcp.example/shared")]) for i in range(120)]
+    payload = _context_graph_payload({"agents": agents, "blast_radius": []}, agent="agent-0000", scan_id="sample", tenant_id="tenant")
+    assert payload["stats"]["lateral_path_count"] == 100
+    assert payload["stats"]["lateral_paths_truncated"] is True
+
+
+def test_mcp_payload_preserves_single_source_sampling(monkeypatch):
+    import asyncio
+    import json
+
+    import agent_bom.context_graph as context
+    from agent_bom.mcp_tools.analysis import context_graph_impl
+    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+
+    agents = [
+        Agent(
+            name=f"agent-{i}",
+            agent_type=AgentType.CUSTOM,
+            config_path="fixture",
+            mcp_servers=[MCPServer(name="shared", transport=TransportType.SSE, url="https://mcp.example/shared")],
+        )
+        for i in range(4)
+    ]
+
+    async def pipeline(_config):
+        return agents, [], [], []
+
+    monkeypatch.setattr(context, "_MAX_PATHS", 2)
+    payload = json.loads(
+        asyncio.run(context_graph_impl(source_agent="agent-0", _run_scan_pipeline=pipeline, _truncate_response=lambda value: value))
+    )
+    assert len(payload["lateral_paths"]) == 2
+    assert payload["stats"]["lateral_paths_truncated"] is True
+    assert payload["completeness"]["sampled"] is True
+    assert "exhaustive" not in payload["completeness"]["reason"]

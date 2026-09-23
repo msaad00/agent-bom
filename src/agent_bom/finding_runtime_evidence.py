@@ -116,7 +116,7 @@ def _row_agents(row: Mapping[str, Any]) -> set[str]:
     for key in ("affected_agents", "agents"):
         value = row.get(key)
         if isinstance(value, list):
-            agents.update(str(item).strip().lower() for item in value if str(item).strip())
+            agents.update(item.strip() for item in value if isinstance(item, str) and item.strip())
     return agents
 
 
@@ -125,20 +125,20 @@ def _row_tools(row: Mapping[str, Any]) -> set[str]:
     for key in ("exposed_tools", "reachable_tools", "phantom_tools"):
         value = row.get(key)
         if isinstance(value, list):
-            tools.update(str(item).strip().lower() for item in value if str(item).strip())
+            tools.update(item.strip() for item in value if isinstance(item, str) and item.strip())
     return tools
 
 
 def _event_matches_row(row: Mapping[str, Any], event: Mapping[str, Any]) -> bool:
     agents = _row_agents(row)
     tools = _row_tools(row)
-    event_agent = str(event.get("agent") or "").strip().lower()
-    event_tool = str(event.get("tool") or "").strip().lower()
-    if event_agent and agents and event_agent not in agents:
-        return False
-    if event_tool and tools and event_tool not in tools:
-        return False
-    return bool((event_agent and agents) or (event_tool and tools))
+    event_agent = str(event.get("agent") or "").strip()
+    event_tool = str(event.get("tool") or "").strip()
+    # Tool names are shared across agents, and agent activity alone does not
+    # identify a finding's tool. Missing identity stays uncorrelated; an exact
+    # agent-and-tool match is related activity, never vulnerable-code execution.
+    # These identities are case-sensitive; folding them can merge workloads.
+    return bool(event_agent and event_tool and event_agent in agents and event_tool in tools)
 
 
 def attach_runtime_evidence_to_finding(

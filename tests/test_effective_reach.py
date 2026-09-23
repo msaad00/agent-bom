@@ -177,6 +177,11 @@ def test_agent_breadth_includes_shared_server_adjacency() -> None:
     """Breadth includes agents adjacent through SHARES_SERVER graph edges."""
     agents, blast = _high_reach_fixture()
     blast[0]["affected_agents"] = ["claude-desktop"]
+    # Equal stdio labels do not prove sharing. Record a common remote endpoint.
+    for agent in agents:
+        server = agent["mcp_servers"][0]
+        server["transport"] = "streamable-http"
+        server["url"] = "https://ops.example.test/mcp"
 
     graph = build_context_graph(agents, blast)
     annotate_graph(graph)
@@ -184,6 +189,16 @@ def test_agent_breadth_includes_shared_server_adjacency() -> None:
     breakdown = graph.nodes["vuln:CVE-2099-HIGH"].metadata["effective_reach"]
     assert breakdown["agent_breadth"] == 2
     assert breakdown["reachable_agents"] == ["claude-desktop", "cursor"]
+
+
+def test_agent_breadth_does_not_infer_shared_stdio_from_names() -> None:
+    agents, blast = _high_reach_fixture()
+    blast[0]["affected_agents"] = ["claude-desktop"]
+    graph = build_context_graph(agents, blast)
+    annotate_graph(graph)
+    breakdown = graph.nodes["vuln:CVE-2099-HIGH"].metadata["effective_reach"]
+    assert breakdown["agent_breadth"] == 1
+    assert breakdown["reachable_agents"] == ["claude-desktop"]
 
 
 # ── Determinism (property test) ───────────────────────────────────────────

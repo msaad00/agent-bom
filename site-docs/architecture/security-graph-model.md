@@ -13,8 +13,8 @@ snapshot gets large?"
   `exposes_cred`, `affects`, `invoked`, and `lateral_path`
 - **attack paths** are precomputed fix-first paths derived from the persisted
   graph, with an explicit reachability verdict and evidence basis
-- **interaction risks** are runtime-oriented overlays that highlight where
-  agent behavior or shared control surfaces can expand blast radius
+- **interaction risks** are analysis results over recorded configuration and
+  runtime evidence; their presence alone does not establish observed activity
 
 This is not a best-effort browser-only canvas. It is a persisted graph snapshot
 loaded from the control plane.
@@ -23,7 +23,8 @@ loaded from the control plane.
 
 Every path distinguishes executable evidence from investigation context:
 
-- `confirmed` — a persisted graph path or function-level symbol proof exists
+- `confirmed` — complete, directed, provenance-backed hop receipts support the
+  recorded path; this is not proof of successful execution or exploitation
 - `likely` — package/dependency or observed graph evidence supports the path
 - `unknown` — structural topology connects the entities, but executable reach
   has not been proven; these candidates stay below evidence-backed paths
@@ -33,6 +34,26 @@ Every path distinguishes executable evidence from investigation context:
 Credential and tool exposure increase impact, not reachability. MITRE ATT&CK
 and ATLAS enrich evidence-backed hops; their technique mappings never create a
 hop or promote a structural candidate into an executable path.
+
+## Reading Context Map evidence
+
+Open **Context** for a completed scan, then select a relationship label to inspect
+its source, target, and affected package. Repository and SBOM imports remain
+static inventory in Repository/Lineage; they are not MCP agent configurations.
+These links describe scan evidence:
+
+- **Configured server** records an agent configuration, not an invocation.
+- **Advertises tool** records a tool declaration, not successful execution.
+- **Credential reference** records a configured name, not secret disclosure or use.
+- **Package vulnerability** associates the finding with evidenced package owners,
+  not every tool exposed by the server. Multiple package associations remain separate.
+
+A connected path is an investigation lead. To establish what an agent touched,
+inspect runtime receipts with matching agent/tool identities and recorded resources,
+decisions, and outcomes. A blocked attempt is not successful access; missing resource
+or outcome evidence remains unknown. Finding badges show related runtime activity,
+not proof that vulnerable code executed. Existing snapshots need a new scan to
+reflect corrected ownership correlations.
 
 ## What a snapshot means
 

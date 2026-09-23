@@ -3003,16 +3003,21 @@ def _resolve_bulk_findings_total(
     limit: int,
     window_days: int = 0,
     status: str | None = None,
+    request_cached_total: int | None = None,
 ) -> tuple[int | None, bool]:
     """Return ``(total, total_approximate)`` for the bulk-ingest slice."""
     from agent_bom.api.findings_count_cache import cache_key, get_cached_total, set_cached_total
 
+    # Preserve the count that justified skipping COUNT at request start. It may
+    # expire while scan rows are assembled; using the snapshot does not renew TTL.
     key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest", window_days=window_days, status=status)
     if not approximate_total:
         if bulk_total is not None:
             set_cached_total(key, bulk_total)
             return bulk_total, False
         cached = get_cached_total(key)
+        if cached is None:
+            cached = request_cached_total
         if cached is not None:
             # Cache entries are populated only from an exact store COUNT.  A
             # normal request reusing that value remains complete; labelling it
@@ -3026,6 +3031,8 @@ def _resolve_bulk_findings_total(
         return bulk_total, False
 
     cached = get_cached_total(key)
+    if cached is None:
+        cached = request_cached_total
     if cached is not None:
         return cached, True
 
@@ -3659,6 +3666,7 @@ def _list_findings_impl(
                     approximate_total=approximate_total or effective_approximate_total,
                     offset=offset,
                     bulk_total=bulk_total,
+                    request_cached_total=cached_bulk_total,
                     page_len=len(page_rows),
                     limit=limit,
                     window_days=resolved_window,
@@ -3692,6 +3700,7 @@ def _list_findings_impl(
                 approximate_total=approximate_total or effective_approximate_total,
                 offset=0 if cursor else offset,
                 bulk_total=bulk_total,
+                request_cached_total=cached_bulk_total,
                 page_len=len(page_rows),
                 limit=limit,
                 window_days=resolved_window,

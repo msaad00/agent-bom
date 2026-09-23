@@ -163,3 +163,171 @@ def test_validate_server_card_release_requires_exact_version_tools_and_schemas()
     payload["tools"][1].pop("inputSchema")
     with pytest.raises(ValueError, match="tool schema"):
         validate_server_card_release(payload, expected_version="0.100.0", expected_tool_count=2)
+
+
+@pytest.mark.parametrize("sse", [False, True])
+@pytest.mark.parametrize("anonymous_status", [401, 403])
+def test_authenticated_initialize_accepts_json_and_event_stream(monkeypatch, sse, anonymous_status):
+    import io
+    import json
+    from email.message import Message
+    from types import SimpleNamespace
+
+    from agent_bom.deployment_probe import verify_mcp_auth
+
+    payload = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "serverInfo": {"version": "0.105.0"},
+            },
+        }
+    )
+    response = io.BytesIO((f"event: message\ndata: {payload}\n\n" if sse else payload).encode())
+    response.headers = Message()
+    response.headers["Content-Type"] = "text/event-stream" if sse else "application/json"
+    calls = []
+
+    def open_request(request, **kwargs):
+        calls.append(request)
+        if not request.get_header("Authorization"):
+            raise urllib.error.HTTPError(request.full_url, anonymous_status, "fixture", {}, None)
+        return response
+
+    monkeypatch.setattr("agent_bom.deployment_probe.urllib.request.build_opener", lambda *args: SimpleNamespace(open=open_request))
+    verify_mcp_auth("https://example.com/mcp", bearer_token="fixture-read-token", expected_version="0.105.0", timeout=1)
+    assert calls[0].full_url == "https://example.com/mcp"
+    assert calls[0].get_method() == "POST"
+    assert calls[0].get_header("Authorization") == "Bearer fixture-read-token"
+    assert json.loads(calls[0].data)["method"] == "initialize"
+    assert len(calls) == 2
+    assert calls[1].get_header("Authorization") is None
+
+
+def test_expired_authenticated_access_cannot_pass_public_card_gate(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    def denied(*args, **kwargs):
+        raise urllib.error.HTTPError("https://secret.example/credential", 401, "token=private-token", {}, None)
+
+    monkeypatch.setattr("agent_bom.deployment_probe.urllib.request.build_opener", lambda *args: SimpleNamespace(open=denied))
+    monkeypatch.setattr(
+        "agent_bom.deployment_probe.fetch_server_card", lambda *args, **kwargs: pytest.fail("public metadata cannot override auth failure")
+    )
+    result = main(
+        [
+            "--server-card",
+            "--require-mcp-auth",
+            "--bearer-token",
+            "private-token",
+            "--expected-version",
+            "0.105.0",
+            "--expected-tool-count",
+            "8",
+        ]
+    )
+    assert result == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Authenticated MCP initialize failed" in captured.err
+    assert "private-token" not in captured.err
+    assert "secret.example" not in captured.err
+
+
+def test_authenticated_probe_requires_credential_and_safe_origin(monkeypatch):
+    from agent_bom.deployment_probe import verify_mcp_auth
+
+    monkeypatch.setattr("agent_bom.deployment_probe.urllib.request.build_opener", lambda *args: pytest.fail("must reject before network"))
+    for url, token in [
+        ("https://example.com", None),
+        ("http://example.com", "read-token"),
+        ("https://user:password@example.com", "read-token"),
+    ]:
+        with pytest.raises(ValueError):
+            verify_mcp_auth(url, bearer_token=token, expected_version="0.105.0", timeout=1)
+
+
+def test_authenticated_probe_does_not_forward_bearer_on_redirect():
+    from agent_bom.deployment_probe import _NoAuthRedirect
+
+    with pytest.raises(ValueError, match="does not follow redirects"):
+        _NoAuthRedirect().redirect_request(None, None, 302, "Found", {}, "https://other.example/mcp")
+
+
+def test_deployment_freshness_requires_mcp_auth_not_only_public_metadata():
+    from pathlib import Path
+
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/deployment-freshness.yml").read_text()
+    railway = workflow.split("- name: Check Railway deployment", 1)[1].split("- name: Check Smithery", 1)[0]
+    assert "--server-card --require-mcp-auth" in railway
+    assert railway.index("--require-mcp-auth") < railway.index('echo "probe_failed=false"')
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"jsonrpc": "2.0", "id": 1, "error": {"message": "credential=private-response"}},
+        {"jsonrpc": "2.0", "id": 2, "result": {"protocolVersion": "2025-03-26", "capabilities": {}, "serverInfo": {"version": "0.105.0"}}},
+        {"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-03-26", "capabilities": {}, "serverInfo": {"version": "0.104.0"}}},
+        [],
+    ],
+)
+def test_authenticated_probe_rejects_invalid_success_bodies_without_leaking(monkeypatch, capsys, payload):
+    import io
+    import json
+    from email.message import Message
+    from types import SimpleNamespace
+
+    response = io.BytesIO(json.dumps(payload).encode())
+    response.headers = Message()
+    response.headers["Content-Type"] = "application/json"
+    monkeypatch.setattr(
+        "agent_bom.deployment_probe.urllib.request.build_opener", lambda *args: SimpleNamespace(open=lambda *a, **k: response)
+    )
+    assert main(["--require-mcp-auth", "--bearer-token", "fixture-token", "--expected-version", "0.105.0"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "private-response" not in captured.err
+    assert "Authenticated MCP initialize failed" in captured.err
+
+
+@pytest.mark.parametrize("anonymous_status", [200, 404, 500])
+def test_authenticated_probe_rejects_unprotected_or_unverifiable_endpoint(monkeypatch, anonymous_status):
+    import io
+    import json
+    from email.message import Message
+    from types import SimpleNamespace
+
+    from agent_bom.deployment_probe import verify_mcp_auth
+
+    calls = []
+
+    def open_request(request, **kwargs):
+        calls.append(request)
+        if not request.get_header("Authorization") and anonymous_status != 200:
+            raise urllib.error.HTTPError(request.full_url, anonymous_status, "fixture", {}, None)
+        response = io.BytesIO(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "serverInfo": {"version": "0.105.0"},
+                    },
+                }
+            ).encode()
+        )
+        response.headers = Message()
+        response.headers["Content-Type"] = "application/json"
+        return response
+
+    monkeypatch.setattr("agent_bom.deployment_probe.urllib.request.build_opener", lambda *args: SimpleNamespace(open=open_request))
+    with pytest.raises(RuntimeError, match="Authenticated MCP initialize failed"):
+        verify_mcp_auth("https://example.com", bearer_token="fixture-token", expected_version="0.105.0", timeout=1)
+    assert len(calls) == 2
+    assert calls[1].get_header("Authorization") is None

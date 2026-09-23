@@ -100,7 +100,7 @@ jobs:
           if RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
             --base-url "$DEPLOY_URL" \
             --bearer-token "${RAILWAY_MCP_BEARER_TOKEN:-}" \
-            --server-card \
+            --server-card --require-mcp-auth \
             --expected-version "${{ steps.expected.outputs.version }}" \
             --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
             --attempts 3 \
@@ -124,7 +124,7 @@ jobs:
               echo "tool_count=unknown"
               echo "probe_failed=true"
             } >> "$GITHUB_OUTPUT"
-            echo "::warning::Railway server card does not match the latest published release contract"
+            echo "::warning::Railway authenticated MCP or published contract check failed"
             exit 0
           fi
           {

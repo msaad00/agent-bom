@@ -43,5 +43,9 @@ for (const theme of ["light", "dark"] as const) {
       return boxes.every((box, i) => box && boxes.slice(i + 1).every(other => other && (box.x + box.width <= other.x || other.x + other.width <= box.x || box.y + box.height <= other.y || other.y + other.height <= box.y)));
     }).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`context-evidence-${theme}.png`) });
+    await page.locator('.react-flow__node[data-id="v"]').click();
+    await expect(page.getByRole("tablist", { name: "Node detail sections" })).toBeVisible();
+    await page.locator("select").filter({ has: page.locator('option[value="Analyst agent"]') }).selectOption("Analyst agent");
+    await expect(page.getByRole("tablist", { name: "Node detail sections" })).toHaveCount(0);
   });
 }

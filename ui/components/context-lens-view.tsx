@@ -399,7 +399,11 @@ export function ContextLensView() {
     return () => window.clearTimeout(timer);
   }, [agentNames]);
 
-  useEffect(() => { setSelectedEdgeId(null); }, [graphData, selectedAgent, selectedJobId, selectedPathKey]);
+  useEffect(() => {
+    setSelectedEdgeId(null);
+    setSelectedNode(null);
+    setSelectedNodeId(null);
+  }, [graphData, selectedAgent, selectedJobId, selectedPathKey]);
 
   // Build ReactFlow graph
   const { rawNodes, rawEdges, focusedPath } = useMemo(() => {
@@ -850,6 +854,7 @@ export function ContextLensView() {
           {selectedNode && (
             <GraphEntityDrawer
               data={selectedNode}
+              scanId={selectedJobId}
               onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }}
               enrich={false}
             />

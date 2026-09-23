@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_bom.api.models import ScanJob, ScanRequest
+from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.postgres_store import PostgresJobStore
 from agent_bom.api.scan_queue import (
     DistributedScanWorker,
@@ -277,3 +277,18 @@ def test_claimed_runner_binds_job_tenant(monkeypatch):
     pipeline_mod._run_claimed_scan_sync(_job("j1", tenant="tenant-x"))
     assert seen["tenant"] == "tenant-x"
     assert _current_tenant.get() == "default"  # reset afterwards
+
+
+@pytest.mark.parametrize("status", [JobStatus.FAILED, JobStatus.DONE, JobStatus.CANCELLED])
+def test_claimed_runner_does_not_restart_terminal_jobs(monkeypatch, status):
+    import agent_bom.api.pipeline as pipeline_mod
+
+    job = _job("terminal", tenant="tenant-x")
+    job.status = status
+    job.error = "original outcome"
+    calls = []
+    monkeypatch.setattr(pipeline_mod, "_run_scan_sync", lambda claimed: calls.append(claimed.job_id))
+    pipeline_mod._run_claimed_scan_sync(job)
+    assert calls == []
+    assert job.status == status
+    assert job.error == "original outcome"

@@ -59,6 +59,14 @@ deployments should enable the distributed scan queue (claim / lease) and scale
 on the active-scan metric (KEDA / Helm). Do not assume `adaptive_backpressure`
 alone coordinates across pods.
 
+When distributed scans are enabled and the job store supports dispatch, a new
+replica leaves shared pending/running jobs unchanged. The current worker owns
+its live lease; an expired lease allows another worker to claim the same job
+and rerun collection. This restarts the scan, not a saved connector page cursor.
+Terminal jobs (`done`, `failed`, `cancelled`) are never restarted by the claimed
+runner, including when a dispatch row survived result publication. Local
+in-process deployments still mark abandoned active jobs failed after restart.
+
 ## Connections scheduler (CAS + drain concurrency)
 
 Cloud Connections cadence is a separate loop from `/v1/schedules`:

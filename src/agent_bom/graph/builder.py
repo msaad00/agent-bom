@@ -2124,20 +2124,22 @@ def _resolve_affected_server_ids(
         pkg_key = _package_graph_key(pkg_name, pkg_version, ecosystem, br_dict.get("package_purl") or br_dict.get("purl"))
         candidate_ids.update(pkg_key_to_servers.get(pkg_key, []))
 
+    constrained = bool(candidate_ids)
     server_names = {name for name in (_normalize_server_name(server) for server in br_dict.get("affected_servers", [])) if name}
     if server_names:
         named_ids: set[str] = set()
         for server_name in server_names:
             named_ids.update(server_name_to_agent_servers.get(server_name, {}).values())
-        narrowed = (candidate_ids & named_ids) if candidate_ids else named_ids
+        narrowed = (candidate_ids & named_ids) if constrained else named_ids
         candidate_ids = narrowed
+        constrained = True
 
     agent_names = {str(agent).strip() for agent in br_dict.get("affected_agents", []) if str(agent).strip()}
     if agent_names:
         agent_ids: set[str] = set()
         for agent_name in agent_names:
             agent_ids.update(agent_to_server_ids.get(agent_name, set()))
-        narrowed = (candidate_ids & agent_ids) if candidate_ids else agent_ids
+        narrowed = (candidate_ids & agent_ids) if constrained else agent_ids
         candidate_ids = narrowed
 
     return sorted(candidate_ids)

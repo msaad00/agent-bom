@@ -38,11 +38,13 @@ def _server(
     env: dict | None = None,
     tools: list | None = None,
     packages: list | None = None,
+    url: str | None = None,
 ) -> dict:
     return {
         "name": name,
         "command": "npx",
-        "transport": "stdio",
+        "transport": "sse" if url else "stdio",
+        "url": url,
         "env": env or {},
         "tools": tools or [],
         "packages": packages or [],
@@ -152,7 +154,7 @@ class TestBuildGraph:
 
     def test_credential_env_var_names_do_not_imply_sharing(self):
         def _cred_server(name):
-            return {**_server(name=name), "env": {}, "credential_env_vars": ["DATABASE_URL"]}
+            return {**_server(name=name, url="https://mcp.example/shared"), "env": {}, "credential_env_vars": ["DATABASE_URL"]}
 
         agents = [
             _agent(name="a1", servers=[_cred_server("s1")]),
@@ -210,8 +212,8 @@ class TestBuildGraph:
 
     def test_shared_server_detection(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="shared-srv")]),
-            _agent(name="agent-b", servers=[_server(name="shared-srv")]),
+            _agent(name="agent-a", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
+            _agent(name="agent-b", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
         ]
         graph = build_context_graph(agents, [])
         shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_SERVER]
@@ -230,7 +232,7 @@ class TestBuildGraph:
     def test_large_same_name_credential_groups_do_not_fabricate_edges(self):
         def _shared_server(name):
             return {
-                **_server(name=name),
+                **_server(name=name, url="https://mcp.example/shared"),
                 "env": {},
                 "credential_env_vars": ["SHARED_TOKEN"],
             }
@@ -243,7 +245,7 @@ class TestBuildGraph:
         # The old pairwise implementation emitted 4,950 edges per resource.
         assert len(server_shares) == 100
         assert cred_shares == []
-        assert "shared-server:shared-srv" in graph.nodes
+        assert any(node.metadata.get("shared_group") for node in graph.nodes.values())
         credential_nodes = [node for node in graph.nodes.values() if node.kind == NodeKind.CREDENTIAL]
         assert len(credential_nodes) == 100
         assert all("shared_agents" not in edge.metadata for edge in server_shares)
@@ -262,8 +264,8 @@ class TestBuildGraph:
 class TestLateralPaths:
     def test_basic_bfs_through_shared_server(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="shared-srv")]),
-            _agent(name="agent-b", servers=[_server(name="shared-srv")]),
+            _agent(name="agent-a", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
+            _agent(name="agent-b", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
         ]
         graph = build_context_graph(agents, [])
         paths = find_lateral_paths(graph, "agent:agent-a")
@@ -273,8 +275,8 @@ class TestLateralPaths:
 
     def test_max_depth_limit(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="shared-srv")]),
-            _agent(name="agent-b", servers=[_server(name="shared-srv")]),
+            _agent(name="agent-a", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
+            _agent(name="agent-b", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
         ]
         graph = build_context_graph(agents, [])
         # depth=0 means no expansion beyond start node
@@ -295,7 +297,7 @@ class TestLateralPaths:
     def test_risk_scoring(self):
         agents = [
             _agent(name="agent-a", servers=[_server(name="srv", env={"SECRET_KEY": "x"})]),
-            _agent(name="agent-b", servers=[_server(name="srv")]),
+            _agent(name="agent-b", servers=[_server(name="srv", url="https://mcp.example/srv")]),
         ]
         blast = [_blast(severity="critical", agents=["agent-a", "agent-b"], servers=["srv"])]
         graph = build_context_graph(agents, blast)
@@ -306,8 +308,8 @@ class TestLateralPaths:
 
     def test_credential_along_path(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="srv", env={"TOKEN": "x"})]),
-            _agent(name="agent-b", servers=[_server(name="srv")]),
+            _agent(name="agent-a", servers=[_server(name="srv", env={"TOKEN": "x"}, url="https://mcp.example/srv")]),
+            _agent(name="agent-b", servers=[_server(name="srv", url="https://mcp.example/srv")]),
         ]
         graph = build_context_graph(agents, [])
         paths = find_lateral_paths(graph, "agent:agent-a")
@@ -316,8 +318,11 @@ class TestLateralPaths:
 
     def test_execute_tool_along_path(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="srv", tools=[_tool("run_shell", "Execute shell commands")])]),
-            _agent(name="agent-b", servers=[_server(name="srv")]),
+            _agent(
+                name="agent-a",
+                servers=[_server(name="srv", tools=[_tool("run_shell", "Execute shell commands")], url="https://mcp.example/srv")],
+            ),
+            _agent(name="agent-b", servers=[_server(name="srv", url="https://mcp.example/srv")]),
         ]
         graph = build_context_graph(agents, [])
         paths = find_lateral_paths(graph, "agent:agent-a")
@@ -326,8 +331,8 @@ class TestLateralPaths:
 
     def test_path_summary_format(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="shared")]),
-            _agent(name="agent-b", servers=[_server(name="shared")]),
+            _agent(name="agent-a", servers=[_server(name="shared", url="https://mcp.example/shared")]),
+            _agent(name="agent-b", servers=[_server(name="shared", url="https://mcp.example/shared")]),
         ]
         graph = build_context_graph(agents, [])
         paths = find_lateral_paths(graph, "agent:agent-a")
@@ -337,7 +342,7 @@ class TestLateralPaths:
 
     def test_cap_at_100_paths(self):
         # Many agents sharing the same server
-        agents = [_agent(name=f"agent-{i}", servers=[_server(name="shared")]) for i in range(20)]
+        agents = [_agent(name=f"agent-{i}", servers=[_server(name="shared", url="https://mcp.example/shared")]) for i in range(20)]
         graph = build_context_graph(agents, [])
         paths = find_lateral_paths(graph, "agent:agent-0", max_depth=4)
         assert len(paths) <= 100
@@ -395,8 +400,8 @@ class TestInteractionRisks:
 
     def test_shared_server_pattern(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="common-srv")]),
-            _agent(name="agent-b", servers=[_server(name="common-srv")]),
+            _agent(name="agent-a", servers=[_server(name="common-srv", url="https://mcp.example/common")]),
+            _agent(name="agent-b", servers=[_server(name="common-srv", url="https://mcp.example/common")]),
         ]
         graph = build_context_graph(agents, [])
         risks = compute_interaction_risks(graph)
@@ -415,8 +420,8 @@ class TestInteractionRisks:
 
     def test_multi_hop_vuln(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="shared-srv")]),
-            _agent(name="agent-b", servers=[_server(name="shared-srv")]),
+            _agent(name="agent-a", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
+            _agent(name="agent-b", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
         ]
         blast = [_blast(severity="critical", agents=["agent-a", "agent-b"], servers=["shared-srv"])]
         graph = build_context_graph(agents, blast)
@@ -469,8 +474,8 @@ class TestSerialization:
 
     def test_stats_correctness(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="shared")]),
-            _agent(name="agent-b", servers=[_server(name="shared")]),
+            _agent(name="agent-a", servers=[_server(name="shared", url="https://mcp.example/shared")]),
+            _agent(name="agent-b", servers=[_server(name="shared", url="https://mcp.example/shared")]),
         ]
         graph = build_context_graph(agents, [])
         paths = find_lateral_paths(graph, "agent:agent-a")
@@ -490,8 +495,8 @@ class TestSerialization:
 
     def test_paths_included(self):
         agents = [
-            _agent(name="agent-a", servers=[_server(name="shared")]),
-            _agent(name="agent-b", servers=[_server(name="shared")]),
+            _agent(name="agent-a", servers=[_server(name="shared", url="https://mcp.example/shared")]),
+            _agent(name="agent-b", servers=[_server(name="shared", url="https://mcp.example/shared")]),
         ]
         graph = build_context_graph(agents, [])
         paths = find_lateral_paths(graph, "agent:agent-a")
@@ -543,8 +548,8 @@ class TestOutputIntegration:
 
         # Build minimal report with context_graph_data
         agents_data = [
-            _agent(name="a1", servers=[_server(name="shared")]),
-            _agent(name="a2", servers=[_server(name="shared")]),
+            _agent(name="a1", servers=[_server(name="shared", url="https://mcp.example/shared")]),
+            _agent(name="a2", servers=[_server(name="shared", url="https://mcp.example/shared")]),
         ]
         graph = build_context_graph(agents_data, [])
         paths = find_lateral_paths(graph, "agent:a1")
@@ -594,8 +599,8 @@ class TestAPIContextGraph:
         job = self._make_job(
             job_id,
             [
-                _agent(name="a1", servers=[_server(name="shared")]),
-                _agent(name="a2", servers=[_server(name="shared")]),
+                _agent(name="a1", servers=[_server(name="shared", url="https://mcp.example/shared")]),
+                _agent(name="a2", servers=[_server(name="shared", url="https://mcp.example/shared")]),
             ],
         )
         store.put(job)
@@ -635,7 +640,7 @@ class TestAPIContextGraph:
         configure_api(api_key=api_key)
         store = _get_store()
         job_id = "test-cg-offload"
-        job = self._make_job(job_id, [_agent(name="a1", servers=[_server(name="shared")])])
+        job = self._make_job(job_id, [_agent(name="a1", servers=[_server(name="shared", url="https://mcp.example/shared")])])
         store.put(job)
         compute_calls: list[str] = []
 
@@ -672,8 +677,8 @@ class TestAPIContextGraph:
         job = self._make_job(
             job_id,
             [
-                _agent(name="a1", servers=[_server(name="shared")]),
-                _agent(name="a2", servers=[_server(name="shared")]),
+                _agent(name="a1", servers=[_server(name="shared", url="https://mcp.example/shared")]),
+                _agent(name="a2", servers=[_server(name="shared", url="https://mcp.example/shared")]),
             ],
         )
         store.put(job)
@@ -794,8 +799,8 @@ class TestLateralPathDeterminism:
 
         agents = [
             _agent(name="agent-a", servers=[_server(name="shared-srv", env={"API_KEY": "x"})]),
-            _agent(name="agent-b", servers=[_server(name="shared-srv")]),
-            _agent(name="agent-c", servers=[_server(name="shared-srv")]),
+            _agent(name="agent-b", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
+            _agent(name="agent-c", servers=[_server(name="shared-srv", url="https://mcp.example/shared")]),
         ]
         graph = build_context_graph(agents, [])
 
@@ -808,7 +813,7 @@ class TestLateralPathDeterminism:
         assert out_first == out_second
 
     def test_multi_source_collection_is_bounded_and_reports_sampling(self):
-        agents = [_agent(name=f"agent-{i}", servers=[_server(name="shared")]) for i in range(120)]
+        agents = [_agent(name=f"agent-{i}", servers=[_server(name="shared", url="https://mcp.example/shared")]) for i in range(120)]
         graph = build_context_graph(agents, [])
         paths, truncated = collect_lateral_paths(
             graph,
@@ -818,3 +823,167 @@ class TestLateralPathDeterminism:
         )
         assert len(paths) <= 10
         assert truncated is True
+
+
+def test_vulnerability_edges_follow_exact_inventory_ownership():
+    package = {"name": "lib", "version": "1.0", "ecosystem": "pypi"}
+    other = {"name": "other", "version": "1.0", "ecosystem": "pypi"}
+    agents = [
+        _agent("A", servers=[_server("s1", packages=[package]), _server("s2", packages=[other])]),
+        _agent("B", servers=[_server("s1", packages=[other]), _server("s2", packages=[package])]),
+    ]
+    row = _blast(agents=["A", "B"], servers=["s1", "s2"], package="lib@1.0") | {"ecosystem": "pypi"}
+    graph = build_context_graph(agents, [row])
+    edges = [edge for edge in graph.edges if edge.kind == EdgeKind.VULNERABLE_TO]
+    assert {edge.source for edge in edges} == {"server:A:s1", "server:B:s2"}
+    assert len(edges) == 2
+    serialized = to_serializable(graph, [], [])
+    assert len([edge for edge in serialized["edges"] if edge["kind"] == "vulnerable_to"]) == 2
+    for identity in [{"ecosystem": "npm"}, {"package": "lib@2.0"}]:
+        mismatched = build_context_graph(agents, [row | identity])
+        assert not any(edge.kind == EdgeKind.VULNERABLE_TO for edge in mismatched.edges)
+
+
+def test_ambiguous_legacy_ownership_fails_closed():
+    agents = [_agent(name, servers=[_server("s1"), _server("s2")]) for name in ("A", "B")]
+    row = _blast(agents=["A", "B"], servers=["s1", "s2"])
+    assert not any(edge.kind == EdgeKind.VULNERABLE_TO for edge in build_context_graph(agents, [row]).edges)
+    assert (
+        len(
+            [
+                edge
+                for edge in build_context_graph(agents, [row | {"affected_servers": ["s1"]}]).edges
+                if edge.kind == EdgeKind.VULNERABLE_TO
+            ]
+        )
+        == 2
+    )
+
+
+def test_vulnerability_package_evidence_remains_scoped_after_edge_deduplication():
+    packages = [{"name": name, "version": "1", "ecosystem": "npm"} for name in ("@scope/a", "b")]
+    agents = [_agent(servers=[_server(packages=packages)])]
+    rows = [
+        _blast(package="@scope/a@1") | {"ecosystem": "npm", "symbol_reachability": "reachable", "runtime_dependency_chain": ["app", "a"]},
+        _blast(package="b@1") | {"ecosystem": "npm", "symbol_reachability": "unknown"},
+    ]
+    graph = build_context_graph(agents, rows)
+    node = graph.nodes["vuln:CVE-2025-0001"]
+    assert node.metadata["affected_packages"] == ["@scope/a@1", "b@1"]
+    assert node.metadata["package"] == ""
+    assert "symbol_reachability" not in node.metadata
+    assert "runtime_dependency_chain" not in node.metadata
+    edges = [edge for edge in graph.edges if edge.kind == EdgeKind.VULNERABLE_TO]
+    assert len(edges) == 1
+    assert edges[0].metadata["packages"] == ["@scope/a@1", "b@1"]
+    evidence = edges[0].metadata["package_evidence"]
+    assert {row["package"]: row["symbol_reachability"] for row in evidence} == {"@scope/a@1": "reachable", "b@1": "unknown"}
+    assert all(not edge.source.startswith("tool:") for edge in edges)
+
+
+def test_missing_ecosystem_does_not_choose_between_different_package_identities():
+    packages = [{"name": "lib", "version": "1", "ecosystem": ecosystem} for ecosystem in ("npm", "pypi")]
+    graph = build_context_graph([_agent(servers=[_server(packages=packages)])], [_blast(package="lib@1")])
+    assert not any(edge.kind == EdgeKind.VULNERABLE_TO for edge in graph.edges)
+
+
+def test_same_server_name_does_not_establish_shared_runtime():
+    for servers in [
+        [_server("same"), _server("same")],
+        [_server("same", url="https://one.example/mcp"), _server("same", url="https://two.example/mcp")],
+    ]:
+        graph = build_context_graph([_agent("A", servers=[servers[0]]), _agent("B", servers=[servers[1]])], [])
+        assert not any(edge.kind == EdgeKind.SHARES_SERVER for edge in graph.edges)
+        assert not any(risk.pattern == "shared_server" for risk in compute_interaction_risks(graph))
+
+
+def test_same_configured_endpoint_is_qualified_and_never_exposes_url():
+    endpoint = "https://mcp.example/mcp?token=synthetic-secret"
+    graph = build_context_graph(
+        [
+            _agent("A", servers=[_server("first", url=endpoint)]),
+            _agent("B", servers=[_server("second", url=endpoint)]),
+        ],
+        [],
+    )
+    shared = [edge for edge in graph.edges if edge.kind == EdgeKind.SHARES_SERVER]
+    assert len(shared) == 1
+    assert shared[0].metadata["identity_basis"] == "configured_endpoint"
+    assert "synthetic-secret" not in str(to_serializable(graph, [], []))
+    assert "https://" not in str(to_serializable(graph, [], []))
+    assert "does not establish a shared runtime" in compute_interaction_risks(graph)[0].description
+
+
+def test_different_endpoint_groups_with_equal_labels_remain_separate():
+    agents = [
+        _agent(name, servers=[_server("same", url=f"https://{group}.example/mcp")])
+        for name, group in [("A", "one"), ("B", "one"), ("C", "two"), ("D", "two")]
+    ]
+    graph = build_context_graph(agents, [])
+    assert {tuple(risk.agents) for risk in compute_interaction_risks(graph) if risk.pattern == "shared_server"} == {("A", "B"), ("C", "D")}
+
+
+def test_static_inventory_wrappers_do_not_become_context_topology():
+    from tests.test_graph_repository_provenance import _report as repository_report
+    from tests.test_graph_sbom_provenance import _report as sbom_report
+
+    for report in (repository_report("project"), repository_report("repo-lockfiles"), sbom_report()):
+        static = report["agents"][0]
+        blast = [_blast(agents=[static["name"]], servers=[static["mcp_servers"][0]["name"]])]
+        graph = build_context_graph(report["agents"], blast)
+        assert not graph.nodes
+        assert not graph.edges
+
+
+def test_static_and_runtime_wrappers_with_same_label_do_not_overwrite():
+    from copy import deepcopy
+
+    from tests.test_graph_repository_provenance import _report
+
+    static = _report()["agents"][0]
+    runtime = deepcopy(static)
+    runtime["source"] = "local"
+    runtime["mcp_servers"][0].update(surface="mcp-server", command="uvx", tools=[_tool()])
+    for agents in ([static, runtime], [runtime, static]):
+        graph = build_context_graph(agents, [])
+        assert sum(node.kind == NodeKind.AGENT for node in graph.nodes.values()) == 1
+        assert sum(node.kind == NodeKind.SERVER for node in graph.nodes.values()) == 1
+        assert any(node.kind == NodeKind.TOOL for node in graph.nodes.values())
+
+
+def test_mixed_context_omits_static_findings_but_preserves_runtime_findings():
+    from tests.test_graph_repository_provenance import _report
+
+    static = _report()["agents"][0]
+    real = _agent("real", servers=[_server()])
+    graph = build_context_graph(
+        [static, real],
+        [
+            _blast(vuln_id="CVE-STATIC", agents=[static["name"]]),
+            _blast(vuln_id="CVE-REAL", agents=["real"]),
+        ],
+    )
+    assert "vuln:CVE-STATIC" not in graph.nodes
+    assert "vuln:CVE-REAL" in graph.nodes
+
+
+def test_same_label_static_package_finding_does_not_leak_into_real_context():
+    from copy import deepcopy
+
+    from tests.test_graph_repository_provenance import _report
+
+    static = _report()["agents"][0]
+    runtime = deepcopy(static)
+    runtime["source"] = "local"
+    runtime["mcp_servers"][0].update(
+        surface="mcp-server", command="uvx", packages=[{"name": "real-package", "version": "1", "ecosystem": "pypi"}]
+    )
+    graph = build_context_graph(
+        [static, runtime],
+        [
+            _blast(vuln_id="CVE-STATIC", agents=[static["name"]], servers=["repo"], package="flask@2.0.0") | {"ecosystem": "pypi"},
+            _blast(vuln_id="CVE-REAL", agents=[runtime["name"]], servers=["repo"], package="real-package@1") | {"ecosystem": "pypi"},
+        ],
+    )
+    assert "vuln:CVE-STATIC" not in graph.nodes
+    assert "vuln:CVE-REAL" in graph.nodes

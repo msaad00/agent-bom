@@ -1696,3 +1696,32 @@ def test_vulnerability_summary_survives_graph_projection():
     vulnerability["summary"] = "Cross-host token disclosure in browser requests"
     graph = build_unified_graph_from_report(report)
     assert graph.nodes["vuln:CVE-2024-1234"].attributes["summary"] == vulnerability["summary"]
+
+
+def test_affected_server_constraints_do_not_resurrect_empty_intersection():
+    from agent_bom.graph.builder import _resolve_affected_server_ids
+
+    assert (
+        _resolve_affected_server_ids(
+            {"affected_agents": ["A"], "affected_servers": ["s2"]},
+            pkg_name="lib",
+            pkg_version="1",
+            ecosystem="pypi",
+            pkg_key_to_servers={"pypi:lib@1": ["server:A:s1"]},
+            server_name_to_agent_servers={"s1": {"A": "server:A:s1"}, "s2": {"A": "server:A:s2"}},
+            agent_to_server_ids={"A": {"server:A:s1", "server:A:s2"}},
+        )
+        == []
+    )
+    assert (
+        _resolve_affected_server_ids(
+            {"affected_agents": ["A"], "affected_servers": ["absent"]},
+            pkg_name="",
+            pkg_version="",
+            ecosystem="",
+            pkg_key_to_servers={},
+            server_name_to_agent_servers={"s1": {"A": "server:A:s1"}},
+            agent_to_server_ids={"A": {"server:A:s1"}},
+        )
+        == []
+    )

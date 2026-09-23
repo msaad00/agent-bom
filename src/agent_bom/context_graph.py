@@ -14,11 +14,13 @@ single source of truth for the entire graph subsystem.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable, Optional
+from urllib.parse import urlsplit
 
 from agent_bom.constants import is_credential_key as _is_credential_key
 from agent_bom.graph import (
@@ -156,6 +158,70 @@ def _classify_tool(name: str, description: str = "", declared_capabilities: obje
 # ── Graph builder ─────────────────────────────────────────────────────────
 
 
+def _configured_endpoint_identity(server: dict) -> str | None:
+    """Correlate a configured remote endpoint, never a stdio process or name."""
+    if server.get("transport") not in {"sse", "http", "streamable-http", "streamable_http"}:
+        return None
+    endpoint = server.get("url")
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        return None
+    try:
+        parsed = urlsplit(endpoint.strip())
+        if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.port == 0:
+            return None
+    except ValueError:
+        return None
+    # Include query/userinfo in equality so distinct tenant endpoints cannot
+    # collapse. Only the opaque digest leaves this function, never the URL.
+    return hashlib.sha256(endpoint.strip().encode()).hexdigest()
+
+
+def _finding_package_identity(row: dict) -> tuple[str, str, str]:
+    from agent_bom.package_utils import canonical_package_identity
+
+    reference = str(row.get("package") or "")
+    name, version = reference, ""
+    if reference.rfind("@") > 0:
+        name, version = reference.rsplit("@", 1)
+    return canonical_package_identity(
+        str(row.get("package_name") or name),
+        str(row.get("package_version") or version),
+        str(row.get("ecosystem") or ""),
+        row.get("package_purl") or row.get("purl"),
+    )
+
+
+def _context_vulnerability_hosts(row: dict, inventory: dict[str, tuple[str, str, list]]) -> list[str]:
+    """Narrow real owners; never invent ownership from two independent lists."""
+    from agent_bom.package_utils import canonical_package_identity
+
+    agents = set(row.get("affected_agents") or [])
+    servers = set(row.get("affected_servers") or [])
+    candidates = {
+        server_id: packages
+        for server_id, (agent, server, packages) in inventory.items()
+        if (not agents or agent in agents) and (not servers or server in servers)
+    }
+    ecosystem, name, version = _finding_package_identity(row)
+    matched: dict[str, set[tuple[str, str, str]]] = {}
+    for server_id, packages in candidates.items():
+        for package in packages:
+            identity = canonical_package_identity(
+                package.get("name", ""), package.get("version", ""), package.get("ecosystem", ""), package.get("purl")
+            )
+            if name and identity[1] == name and (not version or identity[2] == version) and (not ecosystem or identity[0] == ecosystem):
+                matched.setdefault(server_id, set()).add(identity)
+    identities = set().union(*matched.values()) if matched else set()
+    if identities:
+        # Missing ecosystem/version is acceptable only if it resolves uniquely.
+        return sorted(matched) if len(identities) == 1 else []
+    if any(candidates.values()):
+        return []  # Inventory contradicts the finding: do not fall back to names.
+    # Legacy payloads without package inventory can identify one dimension
+    # exactly; two multi-valued lists cannot establish individual ownership.
+    return sorted(candidates) if agents and servers and (len(agents) == 1 or len(servers) == 1) else []
+
+
 def build_context_graph(
     agents_data: list[dict],
     blast_data: list[dict],
@@ -169,10 +235,25 @@ def build_context_graph(
     Returns:
         A populated ``ContextGraph`` with nodes, edges, and adjacency map.
     """
+    from agent_bom.graph.builder import _is_repository_inventory, _is_sbom_import
+
     graph = ContextGraph()
+    static_agents = [agent for agent in agents_data if _is_sbom_import(agent) or _is_repository_inventory(agent)]
+    agents_data = [agent for agent in agents_data if not (_is_sbom_import(agent) or _is_repository_inventory(agent))]
+    if not agents_data:
+        return graph
+    static_names = {agent.get("name") for agent in static_agents}
+    runtime_names = {agent.get("name") for agent in agents_data}
+    static_inventory = {
+        f"static:{index}:{server_index}": (agent.get("name", ""), server.get("name", ""), server.get("packages") or [])
+        for index, agent in enumerate(static_agents)
+        for server_index, server in enumerate(agent.get("mcp_servers", []))
+    }
 
     # Track which agents use which server names.
     server_to_agents: dict[str, list[str]] = defaultdict(list)
+    shared_server_labels: dict[str, str] = {}
+    server_inventory: dict[str, tuple[str, str, list]] = {}
 
     # ── Build agent → server → credential / tool nodes & edges ────────
     for agent_dict in agents_data:
@@ -224,6 +305,7 @@ def build_context_graph(
         for srv_dict in agent_dict.get("mcp_servers", []):
             srv_name = srv_dict.get("name", "unknown")
             srv_id = f"server:{agent_name}:{srv_name}"
+            server_inventory[srv_id] = (agent_name, srv_name, srv_dict.get("packages") or [])
             graph.add_node(
                 GraphNode(
                     id=srv_id,
@@ -239,8 +321,13 @@ def build_context_graph(
             )
             graph.add_edge(GraphEdge(source=agent_id, target=srv_id, kind=EdgeKind.USES))
 
-            # Track shared server detection
-            server_to_agents[srv_name].append(agent_name)
+            # Equal labels/commands do not prove common runtime ownership.
+            shared_identity = _configured_endpoint_identity(srv_dict)
+            if shared_identity:
+                server_to_agents[shared_identity].append(agent_name)
+                shared_server_labels.setdefault(shared_identity, srv_name)
+                graph.nodes[srv_id].metadata["shared_identity_key"] = shared_identity
+                graph.nodes[srv_id].metadata["identity_basis"] = "configured_endpoint"
 
             # Credentials. The serialized scan contract surfaces credential env
             # var names via ``credential_env_vars`` (the canonical builder writes
@@ -304,7 +391,14 @@ def build_context_graph(
 
     # ── Vulnerability nodes from blast radius ─────────────────────────
     seen_vulns: set[str] = set()
+    vulnerability_edges: dict[tuple[str, str], GraphEdge] = {}
     for br_dict in blast_data:
+        affected_agents = set(br_dict.get("affected_agents") or [])
+        if affected_agents and affected_agents <= static_names and not affected_agents & runtime_names:
+            continue
+        hosts = _context_vulnerability_hosts(br_dict, server_inventory)
+        if not hosts and static_inventory and _context_vulnerability_hosts(br_dict, static_inventory):
+            continue
         vuln_id = br_dict.get("vulnerability_id", "")
         if not vuln_id:
             continue
@@ -324,27 +418,45 @@ def build_context_graph(
                         "is_kev": br_dict.get("is_kev", False),
                         "risk_score": br_dict.get("risk_score", 0),
                         "package": br_dict.get("package", ""),
-                        "symbol_reachability": br_dict.get("symbol_reachability"),
-                        "symbol_reachability_reason": br_dict.get("symbol_reachability_reason"),
-                        "runtime_dependency_chain": list(br_dict.get("runtime_dependency_chain") or []),
+                        "affected_packages": [],
+                        "package_evidence": [],
                     },
                 )
             )
 
-        # Link affected servers → vulnerability
-        for agent_name in br_dict.get("affected_agents", []):
-            for srv_name in br_dict.get("affected_servers", []):
-                srv_id = f"server:{agent_name}:{srv_name}"
-                if srv_id in graph.nodes:
-                    graph.add_edge(
-                        GraphEdge(
-                            source=srv_id,
-                            target=f"vuln:{vuln_id}",
-                            kind=EdgeKind.VULNERABLE_TO,
-                            weight=_SEVERITY_SCORES.get(severity, 1.0),
-                            metadata={"package": br_dict.get("package", "")},
-                        )
-                    )
+        ecosystem, package_name, package_version = _finding_package_identity(br_dict)
+        package_ref = f"{package_name}@{package_version}" if package_version else package_name
+        evidence = {
+            "package": package_ref,
+            "ecosystem": ecosystem,
+            "affected_server_ids": hosts,
+            "association_status": "linked" if hosts else "unresolved",
+            "symbol_reachability": br_dict.get("symbol_reachability"),
+            "symbol_reachability_reason": br_dict.get("symbol_reachability_reason"),
+            "runtime_dependency_chain": list(br_dict.get("runtime_dependency_chain") or []),
+        }
+        metadata = graph.nodes[f"vuln:{vuln_id}"].metadata
+        metadata["affected_packages"] = sorted(set(metadata["affected_packages"]) | ({package_ref} if package_ref else set()))
+        metadata["package"] = metadata["affected_packages"][0] if len(metadata["affected_packages"]) == 1 else ""
+        if evidence not in metadata["package_evidence"]:
+            metadata["package_evidence"].append(evidence)
+        for srv_id in hosts:
+            key = (srv_id, vuln_id)
+            edge = vulnerability_edges.get(key)
+            if edge is None:
+                edge = GraphEdge(
+                    source=srv_id,
+                    target=f"vuln:{vuln_id}",
+                    kind=EdgeKind.VULNERABLE_TO,
+                    weight=_SEVERITY_SCORES.get(severity, 1.0),
+                    metadata={"package_evidence": [], "packages": []},
+                )
+                vulnerability_edges[key] = edge
+                graph.add_edge(edge)
+            edge.metadata["packages"] = sorted(set(edge.metadata["packages"]) | ({package_ref} if package_ref else set()))
+            edge.metadata["package"] = edge.metadata["packages"][0] if len(edge.metadata["packages"]) == 1 else ""
+            if evidence not in edge.metadata["package_evidence"]:
+                edge.metadata["package_evidence"].append(evidence)
 
     # ── Shared server edges ───────────────────────────────────────────
     # Pairwise edges are useful for small groups, but become O(N²) for a
@@ -352,11 +464,12 @@ def build_context_graph(
     # threshold and use one bounded hub node for larger groups.  The hub is
     # still traversable by the lateral-path BFS and carries the full group in
     # metadata for risk/reporting consumers.
-    for _srv_name, agent_names in server_to_agents.items():
+    for identity_key, agent_names in server_to_agents.items():
+        _srv_name = shared_server_labels[identity_key]
         unique = sorted(set(agent_names))
         if len(unique) >= 2:
             if len(unique) > _MAX_PAIRWISE_SHARED_AGENTS:
-                hub_id = f"shared-server:{_srv_name}"
+                hub_id = f"shared-server:{identity_key}"
                 graph.add_node(
                     GraphNode(
                         id=hub_id,
@@ -364,6 +477,8 @@ def build_context_graph(
                         label=_srv_name,
                         metadata={
                             "shared_group": True,
+                            "identity_basis": "configured_endpoint",
+                            "shared_identity_key": identity_key,
                             "shared_agent_count": len(unique),
                             "shared_agents": unique,
                         },
@@ -379,6 +494,8 @@ def build_context_graph(
                             metadata={
                                 "server": _srv_name,
                                 "shared_group": True,
+                                "identity_basis": "configured_endpoint",
+                                "shared_identity_key": identity_key,
                                 "shared_agent_count": len(unique),
                             },
                         )
@@ -392,7 +509,11 @@ def build_context_graph(
                                 target=f"agent:{a2}",
                                 kind=EdgeKind.SHARES_SERVER,
                                 weight=3.0,
-                                metadata={"server": _srv_name},
+                                metadata={
+                                    "server": _srv_name,
+                                    "identity_basis": "configured_endpoint",
+                                    "shared_identity_key": identity_key,
+                                },
                             )
                         )
 
@@ -659,6 +780,7 @@ def compute_interaction_risks(graph: ContextGraph) -> list[InteractionRisk]:
 
     # Collect cross-agent patterns from edges
     shared_servers: dict[str, list[str]] = defaultdict(list)
+    shared_labels: dict[str, str] = {}
     shared_creds: dict[str, list[str]] = defaultdict(list)
 
     # Large shared groups keep membership once on the shared resource node,
@@ -668,13 +790,16 @@ def compute_interaction_risks(graph: ContextGraph) -> list[InteractionRisk]:
         if not isinstance(members, list):
             continue
         if node.kind == NodeKind.SERVER:
-            shared_servers[node.label].extend(str(name) for name in members)
+            identity_key = node.metadata.get("shared_identity_key", node.label)
+            shared_servers[identity_key].extend(str(name) for name in members)
+            shared_labels[identity_key] = node.label
         elif node.kind == NodeKind.CREDENTIAL:
             shared_creds[node.label].extend(str(name) for name in members)
 
     for edge in graph.edges:
         if edge.kind == EdgeKind.SHARES_SERVER:
-            srv_name = edge.metadata.get("server", "")
+            srv_name = edge.metadata.get("shared_identity_key", edge.metadata.get("server", ""))
+            shared_labels[srv_name] = edge.metadata.get("server", "")
             members = edge.metadata.get("shared_agents")
             if isinstance(members, list):
                 shared_servers[srv_name].extend(str(name) for name in members)
@@ -715,7 +840,8 @@ def compute_interaction_risks(graph: ContextGraph) -> list[InteractionRisk]:
             )
 
     # ── Pattern: shared server ────────────────────────────────────────
-    for srv_name, agent_names in shared_servers.items():
+    for identity_key, agent_names in shared_servers.items():
+        srv_name = shared_labels.get(identity_key, "remote server")
         unique = sorted(set(agent_names))
         if len(unique) >= 2:
             risks.append(
@@ -724,8 +850,8 @@ def compute_interaction_risks(graph: ContextGraph) -> list[InteractionRisk]:
                     agents=unique,
                     risk_score=5.0 + min(len(unique) * 0.5, 2.0),
                     description=(
-                        f"MCP server '{srv_name}' is shared across {len(unique)} agents "
-                        f"({', '.join(unique)}). A vulnerability in this server affects all."
+                        f"The same configured MCP endpoint (label '{srv_name}') appears for {len(unique)} agents "
+                        f"({', '.join(unique)}). This does not establish a shared runtime process or cross-agent access."
                     ),
                 )
             )
@@ -770,17 +896,18 @@ def compute_interaction_risks(graph: ContextGraph) -> list[InteractionRisk]:
             if sev not in ("critical", "high"):
                 continue
             srv_name = srv_node.label
-            if srv_name in shared_servers:
-                unique = sorted(set(shared_servers[srv_name]))
+            identity_key = srv_node.metadata.get("shared_identity_key")
+            if identity_key in shared_servers:
+                unique = sorted(set(shared_servers[identity_key]))
                 risks.append(
                     InteractionRisk(
                         pattern="multi_hop_vuln",
                         agents=unique,
                         risk_score=8.0 + (1.0 if sev == "critical" else 0.0),
                         description=(
-                            f"{sev.upper()} vulnerability {vuln_node.label} in shared server "
-                            f"'{srv_name}' affects agents: {', '.join(unique)}. "
-                            f"Exploit chains across agents are possible."
+                            f"{sev.upper()} vulnerability {vuln_node.label} is recorded for server '{srv_name}'. "
+                            f"Agents with the same configured endpoint: {', '.join(unique)}. "
+                            f"Shared runtime and cross-agent exploitability are not established."
                         ),
                         owasp_agentic_tag="ASI07",
                     )

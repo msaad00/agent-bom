@@ -181,6 +181,19 @@ export function displayContextDescription(raw: string | undefined): string | und
   return text || undefined;
 }
 
+/** Context is a scan projection; these labels do not assert runtime activity. */
+export function contextRelationshipLabel(relationship: string): string {
+  const labels: Record<string, string> = {
+    uses: "Configured server",
+    provides: "Advertises tool",
+    provides_tool: "Advertises tool",
+    exposes: "Credential reference",
+    exposes_cred: "Credential reference",
+    vulnerable_to: "Package vulnerability",
+  };
+  return labels[relationship] ?? relationshipEdgeLabelText(relationship);
+}
+
 /** Stable evidence identity; risk re-ranking must not change the selected path. */
 export function lateralPathKey(path: LateralPath): string {
   return JSON.stringify([path.source, path.target, path.hops, path.edges, [...path.vuln_ids].sort()]);
@@ -257,6 +270,19 @@ export function buildContextFlowGraph(
     }
   }
 
+  // A CVE may occur in several packages. Preserve all edge-local associations,
+  // rather than treating the first node metadata record as the only package.
+  const packagesByVulnerability = new Map<string, Set<string>>();
+  for (const edge of data.edges) {
+    if ((edge.relationship ?? edge.kind) !== "vulnerable_to") continue;
+    const recorded = Array.isArray(edge.metadata.packages) ? edge.metadata.packages : [edge.metadata.package];
+    const packages = packagesByVulnerability.get(edge.target) ?? new Set<string>();
+    for (const pkg of recorded) {
+      if (typeof pkg === "string" && pkg.trim()) packages.add(pkg.trim());
+    }
+    packagesByVulnerability.set(edge.target, packages);
+  }
+
   const nodes: Node[] = data.nodes
     .filter((node) => visibleIds.has(node.id))
     .map((n) => {
@@ -271,6 +297,14 @@ export function buildContextFlowGraph(
         : false;
       const highlighted = selectedAgent ? pathNodeIds.has(n.id) : false;
 
+      const packages = [...(packagesByVulnerability.get(n.id) ?? [])].sort();
+      if (!packages.length) {
+        const recorded = Array.isArray(n.metadata.affected_packages) ? n.metadata.affected_packages : [n.metadata.package];
+        for (const pkg of recorded) {
+          if (typeof pkg === "string" && pkg.trim() && !packages.includes(pkg.trim())) packages.push(pkg.trim());
+        }
+        packages.sort();
+      }
       const nodeData: LineageNodeData = {
         nodeType,
         label: n.label,
@@ -281,7 +315,11 @@ export function buildContextFlowGraph(
         epssScore: (n.metadata?.epss_score as number) ?? undefined,
         isKev: n.metadata?.is_kev === true,
         effectiveReach: readReachBreakdown(n.metadata?.effective_reach),
-        description: displayContextDescription(n.metadata?.description as string | undefined),
+        description: n.kind === "vulnerability"
+          ? (packages.length ? `Affected package: ${packages.join(", ")}` : "Affected package not recorded")
+          : displayContextDescription(n.metadata?.description as string | undefined),
+        runtimeEvidenceTier: "static_scan",
+        attributes: { affected_packages: packages, evidence_basis: "scan relationships" },
         serverName: (n.metadata?.agent as string) ?? undefined,
         serverCount: (n.metadata?.server_count as number) ?? undefined,
       };
@@ -313,17 +351,17 @@ export function buildContextFlowGraph(
         id: `ctx-edge-${i}`,
         source: e.source,
         target: e.target,
-        type: "smoothstep",
+        type: "contextEvidence",
         data: {
           relationship,
-          relationshipLabel: relationshipEdgeLabelText(relationship, e.metadata),
-          evidenceMode: isOnPath
-            ? "selected_path"
-            : relationship.includes("runtime")
-              ? "runtime"
-              : "static",
+          relationshipLabel: contextRelationshipLabel(relationship),
+          package: Array.isArray(e.metadata.packages)
+            ? e.metadata.packages.filter((pkg): pkg is string => typeof pkg === "string").join(", ")
+            : typeof e.metadata.package === "string" ? e.metadata.package : undefined,
+          evidenceMode: "static",
+          selectedPath: isOnPath,
         },
-        animated: isOnPath,
+        animated: false,
         style: {
           stroke: strokeColor,
           strokeWidth: isOnPath
@@ -339,7 +377,8 @@ export function buildContextFlowGraph(
           width: 12,
           height: 12,
         },
-        label: relationshipEdgeLabelText(relationship, e.metadata),
+        label: contextRelationshipLabel(relationship),
+        ariaLabel: `${contextRelationshipLabel(relationship)}: ${e.source} to ${e.target}. Recorded scan relationship; execution not established.` ,
         ...relationshipEdgeLabelPresentation(),
       };
     });

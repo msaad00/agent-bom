@@ -17,6 +17,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Bind graph vulnerability relationships to matching package owners, preserve package-specific evidence, and reject contradictory server matches.
+- Require exact agent and tool identities for related runtime activity; distinguish scan configuration from execution and make Context Map relationship evidence inspectable.
+
 - Reconcile final terminal severity totals with JSON after SAST scanning, enrichment, and filtering.
 - Accept nullable advisory scores and current CLI tool fields when importing JSON reports.
 - Keep imported report findings separate from tenant posture, coverage, services, and scan freshness; label tenant-wide compliance exports explicitly.

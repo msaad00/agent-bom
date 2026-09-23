@@ -291,6 +291,104 @@ def test_function_reachable_from_real_ast_analysis(tmp_path: Path) -> None:
     assert classify_reachability(package="requests", advisory=other, index=index).state == PACKAGE_REACHABLE
 
 
+# ── one-hop tainted-argument evidence ─────────────────────────────────────
+#
+# Additive to the three-state classification: when the vulnerable call is
+# already ``function_reachable``, check whether the ONE-HOP calling function's
+# own parameter (or a call to a known untrusted-source primitive, e.g.
+# ``input()``) flows directly into the vulnerable call's arguments. This
+# never changes the state — a constant-argument call is still reported
+# ``function_reachable`` per the existing "any call site is reachable" rule —
+# it only adds evidence distinguishing "reached with untrusted data" from
+# "reached with a trusted constant".
+
+
+def _requests_get_advisory() -> dict:
+    return {
+        "id": "CVE-2099-9999",
+        "affected": [
+            {
+                "package": {"ecosystem": "PyPI", "name": "requests"},
+                "ecosystem_specific": {"imports": [{"path": "requests", "symbols": ["get"]}]},
+            }
+        ],
+    }
+
+
+def test_tainted_argument_true_when_entrypoint_param_flows_into_vulnerable_call(tmp_path: Path) -> None:
+    (tmp_path / "agent.py").write_text("import requests\n\n@tool\ndef fetch(url):\n    return requests.get(url)\n")
+    result = analyze_project(tmp_path)
+    index = SymbolReachIndex.from_ast_result(result)
+
+    signal = classify_reachability(package="requests", advisory=_requests_get_advisory(), index=index)
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.tainted_argument is True
+
+
+def test_tainted_argument_false_when_only_a_constant_is_passed(tmp_path: Path) -> None:
+    (tmp_path / "agent.py").write_text("import requests\n\n@tool\ndef fetch():\n    return requests.get('https://api.internal/health')\n")
+    result = analyze_project(tmp_path)
+    index = SymbolReachIndex.from_ast_result(result)
+
+    signal = classify_reachability(package="requests", advisory=_requests_get_advisory(), index=index)
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.tainted_argument is False
+
+
+def test_tainted_argument_true_when_argument_is_a_direct_untrusted_source_call(tmp_path: Path) -> None:
+    (tmp_path / "agent.py").write_text("import requests\n\n@tool\ndef fetch():\n    return requests.get(input())\n")
+    result = analyze_project(tmp_path)
+    index = SymbolReachIndex.from_ast_result(result)
+
+    signal = classify_reachability(package="requests", advisory=_requests_get_advisory(), index=index)
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.tainted_argument is True
+
+
+def test_classify_reachability_surfaces_tainted_argument_evidence() -> None:
+    tainted_reach = DependencySymbolReach(
+        entrypoint="tool_entry",
+        package="jinja2",
+        module="jinja2.sandbox",
+        symbol="SandboxedEnvironment",
+        file_path="agent.py",
+        line_number=5,
+        call_path=["tool_entry", "jinja2.sandbox.SandboxedEnvironment"],
+        tainted_argument=True,
+    )
+    index = SymbolReachIndex.from_reaches([tainted_reach])
+    signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.tainted_argument is True
+
+
+def test_classify_reachability_tainted_argument_false_by_default() -> None:
+    index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2.sandbox", "SandboxedEnvironment")])
+    signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.tainted_argument is False
+
+
+def test_package_reachable_never_carries_tainted_argument_evidence() -> None:
+    # Package-level (not function-level) reach must never claim tainted-argument
+    # evidence — that evidence is only meaningful once a specific call site is
+    # proven function_reachable.
+    untainted_package_reach = DependencySymbolReach(
+        entrypoint="tool_entry",
+        package="jinja2",
+        module="jinja2",
+        symbol="Environment",
+        file_path="agent.py",
+        line_number=5,
+        call_path=["tool_entry", "jinja2.Environment"],
+        tainted_argument=True,
+    )
+    index = SymbolReachIndex.from_reaches([untainted_package_reach])
+    signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
+    assert signal.state == PACKAGE_REACHABLE
+    assert signal.tainted_argument is False
+
+
 # ── Go module ⇄ import-path join ──────────────────────────────────────────
 #
 # The Go AST records ``reach.package`` as the full *import path*
@@ -474,6 +572,32 @@ def test_wiring_stamps_function_reachable_on_python_row() -> None:
     assert br.symbol_reachability == FUNCTION_REACHABLE
     assert br.reachable_affected_symbols == ["get"]
     assert br.risk_score > original_score
+
+
+def test_wiring_stamps_tainted_argument_on_python_row() -> None:
+    br = _python_br(["get"])
+    tainted_reach = DependencySymbolReach(
+        entrypoint="tool_entry",
+        package="requests",
+        module="requests",
+        symbol="get",
+        file_path="agent.py",
+        line_number=5,
+        call_path=["tool_entry", "requests.get"],
+        tainted_argument=True,
+    )
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[tainted_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.symbol_reachability_tainted_argument is True
+
+
+def test_wiring_tainted_argument_false_without_taint_evidence() -> None:
+    br = _python_br(["get"])
+    stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.symbol_reachability_tainted_argument is False
 
 
 def test_wiring_can_stamp_without_rescoring() -> None:

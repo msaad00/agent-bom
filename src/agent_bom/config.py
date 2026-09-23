@@ -265,17 +265,30 @@ SCAN_CACHE_MAX_ENTRIES = _int("AGENT_BOM_SCAN_CACHE_MAX_ENTRIES", 100_000)
 
 
 # ── DSPM content sampling ────────────────────────────────────────────────────
+# Object/row counts were widened (2026-09-22) for deeper classification coverage
+# once an operator has already opted in — each is a single bounded API call
+# (S3/GCS list, or an azure-storage-blob SDK page) plus one GET/download or a
+# single LIMIT-pushed SQL SELECT per item, so raising the count scales request
+# volume linearly, not combinatorially. Byte-per-object and cell-char caps were
+# left at their prior values: 64 KiB already covers a representative sample of
+# typical structured/text objects for PII regex matching, and enlarging them
+# mostly adds transfer bytes without materially improving detection depth.
+# AZURE_BLOB_MAX_CONTAINERS was left unchanged because Azure account scans
+# multiply containers x objects-per-container (unlike the per-bucket S3/GCS
+# caps), so widening both dimensions at once would blow up download volume for
+# large storage accounts.
+
 # Content reads are opt-in at the caller/module level. These caps bound the
 # amount of object-store data read when an operator enables object-store sampling.
 
-DSPM_S3_MAX_OBJECTS_PER_BUCKET = _int("AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET", 10)
+DSPM_S3_MAX_OBJECTS_PER_BUCKET = _int("AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET", 50)
 DSPM_S3_MAX_BYTES_PER_OBJECT = _int("AGENT_BOM_DSPM_S3_MAX_BYTES_PER_OBJECT", 64 * 1024)
-DSPM_GCS_MAX_OBJECTS_PER_BUCKET = _int("AGENT_BOM_DSPM_GCS_MAX_OBJECTS_PER_BUCKET", 10)
+DSPM_GCS_MAX_OBJECTS_PER_BUCKET = _int("AGENT_BOM_DSPM_GCS_MAX_OBJECTS_PER_BUCKET", 50)
 DSPM_GCS_MAX_BYTES_PER_OBJECT = _int("AGENT_BOM_DSPM_GCS_MAX_BYTES_PER_OBJECT", 64 * 1024)
 DSPM_AZURE_BLOB_MAX_CONTAINERS = _int("AGENT_BOM_DSPM_AZURE_BLOB_MAX_CONTAINERS", 25)
-DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER = _int("AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER", 10)
+DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER = _int("AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER", 50)
 DSPM_AZURE_BLOB_MAX_BYTES_PER_OBJECT = _int("AGENT_BOM_DSPM_AZURE_BLOB_MAX_BYTES_PER_OBJECT", 64 * 1024)
-DSPM_DB_MAX_ROWS_PER_TABLE = _int("AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE", 100)
+DSPM_DB_MAX_ROWS_PER_TABLE = _int("AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE", 500)
 DSPM_DB_MAX_CELL_CHARS = _int("AGENT_BOM_DSPM_DB_MAX_CELL_CHARS", 4096)
 DSPM_DB_MAX_TABLES = _int("AGENT_BOM_DSPM_DB_MAX_TABLES", 200)
 
@@ -315,6 +328,15 @@ ICEBERG_TABLE = _str("AGENT_BOM_ICEBERG_TABLE", "findings")
 ICEBERG_WAREHOUSE = _str("AGENT_BOM_ICEBERG_WAREHOUSE", "")
 ICEBERG_SCOPE = _str("AGENT_BOM_ICEBERG_SCOPE", "")
 ICEBERG_OAUTH2_SERVER_URI = _str("AGENT_BOM_ICEBERG_OAUTH2_SERVER_URI", "")
+
+
+# ── Secret Scanner: Live AWS Credential Validation (opt-in) ─────────────────
+# When enabled, a discovered AWS access key (paired with a discovered AWS
+# secret key in the same file) is checked with a single read-only
+# sts:GetCallerIdentity call to tell a live credential from a dead/rotated
+# one. Off by default: the scanner never makes an outbound call unless an
+# operator explicitly opts in. See agent_bom.scanners.aws_secret_validation.
+SECRET_LIVE_VALIDATION_ENABLED = _bool("AGENT_BOM_SECRET_LIVE_VALIDATION_ENABLED", False)
 
 
 # ── Default Read Window ───────────────────────────────────────────────────

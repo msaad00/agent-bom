@@ -63,7 +63,7 @@ sampling. Metadata-only discovery is never called content classification.
 
 - **Opt-in.** Off by default. Enable with `AGENT_BOM_DSPM_DB_SAMPLING=1`. Caps:
   `AGENT_BOM_DSPM_DB_MAX_TABLES` (200), `AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE`
-  (100), `AGENT_BOM_DSPM_DB_MAX_CELL_CHARS` (4096). See
+  (500), `AGENT_BOM_DSPM_DB_MAX_CELL_CHARS` (4096). See
   [ENV_VARS.md](operations/ENV_VARS.md).
 - **Credential boundary — connect once, never per-action.** The scan resolves a
   stored, scoped, revocable `database` connection through the credential broker
@@ -101,7 +101,7 @@ sampling. Metadata-only discovery is never called content classification.
   samples blobs through the real `azure-storage-blob` SDK — the Azure analog of
   the S3/GCS object samplers. Enable with `AGENT_BOM_DSPM_AZURE_BLOB_SAMPLING=1`;
   caps: `AGENT_BOM_DSPM_AZURE_BLOB_MAX_CONTAINERS` (25),
-  `AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER` (10),
+  `AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER` (50),
   `AGENT_BOM_DSPM_AZURE_BLOB_MAX_BYTES_PER_OBJECT` (64 KiB). It runs through the
   same brokered read-only Azure credential as the Azure inventory scan (the
   connection's app must additionally hold the data-plane `Storage Blob Data

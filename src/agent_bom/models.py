@@ -976,6 +976,16 @@ class BlastRadius:
     dependency_min_hop_distance: Optional[int] = None
     dependency_reachable_from_agents: list[str] = field(default_factory=list)
 
+    # One-hop taint evidence on a function_reachable verdict: True when the
+    # call site's argument traces to a parameter of the calling function, or
+    # to a direct untrusted-source call (agent_bom.reachability_cve.classify_
+    # reachability / ReachabilitySignal.tainted_argument). Additive evidence
+    # only — never upgrades/downgrades symbol_reachability or risk scoring.
+    # Python-only today; other ecosystems always carry the honest default.
+    # Appended after the existing reachability fields to preserve positional
+    # construction compatibility (see the comment above dependency_reachable).
+    symbol_reachability_tainted_argument: bool = False
+
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius.
 

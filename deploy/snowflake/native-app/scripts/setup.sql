@@ -299,10 +299,9 @@ CREATE OR REPLACE PROCEDURE core.grant_callback(privileges ARRAY)
 AS
 $$
 BEGIN
-    IF (ARRAY_CONTAINS('CREATE COMPUTE POOL'::VARIANT, privileges)
-        AND ARRAY_CONTAINS('BIND SERVICE ENDPOINT'::VARIANT, privileges)) THEN
-        CREATE COMPUTE POOL privilege is explicit in
-        -- manifest.yml and the matching requirement is disclosed in marketplace.yml.
+    -- Inspect current grants rather than assuming this callback contains every grant.
+    IF (SYSTEM$HOLD_PRIVILEGE_ON_ACCOUNT('CREATE COMPUTE POOL')
+        AND SYSTEM$HOLD_PRIVILEGE_ON_ACCOUNT('BIND SERVICE ENDPOINT')) THEN
         CREATE COMPUTE POOL IF NOT EXISTS agent_bom_consumer_pool
             MIN_NODES = 1
             MAX_NODES = 1

@@ -536,8 +536,8 @@ def _release_module():
 def test_install_callbacks_are_present_and_consumer_gated(manifest, setup_sql):
     _release_module().validate_install_contract(manifest, setup_sql)
     callback = setup_sql.split("CREATE OR REPLACE PROCEDURE core.grant_callback(")[1].split("$$;")[0]
-    assert "ARRAY_CONTAINS('CREATE COMPUTE POOL'::VARIANT, privileges)" in callback
-    assert "ARRAY_CONTAINS('BIND SERVICE ENDPOINT'::VARIANT, privileges)" in callback
+    assert "SYSTEM$HOLD_PRIVILEGE_ON_ACCOUNT('CREATE COMPUTE POOL')" in callback
+    assert "SYSTEM$HOLD_PRIVILEGE_ON_ACCOUNT('BIND SERVICE ENDPOINT')" in callback
     assert "CREATE COMPUTE POOL IF NOT EXISTS" in callback
     for operation in ("SET_REFERENCE", "REMOVE_REFERENCE", "REMOVE_ALL_REFERENCES"):
         assert f"SYSTEM${operation}" in setup_sql
@@ -586,3 +586,17 @@ def test_native_trigger_scan_fails_without_creating_invalid_job(setup_sql):
     assert "scan_started" not in procedure
     assert "Scan queued" not in procedure
     assert "PARSE_JSON('{}')" not in procedure
+
+
+def test_grant_callback_has_only_valid_resource_create_prefixes(setup_sql):
+    callback = setup_sql.split("CREATE OR REPLACE PROCEDURE core.grant_callback(")[1].split("$$;")[0]
+    statements = [line.strip() for line in callback.splitlines() if line.strip().startswith("CREATE ")]
+    assert statements == [
+        "CREATE COMPUTE POOL IF NOT EXISTS agent_bom_consumer_pool",
+        "CREATE SERVICE IF NOT EXISTS core.agent_bom_api",
+    ]
+    assert "CREATE COMPUTE POOL privilege is explicit in" not in setup_sql
+    # A subsequent callback with only the newly granted privilege must consider
+    # held privileges, including grants delivered in previous callbacks.
+    assert "ARRAY_CONTAINS" not in callback
+    assert callback.count("SYSTEM$HOLD_PRIVILEGE_ON_ACCOUNT(") == 2

@@ -50,6 +50,12 @@ export interface ExposureFixTarget {
 }
 
 export interface ExposureEvidenceSummary {
+  cvssVector?: string | undefined;
+  attackVector?: string | undefined;
+  attackComplexity?: string | undefined;
+  privilegesRequired?: string | undefined;
+  userInteraction?: string | undefined;
+  networkExploitable?: boolean | undefined;
   cvssScore?: number | undefined;
   epssScore?: number | undefined;
   isKev?: boolean | undefined;

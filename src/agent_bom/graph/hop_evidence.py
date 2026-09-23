@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from agent_bom.graph.container import AttackPath
 
@@ -121,6 +121,45 @@ def authority_evidence(evidence: Mapping[str, Any]) -> dict[str, Any] | None:
     ).model_dump(mode="json")
 
 
+RuntimeReferenceId = Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")]
+
+
+class RuntimeEvidenceReference(BaseModel):
+    """Opaque identifiers from one exact runtime edge, never payloads or URLs."""
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+    event_id: RuntimeReferenceId | None = None
+    trace_id: RuntimeReferenceId | None = None
+
+    @field_validator("event_id", "trace_id")
+    @classmethod
+    def non_placeholder(cls, value: str | None) -> str | None:
+        from agent_bom.security import sanitize_text
+
+        if value is not None and (value.lower() in {"runtime_event", "event", "unknown", "none", "null"} or sanitize_text(value) != value):
+            raise ValueError("runtime evidence reference unavailable")
+        return value
+
+    @model_validator(mode="after")
+    def has_reference(self) -> "RuntimeEvidenceReference":
+        if self.event_id is None and self.trace_id is None:
+            raise ValueError("runtime evidence reference unavailable")
+        return self
+
+
+def runtime_evidence_references(evidence: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Keep valid recorded IDs independently; do not infer one from another."""
+    reference: dict[str, str] = {}
+    for key in ("event_id", "trace_id"):
+        value = evidence.get(key)
+        try:
+            validated = RuntimeEvidenceReference.model_validate({key: value})
+        except ValidationError:
+            continue
+        reference.update(validated.model_dump(exclude_none=True))
+    return [reference] if reference else []
+
+
 class HopEvidenceReceipt(BaseModel):
     """Classified receipt fields shared by human and agent path responses.
 
@@ -142,6 +181,7 @@ class HopEvidenceReceipt(BaseModel):
     freshness: Literal["fresh", "stale", "stale_allowed", "unknown"] = "unknown"
     runtime_observed_state: Literal["observed", "blocked", "not_observed", "unknown"] = "unknown"
     runtime_outcome: Literal["blocked", "failed", "unknown"] = "unknown"
+    runtime_references: list[RuntimeEvidenceReference] = Field(default_factory=list, max_length=8)
     direction: Literal["directed", "bidirectional", "unknown"] = "unknown"
     traversable: bool = False
     complete: bool = False
@@ -169,6 +209,11 @@ def exposure_hop_evidence(path: AttackPath) -> list[dict]:
                 reason_codes=["hop_evidence_not_recorded" if missing else "invalid_hop_receipt"],
             )
         payload = receipt.model_dump(mode="json")
+        payload["runtime_references"] = (
+            [ref.model_dump(exclude_none=True) for ref in receipt.runtime_references]
+            if receipt.runtime_observed_state in {"observed", "blocked"}
+            else []
+        )
         if receipt.authority is None:
             payload.pop("authority")
         result.append(payload)

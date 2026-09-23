@@ -7,7 +7,9 @@ import { AlertTriangle, ChevronRight, Loader2, ShieldAlert } from "lucide-react"
 import { api } from "@/lib/api";
 import type { TraceExplorerResponse } from "@/lib/api-types";
 
-export function TraceExplorerPanel() {
+const TRACE_LIMIT = 120;
+
+export function TraceExplorerPanel({ agent, scanId }: { agent?: string | undefined; scanId?: string | undefined }) {
   const [data, setData] = useState<TraceExplorerResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export function TraceExplorerPanel() {
       setLoading(true);
       setError(null);
       try {
-        const response = await api.getTraceExplorer(120);
+        const response = await api.getTraceExplorer(TRACE_LIMIT);
         if (!cancelled) {
           setData(response);
           const firstSession = response.sessions[0];
@@ -40,47 +42,58 @@ export function TraceExplorerPanel() {
     };
   }, []);
 
-  const selectedSession = useMemo(
-    () => data?.sessions.find((session) => session.session_id === selectedSessionId) ?? null,
-    [data, selectedSessionId],
-  );
-  const selectedSpan = useMemo(
-    () => selectedSession?.spans.find((span) => span.span_id === selectedSpanId) ?? null,
-    [selectedSession, selectedSpanId],
-  );
+  const sessions = useMemo(() => {
+    if (!agent) return data?.sessions ?? [];
+    return (data?.sessions ?? []).flatMap((session) => {
+      // Sessions can contain multiple actors. Never infer span ownership from
+      // the session's first actor or use partial/case-insensitive matching.
+      const spans = session.spans.filter((span) => span.agent === agent);
+      return spans.length ? [{ ...session, agent, spans,
+        blocked_count: spans.filter((span) => span.verdict === "blocked").length,
+      }] : [];
+    });
+  }, [agent, data]);
+  const selectedSession = sessions.find((session) => session.session_id === selectedSessionId) ?? sessions[0] ?? null;
+  const selectedSpan = selectedSession?.spans.find((span) => span.span_id === selectedSpanId) ?? selectedSession?.spans[0] ?? null;
+  const blockedCount = sessions.reduce((count, session) => count + session.blocked_count, 0);
+  const scopeNotice = <div role="note" aria-label="Activity evidence scope" className="mb-4 space-y-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-xs text-[var(--text-secondary)]">
+    <p>{agent ? `Agent: ${agent} · exact recorded identity match` : "All recorded agent identities in this response"}</p>
+    <p>Bounded sample: requests up to {TRACE_LIMIT} records per source. This is not a complete activity history.</p>
+    {scanId && <p>Scan correlation unavailable: this activity API cannot filter by scan {scanId}. Only agent identity is matched; activity is not attributed to that scan.</p>}
+  </div>;
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 px-4 py-10 text-sm text-[var(--text-secondary)]">
+      <>{scopeNotice}<div className="flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 px-4 py-10 text-sm text-[var(--text-secondary)]">
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading runtime trace explorer…
-      </div>
+      </div></>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/30 px-4 py-3 text-sm text-red-700 dark:text-red-300">
-        {error}
-      </div>
+      <>{scopeNotice}<div role="alert" className="rounded-2xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/30 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+        Activity unavailable: {error}
+      </div></>
     );
   }
 
-  if (!data || data.sessions.length === 0) {
+  if (!data || sessions.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface)]/40 px-4 py-10 text-center text-sm text-[var(--text-tertiary)]">
-        No runtime sessions yet. Gateway/proxy blocks and authorized tool calls will appear here once enforcement traffic is flowing.
-      </div>
+      <>{scopeNotice}<div className="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface)]/40 px-4 py-10 text-center text-sm text-[var(--text-tertiary)]">
+        {agent ? "No activity matched this agent in the retrieved records." : "No runtime activity records were returned."} Activity outside this sample is unknown; this does not prove that no activity occurred.
+      </div></>
     );
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+    <>{scopeNotice}<div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
       <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
         <h2 className="text-sm font-semibold text-[var(--foreground)]">Sessions</h2>
-        <p className="mt-1 text-xs text-[var(--text-tertiary)]">{data.session_count} sessions · {data.blocked_count} blocked spans</p>
+        <p className="mt-1 text-xs text-[var(--text-tertiary)]">{sessions.length} sessions · {blockedCount} blocked spans</p>
         <div className="mt-4 space-y-2">
-          {data.sessions.map((session) => (
+          {sessions.map((session) => (
             <button
               key={session.session_id}
               type="button"
@@ -201,6 +214,6 @@ export function TraceExplorerPanel() {
           </div>
         )}
       </section>
-    </div>
+    </div></>
   );
 }

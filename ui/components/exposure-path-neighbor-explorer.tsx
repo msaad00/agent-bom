@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { Bot, Bug, ChevronRight, Database, KeyRound, Loader2, Package, Server, ShieldAlert, Wrench } from "lucide-react";
@@ -49,6 +49,7 @@ interface NeighborEntry {
   title: string;
   subtitle?: string | undefined;
   relationship: string;
+  evidence: string;
   kind: "dependency" | "dependent" | "related";
 }
 
@@ -67,25 +68,34 @@ function neighborRefFromNode(node: UnifiedNode): { role: ExposureEntityRole; tit
 
 function toNeighborEntries(hopId: string, data: GraphNodeNeighborsResponse): NeighborEntry[] {
   const neighbors = new Map(data.neighbors.map((node) => [node.id, node]));
-  const groups = new Map<string, { node: UnifiedNode; kind: NeighborEntry["kind"]; relationships: Set<string> }>();
+  const groups = new Map<string, { node: UnifiedNode; kind: NeighborEntry["kind"]; relationships: Set<string>; evidence: Set<string> }>();
   for (const edge of data.edges) {
     const id = edge.source === hopId ? edge.target : edge.target === hopId ? edge.source : null;
     const node = id ? neighbors.get(id) : undefined;
     if (!node || id === hopId) continue;
     const kind = edge.source === hopId ? "dependency" : "dependent";
     const key = `${kind}:${id}`;
-    const group = groups.get(key) ?? { node, kind, relationships: new Set<string>() };
+    const group = groups.get(key) ?? { node, kind, relationships: new Set<string>(), evidence: new Set<string>() };
     group.relationships.add(humanizeRelationship(edge.relationship));
+    const evidence = edge.evidence ?? {};
+    const observed = evidence.runtime_observed_state;
+    const tier = evidence.evidence_tier ?? evidence.evidence_basis ?? evidence.basis;
+    group.evidence.add(observed === "blocked" || evidence.runtime_outcome === "blocked" ? "Blocked attempt"
+      : evidence.runtime_outcome === "failed" ? "Failed outcome" : observed === "observed" ? "Runtime observed"
+      : observed === "not_observed" ? "Runtime not observed"
+      : tier === "runtime_observed" ? "Runtime evidence recorded; outcome unknown"
+      : ["static_evidence", "static_scan", "configured"].includes(String(tier)) ? "Configured / static evidence"
+      : tier === "modeled" || tier === "modeled_infrastructure" ? "Modeled relationship" : "Evidence basis unknown");
     groups.set(key, group);
   }
   const linked = new Set([...groups.values()].map((group) => group.node.id));
   for (const node of neighbors.values()) {
-    if (!linked.has(node.id)) groups.set(`related:${node.id}`, { node, kind: "related", relationships: new Set(["Relationship unavailable"]) });
+    if (!linked.has(node.id)) groups.set(`related:${node.id}`, { node, kind: "related", relationships: new Set(["Relationship unavailable"]), evidence: new Set(["Evidence basis unknown"]) });
   }
-  return [...groups.values()].map(({ node, kind, relationships }) => {
+  return [...groups.values()].map(({ node, kind, relationships, evidence }) => {
     const ref = neighborRefFromNode(node);
     return { id: node.id, role: ref.role, title: ref.title, subtitle: ref.subtitle,
-      relationship: [...relationships].sort().join(" · "), kind };
+      relationship: [...relationships].sort().join(" · "), evidence: [...evidence].sort().join(" · "), kind };
   });
 }
 
@@ -100,6 +110,7 @@ function NeighborChip({ entry }: { entry: NeighborEntry }) {
         <p className="truncate text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
           {entry.relationship}
         </p>
+        <p className="text-[10px] text-[color:var(--text-secondary)]">{entry.evidence}</p>
       </div>
     </div>
   );
@@ -107,20 +118,30 @@ function NeighborChip({ entry }: { entry: NeighborEntry }) {
 
 function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: string | undefined }) {
   const [expanded, setExpanded] = useState(false);
+  const [direction, setDirection] = useState<"in" | "out" | "both">("both");
+  const requestId = useRef(0);
+  useEffect(() => () => { requestId.current += 1; }, []);
   const [load, setLoad] = useState<NeighborLoadState | null>(null);
   const style = ROLE_STYLE[hop.role] ?? ROLE_STYLE.unknown;
   const Icon = style.icon;
   const expandable = Boolean(hop.id);
 
-  const fetchNeighbors = useCallback(async () => {
+  const fetchNeighbors = useCallback(async (requestedDirection = direction) => {
+    const currentRequest = ++requestId.current;
     setLoad({ status: "loading" });
     try {
-      const data = await api.getGraphNodeNeighbors(hop.id, { scanId, limit: NEIGHBOR_LIMIT, direction: "both" });
+      const data = await api.getGraphNodeNeighbors(hop.id, { scanId, limit: NEIGHBOR_LIMIT, direction: requestedDirection });
+      if (currentRequest !== requestId.current) return;
+      if (data.node_id !== hop.id || (scanId && data.scan_id !== scanId)) {
+        setLoad({ status: "error" });
+        return;
+      }
       setLoad({ status: "ready", data });
     } catch {
+      if (currentRequest !== requestId.current) return;
       setLoad({ status: "error" });
     }
-  }, [hop.id, scanId]);
+  }, [hop.id, scanId, direction]);
 
   const onToggle = useCallback(() => {
     // Keep network effects outside state updaters (React may replay them).
@@ -170,6 +191,15 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
 
       {expanded && (
         <div className="space-y-3 border-t border-[color:var(--border-subtle)] px-3 py-3">
+          <label className="flex flex-wrap items-center gap-2 text-xs">
+            Relationship direction
+            <select aria-label={`Relationship direction for ${hop.label}`} value={direction}
+              onChange={(event) => { const next = event.target.value as "in" | "out" | "both"; setDirection(next); void fetchNeighbors(next); }}
+              className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1">
+              <option value="both">Incoming and outgoing</option><option value="in">Incoming</option><option value="out">Outgoing</option>
+            </select>
+          </label>
+          <p className="text-xs text-[color:var(--text-secondary)]">Recorded relationships do not by themselves prove successful communication or permission.</p>
           {load?.status === "loading" && (
             <div className="flex items-center gap-2 text-[11px] text-[color:var(--text-secondary)]">
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />

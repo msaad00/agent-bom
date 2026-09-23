@@ -6,6 +6,7 @@
  * vulnerabilities without implying observed runtime causality.
  */
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
@@ -693,6 +694,11 @@ export function ContextLensView() {
               Paths
             </button>
           )}
+          {selectedAgent && selectedJobId && <Link
+            href={`/security-graph?${new URLSearchParams({ scan: selectedJobId, agent: selectedAgent })}`}
+            className="rounded-md border border-emerald-500/40 px-3 py-1 text-xs font-medium text-foreground">
+            Investigate reach &amp; permissions
+          </Link>}
           <FullscreenButton />
           {presentation.enabled && !captureMode && displayNodes.length > 0 && <GraphInteractionToolbar
             editing={presentation.editing}

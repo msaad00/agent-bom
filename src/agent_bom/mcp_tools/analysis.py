@@ -209,7 +209,7 @@ async def context_graph_impl(
         result["completeness"] = graph_completeness(
             returned=len(paths),
             sampled=paths_truncated,
-            reason=("multi-source path budget reached; request a source_agent for exhaustive local traversal" if paths_truncated else ""),
+            reason=("path analysis limit reached; narrow the source or hop depth; results may remain bounded" if paths_truncated else ""),
         )
         from agent_bom.output.interop_security import sanitize_linked_document
 

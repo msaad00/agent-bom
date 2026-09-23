@@ -2145,6 +2145,50 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
     return aggregated_findings
 
 
+def _find_call_node(func: _FunctionAnalysis, call_name: str, line_number: int) -> ast.Call | None:
+    """Locate the ``ast.Call`` node ``func.called_names`` recorded (name, line).
+
+    ``called_names`` only stores the resolved call name and line — this walks
+    ``func.node`` the same way that collection did (see the ``ast.walk`` loop
+    that builds ``called_names``) to recover the actual call expression so its
+    arguments can be inspected for taint.
+    """
+    if func.node is None:
+        return None
+    for inner in ast.walk(func.node):
+        if isinstance(inner, ast.Call) and getattr(inner, "lineno", None) == line_number and _call_name(inner.func) == call_name:
+            return inner
+    return None
+
+
+def _call_has_tainted_argument(func: _FunctionAnalysis, call: ast.Call) -> bool:
+    """One-hop taint check for a single call site: does an argument to ``call``
+    trace to the enclosing function's own parameter, or to a direct call to a
+    known untrusted-source primitive?
+
+    Reuses the same untrusted-source primitive (:func:`_is_untrusted_source_call`)
+    that already backs the AppSec taint-flow findings in this module, so
+    "input()", "request.args.get(...)", etc. are recognized consistently.
+
+    Deliberately a single hop: this does not walk further up the call graph to
+    prove the enclosing function's own parameter is itself externally
+    controlled beyond this one function boundary. A parameter of a helper
+    function three calls deep from a tool entrypoint is treated the same as a
+    parameter of the entrypoint itself — that transitive proof is the
+    documented gap this slice leaves open.
+    """
+    param_names = set(func.param_names)
+    arg_exprs: list[ast.expr] = [*call.args, *(kw.value for kw in call.keywords)]
+    for arg in arg_exprs:
+        if _names_in_expr(arg) & param_names:
+            return True
+        if isinstance(arg, ast.Call):
+            source_name = _call_name(arg.func)
+            if source_name and _is_untrusted_source_call(source_name):
+                return True
+    return False
+
+
 def _build_dependency_symbol_reach(
     functions: list[_FunctionAnalysis],
     application_entrypoints: list[ApplicationEntrypoint] | None = None,
@@ -2197,6 +2241,8 @@ def _build_dependency_symbol_reach(
                 if dedup_key in seen:
                     continue
                 seen.add(dedup_key)
+                call_node = _find_call_node(current, raw_name, line_num)
+                tainted_argument = call_node is not None and _call_has_tainted_argument(current, call_node)
                 reached.append(
                     DependencySymbolReach(
                         entrypoint=application_entrypoint.name if application_entrypoint else exposed_root_name,
@@ -2213,6 +2259,7 @@ def _build_dependency_symbol_reach(
                         entrypoint_kind=application_entrypoint.kind if application_entrypoint else root.entrypoint_kind,
                         entrypoint_framework=(application_entrypoint.framework if application_entrypoint else root.entrypoint_framework),
                         entrypoint_provenance=(application_entrypoint.provenance if application_entrypoint else root.entrypoint_provenance),
+                        tainted_argument=tainted_argument,
                     )
                 )
             for child in adjacency.get(current_id, []):

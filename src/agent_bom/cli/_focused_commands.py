@@ -407,6 +407,8 @@ def secrets_cmd(
     diagnostic_con = Console(stderr=True, quiet=quiet, no_color=no_color)
     if validate_credentials:
         result = scan_secrets(path, detect_entropy=detect_entropy, validate_credentials=True)
+    elif offline:
+        result = scan_secrets(path, detect_entropy=detect_entropy, aws_live_validation=False)
     else:
         result = scan_secrets(path, detect_entropy=detect_entropy)
 

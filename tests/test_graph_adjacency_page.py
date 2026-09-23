@@ -352,3 +352,67 @@ def test_generation_backfill_under_non_superuser_migration_owner(monkeypatch, up
         finally:
             admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database)))
             admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(owner)))
+
+
+@pytest.mark.parametrize("partial_marker", [None, 3])
+def test_queue_only_legacy_upgrade_does_not_require_or_advertise_graph(monkeypatch, partial_marker):
+    """Reproduce CI's 0.98.2 queue-only schema stamped at 20260728_02."""
+    dsn = os.environ.get("AGENT_BOM_ADJACENCY_TEST_POSTGRES_URL")
+    if not dsn:
+        pytest.skip("isolated adjacency Postgres URL not set")
+    from pathlib import Path
+    from urllib.parse import urlsplit, urlunsplit
+
+    import psycopg
+    from alembic import command
+    from alembic.config import Config
+    from psycopg import sql
+
+    parts = urlsplit(dsn)
+    database = f"adjacency_legacy_{uuid.uuid4().hex[:12]}"
+    url = urlunsplit((parts.scheme, parts.netloc, f"/{database}", parts.query, parts.fragment))
+    root = Path(__file__).resolve().parents[1]
+    cfg = Config(str(root / "deploy/supabase/postgres/alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "deploy/supabase/postgres/alembic"))
+    with psycopg.connect(dsn, autocommit=True) as admin:
+        admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
+        try:
+            with psycopg.connect(url) as conn:
+                conn.execute("""
+                    CREATE TABLE scan_jobs(job_id TEXT PRIMARY KEY);
+                    INSERT INTO scan_jobs VALUES ('legacy-queued-job');
+                    CREATE TABLE scan_dispatch_queue (
+                        job_id TEXT PRIMARY KEY REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
+                        tenant_id TEXT NOT NULL, created_at TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending', claimed_by TEXT, lease_expires_at TEXT
+                    );
+                    INSERT INTO scan_dispatch_queue(job_id,tenant_id,created_at)
+                        VALUES ('legacy-queued-job','legacy-tenant','2026-07-28T00:00:00Z');
+                    CREATE FUNCTION public.abom_current_tenant() RETURNS TEXT LANGUAGE SQL STABLE AS $$
+                        SELECT COALESCE(NULLIF(current_setting('app.tenant_id',true),''),'default') $$;
+                """)
+            monkeypatch.setenv("ALEMBIC_DATABASE_URL", url.replace("postgresql://", "postgresql+psycopg://", 1))
+            command.stamp(cfg, "20260728_02")
+            command.upgrade(cfg, "head")
+            with psycopg.connect(url) as conn:
+                assert conn.execute("SELECT job_id FROM scan_dispatch_queue").fetchone()[0] == "legacy-queued-job"
+                assert conn.execute("SELECT to_regclass('public.graph_snapshots')").fetchone()[0] is None
+                marker = conn.execute("SELECT version FROM control_plane_schema_versions WHERE component='graph'").fetchone()
+                assert marker is None or marker[0] < 5
+            command.downgrade(cfg, "20260923_01")
+            with psycopg.connect(url) as conn:
+                assert conn.execute("SELECT to_regclass('public.graph_snapshots')").fetchone()[0] is None
+                assert conn.execute("SELECT job_id FROM scan_dispatch_queue").fetchone()[0] == "legacy-queued-job"
+            # Two graph-shaped tables alone do not establish a complete graph v4 schema.
+            with psycopg.connect(url) as conn:
+                conn.execute("CREATE TABLE graph_snapshots(scan_id TEXT)")
+                conn.execute("CREATE TABLE graph_edges(tenant_id TEXT,scan_id TEXT,source_id TEXT,target_id TEXT,relationship TEXT)")
+                conn.execute("DELETE FROM control_plane_schema_versions WHERE component='graph'")
+                if partial_marker is not None:
+                    conn.execute("INSERT INTO control_plane_schema_versions(component,version) VALUES ('graph',%s)", (partial_marker,))
+            command.upgrade(cfg, "head")
+            with psycopg.connect(url) as conn:
+                marker = conn.execute("SELECT version FROM control_plane_schema_versions WHERE component='graph'").fetchone()
+                assert marker == (None if partial_marker is None else (partial_marker,))
+        finally:
+            admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database)))

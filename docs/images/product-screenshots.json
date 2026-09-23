@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.0",
-  "captured_at": "2026-09-23T02:17:48.101Z",
-  "source_commit": "2daffe05336c6deb12d18078c83493208e8ce34a",
+  "captured_at": "2026-09-23T02:59:26.978Z",
+  "source_commit": "fd552be0c40ea067f0a9d6659face259582a3164",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:2fc9250c35a097528712bed1ba763889f66bfcb5082240f5029619b9baca82df",
+  "capture_inputs_sha256": "sha256:3de8fd58915699a6d394a2f609d93db65c9c0746a267017483481d9752cc7b92",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.106.0",
-      "sha256": "sha256:5c575bc3a38d15e3b513a03c71bf7a1fb11728ab482ae55e9c01c16a3b3972ab"
+      "sha256": "sha256:5dc4548cfd82e74ac7428b45ff1f19336ff97d37ef87ece7dfbd8e17c6840bee"
     },
     {
       "presentation": "dark desktop",
@@ -116,7 +116,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.106.0",
-      "sha256": "sha256:96110d70effc800b3dc7ecd475f57de8826d00c778b81b10225ef0d20d13cc26"
+      "sha256": "sha256:4dad1013959c950987e78991f1c73d3d37c6f67cc5754f3314da6ab18338f02d"
     },
     {
       "presentation": "dark desktop",
@@ -201,7 +201,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.106.0",
-      "sha256": "sha256:4da21d7d2ded85323d415aa88baa650c50995f88feec21f7bb12078185326bdc"
+      "sha256": "sha256:02891e6c1f3247cba7213b0e536ba7bc062bc468cd582c2d9633a11bcdd24d34"
     },
     {
       "presentation": "dark mobile",
@@ -241,7 +241,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
       "visible_version": "0.106.0",
-      "sha256": "sha256:ae23ba5059ac9e75827a948b26cb01123d5e3e599de45bb87b8fe3d77e212509"
+      "sha256": "sha256:2e28c88628d883251287ea81b90535827f5a33d41f9111177b8826eb0d18e8f7"
     },
     {
       "presentation": "dark desktop",

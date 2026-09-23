@@ -479,8 +479,13 @@ function ReachBadges({ vuln }: { vuln: EnrichedVuln }) {
               : "border-sky-500/30 dark:border-sky-800/60 bg-sky-500/10 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300"
           }`}
         >
-          Runtime {vuln.runtime_evidence.state}
+          Related runtime activity: {vuln.runtime_evidence.state}
         </span>
+      ) : null}
+      {vuln.runtime_evidence?.state && vuln.runtime_evidence.state !== "static" ? (
+        <p className="basis-full text-xs text-ink-tertiary">
+          Matched agent or tool activity; this does not prove execution of the vulnerable code or exploitation.
+        </p>
       ) : null}
       {vuln.runtime_evidence?.state === "blocked" ? (
         <Link

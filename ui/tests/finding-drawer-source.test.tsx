@@ -69,3 +69,19 @@ it("qualifies a group with an observed representative and an unreconfirmed occur
   expect(screen.getByRole("note", { name: "Unreconfirmed collection evidence" })).toHaveTextContent("1 occurrence retains earlier evidence");
   expect(screen.queryByText(/Latest attempt:/)).not.toBeInTheDocument();
 });
+
+
+it.each(["observed", "blocked"] as const)("qualifies %s runtime activity without claiming vulnerable-code execution", async (state) => {
+  render(<FindingDrawer vuln={{ ...base, runtime_evidence: { state, observed_count: state === "observed" ? 1 : 0, blocked_count: state === "blocked" ? 1 : 0 } }} triage={undefined} triageBusy={false} onTriageDecision={vi.fn()} onClose={vi.fn()} />);
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Evidence" }));
+  expect(screen.getByText(`Related runtime activity: ${state}`)).toBeVisible();
+  expect(screen.getByText("Matched agent or tool activity; this does not prove execution of the vulnerable code or exploitation.")).toBeVisible();
+  expect(screen.queryByText(`Runtime ${state}`)).not.toBeInTheDocument();
+});
+
+it("does not imply runtime observation for static evidence", async () => {
+  render(<FindingDrawer vuln={{ ...base, runtime_evidence: { state: "static" } }} triage={undefined} triageBusy={false} onTriageDecision={vi.fn()} onClose={vi.fn()} />);
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Evidence" }));
+  expect(screen.queryByText(/Related runtime activity:/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Matched agent or tool activity/)).not.toBeInTheDocument();
+});

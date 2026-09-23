@@ -784,7 +784,8 @@ export interface GraphNodeNeighborsResponse {
   found: boolean;
   direction: GraphNeighborDirection;
   limit: number;
-  total_neighbors: number;
+  /** Null when upstream evidence or endpoint hydration is incomplete. */
+  total_neighbors: number | null;
   truncated: boolean;
   neighbors: UnifiedNode[];
   edges: UnifiedEdge[];

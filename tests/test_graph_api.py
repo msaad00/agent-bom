@@ -3299,7 +3299,7 @@ class TestGraphStoreBackendSelection:
         body = response.json()
         assert body["found"] is False
         assert body["neighbors"] == []
-        assert body["total_neighbors"] == 0
+        assert body["total_neighbors"] is None
         assert body["completeness"]["complete"] is False
         assert body["completeness"]["status"] == "truncated"
         assert body["completeness"]["reason"] == "node_not_found"
@@ -3493,3 +3493,84 @@ def test_node_context_preserves_backend_completeness(recording_graph_store, monk
     response = TestClient(app).get("/v1/graph/node/pkg:partial")
     assert response.status_code == 200
     assert response.json()["completeness"] == completeness
+
+
+def test_neighbor_lookup_pins_latest_snapshot_between_real_sqlite_reads(tmp_path, monkeypatch):
+    store = SQLiteGraphStore(tmp_path / "neighbor-snapshot.db")
+    older = UnifiedGraph(scan_id="old", tenant_id="default", created_at="2026-09-01T00:00:00Z")
+    for identity in ("root", "peer"):
+        older.add_node(UnifiedNode(id=identity, entity_type=EntityType.AGENT, label=f"old-{identity}"))
+    older.add_edge(UnifiedEdge(source="root", target="peer", relationship=RelationshipType.USES))
+    store.save_graph(older)
+    newer = UnifiedGraph(scan_id="new", tenant_id="default", created_at="2026-09-02T00:00:00Z")
+    for identity in ("root", "peer"):
+        newer.add_node(UnifiedNode(id=identity, entity_type=EntityType.AGENT, label=f"new-{identity}"))
+    newer.add_edge(UnifiedEdge(source="root", target="peer", relationship=RelationshipType.USES))
+    original_context = store.node_context
+
+    def advance_after_context(**kwargs):
+        result = original_context(**kwargs)
+        store.save_graph(newer)
+        return result
+
+    monkeypatch.setattr(store, "node_context", advance_after_context)
+    original = api_stores._graph_store
+    try:
+        set_graph_store(store)
+        response = TestClient(app).get("/v1/graph/node-neighbors", params={"node_id": "root"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["scan_id"] == "old"
+        assert body["neighbors"][0]["label"] == "old-peer"
+        assert store.latest_snapshot_id(tenant_id="default") == "new"
+    finally:
+        set_graph_store(original)
+
+
+def test_neighbor_lookup_preserves_postgres_edge_budget(recording_graph_store, monkeypatch):
+    graph = recording_graph_store.graph
+    graph.add_node(UnifiedNode(id="peer", entity_type=EntityType.SERVER, label="peer"))
+    graph.add_edge(UnifiedEdge(source="agent:a", target="peer", relationship=RelationshipType.USES))
+    original_context = recording_graph_store.node_context
+
+    def bounded_context(**kwargs):
+        context = original_context(**kwargs)
+        context["completeness"] = {
+            "status": "truncated",
+            "complete": False,
+            "truncated": True,
+            "sampled": False,
+            "returned": 10000,
+            "reason": "edge_budget",
+            "edge_budget": 10000,
+        }
+        return context
+
+    monkeypatch.setattr(recording_graph_store, "node_context", bounded_context)
+    body = TestClient(app).get("/v1/graph/node-neighbors", params={"node_id": "agent:a"}).json()
+    assert body["total_neighbors"] is None
+    assert body["truncated"] is True
+    assert body["completeness"]["reason"] == "edge_budget"
+    assert body["completeness"]["source_completeness"]["edge_budget"] == 10000
+    assert "total" not in body["completeness"]
+
+
+def test_neighbor_lookup_omits_dangling_edges(recording_graph_store, monkeypatch):
+    graph = recording_graph_store.graph
+    graph.add_node(UnifiedNode(id="peer", entity_type=EntityType.SERVER, label="peer"))
+    graph.add_edge(UnifiedEdge(source="agent:a", target="peer", relationship=RelationshipType.USES))
+    monkeypatch.setattr(recording_graph_store, "nodes_by_ids", lambda **kwargs: [])
+    body = TestClient(app).get("/v1/graph/node-neighbors", params={"node_id": "agent:a"}).json()
+    assert body["neighbors"] == body["edges"] == []
+    assert body["total_neighbors"] is None
+    assert body["completeness"]["reason"] == "missing_neighbor_endpoints"
+    assert body["completeness"]["complete"] is False
+
+
+def test_neighbor_lookup_without_snapshot_never_hydrates(recording_graph_store, monkeypatch):
+    monkeypatch.setattr(recording_graph_store, "latest_snapshot_id", lambda **kwargs: "")
+    body = TestClient(app).get("/v1/graph/node-neighbors", params={"node_id": "agent:a"}).json()
+    assert body["found"] is False
+    assert body["total_neighbors"] is None
+    assert body["completeness"]["reason"] == "snapshot_not_found"
+    assert not any(call[0] in {"node_context", "nodes_by_ids"} for call in recording_graph_store.calls)

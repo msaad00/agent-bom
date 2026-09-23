@@ -211,3 +211,14 @@ it("ignores a slower response for the previous relationship direction", async ()
   expect(screen.getByText("Current Direction")).toBeVisible();
   expect(screen.queryByText("Stale Direction")).not.toBeInTheDocument();
 });
+
+it("reports unknown totals without inventing an omitted-neighbor count", async () => {
+  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "server:database", scan_id: "scan-1", found: true,
+    total_neighbors: null, truncated: true, neighbors: [node("tool:one", "tool", "query")],
+    edges: [edge("server:database", "tool:one", "provides_tool")],
+    completeness: { complete: false, truncated: true, status: "truncated", reason: "edge_budget" } });
+  render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
+  fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of database/ }));
+  expect(await screen.findByText("Neighbor coverage is incomplete; total unknown.")).toBeVisible();
+  expect(screen.queryByText(/more neighbors? not shown/)).not.toBeInTheDocument();
+});

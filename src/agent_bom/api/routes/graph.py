@@ -2894,7 +2894,8 @@ async def get_graph_node_neighbors(
     This is the read side of the dashboard's progressive-disclosure attack-path
     view: expanding one hop loads only that hop's direct neighbors instead of the
     whole graph. It is deliberately lazy and bounded — fan-out is capped by
-    ``limit`` and a high-degree node reports an honest ``total_neighbors`` with
+    ``limit``; ``total_neighbors`` is null when source evidence is incomplete.
+    A completely read high-degree neighborhood reports its known total with
     ``truncated`` set, so the UI can render a "+N more" affordance rather than
     exploding the view. Neighbor node metadata (entity type, label, severity)
     travels with the payload so the client never needs a second round trip per
@@ -2907,20 +2908,20 @@ async def get_graph_node_neighbors(
 
     tenant = _tenant(request)
     store = _get_graph_store_or_503()
-    context = await _graph_store_call(
-        store.node_context,
-        scan_id=scan_id or "",
-        tenant_id=tenant,
-        node_id=node_id,
+    effective_scan_id = scan_id or await _graph_store_call(store.latest_snapshot_id, tenant_id=tenant)
+    context = (
+        await _graph_store_call(store.node_context, scan_id=effective_scan_id, tenant_id=tenant, node_id=node_id)
+        if effective_scan_id
+        else None
     )
     if context is None:
         return {
             "node_id": node_id,
-            "scan_id": scan_id or "",
+            "scan_id": effective_scan_id or "",
             "found": False,
             "direction": normalized_direction,
             "limit": limit,
-            "total_neighbors": 0,
+            "total_neighbors": None,
             "truncated": False,
             "neighbors": [],
             "edges": [],
@@ -2930,7 +2931,7 @@ async def get_graph_node_neighbors(
                 returned=0,
                 total=None,
                 truncated=True,
-                reason="node_not_found",
+                reason="node_not_found" if effective_scan_id else "snapshot_not_found",
             ),
         }
 
@@ -2961,30 +2962,55 @@ async def get_graph_node_neighbors(
 
     neighbor_nodes = await _graph_store_call(
         store.nodes_by_ids,
-        scan_id=scan_id or "",
+        scan_id=effective_scan_id,
         tenant_id=tenant,
         node_ids=set(bounded_ids),
     )
     nodes_by_id = {node.id: node for node in neighbor_nodes}
     ordered_nodes = [nodes_by_id[node_id_] for node_id_ in bounded_ids if node_id_ in nodes_by_id]
-    bounded_edges = [edge for node_id_ in bounded_ids for edge in edges_by_neighbor.get(node_id_, [])]
+    missing_endpoints = len(ordered_nodes) != len(bounded_ids)
+    bounded_edges = [edge for node_id_ in bounded_ids if node_id_ in nodes_by_id for edge in edges_by_neighbor.get(node_id_, [])]
+    upstream = context.get("completeness") or {}
+    upstream_incomplete = bool(
+        upstream.get("truncated")
+        or upstream.get("sampled")
+        or upstream.get("complete") is False
+        or upstream.get("status") in {"truncated", "sampled"}
+    )
+    total_known = not upstream_incomplete and not missing_endpoints
+    truncated = truncated or bool(upstream.get("truncated")) or missing_endpoints
+    reason = (
+        str(upstream.get("reason") or "upstream_incomplete")
+        if upstream_incomplete
+        else "missing_neighbor_endpoints"
+        if missing_endpoints
+        else "neighbor_limit"
+        if truncated
+        else ""
+    )
+    completeness = graph_completeness(
+        returned=len(ordered_nodes),
+        total=total_neighbors if total_known else None,
+        truncated=truncated or (upstream_incomplete and not upstream.get("sampled")),
+        sampled=bool(upstream.get("sampled")),
+        reason=reason,
+    )
+    if upstream_incomplete:
+        completeness["source_completeness"] = upstream
+    if missing_endpoints:
+        completeness["missing_neighbor_endpoints"] = True
 
     return {
         "node_id": node_id,
-        "scan_id": scan_id or "",
+        "scan_id": effective_scan_id or "",
         "found": True,
         "direction": normalized_direction,
         "limit": limit,
-        "total_neighbors": total_neighbors,
-        "truncated": truncated,
+        "total_neighbors": total_neighbors if total_known else None,
+        "truncated": not completeness["complete"],
         "neighbors": [node.to_dict() for node in ordered_nodes],
         "edges": [edge.to_dict() for edge in bounded_edges],
-        "completeness": graph_completeness(
-            returned=len(ordered_nodes),
-            total=total_neighbors,
-            truncated=truncated,
-            reason="neighbor_limit" if truncated else "",
-        ),
+        "completeness": completeness,
     }
 
 

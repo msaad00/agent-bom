@@ -157,7 +157,7 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
   const dependents = entries.filter((entry) => entry.kind === "dependent");
   const related = entries.filter((entry) => entry.kind === "related");
   const moreCount =
-    load?.status === "ready" && load.data.truncated ? Math.max(0, load.data.total_neighbors - load.data.neighbors.length) : 0;
+    load?.status === "ready" && load.data.truncated && load.data.total_neighbors !== null ? Math.max(0, load.data.total_neighbors - load.data.neighbors.length) : 0;
 
   return (
     <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/60">
@@ -222,6 +222,9 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
             <NeighborGroup label="Incoming relationships" entries={dependents} />
           )}
           {related.length > 0 && <NeighborGroup label="Other returned neighbors" entries={related} />}
+          {load?.status === "ready" && load.data.total_neighbors === null && (
+            <p className="text-xs text-[color:var(--text-secondary)]">Neighbor coverage is incomplete; total unknown.</p>
+          )}
           {moreCount > 0 && (
             <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
               +{moreCount} more neighbor{moreCount === 1 ? "" : "s"} not shown

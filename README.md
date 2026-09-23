@@ -78,6 +78,12 @@ direction and hop limit, and expand relevant relationships; badges pair each ver
 distinguishable without color. The ordered path and hop inspector expose evidence freshness and unknowns.
 Large scopes use bounded pages and disclose when the current view is incomplete.
 
+From **Context**, select an agent and choose **Investigate reach & permissions**.
+The selected path offers permission receipts, an explicit compromise assumption,
+CVE prerequisites, recorded resources and related runtime activity. Expand only
+the evidence needed for the question; missing local exploitability stays **not assessed**.
+See the [agent investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
+
 ### Engineers and GRC: prioritize findings and verify fixes
 
 Review findings by priority, affected asset, detection evidence and available

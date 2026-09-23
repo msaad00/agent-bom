@@ -697,3 +697,57 @@ def test_streaming_save_stays_dml_only(monkeypatch):
     assert counts == {"nodes": 2, "edges": 0}
     assert conn.committed >= 1
     assert conn.rolled_back == 0
+
+
+def test_postgres_written_receipts_and_node_types_decode_without_loss(monkeypatch):
+    """Exercise SQL adapters both ways; connection is fake, not a live PG claim."""
+    from agent_bom.graph import AttackPath, UnifiedGraph
+
+    class ReceiptConn(_RecordingConn):
+        def __init__(self):
+            super().__init__()
+            self.path_rows = []
+
+        def executemany(self, sql, rows):
+            rows = list(rows)
+            if " ".join(sql.lower().split()).startswith("insert into attack_paths"):
+                self.path_rows.extend(rows)
+                return _FakeCursor()
+            return super().executemany(sql, rows)
+
+        def execute(self, sql, params=None):
+            normalized = " ".join(sql.lower().split())
+            if normalized.startswith("select source_node, target_node, path_nodes"):
+                assert params[:2] == ["receipt-tenant", "receipt-scan"]
+                return _FakeCursor(
+                    [tuple(row[index] for index in (0, 1, 5, 6, 3, 4, 7, 8, 9, 10, 11, 12, 13, 14)) for row in self.path_rows]
+                )
+            if normalized.startswith("select id, entity_type, label"):
+                assert params[:2] == ["receipt-tenant", "receipt-scan"]
+                return _FakeCursor([row[:16] for row in self.node_rows])
+            return super().execute(sql, params)
+
+    conn = ReceiptConn()
+    store = _make_store(conn, monkeypatch)
+    graph = UnifiedGraph(scan_id="receipt-scan", tenant_id="receipt-tenant")
+    for entity_type in (EntityType.AGENT, EntityType.SERVICE_ACCOUNT, EntityType.DATA_STORE):
+        graph.add_node(UnifiedNode(id=f"{entity_type.value}:raw", entity_type=entity_type, label=f"Raw_{entity_type.value}"))
+    receipt = {
+        "source_node_id": "agent:raw",
+        "target_node_id": "data_store:raw",
+        "relationship": "accessed",
+        "runtime_observed_state": "blocked",
+        "runtime_references": [{"event_id": "evt-123", "trace_id": "trace-456"}],
+    }
+    graph.attack_paths = [
+        AttackPath(
+            source="agent:raw", target="data_store:raw", hops=["agent:raw", "data_store:raw"], edges=["accessed"], hop_evidence=[receipt]
+        )
+    ]
+    store.save_graph(graph)
+    paths = store.attack_paths_for_sources(tenant_id="receipt-tenant", scan_id="receipt-scan", source_ids={"agent:raw"})
+    assert paths[0].hop_evidence == [receipt]
+    nodes = store.nodes_by_ids(tenant_id="receipt-tenant", scan_id="receipt-scan", node_ids=set(graph.nodes))
+    assert {node.id: (node.entity_type, node.label) for node in nodes} == {
+        node.id: (node.entity_type, node.label) for node in graph.nodes.values()
+    }

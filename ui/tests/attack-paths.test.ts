@@ -464,6 +464,8 @@ describe("attack path helpers", () => {
     expect(labelsForAttackPathType(path, nodes, "agent")).toEqual(["Reviewer", "Reviewer"]);
     const exposure = toExposurePathFromAttackPath(path, nodes);
     expect(exposure.affectedAgents).toEqual(["Reviewer", "Reviewer"]);
+    expect(exposure.hops[0]).toMatchObject({ entityType: "agent", rawLabel: "reviewer", label: "Reviewer" });
+    expect(exposure.hops[2]).toMatchObject({ entityType: "service_account", rawLabel: "service-reviewer" });
     const legacy = { ...exposure, affectedAgents: ["Reviewer", "service-reviewer", "human-reviewer"] };
     expect(withCanonicalExposurePresentation(legacy, nodes).affectedAgents).toEqual(["Reviewer", "Reviewer"]);
     expect(withCanonicalExposurePresentation(legacy, new Map()).affectedAgents).toEqual(legacy.affectedAgents);

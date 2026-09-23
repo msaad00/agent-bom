@@ -17,6 +17,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Connect scoped agent investigation to permission receipts, advisory prerequisites, directional neighbor expansion, and exact-agent runtime activity; retain recorded runtime event references consistently in REST and MCP.
+
 - Bind graph vulnerability relationships to matching package owners, preserve package-specific evidence, and reject contradictory server matches.
 - Require exact agent and tool identities for related runtime activity; distinguish scan configuration from execution and make Context Map relationship evidence inspectable.
 

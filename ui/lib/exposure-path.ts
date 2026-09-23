@@ -15,6 +15,9 @@ export type ExposureEntityRole =
   | "unknown";
 
 export interface ExposureEntityRef {
+  /** Canonical type and recorded name, independent of presentation. */
+  entityType?: string | undefined;
+  rawLabel?: string | undefined;
   id: string;
   label: string;
   subtitle?: string | undefined;

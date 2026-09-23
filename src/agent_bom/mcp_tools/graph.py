@@ -169,10 +169,12 @@ def _node_role(node: Any) -> str:
 def _node_ref(node_id: str, nodes_by_id: dict[str, Any]) -> dict[str, Any]:
     node = nodes_by_id.get(node_id)
     if node is None:
-        return {"id": node_id, "label": node_id, "role": "unknown"}
+        return {"id": node_id, "label": node_id, "role": "unknown", "entityType": "unknown"}
     return {
         "id": node.id,
         "label": node.label,
+        "rawLabel": node.label,
+        "entityType": _node_role(node),
         "role": _node_role(node),
         "severity": getattr(node, "severity", ""),
         "riskScore": float(getattr(node, "risk_score", 0.0) or 0.0),

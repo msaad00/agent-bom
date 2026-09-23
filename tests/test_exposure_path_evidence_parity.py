@@ -402,3 +402,71 @@ def test_static_legacy_receipt_cannot_claim_runtime_reference():
         ],
     )
     assert exposure_hop_evidence(path)[0]["runtime_references"] == []
+
+
+@pytest.mark.parametrize(
+    "entity_type",
+    [
+        EntityType.AGENT,
+        EntityType.USER,
+        EntityType.GROUP,
+        EntityType.SERVICE_ACCOUNT,
+        EntityType.DATA_STORE,
+        EntityType.DATASET,
+        EntityType.RESOURCE,
+        EntityType.CLOUD_RESOURCE,
+    ],
+)
+def test_exposure_refs_preserve_canonical_type_and_raw_identity(entity_type):
+    node = UnifiedNode(id="node:exact", entity_type=entity_type, label="raw-reviewer_Name")
+    path = AttackPath(source=node.id, target=node.id, hops=[node.id])
+    for payload in _serialize_both(path, nodes=[node], edges=[]):
+        for ref in [payload["source"], payload["target"], *payload["hops"]]:
+            assert ref["entityType"] == entity_type.value
+            assert ref["rawLabel"] == "raw-reviewer_Name"
+
+
+def test_missing_exposure_node_has_no_invented_raw_identity():
+    path = AttackPath(source="agent:missing", target="agent:missing", hops=["agent:missing"])
+    for payload in _serialize_both(path, nodes=[], edges=[]):
+        for ref in [payload["source"], payload["target"], *payload["hops"]]:
+            assert ref["entityType"] == "unknown"
+            assert "rawLabel" not in ref
+
+
+def test_runtime_hop_references_and_node_identity_survive_sqlite_reopen(tmp_path):
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.graph import UnifiedGraph
+    from agent_bom.graph.path_evidence import annotate_attack_path_evidence
+
+    graph = UnifiedGraph(scan_id="receipt-scan", tenant_id="receipt-tenant")
+    for node in [
+        UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="raw_agent-a"),
+        UnifiedNode(id="data:b", entity_type=EntityType.DATA_STORE, label="raw_data-b"),
+        UnifiedNode(id="identity:c", entity_type=EntityType.SERVICE_ACCOUNT, label="raw_identity-c"),
+    ]:
+        graph.add_node(node)
+    graph.add_edge(
+        UnifiedEdge(
+            source="agent:a",
+            target="data:b",
+            relationship=RelationshipType.ACCESSED,
+            evidence={"event_id": "evt-123", "trace_id": "trace-456", "blocked": True},
+        )
+    )
+    path = AttackPath(source="agent:a", target="data:b", hops=["agent:a", "data:b"], edges=["accessed"])
+    annotate_attack_path_evidence(path, graph)
+    graph.attack_paths = [path]
+    database = tmp_path / "receipts.db"
+    SQLiteGraphStore(database).save_graph(graph)
+    restored = SQLiteGraphStore(database).load_graph(tenant_id="receipt-tenant", scan_id="receipt-scan")
+    assert restored is not None
+    assert [(node.id, node.entity_type, node.label) for node in sorted(restored.nodes.values(), key=lambda node: node.id)] == [
+        (node.id, node.entity_type, node.label) for node in sorted(graph.nodes.values(), key=lambda node: node.id)
+    ]
+    for payload in _serialize_both(restored.attack_paths[0], nodes=list(restored.nodes.values()), edges=restored.edges):
+        assert payload["source"]["entityType"] == "agent"
+        assert payload["source"]["rawLabel"] == "raw_agent-a"
+        assert payload["target"]["entityType"] == "data_store"
+        assert payload["hopEvidence"][0]["runtime_references"] == [{"event_id": "evt-123", "trace_id": "trace-456"}]
+        assert payload["hopEvidence"][0]["runtime_observed_state"] == "blocked"

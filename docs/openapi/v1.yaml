@@ -17040,6 +17040,32 @@ paths:
                                     - unknown
                                     title: Runtime Outcome
                                     type: string
+                                  runtime_references:
+                                    items:
+                                      description: Opaque identifiers from one exact
+                                        runtime edge, never payloads or URLs.
+                                      properties:
+                                        event_id:
+                                          anyOf:
+                                          - maxLength: 200
+                                            minLength: 1
+                                            pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+                                            type: string
+                                          - type: 'null'
+                                          title: Event Id
+                                        trace_id:
+                                          anyOf:
+                                          - maxLength: 200
+                                            minLength: 1
+                                            pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+                                            type: string
+                                          - type: 'null'
+                                          title: Trace Id
+                                      title: RuntimeEvidenceReference
+                                      type: object
+                                    maxItems: 8
+                                    title: Runtime References
+                                    type: array
                                   source_node_id:
                                     title: Source Node Id
                                     type: string
@@ -19616,6 +19642,33 @@ paths:
                                         - unknown
                                         title: Runtime Outcome
                                         type: string
+                                      runtime_references:
+                                        items:
+                                          description: Opaque identifiers from one
+                                            exact runtime edge, never payloads or
+                                            URLs.
+                                          properties:
+                                            event_id:
+                                              anyOf:
+                                              - maxLength: 200
+                                                minLength: 1
+                                                pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+                                                type: string
+                                              - type: 'null'
+                                              title: Event Id
+                                            trace_id:
+                                              anyOf:
+                                              - maxLength: 200
+                                                minLength: 1
+                                                pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+                                                type: string
+                                              - type: 'null'
+                                              title: Trace Id
+                                          title: RuntimeEvidenceReference
+                                          type: object
+                                        maxItems: 8
+                                        title: Runtime References
+                                        type: array
                                       source_node_id:
                                         title: Source Node Id
                                         type: string
@@ -20341,6 +20394,32 @@ paths:
                                     - unknown
                                     title: Runtime Outcome
                                     type: string
+                                  runtime_references:
+                                    items:
+                                      description: Opaque identifiers from one exact
+                                        runtime edge, never payloads or URLs.
+                                      properties:
+                                        event_id:
+                                          anyOf:
+                                          - maxLength: 200
+                                            minLength: 1
+                                            pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+                                            type: string
+                                          - type: 'null'
+                                          title: Event Id
+                                        trace_id:
+                                          anyOf:
+                                          - maxLength: 200
+                                            minLength: 1
+                                            pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+                                            type: string
+                                          - type: 'null'
+                                          title: Trace Id
+                                      title: RuntimeEvidenceReference
+                                      type: object
+                                    maxItems: 8
+                                    title: Runtime References
+                                    type: array
                                   source_node_id:
                                     title: Source Node Id
                                     type: string

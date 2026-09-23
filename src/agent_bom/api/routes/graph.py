@@ -998,10 +998,12 @@ def _exposure_role_for_node(node: UnifiedNode) -> str:
 def _exposure_ref_for_node(node_id: str, nodes_by_id: dict[str, Any]) -> dict[str, Any]:
     node = nodes_by_id.get(node_id)
     if node is None:
-        return {"id": node_id, "label": node_id, "role": "unknown"}
+        return {"id": node_id, "label": node_id, "role": "unknown", "entityType": "unknown"}
     ref: dict[str, Any] = {
         "id": node.id,
         "label": node.label,
+        "rawLabel": node.label,
+        "entityType": _node_type_value(node),
         "role": _exposure_role_for_node(node),
     }
     if getattr(node, "severity", ""):

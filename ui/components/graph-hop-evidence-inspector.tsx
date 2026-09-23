@@ -98,7 +98,7 @@ export function GraphHopEvidenceInspector({
               {reasons.length ? <p className="break-words text-xs text-[color:var(--text-secondary)]">{reasons.map(humanize).join(" · ")}</p> : null}
               <div><p className="text-xs text-[color:var(--text-secondary)]">Runtime event references</p>
                 {Array.isArray(receipt.runtime_references) && receipt.runtime_references.length > 0
-                  ? <ul className="mt-1 space-y-1">{receipt.runtime_references.slice(0, 8).map((reference, referenceIndex) => <li key={referenceIndex} className="break-all font-mono text-xs">
+                  ? <ul className="mt-1 space-y-1">{receipt.runtime_references.filter(reference => reference && typeof reference === "object").slice(0, 8).map((reference, referenceIndex) => <li key={referenceIndex} className="break-all font-mono text-xs">
                     {typeof reference.event_id === "string" ? `Event: ${reference.event_id}` : ""}
                     {typeof reference.trace_id === "string" ? ` Trace: ${reference.trace_id}` : ""}
                   </li>)}</ul> : <p>No exact event reference attached.</p>}

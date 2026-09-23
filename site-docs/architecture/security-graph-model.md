@@ -240,18 +240,25 @@ runtime evidence, and remediation.
 
 ## Investigate an agent from Context
 
-Context starts with the selected agent's recorded two-hop neighborhood. Choose
-incoming, outgoing or both directions and one to three hops. Select a node to
-inspect its connections and expand another recorded hop; **Reset neighborhood**
-returns to the initial scope. The inspector groups entities by type so they can
-be selected without searching a dense canvas. Select an arrow for its direction,
-relationship and package association. Permissions and execution remain unknown
-in this static projection.
+Context starts with a compact, one-hop neighborhood from the selected scan.
+Select a node to inspect its relationships; **Show** adds up to four recorded
+neighbors of one type. **Collapse added neighbors** rolls that expansion back.
+**Focus here** changes the center, **Back** returns to the previous center, and
+**Reset neighborhood** returns to the selected agent. Search a name or exact
+identifier in **Find loaded entity** to locate an entity outside the current view.
+Direction and hop depth are under **Advanced view**.
 
-The canvas is bounded to 40 nodes and 80 edges. Counts outside the view describe
-the loaded scan graph, not the entire estate. Source truncation is disclosed
-separately; expansion is client-side and does not collect additional evidence.
-Shared infrastructure does not establish agent-to-agent communication.
+The canvas retains at most 24 nodes and 36 relationships, including a discovery
+edge for every displayed neighbor. Counts and search cover the loaded scan
+snapshot; they do not measure the whole estate. This view still loads its graph
+snapshot before projecting the neighborhood. These display limits are not
+server-side pagination or an end-to-end enterprise performance guarantee.
+Labels appear for a selected or hovered node, selected relationship, or focused
+path. Shared infrastructure is not evidence that agents communicated.
+
+Source truncation is disclosed separately; expansion is client-side and does not
+collect additional evidence. Permissions and execution remain unknown in this
+static projection.
 
 Select an agent and scan in Context, then choose **Investigate reach & permissions**.
 The investigation retains that scope and presents recorded paths. Select a path,

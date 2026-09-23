@@ -479,13 +479,14 @@ export function SecurityGraphInvestigation({
         current
           ? {
               ...current,
-              neighborCount: neighbors.total_neighbors,
+              neighborCount: neighbors.total_neighbors ?? undefined,
+              relationshipCountsPartial: neighbors.total_neighbors === null || neighbors.truncated,
               attributes: {
                 ...(current.attributes ?? {}),
                 node_id: selectedNodeId,
                 expanded_neighbor_ids: neighbors.neighbors.map((node) => node.id),
                 expanded_neighbor_returned: neighbors.neighbors.length,
-                expanded_neighbor_omitted: Math.max(
+                expanded_neighbor_omitted: neighbors.total_neighbors === null ? null : Math.max(
                   0,
                   neighbors.total_neighbors - neighbors.neighbors.length,
                 ),

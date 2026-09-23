@@ -3508,7 +3508,15 @@ async function main() {
         await contextPage.getByRole("button", { name: "Neighborhood", exact: true }).click();
         await contextPage.getByRole("complementary", { name: "Agent neighborhood inspector" }).waitFor({ state: "visible" });
         await contextPage.locator('[data-id="server:github"]').waitFor({ state: "visible" });
+        await contextPage.locator('[data-id="server:github"]').click();
+        const neighborhoodInspector = contextPage.getByRole("complementary", { name: "Agent neighborhood inspector" });
+        for (const kind of ["tool", "vulnerability", "credential"]) {
+          const expand = neighborhoodInspector.getByRole("button", { name: new RegExp(`^Show \\d+ ${kind} ·`) });
+          if (await expand.count()) await expand.click();
+        }
         await contextPage.locator('[data-id="tool:repo-write"]').waitFor({ state: "visible" });
+        await neighborhoodInspector.evaluate(element => { element.scrollTop = 0; });
+        await expect(neighborhoodInspector.getByRole("heading", { name: "github-enterprise MCP", exact: true })).toBeInViewport();
         await fitReactFlow(contextPage);
         for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
         await scrollTo(contextPage, 0);
@@ -3520,14 +3528,13 @@ async function main() {
           "developer-copilot",
           "CVE-2025-29927",
           "Affected package:",
-          /Recorded neighborhood/i,
-          "Evidence gaps",
+          /Scan neighborhood/i,
         ],
         expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],
-        minGraphNodes: 9,
-        maxGraphNodes: 11,
-        minGraphEdges: 9,
-        maxGraphEdges: 11,
+        minGraphNodes: 5,
+        maxGraphNodes: 12,
+        minGraphEdges: 4,
+        maxGraphEdges: 16,
       },
     );
     await page.setViewportSize({ width: 1440, height: 980 });

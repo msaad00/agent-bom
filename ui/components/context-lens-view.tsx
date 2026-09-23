@@ -35,7 +35,7 @@ import {
 import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import { ContextEvidenceEdge } from "@/components/context-evidence-edge";
 import { ContextNeighborhoodInspector } from "@/components/context-neighborhood-inspector";
-import { projectContextNeighborhood } from "@/lib/context-neighborhood";
+import { contextExpansionKey, projectContextNeighborhood } from "@/lib/context-neighborhood";
 import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
 import {
   buildContextFlowGraph,
@@ -330,8 +330,9 @@ export function ContextLensView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [pathFocusEnabled, setPathFocusEnabled] = useState(false);
   const [direction, setDirection] = useState<"in" | "out" | "both">("both");
-  const [depth, setDepth] = useState(2);
-  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [depth, setDepth] = useState(1);
+  const [expansionBatches, setExpansionBatches] = useState<Record<string, number>>({});
+  const [focusHistory, setFocusHistory] = useState<string[]>([]);
   // Canvas is the hero — paths list opens on demand (drawer), not by default.
   const [pathsPanelOpen, setPathsPanelOpen] = useState(false);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
@@ -410,13 +411,15 @@ export function ContextLensView() {
     setSelectedEdgeId(null);
     setSelectedNode(null);
     setSelectedNodeId(null);
-  }, [graphData, selectedAgent, selectedJobId, selectedPathKey]);
+  }, [graphData, selectedAgent, selectedJobId]);
 
-  useEffect(() => { setExpandedIds([]); setSelectedPathKey(undefined); setPathFocusEnabled(false); }, [selectedJobId, selectedAgent]);
+  useEffect(() => { setExpansionBatches({}); setFocusHistory([]); setDepth(1); setSelectedPathKey(undefined); setPathFocusEnabled(false); }, [selectedJobId, selectedAgent]);
+  const seedId = focusHistory.at(-1) ?? (selectedAgent ? `agent:${selectedAgent}` : graphData?.nodes.find(node => node.kind === "agent")?.id ?? "");
+  const expansionId = selectedNodeId ?? seedId;
   const neighborhood = useMemo(() => graphData ? projectContextNeighborhood(
-    graphData, selectedAgent ? `agent:${selectedAgent}` : graphData.nodes.find(node => node.kind === "agent")?.id ?? "",
-    expandedIds, direction, depth,
-  ) : null, [graphData, selectedAgent, expandedIds, direction, depth]);
+    graphData, seedId, [], direction, depth, expansionBatches,
+  ) : null, [graphData, seedId, direction, depth, expansionBatches]);
+  const clearExploration = () => { setExpansionBatches({}); setDepth(1); setSelectedPathKey(undefined); setPathFocusEnabled(false); setSelectedNode(null); setSelectedNodeId(null); setSelectedEdgeId(null); };
 
   // Build ReactFlow graph
   const { rawNodes, rawEdges, focusedPath } = useMemo(() => {
@@ -548,11 +551,11 @@ export function ContextLensView() {
       zoom: presentation.viewport.zoom,
       nodeLabels: graphNodeDisplayLabels(displayNodes),
     }).map((edge): Edge => ({ ...edge,
-      label: contextRelationshipLabel(String(edge.data?.relationship ?? "")),
+      label: pathFocusEnabled || edge.id === selectedEdgeId || [edge.source, edge.target].some(id => id === selectedNodeId || id === hoveredNodeId) ? contextRelationshipLabel(String(edge.data?.relationship ?? "")) : undefined,
       ariaLabel: `${edge.data?.relationshipLabel ?? "Scan relationship"}: ${edge.source} to ${edge.target}. Execution not established.`,
       data: { ...edge.data, onInspect: () => { setSelectedEdgeId(edge.id); setSelectedNode(null); setSelectedNodeId(null); } },
     }));
-  }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode, presentation.viewport.zoom, displayNodes]);
+  }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode, presentation.viewport.zoom, displayNodes, selectedEdgeId, selectedNodeId, hoveredNodeId, pathFocusEnabled]);
 
   const legendItems = useMemo(() => {
     const extras =
@@ -789,17 +792,20 @@ export function ContextLensView() {
       )}
 
       {neighborhood && <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-3 text-sm">
-        <button className="context-action" aria-pressed={!pathFocusEnabled} onClick={() => { setPathFocusEnabled(false); setSelectedEdgeId(null); }}>Neighborhood</button>
-        <label className="flex items-center gap-2">Direction <select aria-label="Relationship direction" className="context-action" value={direction} onChange={event => { setDirection(event.target.value as "in" | "out" | "both"); setSelectedEdgeId(null); setPathFocusEnabled(false); }}><option value="both">Incoming + outgoing</option><option value="out">Outgoing</option><option value="in">Incoming</option></select></label>
-        <label className="flex items-center gap-2">Depth <select aria-label="Neighborhood depth" className="context-action" value={depth} onChange={event => { setDepth(Number(event.target.value)); setPathFocusEnabled(false); setSelectedEdgeId(null); }}>{[1,2,3].map(value => <option key={value} value={value}>{value} hop{value > 1 ? "s" : ""}</option>)}</select></label>
-        <button className="context-action" onClick={() => { setExpandedIds([]); setDepth(2); setDirection("both"); setPathFocusEnabled(false); setSelectedNode(null); setSelectedNodeId(null); setSelectedEdgeId(null); }}>Reset neighborhood</button>
+        <button className="context-action" aria-pressed={!pathFocusEnabled} onClick={() => { setSelectedPathKey(undefined); setPathFocusEnabled(false); setSelectedEdgeId(null); setSelectedNode(null); setSelectedNodeId(null); }}>Neighborhood</button>
+        {focusHistory.length > 0 && <button className="context-action" onClick={() => { setFocusHistory(ids => ids.slice(0, -1)); clearExploration(); }}>Back</button>}
+        <button className="context-action" onClick={() => { setFocusHistory([]); setDirection("both"); clearExploration(); }}>Reset neighborhood</button>
+        <details><summary className="context-action cursor-pointer">Advanced view</summary><div className="flex flex-wrap gap-2 py-2">
+          <label>Direction <select aria-label="Relationship direction" className="context-action" value={direction} onChange={event => { clearExploration(); setDirection(event.target.value as "in" | "out" | "both"); }}><option value="both">Incoming + outgoing</option><option value="out">Outgoing</option><option value="in">Incoming</option></select></label>
+          <label>Depth <select aria-label="Neighborhood depth" className="context-action" value={depth} onChange={event => { clearExploration(); setDepth(Number(event.target.value)); }}>{[1,2,3].map(value => <option key={value} value={value}>{value} hop{value > 1 ? "s" : ""}</option>)}</select></label>
+        </div></details>
         <span className="text-[var(--text-secondary)]">{rawNodes.length} nodes · {rawEdges.length} relationships shown</span>
         {(neighborhood.hiddenNodeCount > 0 || neighborhood.truncated || neighborhood.sourceIncomplete) && <span className="text-[var(--text-secondary)]">{neighborhood.hiddenNodeCount} loaded nodes outside view · bounded snapshot</span>}
       </div>}
       {/* Stats */}
       {!captureMode && graphData?.stats.lateral_paths_truncated && (
-        <div className="border-b border-amber-500/20 bg-amber-500/5 px-3 py-1 text-[10px] text-amber-200">
-          Showing a bounded set of highest-priority lateral paths for this large graph. Narrow the agent scope to inspect additional paths.
+        <div className="border-b border-amber-500/20 bg-amber-500/5 px-3 py-1 text-xs text-[var(--text-secondary)]">
+          Sampled paths · analysis limit reached. Loaded paths are not a complete count. Narrow the agent scope to inspect additional paths.
         </div>
       )}
       {!captureMode && graphData && <ContextStats data={graphData} compact />}
@@ -899,9 +905,16 @@ export function ContextLensView() {
           edges={(pathFocusEnabled ? graphData.edges : neighborhood?.edges ?? []).filter(edge => rawNodes.some(node => node.id === edge.source) && rawNodes.some(node => node.id === edge.target)).slice(0, 80)}
           selectedId={selectedNodeId}
           selectedEdge={(() => { const edge = displayEdges.find(item => item.id === selectedEdgeId); return edge ? { source: edge.source, target: edge.target, relationship: String(edge.data?.relationship ?? ""), package: typeof edge.data?.package === "string" ? edge.data.package : undefined } : null; })()}
-          hiddenCount={(neighborhood?.hiddenGroups[selectedNodeId ?? ""] ?? []).reduce((sum, group) => sum + group.count, 0)}
+          hiddenCount={pathFocusEnabled ? null : (neighborhood?.hiddenGroups[expansionId] ?? []).reduce((sum, group) => sum + group.count, 0)}
+          neighborhoodMode={!pathFocusEnabled}
           onSelect={id => { const node = rawNodes.find(item => item.id === id); if (node) { setSelectedNode(node.data as LineageNodeData); setSelectedNodeId(id); setSelectedEdgeId(null); if (window.matchMedia("(max-width: 767px)").matches) void flowInstance?.fitView({ nodes: [{ id }], minZoom: 0.85, maxZoom: 1, duration: 200 }); } }}
-          onExpand={() => { if (selectedNodeId) { setExpandedIds(ids => [...new Set([...ids, selectedNodeId])]); setPathFocusEnabled(false); setSelectedEdgeId(null); } }}
+          hiddenGroups={neighborhood?.hiddenGroups[expansionId] ?? []}
+          allNodes={graphData.nodes}
+          expansionLabel={graphData.nodes.find(node => node.id === expansionId)?.label ?? expansionId}
+          canCollapse={Object.keys(expansionBatches).some(key => JSON.parse(key)[0] === expansionId)}
+          onExpandGroup={kind => { setExpansionBatches(current => ({ ...current, [contextExpansionKey(expansionId, kind)]: (current[contextExpansionKey(expansionId, kind)] ?? 0) + 1 })); setSelectedPathKey(undefined); setPathFocusEnabled(false); setSelectedEdgeId(null); }}
+          onCollapse={() => setExpansionBatches(current => Object.fromEntries(Object.entries(current).filter(([key]) => JSON.parse(key)[0] !== expansionId)))}
+          onFocus={id => { if (id !== seedId) setFocusHistory(ids => [...ids, id]); clearExploration(); }}
           onClose={() => { setSelectedNode(null); setSelectedNodeId(null); setSelectedEdgeId(null); }}
         />}
 

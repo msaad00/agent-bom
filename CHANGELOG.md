@@ -17,6 +17,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Reconcile final terminal severity totals with JSON after SAST scanning, enrichment, and filtering.
+- Keep imported report findings separate from tenant posture, coverage, services, and scan freshness; label tenant-wide compliance exports explicitly.
+- Select ranked Context Map paths with keyboard support, discard stale scan responses, and preserve readable path drawers and graph framing across themes and viewport sizes.
 - Preserve distinct authorization receipts, action-specific evidence, workload connections, and source witnesses across graph and exposure responses.
 - Require evidence before reporting verified remediation, and keep runtime outcomes separate from exploitability signals.
 - Improve scoped inventory, findings, compliance drilldowns, graph framing, and light/dark metric readability. Empty API snapshots now return an empty summary.

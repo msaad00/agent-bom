@@ -46,6 +46,19 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
+            // Completion events can arrive after a newer run has started or finished.
+            const run = context.payload.workflow_run;
+            const {data} = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: run.workflow_id, branch: "main", per_page: 1,
+            });
+            const latest = data.workflow_runs[0];
+            if (!latest || latest.id !== run.id || latest.run_attempt !== run.run_attempt) return;
+            // CI recovery must describe the current branch, not an older green SHA.
+            if (workflow === "CI/CD Pipeline") {
+              const {data: branch} = await github.rest.repos.getBranch({owner, repo, branch: "main"});
+              if (branch.commit.sha !== run.head_sha) return;
+            }
+
             const existing = await github.paginate(github.rest.issues.listForRepo, {
               owner,
               repo,
@@ -102,6 +115,19 @@ jobs:
               "",
               "This issue was opened automatically so main failures do not sit unnoticed.",
             ].join("\n");
+
+            // Completion events can arrive after a newer run has started or finished.
+            const run = context.payload.workflow_run;
+            const {data} = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: run.workflow_id, branch: "main", per_page: 1,
+            });
+            const latest = data.workflow_runs[0];
+            if (!latest || latest.id !== run.id || latest.run_attempt !== run.run_attempt) return;
+            // CI recovery must describe the current branch, not an older green SHA.
+            if (workflow === "CI/CD Pipeline") {
+              const {data: branch} = await github.rest.repos.getBranch({owner, repo, branch: "main"});
+              if (branch.commit.sha !== run.head_sha) return;
+            }
 
             const existing = await github.paginate(github.rest.issues.listForRepo, {
               owner,

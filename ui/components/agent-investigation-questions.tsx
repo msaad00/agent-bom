@@ -34,7 +34,7 @@ export function AgentInvestigationQuestions({ path, scanId, onConnections }: {
     ["User interaction", path.evidence?.userInteraction],
   ];
   const evidence = <GraphHopEvidenceInspector hops={path.hops} receipts={path.hopEvidence} />;
-  return <section aria-label="Agent investigation questions" className="my-3 rounded-xl border border-outline bg-surface p-3 text-sm">
+  return <section aria-label="Agent investigation questions" className="my-3 rounded-xl border border-outline bg-surface p-3 text-[15px]">
     <details><summary className="cursor-pointer py-2 font-semibold">Investigate this path</summary>
     <p className="mt-1 text-ink-secondary">Selected path · snapshot evidence.</p>
     <div role="group" aria-label="Investigation questions" className="my-3 grid grid-cols-2 gap-2">

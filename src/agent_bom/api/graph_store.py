@@ -419,6 +419,17 @@ class GraphStoreProtocol(Protocol):
         limit: int = 100,
     ) -> tuple[str, str, list[AttackPath], int]: ...
 
+    def incident_edges_page(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+        direction: str = "both",
+        limit: int = 24,
+        cursor: str | None = None,
+    ) -> dict[str, Any] | None: ...
+
     def node_context(
         self,
         *,
@@ -1442,6 +1453,42 @@ class SQLiteGraphStore:
                     for row in rows
                 ],
                 int(total or 0),
+            )
+        finally:
+            conn.close()
+
+    def incident_edges_page(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+        direction: str = "both",
+        limit: int = 24,
+        cursor: str | None = None,
+    ) -> dict[str, Any] | None:
+        """One snapshot read, bounded incident edges, no impact traversal."""
+        from agent_bom.graph.adjacency_page import incident_edge_page
+
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            if cursor:
+                raise ValueError("Incident-edge cursor snapshot is unavailable")
+            return None
+        try:
+            conn.execute("BEGIN")
+            return incident_edge_page(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                node_id=node_id,
+                direction=direction,
+                limit=limit,
+                cursor=cursor,
+                marker="?",
+                node_from_row=self._node_from_row,
+                edge_from_row=self._edge_from_row,
             )
         finally:
             conn.close()

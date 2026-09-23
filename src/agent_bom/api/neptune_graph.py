@@ -647,6 +647,9 @@ class NeptuneGraphStore:
     def attack_paths(self, **_kwargs: Any) -> tuple[str, str, list[Any], int]:
         self._unsupported("attack_paths")
 
+    def incident_edges_page(self, **_kwargs: Any) -> dict[str, Any] | None:
+        self._unsupported("incident_edges_page")
+
     def node_context(self, **_kwargs: Any) -> dict[str, Any] | None:
         self._unsupported("node_context")
 

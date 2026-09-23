@@ -199,6 +199,14 @@ container requires the explicit Postgres bootstrap/admin URL and its separate
 password file; the API stays on `agent_bom_app` (DML) plus the independently
 scoped maintenance connection.
 
+Graph migration `20260923_02` adds snapshot generations and indexes for bounded
+relationship pages. Apply it before starting the new graph store. Drain old
+graph writers during the upgrade: mixed writer versions cannot reliably
+invalidate paging cursors when a snapshot is replaced. Image rollback alone
+does not undo this migration; restore the matching backup or validate the
+database rollback separately. This storage foundation does not yet enable
+paged exploration in the dashboard.
+
 ---
 
 ## Tier 3 — Operator-hosted / gated POC

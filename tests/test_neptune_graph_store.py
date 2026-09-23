@@ -202,3 +202,11 @@ def test_neptune_delete_snapshot_is_bound_to_exact_tenant_and_scan() -> None:
     query, bindings = client.calls[-1]
     assert "has('tenant_id', tenant_id).has('scan_id', scan_id)" in query
     assert bindings == {"tenant_id": "tenant-a", "scan_id": "scan-1"}
+
+
+def test_neptune_incident_edge_pages_are_explicitly_unsupported() -> None:
+    client = FakeGremlinClient()
+    store = NeptuneGraphStore(NeptuneGraphConfig(endpoint="wss://neptune.example:8182/gremlin"), client=client)
+    with pytest.raises(NeptuneGraphStoreUnsupportedOperationError, match="incident_edges_page"):
+        store.incident_edges_page(tenant_id="tenant-a", node_id="agent:a", limit=5)
+    assert client.calls == []

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence, cast
 
@@ -54,7 +55,7 @@ from .postgres_common import (
 )
 
 logger = logging.getLogger(__name__)
-_GRAPH_STORAGE_SCHEMA_VERSION = 4
+_GRAPH_STORAGE_SCHEMA_VERSION = 5
 _DB_NOW_ISO = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 _DB_LEASE_ISO = "to_char(now() AT TIME ZONE 'UTC' + (%s * INTERVAL '1 second'), 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 
@@ -374,6 +375,14 @@ class PostgresGraphStore:
                 "ON graph_edges(tenant_id, scan_id, source_id, target_id, relationship)"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pg_adjacency_out ON graph_edges(tenant_id, scan_id, "
+                'source_id COLLATE "C", target_id COLLATE "C", relationship COLLATE "C")'
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pg_adjacency_in ON graph_edges(tenant_id, scan_id, "
+                'target_id COLLATE "C", source_id COLLATE "C", relationship COLLATE "C")'
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_valid ON graph_edges(tenant_id, valid_from, valid_to)")
             conn.execute(
                 """
@@ -396,12 +405,14 @@ class PostgresGraphStore:
                     snapshot_kind TEXT NOT NULL DEFAULT 'scan' CHECK (snapshot_kind IN ('scan', 'correlation')),
                     correlation_id TEXT DEFAULT NULL,
                     evidence_manifest_sha256 TEXT NOT NULL DEFAULT '',
+                    snapshot_generation TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (scan_id, tenant_id)
                 )
                 """
             )
             # Additive and nullable, matching the SQLite column: snapshots written
             # before it existed read NULL and fall back to the live GROUP BY.
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_generation TEXT NOT NULL DEFAULT ''")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS node_type_counts TEXT DEFAULT NULL")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_kind TEXT NOT NULL DEFAULT 'scan'")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS correlation_id TEXT DEFAULT NULL")
@@ -550,6 +561,10 @@ class PostgresGraphStore:
             conn.commit()
             with bypass_tenant_rls(audit=False), _maintenance_connection(self._maintenance_pool) as maintenance_conn:
                 _backfill_empty_tenant_ids(maintenance_conn)
+                maintenance_conn.execute(
+                    "UPDATE graph_snapshots SET snapshot_generation = replace(gen_random_uuid()::text, '-', '') "
+                    "WHERE snapshot_generation = ''"
+                )
                 maintenance_conn.commit()
             _apply_tenant_session(conn)
             _ensure_tenant_rls(conn, "graph_nodes", "tenant_id")
@@ -1105,8 +1120,8 @@ class PostgresGraphStore:
                 INSERT INTO graph_snapshots
                     (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary,
                      node_type_counts, analysis_status, snapshot_kind, correlation_id,
-                     evidence_manifest_sha256)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     evidence_manifest_sha256, snapshot_generation)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (scan_id, tenant_id) DO UPDATE SET
                     created_at = EXCLUDED.created_at,
                     node_count = EXCLUDED.node_count,
@@ -1116,7 +1131,8 @@ class PostgresGraphStore:
                     analysis_status = EXCLUDED.analysis_status,
                     snapshot_kind = EXCLUDED.snapshot_kind,
                     correlation_id = EXCLUDED.correlation_id,
-                    evidence_manifest_sha256 = EXCLUDED.evidence_manifest_sha256
+                    evidence_manifest_sha256 = EXCLUDED.evidence_manifest_sha256,
+                    snapshot_generation = EXCLUDED.snapshot_generation
                 """,
                 (
                     scan,
@@ -1130,6 +1146,7 @@ class PostgresGraphStore:
                     snapshot_kind,
                     correlation_id or None,
                     evidence_manifest_sha256,
+                    uuid.uuid4().hex,
                 ),
             )
             if correlation_result_manifest is not None:
@@ -2040,6 +2057,35 @@ class PostgresGraphStore:
             ],
             int((total_row[0] if total_row else 0) or 0),
         )
+
+    def incident_edges_page(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+        direction: str = "both",
+        limit: int = 24,
+        cursor: str | None = None,
+    ) -> dict[str, Any] | None:
+        """One tenant-scoped MVCC read, without full incident or impact reads."""
+        from agent_bom.graph.adjacency_page import incident_edge_page
+
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool, repeatable_read=True) as conn:
+            _apply_graph_search_timeout(conn)
+            return incident_edge_page(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                node_id=node_id,
+                direction=direction,
+                limit=limit,
+                cursor=cursor,
+                marker="%s",
+                node_from_row=self._node_from_row,
+                edge_from_row=self._edge_from_row,
+            )
 
     def node_context(
         self,

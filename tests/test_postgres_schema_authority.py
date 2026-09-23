@@ -467,3 +467,10 @@ def test_managed_identity_store_rejects_stale_migrated_schema(monkeypatch) -> No
     with pytest.raises(RuntimeError, match="version 2 is required"):
         PostgresAgentIdentityStore(pool=_Pool(connection))
     assert len(connection.statements) == 1
+
+
+def test_graph_manifest_matches_required_postgres_schema_version() -> None:
+    from agent_bom.api.postgres_graph import _GRAPH_STORAGE_SCHEMA_VERSION
+
+    graph = next(component for component in CONTROL_PLANE_SCHEMA_COMPONENTS if component.component == "graph")
+    assert graph.version == _GRAPH_STORAGE_SCHEMA_VERSION

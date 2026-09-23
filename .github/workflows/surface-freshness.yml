@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   freshness:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name != 'workflow_run' || contains(fromJSON('["success","failure"]'), github.event.workflow_run.conclusion) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

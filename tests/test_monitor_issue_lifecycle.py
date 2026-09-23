@@ -106,3 +106,19 @@ def test_surface_recovery_does_not_notify_again_after_closure():
         )
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "filename,job,upstream",
+    [
+        ("deployment-freshness.yml", "check", "Deploy MCP SSE"),
+        ("surface-freshness.yml", "freshness", "Publish to Registries"),
+    ],
+)
+def test_freshness_reconciles_after_success_and_failure(filename, job, upstream):
+    data = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())
+    trigger = data.get("on", data.get(True))
+    assert upstream in trigger["workflow_run"]["workflows"]
+    assert trigger["workflow_run"]["types"] == ["completed"]
+    condition = data["jobs"][job]["if"]
+    assert '["success","failure"]' in condition

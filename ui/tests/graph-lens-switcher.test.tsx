@@ -110,6 +110,23 @@ describe("GraphLensSwitcher", () => {
     expect(push).toHaveBeenCalledWith("/security-graph?lens=mesh");
   });
 
+  it("preserves the recorded snapshot when entering Context", () => {
+    pathname = "/security-graph";
+    params = new URLSearchParams({ lens: "estate", scan: "snapshot-original", rollup: "1" });
+    render(<GraphLensSwitcher />);
+    fireEvent.click(screen.getByText("More views"));
+    fireEvent.click(screen.getByRole("button", { name: /context/i }));
+    expect(push).toHaveBeenCalledWith("/security-graph?scan=snapshot-original&lens=context");
+  });
+
+  it("uses the explicitly selected snapshot when leaving Context", () => {
+    pathname = "/security-graph";
+    params = new URLSearchParams({ lens: "context", scan: "older-snapshot" });
+    render(<GraphLensSwitcher scanId="selected-snapshot" />);
+    fireEvent.click(screen.getByRole("button", { name: /cloud/i }));
+    expect(push).toHaveBeenCalledWith("/security-graph?scan=selected-snapshot&lens=cloud");
+  });
+
   it("switches to the context lens without leaving the investigation surface", () => {
     render(<GraphLensSwitcher variant="floating" />);
 

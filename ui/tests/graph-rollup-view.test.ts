@@ -63,6 +63,17 @@ describe("rollupContainerSubtitle", () => {
 });
 
 describe("buildRollupFlowGraph", () => {
+  it("does not attribute a mixed aggregate count to the first relationship kind", () => {
+    const containers = [sampleContainer(), sampleContainer({ id: "account:dev" })];
+    const edges = [
+      { source: "account:prod", target: "account:dev", count: 7, relationships: ["accessed", "assumes"] },
+    ];
+    const mixed = buildRollupFlowGraph(containers, { edges });
+    expect(mixed.edges[0]?.label).toBe("7 relationships · accessed, assumes");
+    const single = buildRollupFlowGraph(containers, { edges: [{ ...edges[0]!, relationships: ["accessed"] }] });
+    expect(single.edges[0]?.label).toBe("accessed ×7");
+  });
+
   it("lays out containers on a grid with rollup metadata", () => {
     const { nodes, edges } = buildRollupFlowGraph([
       sampleContainer(),

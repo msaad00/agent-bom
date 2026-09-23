@@ -32,10 +32,12 @@ import {
   type LineageNodeData,
 } from "@/components/lineage-nodes";
 import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
+import { ContextEvidenceEdge } from "@/components/context-evidence-edge";
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
 import {
   buildContextFlowGraph,
+  contextRelationshipLabel,
   lateralPathKey,
   type ContextGraphData,
   type LateralPath,
@@ -72,6 +74,8 @@ import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { useContextGraph } from "@/hooks/use-context-graph";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+
+const contextEdgeTypes = { contextEvidence: ContextEvidenceEdge };
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
 
@@ -182,8 +186,8 @@ export function LateralPanel({
         </h3>
         <p className="text-xs text-[var(--text-tertiary)]">
           {pathFocusActive
-            ? "Select a path to inspect its recorded reachability. Other agents appear when they share reachability — not because they are the same workload."
-            : "Ranked reachability chains from scan evidence."}
+            ? "Select a path to inspect recorded scan relationships. A connected path does not prove permission or a successful call."
+            : "Ranked investigation paths from scan evidence. Execution is not established."}
         </p>
         {topPaths.length === 0 ? (
           <p className="mt-2 text-xs text-[var(--text-tertiary)]">No lateral paths found</p>
@@ -312,6 +316,7 @@ export function ContextLensView() {
   const [scanError, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<LineageNodeData>, Edge> | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -394,6 +399,8 @@ export function ContextLensView() {
     return () => window.clearTimeout(timer);
   }, [agentNames]);
 
+  useEffect(() => { setSelectedEdgeId(null); }, [graphData, selectedAgent, selectedJobId, selectedPathKey]);
+
   // Build ReactFlow graph
   const { rawNodes, rawEdges, focusedPath } = useMemo(() => {
     if (!graphData) {
@@ -420,7 +427,7 @@ export function ContextLensView() {
 
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
     // Slightly tighter ranks so small context chains fill the centered canvas.
-    dagreLr: readableLineageDagreLr({ rankSep: 132, nodeSep: 48 }),
+    dagreLr: readableLineageDagreLr({ rankSep: 200, nodeSep: 72 }),
   });
 
   // Search highlighting
@@ -508,15 +515,21 @@ export function ContextLensView() {
       captureMode,
       zoom: presentation.viewport.zoom,
       nodeLabels: graphNodeDisplayLabels(displayNodes),
-    });
+    }).map((edge): Edge => ({ ...edge,
+      ariaLabel: `${edge.data?.relationshipLabel ?? "Scan relationship"}: ${edge.source} to ${edge.target}. Execution not established.`,
+      data: { ...edge.data, onInspect: () => { setSelectedEdgeId(edge.id); setSelectedNode(null); setSelectedNodeId(null); } },
+    }));
   }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode, presentation.viewport.zoom, displayNodes]);
 
   const legendItems = useMemo(() => {
     const extras =
       displayEdges.some((edge) => edge.animated || Boolean(edge.style?.strokeDasharray))
-        ? [{ label: "Lateral", color: "#f97316", dashed: true, shape: "diamond" as const }]
+        ? [{ label: "Selected scan path", color: "#f97316", dashed: true, shape: "diamond" as const }]
         : [];
-    return legendItemsForVisibleGraph(displayNodes, displayEdges, extras);
+    return legendItemsForVisibleGraph(displayNodes, displayEdges, extras).map((item) => {
+      const relationships: Record<string, string> = { Uses: "uses", "Has CVE": "vulnerable_to", "Provides Tool": "provides_tool", "Exposes Credential": "exposes_cred" };
+      return relationships[item.label] ? { ...item, label: contextRelationshipLabel(relationships[item.label]!) } : item;
+    });
   }, [displayEdges, displayNodes]);
 
   const viewportOptions = useMemo(
@@ -542,6 +555,7 @@ export function ContextLensView() {
   );
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    setSelectedEdgeId(null);
     setSelectedNode(node.data as LineageNodeData);
     setSelectedNodeId(node.id);
     setHoveredNodeId(null);
@@ -707,6 +721,11 @@ export function ContextLensView() {
         <GraphLensSwitcher variant="compact" {...(!captureMode ? { legendItems } : {})} />
       </div>
 
+      <p className="border-b border-[var(--border-subtle)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+        Scan relationships · Paths are investigation leads, not proof of permission, execution, or exploitation.
+        CVEs refer to affected packages; advertised tools and credential references do not prove use.
+      </p>
+
       {!captureMode && topExposurePath && (
         <ExposurePathStrip
           path={topExposurePath}
@@ -770,13 +789,14 @@ export function ContextLensView() {
               nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypes}
+              edgeTypes={contextEdgeTypes}
               fitView={!presentation.hasSavedState}
               defaultViewport={presentation.viewport}
               fitViewOptions={viewportOptions}
               minZoom={0.16}
               maxZoom={2.8}
               onlyRenderVisibleElements
-              defaultEdgeOptions={{ type: "smoothstep" }}
+              defaultEdgeOptions={{ type: "default" }}
               proOptions={{ hideAttribution: true }}
               deleteKeyCode={null}
               nodesDraggable={!captureMode && presentation.editing}
@@ -786,9 +806,15 @@ export function ContextLensView() {
               onMoveEnd={presentation.onMoveEnd}
               onInit={setFlowInstance}
               onNodeClick={onNodeClick}
+              onEdgeClick={(_event, edge) => {
+                setSelectedEdgeId(edge.id);
+                setSelectedNode(null);
+                setSelectedNodeId(null);
+              }}
               onNodeMouseEnter={onNodeMouseEnter}
               onNodeMouseLeave={onNodeMouseLeave}
               onPaneClick={() => {
+                setSelectedEdgeId(null);
                 setSelectedNode(null);
                 setSelectedNodeId(null);
                 setHoveredNodeId(null);
@@ -809,6 +835,18 @@ export function ContextLensView() {
             </div>
           )}
 
+          {selectedEdgeId && displayEdges.some((edge) => edge.id === selectedEdgeId) && (() => {
+            const edge = displayEdges.find((candidate) => candidate.id === selectedEdgeId)!;
+            return <section aria-label="Relationship evidence" className="absolute bottom-3 left-3 right-3 z-20 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-sm text-[var(--foreground)] shadow-lg">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-semibold">{String(edge.data?.relationshipLabel ?? "Scan relationship")}</h3>
+                <button type="button" onClick={() => setSelectedEdgeId(null)} className="shrink-0 underline">Close relationship</button>
+              </div>
+              <p className="mt-1 break-words">{rawNodes.find((node) => node.id === edge.source)?.data.label as string} → {rawNodes.find((node) => node.id === edge.target)?.data.label as string}</p>
+              {typeof edge.data?.package === "string" && <p className="mt-1 break-words">Affected package: {edge.data.package}</p>}
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">Recorded in this scan. This relationship does not establish permission, a successful call, resource access, or exploitation.</p>
+            </section>;
+          })()}
           {selectedNode && (
             <GraphEntityDrawer
               data={selectedNode}

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { buildContextFlowGraph, lateralPathKey, displayContextDescription, topLateralPathForAgent, type ContextGraphData, type LateralPath } from "@/lib/context-graph";
 import { RELATIONSHIP_COLOR_MAP, RelationshipType } from "@/lib/graph-schema";
-import { relationshipEdgeLabelText } from "@/lib/graph-utils";
 
 describe("buildContextFlowGraph", () => {
   it("prefers canonical entity and relationship fields when present", () => {
@@ -165,8 +164,35 @@ describe("buildContextFlowGraph", () => {
     };
 
     const graph = buildContextFlowGraph(data);
-    expect(graph.edges[0]?.label).toBe(relationshipEdgeLabelText("uses"));
+    expect(graph.edges[0]?.label).toBe("Configured server");
     expect(graph.edges[0]?.labelShowBg).toBe(true);
+  });
+
+  it("preserves package associations without implying tool execution or shared arrow trunks", () => {
+    const data: ContextGraphData = {
+      nodes: [
+        { id: "s", kind: "server", label: "MCP", metadata: {} },
+        { id: "t", kind: "tool", label: "create_pull_request", metadata: {} },
+        { id: "v", kind: "vulnerability", label: "CVE-test", metadata: { package: "first-only" } },
+      ],
+      edges: [
+        { source: "s", target: "t", kind: "provides", weight: 1, metadata: {} },
+        { source: "s", target: "v", kind: "vulnerable_to", weight: 1, metadata: { package: "next@15.2.2" } },
+        { source: "s", target: "v", kind: "vulnerable_to", weight: 1, metadata: { package: "", packages: ["other@1.0"] } },
+      ],
+      lateral_paths: [], interaction_risks: [],
+      stats: { total_nodes: 3, total_edges: 3, agent_count: 0, shared_server_count: 0, shared_credential_count: 0, lateral_path_count: 0, max_lateral_depth: 0, highest_path_risk: 0, interaction_risk_count: 0 },
+    };
+    const graph = buildContextFlowGraph(data);
+    expect(graph.nodes.find(node => node.id === "v")?.data.description).toBe("Affected package: next@15.2.2, other@1.0");
+    expect(graph.edges[0]?.label).toBe("Advertises tool");
+    expect(graph.edges[1]?.label).toBe("Package vulnerability");
+    expect(graph.edges[1]?.data).toMatchObject({ package: "next@15.2.2", evidenceMode: "static" });
+    expect(graph.edges.every(edge => edge.type === "contextEvidence" && edge.animated === false)).toBe(true);
+    expect(graph.edges.some(edge => edge.source === "t" && edge.target === "v")).toBe(false);
+    data.edges = [];
+    data.nodes[2]!.metadata = {};
+    expect(buildContextFlowGraph(data).nodes.find(node => node.id === "v")?.data.description).toBe("Affected package not recorded");
   });
 
 });

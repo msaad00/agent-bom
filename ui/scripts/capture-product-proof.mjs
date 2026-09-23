@@ -447,9 +447,9 @@ function contextGraph() {
     { source: "agent:developer-copilot", target: "server:filesystem", kind: "uses", relationship: "uses", weight: 1, metadata: { effective_reach_score: 9.1 } },
     { source: "server:github", target: "cred:github", kind: "exposes_cred", relationship: "exposes_cred", weight: 1, metadata: { effective_reach_score: 9.2 } },
     { source: "server:github", target: "tool:repo-write", kind: "provides_tool", relationship: "provides_tool", weight: 1, metadata: { effective_reach_score: 8.3 } },
-    { source: "server:github", target: "cve:next", kind: "vulnerable_to", relationship: "vulnerable_to", weight: 1, metadata: { effective_reach_score: 9.8 } },
+    { source: "server:github", target: "cve:next", kind: "vulnerable_to", relationship: "vulnerable_to", weight: 1, metadata: { effective_reach_score: 9.8, package: `${advisory("CVE-2025-29927").package}@${advisory("CVE-2025-29927").version}` } },
     { source: "server:filesystem", target: "tool:exec", kind: "provides_tool", relationship: "provides_tool", weight: 1, metadata: { effective_reach_score: 9.5 } },
-    { source: "server:filesystem", target: "cve:urllib3", kind: "vulnerable_to", relationship: "vulnerable_to", weight: 1, metadata: { effective_reach_score: 8.8 } },
+    { source: "server:filesystem", target: "cve:urllib3", kind: "vulnerable_to", relationship: "vulnerable_to", weight: 1, metadata: { effective_reach_score: 8.8, package: `${advisory("CVE-2024-37891").package}@${advisory("CVE-2024-37891").version}` } },
     { source: "agent:sre-runbook", target: "server:filesystem", kind: "uses", relationship: "uses", weight: 1, metadata: { effective_reach_score: 8.5 } },
     { source: "agent:finance-rag", target: "server:snowflake", kind: "uses", relationship: "uses", weight: 1, metadata: { effective_reach_score: 8.4 } },
     { source: "server:snowflake", target: "cred:snowflake", kind: "exposes_cred", relationship: "exposes_cred", weight: 1, metadata: { effective_reach_score: 9.0 } },
@@ -464,21 +464,21 @@ function contextGraph() {
       {
         source: "agent:developer-copilot",
         target: "cve:next",
-        hops: ["agent:developer-copilot", "server:github", "cred:github", "tool:repo-write", "cve:next"],
+        hops: ["agent:developer-copilot", "server:github", "cve:next"],
         edges: [],
         composite_risk: 9.8,
-        summary: "developer-copilot reaches GitHub MCP, a repo-write tool, a credential reference, and a critical CVE in one bounded path.",
+        summary: "Configured GitHub MCP server has an affected package. Tool execution is not established.",
         credential_exposure: ["DEMO_CRED_REF"],
         tool_exposure: ["create_pull_request"],
         vuln_ids: ["CVE-2025-29927"],
       },
       {
         source: "agent:developer-copilot",
-        target: "agent:sre-runbook",
-        hops: ["agent:developer-copilot", "server:filesystem", "tool:exec", "agent:sre-runbook"],
+        target: "tool:exec",
+        hops: ["agent:developer-copilot", "server:filesystem", "tool:exec"],
         edges: [],
         composite_risk: 8.9,
-        summary: "Shared filesystem MCP creates a lateral path from IDE agent scope to SRE runbook automation.",
+        summary: "Configured filesystem MCP advertises an execution tool; invocation is not established.",
         credential_exposure: ["AWS_ROLE_SESSION"],
         tool_exposure: ["execute_command"],
         vuln_ids: ["CVE-2024-37891"],
@@ -3705,6 +3705,15 @@ async function main() {
 }
 
 function checkAdvisoryFixtures() {
+  const context = contextGraph();
+  const links = new Set(context.edges.flatMap(edge => [`${edge.source}→${edge.target}`, `${edge.target}→${edge.source}`]));
+  for (const path of context.lateral_paths) {
+    if (path.source !== path.hops[0] || path.target !== path.hops.at(-1)
+      || path.hops.slice(1).some((node, index) => !links.has(`${path.hops[index]}→${node}`))) {
+      throw new Error("Context capture path contains an unrecorded relationship");
+    }
+  }
+
   for (const agent of scanAgents()) for (const server of agent.mcp_servers) for (const pkg of server.packages) {
     for (const vuln of pkg.vulnerabilities) {
       const facts = advisory(vuln.id);

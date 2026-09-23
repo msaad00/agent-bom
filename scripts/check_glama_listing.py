@@ -330,8 +330,42 @@ def _fetch(url: str, timeout: float) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
+class _NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
+    """Fail closed on redirects from the authenticated Directory API."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _fetch_json(url: str, timeout: float) -> dict[str, object]:
-    payload = json.loads(_fetch(url, timeout))
+    api_key = (os.environ.get("GLAMA_API_KEY") or "").strip()
+    if api_key:
+        if any(ord(char) < 33 or ord(char) > 126 for char in api_key):
+            raise ValueError("GLAMA_API_KEY must contain only printable bearer-token characters")
+        parsed = urllib.parse.urlsplit(url)
+        # Overrides may select a test/public endpoint, but must never receive
+        # the production credential. Redirects and ambient proxies are disabled.
+        if (
+            parsed.scheme != "https"
+            or parsed.netloc not in {"glama.ai", "glama.ai:443"}
+            or not parsed.path.startswith("/api/mcp/")
+            or "%" in parsed.path
+            or ".." in parsed.path.split("/")
+            or "\\" in parsed.path
+        ):
+            raise ValueError("GLAMA_API_KEY requires the trusted HTTPS Glama Directory API")
+        request = urllib.request.Request(url, headers={"User-Agent": "agent-bom-release-check/1.0"})
+        request.add_unredirected_header("Authorization", f"Bearer {api_key}")
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoCredentialRedirect())
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as exc:
+            raise ValueError(f"Authenticated Glama Directory API returned HTTP {exc.code}") from None
+        except (OSError, ValueError):
+            raise ValueError("Authenticated Glama Directory API request or response failed") from None
+    else:
+        payload = json.loads(_fetch(url, timeout))
     if not isinstance(payload, dict):
         raise ValueError("Glama public API returned a non-object payload")
     return payload

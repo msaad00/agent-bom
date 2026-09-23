@@ -81,6 +81,7 @@ jobs:
       - name: Probe every distribution surface
         id: probe
         env:
+          GLAMA_API_KEY: ${{ secrets.GLAMA_API_KEY }}
           GLAMA_DIAGNOSTICS_DIR: ${{ runner.temp }}/glama-response
           EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}

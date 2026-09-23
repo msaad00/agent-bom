@@ -263,7 +263,7 @@ def test_surface_freshness_rechecks_immediately_after_registry_publication() -> 
     assert 'workflows: ["Publish to Registries"]' in workflow
     job = yaml.safe_load(workflow)["jobs"]["freshness"]
     assert "github.event_name != 'workflow_run'" in job["if"]
-    assert "contains(fromJSON('[\"success\",\"failure\"]'), github.event.workflow_run.conclusion)" in job["if"]
+    assert 'contains(fromJSON(\'["success","failure"]\'), github.event.workflow_run.conclusion)' in job["if"]
 
 
 def test_configured_registry_repair_runs_without_a_source_metadata_auth_claim(tmp_path):

@@ -3516,7 +3516,7 @@ async function main() {
         }
         await contextPage.locator('[data-id="tool:repo-write"]').waitFor({ state: "visible" });
         await neighborhoodInspector.evaluate(element => { element.scrollTop = 0; });
-        await expect(neighborhoodInspector.getByRole("heading")).toBeInViewport();
+        await expect(neighborhoodInspector.getByRole("heading", { name: "github-enterprise MCP", exact: true })).toBeInViewport();
         await fitReactFlow(contextPage);
         for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
         await scrollTo(contextPage, 0);

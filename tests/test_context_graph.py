@@ -818,3 +818,65 @@ class TestLateralPathDeterminism:
         )
         assert len(paths) <= 10
         assert truncated is True
+
+
+def test_vulnerability_edges_follow_exact_inventory_ownership():
+    package = {"name": "lib", "version": "1.0", "ecosystem": "pypi"}
+    other = {"name": "other", "version": "1.0", "ecosystem": "pypi"}
+    agents = [
+        _agent("A", servers=[_server("s1", packages=[package]), _server("s2", packages=[other])]),
+        _agent("B", servers=[_server("s1", packages=[other]), _server("s2", packages=[package])]),
+    ]
+    row = _blast(agents=["A", "B"], servers=["s1", "s2"], package="lib@1.0") | {"ecosystem": "pypi"}
+    graph = build_context_graph(agents, [row])
+    edges = [edge for edge in graph.edges if edge.kind == EdgeKind.VULNERABLE_TO]
+    assert {edge.source for edge in edges} == {"server:A:s1", "server:B:s2"}
+    assert len(edges) == 2
+    serialized = to_serializable(graph, [], [])
+    assert len([edge for edge in serialized["edges"] if edge["kind"] == "vulnerable_to"]) == 2
+    for identity in [{"ecosystem": "npm"}, {"package": "lib@2.0"}]:
+        mismatched = build_context_graph(agents, [row | identity])
+        assert not any(edge.kind == EdgeKind.VULNERABLE_TO for edge in mismatched.edges)
+
+
+def test_ambiguous_legacy_ownership_fails_closed():
+    agents = [_agent(name, servers=[_server("s1"), _server("s2")]) for name in ("A", "B")]
+    row = _blast(agents=["A", "B"], servers=["s1", "s2"])
+    assert not any(edge.kind == EdgeKind.VULNERABLE_TO for edge in build_context_graph(agents, [row]).edges)
+    assert (
+        len(
+            [
+                edge
+                for edge in build_context_graph(agents, [row | {"affected_servers": ["s1"]}]).edges
+                if edge.kind == EdgeKind.VULNERABLE_TO
+            ]
+        )
+        == 2
+    )
+
+
+def test_vulnerability_package_evidence_remains_scoped_after_edge_deduplication():
+    packages = [{"name": name, "version": "1", "ecosystem": "npm"} for name in ("@scope/a", "b")]
+    agents = [_agent(servers=[_server(packages=packages)])]
+    rows = [
+        _blast(package="@scope/a@1") | {"ecosystem": "npm", "symbol_reachability": "reachable", "runtime_dependency_chain": ["app", "a"]},
+        _blast(package="b@1") | {"ecosystem": "npm", "symbol_reachability": "unknown"},
+    ]
+    graph = build_context_graph(agents, rows)
+    node = graph.nodes["vuln:CVE-2025-0001"]
+    assert node.metadata["affected_packages"] == ["@scope/a@1", "b@1"]
+    assert node.metadata["package"] == ""
+    assert "symbol_reachability" not in node.metadata
+    assert "runtime_dependency_chain" not in node.metadata
+    edges = [edge for edge in graph.edges if edge.kind == EdgeKind.VULNERABLE_TO]
+    assert len(edges) == 1
+    assert edges[0].metadata["packages"] == ["@scope/a@1", "b@1"]
+    evidence = edges[0].metadata["package_evidence"]
+    assert {row["package"]: row["symbol_reachability"] for row in evidence} == {"@scope/a@1": "reachable", "b@1": "unknown"}
+    assert all(not edge.source.startswith("tool:") for edge in edges)
+
+
+def test_missing_ecosystem_does_not_choose_between_different_package_identities():
+    packages = [{"name": "lib", "version": "1", "ecosystem": ecosystem} for ecosystem in ("npm", "pypi")]
+    graph = build_context_graph([_agent(servers=[_server(packages=packages)])], [_blast(package="lib@1")])
+    assert not any(edge.kind == EdgeKind.VULNERABLE_TO for edge in graph.edges)

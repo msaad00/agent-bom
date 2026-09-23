@@ -703,14 +703,19 @@ function CompliancePageContent() {
         <button
           onClick={() => void handleExportPack()}
           disabled={exporting}
-          title="Download a signed evidence pack covering every framework"
+          title="Download signed current tenant evidence covering every framework"
           className="flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-sm font-medium text-[color:var(--accent)] transition-colors hover:bg-[color:var(--accent-soft-hover)] disabled:opacity-50"
           data-testid="compliance-export-pack"
         >
           {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          {exporting ? "Exporting…" : "Export pack"}
+          {exporting ? "Exporting…" : "Export tenant pack"}
         </button>
       </div>
+      {scanParam ? (
+        <p className="text-right text-xs text-[color:var(--text-secondary)]">
+          Includes current tenant evidence; not limited to this scan.
+        </p>
+      ) : null}
       {exportError ? (
         <p className="text-right text-xs text-[color:var(--status-danger)]">{exportError}</p>
       ) : null}

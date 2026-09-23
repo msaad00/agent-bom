@@ -404,11 +404,11 @@ export default function Dashboard() {
   // The overview's configurable exec risk score (#3940) is authoritative for the
   // exec grade — it derives from the honest estate counts and the tenant's score
   // model. Fall back to /v1/posture only until the overview payload lands.
-  const postureGrade = overview?.posture.grade ?? posture?.grade ?? "—";
-  const postureScore = overview ? (overview.posture.score ?? undefined) : posture?.score;
+  const postureGrade = importedReport ? "—" : (overview?.posture.grade ?? posture?.grade ?? "—");
+  const postureScore = importedReport ? undefined : overview ? (overview.posture.score ?? undefined) : posture?.score;
   const scoreFormat: PostureScoreFormat =
     scoreFormatOverride ?? overview?.posture.display_format ?? "percent";
-  const scoreBreakdown = overview?.posture.breakdown ?? null;
+  const scoreBreakdown = importedReport ? null : (overview?.posture.breakdown ?? null);
   const handleScoreFormatChange = (format: PostureScoreFormat) => {
     // Optimistic local update, then persist per-tenant. A failed persist (e.g.
     // a viewer without admin) still keeps the local view; it just won't stick.
@@ -416,7 +416,11 @@ export default function Dashboard() {
     api.updateScoreConfig({ display_format: format }).catch(() => {});
   };
   const overviewSnapshot = overview?.finding_counts && !importedReport ? overview : null;
-  const latestScanShort = overviewSnapshot
+  const latestScanShort = importedReport
+    ? (importedReport.scan_timestamp || importedReport.generated_at
+      ? formatShortScanTime(importedReport.scan_timestamp ?? importedReport.generated_at!)
+      : null)
+    : overviewSnapshot
     ? (overviewSnapshot.headline.latest_scan_at ? formatShortScanTime(overviewSnapshot.headline.latest_scan_at) : null)
     : summaryReady && effectiveRecentJobs[0]
       ? formatShortScanTime(
@@ -444,8 +448,8 @@ export default function Dashboard() {
       <div aria-label="Evidence scopes" className="[overflow-wrap:anywhere] flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-outline px-3 py-2 text-xs text-ink-secondary">
         <span>Findings: {importedReport ? "Imported report" : "Current tenant · configured window"}</span>
         <span>Inventory: {importedReport ? "Not linked to a graph snapshot" : inventoryLoading ? "Loading snapshot" : inventorySummary ? `Snapshot ${inventorySummary.scan_id}` : "Unavailable"}</span>
-        <span>{inventorySummary?.filters?.environment ? `Inventory environment: ${inventorySummary.filters.environment}` : "Inventory includes unclassified environments"}</span>
-        {inventorySummary?.filters && Object.values(inventorySummary.filters).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? <span>Inventory filters do not change the findings window</span> : null}
+        {!importedReport ? <span>{inventorySummary?.filters?.environment ? `Inventory environment: ${inventorySummary.filters.environment}` : "Inventory includes unclassified environments"}</span> : null}
+        {!importedReport && inventorySummary?.filters && Object.values(inventorySummary.filters).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? <span>Inventory filters do not change the findings window</span> : null}
       </div>
       <OverviewCockpit
         inventorySummary={importedReport ? null : inventorySummary}
@@ -460,33 +464,33 @@ export default function Dashboard() {
         score={postureScore}
         scoreFormat={scoreFormat}
         scoreBreakdown={scoreBreakdown}
-        scoreFloored={overview?.posture.floored}
-        onScoreFormatChange={handleScoreFormatChange}
-        postureSummary={overview?.posture.summary ?? posture?.summary}
+        scoreFloored={importedReport ? undefined : overview?.posture.floored}
+        onScoreFormatChange={importedReport ? undefined : handleScoreFormatChange}
+        postureSummary={importedReport ? "Tenant posture is unavailable for an imported report." : overview?.posture.summary ?? posture?.summary}
         critical={criticalCount}
         high={highCount}
         kev={summaryReady ? displayedKevCount : null}
         credentials={summaryReady ? displayedCredentialExposure : null}
         agents={displayedAgentCount}
         cves={summaryReady ? displayedUniqueCVEs : null}
-        scans={overviewSnapshot ? overviewSnapshot.headline.scans : summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
+        scans={importedReport ? 1 : overviewSnapshot ? overviewSnapshot.headline.scans : summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
         latestScan={overviewSnapshot || !jobsLoading ? latestScanShort : null}
-        mode={deploymentModeLabel(counts?.deployment_mode)}
+        mode={importedReport ? "Imported report" : deploymentModeLabel(counts?.deployment_mode)}
         summaryReady={Boolean(importedReport || counts || overview)}
-        findingsScopeLabel="Current findings · configured window"
+        findingsScopeLabel={importedReport ? "Imported report" : "Current findings · configured window"}
         severity={canonicalSeverity}
-        domains={overview?.domains ?? null}
-        coverage={overview?.coverage ?? null}
+        domains={importedReport ? null : overview?.domains ?? null}
+        coverage={importedReport ? null : overview?.coverage ?? null}
         topPath={overview?.finding_counts && !importedReport ? null : topExposurePath}
         exposurePaths={exposurePaths}
         signals={{
           tools: summaryReady ? displayedReachableTools : null,
           packages: summaryReady ? displayedPackages : null,
-          activeServices: countActiveServices(counts?.services),
-          connected: hasDeploymentSignals(counts),
+          activeServices: importedReport ? 0 : countActiveServices(counts?.services),
+          connected: !importedReport && hasDeploymentSignals(counts),
         }}
-        compliance={complianceSnapshot}
-        services={counts?.services ?? null}
+        compliance={importedReport ? null : complianceSnapshot}
+        services={importedReport ? null : counts?.services ?? null}
       />
 
       <details className="rounded-lg border border-outline px-4 py-3"><summary className="cursor-pointer text-sm font-medium">Recent scans & activity</summary>

@@ -66,11 +66,19 @@ Package Extraction
 Vulnerability Scan
   [ok] Demo advisory DB: 15 vulnerabilities found (offline)
   [warn] Found 15 vulnerabilities across 15 findings
-  [warn] Scan complete - 2 critical, 10 high, 3 medium
+  [warn] Scan complete — package CVEs: 2 critical · 9 high · 4 medium
+[warn] Toxic combinations: 5 finding(s)
+[warn] Findings — 2 critical · 16 high · 5 medium (all finding categories)
 
 agent-bom <installed version>
 agents=5 servers=10 packages=23 vulnerabilities=15
 ```
+
+The package-CVE count and unified finding count have different scopes. This
+sample has 15 package-CVE findings; its JSON `finding_summary` also includes
+3 prompt-security and 5 combination findings, for 23 unified findings. Use
+`finding_summary.by_type` when comparing categories rather than treating every
+finding as another CVE. Counts can change with the installed release.
 
 What to look for:
 

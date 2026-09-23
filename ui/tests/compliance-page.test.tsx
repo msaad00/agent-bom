@@ -151,6 +151,13 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
+it("labels the signed export as tenant-wide when viewing one scan", async () => {
+  navigation.query = "scan=scan-a";
+  render(<CompliancePage />);
+  expect(await screen.findByRole("button", { name: "Export tenant pack" })).toBeVisible();
+  expect(screen.getByText("Includes current tenant evidence; not limited to this scan.")).toBeVisible();
+});
+
 describe("CompliancePage (dense restyle)", () => {
   it("opens the requested framework and still lets the reader select another", async () => {
     navigation.query = "framework=owasp-mcp";

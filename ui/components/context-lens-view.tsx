@@ -36,6 +36,7 @@ import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
 import {
   buildContextFlowGraph,
+  lateralPathKey,
   type ContextGraphData,
   type LateralPath,
   type InteractionRisk,
@@ -69,6 +70,7 @@ import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/comp
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
+import { useContextGraph } from "@/hooks/use-context-graph";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
@@ -145,27 +147,32 @@ function agentScopeHeading(agentId: string | null, agents: Agent[]): string {
   return typeLabel ? `Paths from ${label} · ${typeLabel}` : `Paths from ${label}`;
 }
 
-function LateralPanel({
+export function LateralPanel({
   paths,
   risks,
   selectedAgent,
   pathFocusActive,
+  focusedPathKey,
+  onSelectPath,
   agents,
 }: {
   paths: LateralPath[];
   risks: InteractionRisk[];
   selectedAgent: string | null;
   pathFocusActive: boolean;
+  focusedPathKey: string | null;
+  onSelectPath: (path: LateralPath) => void;
   agents: Agent[];
 }) {
   const [risksOpen, setRisksOpen] = useState(false);
+  const [pathLimit, setPathLimit] = useState(5);
   const filtered = selectedAgent
     ? paths.filter((p) => p.source === `agent:${selectedAgent}`)
     : paths;
   const distinctPaths = Array.from(
-    new Map(filtered.map((path) => [`${path.hops.join("->")}::${path.vuln_ids.join(",")}`, path])).values(),
+    new Map(filtered.map((path) => [lateralPathKey(path), path])).values(),
   ).sort((left, right) => right.composite_risk - left.composite_risk);
-  const topPaths = distinctPaths.slice(0, pathFocusActive ? 3 : 5);
+  const topPaths = distinctPaths.slice(0, pathLimit);
 
   return (
     <div className="w-80 shrink-0 overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)]">
@@ -175,18 +182,22 @@ function LateralPanel({
         </h3>
         <p className="text-[10px] text-[var(--text-tertiary)]">
           {pathFocusActive
-            ? "Canvas shows the top lateral path only. Other agents appear when they share reachability — not because they are the same workload."
+            ? "Select a path to inspect its recorded reachability. Other agents appear when they share reachability — not because they are the same workload."
             : "Ranked reachability chains from scan evidence."}
         </p>
         {topPaths.length === 0 ? (
           <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">No lateral paths found</p>
         ) : (
           <div className="mt-2 space-y-2">
-            {topPaths?.map((p, i) => (
-              <div
-                key={i}
-                className={`rounded-lg border p-2 ${
-                  i === 0 && pathFocusActive
+            {topPaths.map((p) => (
+              <button
+                type="button"
+                key={lateralPathKey(p)}
+                aria-pressed={pathFocusActive && focusedPathKey === lateralPathKey(p)}
+                aria-label={`Inspect path: ${pathDisplayTitle(lateralPathToExposure(p, selectedAgent ?? "agent"))}`}
+                onClick={() => onSelectPath(p)}
+                className={`w-full rounded-lg border p-2 text-left focus-visible:outline-2 focus-visible:outline-orange-500 ${
+                  focusedPathKey === lateralPathKey(p) && pathFocusActive
                     ? "border-orange-500/40 bg-orange-950/20"
                     : "border-[var(--border-subtle)] bg-[var(--surface)]"
                 }`}
@@ -225,8 +236,14 @@ function LateralPanel({
                     Findings: {formatExposureList(p.vuln_ids, 3)}
                   </p>
                 )}
-              </div>
+              </button>
             ))}
+            <p className="text-[10px] text-[var(--text-tertiary)]">Showing {topPaths.length} of {distinctPaths.length} recorded paths</p>
+            {topPaths.length < distinctPaths.length && (
+              <button type="button" className="text-xs text-[var(--foreground)] underline focus-visible:outline-2" onClick={() => setPathLimit((limit) => limit + 5)}>
+                Show more paths
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -289,15 +306,17 @@ function LateralPanel({
 export function ContextLensView() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
-  const [graphData, setGraphData] = useState<ContextGraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [scanError, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<LineageNodeData>, Edge> | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedPathKey, setSelectedPathKey] = useState<string | undefined>();
+  const { data: graphData, error: contextError } = useContextGraph(selectedJobId, selectedAgent);
+  const error = contextError ?? scanError;
   const [searchQuery, setSearchQuery] = useState("");
   const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
   // Canvas is the hero — paths list opens on demand (drawer), not by default.
@@ -374,19 +393,6 @@ export function ContextLensView() {
     return () => window.clearTimeout(timer);
   }, [agentNames]);
 
-  // Fetch context graph when job changes
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (!selectedJobId) return;
-      setGraphData(null);
-      api
-        .getContextGraph(selectedJobId, selectedAgent ?? undefined)
-        .then((resp) => setGraphData(resp as unknown as ContextGraphData))
-        .catch((e) => setError(e.message));
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [selectedJobId, selectedAgent]);
-
   // Build ReactFlow graph
   const { rawNodes, rawEdges, focusedPath } = useMemo(() => {
     if (!graphData) {
@@ -399,10 +405,10 @@ export function ContextLensView() {
     const { nodes, edges, focusedPath: path } = buildContextFlowGraph(
       graphData,
       selectedAgent ?? undefined,
-      { topPathOnly: pathFocusEnabled },
+      { topPathOnly: pathFocusEnabled, selectedPathKey },
     );
     return { rawNodes: nodes, rawEdges: edges, focusedPath: path };
-  }, [graphData, selectedAgent, pathFocusEnabled]);
+  }, [graphData, selectedAgent, pathFocusEnabled, selectedPathKey]);
 
   const topExposurePath = useMemo(() => {
     if (!graphData || !selectedAgent) return null;
@@ -797,6 +803,16 @@ export function ContextLensView() {
             risks={graphData.interaction_risks}
             selectedAgent={selectedAgent}
             pathFocusActive={pathFocusEnabled}
+            focusedPathKey={focusedPath ? lateralPathKey(focusedPath) : null}
+            onSelectPath={(path) => {
+              setSelectedPathKey(lateralPathKey(path));
+              setSelectedAgent(path.source.replace(/^agent:/, ""));
+              setPathFocusEnabled(true);
+              setSearchQuery("");
+              setHoveredNodeId(null);
+              setSelectedNode(null);
+              setSelectedNodeId(null);
+            }}
             agents={activeJob?.result?.agents ?? []}
           />
         )}

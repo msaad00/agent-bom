@@ -146,7 +146,7 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
     if (arrow && recorded?.direction === "bidirectional") directed.markerStart = arrow;
     return directed;
   }), [flow.edges, display.edges, selectedEdge, selectedId, focus]);
-  const layout = useGraphLayout("dagre", flow.nodes, directedEdges, { dagre: { direction: mobile ? "TB" : "LR", nodeWidth: 260, nodeHeight: 130, rankSep: 64, nodeSep: 32, minSeparation: { width: 260, height: 130, gap: 32 } } });
+  const layout = useGraphLayout("dagre", flow.nodes, directedEdges, { dagre: { direction: mobile ? "TB" : "LR", nodeWidth: 260, nodeHeight: 130, rankSep: mobile ? 64 : 128, nodeSep: 32, minSeparation: { width: 260, height: 130, gap: 32 } } });
   const selected = graph.nodes.find(node => node.id === (selectedId || focus));
   const incident = graph.edges.filter(edge => edge.source === selected?.id || edge.target === selected?.id);
   const pages = graph.pages.filter(page => page.node_id === selected?.id);
@@ -175,13 +175,13 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
     {graph.pages.some(page => page.completeness.missing_endpoint_count > 0) && <p>Some recorded endpoints are unavailable; this neighborhood is incomplete.</p>}
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
-      <div aria-label="Persisted neighborhood canvas" className="relative h-[32rem] min-w-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]">
+      <div aria-label="Persisted neighborhood canvas" className="relative h-[32rem] lg:h-[28rem] min-w-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]">
         {!!layout.nodes.length && <ReactFlow key={JSON.stringify([focus, mobile, layout.nodes.map(node => node.id), layout.pending])} nodes={layout.nodes} edges={layout.edges} nodeTypes={lineageNodeTypes} edgeTypes={relationshipEdgeTypes} fitView fitViewOptions={{ padding: 0.08, minZoom: mobile ? 0.75 : 0.85, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
           onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(null); }} onEdgeClick={(_, selected) => { setSelectedEdge(JSON.stringify([selected.source, selected.target, selected.data?.relationship])); }}>
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} /><Controls className={CONTROLS_CLASS} />
         </ReactFlow>}
       </div>
-      <aside aria-label="Agent neighborhood inspector" className="max-h-[32rem] overflow-y-auto min-w-0 space-y-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4">
+      <aside aria-label="Agent neighborhood inspector" className="max-h-[32rem] lg:max-h-[28rem] overflow-y-auto min-w-0 space-y-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4">
         <h2 className="break-words text-lg font-semibold">{edge ? recordedLabel(String(edge.relationship)) : selected?.label || "Select an entity"}</h2>
         {edge ? <><p className="break-words">{label(edge.source)} → {label(edge.target)}</p><p>Recorded direction: {edge.direction}</p><p className="break-words">Evidence basis: {String(edge.evidence.evidence_tier ?? edge.evidence.evidence_basis ?? edge.evidence.basis ?? "unknown")}</p><p className="break-words">Runtime outcome: {String(edge.evidence.runtime_outcome ?? "unknown")}</p><button className="context-action" onClick={() => setSelectedEdge(null)}>Close inspection</button></> : selected ? <>
           <Link className="context-action inline-block" href={buildGraphInvestigationHref({ scanId, rootId: selected.id })}>Investigate reach &amp; permissions</Link>

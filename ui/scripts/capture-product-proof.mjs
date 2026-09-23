@@ -3550,6 +3550,7 @@ async function main() {
         minGraphEdges: 2,
         maxGraphEdges: 2,
         minGraphNodeFontPx: 12,
+        assertEdgeLabelsClearOfNodes: true,
       },
     );
     await page.setViewportSize({ width: 1440, height: 980 });

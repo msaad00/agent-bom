@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ExposurePathNeighborExplorer } from "@/components/exposure-path-neighbor-explorer";
@@ -17,7 +17,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 function node(id: string, entityType: string, label: string): UnifiedNode {
@@ -145,7 +145,7 @@ it("expands typed nonstandard hops and retries a failed lookup", async () => {
 });
 
 it("does not describe a truncated empty response as an isolated node", async () => {
-  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "pkg:werkzeug", found: true,
+  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "pkg:werkzeug", scan_id: "scan-1", found: true,
     total_neighbors: 4, truncated: true, neighbors: [], edges: [] });
   render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
   fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of werkzeug/ }));
@@ -154,7 +154,7 @@ it("does not describe a truncated empty response as an isolated node", async () 
 });
 
 it("retains both directions and multiple relationship types for the same neighbor", async () => {
-  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "pkg:werkzeug", found: true,
+  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "pkg:werkzeug", scan_id: "scan-1", found: true,
     total_neighbors: 1, truncated: false, neighbors: [node("cve:one", "vulnerability", "CVE-2023-25577")],
     edges: [edge("pkg:werkzeug", "cve:one", "vulnerable_to"), edge("cve:one", "pkg:werkzeug", "affects")] });
   render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
@@ -162,4 +162,52 @@ it("retains both directions and multiple relationship types for the same neighbo
   expect(await screen.findByText("Vulnerable To")).toBeInTheDocument();
   expect(screen.getByText("Affects")).toBeInTheDocument();
   expect(screen.getByText("Incoming relationships")).toBeInTheDocument();
+});
+
+
+it("requests selected direction with the exact node and snapshot and reports evidence basis", async () => {
+  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "server:database", scan_id: "scan-1", found: true,
+    total_neighbors: 1, truncated: false, neighbors: [node("tool:one", "tool", "query")],
+    edges: [{ ...edge("server:database", "tool:one", "provides"), evidence: { evidence_tier: "static_evidence" } }] });
+  render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
+  fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of database/ }));
+  expect(await screen.findByText("Configured / static evidence")).toBeVisible();
+  fireEvent.change(screen.getByRole("combobox", { name: "Relationship direction for database" }), { target: { value: "in" } });
+  await waitFor(() => expect(apiMock.getGraphNodeNeighbors).toHaveBeenLastCalledWith("server:database", { scanId: "scan-1", limit: 12, direction: "in" }));
+});
+
+it("rejects a response from another snapshot instead of showing unrelated evidence", async () => {
+  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "server:database", scan_id: "other-scan", found: true,
+    total_neighbors: 1, truncated: false, neighbors: [node("tool:wrong", "tool", "wrong-scope-tool")], edges: [] });
+  render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
+  fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of database/ }));
+  expect(await screen.findByRole("button", { name: "Retry neighbor lookup" })).toBeVisible();
+  expect(screen.queryByText("wrong-scope-tool")).not.toBeInTheDocument();
+});
+
+it("keeps blocked attempts distinct from observed execution", async () => {
+  apiMock.getGraphNodeNeighbors.mockResolvedValue({ node_id: "server:database", scan_id: "scan-1", found: true,
+    total_neighbors: 1, truncated: false, neighbors: [node("tool:one", "tool", "query")],
+    edges: [{ ...edge("tool:one", "server:database", "calls"), evidence: { runtime_observed_state: "blocked", evidence_tier: "runtime_observed" } }] });
+  render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
+  fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of database/ }));
+  expect(await screen.findByText("Blocked attempt")).toBeVisible();
+  expect(screen.getByText("Incoming relationships")).toBeVisible();
+  expect(screen.queryByText("Runtime observed")).not.toBeInTheDocument();
+});
+
+
+it("ignores a slower response for the previous relationship direction", async () => {
+  let resolveOld!: (response: GraphNodeNeighborsResponse) => void;
+  const base: GraphNodeNeighborsResponse = { node_id: "server:database", scan_id: "scan-1", direction: "both", limit: 12, found: true, total_neighbors: 1, truncated: false, neighbors: [], edges: [] };
+  apiMock.getGraphNodeNeighbors.mockReturnValueOnce(new Promise<GraphNodeNeighborsResponse>((resolve) => { resolveOld = resolve; }))
+    .mockResolvedValueOnce({ ...base, direction: "in", neighbors: [node("tool:new", "tool", "current-direction")] });
+  render(<ExposurePathNeighborExplorer path={path} scanId="scan-1" />);
+  fireEvent.click(screen.getByRole("button", { name: /Expand neighbors of database/ }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Relationship direction for database" }), { target: { value: "in" } });
+  await act(async () => {});
+  expect(screen.getByText("Current Direction")).toBeVisible();
+  await act(async () => { resolveOld({ ...base, neighbors: [node("tool:old", "tool", "stale-direction")] }); });
+  expect(screen.getByText("Current Direction")).toBeVisible();
+  expect(screen.queryByText("Stale Direction")).not.toBeInTheDocument();
 });

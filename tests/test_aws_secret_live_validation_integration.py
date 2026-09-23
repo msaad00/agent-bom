@@ -142,7 +142,8 @@ def test_generic_validate_credentials_flag_does_not_trigger_aws_live_validation(
 def test_audit_log_never_contains_secret_values_or_sts_response(tmp_path, monkeypatch, caplog):
     plant_pair(tmp_path)
     _patch_client(monkeypatch, _FakeSts("ok"))
-    with caplog.at_level(logging.INFO):
+    # CLI/API setup may leave the package logger at WARNING; capture the emitter.
+    with caplog.at_level(logging.INFO, logger="agent_bom.secret_scanner"):
         scan_secrets(tmp_path, aws_live_validation=True)
     text = caplog.text
     assert ACCESS_KEY not in text
@@ -157,7 +158,7 @@ def test_audit_log_never_contains_secret_values_or_sts_response(tmp_path, monkey
 def test_audit_log_records_outcome_for_invalid_and_unknown_too(tmp_path, monkeypatch, caplog):
     plant_pair(tmp_path)
     _patch_client(monkeypatch, _FakeSts("client_error", "InvalidClientTokenId"))
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger="agent_bom.secret_scanner"):
         scan_secrets(tmp_path, aws_live_validation=True)
     assert "outcome=invalid" in caplog.text
     assert ACCESS_KEY not in caplog.text

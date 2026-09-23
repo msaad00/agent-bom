@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from agent_bom.evidence.semantics import ExploitabilityDimension
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
-from agent_bom.graph.hop_evidence import authority_evidence
+from agent_bom.graph.hop_evidence import authority_evidence, runtime_evidence_references
 from agent_bom.graph.types import RelationshipType
 
 STRUCTURAL_EXPOSURE_SUMMARY = (
@@ -216,6 +216,7 @@ def annotate_attack_path_evidence(path: AttackPath, graph: UnifiedGraph) -> Atta
                 "confidence": float(edge.confidence),
                 "freshness": freshness,
                 "runtime_observed_state": _runtime_state(edge),
+                "runtime_references": runtime_evidence_references(edge.evidence) if _runtime_state(edge) in {"observed", "blocked"} else [],
                 **({"runtime_outcome": _runtime_outcome(edge)} if _runtime_outcome(edge) != "unknown" else {}),
                 "direction": edge.direction,
                 "traversable": bool(edge.traversable),
@@ -344,6 +345,26 @@ def _path_completeness(path: AttackPath) -> dict[str, Any]:
     if any(item.get("freshness") != "fresh" for item in receipts):
         return {"status": "partial", **base, "reasonCodes": ["stale_evidence_allowed"]}
     return {"status": "complete", **base, "reasonCodes": []}
+
+
+def exposure_advisory_evidence(target_node: Any | None) -> dict[str, Any] | None:
+    """Shared advisory signals; these are not environment exploitability verdicts."""
+    if target_node is None:
+        return None
+    attributes = getattr(target_node, "attributes", {}) or {}
+    return {
+        "cvssScore": attributes.get("cvss_score"),
+        "cvssVector": attributes.get("cvss_vector"),
+        "epssScore": attributes.get("epss_score"),
+        "isKev": attributes.get("is_kev"),
+        "attackVector": attributes.get("attack_vector"),
+        "attackComplexity": attributes.get("attack_complexity"),
+        "privilegesRequired": attributes.get("privileges_required"),
+        "userInteraction": attributes.get("user_interaction"),
+        "networkExploitable": attributes.get("network_exploitable"),
+        "impactCategory": attributes.get("impact_category"),
+        "source": "graph_attack_path",
+    }
 
 
 def exposure_evidence_dimensions(

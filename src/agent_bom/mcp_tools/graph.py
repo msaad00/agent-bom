@@ -13,7 +13,12 @@ from typing import Any
 from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET, MCP_MAX_RESPONSE_CHARS
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.path_derivation import _derived_attack_paths, _enrich_loaded_graph_runtime_evidence
-from agent_bom.graph.path_evidence import exposure_evidence_dimensions, finding_severity_for_path, qualify_exposure_reachability
+from agent_bom.graph.path_evidence import (
+    exposure_advisory_evidence,
+    exposure_evidence_dimensions,
+    finding_severity_for_path,
+    qualify_exposure_reachability,
+)
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
     CODE_NOT_FOUND_RESOURCE,
@@ -164,10 +169,12 @@ def _node_role(node: Any) -> str:
 def _node_ref(node_id: str, nodes_by_id: dict[str, Any]) -> dict[str, Any]:
     node = nodes_by_id.get(node_id)
     if node is None:
-        return {"id": node_id, "label": node_id, "role": "unknown"}
+        return {"id": node_id, "label": node_id, "role": "unknown", "entityType": "unknown"}
     return {
         "id": node.id,
         "label": node.label,
+        "rawLabel": node.label,
+        "entityType": _node_role(node),
         "role": _node_role(node),
         "severity": getattr(node, "severity", ""),
         "riskScore": float(getattr(node, "risk_score", 0.0) or 0.0),
@@ -213,6 +220,7 @@ def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: lis
     target = _node_ref(str(getattr(path, "target", "") or ""), nodes_by_id) if getattr(path, "target", "") else (hops[-1] if hops else {})
     relationships = _relationship_refs(path, edges)
     target_node = nodes_by_id.get(str(getattr(path, "target", "") or ""))
+    advisory = exposure_advisory_evidence(target_node)
     return qualify_exposure_reachability(
         {
             "id": f"{source.get('id', '')}::{target.get('id', '')}::{'->'.join(getattr(path, 'hops', []) or [])}",
@@ -234,6 +242,7 @@ def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: lis
             "reachabilityBasis": list(getattr(path, "reachability_basis", []) or []),
             "hopEvidence": exposure_hop_evidence(path),
             "evidenceDimensions": exposure_evidence_dimensions(path, target_node, relationships=relationships),
+            **({"evidence": advisory} if advisory is not None else {}),
             "provenance": {"source": "mcp_exposure_paths", "scanId": scan_id},
         }
     )

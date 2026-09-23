@@ -368,6 +368,8 @@ function exposureRefFromUnifiedNode(node: UnifiedNode): ExposureEntityRef {
   return {
     id: node.id,
     label: display.title,
+    rawLabel: node.label,
+    entityType: String(node.entity_type),
     subtitle: display.subtitle,
     kindLabel,
     role,

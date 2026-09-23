@@ -1500,3 +1500,31 @@ for (const theme of ["light", "dark"] as const) {
     await canvas.screenshot({ path: testInfo.outputPath(`mobile-readable-graph-${theme}.png`) });
   });
 }
+
+for (const proof of [{ theme: "light", width: 1440 }, { theme: "dark", width: 1440 }, { theme: "dark", width: 390 }]) {
+  test(`agent investigation questions retain honest scope ${proof.theme} ${proof.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: proof.width, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), proof.theme);
+    await routeCockpit(page, undefined, { qualifiedEvidence: true });
+    await page.route("**/v1/runtime/trace-explorer?**", route => route.fulfill({ json: { sessions: [], session_count: 0, blocked_count: 0 } }));
+    await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&agent=claude-desktop`);
+    const questions = page.getByRole("region", { name: "Agent investigation questions", exact: true });
+    await expect(questions).toBeVisible();
+    await questions.getByText("Investigate this path", { exact: true }).click();
+    await questions.getByRole("button", { name: "CVE conditions" }).click();
+    await expect(questions).toContainText("Local exploitability: not assessed");
+    await expect(questions.getByText("Not recorded", { exact: true })).toHaveCount(4);
+    await questions.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`agent-investigation-${proof.theme}-${proof.width}.png`) });
+    await questions.getByRole("button", { name: "Assume compromise" }).click();
+    await questions.getByRole("checkbox").check();
+    await expect(questions).toContainText("Scenario assumption only");
+    await questions.getByRole("button", { name: "Potential impact" }).click();
+    await expect(questions).toContainText("No downstream data asset");
+    await questions.getByRole("button", { name: "Recorded activity" }).click();
+    await questions.getByRole("link", { name: "Recorded activity for claude-desktop" }).click();
+    await expect(page).toHaveURL(new RegExp(`agent=claude-desktop&scan=${scanId}`));
+    await expect(page.getByText(/No activity matched this agent/)).toBeVisible();
+    await expect(page.getByText(/not.*scan|scan.*not/i).first()).toBeVisible();
+  });
+}

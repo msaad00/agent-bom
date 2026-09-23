@@ -96,6 +96,13 @@ export function GraphHopEvidenceInspector({
                 {snapshots.length ? <ul className="mt-1 space-y-1">{snapshots.map((snapshot, snapshotIndex) => <li key={`${snapshot}:${snapshotIndex}`} className="break-all font-mono text-xs">{snapshot}</li>)}</ul> : <p>Not recorded</p>}
               </div>
               {reasons.length ? <p className="break-words text-xs text-[color:var(--text-secondary)]">{reasons.map(humanize).join(" · ")}</p> : null}
+              <div><p className="text-xs text-[color:var(--text-secondary)]">Runtime event references</p>
+                {Array.isArray(receipt.runtime_references) && receipt.runtime_references.length > 0
+                  ? <ul className="mt-1 space-y-1">{receipt.runtime_references.filter(reference => reference && typeof reference === "object").slice(0, 8).map((reference, referenceIndex) => <li key={referenceIndex} className="break-all font-mono text-xs">
+                    {typeof reference.event_id === "string" ? `Event: ${reference.event_id}` : ""}
+                    {typeof reference.trace_id === "string" ? ` Trace: ${reference.trace_id}` : ""}
+                  </li>)}</ul> : <p>No exact event reference attached.</p>}
+              </div>
               {receipt.authority && typeof receipt.authority === "object" ? <GraphHopAuthority evidence={receipt.authority} /> : null}
               {negative && <p className="text-red-700 dark:text-red-300">This receipt cannot establish a successful downstream action. Other paths require separate evidence.</p>}
             </>}

@@ -360,3 +360,38 @@ def test_blocked_runtime_attempt_does_not_claim_observed_reachability(evidence):
     graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="tool"))
     graph.add_edge(UnifiedEdge(source="agent:a", target="tool:t", relationship=RelationshipType.INVOKED, evidence=evidence))
     assert not any(kind == "runtime_observed" for kind, *_ in _fusion_signals_for_path(graph, ["agent:a"]))
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        {},
+        {
+            "cvss_score": 9.8,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+            "epss_score": 0.42,
+            "is_kev": True,
+            "attack_vector": "NETWORK",
+            "attack_complexity": "LOW",
+            "privileges_required": "NONE",
+            "user_interaction": "NONE",
+            "network_exploitable": True,
+            "impact_category": "code_execution",
+        },
+    ],
+)
+def test_mcp_prerequisite_evidence_matches_rest_without_inventing_exploitability(attributes):
+    from agent_bom.api.routes.graph import _exposure_path_for_attack_path
+    from agent_bom.mcp_tools.graph import _exposure_path_payload
+
+    store = _GraphStore()
+    store.nodes[-1].attributes.update(attributes)
+    nodes = {node.id: node for node in store.nodes}
+    api = _exposure_path_for_attack_path(store.path, nodes_by_id=nodes, edges=store.edges, scan_id="scan-1")
+    mcp = _exposure_path_payload(store.path, nodes_by_id=nodes, edges=store.edges, rank=1, scan_id="scan-1")
+    assert mcp["evidence"] == api["evidence"]
+    assert mcp["evidence"]["attackVector"] == attributes.get("attack_vector")
+    assert mcp["evidence"]["privilegesRequired"] == attributes.get("privileges_required")
+    assert mcp["evidenceDimensions"]["exploitability"] == api["evidenceDimensions"]["exploitability"]
+    assert mcp["evidenceDimensions"]["exploitability"]["status"] == "unavailable"
+    assert mcp["evidenceDimensions"]["exploitability"]["verdict"] is None

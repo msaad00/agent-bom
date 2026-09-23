@@ -38,6 +38,7 @@ import {
   truncateGraphText,
 } from "@/lib/exposure-path-graph-layout";
 import { ExposurePathNeighborExplorer } from "@/components/exposure-path-neighbor-explorer";
+import { AgentInvestigationQuestions } from "@/components/agent-investigation-questions";
 import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
 
 export interface ExposurePathCommandAction {
@@ -258,6 +259,7 @@ export function ExposurePathCommandCenter({
 
         </div>
         <aside aria-label="Selected path evidence" className="ep-inspection-evidence">
+        <AgentInvestigationQuestions key={exposurePathKey(path)} path={path} scanId={scanId} onConnections={() => setView("list")} />
         {!techniquesSlot && <details className="rounded-xl border border-[color:var(--border-subtle)] p-3">
           <summary className="cursor-pointer text-[15px] font-medium">Inspect {Math.max(0, path.hops.length - 1)} hop receipts</summary>
           <div className="mt-3"><GraphHopEvidenceInspector key={exposurePathKey(path)} hops={path.hops} receipts={path.hopEvidence} /></div>

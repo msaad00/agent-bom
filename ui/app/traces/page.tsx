@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { Suspense, useState, type ChangeEvent } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -12,6 +12,8 @@ import {
   Send,
   ShieldAlert,
 } from "lucide-react";
+
+import { useSearchParams } from "next/navigation";
 
 import { api, type TraceIngestResponse } from "@/lib/api";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -43,7 +45,8 @@ const SAMPLE_PAYLOAD = JSON.stringify(
   2,
 );
 
-export default function TracesPage() {
+function TracesPageContent() {
+  const searchParams = useSearchParams();
   const { counts } = useDeploymentContext();
   const [mode, setMode] = useState<"explorer" | "queue" | "ingest">("explorer");
   const [payload, setPayload] = useState(SAMPLE_PAYLOAD);
@@ -140,7 +143,7 @@ export default function TracesPage() {
       </div>
 
       {mode === "explorer" ? (
-        <TraceExplorerPanel />
+        <TraceExplorerPanel agent={searchParams.get("agent") ?? undefined} scanId={searchParams.get("scan") ?? undefined} />
       ) : mode === "queue" ? (
         <HitlApprovalQueuePanel />
       ) : (
@@ -305,4 +308,8 @@ export default function TracesPage() {
       )}
     </div>
   );
+}
+
+export default function TracesPage() {
+  return <Suspense fallback={<p>Loading activity scope…</p>}><TracesPageContent /></Suspense>;
 }

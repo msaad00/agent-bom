@@ -6,6 +6,7 @@
  * vulnerabilities without implying observed runtime causality.
  */
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
@@ -33,7 +34,8 @@ import {
 } from "@/components/lineage-nodes";
 import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import { ContextEvidenceEdge } from "@/components/context-evidence-edge";
-import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
+import { ContextNeighborhoodInspector } from "@/components/context-neighborhood-inspector";
+import { projectContextNeighborhood } from "@/lib/context-neighborhood";
 import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
 import {
   buildContextFlowGraph,
@@ -76,6 +78,8 @@ import { useContextGraph } from "@/hooks/use-context-graph";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const contextEdgeTypes = { contextEvidence: ContextEvidenceEdge };
+const EMPTY_NODES: Node[] = [];
+const EMPTY_EDGES: Edge[] = [];
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
 
@@ -324,7 +328,10 @@ export function ContextLensView() {
   const { data: graphData, error: contextError } = useContextGraph(selectedJobId, selectedAgent);
   const error = contextError ?? scanError;
   const [searchQuery, setSearchQuery] = useState("");
-  const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
+  const [pathFocusEnabled, setPathFocusEnabled] = useState(false);
+  const [direction, setDirection] = useState<"in" | "out" | "both">("both");
+  const [depth, setDepth] = useState(2);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   // Canvas is the hero — paths list opens on demand (drawer), not by default.
   const [pathsPanelOpen, setPathsPanelOpen] = useState(false);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
@@ -405,6 +412,12 @@ export function ContextLensView() {
     setSelectedNodeId(null);
   }, [graphData, selectedAgent, selectedJobId, selectedPathKey]);
 
+  useEffect(() => { setExpandedIds([]); setSelectedPathKey(undefined); setPathFocusEnabled(false); }, [selectedJobId, selectedAgent]);
+  const neighborhood = useMemo(() => graphData ? projectContextNeighborhood(
+    graphData, selectedAgent ? `agent:${selectedAgent}` : graphData.nodes.find(node => node.kind === "agent")?.id ?? "",
+    expandedIds, direction, depth,
+  ) : null, [graphData, selectedAgent, expandedIds, direction, depth]);
+
   // Build ReactFlow graph
   const { rawNodes, rawEdges, focusedPath } = useMemo(() => {
     if (!graphData) {
@@ -415,12 +428,12 @@ export function ContextLensView() {
       };
     }
     const { nodes, edges, focusedPath: path } = buildContextFlowGraph(
-      graphData,
-      selectedAgent ?? undefined,
+      !pathFocusEnabled && neighborhood ? { ...graphData, nodes: neighborhood.nodes, edges: neighborhood.edges } : graphData,
+      pathFocusEnabled ? selectedAgent ?? undefined : undefined,
       { topPathOnly: pathFocusEnabled, selectedPathKey },
     );
     return { rawNodes: nodes, rawEdges: edges, focusedPath: path };
-  }, [graphData, selectedAgent, pathFocusEnabled, selectedPathKey]);
+  }, [graphData, selectedAgent, pathFocusEnabled, selectedPathKey, neighborhood]);
 
   const topExposurePath = useMemo(() => {
     if (!graphData || !selectedAgent) return null;
@@ -429,10 +442,24 @@ export function ContextLensView() {
     return lateralPathToExposure(path, selectedAgent);
   }, [focusedPath, graphData, selectedAgent]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
+  const { nodes: pathLayoutNodes, edges: pathLayoutEdges } = useGraphLayout("dagre-lr", pathFocusEnabled ? rawNodes : EMPTY_NODES, pathFocusEnabled ? rawEdges : EMPTY_EDGES, {
     // Slightly tighter ranks so small context chains fill the centered canvas.
-    dagreLr: readableLineageDagreLr({ rankSep: 200, nodeSep: 72 }),
+    dagreLr: readableLineageDagreLr({ rankSep: 110, nodeSep: 56 }),
   });
+
+  const layoutNodes = useMemo(() => {
+    if (pathFocusEnabled || !neighborhood) return pathLayoutNodes;
+    const columns = new Map<number, Node[]>();
+    for (const node of rawNodes) {
+      const level = neighborhood.depthById[node.id] ?? 0;
+      columns.set(level, [...(columns.get(level) ?? []), node]);
+    }
+    const height = Math.max(1, ...[...columns.values()].map(nodes => nodes.length)) * 172;
+    return [...columns].flatMap(([level, nodes]) => nodes.map((node, index) => ({
+      ...node, position: { x: level * 380, y: (height - nodes.length * 172) / 2 + index * 172 },
+    })));
+  }, [pathFocusEnabled, neighborhood, pathLayoutNodes, rawNodes]);
+  const layoutEdges = pathFocusEnabled ? pathLayoutEdges : rawEdges;
 
   // Search highlighting
   const searchMatches = useMemo(
@@ -488,8 +515,9 @@ export function ContextLensView() {
     }));
   }, [layoutNodes, connectedIds, searchMatches, pathFocusIds]);
 
+  const selectedDisplayNodes = useMemo(() => displayNodes.map(node => ({ ...node, selected: node.id === selectedNodeId })) as Node<LineageNodeData>[], [displayNodes, selectedNodeId]);
   const presentation = useGraphPresentation({
-    nodes: displayNodes as Node<LineageNodeData>[],
+    nodes: selectedDisplayNodes,
     scope: {
       tenantId: session?.tenant_id || "local",
       subject: session?.subject || session?.auth_method || "local-viewer",
@@ -513,13 +541,14 @@ export function ContextLensView() {
           )
         : layoutEdges;
     return readableGraphEdges(scopedEdges, activeSet, {
-      baseOpacity: pathFocusIds ? 0.72 : 0.32,
-      highSignalOpacity: pathFocusIds ? 0.95 : 0.56,
+      baseOpacity: 0.8,
+      highSignalOpacity: 1,
       inactiveOpacity: 0.06,
       captureMode,
       zoom: presentation.viewport.zoom,
       nodeLabels: graphNodeDisplayLabels(displayNodes),
     }).map((edge): Edge => ({ ...edge,
+      label: contextRelationshipLabel(String(edge.data?.relationship ?? "")),
       ariaLabel: `${edge.data?.relationshipLabel ?? "Scan relationship"}: ${edge.source} to ${edge.target}. Execution not established.`,
       data: { ...edge.data, onInspect: () => { setSelectedEdgeId(edge.id); setSelectedNode(null); setSelectedNodeId(null); } },
     }));
@@ -587,6 +616,18 @@ export function ContextLensView() {
     return () => { observer.disconnect(); window.cancelAnimationFrame(animationFrame); };
   }, [flowInstance, viewportOptions]);
 
+  const layoutKey = layoutNodes.map(node => `${node.id}:${node.position.x}:${node.position.y}`).join("|");
+  useEffect(() => {
+    if (!flowInstance || !layoutKey) return;
+    const timer = window.setTimeout(() => {
+      const compact = window.matchMedia("(max-width: 767px)").matches;
+      void flowInstance.fitView({ padding: 0.12, maxZoom: compact ? 1 : 1.3, duration: 0, ...(compact ? { nodes: [{ id: selectedNodeId ?? layoutNodes[0]!.id }], minZoom: 0.85 } : {}) });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  // Selection is read when the topology changes; clicking alone preserves desktop framing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowInstance, layoutKey]);
+
   const fitSelection = useCallback(() => {
     const node = selectedNodeId ? flowInstance?.getNode(selectedNodeId) : undefined;
     if (node) void flowInstance?.fitView({ nodes: [node], padding: 0.7, duration: 240, maxZoom: 1.4 });
@@ -652,7 +693,7 @@ export function ContextLensView() {
   }
 
   return (
-    <div className={`${captureMode ? "h-screen" : "h-[calc(100vh-3.5rem)]"} flex flex-col`}>
+    <div className={`md:h-[calc(100dvh-6rem)] flex min-h-screen flex-col md:min-h-0`}>
       {/* Compact header — filters share one row so the canvas stays hero */}
       <div className="flex flex-col gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
         <div className="flex flex-wrap items-center gap-2">
@@ -661,13 +702,14 @@ export function ContextLensView() {
             Context Map
           </h1>
           <select
+            aria-label="Agent scope"
             value={selectedAgent ?? ""}
             onChange={(e) =>
               setSelectedAgent(e.target.value || null)
             }
             className="min-w-0 max-w-[11rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] focus:outline-none focus:border-orange-600"
           >
-            <option value="">All agents</option>
+            <option value="">First recorded agent</option>
             {agentNames?.map((name) => (
               <option key={name} value={name}>
                 {name}
@@ -675,6 +717,7 @@ export function ContextLensView() {
             ))}
           </select>
           <select
+            aria-label="Scan snapshot"
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
             className="min-w-0 max-w-[12rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600"
@@ -711,6 +754,11 @@ export function ContextLensView() {
               Paths
             </button>
           )}
+          {selectedAgent && selectedJobId && <Link
+            href={`/security-graph?${new URLSearchParams({ scan: selectedJobId, agent: selectedAgent })}`}
+            className="rounded-md border border-emerald-500/40 px-3 py-1 text-xs font-medium text-foreground">
+            Investigate reach &amp; permissions
+          </Link>}
           <FullscreenButton />
           {presentation.enabled && !captureMode && displayNodes.length > 0 && <GraphInteractionToolbar
             editing={presentation.editing}
@@ -722,7 +770,8 @@ export function ContextLensView() {
             onToggleEditing={presentation.toggleEditing}
           />}
         </div>
-        <GraphLensSwitcher variant="compact" {...(!captureMode ? { legendItems } : {})} />
+        <div className="hidden md:block"><GraphLensSwitcher variant="compact" {...(!captureMode ? { legendItems } : {})} /></div>
+        <details className="md:hidden"><summary className="cursor-pointer py-2 text-sm">Views &amp; legend</summary><GraphLensSwitcher variant="compact" legendItems={legendItems} /></details>
       </div>
 
       <p className="border-b border-[var(--border-subtle)] px-3 py-2 text-xs text-[var(--text-secondary)]">
@@ -730,7 +779,7 @@ export function ContextLensView() {
         CVEs refer to affected packages; advertised tools and credential references do not prove use.
       </p>
 
-      {!captureMode && topExposurePath && (
+      {!captureMode && pathFocusEnabled && topExposurePath && (
         <ExposurePathStrip
           path={topExposurePath}
           active={pathFocusEnabled}
@@ -739,6 +788,14 @@ export function ContextLensView() {
         />
       )}
 
+      {neighborhood && <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-3 text-sm">
+        <button className="context-action" aria-pressed={!pathFocusEnabled} onClick={() => { setPathFocusEnabled(false); setSelectedEdgeId(null); }}>Neighborhood</button>
+        <label className="flex items-center gap-2">Direction <select aria-label="Relationship direction" className="context-action" value={direction} onChange={event => { setDirection(event.target.value as "in" | "out" | "both"); setSelectedEdgeId(null); setPathFocusEnabled(false); }}><option value="both">Incoming + outgoing</option><option value="out">Outgoing</option><option value="in">Incoming</option></select></label>
+        <label className="flex items-center gap-2">Depth <select aria-label="Neighborhood depth" className="context-action" value={depth} onChange={event => { setDepth(Number(event.target.value)); setPathFocusEnabled(false); setSelectedEdgeId(null); }}>{[1,2,3].map(value => <option key={value} value={value}>{value} hop{value > 1 ? "s" : ""}</option>)}</select></label>
+        <button className="context-action" onClick={() => { setExpandedIds([]); setDepth(2); setDirection("both"); setPathFocusEnabled(false); setSelectedNode(null); setSelectedNodeId(null); setSelectedEdgeId(null); }}>Reset neighborhood</button>
+        <span className="text-[var(--text-secondary)]">{rawNodes.length} nodes · {rawEdges.length} relationships shown</span>
+        {(neighborhood.hiddenNodeCount > 0 || neighborhood.truncated || neighborhood.sourceIncomplete) && <span className="text-[var(--text-secondary)]">{neighborhood.hiddenNodeCount} loaded nodes outside view · bounded snapshot</span>}
+      </div>}
       {/* Stats */}
       {!captureMode && graphData?.stats.lateral_paths_truncated && (
         <div className="border-b border-amber-500/20 bg-amber-500/5 px-3 py-1 text-[10px] text-amber-200">
@@ -756,7 +813,7 @@ export function ContextLensView() {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {/* Graph */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="relative min-h-0 flex-1">
+          <div className="relative h-[28rem] min-h-[28rem] flex-1 md:h-auto md:min-h-0">
           {detailLoading && graphData && (
             <GraphRefreshOverlay label="Updating context graph" />
           )}
@@ -771,22 +828,18 @@ export function ContextLensView() {
               detail="No recorded MCP configuration relationships are available in this scope. Repository and SBOM imports belong in Repository or Lineage views."
               suggestions={[
                 "Choose another agent from the scope selector.",
-                "Switch to all agents to inspect shared infrastructure.",
+                "Choose another agent or completed scan to inspect shared infrastructure.",
                 "Scan a discovered MCP client configuration to populate Context.",
               ]}
               command="agent-bom scan -f graph"
             />
           ) : (
-            <div className="flex h-full min-h-0 w-full items-center justify-center bg-[var(--background)]">
+            <div className="context-canvas flex h-[28rem] min-h-[28rem] w-full items-start justify-center md:h-full md:min-h-0">
               {/* Cap canvas height for small graphs so fitView fills the frame
                   instead of parking a wide short chain in a tall empty pane. */}
               <div
                 ref={graphFrameRef}
-                className={`relative w-full min-h-0 ${
-                  displayNodes.length <= 20
-                    ? "h-[min(100%,38rem)]"
-                    : "h-full"
-                }`}
+                className="relative h-full min-h-0 w-full"
               >
             <ReactFlow
               key={captureMode ? "context-capture" : presentation.storageKey}
@@ -799,7 +852,7 @@ export function ContextLensView() {
               fitViewOptions={viewportOptions}
               minZoom={0.16}
               maxZoom={2.8}
-              onlyRenderVisibleElements
+              onlyRenderVisibleElements={false}
               defaultEdgeOptions={{ type: "default" }}
               proOptions={{ hideAttribution: true }}
               deleteKeyCode={null}
@@ -839,28 +892,18 @@ export function ContextLensView() {
             </div>
           )}
 
-          {selectedEdgeId && displayEdges.some((edge) => edge.id === selectedEdgeId) && (() => {
-            const edge = displayEdges.find((candidate) => candidate.id === selectedEdgeId)!;
-            return <section aria-label="Relationship evidence" className="absolute bottom-3 left-3 right-3 z-20 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-sm text-[var(--foreground)] shadow-lg">
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="font-semibold">{String(edge.data?.relationshipLabel ?? "Scan relationship")}</h3>
-                <button type="button" onClick={() => setSelectedEdgeId(null)} className="shrink-0 underline">Close relationship</button>
-              </div>
-              <p className="mt-1 break-words">{rawNodes.find((node) => node.id === edge.source)?.data.label as string} → {rawNodes.find((node) => node.id === edge.target)?.data.label as string}</p>
-              {typeof edge.data?.package === "string" && <p className="mt-1 break-words">Affected package: {edge.data.package}</p>}
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">Recorded in this scan. This relationship does not establish permission, a successful call, resource access, or exploitation.</p>
-            </section>;
-          })()}
-          {selectedNode && (
-            <GraphEntityDrawer
-              data={selectedNode}
-              scanId={selectedJobId}
-              onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }}
-              enrich={false}
-            />
-          )}
           </div>
         </div>
+        {graphData && <ContextNeighborhoodInspector
+          nodes={graphData.nodes.filter(node => rawNodes.some(visible => visible.id === node.id))}
+          edges={(pathFocusEnabled ? graphData.edges : neighborhood?.edges ?? []).filter(edge => rawNodes.some(node => node.id === edge.source) && rawNodes.some(node => node.id === edge.target)).slice(0, 80)}
+          selectedId={selectedNodeId}
+          selectedEdge={(() => { const edge = displayEdges.find(item => item.id === selectedEdgeId); return edge ? { source: edge.source, target: edge.target, relationship: String(edge.data?.relationship ?? ""), package: typeof edge.data?.package === "string" ? edge.data.package : undefined } : null; })()}
+          hiddenCount={(neighborhood?.hiddenGroups[selectedNodeId ?? ""] ?? []).reduce((sum, group) => sum + group.count, 0)}
+          onSelect={id => { const node = rawNodes.find(item => item.id === id); if (node) { setSelectedNode(node.data as LineageNodeData); setSelectedNodeId(id); setSelectedEdgeId(null); if (window.matchMedia("(max-width: 767px)").matches) void flowInstance?.fitView({ nodes: [{ id }], minZoom: 0.85, maxZoom: 1, duration: 200 }); } }}
+          onExpand={() => { if (selectedNodeId) { setExpandedIds(ids => [...new Set([...ids, selectedNodeId])]); setPathFocusEnabled(false); setSelectedEdgeId(null); } }}
+          onClose={() => { setSelectedNode(null); setSelectedNodeId(null); setSelectedEdgeId(null); }}
+        />}
 
         {/* Lateral movement sidebar — drawer on demand */}
         {graphData && pathsPanelOpen && (

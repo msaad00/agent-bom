@@ -10,7 +10,7 @@
       ]
     }
   ],
-  "artifact_sha256": "sha256:8351c66fd0db6a29fd9aea3f49594d3b93728be9bd137d8ef46474af17e4eb64",
+  "artifact_sha256": "sha256:c9efb9cbbabf60c74ca05517eab87de97bdc687414007c96ae12cdbff8ad1221",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -78,6 +78,7 @@
               "relationship": "uses",
               "relationship_provenance": "recorded",
               "runtime_observed_state": "not_observed",
+              "runtime_references": [],
               "source_node_id": "service:reference-api",
               "source_snapshot_ids": [
                 "reference-kubernetes-iac-scan"
@@ -96,6 +97,7 @@
               "relationship": "contains",
               "relationship_provenance": "recorded",
               "runtime_observed_state": "not_observed",
+              "runtime_references": [],
               "source_node_id": "workload:reference-api",
               "source_snapshot_ids": [
                 "reference-kubernetes-iac-scan"
@@ -114,6 +116,7 @@
               "relationship": "contains",
               "relationship_provenance": "recorded",
               "runtime_observed_state": "not_observed",
+              "runtime_references": [],
               "source_node_id": "container:iac:reference-api",
               "source_snapshot_ids": [
                 "reference-kubernetes-iac-scan"
@@ -132,6 +135,7 @@
               "relationship": "vulnerable_to",
               "relationship_provenance": "recorded",
               "runtime_observed_state": "not_observed",
+              "runtime_references": [],
               "source_node_id": "package:iac:pillow",
               "source_snapshot_ids": [
                 "reference-image-sbom-scan"
@@ -150,6 +154,7 @@
               "relationship": "exploitable_via",
               "relationship_provenance": "recorded",
               "runtime_observed_state": "not_observed",
+              "runtime_references": [],
               "source_node_id": "vulnerability:mcp:cve-2023-4863",
               "source_snapshot_ids": [
                 "reference-mcp-config-scan"
@@ -168,6 +173,7 @@
               "relationship": "authenticates_as",
               "relationship_provenance": "recorded",
               "runtime_observed_state": "observed",
+              "runtime_references": [],
               "source_node_id": "tool:runtime:render-untrusted-image",
               "source_snapshot_ids": [
                 "reference-runtime-observation"
@@ -186,6 +192,7 @@
               "relationship": "has_permission",
               "relationship_provenance": "recorded",
               "runtime_observed_state": "not_observed",
+              "runtime_references": [],
               "source_node_id": "identity:model:reference-workload",
               "source_snapshot_ids": [
                 "reference-identity-permission-scan"
@@ -1753,6 +1760,7 @@
         "relationship": "uses",
         "relationship_provenance": "recorded",
         "runtime_observed_state": "not_observed",
+        "runtime_references": [],
         "source_node_id": "service:reference-api",
         "source_snapshot_ids": [
           "reference-kubernetes-iac-scan"
@@ -1771,6 +1779,7 @@
         "relationship": "contains",
         "relationship_provenance": "recorded",
         "runtime_observed_state": "not_observed",
+        "runtime_references": [],
         "source_node_id": "workload:reference-api",
         "source_snapshot_ids": [
           "reference-kubernetes-iac-scan"
@@ -1789,6 +1798,7 @@
         "relationship": "contains",
         "relationship_provenance": "recorded",
         "runtime_observed_state": "not_observed",
+        "runtime_references": [],
         "source_node_id": "container:iac:reference-api",
         "source_snapshot_ids": [
           "reference-kubernetes-iac-scan"
@@ -1807,6 +1817,7 @@
         "relationship": "vulnerable_to",
         "relationship_provenance": "recorded",
         "runtime_observed_state": "not_observed",
+        "runtime_references": [],
         "source_node_id": "package:iac:pillow",
         "source_snapshot_ids": [
           "reference-image-sbom-scan"
@@ -1825,6 +1836,7 @@
         "relationship": "exploitable_via",
         "relationship_provenance": "recorded",
         "runtime_observed_state": "not_observed",
+        "runtime_references": [],
         "source_node_id": "vulnerability:mcp:cve-2023-4863",
         "source_snapshot_ids": [
           "reference-mcp-config-scan"
@@ -1843,6 +1855,7 @@
         "relationship": "authenticates_as",
         "relationship_provenance": "recorded",
         "runtime_observed_state": "observed",
+        "runtime_references": [],
         "source_node_id": "tool:runtime:render-untrusted-image",
         "source_snapshot_ids": [
           "reference-runtime-observation"
@@ -1861,6 +1874,7 @@
         "relationship": "has_permission",
         "relationship_provenance": "recorded",
         "runtime_observed_state": "not_observed",
+        "runtime_references": [],
         "source_node_id": "identity:model:reference-workload",
         "source_snapshot_ids": [
           "reference-identity-permission-scan"

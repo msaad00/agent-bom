@@ -675,6 +675,7 @@ def test_get_scan_status_omits_large_result_payload():
     assert len(full_body["result"]["blast_radius"][0]["payload"]) == 250_000
     body = status.json()
     assert body["job_id"] == "job-large-result"
+    assert body["graph_scan_id"] == "job-large-result"
     assert body["status"] == "done"
     assert body["summary"]["total_packages"] == 165
     assert body["request"]["inventory"] == "<path:agents.json>"

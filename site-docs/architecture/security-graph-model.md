@@ -263,13 +263,14 @@ runtime evidence, and remediation.
 ## Investigate an agent from Context
 
 Context defaults to **Persisted snapshot**. Choose a completed scan, then search
-or page the agent selector. Selection uses the server's canonical node ID, so
+or page the agent selector. The scan status response supplies the graph snapshot ID without downloading the
+full report. Selection uses the server's canonical node ID, so
 identically named agents from different sources remain distinct.
 
 The initial view requests one page of up to 24 recorded relationships. Select a
 node and choose **Expand connections** for its first page, or **Load more
 relationships** for its continuation. **Collapse connections** removes that
-expansion and later expansions; **Focus here** centers the loaded view.
+expansion and later expansions; **Focus here** shows the selected node and its immediate recorded neighbors.
 **Restart neighborhood** clears the workspace and reloads the selected agent.
 Direction filters recorded incoming/outgoing endpoints, not effective permissions.
 

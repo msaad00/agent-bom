@@ -150,7 +150,7 @@ def main() -> int:
             'getTenantQuota: () => get<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota")',
             'put<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota", body)',
             'del("/v1/auth/quota")',
-            'return get<GraphAgentsResponse>(`/v1/graph/agents${qs ? `?${qs}` : ""}`)',
+            'return get<GraphAgentsResponse>(`/v1/graph/agents${qs ? `?${qs}` : ""}`, signal ? { signal } : {})',
             'return get<FleetResponse>(`/v1/fleet${qs ? `?${qs}` : ""}`)',
         ],
         failures,

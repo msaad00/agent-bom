@@ -70,6 +70,26 @@ def test_compact_terminal_job_preserves_scan_timestamp_metadata():
     assert "agents" not in compact.result
 
 
+def test_job_summary_graph_locator_preserves_identity_without_serializing_report():
+    import json
+
+    from agent_bom.api.routes.scan import _job_summary_payload
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    job = ScanJob(job_id="job-reference", created_at="2026-09-23T00:00:00Z", request=ScanRequest())
+    job.result = {"scan_id": "snapshot-from-source", "agents": [{"payload": "x" * 500_000}]}
+    assert _job_summary_payload(job)["graph_scan_id"] is None
+    job.status = JobStatus.DONE
+    payload = _job_summary_payload(job)
+    assert payload["graph_scan_id"] == "snapshot-from-source"
+    assert "result" not in payload and "agents" not in payload
+    assert len(json.dumps(payload)) < 4096
+    job.result.pop("scan_id")
+    assert _job_summary_payload(job)["graph_scan_id"] == job.job_id
+    job.status = JobStatus.FAILED
+    assert _job_summary_payload(job)["graph_scan_id"] is None
+
+
 def test_job_summary_payload_aliases_generated_at_to_scan_timestamp():
     from agent_bom.api.routes.scan import _job_summary_payload
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest

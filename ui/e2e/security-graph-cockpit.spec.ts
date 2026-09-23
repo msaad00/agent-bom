@@ -1510,6 +1510,7 @@ for (const proof of [{ theme: "light", width: 1440 }, { theme: "dark", width: 14
     await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&agent=claude-desktop`);
     const questions = page.getByRole("region", { name: "Agent investigation questions", exact: true });
     await expect(questions).toBeVisible();
+    await questions.getByText("Investigate this path", { exact: true }).click();
     await questions.getByRole("button", { name: "CVE conditions" }).click();
     await expect(questions).toContainText("Local exploitability: not assessed");
     await expect(questions.getByText("Not recorded", { exact: true })).toHaveCount(4);

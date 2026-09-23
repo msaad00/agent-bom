@@ -35,7 +35,7 @@ export function AgentInvestigationQuestions({ path, scanId, onConnections }: {
   ];
   const evidence = <GraphHopEvidenceInspector hops={path.hops} receipts={path.hopEvidence} />;
   return <section aria-label="Agent investigation questions" className="my-3 rounded-xl border border-outline bg-surface p-3 text-sm">
-    <h3 className="font-semibold">Investigate this path</h3>
+    <details><summary className="cursor-pointer py-2 font-semibold">Investigate this path</summary>
     <p className="mt-1 text-ink-secondary">Selected path · snapshot evidence.</p>
     <div role="group" aria-label="Investigation questions" className="my-3 grid grid-cols-2 gap-2">
       {QUESTIONS.map((item, index) => <button key={item} aria-label={item} type="button" aria-pressed={question === item} onClick={() => setQuestion(current => current === item ? null : item)}
@@ -82,5 +82,6 @@ export function AgentInvestigationQuestions({ path, scanId, onConnections }: {
         {evidence}
       </>}
     </section>
+    </details>
   </section>;
 }

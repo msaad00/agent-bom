@@ -411,7 +411,7 @@ export function ContextLensView() {
     setSelectedEdgeId(null);
     setSelectedNode(null);
     setSelectedNodeId(null);
-  }, [graphData, selectedAgent, selectedJobId, selectedPathKey]);
+  }, [graphData, selectedAgent, selectedJobId]);
 
   useEffect(() => { setExpansionBatches({}); setFocusHistory([]); setDepth(1); setSelectedPathKey(undefined); setPathFocusEnabled(false); }, [selectedJobId, selectedAgent]);
   const seedId = focusHistory.at(-1) ?? (selectedAgent ? `agent:${selectedAgent}` : graphData?.nodes.find(node => node.kind === "agent")?.id ?? "");
@@ -792,7 +792,7 @@ export function ContextLensView() {
       )}
 
       {neighborhood && <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-3 text-sm">
-        <button className="context-action" aria-pressed={!pathFocusEnabled} onClick={() => { setPathFocusEnabled(false); setSelectedEdgeId(null); }}>Neighborhood</button>
+        <button className="context-action" aria-pressed={!pathFocusEnabled} onClick={() => { setSelectedPathKey(undefined); setPathFocusEnabled(false); setSelectedEdgeId(null); setSelectedNode(null); setSelectedNodeId(null); }}>Neighborhood</button>
         {focusHistory.length > 0 && <button className="context-action" onClick={() => { setFocusHistory(ids => ids.slice(0, -1)); clearExploration(); }}>Back</button>}
         <button className="context-action" onClick={() => { setFocusHistory([]); setDirection("both"); clearExploration(); }}>Reset neighborhood</button>
         <details><summary className="context-action cursor-pointer">Advanced view</summary><div className="flex flex-wrap gap-2 py-2">
@@ -905,7 +905,8 @@ export function ContextLensView() {
           edges={(pathFocusEnabled ? graphData.edges : neighborhood?.edges ?? []).filter(edge => rawNodes.some(node => node.id === edge.source) && rawNodes.some(node => node.id === edge.target)).slice(0, 80)}
           selectedId={selectedNodeId}
           selectedEdge={(() => { const edge = displayEdges.find(item => item.id === selectedEdgeId); return edge ? { source: edge.source, target: edge.target, relationship: String(edge.data?.relationship ?? ""), package: typeof edge.data?.package === "string" ? edge.data.package : undefined } : null; })()}
-          hiddenCount={(neighborhood?.hiddenGroups[expansionId] ?? []).reduce((sum, group) => sum + group.count, 0)}
+          hiddenCount={pathFocusEnabled ? null : (neighborhood?.hiddenGroups[expansionId] ?? []).reduce((sum, group) => sum + group.count, 0)}
+          neighborhoodMode={!pathFocusEnabled}
           onSelect={id => { const node = rawNodes.find(item => item.id === id); if (node) { setSelectedNode(node.data as LineageNodeData); setSelectedNodeId(id); setSelectedEdgeId(null); if (window.matchMedia("(max-width: 767px)").matches) void flowInstance?.fitView({ nodes: [{ id }], minZoom: 0.85, maxZoom: 1, duration: 200 }); } }}
           hiddenGroups={neighborhood?.hiddenGroups[expansionId] ?? []}
           allNodes={graphData.nodes}

@@ -90,11 +90,14 @@ for (const scenario of [
       if (path.startsWith("/v1/auth/")) return route.fulfill({ json: { authenticated: true, tenant_id: "fixture", role: "analyst", permissions: ["read"] } });
       if (path === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: "fixture", status: "done", created_at: "2026-09-22T00:00:00Z" }], total: 1 } });
       if (path === "/v1/scan/fixture") return route.fulfill({ json: { job_id: "fixture", status: "done", result: { agents: [{ name: "a", agent_type: "custom", servers: [] }], blast_radius: [] } } });
-      if (path.endsWith("/context-graph")) return route.fulfill({ json: { nodes, edges, lateral_paths: [], interaction_risks: [], stats: { total_nodes: nodes.length, total_edges: edges.length, agent_count: 3, shared_server_count: 0, shared_credential_count: 0, lateral_path_count: 0, max_lateral_depth: 0, highest_path_risk: 0, interaction_risk_count: 0 } } });
+      if (path.endsWith("/context-graph")) return route.fulfill({ json: { nodes, edges, lateral_paths: [{ source: "agent:a", target: "vulnerability:a", hops: ["agent:a", "server:a", "vulnerability:a"], edges: ["uses", "vulnerable_to"], composite_risk: 7, summary: "Recorded package path", credential_exposure: [], tool_exposure: [], vuln_ids: ["CVE-fixture"] }], interaction_risks: [], stats: { total_nodes: nodes.length, total_edges: edges.length, agent_count: 3, shared_server_count: 0, shared_credential_count: 0, lateral_path_count: 0, max_lateral_depth: 0, highest_path_risk: 0, interaction_risk_count: 0 } } });
       return route.fulfill({ status: 503, json: { detail: "Outside neighborhood fixture" } });
     });
     await page.goto("/graph?lens=context");
     await page.locator("select").filter({ has: page.locator('option[value="a"]') }).selectOption("a");
+    await page.getByRole("button", { name: "Paths", exact: true }).click();
+    await page.getByRole("button", { name: /Inspect path:/ }).first().click();
+    await page.getByRole("button", { name: "Paths", exact: true }).click();
     await page.getByRole("button", { name: "Neighborhood", exact: true }).click();
     const inspector = page.getByRole("complementary", { name: "Agent neighborhood inspector" });
     await expect(inspector).toBeVisible();
@@ -103,6 +106,13 @@ for (const scenario of [
     await inspector.evaluate(element => { element.scrollTop = element.scrollHeight; });
     await inspector.getByRole("button", { name: "Repository MCP", exact: true }).click();
     await expect(inspector.getByRole("heading", { name: "Repository MCP", exact: true })).toBeInViewport();
+    for (const kind of ["tool", "vulnerability", "credential"]) {
+      await inspector.getByRole("button", { name: `Show 1 ${kind} · 1 hidden`, exact: true }).click();
+      await expect(inspector.getByRole("heading", { name: "Repository MCP", exact: true })).toBeInViewport();
+    }
+    await expect(page.locator('.react-flow__node[data-id="vulnerability:a"]')).toBeAttached();
+    await expect(page.locator('.react-flow__node[data-id="credential:a"]')).toBeAttached();
+    await inspector.getByRole("button", { name: "Collapse added neighbors", exact: true }).click();
     await inspector.getByRole("button", { name: "Show 1 agent · 1 hidden", exact: true }).click();
     await expect(page.locator('.react-flow__node[data-id="agent:peer"]')).toBeAttached();
     await inspector.getByRole("button", { name: "Collapse added neighbors", exact: true }).click();

@@ -17,3 +17,12 @@ it("finds an exact hidden ID without merging names and preserves canonical types
   expect(onFocus).toHaveBeenCalledWith("role:other");
   expect(screen.getByText(/Shared infrastructure is not proof/)).toBeInTheDocument();
 });
+
+it("does not assert a complete neighborhood for a selected path hop", () => {
+  const node: ContextGraphNode = { id: "deep:hop", kind: "server", label: "Path hop", metadata: {} };
+  render(<ContextNeighborhoodInspector nodes={[node]} allNodes={[node, { ...node, id: "branch:hidden" }]} edges={[]} selectedId={node.id} selectedEdge={null} hiddenCount={null} neighborhoodMode={false} hiddenGroups={[]} expansionLabel="Path hop" canCollapse={false} onSelect={vi.fn()} onExpandGroup={vi.fn()} onCollapse={vi.fn()} onFocus={vi.fn()} onClose={vi.fn()} />);
+  expect(screen.getByText(/Additional neighbors not counted in path view/)).toBeInTheDocument();
+  expect(screen.queryByText(/No hidden neighbors/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/0 additional neighbors/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Focus here" })).toBeInTheDocument();
+});

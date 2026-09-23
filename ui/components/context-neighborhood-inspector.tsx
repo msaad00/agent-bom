@@ -7,14 +7,14 @@ import type { ContextGraphNode, ContextGraphEdge } from "@/lib/context-graph";
 import { contextRelationshipLabel } from "@/lib/context-graph";
 
 /** Inspect only the recorded projection; no identity or permission inference. */
-export function ContextNeighborhoodInspector({ nodes, edges, selectedId, selectedEdge, hiddenCount, hiddenGroups, allNodes, expansionLabel, canCollapse, onSelect, onExpandGroup, onCollapse, onFocus, onClose }: {
+export function ContextNeighborhoodInspector({ nodes, edges, selectedId, selectedEdge, hiddenCount, neighborhoodMode = true, hiddenGroups, allNodes, expansionLabel, canCollapse, onSelect, onExpandGroup, onCollapse, onFocus, onClose }: {
   nodes: ContextGraphNode[]; edges: ContextGraphEdge[]; selectedId: string | null;
   selectedEdge: { source: string; target: string; relationship: string; package?: string | undefined } | null;
-  hiddenCount: number; hiddenGroups: HiddenContextGroup[]; allNodes: ContextGraphNode[]; expansionLabel: string; canCollapse: boolean;
+  hiddenCount: number | null; neighborhoodMode?: boolean; hiddenGroups: HiddenContextGroup[]; allNodes: ContextGraphNode[]; expansionLabel: string; canCollapse: boolean;
   onSelect: (id: string) => void; onExpandGroup: (kind: string) => void; onCollapse: () => void; onFocus: (id: string) => void; onClose: () => void;
 }) {
   const inspectorRef = useRef<HTMLElement>(null);
-  useEffect(() => { if (inspectorRef.current) inspectorRef.current.scrollTop = 0; }, [selectedId, selectedEdge?.source, selectedEdge?.target, selectedEdge?.relationship, expansionLabel]);
+  useEffect(() => { if (inspectorRef.current) inspectorRef.current.scrollTop = 0; }, [selectedId, selectedEdge?.source, selectedEdge?.target, selectedEdge?.relationship, expansionLabel, hiddenCount]);
   const [query, setQuery] = useState("");
   const matches = query.trim() ? allNodes.filter(item => `${item.id} ${item.label}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) : [];
   const node = nodes.find(item => item.id === selectedId);
@@ -33,13 +33,13 @@ export function ContextNeighborhoodInspector({ nodes, edges, selectedId, selecte
     {query.trim() && <div className="mt-2 space-y-1"><p className="text-xs">{matches.length} loaded matches{matches.length > 8 ? " · showing first 8; refine to an exact identifier" : ""}</p>{matches.slice(0, 8).map(item => <button key={item.id} className="context-connection" onClick={() => { onFocus(item.id); setQuery(""); }}><span className="block">{item.label}</span><code className="break-all text-xs">{item.id}</code></button>)}</div>}
     {selectedEdge ? <div className="mt-4 space-y-3">
       <p className="break-words">{label(selectedEdge.source)} <span aria-label="to">→</span> {label(selectedEdge.target)}</p>
-      <span className="context-evidence-badge">Recorded configuration</span>
+      <span className="context-evidence-badge">Scan relationship</span>
       {selectedEdge.package && <p className="break-words">Affected package: {selectedEdge.package}</p>}
       <dl className="context-facts"><div><dt>Permission</dt><dd>Not established</dd></div><div><dt>Execution</dt><dd>Not established</dd></div><div><dt>Local exploitability</dt><dd>Not assessed</dd></div></dl>
       <p className="text-sm text-[var(--text-secondary)]">The arrow follows the recorded relationship. It does not prove a successful call or resource access.</p>
     </div> : node ? <div className="mt-4 space-y-3">
       <span className="context-evidence-badge">{(node.entity_type ?? node.kind).replaceAll("_", " ")} · scan evidence</span>
-      <p className="text-sm text-[var(--text-secondary)]">{related.length} visible relationships · {hiddenCount} additional neighbors in loaded evidence</p>
+      <p className="text-sm text-[var(--text-secondary)]">{related.length} visible relationships · {hiddenCount === null ? "Additional neighbors not counted in path view" : `${hiddenCount} additional neighbors in loaded evidence`}</p>
       <button onClick={() => onFocus(node.id)} className="context-action w-full">Focus here</button>
       <details><summary className="cursor-pointer py-2 text-sm">Recorded identifier</summary><code className="break-all text-xs">{node.id}</code></details>
       <h3 className="font-semibold">Incoming &amp; outgoing</h3>
@@ -55,7 +55,7 @@ export function ContextNeighborhoodInspector({ nodes, edges, selectedId, selecte
         <div className="max-h-48 overflow-y-auto pb-2">{items.map(item => <button key={item.id} onClick={() => onSelect(item.id)} className="context-connection">{item.label}</button>)}</div>
       </details>)}
     </div>}
-    {!selectedEdge && <div className="mt-4 space-y-2 border-t border-[var(--border-subtle)] pt-3">
+    {!selectedEdge && neighborhoodMode && <div className="mt-4 space-y-2 border-t border-[var(--border-subtle)] pt-3">
       <p className="text-xs text-[var(--text-secondary)]">More around {expansionLabel} · loaded neighbors only</p>
       {hiddenGroups.map(group => <button key={group.kind} className="context-action w-full text-left disabled:opacity-50" disabled={nodes.length >= 24} onClick={() => onExpandGroup(group.kind)}>Show {Math.min(CONTEXT_NEIGHBOR_BATCH_SIZE, group.count, Math.max(0, 24 - nodes.length))} {group.kind.replaceAll("_", " ")} · {group.count} hidden</button>)}
       {nodes.length >= 24 && hiddenGroups.length > 0 && <p className="text-xs">View limit reached. Focus here or find an exact entity to continue.</p>}

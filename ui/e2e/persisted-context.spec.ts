@@ -43,6 +43,19 @@ for (const theme of ["light", "dark"] as const) for (const width of [1440, 390])
     expect(legacyRequests).toBe(0);
     expect(fullReportRequests).toBe(0);
     await expect(inspector).toContainText("Bidirectional ↔ Recorded connection");
+    // Focusing the root changes card dimensions without changing node IDs.
+    await inspector.getByRole("button", { name: "Focus here", exact: true }).click();
+    await expect(page.getByTestId("context-overview-title")).toHaveCount(0);
+    await expect.poll(async () => page.getByLabel("Persisted neighborhood canvas", { exact: true }).evaluate(canvas => {
+      const bounds = canvas.getBoundingClientRect();
+      return [...canvas.querySelectorAll(".react-flow__node")].every(node => {
+        const box = node.getBoundingClientRect();
+        return box.x >= bounds.x && box.right <= bounds.right && box.y >= bounds.y && box.bottom <= bounds.bottom;
+      });
+    })).toBe(true);
+    await page.getByRole("button", { name: "Back to neighborhood", exact: true }).click();
+    await expect(page.getByTestId("context-overview-title")).toHaveCount(2);
+
     await expect(page.locator(".react-flow__edge-path").first()).toHaveAttribute("marker-start", /url/);
     await expect(page.locator(".react-flow__edge-path").first()).toHaveAttribute("marker-end", /url/);
     await inspector.getByText(/^Loaded entities \(\d+\)$/).click();

@@ -2916,7 +2916,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "context-map-live.png",
       page: "/graph?lens=context&capture=1",
-      scope: "Progressive persisted neighborhood with canonical IDs and an explicitly expanded package vulnerability branch",
+      scope: "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
     },
     {
       path: "inventory-live.png",
@@ -3537,7 +3537,11 @@ async function main() {
         await contextPage.locator('[data-id="cve:next"]').waitFor({ state: "visible" });
         await contextPage.locator('[data-id="pkg:next"]').click();
         await inspector.getByRole("button", { name: "Focus here", exact: true }).click();
-        await fitReactFlow(contextPage);
+        await expect(contextPage.locator(".react-flow__node")).toHaveCount(3);
+        await contextPage.getByRole("button", { name: "Back to neighborhood", exact: true }).click();
+        await expect(contextPage.locator(".react-flow__node")).toHaveCount(9);
+        await contextPage.locator('[data-id="agent:developer-copilot"]').click();
+        await contextPage.waitForTimeout(500);
         for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
         await scrollTo(contextPage, 0);
       },
@@ -3545,10 +3549,10 @@ async function main() {
         awaitResponses: [(response) => response.url().includes("/graph/incident-edges") && response.ok()],
         expectedText: ["Context Map", "developer-copilot", "CVE-2025-29927", "Persisted snapshot"],
         expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}/status`, "/v1/graph/agents", "/v1/graph/incident-edges"],
-        minGraphNodes: 3,
-        maxGraphNodes: 3,
-        minGraphEdges: 2,
-        maxGraphEdges: 2,
+        minGraphNodes: 9,
+        maxGraphNodes: 9,
+        minGraphEdges: 8,
+        maxGraphEdges: 8,
         minGraphNodeFontPx: 12,
         assertEdgeLabelsClearOfNodes: true,
       },

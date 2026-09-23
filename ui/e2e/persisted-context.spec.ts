@@ -42,10 +42,23 @@ for (const theme of ["light", "dark"] as const) for (const width of [1440, 390])
     expect(requests[0]?.searchParams.get("scan_id")).toBe("persisted-fixture");
     expect(legacyRequests).toBe(0);
     expect(fullReportRequests).toBe(0);
-    await expect(inspector).toContainText("Recorded connection");
+    await expect(inspector).toContainText("Bidirectional ↔ Recorded connection");
+    // Focusing the root changes card dimensions without changing node IDs.
+    await inspector.getByRole("button", { name: "Focus here", exact: true }).click();
+    await expect(page.getByTestId("context-overview-title")).toHaveCount(0);
+    await expect.poll(async () => page.getByLabel("Persisted neighborhood canvas", { exact: true }).evaluate(canvas => {
+      const bounds = canvas.getBoundingClientRect();
+      return [...canvas.querySelectorAll(".react-flow__node")].every(node => {
+        const box = node.getBoundingClientRect();
+        return box.x >= bounds.x && box.right <= bounds.right && box.y >= bounds.y && box.bottom <= bounds.bottom;
+      });
+    })).toBe(true);
+    await page.getByRole("button", { name: "Back to neighborhood", exact: true }).click();
+    await expect(page.getByTestId("context-overview-title")).toHaveCount(2);
+
     await expect(page.locator(".react-flow__edge-path").first()).toHaveAttribute("marker-start", /url/);
     await expect(page.locator(".react-flow__edge-path").first()).toHaveAttribute("marker-end", /url/);
-    await inspector.getByText("Loaded entities", { exact: true }).click();
+    await inspector.getByText(/^Loaded entities \(\d+\)$/).click();
     await inspector.getByRole("button", { name: /File server.*server:endpoint-a:files/ }).click();
     await inspector.getByRole("button", { name: "Expand connections", exact: true }).click();
     await expect(inspector.getByRole("button", { name: "Load more relationships" })).toBeVisible();
@@ -68,29 +81,59 @@ for (const theme of ["light", "dark"] as const) for (const width of [1440, 390])
 }
 
 test("high-degree Context starts compact and focuses a returned canonical entity", async ({ page }) => {
+  let incidentRequests = 0;
   const services = Array.from({ length: 24 }, (_, i) => node(`server:hub:${i}`, "server", `Service ${i}`));
   await page.route("**/v1/**", route => {
     const url = new URL(route.request().url());
     if (url.pathname === "/v1/auth/me") return route.fulfill({ json: { authenticated: true, auth_required: false, tenant_id: "fixture", auth_method: "anonymous", role: "admin", configured_modes: [], recommended_ui_mode: "no_auth", memberships: [] } });
-    if (url.pathname === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: "hub", status: "done" }], total: 1 } });
+    if (url.pathname === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: url.searchParams.get("offset") === "24" ? "older" : "hub", status: "done" }], total: 25 } });
     if (url.pathname === "/v1/scan/hub/status") return route.fulfill({ json: { job_id: "hub", status: "done", graph_scan_id: "hub" } });
     if (url.pathname === "/v1/graph/agents") return route.fulfill({ json: { scan_id: "hub", agents: [agent], pagination: { total: 1 } } });
-    if (url.pathname === "/v1/graph/incident-edges") return route.fulfill({ json: { scan_id: "hub", snapshot_generation: generation, node_id: root, found: true, direction: "both", limit: 24, node: agent, nodes: services, edges: services.map(service => relation(root, service.id, "uses")), next_cursor: "more", completeness: { status: "truncated", complete: false, truncated: true, sampled: false, total: null, returned: 24, missing_endpoint_count: 0, scope: "incident_edge_page" } } });
+    if (url.pathname === "/v1/graph/incident-edges") { incidentRequests++; return route.fulfill({ json: { scan_id: "hub", snapshot_generation: generation, node_id: root, found: true, direction: "both", limit: 24, node: agent, nodes: services, edges: services.map(service => relation(root, service.id, "uses")), next_cursor: "more", completeness: { status: "truncated", complete: false, truncated: true, sampled: false, total: null, returned: 24, missing_endpoint_count: 0, scope: "incident_edge_page" } } }); }
     return route.fulfill({ json: {} });
   });
   await page.goto("/graph?lens=context");
   const status = page.getByRole("status").filter({ hasText: "loaded entities" });
   await expect(status).toContainText("25 loaded entities · 24 loaded relationships · total unknown. Canvas: 8 entities");
   await expect(page.locator(".react-flow__node")).toHaveCount(8);
+  const canvas = page.getByLabel("Persisted neighborhood canvas");
+  await expect.poll(() => canvas.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return [...element.querySelectorAll<HTMLElement>(".react-flow__node")].every(node => {
+      const box = node.getBoundingClientRect();
+      return box.x >= bounds.x && box.right <= bounds.right && box.y >= bounds.y && box.bottom <= bounds.bottom;
+    });
+  })).toBe(true);
+  const title = page.getByTestId("context-overview-title").first();
+  expect(await title.evaluate(element => {
+    const node = element.closest<HTMLElement>(".react-flow__node")!;
+    return parseFloat(getComputedStyle(element).fontSize) * node.getBoundingClientRect().width / node.offsetWidth;
+  })).toBeGreaterThanOrEqual(12);
+  const requestsBeforePaging = incidentRequests;
+  await page.getByRole("button", { name: "Next scans", exact: true }).click();
+  await expect(page.getByRole("option", { name: "older", exact: true })).toBeAttached();
+  await expect(page.getByLabel("Completed scan")).toHaveValue("hub");
+  expect(incidentRequests).toBe(requestsBeforePaging);
   await page.getByRole("button", { name: "Expand canvas", exact: true }).click();
   await expect(page.locator(".react-flow__node")).toHaveCount(24);
   await page.getByRole("button", { name: "Compact canvas", exact: true }).click();
   const inspector = page.getByRole("complementary", { name: "Agent neighborhood inspector" });
-  await inspector.getByText("Loaded entities", { exact: true }).click();
+  await inspector.getByText(/^Loaded entities \(\d+\)$/).click();
   await inspector.getByRole("button", { name: "Service 23 server:hub:23", exact: true }).click();
   await inspector.getByRole("button", { name: "Focus here" }).click();
   await expect(page.locator('.react-flow__node[data-id="server:hub:23"]')).toBeVisible();
   await expect(page.locator(".react-flow__node")).toHaveCount(2);
+  const loadedBefore = await status.textContent();
+  const requestCount = incidentRequests;
+  await page.getByRole("button", { name: "Back to neighborhood", exact: true }).click();
+  await expect(page.locator(".react-flow__node")).toHaveCount(8);
+  await expect(inspector.getByRole("heading", { name: "Service 23", exact: true })).toBeVisible();
+  expect(loadedBefore).toContain("25 loaded entities · 24 loaded relationships");
+  await expect(status).toContainText("25 loaded entities · 24 loaded relationships");
+  expect(incidentRequests).toBe(requestCount);
+  await inspector.getByLabel("Find loaded entity").fill("server:hub:12");
+  await expect(inspector.getByRole("button", { name: "Service 12 server:hub:12", exact: true })).toBeVisible();
+  await expect(inspector.getByRole("button", { name: "Service 23 server:hub:23", exact: true })).toHaveCount(0);
 });
 
 test("missing snapshot identity remains unavailable instead of guessing the job ID", async ({ page }) => {
@@ -106,4 +149,28 @@ test("missing snapshot identity remains unavailable instead of guessing the job 
   await page.goto("/graph?lens=context");
   await expect(page.getByRole("alert").filter({ hasText: "Persisted snapshot identity unavailable" })).toBeVisible();
   expect(graphRequests).toBe(0);
+});
+
+test("client navigation to another explicit snapshot replaces the Context workspace", async ({ page }) => {
+  const incidentScans: string[] = [];
+  await page.route("**/v1/**", route => {
+    const url = new URL(route.request().url());
+    const scan = url.searchParams.get("scan_id") || "first";
+    if (url.pathname === "/v1/auth/me") return route.fulfill({ json: { authenticated: true, auth_required: false, tenant_id: "fixture", auth_method: "anonymous", role: "admin", configured_modes: [], recommended_ui_mode: "no_auth", memberships: [] } });
+    if (url.pathname === "/v1/jobs") return route.fulfill({ json: { jobs: [], total: 0 } });
+    if (url.pathname === "/v1/graph/agents") return route.fulfill({ json: { scan_id: scan, agents: [agent], pagination: { total: 1 } } });
+    if (url.pathname === "/v1/graph/incident-edges") {
+      incidentScans.push(scan);
+      return route.fulfill({ json: { scan_id: scan, snapshot_generation: generation, node_id: root, found: true, direction: "both", limit: 24, node: agent, nodes: [service], edges: [relation(root, server, "uses")], next_cursor: null, completeness: { status: "complete", complete: true, truncated: false, total: null, returned: 1, missing_endpoint_count: 0, scope: "incident_edge_page" } } });
+    }
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/graph?lens=context&scan=first");
+  const inspector = page.getByRole("complementary", { name: "Agent neighborhood inspector" });
+  await expect(inspector.getByRole("link", { name: "Investigate reach & permissions" })).toHaveAttribute("href", /scan=first&/);
+  await page.evaluate(() => window.history.pushState(null, "", "/graph?lens=context&scan=second"));
+  await expect(inspector.getByRole("link", { name: "Investigate reach & permissions" })).toHaveAttribute("href", /scan=second&/);
+  expect(incidentScans).toEqual(["first", "second"]);
+  await page.getByRole("button", { name: /Cloud/ }).click();
+  await expect(page).toHaveURL(/scan=second&lens=cloud/);
 });

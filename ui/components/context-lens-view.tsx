@@ -315,7 +315,7 @@ export function LateralPanel({
 
 export function ContextLensView() {
   const [persisted, setPersisted] = useState(true);
-  return <><div className="flex flex-wrap gap-2 border-b border-[var(--border-subtle)] p-3" aria-label="Context evidence source">
+  return <><div className="flex flex-wrap gap-2 border-b border-[var(--border-subtle)] px-3 py-2" aria-label="Context evidence source">
     <button className="context-action" aria-pressed={persisted} onClick={() => setPersisted(true)}>Persisted snapshot</button>
     <button className="context-action" aria-pressed={!persisted} onClick={() => setPersisted(false)}>Scan-derived (unpersisted)</button>
   </div>{persisted ? <PersistedContextView /> : <><p className="p-3 text-sm text-[var(--text-secondary)]">Scan-derived evidence rebuilt from the report; this mode does not page the persisted graph.</p><ScanDerivedContextView /></>}</>;

@@ -162,9 +162,10 @@ export function buildRollupFlowGraph(
       id: `rollup:${edge.source}->${edge.target}`,
       source: edge.source,
       target: edge.target,
-      // The relationship names, not just a number: "accessed x35" says what the
-      // weight is made of, where a bare 35 does not.
-      label: edge.count > 1 ? `${edge.relationships[0] ?? "related"} ×${edge.count}` : (edge.relationships[0] ?? "related"),
+      // The aggregate count spans every listed kind; it is not a per-kind count.
+      label: edge.relationships.length > 1
+        ? `${edge.count} relationships · ${edge.relationships.join(", ")}`
+        : edge.count > 1 ? `${edge.relationships[0] ?? "related"} ×${edge.count}` : (edge.relationships[0] ?? "related"),
       animated: false,
       style: { strokeWidth: rollupEdgeWidth(edge.count) },
     }));

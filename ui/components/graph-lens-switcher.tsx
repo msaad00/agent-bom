@@ -105,7 +105,6 @@ const SPECIALIZED_GRAPH_VIEWS: GraphLens[] = [
     label: "Context",
     icon: "🗺️",
     href: "/security-graph?lens=context",
-    preserveContext: false,
     match: (p, _scope, lens) =>
       (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "context",
   },
@@ -162,12 +161,15 @@ export function buildInvestigationLensHref(
 }
 
 interface GraphLensSwitcherProps {
+  /** Resolved persisted snapshot when selection is local to a view. */
+  scanId?: string | undefined;
   variant?: "inline" | "floating" | "compact";
   legendItems?: LegendItem[];
   legendDefaultOpen?: boolean;
 }
 
 export function GraphLensSwitcher({
+  scanId,
   variant = "inline",
   legendItems,
   legendDefaultOpen = false,
@@ -200,7 +202,9 @@ export function GraphLensSwitcher({
     router.push(
       lens.preserveContext === false
         ? lens.href
-        : buildInvestigationLensHref(lens.href, searchParams),
+        : buildInvestigationLensHref(lens.href, {
+          get: (key) => key === "scan" && scanId ? scanId : searchParams.get(key),
+        }),
     );
   };
 

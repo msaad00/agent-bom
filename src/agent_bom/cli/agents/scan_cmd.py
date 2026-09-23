@@ -2712,7 +2712,7 @@ def scan(
         try:
             from agent_bom.secret_scanner import scan_secrets as _scan_secrets
 
-            _secret_result = _scan_secrets(project)
+            _secret_result = _scan_secrets(project, aws_live_validation=False) if offline else _scan_secrets(project)
             if _secret_result.total > 0 or _secret_result.warnings:
                 report.ai_inventory_data = report.ai_inventory_data or {}
                 report.ai_inventory_data["secrets"] = _secret_result.to_dict()

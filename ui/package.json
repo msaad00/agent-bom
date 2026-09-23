@@ -20,6 +20,8 @@
     "headers:sync": "node scripts/sync-vercel-headers.mjs",
     "headers:check": "node scripts/sync-vercel-headers.mjs --check",
     "capture:product-proof": "node scripts/capture-product-proof.mjs",
+    "capture:inputs-digest": "node scripts/refresh-capture-inputs-digest.mjs",
+    "capture:inputs-digest:check": "node scripts/refresh-capture-inputs-digest.mjs --check",
     "codegen:graph-schema": "node scripts/codegen-graph-schema.mjs",
     "codegen:graph-schema:check": "node scripts/codegen-graph-schema.mjs --check",
     "test": "vitest",

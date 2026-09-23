@@ -21,11 +21,29 @@ DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
 PRODUCT_SCREENSHOTS = ROOT / "docs" / "images" / "product-screenshots.json"
 REFERENCE_LAB_DIGEST = ROOT / "examples" / "reference-evidence-lab" / "generated" / "correlation-proof.sha256"
+# Rendering source, build configuration, and normalized dependency inputs.
+# Keep the Python and JavaScript digest algorithms identical.
 PRODUCT_SCREENSHOT_INPUTS = (
-    "ui",
+    "ui/app",
+    "ui/components",
+    "ui/hooks",
+    "ui/lib",
+    "ui/public",
+    "ui/server",
+    "ui/fixtures",
+    "ui/next.config.ts",
+    "ui/tsconfig.json",
+    "ui/postcss.config.mjs",
+    "ui/scripts/capture-product-proof.mjs",
+    "ui/scripts/product-proof-scope.mjs",
+    "ui/scripts/product-proof-server.mjs",
+    "ui/scripts/product-proof-provenance.mjs",
     "examples/reference-evidence-lab",
     "scripts/generate_reference_evidence_lab.py",
 )
+# Defensive: none of the directories above currently contain colocated tests,
+# but a future one must not silently start counting toward the digest.
+_PRODUCT_SCREENSHOT_TEST_FILE = re.compile(r"(?:^|/)(?:tests|e2e)/|\.(?:test|spec)\.[jt]sx?$")
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
 SITE_INDEX = ROOT / "site-docs" / "index.md"
@@ -291,6 +309,49 @@ def _assert_docker_storefront_state(version: str) -> None:
         _fail(f"DOCKER_HUB_README.md must describe {version} with lifecycle-neutral availability wording")
 
 
+def _compute_product_screenshot_inputs_digest() -> str:
+    """Hash every path that can affect a rendered/screenshotted pixel.
+
+    Mirrored byte-for-byte in ui/scripts/product-proof-provenance.mjs
+    (computeCaptureInputsDigest) — keep both in sync on any change here.
+    """
+    tracked = subprocess.run(
+        # A container may mount the checkout with a different host UID. Trust
+        # only this guard's known root for this read, never global Git config.
+        ["git", "-c", f"safe.directory={ROOT}", "ls-files", "-z", "--", *PRODUCT_SCREENSHOT_INPUTS],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+    )
+    if tracked.returncode != 0:
+        _fail("unable to enumerate release product screenshot inputs")
+    digest = hashlib.sha256()
+    tracked_paths = sorted(
+        relative_path
+        for relative_path in (encoded_path.decode("utf-8") for encoded_path in filter(None, tracked.stdout.split(b"\0")))
+        if not _PRODUCT_SCREENSHOT_TEST_FILE.search(relative_path)
+    )
+    for relative_path in tracked_paths:
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update((ROOT / relative_path).read_bytes())
+        digest.update(b"\0")
+    # Ignore only the Node type package: preserve CSS/build dependencies,
+    # overrides, and resolved transitive versions even without range changes.
+    for filename in ("package.json", "package-lock.json"):
+        data = json.loads((ROOT / "ui" / filename).read_text(encoding="utf-8"))
+        data.get("devDependencies", {}).pop("@types/node", None)
+        packages = data.get("packages", {})
+        packages.pop("node_modules/@types/node", None)
+        packages.get("", {}).get("devDependencies", {}).pop("@types/node", None)
+        content = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        digest.update(f"ui/{filename}#render-inputs".encode())
+        digest.update(b"\0")
+        digest.update(content.encode("utf-8"))
+        digest.update(b"\0")
+    return f"sha256:{digest.hexdigest()}"
+
+
 def _assert_product_screenshots_current(expected_version: str) -> None:
     if not PRODUCT_SCREENSHOTS.exists():
         _fail("docs/images/product-screenshots.json is missing from release surface")
@@ -305,24 +366,7 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
     source_commit = manifest.get("source_commit")
     if not isinstance(source_commit, str) or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
         _fail("docs/images/product-screenshots.json source_commit must be a full lowercase Git SHA")
-    tracked = subprocess.run(
-        # A container may mount the checkout with a different host UID. Trust
-        # only this guard's known root for this read, never global Git config.
-        ["git", "-c", f"safe.directory={ROOT}", "ls-files", "-z", "--", *PRODUCT_SCREENSHOT_INPUTS],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-    )
-    if tracked.returncode != 0:
-        _fail("unable to enumerate release product screenshot inputs")
-    digest = hashlib.sha256()
-    for encoded_path in sorted(filter(None, tracked.stdout.split(b"\0"))):
-        relative_path = encoded_path.decode("utf-8")
-        digest.update(encoded_path)
-        digest.update(b"\0")
-        digest.update((ROOT / relative_path).read_bytes())
-        digest.update(b"\0")
-    expected_input_digest = f"sha256:{digest.hexdigest()}"
+    expected_input_digest = _compute_product_screenshot_inputs_digest()
     if manifest.get("capture_inputs_sha256") != expected_input_digest:
         _fail("docs/images/product-screenshots.json capture inputs changed after the recorded product proof")
 
@@ -347,13 +391,13 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
 
     lab_digest = REFERENCE_LAB_DIGEST.read_text(encoding="utf-8").strip()
     by_path = {entry.get("path"): entry for entry in screenshots if isinstance(entry, dict)}
-    for rel_path in ("correlation-receipts-live.png", "correlation-path-live.png"):
-        entry = by_path[rel_path]
+    for lab_path in ("correlation-receipts-live.png", "correlation-path-live.png"):
+        entry = by_path[lab_path]
         if entry.get("evidence_sha256") != lab_digest:
-            _fail(f"docs/images/{rel_path} is not bound to the current reference lab artifact")
+            _fail(f"docs/images/{lab_path} is not bound to the current reference lab artifact")
         manifest_hash = entry.get("correlation_manifest_sha256")
         if not isinstance(manifest_hash, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", manifest_hash) is None:
-            _fail(f"docs/images/{rel_path} is missing the correlation manifest hash")
+            _fail(f"docs/images/{lab_path} is missing the correlation manifest hash")
 
     expected_parts = tuple(int(part) for part in expected_version.split("."))
     for entry in screenshots:

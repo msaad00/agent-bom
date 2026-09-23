@@ -2922,7 +2922,7 @@ async def get_graph_node_neighbors(
             "direction": normalized_direction,
             "limit": limit,
             "total_neighbors": None,
-            "truncated": False,
+            "truncated": True,
             "neighbors": [],
             "edges": [],
             # The node was not found, so zero returned neighbors is not proof

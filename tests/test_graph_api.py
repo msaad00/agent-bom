@@ -3298,6 +3298,7 @@ class TestGraphStoreBackendSelection:
         assert response.status_code == 200
         body = response.json()
         assert body["found"] is False
+        assert body["truncated"] is True
         assert body["neighbors"] == []
         assert body["total_neighbors"] is None
         assert body["completeness"]["complete"] is False

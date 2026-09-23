@@ -5,6 +5,10 @@
 -- Incident-edge keyset indexes match the migration-owned graph paging path.
 DO $$
 BEGIN
+  IF to_regclass('public.graph_snapshots') IS NOT NULL THEN
+    ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_generation TEXT NOT NULL DEFAULT '';
+    UPDATE graph_snapshots SET snapshot_generation=replace(gen_random_uuid()::text, '-', '') WHERE snapshot_generation='';
+  END IF;
   IF to_regclass('public.graph_edges') IS NOT NULL THEN
     CREATE INDEX IF NOT EXISTS idx_pg_adjacency_out ON graph_edges
       (tenant_id, scan_id, source_id COLLATE "C", target_id COLLATE "C", relationship COLLATE "C");
@@ -383,7 +387,7 @@ $tenant_binding_roles$;
 INSERT INTO control_plane_schema_versions(component,version,updated_at)
 SELECT component,1,now() FROM unnest(ARRAY[
  'scan_jobs','api_keys','exceptions','audit_log','trend_history','gateway_policies','schedules','sources','credential_refs','llm_costs',
- 'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
+ 'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','scan_cache','identity_scim',
  'tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
  'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','model_provider_keys','tenant_score_config',
  'ticketing_connections','graph_scenarios','export_destinations'
@@ -404,3 +408,10 @@ ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=exclude
 INSERT INTO control_plane_schema_versions(component,version,updated_at)
 VALUES ('agent_identities',2,now())
 ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,excluded.version),updated_at=excluded.updated_at;
+
+-- Preserve older readiness until the full graph v4 migration exists; never
+-- downgrade its marker on runtime replay. Generation upgrades that schema to v5.
+UPDATE control_plane_schema_versions SET version=5,updated_at=now()
+WHERE component='graph' AND version>=4 AND version<5
+  AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public'
+              AND table_name='graph_snapshots' AND column_name='snapshot_generation');

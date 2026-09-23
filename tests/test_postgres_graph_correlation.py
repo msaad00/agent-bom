@@ -282,7 +282,7 @@ def test_postgres_latest_snapshot_selection_is_scoped_by_kind_and_tenant(monkeyp
         store.latest_snapshot_id(tenant_id="acme", snapshot_kind="inventory")
 
 
-def test_postgres_graph_requires_v4_schema_marker(monkeypatch) -> None:
+def test_postgres_graph_requires_v5_schema_marker(monkeypatch) -> None:
     from agent_bom.api import postgres_graph
 
     required: list[tuple[str, int]] = []
@@ -294,7 +294,7 @@ def test_postgres_graph_requires_v4_schema_marker(monkeypatch) -> None:
 
     postgres_graph.PostgresGraphStore(pool=_Pool(_Conn()))
 
-    assert required == [("graph", 4)]
+    assert required == [("graph", 5)]
 
 
 def test_postgres_correlation_rejects_idempotency_key_reuse_for_different_request(monkeypatch) -> None:

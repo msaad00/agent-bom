@@ -182,7 +182,9 @@ def test_streaming_snapshot_tally_matches_nodes(monkeypatch):
         snapshot_kind,
         correlation_id,
         evidence_manifest_sha256,
+        snapshot_generation,
     ) = conn.snapshot_params
+    assert len(snapshot_generation) == 32
     assert (scan, tenant, node_count, edge_count) == ("scan-2", "t1", 4, 0)
     import json
 

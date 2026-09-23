@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sqlite3
+import uuid
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -55,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GRAPH_TENANT_ID = "default"
 GRAPH_SNAPSHOT_KINDS = frozenset({"scan", "correlation"})
-_GRAPH_SCHEMA_VERSION = 6
+_GRAPH_SCHEMA_VERSION = 7
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
 _DEFAULT_GRAPH_RETENTION_DAYS = 180
 _FINDING_ENTITY_TYPES = {
@@ -213,6 +214,7 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     snapshot_kind   TEXT NOT NULL DEFAULT 'scan' CHECK (snapshot_kind IN ('scan', 'correlation')),
     correlation_id  TEXT DEFAULT NULL,
     evidence_manifest_sha256 TEXT NOT NULL DEFAULT '',
+    snapshot_generation TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (scan_id, tenant_id)
 );
 CREATE INDEX IF NOT EXISTS idx_gs_recent ON graph_snapshots(tenant_id, created_at DESC);
@@ -439,6 +441,9 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN correlation_id TEXT DEFAULT NULL")
     if "evidence_manifest_sha256" not in snapshot_columns:
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN evidence_manifest_sha256 TEXT NOT NULL DEFAULT ''")
+    if "snapshot_generation" not in snapshot_columns:
+        conn.execute("ALTER TABLE graph_snapshots ADD COLUMN snapshot_generation TEXT NOT NULL DEFAULT ''")
+    conn.execute("UPDATE graph_snapshots SET snapshot_generation = lower(hex(randomblob(16))) WHERE snapshot_generation = ''")
     correlation_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_correlation_runs)").fetchall()}
     if "result_manifest" not in correlation_columns:
         conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN result_manifest TEXT NOT NULL DEFAULT '{}'")
@@ -1132,8 +1137,8 @@ def save_graph_streaming(
         INSERT OR REPLACE INTO graph_snapshots
             (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary,
              node_type_counts, analysis_status, snapshot_kind, correlation_id,
-             evidence_manifest_sha256)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             evidence_manifest_sha256, snapshot_generation)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             scan,
@@ -1147,6 +1152,7 @@ def save_graph_streaming(
             snapshot_kind,
             correlation_id or None,
             evidence_manifest_sha256,
+            uuid.uuid4().hex,
         ),
     )
 

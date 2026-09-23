@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence, cast
 
@@ -54,7 +55,7 @@ from .postgres_common import (
 )
 
 logger = logging.getLogger(__name__)
-_GRAPH_STORAGE_SCHEMA_VERSION = 4
+_GRAPH_STORAGE_SCHEMA_VERSION = 5
 _DB_NOW_ISO = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 _DB_LEASE_ISO = "to_char(now() AT TIME ZONE 'UTC' + (%s * INTERVAL '1 second'), 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 
@@ -404,12 +405,17 @@ class PostgresGraphStore:
                     snapshot_kind TEXT NOT NULL DEFAULT 'scan' CHECK (snapshot_kind IN ('scan', 'correlation')),
                     correlation_id TEXT DEFAULT NULL,
                     evidence_manifest_sha256 TEXT NOT NULL DEFAULT '',
+                    snapshot_generation TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (scan_id, tenant_id)
                 )
                 """
             )
             # Additive and nullable, matching the SQLite column: snapshots written
             # before it existed read NULL and fall back to the live GROUP BY.
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_generation TEXT NOT NULL DEFAULT ''")
+            conn.execute(
+                "UPDATE graph_snapshots SET snapshot_generation = replace(gen_random_uuid()::text, '-', '') WHERE snapshot_generation = ''"
+            )
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS node_type_counts TEXT DEFAULT NULL")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_kind TEXT NOT NULL DEFAULT 'scan'")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS correlation_id TEXT DEFAULT NULL")
@@ -1113,8 +1119,8 @@ class PostgresGraphStore:
                 INSERT INTO graph_snapshots
                     (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary,
                      node_type_counts, analysis_status, snapshot_kind, correlation_id,
-                     evidence_manifest_sha256)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     evidence_manifest_sha256, snapshot_generation)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (scan_id, tenant_id) DO UPDATE SET
                     created_at = EXCLUDED.created_at,
                     node_count = EXCLUDED.node_count,
@@ -1124,7 +1130,8 @@ class PostgresGraphStore:
                     analysis_status = EXCLUDED.analysis_status,
                     snapshot_kind = EXCLUDED.snapshot_kind,
                     correlation_id = EXCLUDED.correlation_id,
-                    evidence_manifest_sha256 = EXCLUDED.evidence_manifest_sha256
+                    evidence_manifest_sha256 = EXCLUDED.evidence_manifest_sha256,
+                    snapshot_generation = EXCLUDED.snapshot_generation
                 """,
                 (
                     scan,
@@ -1138,6 +1145,7 @@ class PostgresGraphStore:
                     snapshot_kind,
                     correlation_id or None,
                     evidence_manifest_sha256,
+                    uuid.uuid4().hex,
                 ),
             )
             if correlation_result_manifest is not None:

@@ -259,3 +259,42 @@ def test_postgres_rls_independently_rejects_another_tenant(store, monkeypatch):
             store.incident_edges_page(tenant_id=other, node_id="hub", cursor=page["next_cursor"])
     finally:
         reset_current_tenant(token)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_replacement_with_same_timestamp_and_manifest_invalidates_cursor(store, streaming):
+    tenant = uuid.uuid4().hex
+    graph = save_fixture(store, tenant)
+    page = store.incident_edges_page(tenant_id=tenant, scan_id="scan", node_id="hub", limit=1)
+    old_scope = json.loads(base64.urlsafe_b64decode(page["next_cursor"]))["scope"]
+    graph.edges.pop()
+    if streaming:
+        store.save_graph_streaming(
+            tenant_id=tenant, scan_id="scan", created_at=graph.created_at, nodes=graph.nodes.values(), edges=graph.edges
+        )
+    else:
+        store.save_graph(graph)
+    fresh = store.incident_edges_page(tenant_id=tenant, scan_id="scan", node_id="hub", limit=1)
+    new_scope = json.loads(base64.urlsafe_b64decode(fresh["next_cursor"]))["scope"]
+    assert old_scope[:4] == new_scope[:4]  # Same tenant, ID, timestamp, manifest.
+    assert old_scope[4] != new_scope[4]  # Every successful save advances generation.
+    with pytest.raises(ValueError, match="scope"):
+        store.incident_edges_page(tenant_id=tenant, scan_id="scan", node_id="hub", cursor=page["next_cursor"])
+
+
+def test_sqlite_legacy_generation_backfill_is_durable(tmp_path):
+    import sqlite3
+
+    from agent_bom.db.graph_store import open_graph_db
+
+    path = tmp_path / "legacy.db"
+    store = SQLiteGraphStore(path)
+    save_fixture(store, "acme")
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE graph_snapshots DROP COLUMN snapshot_generation")
+    with open_graph_db(path) as conn:
+        first = conn.execute("SELECT snapshot_generation FROM graph_snapshots").fetchone()[0]
+    with open_graph_db(path) as conn:
+        second = conn.execute("SELECT snapshot_generation FROM graph_snapshots").fetchone()[0]
+    assert len(first) == 32 and first == second
+    assert SQLiteGraphStore(path).incident_edges_page(tenant_id="acme", node_id="hub")

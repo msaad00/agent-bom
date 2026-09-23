@@ -1,8 +1,8 @@
 """Bounded recorded incident-edge pages shared by relational graph stores.
 
-Pages assume snapshot IDs are immutable while being paged. Timestamp/manifest
-changes invalidate cursors; legacy replacement preserving both cannot be detected
-without a durable revision column. Each individual page is transaction-consistent.
+A durable per-save snapshot generation rejects cursors across replacements,
+even when snapshot IDs, timestamps, and manifests are reused. Each page is
+transaction-consistent.
 
 A next-page caller must reuse the returned scan_id; resolving latest again rejects
 a cursor if a newer snapshot appeared. Completeness covers only this recorded
@@ -66,12 +66,13 @@ def incident_edge_page(
         raise ValueError("Unsupported SQL parameter marker")
     if scan_id:
         snapshot = conn.execute(
-            f"SELECT scan_id, created_at, evidence_manifest_sha256 FROM graph_snapshots WHERE tenant_id = {marker} AND scan_id = {marker}",  # nosec B608
+            f"SELECT scan_id, created_at, evidence_manifest_sha256, snapshot_generation FROM graph_snapshots "
+            f"WHERE tenant_id = {marker} AND scan_id = {marker}",  # nosec B608
             (tenant_id, scan_id),
         ).fetchone()
     else:
         snapshot = conn.execute(
-            f"SELECT scan_id, created_at, evidence_manifest_sha256 FROM graph_snapshots WHERE tenant_id "
+            f"SELECT scan_id, created_at, evidence_manifest_sha256, snapshot_generation FROM graph_snapshots WHERE tenant_id "
             f"= {marker} AND snapshot_kind = 'scan' ORDER BY created_at DESC, scan_id DESC LIMIT 1",  # nosec B608
             (tenant_id,),
         ).fetchone()
@@ -80,7 +81,7 @@ def incident_edge_page(
             raise ValueError("Incident-edge cursor snapshot is unavailable")
         return None
     effective_scan_id, created_at = str(snapshot[0]), str(snapshot[1])
-    scope = [tenant_id, effective_scan_id, created_at, str(snapshot[2] or ""), node_id, direction]
+    scope = [tenant_id, effective_scan_id, created_at, str(snapshot[2] or ""), str(snapshot[3]), node_id, direction]
     if token is not None and token.get("scope") != scope:
         raise ValueError("Incident-edge cursor does not match request scope")
     seed = conn.execute(

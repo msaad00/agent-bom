@@ -1,9 +1,14 @@
 # agent-bom for Snowflake
 
-agent-bom inventories and governs AI, MCP, identity, vulnerability, and cloud
-security evidence inside the consumer's Snowflake account. Customer data stays
-in that account. Outbound advisory feeds are disabled until the consumer binds
-the corresponding external access integrations and enables the scanner.
+This provider-preview package defines API/UI containers, consumer permission
+callbacks, and read-only reference bindings for Snowflake. Binding objects does
+not automatically ingest their data. Advisory-feed references remain unbound
+until explicitly approved.
+
+**Native App scan dispatch is unavailable; the scanner lifecycle is unsupported.**
+Authenticated installation, service readiness, reference binding, and a completed
+scan with persisted findings remain unverified. Use this package to validate the
+installation contract, not as evidence of a production-ready scanning deployment.
 
 ## Required privileges
 

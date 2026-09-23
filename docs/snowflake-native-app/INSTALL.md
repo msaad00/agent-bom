@@ -1,15 +1,22 @@
 # Installing agent-bom as a Snowflake Native App
 
-Run the entire agent-bom AI-supply-chain security stack inside your own Snowflake AI Data Cloud — no data leaves your account. This guide walks the install end-to-end, from manifest review through customer-bound table grants through dashboard access.
+This provider-preview guide covers the packaged installation contract: review
+permissions, publish versioned images, bind consumer references, and verify
+API/UI resources after privilege approval.
 
-## What you get
+**Readiness limit:** Native App scan dispatch is unavailable and the packaged
+scanner lifecycle is unsupported. Authenticated consumer installation, service
+readiness, reference binding, and a completed scan with persisted findings still
+require proof. Binding a table or stage does not automatically ingest its data.
+Do not treat package validation as a working production deployment.
 
-- **15-framework compliance posture** — SOC 2, ISO 27001, FedRAMP, EU AI Act, NIST AI RMF, NIST CSF, OWASP LLM/MCP/Agentic, MITRE ATLAS, CIS Controls, CMMC, NIST 800-53, PCI DSS — automatically classifying findings from your existing scanner outputs
-- **Inventory + blast radius** across structured cloud asset tables, semi-structured event JSON, and unstructured stages (notebooks, IaC, model artifacts, prompt corpora)
-- **Fix-first security dashboard** — Next.js with React Flow graph viz, hosted on Snowpark Container Services inside your account
-- **Audit log** with HMAC chain, OCSF-shaped events, customer-owned (we cannot read it)
-- **Zero data egress by default** — only customer-approved advisory and package-metadata feeds (OSV, KEV, EPSS, GHSA, NVD, deps.dev, and named package registries) reach outbound
-- **Opt-in Phase 4 services** — scanner and MCP runtime service specs are packaged, but neither starts until you call the enable procedures
+## Packaged components
+
+- Versioned API/UI container specifications and consumer-approved provisioning.
+- Read-only table/stage reference declarations and registration callbacks.
+- Optional advisory-feed integration references, unbound by default.
+- Default-off scanner and MCP runtime specifications; the scanner is not a
+  supported production service. See the limitations below before enabling anything.
 
 Every SPCS container uses Snowflake's injected workload identity
 (`SNOWFLAKE_HOST` plus `/snowflake/session/token`) with OAuth. Do not provide a

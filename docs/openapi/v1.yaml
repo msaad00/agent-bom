@@ -18271,13 +18271,14 @@ paths:
         \ expand.\n\nThis is the read side of the dashboard's progressive-disclosure\
         \ attack-path\nview: expanding one hop loads only that hop's direct neighbors\
         \ instead of the\nwhole graph. It is deliberately lazy and bounded \u2014\
-        \ fan-out is capped by\n``limit`` and a high-degree node reports an honest\
-        \ ``total_neighbors`` with\n``truncated`` set, so the UI can render a \"+N\
-        \ more\" affordance rather than\nexploding the view. Neighbor node metadata\
-        \ (entity type, label, severity)\ntravels with the payload so the client never\
-        \ needs a second round trip per\nneighbor id. An unknown node id returns an\
-        \ empty payload (200, ``found``\nfalse) instead of raising, so a stale client\
-        \ id degrades quietly in-place."
+        \ fan-out is capped by\n``limit``; ``total_neighbors`` is null when source\
+        \ evidence is incomplete.\nA completely read high-degree neighborhood reports\
+        \ its known total with\n``truncated`` set, so the UI can render a \"+N more\"\
+        \ affordance rather than\nexploding the view. Neighbor node metadata (entity\
+        \ type, label, severity)\ntravels with the payload so the client never needs\
+        \ a second round trip per\nneighbor id. An unknown node id returns an empty\
+        \ payload (200, ``found``\nfalse) instead of raising, so a stale client id\
+        \ degrades quietly in-place."
       operationId: get_graph_node_neighbors_v1_graph_node_neighbors_get
       parameters:
       - in: query
@@ -18379,13 +18380,14 @@ paths:
         \ expand.\n\nThis is the read side of the dashboard's progressive-disclosure\
         \ attack-path\nview: expanding one hop loads only that hop's direct neighbors\
         \ instead of the\nwhole graph. It is deliberately lazy and bounded \u2014\
-        \ fan-out is capped by\n``limit`` and a high-degree node reports an honest\
-        \ ``total_neighbors`` with\n``truncated`` set, so the UI can render a \"+N\
-        \ more\" affordance rather than\nexploding the view. Neighbor node metadata\
-        \ (entity type, label, severity)\ntravels with the payload so the client never\
-        \ needs a second round trip per\nneighbor id. An unknown node id returns an\
-        \ empty payload (200, ``found``\nfalse) instead of raising, so a stale client\
-        \ id degrades quietly in-place."
+        \ fan-out is capped by\n``limit``; ``total_neighbors`` is null when source\
+        \ evidence is incomplete.\nA completely read high-degree neighborhood reports\
+        \ its known total with\n``truncated`` set, so the UI can render a \"+N more\"\
+        \ affordance rather than\nexploding the view. Neighbor node metadata (entity\
+        \ type, label, severity)\ntravels with the payload so the client never needs\
+        \ a second round trip per\nneighbor id. An unknown node id returns an empty\
+        \ payload (200, ``found``\nfalse) instead of raising, so a stale client id\
+        \ degrades quietly in-place."
       operationId: get_graph_node_neighbors_v1_graph_node__node_id__neighbors_get
       parameters:
       - in: path

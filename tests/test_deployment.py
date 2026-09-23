@@ -546,7 +546,7 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     assert "tool_count" in workflow
     assert "smithery-oauth" in workflow
     assert "probe_failed=true" in workflow
-    assert "steps.railway.outputs.probe_failed == 'false'" in workflow
+    assert 'e.RAILWAY_PROBE_FAILED === "false"' in workflow
     assert "--server-card" in workflow
 
 
@@ -561,7 +561,7 @@ def test_deployment_freshness_targets_exact_published_server_card_contract():
     assert "--server-card" in workflow
     assert '--expected-version "${{ steps.expected.outputs.version }}"' in workflow
     assert '--expected-tool-count "${{ steps.expected.outputs.tool_count }}"' in workflow
-    assert "steps.railway.outputs.probe_failed == 'true'" in workflow
+    assert 'fresh ? "closed" : "open"' in workflow
 
 
 def test_deployment_freshness_marks_smithery_tool_count_drift() -> None:
@@ -585,9 +585,9 @@ def test_deployment_freshness_uses_a_version_stable_issue_identity():
     """A clean release must close deployment alerts opened by an older version."""
     workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
 
-    assert 'TITLE="supply-chain-drift: deployment surfaces out of sync"' in workflow
-    assert 'LEGACY_TITLE_PREFIX="${TITLE} with "' in workflow
-    assert workflow.count("startswith($legacy)") == 2
+    assert 'const title = "supply-chain-drift: deployment surfaces out of sync"' in workflow
+    assert "`${title} with `" in workflow
+    assert "issue.title.startsWith(legacyPrefix)" in workflow
     assert 'TITLE="supply-chain-drift: deployment surfaces out of sync with $EXPECTED"' not in workflow
 
 
@@ -1165,14 +1165,13 @@ def test_deployment_workflow_verdict_requires_explicit_success(overrides, expect
     }
     result = subprocess.run(["bash", "-c", verdict["run"]], env=env, text=True, capture_output=True, timeout=10)
     assert result.returncode == expected, result.stdout + result.stderr
-    closer = next(step for step in steps if step.get("name") == "Close supply-chain drift issue when deployment is fresh")
-    assert "steps.railway.outputs.probe_failed == 'false'" in closer["if"]
-    assert "steps.railway.outcome == 'success'" in closer["if"]
-    assert "steps.railway.outputs.railway_version == steps.expected.outputs.version" in closer["if"]
-    # Smithery's OAuth gap (PR #5317) must never gate this close condition.
-    assert "steps.public.outputs.public_version" not in closer["if"]
-    assert "steps.public.outcome" not in closer["if"]
-    assert "steps.public.outputs.probe_failed" not in closer["if"]
+    reconciler = next(step for step in steps if step.get("name") == "Reconcile deployment monitoring issues")
+    script = reconciler["with"]["script"]
+    fresh = script.split("const fresh =", 1)[1].split(";", 1)[0]
+    assert 'e.RAILWAY_PROBE_FAILED === "false"' in fresh
+    assert 'e.RAILWAY_OUTCOME === "success"' in fresh
+    assert "e.RAILWAY_VERSION === e.EXPECTED_VERSION" in fresh
+    assert "e.PUBLIC_" not in fresh
 
 
 def test_smithery_recovery_guidance_requires_external_authorization() -> None:

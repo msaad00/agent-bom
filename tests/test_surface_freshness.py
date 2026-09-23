@@ -1522,3 +1522,8 @@ def test_glama_current_focused_tool_wording_is_recognized(word):
     assert script._check(page, "0.105.0", 8) == []
     assert script._check(page, "0.105.0", 9)
     assert script._check(page, "0.106.0", 8)
+
+
+def test_repository_readme_retains_glama_release_marker():
+    script = _load_script("check_glama_listing.py")
+    assert script._check((ROOT / "README.md").read_text(), script._load_version(), 8) == []

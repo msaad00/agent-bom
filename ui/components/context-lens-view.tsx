@@ -548,6 +548,7 @@ export function ContextLensView() {
       zoom: presentation.viewport.zoom,
       nodeLabels: graphNodeDisplayLabels(displayNodes),
     }).map((edge): Edge => ({ ...edge,
+      label: contextRelationshipLabel(String(edge.data?.relationship ?? "")),
       ariaLabel: `${edge.data?.relationshipLabel ?? "Scan relationship"}: ${edge.source} to ${edge.target}. Execution not established.`,
       data: { ...edge.data, onInspect: () => { setSelectedEdgeId(edge.id); setSelectedNode(null); setSelectedNodeId(null); } },
     }));
@@ -692,7 +693,7 @@ export function ContextLensView() {
   }
 
   return (
-    <div className={`${captureMode ? "md:h-screen" : "md:h-[calc(100vh-3.5rem)]"} flex min-h-screen flex-col md:min-h-0`}>
+    <div className={`md:h-[calc(100dvh-6rem)] flex min-h-screen flex-col md:min-h-0`}>
       {/* Compact header — filters share one row so the canvas stays hero */}
       <div className="flex flex-col gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
         <div className="flex flex-wrap items-center gap-2">

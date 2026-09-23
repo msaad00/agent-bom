@@ -34,7 +34,10 @@ def test_postgres_destination_factory_never_falls_back_on_failure(monkeypatch):
     assert stores._DESTINATION_STORE is None
 
 
-@pytest.mark.skipif(not os.environ.get("AGENT_BOM_TEST_EXPORT_PG_DSN"), reason="isolated Postgres DSN required")
+@pytest.mark.skipif(
+    not (os.environ.get("AGENT_BOM_TEST_EXPORT_PG_DSN") or os.environ.get("AGENT_BOM_POSTGRES_ADMIN_URL")),
+    reason="isolated Postgres admin DSN required",
+)
 def test_postgres_destinations_survive_reconnect_and_enforce_rls(monkeypatch):
     from psycopg import sql
     from psycopg.errors import InsufficientPrivilege
@@ -42,7 +45,7 @@ def test_postgres_destinations_survive_reconnect_and_enforce_rls(monkeypatch):
 
     from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
 
-    dsn = os.environ["AGENT_BOM_TEST_EXPORT_PG_DSN"]
+    dsn = os.environ.get("AGENT_BOM_TEST_EXPORT_PG_DSN") or os.environ["AGENT_BOM_POSTGRES_ADMIN_URL"]
     role = "export_test_" + uuid4().hex[:12]
     # The test DSN must point at a disposable development database.
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)

@@ -136,7 +136,7 @@ jobs:
           # are deliberately excluded: no integration test drives the ASGI app
           # against real Postgres, so the job could not observe a regression
           # there and gating those hot files would cost time for no signal.
-          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/(postgres_|storage_schema\.py|connection_store\.py|connection_scheduler\.py|proxy_replay_store\.py)|src/agent_bom/api/hub_observations_partition\.py|src/agent_bom/cloud/([a-z_]*event_ingest|runtime_workload_evidence_store)\.py|src/agent_bom/ticketing/postgres_store\.py|tests/test_postgres_|deploy/supabase/postgres/|scripts/check_postgres_schema_parity\.py$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/(postgres_|storage_schema\.py|connection_store\.py|connection_scheduler\.py|proxy_replay_store\.py|export_destination_store\.py)|src/agent_bom/api/hub_observations_partition\.py|src/agent_bom/cloud/([a-z_]*event_ingest|runtime_workload_evidence_store)\.py|src/agent_bom/ticketing/postgres_store\.py|tests/test_postgres_|tests/test_export_destination_postgres\.py$|deploy/supabase/postgres/|scripts/check_postgres_schema_parity\.py$)'; then
             postgres=true
           fi
           # Python test suite: skip only when a PR clearly cannot affect it
@@ -1428,6 +1428,7 @@ jobs:
           uv run pytest -q --tb=short \
             tests/test_postgres_integration.py \
             tests/test_report_jobs_postgres.py \
+            tests/test_export_destination_postgres.py \
             tests/test_postgres_gateway_activity.py \
             tests/test_postgres_schema.py \
             tests/test_postgres_governance_audit.py \

@@ -1965,6 +1965,9 @@ async function installRoutes(page) {
       return false;
     }
   }, (route) => fulfill(route, scanJob()));
+  await page.route((url) => url.pathname === `/v1/scan/${SCAN_ID}/status`, (route) => fulfill(route, {
+    job_id: SCAN_ID, status: "done", graph_scan_id: SCAN_ID, created_at: CREATED_AT,
+  }));
   await page.route("**/v1/graph/snapshots?**", (route) => fulfill(route, [
     ...referenceSnapshots,
     { scan_id: SCAN_ID, created_at: CREATED_AT, node_count: graph.nodes.length, edge_count: graph.edges.length, risk_summary: graph.stats.severity_counts },
@@ -3532,7 +3535,8 @@ async function main() {
         await contextPage.locator('[data-id="pkg:next"]').click();
         await inspector.getByRole("button", { name: "Expand connections", exact: true }).click();
         await contextPage.locator('[data-id="cve:next"]').waitFor({ state: "visible" });
-        await contextPage.locator('[data-id="server:github"]').click();
+        await contextPage.locator('[data-id="pkg:next"]').click();
+        await inspector.getByRole("button", { name: "Focus here", exact: true }).click();
         await fitReactFlow(contextPage);
         for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
         await scrollTo(contextPage, 0);
@@ -3540,11 +3544,12 @@ async function main() {
       {
         awaitResponses: [(response) => response.url().includes("/graph/incident-edges") && response.ok()],
         expectedText: ["Context Map", "developer-copilot", "CVE-2025-29927", "Persisted snapshot"],
-        expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, "/v1/graph/agents", "/v1/graph/incident-edges"],
-        minGraphNodes: 6,
-        maxGraphNodes: 12,
-        minGraphEdges: 5,
-        maxGraphEdges: 16,
+        expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}/status`, "/v1/graph/agents", "/v1/graph/incident-edges"],
+        minGraphNodes: 3,
+        maxGraphNodes: 3,
+        minGraphEdges: 2,
+        maxGraphEdges: 2,
+        minGraphNodeFontPx: 12,
       },
     );
     await page.setViewportSize({ width: 1440, height: 980 });

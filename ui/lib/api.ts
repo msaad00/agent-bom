@@ -885,7 +885,7 @@ export const api = {
   getScan: (jobId: string, signal?: AbortSignal) => get<ScanJob>(`/v1/scan/${jobId}`, signal ? { signal } : {}),
 
   /** Poll scan status without loading large result payloads */
-  getScanStatus: (jobId: string) => get<ScanJobStatus>(`/v1/scan/${jobId}/status`),
+  getScanStatus: (jobId: string, signal?: AbortSignal) => get<ScanJobStatus>(`/v1/scan/${jobId}/status`, signal ? { signal } : {}),
 
   /** Export a completed scan graph in a graph-native format. */
   downloadScanGraph: (jobId: string, format: GraphExportFormat = "json") =>

@@ -1318,11 +1318,11 @@ describe('persisted graph owner-bound requests', () => {
     const fetchMock = mockFetch({ owner: 'a' })
     global.fetch = fetchMock
     await api.listJobs()
-    await api.getScan('owner-bound-job')
+    await api.getScanStatus('owner-bound-job')
     fetchMock.mockImplementation(() => Promise.resolve({ ok: true, status: 200, statusText: 'OK', json: () => Promise.resolve({ owner: 'b' }) }))
     const controller = new AbortController()
     expect(await api.listJobs(undefined, controller.signal)).toEqual({ owner: 'b' })
-    expect(await api.getScan('owner-bound-job', controller.signal)).toEqual({ owner: 'b' })
+    expect(await api.getScanStatus('owner-bound-job', controller.signal)).toEqual({ owner: 'b' })
     expect(fetchMock).toHaveBeenCalledTimes(4)
     controller.abort()
     expect((fetchMock.mock.calls.at(-1)?.[1] as RequestInit).signal?.aborted).toBe(true)

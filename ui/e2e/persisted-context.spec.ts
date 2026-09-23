@@ -15,12 +15,14 @@ for (const theme of ["light", "dark"] as const) for (const width of [1440, 390])
     const requests: URL[] = [];
     let stale = false;
     let legacyRequests = 0;
+    let fullReportRequests = 0;
     await page.route("**/v1/**", route => {
       const url = new URL(route.request().url());
       const path = url.pathname;
       if (path === "/v1/auth/me") return route.fulfill({ json: { authenticated: true, auth_required: false, tenant_id: "fixture-tenant", auth_method: "anonymous", role: "admin", configured_modes: [], recommended_ui_mode: "no_auth", memberships: [] } });
       if (path === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: "job-fixture", status: "done" }], total: 1 } });
-      if (path === "/v1/scan/job-fixture") return route.fulfill({ json: { job_id: "job-fixture", status: "done", result: { scan_id: "persisted-fixture", agents: [] } } });
+      if (path === "/v1/scan/job-fixture") { fullReportRequests++; return route.fulfill({ status: 500, json: {} }); }
+      if (path === "/v1/scan/job-fixture/status") return route.fulfill({ json: { job_id: "job-fixture", status: "done", graph_scan_id: "persisted-fixture" } });
       if (path === "/v1/graph/agents") return route.fulfill({ json: { scan_id: "persisted-fixture", agents: [agent, node(peer, "agent", "Desktop")], pagination: { total: 2, limit: 24 } } });
       if (path.endsWith("/context-graph")) { legacyRequests++; return route.fulfill({ json: {} }); }
       if (path === "/v1/graph/incident-edges") {
@@ -39,6 +41,7 @@ for (const theme of ["light", "dark"] as const) for (const width of [1440, 390])
     await expect(page.getByRole("combobox", { name: "Agent scope" })).toHaveValue(root);
     expect(requests[0]?.searchParams.get("scan_id")).toBe("persisted-fixture");
     expect(legacyRequests).toBe(0);
+    expect(fullReportRequests).toBe(0);
     await expect(inspector).toContainText("Recorded connection");
     await expect(page.locator(".react-flow__edge-path").first()).toHaveAttribute("marker-start", /url/);
     await expect(page.locator(".react-flow__edge-path").first()).toHaveAttribute("marker-end", /url/);
@@ -70,7 +73,7 @@ test("high-degree Context starts compact and focuses a returned canonical entity
     const url = new URL(route.request().url());
     if (url.pathname === "/v1/auth/me") return route.fulfill({ json: { authenticated: true, auth_required: false, tenant_id: "fixture", auth_method: "anonymous", role: "admin", configured_modes: [], recommended_ui_mode: "no_auth", memberships: [] } });
     if (url.pathname === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: "hub", status: "done" }], total: 1 } });
-    if (url.pathname === "/v1/scan/hub") return route.fulfill({ json: { job_id: "hub", status: "done", result: { agents: [] } } });
+    if (url.pathname === "/v1/scan/hub/status") return route.fulfill({ json: { job_id: "hub", status: "done", graph_scan_id: "hub" } });
     if (url.pathname === "/v1/graph/agents") return route.fulfill({ json: { scan_id: "hub", agents: [agent], pagination: { total: 1 } } });
     if (url.pathname === "/v1/graph/incident-edges") return route.fulfill({ json: { scan_id: "hub", snapshot_generation: generation, node_id: root, found: true, direction: "both", limit: 24, node: agent, nodes: services, edges: services.map(service => relation(root, service.id, "uses")), next_cursor: "more", completeness: { status: "truncated", complete: false, truncated: true, sampled: false, total: null, returned: 24, missing_endpoint_count: 0, scope: "incident_edge_page" } } });
     return route.fulfill({ json: {} });
@@ -87,5 +90,20 @@ test("high-degree Context starts compact and focuses a returned canonical entity
   await inspector.getByRole("button", { name: "Service 23 server:hub:23", exact: true }).click();
   await inspector.getByRole("button", { name: "Focus here" }).click();
   await expect(page.locator('.react-flow__node[data-id="server:hub:23"]')).toBeVisible();
-  await expect(page.locator(".react-flow__node")).toHaveCount(8);
+  await expect(page.locator(".react-flow__node")).toHaveCount(2);
+});
+
+test("missing snapshot identity remains unavailable instead of guessing the job ID", async ({ page }) => {
+  let graphRequests = 0;
+  await page.route("**/v1/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/v1/auth/me") return route.fulfill({ json: { authenticated: true, auth_required: false, tenant_id: "fixture", auth_method: "anonymous", role: "admin", configured_modes: [], recommended_ui_mode: "no_auth", memberships: [] } });
+    if (path === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: "unmapped", status: "done" }], total: 1 } });
+    if (path === "/v1/scan/unmapped/status") return route.fulfill({ json: { job_id: "unmapped", status: "done", graph_scan_id: null } });
+    if (path === "/v1/graph/agents" || path === "/v1/graph/incident-edges") graphRequests++;
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/graph?lens=context");
+  await expect(page.getByRole("alert").filter({ hasText: "Persisted snapshot identity unavailable" })).toBeVisible();
+  expect(graphRequests).toBe(0);
 });

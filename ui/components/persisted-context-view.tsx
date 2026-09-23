@@ -60,18 +60,18 @@ function OwnedContextView({ owner }: { owner: string }) {
     if (!jobId) return;
     // Graph deep links carry a snapshot ID, not necessarily a scan-job ID.
     if (jobId === params?.get("scan")) { setSnapshot({ jobId, scanId: jobId }); return; }
-    api.getScan(jobId, controller.signal).then(job => {
+    api.getScanStatus(jobId, controller.signal).then(job => {
       if (!active) return;
-      if (!job.result || job.status !== "done") { setError("Completed scan evidence unavailable."); return; }
-      setSnapshot({ jobId, scanId: job.result.scan_id || job.job_id });
+      if (job.status !== "done" || typeof job.graph_scan_id !== "string" || !job.graph_scan_id.trim()) { setError("Persisted snapshot identity unavailable for this completed scan."); return; }
+      setSnapshot({ jobId, scanId: job.graph_scan_id });
       setError(null);
     }).catch(() => { if (active) setError("Unable to resolve this scan's persisted snapshot."); });
     return () => { active = false; controller.abort(); };
   }, [jobId, owner, params]);
   const scanId = snapshot?.jobId === jobId ? snapshot.scanId : "";
-  return <section aria-label="Persisted Context neighborhood" className="min-w-0 space-y-3 p-3 md:p-5">
+  return <section aria-label="Persisted Context neighborhood" className="min-w-0 space-y-2 p-3">
     <GraphLensSwitcher variant="compact" />
-    <header><h1 className="text-xl font-semibold">Context Map</h1><p className="mt-1 text-sm text-[var(--text-secondary)]">Explore recorded connections from a persisted snapshot. Relationships do not establish permission, successful execution, or exploitability.</p></header>
+    <header><h1 className="text-lg font-semibold">Context Map</h1><p className="mt-1 text-sm text-[var(--text-secondary)]">Explore recorded connections from a persisted snapshot. Relationships do not establish permission, successful execution, or exploitability.</p></header>
     <label className="block text-sm">Completed scan <select aria-label="Completed scan" className="context-action ml-2 max-w-full" value={jobId} onChange={event => setJobId(event.target.value)}>
       {!jobs.length && <option value="">No completed scans</option>}
       {jobId && !jobs.some(job => job.job_id === jobId) && <option value={jobId}>{jobId}</option>}
@@ -125,13 +125,14 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
     const ids = new Set<string>([focus]);
     const edges: UnifiedEdge[] = [];
     for (let pass = 0; pass < 3; pass++) for (const edge of graph.edges) {
+      if (focusId && edge.source !== focus && edge.target !== focus) continue;
       if (edges.includes(edge) || edges.length >= (expandedCanvas ? 36 : 12) || (!ids.has(edge.source) && !ids.has(edge.target))) continue;
       const newCount = Number(!ids.has(edge.source)) + Number(!ids.has(edge.target));
       if (ids.size + newCount > (expandedCanvas ? 24 : 8)) continue;
       ids.add(edge.source); ids.add(edge.target); edges.push(edge);
     }
     return { nodes: graph.nodes.filter(node => ids.has(node.id)), edges };
-  }, [graph.nodes, graph.edges, focus, expandedCanvas]);
+  }, [graph.nodes, graph.edges, focus, focusId, expandedCanvas]);
   const flow = useMemo(() => buildUnifiedFlowGraph({ scan_id: scanId, tenant_id: "", created_at: "", ...display, attack_paths: [], interaction_risks: [], stats } satisfies UnifiedGraphData,
     { layers, severity: null, agentName: null, vulnOnly: false, maxDepth: 3 }), [scanId, display]);
   const directedEdges = useMemo(() => flow.edges.map(item => {
@@ -175,7 +176,7 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <div aria-label="Persisted neighborhood canvas" className="relative h-[32rem] min-w-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]">
-        {!!layout.nodes.length && <ReactFlow key={JSON.stringify([focus, mobile, layout.nodes.map(node => node.id), layout.pending])} nodes={layout.nodes} edges={layout.edges} nodeTypes={lineageNodeTypes} edgeTypes={relationshipEdgeTypes} fitView fitViewOptions={{ padding: 0.12, minZoom: mobile ? 0.75 : 0.65, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
+        {!!layout.nodes.length && <ReactFlow key={JSON.stringify([focus, mobile, layout.nodes.map(node => node.id), layout.pending])} nodes={layout.nodes} edges={layout.edges} nodeTypes={lineageNodeTypes} edgeTypes={relationshipEdgeTypes} fitView fitViewOptions={{ padding: 0.08, minZoom: mobile ? 0.75 : 0.85, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
           onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(null); }} onEdgeClick={(_, selected) => { setSelectedEdge(JSON.stringify([selected.source, selected.target, selected.data?.relationship])); }}>
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} /><Controls className={CONTROLS_CLASS} />
         </ReactFlow>}

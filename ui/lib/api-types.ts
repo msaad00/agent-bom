@@ -2470,7 +2470,7 @@ export interface JobListItem {
   error?: string | undefined;
 }
 
-export type ScanJobStatus = JobListItem;
+export type ScanJobStatus = JobListItem & { graph_scan_id?: string | null | undefined };
 
 export interface AgentsResponse {
   scope?: string;

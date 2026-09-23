@@ -21,6 +21,10 @@ on:
     workflows: ["Deploy MCP SSE"]
     types: [completed]
 
+concurrency:
+  group: deployment-freshness-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -163,140 +167,81 @@ jobs:
             echo "::warning::Smithery catalog differs from the published tool-name and input-schema contract"
           fi
 
-      # Smithery/"public" outcome, staleness, and probe failures never open this
-      # tracker: Smithery's catalog is OAuth-gated and can structurally never
-      # be verified fresh by agent-bom's single operator-provisioned bearer
-      # token (known, accepted limitation -- see PR #5317's non-blocking
-      # release gate). Only Railway drift opens this issue; Smithery's real
-      # status still renders in the issue body below for visibility.
-      - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
-        shell: bash
-        if: steps.railway.outcome != 'success' || steps.railway.outputs.stale == 'true' || steps.railway.outputs.probe_failed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          EXPECTED="${{ steps.expected.outputs.version }}"
-          RAILWAY="${{ steps.railway.outputs.railway_version }}"
-          RAILWAY_TOOLS="${{ steps.railway.outputs.tool_count }}"
-          PUBLIC="${{ steps.public.outputs.public_version }}"
-          PUBLIC_TOOLS="${{ steps.public.outputs.tool_count }}"
-          PUBLIC_AUTH="${{ steps.public.outputs.auth_required }}"
-          TITLE="supply-chain-drift: deployment surfaces out of sync"
-          LEGACY_TITLE_PREFIX="${TITLE} with "
-
-          gh label create supply-chain-drift --color FBCA04 --description "Automated supply-chain or deployment drift detection" >/dev/null 2>&1 || true
-          gh label create security-preventive --color 0E8A16 --description "Preventive daily security automation findings" >/dev/null 2>&1 || true
-          gh label create automated --color 5319E7 --description "Opened or updated automatically by CI" >/dev/null 2>&1 || true
-
-          # Match the stable title and migrate version-bound alerts created by
-          # older workflow revisions. Labels and the exact prefix keep the
-          # separate distribution-surface alert out of scope.
-          EXISTING=$(gh issue list --state open --label automated --label supply-chain-drift --limit 100 --json number,title |
-            jq -r --arg title "$TITLE" --arg legacy "$LEGACY_TITLE_PREFIX" '.[] | select(.title == $title or (.title | startswith($legacy))) | .number' |
-            head -n 1)
-          if [ -n "$EXISTING" ]; then
-            gh issue edit "$EXISTING" --title "$TITLE"
-            gh issue comment "$EXISTING" --body "$(cat <<EOF
-          ## Supply-Chain Drift Check Failed
-
-          | Surface | Version | Expected | Auth Required | Tool Count |
-          |---------|---------|----------|---------------|------------|
-          | Railway (protected) | $RAILWAY | $EXPECTED | true | $RAILWAY_TOOLS |
-          | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
-
-          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API matches the released tool names and input schemas, then re-run this workflow.
-
-          This issue was auto-updated by the deployment-freshness workflow.
-          EOF
-          )"
-            exit 0
-          fi
-
-          gh issue create \
-            --title "$TITLE" \
-            --label "supply-chain-drift,security-preventive,automated" \
-            --body "$(cat <<EOF
-          ## Supply-Chain Drift Check Failed
-
-          | Surface | Version | Expected | Auth Required | Tool Count |
-          |---------|---------|----------|---------------|------------|
-          | Railway (protected) | $RAILWAY | $EXPECTED | true | $RAILWAY_TOOLS |
-          | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
-
-          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API matches the released tool names and input schemas, then re-run this workflow.
-
-          This issue was auto-created by the deployment-freshness workflow.
-          EOF
-          )"
-
-      - name: Open or update misconfiguration issue for unmonitored surfaces
-        if: steps.public.outputs.not_configured == 'true'
+      # Railway remains the required freshness gate. Smithery status is recorded
+      # without treating an unavailable catalog probe as proof of recovery.
+      - name: Reconcile deployment monitoring issues
+        if: ${{ always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
+          RAILWAY_VERSION: ${{ steps.railway.outputs.railway_version }}
+          RAILWAY_TOOLS: ${{ steps.railway.outputs.tool_count }}
+          RAILWAY_OUTCOME: ${{ steps.railway.outcome }}
+          RAILWAY_PROBE_FAILED: ${{ steps.railway.outputs.probe_failed }}
+          RAILWAY_STALE: ${{ steps.railway.outputs.stale }}
+          PUBLIC_VERSION: ${{ steps.public.outputs.public_version }}
+          PUBLIC_TOOLS: ${{ steps.public.outputs.tool_count }}
+          PUBLIC_OUTCOME: ${{ steps.public.outcome }}
+          PUBLIC_NOT_CONFIGURED: ${{ steps.public.outputs.not_configured }}
         with:
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const title = "deployment-monitoring: a deployment surface is UNMONITORED (missing config)";
+            const {owner, repo} = context.repo;
             const labels = ["supply-chain-drift", "security-preventive", "automated"];
-
-            const unmonitored = [
-              "**Smithery / public marketplace** — set repo variable `SMITHERY_SERVER_QUALIFIED_NAME` only if the listing is not `agentbom/agent-bom`. The monitor checks Smithery's catalog API because Smithery-hosted remotes are OAuth-gated and do not expose agent-bom `/health`.",
-            ];
-
-            const body = [
-              "## Deployment surface is unmonitored",
-              "",
-              "One or more deployment surfaces have no monitoring configuration, so drift on them is invisible. This issue replaces the old silent `::notice:: skipping` behavior.",
-              "",
-              ...unmonitored.map((u) => `- ${u}`),
-              "",
-              "Set the named repo variable(s) under **Settings → Secrets and variables → Actions → Variables**, then re-run the **Deployment Freshness** workflow. This issue auto-closes once every surface is monitored.",
-            ].join("\n");
-
-            for (const name of labels) {
-              try { await github.rest.issues.createLabel({ owner, repo, name }); } catch (e) {}
-            }
             const existing = await github.paginate(github.rest.issues.listForRepo, {
-              owner, repo, state: "open", labels: "supply-chain-drift", per_page: 100,
+              owner, repo, state: "all", labels: "supply-chain-drift", per_page: 100,
             });
-            const match = existing.find((issue) => issue.title === title);
-            if (match) {
-              await github.rest.issues.createComment({ owner, repo, issue_number: match.number, body });
-              return;
+            async function reconcile(title, legacyPrefix, state, body) {
+              const candidates = existing.filter(issue => !issue.pull_request &&
+                (issue.title === title || (legacyPrefix && issue.title.startsWith(legacyPrefix))));
+              if (state === "closed") {
+                for (const issue of candidates.filter(issue => issue.state === "open")) {
+                  await github.rest.issues.update({owner, repo, issue_number: issue.number,
+                    state: "closed", state_reason: "completed", body});
+                }
+                return;
+              }
+              // Completed trackers are reusable. Duplicates closed as not_planned
+              // stay closed; stable-title trackers take precedence over legacy ones.
+              const eligible = candidates.filter(issue => issue.state === "open" || issue.state_reason === "completed")
+                .sort((a, b) => Number(b.title === title) - Number(a.title === title) || a.number - b.number);
+              const match = eligible.find(issue => issue.state === "open") || eligible[0];
+              if (match) {
+                if (match.state === "open" && match.title === title && match.body === body) return;
+                await github.rest.issues.update({owner, repo, issue_number: match.number, title, body, state: "open"});
+              } else {
+                for (const name of labels) {
+                  try { await github.rest.issues.createLabel({owner, repo, name}); } catch (e) {}
+                }
+                await github.rest.issues.create({owner, repo, title, body, labels});
+              }
             }
-            await github.rest.issues.create({ owner, repo, title, body, labels });
-
-      - name: Close misconfiguration issue when every surface is monitored
-        if: steps.public.outputs.not_configured != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TITLE="deployment-monitoring: a deployment surface is UNMONITORED (missing config)"
-          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
-          if [ -n "$EXISTING" ]; then
-            gh issue close "$EXISTING" --comment "All deployment surfaces are now configured for monitoring; closing the misconfiguration alert."
-          fi
-
-      # Smithery/"public" freshness is deliberately excluded from this close
-      # condition -- see the "Open issue" step above for why (PR #5317).
-      - name: Close supply-chain drift issue when deployment is fresh
-        if: steps.expected.outputs.version != '' && steps.railway.outputs.railway_version == steps.expected.outputs.version && steps.railway.outcome == 'success' && steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TITLE="supply-chain-drift: deployment surfaces out of sync"
-          LEGACY_TITLE_PREFIX="${TITLE} with "
-          # Close every stable or legacy deployment alert. The title predicate
-          # deliberately excludes the separate distribution-surface issue.
-          gh issue list --state open --label automated --label supply-chain-drift --limit 100 --json number,title |
-            jq -r --arg title "$TITLE" --arg legacy "$LEGACY_TITLE_PREFIX" '.[] | select(.title == $title or (.title | startswith($legacy))) | .number' |
-            while read -r issue; do
-              if [ -n "$issue" ]; then
-                gh issue close "$issue" --comment "Deployment freshness check is clean again; closing the automated supply-chain drift alert."
-              fi
-            done
+            const e = process.env;
+            const title = "supply-chain-drift: deployment surfaces out of sync";
+            const fresh = Boolean(e.EXPECTED_VERSION) && e.RAILWAY_VERSION === e.EXPECTED_VERSION &&
+              e.RAILWAY_OUTCOME === "success" && e.RAILWAY_PROBE_FAILED === "false" && e.RAILWAY_STALE !== "true";
+            const body = [
+              fresh ? "## Deployment freshness verified" : "## Supply-Chain Drift Check Failed",
+              "",
+              "| Surface | Version | Expected | Tool Count |",
+              "|---------|---------|----------|------------|",
+              `| Railway (protected) | ${e.RAILWAY_VERSION || "unverified"} | ${e.EXPECTED_VERSION || "unknown"} | ${e.RAILWAY_TOOLS || "unknown"} |`,
+              `| Smithery catalog | ${e.PUBLIC_VERSION || "unverified"} | ${e.EXPECTED_VERSION || "unknown"} | ${e.PUBLIC_TOOLS || "unknown"} |`,
+              "",
+              fresh ? "The required protected Railway probe matches the published version and tool schemas." :
+                "**Action**: Reconcile the protected Railway deployment with the published version and tool schemas, then re-run Deployment Freshness.",
+              "Smithery catalog status is reported separately and does not determine the required deployment gate.",
+            ].join("\n");
+            await reconcile(title, `${title} with `, fresh ? "closed" : "open", body);
+            const monitoringTitle = "deployment-monitoring: a deployment surface is UNMONITORED (missing config)";
+            if (e.PUBLIC_NOT_CONFIGURED === "true") {
+              await reconcile(monitoringTitle, null, "open", [
+                "## Deployment surface is unmonitored", "",
+                "Smithery catalog monitoring is not configured. Set repository variable `SMITHERY_SERVER_QUALIFIED_NAME` if the listing is not `agentbom/agent-bom`, then re-run Deployment Freshness.",
+                "This tracker closes only after a successful probe step explicitly reports a configured surface.",
+              ].join("\n"));
+            } else if (e.PUBLIC_OUTCOME === "success" && e.PUBLIC_VERSION && e.PUBLIC_NOT_CONFIGURED !== "true") {
+              await reconcile(monitoringTitle, null, "closed", "Deployment surfaces are configured for monitoring. Freshness is tracked separately.");
+            }
 
       - name: Require deployment freshness
         if: always()

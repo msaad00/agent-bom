@@ -1285,14 +1285,11 @@ def test_glama_monitor_forwards_required_schema_contract(monkeypatch, tmp_path):
 
 def test_deployment_issue_closure_requires_explicit_verified_success():
     workflow = (ROOT / ".github/workflows/deployment-freshness.yml").read_text()
-    close_step = workflow.split("- name: Close supply-chain drift issue when deployment is fresh", 1)[1]
-    assert "steps.railway.outputs.railway_version == steps.expected.outputs.version" in close_step
-    assert "steps.railway.outcome == 'success'" in close_step
-    assert "steps.railway.outputs.probe_failed == 'false'" in close_step
-    # Smithery's OAuth gap (PR #5317) is a known, accepted, structural
-    # limitation -- it must never gate this close condition.
-    assert "steps.public.outputs.public_version == 'fresh'" not in close_step
-    assert "steps.public.outputs.probe_failed == 'false'" not in close_step
+    assert "e.RAILWAY_VERSION === e.EXPECTED_VERSION" in workflow
+    assert 'e.RAILWAY_OUTCOME === "success"' in workflow
+    assert 'e.RAILWAY_PROBE_FAILED === "false"' in workflow
+    assert "Boolean(e.EXPECTED_VERSION)" in workflow
+    assert 'e.PUBLIC_VERSION === "fresh"' not in workflow
 
 
 def _smithery_public_page(tools, *, qualified_name="agentbom/agent-bom", prefix=""):

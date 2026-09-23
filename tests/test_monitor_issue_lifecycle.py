@@ -16,13 +16,27 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="Node is required to execut
 
 
 def run_monitor(
-    workflow, job, issues, *, fresh=False, latest_id=99, latest_attempt=1, main_sha="a" * 40, workflow_name="Publish to Registries"
+    workflow,
+    job,
+    issues,
+    *,
+    fresh=False,
+    latest_id=99,
+    latest_attempt=1,
+    main_sha="a" * 40,
+    workflow_name="Publish to Registries",
+    step_name=None,
+    probe_env=None,
 ):
     data = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text())
-    script = next(step["with"]["script"] for step in data["jobs"][job]["steps"] if "github-script@" in step.get("uses", ""))
+    script = next(
+        step["with"]["script"]
+        for step in data["jobs"][job]["steps"]
+        if "github-script@" in step.get("uses", "") and (step_name is None or step.get("name") == step_name)
+    )
     harness = """
     const fs = require('node:fs');
-    const {script, issues, fresh, latest_id, latest_attempt, main_sha, workflow_name} = JSON.parse(fs.readFileSync(0, 'utf8'));
+    const {script, issues, fresh, latest_id, latest_attempt, main_sha, workflow_name, probe_env} = JSON.parse(fs.readFileSync(0, 'utf8'));
     const events = [];
     const github = {paginate: async () => issues, rest: {
       actions: {listWorkflowRuns: async () => ({data: {workflow_runs: [{id: latest_id, run_attempt: latest_attempt}]}})},
@@ -37,6 +51,7 @@ def run_monitor(
       payload: {workflow_run: {id: 99, run_attempt: 1, workflow_id: 42, name: workflow_name, html_url: 'https://github.com/run/99',
         head_sha: 'a'.repeat(40), actor: {login: 'owner'}}}};
     process.env.REPORT = JSON.stringify({expected: '0.103.2', all_fresh: fresh, all_required_fresh: fresh, surfaces: []});
+    Object.assign(process.env, probe_env || {});
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     new AsyncFunction('github', 'context', script)(github, context)
       .then(() => console.log(JSON.stringify(events))).catch(e => {console.error(e); process.exit(1)});
@@ -52,6 +67,7 @@ def run_monitor(
                 "latest_attempt": latest_attempt,
                 "main_sha": main_sha,
                 "workflow_name": workflow_name,
+                "probe_env": probe_env,
             }
         ),
         text=True,
@@ -150,3 +166,79 @@ def test_obsolete_completion_cannot_change_regression_tracker(job, latest):
 def test_ci_completion_for_old_main_sha_cannot_change_tracker(job):
     issues = [{"number": 123, "title": "ci-regression: CI/CD Pipeline failing on main", "state": "open"}]
     assert run_monitor("main-failure-alert.yml", job, issues, workflow_name="CI/CD Pipeline", main_sha="b" * 40) == []
+
+
+DEPLOYMENT_STEP = "Reconcile deployment monitoring issues"
+DEPLOYMENT_TITLE = "supply-chain-drift: deployment surfaces out of sync"
+UNMONITORED_TITLE = "deployment-monitoring: a deployment surface is UNMONITORED (missing config)"
+
+
+def run_deployment(issues, **overrides):
+    env = {
+        "EXPECTED_VERSION": "0.105.0",
+        "RAILWAY_VERSION": "unreachable",
+        "RAILWAY_OUTCOME": "success",
+        "RAILWAY_PROBE_FAILED": "true",
+        "PUBLIC_VERSION": "fresh",
+        "PUBLIC_OUTCOME": "success",
+        "PUBLIC_NOT_CONFIGURED": "false",
+        "RAILWAY_TOOLS": "unknown",
+        "PUBLIC_TOOLS": "8",
+    }
+    env.update(overrides)
+    return run_monitor("deployment-freshness.yml", "check", issues, step_name=DEPLOYMENT_STEP, probe_env=env)
+
+
+@pytest.mark.parametrize("title", [DEPLOYMENT_TITLE, UNMONITORED_TITLE])
+def test_deployment_reopens_completed_tracker_and_never_comments(title):
+    issue = {"number": 5270, "title": title, "state": "closed", "state_reason": "completed"}
+    env = {"PUBLIC_NOT_CONFIGURED": "true"} if title == UNMONITORED_TITLE else {}
+    if title == UNMONITORED_TITLE:
+        env.update(RAILWAY_VERSION="0.105.0", RAILWAY_PROBE_FAILED="false")
+    events = run_deployment([issue], **env)
+    assert len(events) == 1 and events[0]["kind"] == "update"
+    assert events[0]["issue_number"] == 5270 and events[0]["state"] == "open"
+    assert run_deployment([{**issue, "state": "open", "body": events[0]["body"]}], **env) == []
+
+
+def test_deployment_ignores_closed_duplicate_and_pull_requests():
+    issues = [
+        {"number": 5339, "title": DEPLOYMENT_TITLE, "state": "closed", "state_reason": "not_planned"},
+        {"number": 5340, "title": DEPLOYMENT_TITLE, "state": "open", "pull_request": {}},
+        {"number": 5270, "title": DEPLOYMENT_TITLE, "state": "closed", "state_reason": "completed"},
+    ]
+    assert run_deployment(issues)[0]["issue_number"] == 5270
+
+
+@pytest.mark.parametrize(
+    "field,value", [("EXPECTED_VERSION", ""), ("RAILWAY_OUTCOME", "failure"), ("RAILWAY_PROBE_FAILED", ""), ("RAILWAY_VERSION", "0.104.0")]
+)
+def test_deployment_never_closes_without_verified_success(field, value):
+    issue = {"number": 5270, "title": DEPLOYMENT_TITLE, "state": "open"}
+    env = {"RAILWAY_VERSION": "0.105.0", "RAILWAY_PROBE_FAILED": "false", field: value}
+    assert not any(e.get("state") == "closed" for e in run_deployment([issue], **env))
+
+
+def test_deployment_recovery_is_quiet_and_preserves_distribution_tracker():
+    issues = [
+        {"number": 5270, "title": DEPLOYMENT_TITLE + " with 0.104.0", "state": "open"},
+        {"number": 5184, "title": "supply-chain-drift: distribution surfaces out of sync", "state": "open"},
+        {"number": 12, "title": UNMONITORED_TITLE, "state": "open"},
+    ]
+    events = run_deployment(issues, RAILWAY_VERSION="0.105.0", RAILWAY_PROBE_FAILED="false")
+    assert {e["issue_number"] for e in events} == {5270, 12}
+    assert all(e["kind"] == "update" and e["state"] == "closed" for e in events)
+
+
+def test_deployment_missing_public_probe_cannot_close_unmonitored_tracker():
+    issue = {"number": 12, "title": UNMONITORED_TITLE, "state": "open"}
+    events = run_deployment([issue], RAILWAY_VERSION="0.105.0", RAILWAY_PROBE_FAILED="false", PUBLIC_VERSION="", PUBLIC_OUTCOME="skipped")
+    assert events == []
+
+
+def test_deployment_issue_mutation_is_default_branch_only():
+    data = yaml.safe_load((ROOT / ".github/workflows/deployment-freshness.yml").read_text())
+    steps = [s for s in data["jobs"]["check"]["steps"] if "github-script@" in s.get("uses", "")]
+    assert steps
+    for step in steps:
+        assert "github.ref" in step["if"] and "github.event.repository.default_branch" in step["if"]

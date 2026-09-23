@@ -1513,3 +1513,12 @@ def test_glama_profile_metadata_requires_exact_released_schema(monkeypatch, caps
         assert payload["exact_input_schemas"] is True
         assert payload["release_metadata_source"] == "schema-server-description"
         assert payload["listing_version"] == "1.0.5"
+
+
+@pytest.mark.parametrize("word", ["eight", "8"])
+def test_glama_current_focused_tool_wording_is_recognized(word):
+    script = _load_script("check_glama_listing.py")
+    page = f"v0.105.0 Start with {word} focused tools, then select a graph profile."
+    assert script._check(page, "0.105.0", 8) == []
+    assert script._check(page, "0.105.0", 9)
+    assert script._check(page, "0.106.0", 8)

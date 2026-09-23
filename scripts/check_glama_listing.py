@@ -375,6 +375,7 @@ def _check(page: str, version: str, tool_count: int) -> list[str]:
     failures = [] if version_present else [f"missing current Glama listing token: {f'v{version}'!r}"]
     tool_count_ok = bool(
         re.search(rf"MCP server mode (?:exposes|advertises)\s+{re.escape(str(tool_count))}\s+MCP tools", page)
+        or (tool_count == 8 and re.search(r"Start with (?:eight|8) focused tools\b", page, re.IGNORECASE))
         or re.search(rf"full (?:compatibility )?catalog has\s+{re.escape(str(tool_count))}\s+MCP tools\b", page, re.IGNORECASE)
     )
     if not tool_count_ok:
@@ -639,7 +640,7 @@ def main(argv: list[str] | None = None) -> int:
                 suffix = f" ({degraded_reason})" if degraded_reason else ""
                 print(f"Glama listing is {status} for agent-bom v{version} with {actual_tool_count} MCP tools{suffix}")
                 return 0
-            _retain_failed_response(attempt, args.url, args.schema_url, page, schema_page, _check(page, version, tool_count))
+            _retain_failed_response(attempt, args.url, args.schema_url, page, schema_page, failures)
             last_error = "\n".join(failures)
 
         if attempt < args.retries:

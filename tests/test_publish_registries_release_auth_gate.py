@@ -261,7 +261,9 @@ def test_new_smithery_release_completes_machine_authorization_before_resume() ->
 def test_surface_freshness_rechecks_immediately_after_registry_publication() -> None:
     workflow = (ROOT / ".github/workflows/surface-freshness.yml").read_text(encoding="utf-8")
     assert 'workflows: ["Publish to Registries"]' in workflow
-    assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    job = yaml.safe_load(workflow)["jobs"]["freshness"]
+    assert "github.event_name != 'workflow_run'" in job["if"]
+    assert "contains(fromJSON('[\"success\",\"failure\"]'), github.event.workflow_run.conclusion)" in job["if"]
 
 
 def test_configured_registry_repair_runs_without_a_source_metadata_auth_claim(tmp_path):

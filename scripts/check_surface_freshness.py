@@ -63,7 +63,7 @@ OK_STATUSES = {"fresh"}
 # release gate already treats it that way (`continue-on-error` on the
 # Smithery job in publish-registries.yml, PR #5317). This mirrors that
 # policy here: Smithery's real probe result still appears in `surfaces`
-# for visibility, but it never counts toward `drift`/`all_fresh`, so it can
+# for visibility, but it never counts toward `drift`/`all_required_fresh`, so it can
 # never block, (re)open, or fail a freshness gate on its own. Every other
 # surface keeps gating exactly as before.
 NON_BLOCKING_SURFACES = {"Smithery"}
@@ -122,6 +122,11 @@ def _validate_tool_contract(payload: Any) -> list[dict[str, Any]]:
 
 
 def _released_server_card(url: str, expected: str, names: list[str], **kw: Any) -> list[dict[str, Any]]:
+    """Read observed schemas after checking the card's version/name claims.
+
+    This does not prove artifact identity. Publication expectations must come
+    from export_release_mcp_contract.py, not from this mutable origin.
+    """
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("server-card URL must be HTTPS without credentials, query, or fragment")
@@ -465,7 +470,9 @@ def probe_glama(
     return {
         "surface": "Glama",
         "status": status,
-        "version": payload.get("listing_version", "—"),
+        "version": payload.get("profile_version") or payload.get("listing_version", "—"),
+        "listing_version": payload.get("listing_version"),
+        "release_metadata_source": payload.get("release_metadata_source"),
         "expected": expected,
         "tool_count": payload.get("tool_count"),
         "expected_tool_count": payload.get("expected_tool_count"),
@@ -573,9 +580,9 @@ def main(argv: list[str] | None = None) -> int:
         help="JSON list of immutable released MCP tool names required from marketplace inventories.",
     )
     parser.add_argument("--expected-tool-contract-file", type=Path, help="Release-bound tool names and input schemas.")
-    parser.add_argument("--server-card-url", help="Public HTTPS server card used to extract a release-bound schema contract.")
+    parser.add_argument("--server-card-url", help="Public HTTPS server card used to extract observed deployment schemas.")
     parser.add_argument(
-        "--write-tool-contract", type=Path, help="Validate the server card against released names/version, write schemas, and exit."
+        "--write-tool-contract", type=Path, help="Write version/name-checked observed server-card schemas; not a published artifact oracle."
     )
     parser.add_argument(
         "--write-smithery-tool-contract", type=Path, help="Write complete public schemas after checking catalog consistency."
@@ -675,10 +682,13 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
 
-    drift = [s for s in surfaces if s["status"] not in OK_STATUSES and s["surface"] not in NON_BLOCKING_SURFACES]
+    for surface in surfaces:
+        surface["required"] = surface["surface"] not in NON_BLOCKING_SURFACES
+    drift = [s for s in surfaces if s["status"] not in OK_STATUSES and s["required"]]
     report = {
         "expected": expected,
-        "all_fresh": len(drift) == 0,
+        "all_fresh": all(s["status"] in OK_STATUSES for s in surfaces),
+        "all_required_fresh": len(drift) == 0,
         "surfaces": surfaces,
     }
 

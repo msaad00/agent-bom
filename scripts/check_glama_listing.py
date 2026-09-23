@@ -164,10 +164,10 @@ def _api_inventory_result(
         for expected_tool in expected_tool_contract:
             name = str(expected_tool["name"])
             actual_tool = actual_by_name.get(name)
-            if actual_tool is None or actual_tool.get("inputSchema") != expected_tool["inputSchema"]:
+            if actual_tool is not None and actual_tool.get("inputSchema") != expected_tool["inputSchema"]:
                 schema_failures.append(f"input schema differs for tool: {name}")
         failures.extend(schema_failures)
-        exact_input_schemas = not schema_failures and len(actual_by_name) == len(expected_tool_contract)
+        exact_input_schemas = not schema_failures and set(actual_by_name) == {str(tool["name"]) for tool in expected_tool_contract}
     return actual_tool_count, failures, exact_tool_set, exact_input_schemas
 
 
@@ -544,6 +544,7 @@ def main(argv: list[str] | None = None) -> int:
     last_error = ""
     listing_version = "unknown"
     release_metadata_source = "listing-text"
+    profile_version: str | None = None
     actual_tool_count: int | None = None
     inventory_source: str | None = None
     exact_tool_set: bool | None = None
@@ -552,6 +553,7 @@ def main(argv: list[str] | None = None) -> int:
     last_probe_unreachable = False
     for attempt in range(1, max(1, args.retries) + 1):
         release_metadata_source = "listing-text"
+        profile_version = None
         actual_tool_count = None
         inventory_source = None
         exact_tool_set = None
@@ -633,7 +635,7 @@ def main(argv: list[str] | None = None) -> int:
             # package releases; full-catalog prose also differs from the selected
             # runtime profile. Accept the bound server profile's release claim
             # only alongside its independently matching complete tool contract.
-            if expected_tool_contract is not None and exact_input_schemas is True and schema_page:
+            if expected_tool_contract is not None and schema_page:
                 try:
                     indexed_tools, description = _extract_schema_evidence(schema_page, args.url)
                     _, indexed_failures, _, indexed_exact = _api_inventory_result(
@@ -645,6 +647,7 @@ def main(argv: list[str] | None = None) -> int:
                     if indexed_exact and not indexed_failures and not _check(html.escape(description), version, tool_count):
                         failures = [failure for failure in failures if not failure.startswith("missing current Glama listing token:")]
                         release_metadata_source = "schema-server-description"
+                        profile_version = version
                 except ValueError:
                     pass  # Missing profile metadata cannot substitute for release proof.
             if expected_tool_contract is not None and exact_input_schemas is None:
@@ -659,6 +662,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "status": status,
                                 "expected": version,
                                 "listing_version": listing_version,
+                                "profile_version": profile_version,
                                 "release_metadata_source": release_metadata_source,
                                 "tool_count": actual_tool_count,
                                 "expected_tool_count": tool_count,
@@ -689,6 +693,7 @@ def main(argv: list[str] | None = None) -> int:
                     "status": "unreachable" if last_probe_unreachable else "stale",
                     "expected": version,
                     "listing_version": listing_version,
+                    "profile_version": profile_version,
                     "release_metadata_source": release_metadata_source,
                     "tool_count": actual_tool_count,
                     "expected_tool_count": tool_count,

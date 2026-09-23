@@ -32,15 +32,30 @@ signed release evidence.
 | Package build | `make release-build` | Builds the dashboard, wheel, and sdist, then rejects any wheel missing the schemas, dashboard index, CSP manifest, or CSP script hashes. |
 | Packaged dashboard | `uv run python scripts/verify_release_wheel.py dist` | Every wheel passes the same dashboard and CSP contract used by the manual publish targets. |
 | PyPI smoke | `python -m venv /tmp/agent-bom-smoke && /tmp/agent-bom-smoke/bin/pip install agent-bom==<version> && /tmp/agent-bom-smoke/bin/agent-bom --version` | Published package installs in a fresh environment. |
-| Registry surface freshness (post-publish) | `PYTHONPATH=src python scripts/check_surface_freshness.py --out /tmp/agent-bom-surface-freshness.json` | PyPI, Docker, GHCR, Glama, and configured Smithery surfaces report the expected version and a non-empty inventory. Async rebuild acceptance is not release completion. |
+| Registry surface freshness (post-publish) | `gh workflow run surface-freshness.yml` | Compares distribution surfaces with the latest published release and its exact packaged MCP schemas. Inspect the `surface-freshness-evidence` artifact and drift issue; asynchronous rebuild acceptance is not release completion. |
 | Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real inventory report, graph, and posture with no coverage warnings; package-CVE lookup is skipped because a fresh install has no local database. Run `agent-bom scan --demo --offline` separately for bundled CVE proof. |
 | Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
 
 Do not publish a release as hosted-ready when any required line above is red.
-After publishing, do not mark the release complete while the surface-freshness
-report is stale or unmonitored. Registry rebuilds may finish asynchronously;
-rerun the check until Glama and every configured public surface reflect the
-released version and expected inventory.
+After publishing, keep required-surface incidents open while a required surface
+is stale or unmonitored. Registry rebuilds may finish asynchronously; rerun the
+check until required surfaces reflect the released version and expected
+inventory. Advisory results remain visible and do not establish hosted readiness.
+
+Schema expectations come from an isolated installation of the exact published
+PyPI version, checked against the release tag's tool names. The extractor runs
+without publishing credentials, checkout imports, or user pip configuration.
+A hosted server card with the same version string can still contain newer code;
+it is observed deployment evidence, never the schema expectation. Deployment
+Freshness reports that mismatch separately. Reconcile the hosted artifact to
+the published release before retrying; do not publish a candidate to silence it.
+
+The JSON report distinguishes `all_fresh` from `all_required_fresh`. Smithery
+remains advisory under the existing OAuth publication policy; its actual result
+stays visible. A Glama API inventory that contradicts its public schema remains
+a required failure even when the indexed release description matches. Use the
+provider's supported Sync Server control and rerun verification; unresolved
+Directory API discrepancies require provider repair, not a local bypass.
 
 Glama Directory API reads require bearer authentication ([provider reference](https://glama.ai/mcp/reference)).
 Configure `GLAMA_API_KEY` as a managed GitHub Actions secret for registry and

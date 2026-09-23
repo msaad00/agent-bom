@@ -71,6 +71,17 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Expected published contract: v${VERSION}, ${TOOL_COUNT} MCP tools"
 
+      - name: Export exact published release schemas
+        run: |
+          set -euo pipefail
+          python3 scripts/check_glama_listing.py \
+            --write-tool-names /tmp/deployment-expected-tool-names.json \
+            --git-ref "${{ steps.expected.outputs.release_sha }}"
+          python3 scripts/export_release_mcp_contract.py \
+            --expected "${{ steps.expected.outputs.version }}" \
+            --expected-tool-names-file /tmp/deployment-expected-tool-names.json \
+            --out /tmp/deployment-expected-tool-contract.json
+
       - name: Check Railway deployment
         shell: bash
         id: railway
@@ -93,6 +104,16 @@ jobs:
             --timeout 15); then
             DEPLOYED=$(echo "$RESPONSE" | jq -er '.serverInfo.version')
             TOOL_COUNT=$(echo "$RESPONSE" | jq -er '.tools | length')
+            echo "$RESPONSE" | jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' > /tmp/railway-actual-tool-contract.json
+            if ! python3 scripts/check_surface_freshness.py \
+              --compare-tool-contract-files /tmp/deployment-expected-tool-contract.json /tmp/railway-actual-tool-contract.json; then
+              {
+                echo "railway_version=$DEPLOYED (schema drift)"
+                echo "tool_count=$TOOL_COUNT"
+              } >> "$GITHUB_OUTPUT"
+              echo "::warning::Railway schemas differ from the published release; reconcile the deployed artifact"
+              exit 0
+            fi
           else
             {
               echo "railway_version=unreachable"
@@ -121,17 +142,6 @@ jobs:
           set -euo pipefail
           # Stay fail-closed if contract extraction or probing exits early.
           echo "probe_failed=true" >> "$GITHUB_OUTPUT"
-          python3 scripts/check_glama_listing.py \
-            --write-tool-names /tmp/deployment-expected-tool-names.json \
-            --git-ref "${{ steps.expected.outputs.release_sha }}"
-          SERVER_CARD_URL="${SMITHERY_MCP_URL:-https://agent-bom-mcp.up.railway.app/mcp}"
-          SERVER_CARD_URL=$(python3 -c 'import sys; from urllib.parse import urlsplit, urlunsplit; p=urlsplit(sys.argv[1]); print(urlunsplit((p.scheme,p.netloc,"/.well-known/mcp/server-card.json","","")))' "$SERVER_CARD_URL")
-          python3 scripts/check_surface_freshness.py \
-            --expected "${{ steps.expected.outputs.version }}" \
-            --expected-tool-count "$EXPECTED_TOOL_COUNT" \
-            --expected-tool-names-file /tmp/deployment-expected-tool-names.json \
-            --server-card-url "$SERVER_CARD_URL" \
-            --write-tool-contract /tmp/deployment-expected-tool-contract.json
           python3 scripts/check_surface_freshness.py \
             --surface smithery \
             --expected "${{ steps.expected.outputs.version }}" \

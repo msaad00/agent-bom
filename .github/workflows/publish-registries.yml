@@ -194,6 +194,16 @@ jobs:
           --write-tool-names /tmp/smithery-expected-tool-names.json
           --git-ref "${{ needs.release.outputs.release_sha }}"
 
+      - name: Export published release schemas for Smithery
+        if: steps.smithery_config.outputs.enabled == 'true'
+        env:
+          EXPECTED_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          python scripts/export_release_mcp_contract.py \
+            --expected "$EXPECTED_VERSION" \
+            --expected-tool-names-file /tmp/smithery-expected-tool-names.json \
+            --out /tmp/smithery-expected-tool-contract.json
+
       - name: Validate Smithery public server card
         if: steps.smithery_config.outputs.enabled == 'true'
         env:
@@ -213,7 +223,11 @@ jobs:
               jq -S '[.tools[].name] | sort' /tmp/smithery-server-card.json > /tmp/smithery-actual-server-card-tool-names.json
               if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-server-card-tool-names.json; then
                 jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
-                  /tmp/smithery-server-card.json > /tmp/smithery-expected-tool-contract.json
+                  /tmp/smithery-server-card.json > /tmp/smithery-actual-server-card-contract.json
+                if ! python scripts/check_surface_freshness.py --compare-tool-contract-files /tmp/smithery-expected-tool-contract.json /tmp/smithery-actual-server-card-contract.json; then
+                  echo "::error::Smithery upstream schemas differ from the published release"
+                  exit 1
+                fi
                 jq -S '{description}' \
                   /tmp/smithery-server-card.json > /tmp/smithery-expected-listing-metadata.json
                 echo "Smithery server card matches the immutable v${VERSION} contract with ${EXPECTED_TOOL_COUNT} live tool schemas and listing metadata"
@@ -516,39 +530,14 @@ jobs:
           --write-tool-names /tmp/glama-expected-tool-names.json
           --git-ref "${{ needs.release.outputs.release_sha }}"
 
-      - name: Validate released public server card for Glama
+      - name: Export published release schemas for Glama
         env:
-          MCP_SERVER_URL: ${{ vars.SMITHERY_MCP_URL }}
-          EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
           EXPECTED_VERSION: ${{ needs.release.outputs.version }}
         run: |
-          set -euo pipefail
-          if [ -z "${MCP_SERVER_URL:-}" ]; then
-            echo "::error::SMITHERY_MCP_URL is required to verify the public server card"
-            exit 1
-          fi
-          SERVER_CARD_URL=$(python3 -c 'import sys; from urllib.parse import urlsplit, urlunsplit; p=urlsplit(sys.argv[1]); assert p.scheme == "https" and p.netloc; print(urlunsplit((p.scheme, p.netloc, "/.well-known/mcp/server-card.json", "", "")))' "$MCP_SERVER_URL")
-          for ATTEMPT in $(seq 1 6); do
-            if curl -fsS --connect-timeout 10 --max-time 30 \
-                "$SERVER_CARD_URL" -o /tmp/glama-server-card.json && \
-              jq -e \
-                --arg version "$EXPECTED_VERSION" \
-                --argjson tool_count "$EXPECTED_TOOL_COUNT" \
-                '.serverInfo.version == $version and (.tools | length) == $tool_count and all(.tools[]; (.name | type == "string") and (.name | length > 0) and (.inputSchema | type == "object")) and (([.tools[].name] | unique | length) == $tool_count)' \
-                /tmp/glama-server-card.json >/dev/null; then
-              jq -S '[.tools[].name] | sort' /tmp/glama-server-card.json > /tmp/glama-actual-server-card-tool-names.json
-              if cmp -s /tmp/glama-expected-tool-names.json /tmp/glama-actual-server-card-tool-names.json; then
-                jq -S '[.tools[] | {name, inputSchema}] | sort_by(.name)' \
-                  /tmp/glama-server-card.json > /tmp/glama-expected-tool-contract.json
-                echo "Public server card matches the immutable v${EXPECTED_VERSION} tool contract"
-                exit 0
-              fi
-            fi
-            echo "Public server card attempt ${ATTEMPT}/6 has not reached the immutable release contract"
-            sleep 10
-          done
-          echo "::error::Public server card does not match the immutable released tool-name contract"
-          exit 1
+          python scripts/export_release_mcp_contract.py \
+            --expected "$EXPECTED_VERSION" \
+            --expected-tool-names-file /tmp/glama-expected-tool-names.json \
+            --out /tmp/glama-expected-tool-contract.json
 
       - name: Verify Glama listing freshness
         env:

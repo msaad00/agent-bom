@@ -94,14 +94,10 @@ jobs:
           python3 scripts/check_glama_listing.py \
             --write-tool-names /tmp/surface-expected-tool-names.json \
             --git-ref "${{ steps.expected.outputs.release_sha }}"
-          SERVER_CARD_URL="${SMITHERY_MCP_URL:-https://agent-bom-mcp.up.railway.app/mcp}"
-          SERVER_CARD_URL=$(python3 -c 'import sys; from urllib.parse import urlsplit, urlunsplit; p=urlsplit(sys.argv[1]); print(urlunsplit((p.scheme,p.netloc,"/.well-known/mcp/server-card.json","","")))' "$SERVER_CARD_URL")
-          python3 scripts/check_surface_freshness.py \
-            --expected "$EXPECTED_VERSION" \
-            --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
+          python3 scripts/export_release_mcp_contract.py \
+            --expected "${{ steps.expected.outputs.version }}" \
             --expected-tool-names-file /tmp/surface-expected-tool-names.json \
-            --server-card-url "$SERVER_CARD_URL" \
-            --write-tool-contract /tmp/surface-expected-tool-contract.json
+            --out /tmp/surface-expected-tool-contract.json
           PYTHONPATH=src python3 scripts/check_surface_freshness.py \
             --expected "$EXPECTED_VERSION" \
             --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
@@ -146,8 +142,9 @@ jobs:
               unreachable: "🔌 unreachable",
             }[s] || s);
 
+            const cell = (value) => String(value ?? "—").replaceAll("|", "\\|").replace(/\r?\n/g, "<br>");
             const rows = report.surfaces
-              .map((s) => `| ${s.surface} | ${s.version} | ${s.expected} | ${emoji(s.status)} | ${s.error || "—"} |`)
+              .map((s) => `| ${s.surface}${s.required === false ? " (advisory)" : ""} | ${cell(s.version)} | ${cell(s.expected)} | ${emoji(s.status)} | ${cell(s.error)} |`)
               .join("\n");
 
             const body = [
@@ -167,7 +164,7 @@ jobs:
               "",
               "Optional overrides (blank/unset repo vars fall back to defaults): `DOCKER_IMAGE` (`ghcr.io/msaad00/agent-bom`), `GLAMA_LISTING_URL`, `GLAMA_API_URL`, `SMITHERY_SERVER_QUALIFIED_NAME` (`agentbom/agent-bom`).",
               "",
-              "_Maintained automatically by the surface-freshness workflow. Self-closes when every surface is fresh and monitored._",
+              "_Maintained automatically by the surface-freshness workflow. Self-closes when all required surfaces are fresh; advisory surface findings remain visible._",
             ].join("\n");
 
             for (const name of labels) {
@@ -188,11 +185,11 @@ jobs:
             const candidates = existing.filter((issue) => issue.title === title && !issue.pull_request);
             const match = candidates.find((issue) => issue.state === "open") || candidates[0];
 
-            if (report.all_fresh) {
+            if (report.all_required_fresh) {
               if (match?.state === "open") {
                 await github.rest.issues.update({
                   owner, repo, issue_number: match.number, state: "closed", state_reason: "completed",
-                  body: body + "\n\nAll distribution surfaces are fresh and monitored again; closing.",
+                  body: body + "\n\nAll required distribution surfaces are fresh and monitored again; closing. Advisory findings, if any, remain in the table.",
                 });
               }
               return;

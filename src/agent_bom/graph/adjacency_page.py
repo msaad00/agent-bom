@@ -40,6 +40,7 @@ def incident_edge_page(
     direction: str,
     limit: int,
     cursor: str | None,
+    snapshot_generation: str | None = None,
     marker: str,
     node_from_row: Callable[[Any], Any],
     edge_from_row: Callable[[Any], Any],
@@ -77,9 +78,13 @@ def incident_edge_page(
             (tenant_id,),
         ).fetchone()
     if snapshot is None:
-        if cursor:
+        if cursor or snapshot_generation:
             raise ValueError("Incident-edge cursor snapshot is unavailable")
         return None
+    if snapshot_generation is not None and snapshot_generation != snapshot[3]:
+        raise ValueError("Incident-edge snapshot generation does not match request")
+    if not snapshot[3]:
+        raise ValueError("Incident-edge snapshot generation is unavailable")
     effective_scan_id, created_at = str(snapshot[0]), str(snapshot[1])
     scope = [tenant_id, effective_scan_id, created_at, str(snapshot[2] or ""), str(snapshot[3]), node_id, direction]
     if token is not None and token.get("scope") != scope:
@@ -148,6 +153,7 @@ def incident_edge_page(
         ).decode()
     return {
         "scan_id": effective_scan_id,
+        "snapshot_generation": str(snapshot[3]),
         "node": nodes[0],
         "nodes": nodes,
         "edges": edges,

@@ -172,6 +172,28 @@ New demo projections direct dependencies from a workload to its image and from
 an image to its packages. This change does not rewrite existing saved snapshots; rebuild the demo
 snapshot to see corrected projection semantics.
 
+### Paging recorded relationships through the API
+
+For a persisted canonical node, authenticated clients can request one bounded
+relationship page without loading the whole neighborhood:
+
+```bash
+curl --get "$AGENT_BOM_API_URL/v1/graph/incident-edges" \
+  --header "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  --data-urlencode "node_id=$NODE_ID" --data-urlencode "limit=24"
+```
+
+The response contains the seed, endpoint nodes, recorded edges, and `next_cursor`.
+Reuse the returned `scan_id` and `snapshot_generation` on every node expansion.
+Follow `next_cursor` with those values and the same node and direction; the
+generation check prevents mixing graph data across a replaced snapshot.
+`limit` counts relationships (1–100), so parallel edges can share a neighbor.
+`in` and `out` filter recorded endpoints; they do not establish permission or
+execution. Completeness covers the current recorded page, and totals stay unknown.
+On a stale-cursor or generation-mismatch 400, discard the accumulated view and
+restart from the first page; unsupported backends return 501.
+This endpoint is independent of the existing dashboard neighbor lookup.
+
 ## Scale and readability
 
 To keep the graph readable at larger sizes, `agent-bom` uses:

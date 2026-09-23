@@ -2067,6 +2067,7 @@ class PostgresGraphStore:
         direction: str = "both",
         limit: int = 24,
         cursor: str | None = None,
+        snapshot_generation: str | None = None,
     ) -> dict[str, Any] | None:
         """One tenant-scoped MVCC read, without full incident or impact reads."""
         from agent_bom.graph.adjacency_page import incident_edge_page
@@ -2082,6 +2083,7 @@ class PostgresGraphStore:
                 direction=direction,
                 limit=limit,
                 cursor=cursor,
+                snapshot_generation=snapshot_generation,
                 marker="%s",
                 node_from_row=self._node_from_row,
                 edge_from_row=self._edge_from_row,

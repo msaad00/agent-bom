@@ -36,7 +36,7 @@ def run_monitor(
     const context = {repo: {owner: 'owner', repo: 'repo'}, serverUrl: 'https://github.com', runId: 99,
       payload: {workflow_run: {id: 99, run_attempt: 1, workflow_id: 42, name: workflow_name, html_url: 'https://github.com/run/99',
         head_sha: 'a'.repeat(40), actor: {login: 'owner'}}}};
-    process.env.REPORT = JSON.stringify({expected: '0.103.2', all_fresh: fresh, surfaces: []});
+    process.env.REPORT = JSON.stringify({expected: '0.103.2', all_fresh: fresh, all_required_fresh: fresh, surfaces: []});
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     new AsyncFunction('github', 'context', script)(github, context)
       .then(() => console.log(JSON.stringify(events))).catch(e => {console.error(e); process.exit(1)});

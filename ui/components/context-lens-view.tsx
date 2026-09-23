@@ -175,18 +175,18 @@ export function LateralPanel({
   const topPaths = distinctPaths.slice(0, pathLimit);
 
   return (
-    <div className="w-80 shrink-0 overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)]">
+    <div className="w-full max-h-[45%] shrink-0 overflow-y-auto border-t md:max-h-none md:w-80 md:border-t-0 md:border-l border-[var(--border-subtle)] bg-[var(--background)]">
       <div className="p-3 border-b border-[var(--border-subtle)]">
         <h3 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">
           {agentScopeHeading(selectedAgent, agents)}
         </h3>
-        <p className="text-[10px] text-[var(--text-tertiary)]">
+        <p className="text-xs text-[var(--text-tertiary)]">
           {pathFocusActive
             ? "Select a path to inspect its recorded reachability. Other agents appear when they share reachability — not because they are the same workload."
             : "Ranked reachability chains from scan evidence."}
         </p>
         {topPaths.length === 0 ? (
-          <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">No lateral paths found</p>
+          <p className="mt-2 text-xs text-[var(--text-tertiary)]">No lateral paths found</p>
         ) : (
           <div className="mt-2 space-y-2">
             {topPaths.map((p) => (
@@ -203,11 +203,11 @@ export function LateralPanel({
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-[var(--text-tertiary)]">
+                  <span className="text-xs text-[var(--text-tertiary)]">
                     {p.hops.length - 1} hop{p.hops.length - 1 !== 1 ? "s" : ""}
                   </span>
                   <span
-                    className={`text-[10px] font-semibold ${
+                    className={`text-xs font-semibold ${
                       p.composite_risk >= 7
                         ? "text-red-400"
                         : p.composite_risk >= 4
@@ -218,27 +218,27 @@ export function LateralPanel({
                     Risk {p.composite_risk.toFixed(1)}
                   </span>
                 </div>
-                <p className="break-words text-[11px] leading-relaxed text-[var(--foreground)]">
+                <p className="break-words text-xs leading-relaxed text-[var(--foreground)]">
                   {pathDisplayTitle(lateralPathToExposure(p, selectedAgent ?? "agent"))}
                 </p>
                 {p.credential_exposure.length > 0 && (
-                  <p className="mt-1 break-words text-[10px] text-amber-400">
+                  <p className="mt-1 break-words text-xs text-amber-400">
                     Creds: {formatExposureList(p.credential_exposure)}
                   </p>
                 )}
                 {p.tool_exposure.length > 0 && (
-                  <p className="mt-1 break-words text-[10px] text-purple-400">
+                  <p className="mt-1 break-words text-xs text-purple-400">
                     Tools: {formatExposureList(p.tool_exposure)}
                   </p>
                 )}
                 {p.vuln_ids.length > 0 && (
-                  <p className="mt-1 break-words text-[10px] text-red-400">
+                  <p className="mt-1 break-words text-xs text-red-400">
                     Findings: {formatExposureList(p.vuln_ids, 3)}
                   </p>
                 )}
               </button>
             ))}
-            <p className="text-[10px] text-[var(--text-tertiary)]">Showing {topPaths.length} of {distinctPaths.length} recorded paths</p>
+            <p className="text-xs text-[var(--text-tertiary)]">Showing {topPaths.length} of {distinctPaths.length} recorded paths</p>
             {topPaths.length < distinctPaths.length && (
               <button type="button" className="text-xs text-[var(--foreground)] underline focus-visible:outline-2" onClick={() => setPathLimit((limit) => limit + 5)}>
                 Show more paths
@@ -269,11 +269,11 @@ export function LateralPanel({
                 className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg p-2"
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-[var(--text-tertiary)] capitalize">
+                  <span className="text-xs text-[var(--text-tertiary)] capitalize">
                     {r.pattern.replace(/_/g, " ")}
                   </span>
                   <span
-                    className={`text-[10px] font-semibold ${
+                    className={`text-xs font-semibold ${
                       r.risk_score >= 7
                         ? "text-red-400"
                         : r.risk_score >= 5
@@ -284,7 +284,7 @@ export function LateralPanel({
                     {r.risk_score.toFixed(1)}
                   </span>
                 </div>
-                <p className="break-words text-[10px] leading-relaxed text-[var(--text-secondary)]">
+                <p className="break-words text-xs leading-relaxed text-[var(--text-secondary)]">
                   {r.description}
                 </p>
                 {r.owasp_agentic_tag && (
@@ -708,9 +708,9 @@ export function ContextLensView() {
       )}
 
       {/* Main area: graph + optional paths drawer */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {/* Graph */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
           {detailLoading && graphData && (
             <GraphRefreshOverlay label="Updating context graph" />

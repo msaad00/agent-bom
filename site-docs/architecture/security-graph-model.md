@@ -240,6 +240,19 @@ runtime evidence, and remediation.
 
 ## Investigate an agent from Context
 
+Context starts with the selected agent's recorded two-hop neighborhood. Choose
+incoming, outgoing or both directions and one to three hops. Select a node to
+inspect its connections and expand another recorded hop; **Reset neighborhood**
+returns to the initial scope. The inspector groups entities by type so they can
+be selected without searching a dense canvas. Select an arrow for its direction,
+relationship and package association. Permissions and execution remain unknown
+in this static projection.
+
+The canvas is bounded to 40 nodes and 80 edges. Counts outside the view describe
+the loaded scan graph, not the entire estate. Source truncation is disclosed
+separately; expansion is client-side and does not collect additional evidence.
+Shared infrastructure does not establish agent-to-agent communication.
+
 Select an agent and scan in Context, then choose **Investigate reach & permissions**.
 The investigation retains that scope and presents recorded paths. Select a path,
 then use its investigation questions:

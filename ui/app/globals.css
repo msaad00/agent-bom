@@ -878,3 +878,16 @@ main > div {
   .ep-inspection-main > .ep-view-row .ep-view-label { display: none; }
   .ep-inspection-main > .ep-view-row { justify-content: flex-end; }
 }
+
+/* Context investigation: brighter canvas, bounded board, persistent inspector. */
+:root { --graph-canvas: #242d3b; }
+[data-theme="light"] { --graph-canvas: #f1f5fa; }
+.react-flow, .context-canvas { background-color: var(--graph-canvas); }
+.context-inspector { @apply w-full shrink-0 overflow-y-auto border-t border-[var(--border-subtle)] bg-[var(--surface)] p-4 text-[15px] text-[var(--foreground)] md:w-80 md:border-l md:border-t-0; max-height: 44vh; }
+@media (min-width: 768px) { .context-inspector { max-height: none; } }
+.context-action { @apply min-h-10 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-sm font-medium text-[var(--foreground)] disabled:opacity-50; }
+.context-connection { @apply block w-full rounded-md px-2 py-2 text-left text-sm break-words hover:bg-[var(--surface-elevated)] focus-visible:outline-2 focus-visible:outline-emerald-500; }
+.context-evidence-badge { @apply inline-block rounded-full border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-3 py-1 text-xs text-[var(--text-secondary)]; }
+.context-facts { @apply space-y-2 rounded-lg border border-[var(--border-subtle)] p-3 text-sm; }
+.context-facts > div { @apply flex flex-wrap justify-between gap-2; }
+.context-facts dt { @apply text-[var(--text-tertiary)]; }

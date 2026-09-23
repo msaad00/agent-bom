@@ -340,6 +340,7 @@ def test_confirmed_path_carries_complete_per_hop_evidence() -> None:
         "confidence": 1.0,
         "freshness": "fresh",
         "runtime_observed_state": "not_observed",
+        "runtime_references": [],
         "direction": "directed",
         "traversable": True,
         "complete": True,

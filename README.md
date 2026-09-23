@@ -38,8 +38,7 @@
 
 ### Security and engineering leaders: decide what needs attention
 
-Start with **Posture**, then open **Top risks** to inspect a finding and its evidence.
-**Assets & coverage** shows inventory in its snapshot and source scope; asset counts
+Start with **Posture**, then open **Top risks** to inspect a finding and its evidence. **Assets & coverage** shows inventory in its snapshot and source scope; asset counts
 do not establish collection coverage. Inventory retains selected filters even when no assets match.
 
 <p align="center">
@@ -77,12 +76,7 @@ Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or sev
 direction and hop limit, and expand relevant relationships; badges pair each verb with an icon so types stay
 distinguishable without color. The ordered path and hop inspector expose evidence freshness and unknowns.
 Large scopes use bounded pages and disclose when the current view is incomplete.
-
-From **Context**, select an agent and choose **Investigate reach & permissions**.
-The selected path offers permission receipts, an explicit compromise assumption,
-CVE prerequisites, recorded resources and related runtime activity. Expand only
-the evidence needed for the question; missing local exploitability stays **not assessed**.
-See the [agent investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
+From **Context**, explore a bounded agent neighborhood, select nodes or arrows, and expand recorded connections. Open **Investigate reach & permissions** for permission receipts, CVE prerequisites and related activity; missing exploitability stays **not assessed**. [Investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
 
 ### Engineers and GRC: prioritize findings and verify fixes
 

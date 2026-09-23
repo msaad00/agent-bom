@@ -3505,23 +3505,11 @@ async function main() {
         await contextPage.getByRole("button", { name: /Inspect path:/ }).first().click();
         await contextPage.locator('[data-id="server:github"]').waitFor({ state: "visible" });
         await pathsToggle.click();
-        const showAll = contextPage.getByRole("button", { name: "Show all", exact: true });
-        if (await showAll.count()) {
-          await showAll.click();
-          await contextPage.waitForTimeout(400);
-        }
-        await contextPage.locator(".react-flow__node").first().waitFor({
-          state: "visible",
-          timeout: 20_000,
-        });
+        await contextPage.getByRole("button", { name: "Neighborhood", exact: true }).click();
+        await contextPage.getByRole("complementary", { name: "Agent neighborhood inspector" }).waitFor({ state: "visible" });
+        await contextPage.locator('[data-id="server:github"]').waitFor({ state: "visible" });
+        await contextPage.locator('[data-id="tool:repo-write"]').waitFor({ state: "visible" });
         await fitReactFlow(contextPage);
-        // One extra zoom for README proof — small context chains stay width-bound
-        // after fitView and read small in a tall pane without it.
-        const zoomIn = contextPage.locator(".react-flow__controls-zoomin").first();
-        if (await zoomIn.count()) {
-          await zoomIn.click({ force: true });
-          await contextPage.waitForTimeout(200);
-        }
         await scrollTo(contextPage, 0);
       },
       {
@@ -3531,12 +3519,14 @@ async function main() {
           "developer-copilot",
           "CVE-2025-29927",
           "Affected package:",
+          "Recorded neighborhood",
+          "Evidence gaps",
         ],
         expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],
-        minGraphNodes: 3,
-        maxGraphNodes: 3,
-        minGraphEdges: 2,
-        maxGraphEdges: 2,
+        minGraphNodes: 9,
+        maxGraphNodes: 11,
+        minGraphEdges: 9,
+        maxGraphEdges: 11,
       },
     );
     await page.setViewportSize({ width: 1440, height: 980 });

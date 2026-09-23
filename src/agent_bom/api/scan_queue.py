@@ -114,7 +114,8 @@ class DistributedScanWorker:
         self._lease = max(30, int(lease_seconds))
         self._poll = max(1, int(poll_seconds))
         self._max = max(1, int(max_concurrent))
-        self._inflight: set[str] = set()
+        self._inflight: dict[str, str] = {}
+        self._inflight_lock = threading.Lock()
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
 
@@ -151,8 +152,10 @@ class DistributedScanWorker:
     def _tick(self) -> None:
         # Heartbeat in-flight leases first so a slow scan is never reclaimed by a
         # peer while this node is still actively running it.
-        if self._inflight:
-            self._store.renew_leases(list(self._inflight), self._lease)
+        with self._inflight_lock:
+            claims = dict(self._inflight)
+        if claims:
+            self._store.renew_leases(claims, self._lease)
         # Reclaim jobs orphaned by dead replicas (lease expired, status running).
         reclaimed = self._store.requeue_expired_leases()
         if reclaimed:
@@ -160,24 +163,36 @@ class DistributedScanWorker:
         # Claim up to local free capacity.
         from agent_bom.api.pipeline import submit_claimed_scan_job
 
-        while len(self._inflight) < self._max and not self._stop.is_set():
+        while not self._stop.is_set():
+            with self._inflight_lock:
+                if len(self._inflight) >= self._max:
+                    break
             job = self._store.claim_next(self._worker_id, self._lease)
             if job is None:
                 break
-            self._inflight.add(job.job_id)
+            claim_owner = job._dispatch_claim_owner
+            if not claim_owner:
+                _logger.error("Dispatch claim has no ownership token; refusing unfenced handoff job=%s", job.job_id)
+                break
+            with self._inflight_lock:
+                self._inflight[job.job_id] = claim_owner
             _logger.info("Claimed scan job=%s tenant=%s worker=%s", job.job_id, job.tenant_id, self._worker_id)
             try:
-                submit_claimed_scan_job(job, self._on_complete)
+                submit_claimed_scan_job(job, lambda job_id, owner=claim_owner: self._on_complete(job_id, owner))
             except Exception:  # noqa: BLE001
                 # Could not hand off locally (e.g. executor draining): drop the
                 # claim so another tick/replica can reclaim it after lease expiry.
-                self._inflight.discard(job.job_id)
+                with self._inflight_lock:
+                    if self._inflight.get(job.job_id) == claim_owner:
+                        self._inflight.pop(job.job_id)
                 _logger.error("Failed to submit claimed job=%s; will be reclaimed", job.job_id)
                 break
 
-    def _on_complete(self, job_id: str) -> None:
-        self._inflight.discard(job_id)
+    def _on_complete(self, job_id: str, claim_owner: str) -> None:
+        with self._inflight_lock:
+            if self._inflight.get(job_id) == claim_owner:
+                self._inflight.pop(job_id)
         try:
-            self._store.complete_dispatch(job_id)
+            self._store.complete_dispatch(job_id, claim_owner=claim_owner)
         except Exception:  # noqa: BLE001
             _logger.error("Failed to clear dispatch row job=%s", job_id)

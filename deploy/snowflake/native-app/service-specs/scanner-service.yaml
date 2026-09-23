@@ -39,3 +39,7 @@ spec:
     - name: scanner
       port: 8424
       public: false
+
+serviceRoles:
+  - name: scanner
+    endpoints: [scanner]

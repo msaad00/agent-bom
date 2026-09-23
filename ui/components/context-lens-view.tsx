@@ -6,7 +6,7 @@
  * vulnerabilities without implying observed runtime causality.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -304,6 +304,7 @@ export function LateralPanel({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export function ContextLensView() {
+  const graphFrameRef = useRef<HTMLDivElement>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -547,6 +548,27 @@ export function ContextLensView() {
   }, []);
 
   const fitVisible = useCallback(() => void flowInstance?.fitView({ ...viewportOptions, duration: 240 }), [flowInstance, viewportOptions]);
+  // Drawer and viewport resizing must not leave the focused graph off-screen.
+  useEffect(() => {
+    const frame = graphFrameRef.current;
+    if (!frame || !flowInstance) return;
+    let previousSize = "";
+    let animationFrame = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const size = `${entry.contentRect.width}:${entry.contentRect.height}`;
+      if (previousSize && size !== previousSize) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = window.requestAnimationFrame(() => {
+          void flowInstance.fitView({ ...viewportOptions, duration: 0 });
+        });
+      }
+      previousSize = size;
+    });
+    observer.observe(frame);
+    return () => { observer.disconnect(); window.cancelAnimationFrame(animationFrame); };
+  }, [flowInstance, viewportOptions]);
+
   const fitSelection = useCallback(() => {
     const node = selectedNodeId ? flowInstance?.getNode(selectedNodeId) : undefined;
     if (node) void flowInstance?.fitView({ nodes: [node], padding: 0.7, duration: 240, maxZoom: 1.4 });
@@ -736,6 +758,7 @@ export function ContextLensView() {
               {/* Cap canvas height for small graphs so fitView fills the frame
                   instead of parking a wide short chain in a tall empty pane. */}
               <div
+                ref={graphFrameRef}
                 className={`relative w-full min-h-0 ${
                   displayNodes.length <= 20
                     ? "h-[min(100%,38rem)]"

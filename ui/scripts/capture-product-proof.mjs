@@ -3502,6 +3502,8 @@ async function main() {
           const nodes = [...document.querySelectorAll('.react-flow__node')].map((node) => node.getAttribute('data-id'));
           return selected.length === 1 && nodes.includes('server:filesystem') && !nodes.includes('server:github');
         });
+        await contextPage.getByRole("button", { name: /Inspect path:/ }).first().click();
+        await contextPage.locator('[data-id="server:github"]').waitFor({ state: "visible" });
         await pathsToggle.click();
         const showAll = contextPage.getByRole("button", { name: "Show all", exact: true });
         if (await showAll.count()) {

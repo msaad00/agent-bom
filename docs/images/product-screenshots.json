@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.0",
-  "captured_at": "2026-09-23T21:18:06.863Z",
-  "source_commit": "1da7de23b056d9fcaccf64f06da3c6587a383629",
+  "captured_at": "2026-09-23T22:23:29.018Z",
+  "source_commit": "0b97163d571c2e7b2b2a99372aa5fb8bf0b5d29a",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:fa94cfa1744b818b4745ec1a6c8ab4c33c4b6f12c4fcfcc15e9160c97a5d0517",
+  "capture_inputs_sha256": "sha256:d428b65b68631f343ae95add3453e2b2979ca239303a4c3a9ae9bf36697a3aba",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -138,7 +138,7 @@
       "evidence_sha256": "sha256:4b7a13aabcb4b69c166767de6f298c9e2c5ebc8665fdd983bba1abab80770667",
       "correlation_manifest_sha256": "sha256:910de3f1540690deedcbcbfeec4cbf8e6e073f8de7d7bcdef46b956f559015ff",
       "visible_version": "0.106.0",
-      "sha256": "sha256:c7ce3a09be802f7aa114c5981d2f46ffd733b560257191c9e7f100bcecdacdcd"
+      "sha256": "sha256:ddd55a8bb58f234e2e03d37a0c2a667adb71606d99d047a93b721bf10cf19e1e"
     },
     {
       "presentation": "dark desktop",
@@ -239,9 +239,9 @@
       "presentation": "dark desktop",
       "path": "context-map-live.png",
       "page": "/graph?lens=context&capture=1",
-      "scope": "Progressive persisted neighborhood with canonical IDs and an explicitly expanded package vulnerability branch",
+      "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.106.0",
-      "sha256": "sha256:d5fd7dde0796880dc3bc5a0df087160c0100fc286b47c64aeca851f82b7b48c1"
+      "sha256": "sha256:c98ac8e525a9b1e3807072eee00e97786ed3abef3482dd3f511e3ebafdebf339"
     },
     {
       "presentation": "dark desktop",

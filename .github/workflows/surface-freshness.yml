@@ -1,51 +1,20 @@
 name: Surface Freshness
-
-# Cross-channel version-freshness monitor. Compares the latest published release
-# against EVERY published distribution surface (PyPI, Docker/ghcr, Glama,
-# Smithery) and
-# maintains ONE consolidated tracking issue so a stale surface can never sit
-# unnoticed for months. Closes the gap that let the Smithery listing drift for
-# three months without an alert.
-#
-# Optional repo variables (Settings -> Secrets and variables -> Actions -> Variables):
-#   SMITHERY_SERVER_QUALIFIED_NAME — override Smithery listing name; defaults to agentbom/agent-bom
-#   GLAMA_LISTING_URL  — override Glama listing URL (default: glama.ai/.../msaad00/agent-bom)
-#   GLAMA_API_URL      — override Glama public inventory API URL
-#   DOCKER_IMAGE       — override default ghcr.io/msaad00/agent-bom
-
 on:
-  schedule:
-    - cron: "30 8 * * *"  # daily at 08:30 UTC (after deployment-freshness at 08:00)
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Publish to Registries"]
-    types: [completed]
-
-concurrency:
-  group: surface-freshness-${{ github.ref }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
-
 jobs:
-  freshness:
-    if: ${{ github.event_name != 'workflow_run' || contains(fromJSON('["success","failure"]'), github.event.workflow_run.conclusion) }}
+  diagnostic:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      issues: write
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
         with:
           python-version: "3.12"
-
       - name: Get expected version from latest published release
         id: expected
         env:
@@ -78,126 +47,15 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Expected version from published release $TAG at ${RELEASE_SHA:0:12}: $VERSION with $TOOL_COUNT MCP tools"
 
-      - name: Probe every distribution surface
-        id: probe
+      - name: Export published schema expectation
         env:
-          GLAMA_API_KEY: ${{ secrets.GLAMA_API_KEY }}
-          GLAMA_DIAGNOSTICS_DIR: ${{ runner.temp }}/glama-response
-          EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
-          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
-          SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
-          GLAMA_LISTING_URL: ${{ vars.GLAMA_LISTING_URL }}
-          GLAMA_API_URL: ${{ vars.GLAMA_API_URL }}
-          DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
+          RELEASE_SHA: ${{ steps.expected.outputs.release_sha }}
+          VERSION: ${{ steps.expected.outputs.version }}
         run: |
           set -euo pipefail
-          python3 scripts/check_glama_listing.py \
-            --write-tool-names /tmp/surface-expected-tool-names.json \
-            --git-ref "${{ steps.expected.outputs.release_sha }}"
-          python3 scripts/export_release_mcp_contract.py \
-            --expected "${{ steps.expected.outputs.version }}" \
-            --expected-tool-names-file /tmp/surface-expected-tool-names.json \
-            --out /tmp/surface-expected-tool-contract.json
-          PYTHONPATH=src python3 scripts/check_surface_freshness.py \
-            --expected "$EXPECTED_VERSION" \
-            --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
-            --expected-tool-names-file /tmp/surface-expected-tool-names.json \
-            --expected-tool-contract-file /tmp/surface-expected-tool-contract.json \
-            --out surface-freshness.json
-          {
-            echo "report<<EOF"
-            cat surface-freshness.json
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Upload freshness and failed public response evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: surface-freshness-evidence
-          path: |
-            surface-freshness.json
-            ${{ runner.temp }}/glama-response/
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Open, refresh, or close consolidated freshness issue
-        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+          python scripts/check_glama_listing.py --git-ref "$RELEASE_SHA" --write-tool-names /tmp/glama-names.json
+          python scripts/export_release_mcp_contract.py --expected "$VERSION" --expected-tool-names-file /tmp/glama-names.json --out /tmp/glama-contract.json
+      - name: Compare documented Directory API lookup routes
         env:
-          REPORT: ${{ steps.probe.outputs.report }}
-        with:
-          script: |
-            const report = JSON.parse(process.env.REPORT);
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const title = "supply-chain-drift: distribution surfaces out of sync";
-            const labels = ["supply-chain-drift", "security-preventive", "automated"];
-
-            const emoji = (s) => ({
-              fresh: "✅ fresh",
-              fresh_degraded: "⚠️ partial evidence",
-              stale: "⚠️ STALE",
-              not_configured: "❓ unmonitored (misconfigured)",
-              unreachable: "🔌 unreachable",
-            }[s] || s);
-
-            const cell = (value) => String(value ?? "—").replaceAll("|", "\\|").replace(/\r?\n/g, "<br>");
-            const rows = report.surfaces
-              .map((s) => `| ${s.surface}${s.required === false ? " (advisory)" : ""} | ${cell(s.version)} | ${cell(s.expected)} | ${emoji(s.status)} | ${cell(s.error)} |`)
-              .join("\n");
-
-            const body = [
-              `## Distribution surface freshness — expected \`${report.expected}\``,
-              "",
-              "| Surface | Published | Expected | Status | Detail |",
-              "|---------|-----------|----------|--------|--------|",
-              rows,
-              "",
-              `Probe evidence: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId} (surface-freshness-evidence artifact; retained for 7 days).`,
-              "",
-              "**Statuses**",
-              "- `stale` — surface version, visible release copy, or indexed tool contract differs; use that provider's supported publish or sync path, then re-run verification.",
-              "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
-              "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
-              "- `partial evidence` — the visible listing matches, but exact machine-readable verification is unavailable; the issue remains open.",
-              "",
-              "Optional overrides (blank/unset repo vars fall back to defaults): `DOCKER_IMAGE` (`ghcr.io/msaad00/agent-bom`), `GLAMA_LISTING_URL`, `GLAMA_API_URL`, `SMITHERY_SERVER_QUALIFIED_NAME` (`agentbom/agent-bom`).",
-              "",
-              "_Maintained automatically by the surface-freshness workflow. Self-closes when all required surfaces are fresh; advisory surface findings remain visible._",
-            ].join("\n");
-
-            for (const name of labels) {
-              try {
-                await github.rest.issues.createLabel({ owner, repo, name });
-              } catch (e) { /* already exists */ }
-            }
-
-            const existing = await github.paginate(github.rest.issues.listForRepo, {
-              owner,
-              repo,
-              state: "all",
-              sort: "created",
-              direction: "desc",
-              labels: "supply-chain-drift",
-              per_page: 100,
-            });
-            const candidates = existing.filter((issue) => issue.title === title && !issue.pull_request);
-            const match = candidates.find((issue) => issue.state === "open") || candidates[0];
-
-            if (report.all_required_fresh) {
-              if (match?.state === "open") {
-                await github.rest.issues.update({
-                  owner, repo, issue_number: match.number, state: "closed", state_reason: "completed",
-                  body: body + "\n\nAll required distribution surfaces are fresh and monitored again; closing. Advisory findings, if any, remain in the table.",
-                });
-              }
-              return;
-            }
-
-            if (match) {
-              if (match.state === "open" && match.body === body) return;
-              await github.rest.issues.update({ owner, repo, issue_number: match.number, state: "open", body });
-              return;
-            }
-            await github.rest.issues.create({ owner, repo, title, body, labels });
+          GLAMA_API_KEY: ${{ secrets.GLAMA_API_KEY }}
+        run: python scripts/diagnose_glama_lookup_routes.py /tmp/glama-contract.json

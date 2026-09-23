@@ -19,8 +19,8 @@ for (const theme of ["light", "dark"] as const) {
     await page.route("**/v1/**", route => {
       const path = new URL(route.request().url()).pathname;
       if (path.startsWith("/v1/auth/")) return route.fulfill({ json: { authenticated: true, tenant_id: "fixture", role: "analyst", permissions: ["read"] } });
-      if (path === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: "fixture", status: "done", created_at: "2026-09-22T00:00:00Z" }], total: 1 } });
-      if (path === "/v1/scan/fixture") return route.fulfill({ json: { job_id: "fixture", status: "done", result: { agents: [], blast_radius: [] } } });
+      if (path === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: "fixture", status: "done", created_at: "2026-09-22T00:00:00Z" }, { job_id: "fixture2", status: "done", created_at: "2026-09-21T00:00:00Z" }], total: 2 } });
+      if (path === "/v1/scan/fixture" || path === "/v1/scan/fixture2") return route.fulfill({ json: { job_id: "fixture", status: "done", result: { agents: [], blast_radius: [] } } });
       if (path.endsWith("/context-graph")) return route.fulfill({ json: { nodes, edges, lateral_paths: [], interaction_risks: [], stats: { total_nodes: 5, total_edges: 4, agent_count: 1, shared_server_count: 0, shared_credential_count: 0, lateral_path_count: 0, max_lateral_depth: 0, highest_path_risk: 0, interaction_risk_count: 0 } } });
       return route.fulfill({ status: 503, json: { detail: "Outside graph evidence fixture" } });
     });
@@ -45,7 +45,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: testInfo.outputPath(`context-evidence-${theme}.png`) });
     await page.locator('.react-flow__node[data-id="v"]').click();
     await expect(page.getByRole("tablist", { name: "Node detail sections" })).toBeVisible();
-    await page.locator("select").filter({ has: page.locator('option[value="Analyst agent"]') }).selectOption("Analyst agent");
+    await page.locator("select").filter({ has: page.locator('option[value="fixture2"]') }).selectOption("fixture2");
     await expect(page.getByRole("tablist", { name: "Node detail sections" })).toHaveCount(0);
   });
 }

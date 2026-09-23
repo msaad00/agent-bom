@@ -2877,7 +2877,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "context-map-live.png",
       page: "/graph?lens=context&capture=1",
-      scope: "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
+      scope: "Context investigation path backed by recorded agent, server, and affected-package relationships",
     },
     {
       path: "inventory-live.png",
@@ -3529,12 +3529,14 @@ async function main() {
         expectedText: [
           "Context Map",
           "developer-copilot",
-          "create_pull_request",
-          "DEMO_CRED_REF",
+          "CVE-2025-29927",
+          "Affected package:",
         ],
         expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],
-        minGraphNodes: 4,
-        minGraphEdges: 3,
+        minGraphNodes: 3,
+        maxGraphNodes: 3,
+        minGraphEdges: 2,
+        maxGraphEdges: 2,
       },
     );
     await page.setViewportSize({ width: 1440, height: 980 });

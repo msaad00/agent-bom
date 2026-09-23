@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.compliance_hub_store import (
@@ -218,3 +219,54 @@ def test_approximate_total_offset0_warm_cache_reuses_cached_total() -> None:
     assert warm_body["total"] == 300
     assert warm_body.get("total_approximate") is True
     assert not any(include_total_calls), "warm offset=0 approximate_total must not force an exact COUNT"
+
+
+@pytest.mark.parametrize("merged", [False, True])
+@pytest.mark.parametrize("approximate", [False, True])
+def test_count_cache_expiring_during_page_read_keeps_request_total(monkeypatch, merged, approximate):
+    from dataclasses import replace
+
+    from agent_bom.api import findings_count_cache as cache
+    from agent_bom.api import findings_current
+
+    tenant = f"expiry-{uuid.uuid4().hex}"
+    store = InMemoryComplianceHubStore()
+    set_compliance_hub_store(store)
+    rows = _findings(8, batch_id="expiry")
+    store.add(tenant, rows)
+    store.upsert_current_batch(tenant, rows, observed_at="2026-07-06T00:00:00Z", batch_id="expiry", source="test")
+    scan_rows = _findings(1, batch_id="scan", origin="scan") if merged else []
+    monkeypatch.setattr(findings_current, "current_scan_findings", lambda *args, **kwargs: scan_rows)
+    monkeypatch.setattr(findings_current, "scan_only_findings", lambda rows, *args, **kwargs: rows)
+    client = TestClient(app)
+    headers = proxy_headers(role="viewer", tenant=tenant)
+    params = {"limit": 3, "window_days": 0, "approximate_total": str(approximate).lower()}
+    first = client.get("/v1/findings", headers=headers, params=params)
+    assert first.status_code == 200, first.text
+    assert first.json()["total"] == 8 + len(scan_rows)
+    real_list = store.list_current_page
+
+    def expire_during_read(tenant_id, **kwargs):
+        assert kwargs.get("include_total") is False
+        # Deterministic TTL expiry after COUNT was skipped, without sleeping.
+        with cache._lock:
+            for key, entry in list(cache._entries.items()):
+                if key[0] == tenant_id:
+                    cache._entries[key] = replace(entry, expires_at=0)
+        return real_list(tenant_id, **kwargs)
+
+    monkeypatch.setattr(store, "list_current_page", expire_during_read)
+    after = client.get("/v1/findings", headers=headers, params=params)
+    assert after.status_code == 200, after.text
+    assert after.json()["total"] == first.json()["total"]
+    assert after.json().get("total_approximate", False) is approximate
+    key = cache.cache_key(tenant_id=tenant, severity=None, scan_id=None, origin="bulk_ingest", window_days=0, status="open")
+    assert cache.get_cached_total(key) is None, "Using a request snapshot must not refresh cache TTL"
+
+
+def test_missing_store_count_without_request_snapshot_stays_unknown():
+    from agent_bom.api.routes.scan import _resolve_bulk_findings_total
+
+    assert _resolve_bulk_findings_total(
+        tenant_id="missing-count", severity=None, scan_id=None, approximate_total=False, offset=0, bulk_total=None, page_len=3, limit=3
+    ) == (None, False)

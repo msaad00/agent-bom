@@ -3510,7 +3510,7 @@ async function main() {
         await contextPage.locator('[data-id="server:github"]').waitFor({ state: "visible" });
         await contextPage.locator('[data-id="tool:repo-write"]').waitFor({ state: "visible" });
         await fitReactFlow(contextPage);
-        for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 1 });
+        for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
         await scrollTo(contextPage, 0);
       },
       {

@@ -151,6 +151,26 @@ class GraphCompletenessResponse(BaseModel):
     reason: str | None = None
 
 
+class IncidentEdgePageCompleteness(GraphCompletenessResponse):
+    scope: Literal["incident_edge_page"] = "incident_edge_page"
+    missing_endpoint_count: int = 0
+
+
+class IncidentEdgePageResponse(BaseModel):
+    """Recorded relationship page, not a permission or collection-coverage verdict."""
+
+    scan_id: str
+    node_id: str
+    found: bool
+    direction: Literal["in", "out", "both"]
+    limit: int
+    node: dict[str, Any] | None
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
+    next_cursor: str | None
+    completeness: IncidentEdgePageCompleteness
+
+
 class ScopedGraphCompleteness(BaseModel):
     source: GraphCompletenessResponse
     result: GraphCompletenessResponse
@@ -2877,6 +2897,74 @@ async def get_graph_node(
         "sources": node_context["sources"],
         "impact": node_context["impact"],
         "completeness": node_context.get("completeness") or graph_completeness(returned=1, total=1),
+    }
+
+
+@router.get("/graph/incident-edges", tags=["graph"], response_model=IncidentEdgePageResponse)
+async def get_graph_incident_edges(
+    request: Request,
+    node_id: str = Query(..., min_length=1, max_length=4096, description="Exact canonical node ID"),
+    scan_id: str | None = Query(
+        None, max_length=4096, description="Snapshot ID; latest initially. Reuse the returned ID for subsequent pages."
+    ),
+    direction: Literal["in", "out", "both"] = Query(
+        "both", description="Filter recorded target/source endpoints; not effective permissions."
+    ),
+    limit: int = Query(24, ge=1, le=100, description="Maximum recorded relationships, not distinct neighbors"),
+    cursor: str | None = Query(
+        None, min_length=1, max_length=8192, description="Opaque next_cursor from the same tenant, snapshot, node and direction"
+    ),
+) -> dict[str, Any]:
+    """Page recorded incident relationships without loading the full neighborhood.
+
+    Keep scan_id, node_id and direction fixed while following next_cursor.
+    Snapshot replacement invalidates cursors; restart from the first page on 400.
+    Completeness describes only recorded page rows, never source collection,
+    permissions, execution, or the whole estate. Total relationship count is unknown.
+    """
+    store = _get_graph_store_or_503()
+    if isinstance(store, NeptuneGraphStore):
+        raise HTTPException(status_code=501, detail="Incident relationship paging is not supported by this graph backend")
+    try:
+        page = await _graph_store_call(
+            store.incident_edges_page,
+            tenant_id=_tenant(request),
+            scan_id=scan_id or "",
+            node_id=node_id,
+            direction=direction,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid or stale incident relationship page; restart from the first page") from exc
+    if page is None:
+        return {
+            "scan_id": scan_id or "",
+            "node_id": node_id,
+            "found": False,
+            "direction": direction,
+            "limit": limit,
+            "node": None,
+            "nodes": [],
+            "edges": [],
+            "next_cursor": None,
+            "completeness": {
+                **graph_completeness(returned=0, truncated=True, reason="node_or_snapshot_not_found"),
+                "scope": "incident_edge_page",
+                "missing_endpoint_count": 0,
+            },
+        }
+    return {
+        "scan_id": page["scan_id"],
+        "node_id": node_id,
+        "found": True,
+        "direction": direction,
+        "limit": limit,
+        "node": page["node"].to_dict(),
+        "nodes": [node.to_dict() for node in page["nodes"]],
+        "edges": [edge.to_dict() for edge in page["edges"]],
+        "next_cursor": page["next_cursor"],
+        "completeness": page["completeness"],
     }
 
 

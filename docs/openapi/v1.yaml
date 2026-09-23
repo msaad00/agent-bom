@@ -4382,6 +4382,115 @@ components:
       - storage
       title: HealthResponse
       type: object
+    IncidentEdgePageCompleteness:
+      properties:
+        complete:
+          title: Complete
+          type: boolean
+        missing_endpoint_count:
+          default: 0
+          title: Missing Endpoint Count
+          type: integer
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        returned:
+          title: Returned
+          type: integer
+        sampled:
+          title: Sampled
+          type: boolean
+        scope:
+          const: incident_edge_page
+          default: incident_edge_page
+          title: Scope
+          type: string
+        status:
+          enum:
+          - complete
+          - sampled
+          - truncated
+          title: Status
+          type: string
+        total:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Total
+        truncated:
+          title: Truncated
+          type: boolean
+      required:
+      - status
+      - complete
+      - sampled
+      - truncated
+      - returned
+      title: IncidentEdgePageCompleteness
+      type: object
+    IncidentEdgePageResponse:
+      description: Recorded relationship page, not a permission or collection-coverage
+        verdict.
+      properties:
+        completeness:
+          $ref: '#/components/schemas/IncidentEdgePageCompleteness'
+        direction:
+          enum:
+          - in
+          - out
+          - both
+          title: Direction
+          type: string
+        edges:
+          items:
+            additionalProperties: true
+            type: object
+          title: Edges
+          type: array
+        found:
+          title: Found
+          type: boolean
+        limit:
+          title: Limit
+          type: integer
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+        node:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Node
+        node_id:
+          title: Node Id
+          type: string
+        nodes:
+          items:
+            additionalProperties: true
+            type: object
+          title: Nodes
+          type: array
+        scan_id:
+          title: Scan Id
+          type: string
+      required:
+      - scan_id
+      - node_id
+      - found
+      - direction
+      - limit
+      - node
+      - nodes
+      - edges
+      - next_cursor
+      - completeness
+      title: IncidentEdgePageResponse
+      type: object
     IntelDailyBriefRequest:
       additionalProperties: false
       properties:
@@ -18165,6 +18274,97 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Graph Impact
+      tags:
+      - graph
+  /v1/graph/incident-edges:
+    get:
+      description: 'Page recorded incident relationships without loading the full
+        neighborhood.
+
+
+        Keep scan_id, node_id and direction fixed while following next_cursor.
+
+        Snapshot replacement invalidates cursors; restart from the first page on 400.
+
+        Completeness describes only recorded page rows, never source collection,
+
+        permissions, execution, or the whole estate. Total relationship count is unknown.'
+      operationId: get_graph_incident_edges_v1_graph_incident_edges_get
+      parameters:
+      - description: Exact canonical node ID
+        in: query
+        name: node_id
+        required: true
+        schema:
+          description: Exact canonical node ID
+          maxLength: 4096
+          minLength: 1
+          title: Node Id
+          type: string
+      - description: Snapshot ID; latest initially. Reuse the returned ID for subsequent
+          pages.
+        in: query
+        name: scan_id
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 4096
+            type: string
+          - type: 'null'
+          description: Snapshot ID; latest initially. Reuse the returned ID for subsequent
+            pages.
+          title: Scan Id
+      - description: Filter recorded target/source endpoints; not effective permissions.
+        in: query
+        name: direction
+        required: false
+        schema:
+          default: both
+          description: Filter recorded target/source endpoints; not effective permissions.
+          enum:
+          - in
+          - out
+          - both
+          title: Direction
+          type: string
+      - description: Maximum recorded relationships, not distinct neighbors
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 24
+          description: Maximum recorded relationships, not distinct neighbors
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+      - description: Opaque next_cursor from the same tenant, snapshot, node and direction
+        in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 8192
+            minLength: 1
+            type: string
+          - type: 'null'
+          description: Opaque next_cursor from the same tenant, snapshot, node and
+            direction
+          title: Cursor
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentEdgePageResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Graph Incident Edges
       tags:
       - graph
   /v1/graph/legend:

@@ -80,6 +80,8 @@ def incident_edge_page(
         if cursor:
             raise ValueError("Incident-edge cursor snapshot is unavailable")
         return None
+    if not snapshot[3]:
+        raise ValueError("Incident-edge snapshot generation is unavailable")
     effective_scan_id, created_at = str(snapshot[0]), str(snapshot[1])
     scope = [tenant_id, effective_scan_id, created_at, str(snapshot[2] or ""), str(snapshot[3]), node_id, direction]
     if token is not None and token.get("scope") != scope:

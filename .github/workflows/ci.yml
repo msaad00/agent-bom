@@ -1431,6 +1431,7 @@ jobs:
             tests/test_export_destination_postgres.py \
             tests/test_postgres_gateway_activity.py \
             tests/test_postgres_schema.py \
+            tests/test_postgres_migrations.py \
             tests/test_postgres_governance_audit.py \
             tests/test_postgres_connection_rls_guard.py \
             tests/test_audit_chain_concurrency.py \

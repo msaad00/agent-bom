@@ -164,7 +164,7 @@ export function GraphEntityDrawer({
           <div><dt className="inline font-semibold">Provider: </dt><dd className="inline">{enriched.dimensions?.cloud_provider || locationValue("provider", "cloud_provider")}</dd></div>
           <div><dt className="inline font-semibold">Account/project: </dt><dd className="inline">{locationValue("account_scope", "account_id", "project_id", "subscription_id")}</dd></div>
           <div><dt className="inline font-semibold">Environment: </dt><dd className="inline">{enriched.dimensions?.environment || locationValue("environment")}</dd></div>
-          <div><dt className="inline font-semibold">Region: </dt><dd className="inline">{locationValue("region", "location")}</dd></div>
+          <div><dt className="inline font-semibold">Region/location: </dt><dd className="inline">{locationValue("region", "location")}</dd></div>
           <div><dt className="inline font-semibold">Evidence sources: </dt><dd className="inline">{enriched.dataSources?.join(", ") || "Unknown"}</dd></div>
           <div><dt className="inline font-semibold">Last seen: </dt><dd className="inline">{enriched.lastSeen || "Unknown"}</dd></div>
         </dl>

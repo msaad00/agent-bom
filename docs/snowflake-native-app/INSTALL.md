@@ -4,8 +4,8 @@ This provider-preview guide covers the packaged installation contract: review
 permissions, publish versioned images, bind consumer references, and verify
 API/UI resources after privilege approval.
 
-**Readiness limit:** Native App scan dispatch is unavailable and the packaged
-scanner lifecycle is unsupported. Authenticated consumer installation, service
+**Readiness limit:** The packaged scanner lifecycle and SQL scan dispatch are
+unsupported. The separately configured [authenticated account scan adapter](../../deploy/snowflake/native-app/AUTHENTICATED_SCANS.md) has fixture coverage. Authenticated consumer installation, service
 readiness, reference binding, and a completed scan with persisted findings still
 require proof. Binding a table or stage does not automatically ingest its data.
 Do not treat package validation as a working production deployment.
@@ -108,7 +108,7 @@ These are the **only** outbound calls; each is gated by a per-feed EAI you
 toggle in the install UI.
 
 If you want fully air-gapped (no outbound network at all): leave all seven EAIs
-unbound. Native App scan dispatch is currently unavailable; binding these
+unbound. The packaged scanner service is unsupported; binding these
 references does not establish a working scanner.
 
 The packaged scanner service is off by default and is not a supported scanning

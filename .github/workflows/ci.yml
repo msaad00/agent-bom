@@ -51,6 +51,7 @@ jobs:
       action: ${{ steps.classify.outputs.action }}
       alpine: ${{ steps.classify.outputs.alpine }}
       alpine_full: ${{ steps.classify.outputs.alpine_full }}
+      native_image: ${{ steps.classify.outputs.native_image }}
       compose: ${{ steps.classify.outputs.compose }}
       docs: ${{ steps.classify.outputs.docs }}
       docs_only: ${{ steps.classify.outputs.docs_only }}
@@ -83,6 +84,7 @@ jobs:
           action=false
           alpine=false
           alpine_full=false
+          native_image=false
           compose=false
           docs=false
           endpoint=false
@@ -112,6 +114,9 @@ jobs:
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/)'; then
             alpine_full=true
+          fi
+          if printf '%s\n' "$changed" | grep -Eq '^(deploy/docker/Dockerfile.native-app$|deploy/snowflake/native-app/|tests/test_native_app_persistence\.py$|src/agent_bom/(api/snowflake_store\.py|cloud/snowflake)|pyproject\.toml$|uv\.lock$|\.github/workflows/ci\.yml$)'; then
+            native_image=true
           fi
           # The measured graph heap/scale assertion takes about six minutes by
           # itself. Keep it out of the general correctness suite, but require it
@@ -163,6 +168,7 @@ jobs:
             echo "action=${action}"
             echo "alpine=${alpine}"
             echo "alpine_full=${alpine_full}"
+            echo "native_image=${native_image}"
             echo "compose=${compose}"
             echo "docs=${docs}"
             echo "endpoint=${endpoint}"
@@ -1710,6 +1716,30 @@ jobs:
         with:
           name: python-package
           path: dist/
+
+  native-image:
+    name: Native App image and persistence
+    needs: [changes, security, lint, test-core]
+    if: >-
+      !cancelled() && needs.security.result == 'success' &&
+      needs.lint.result == 'success' && needs.test-core.result == 'success' &&
+      (github.event_name == 'push' || needs.changes.outputs.native_image == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
+      - name: Build Native App image
+        run: docker buildx build --load --platform linux/amd64 -f deploy/docker/Dockerfile.native-app -t agent-bom:native-test .
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.11'
+      - name: Verify privilege drop and durable evidence across container replacement
+        env:
+          AGENT_BOM_TEST_NATIVE_IMAGE: agent-bom:native-test
+        run: uv run --extra dev pytest tests/test_native_app_persistence.py -q
 
   # 5. Docker Build + Scan (multi-arch)
   # Runs on main and on PRs that change release-image inputs. The PR path is

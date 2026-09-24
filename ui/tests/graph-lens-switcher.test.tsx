@@ -60,7 +60,7 @@ describe("GraphLensSwitcher", () => {
 
     expect(screen.getByText("Agent Mesh")).toBeVisible();
     expect(screen.getByText("Context")).toBeVisible();
-    expect(screen.getByText("Scan-specific views; not canonical estate lenses.")).toBeVisible();
+    expect(screen.getByText("Inspect recorded relationships within a selected snapshot.")).toBeVisible();
   });
 
   it("treats the unfocused security graph as the estate canvas", () => {
@@ -177,7 +177,7 @@ describe("GraphLensSwitcher", () => {
     );
   });
 
-  it("does not carry a canonical snapshot claim into specialized scan views", () => {
+  it("preserves the canonical snapshot and focus in the persisted mesh", () => {
     pathname = "/security-graph";
     params = new URLSearchParams({ scan: "scan-123", node: "asset-1" });
     render(<GraphLensSwitcher variant="compact" />);
@@ -185,7 +185,7 @@ describe("GraphLensSwitcher", () => {
     fireEvent.click(screen.getByText("More views"));
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
-    expect(push).toHaveBeenCalledWith("/security-graph?lens=mesh");
+    expect(push).toHaveBeenCalledWith("/security-graph?scan=scan-123&node=asset-1&lens=mesh");
   });
 
   it("keeps the target lens scope authoritative while preserving shared context", () => {

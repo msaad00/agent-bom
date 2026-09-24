@@ -96,7 +96,6 @@ const SPECIALIZED_GRAPH_VIEWS: GraphLens[] = [
     label: "Agent Mesh",
     icon: "🕸️",
     href: "/security-graph?lens=mesh",
-    preserveContext: false,
     match: (p, _scope, lens) =>
       (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "mesh",
   },
@@ -248,7 +247,7 @@ export function GraphLensSwitcher({
               onToggle={onToggle}
             />
             <span className="text-[10px] text-[color:var(--text-tertiary)]">
-              Scan-specific views; not canonical estate lenses.
+              Inspect recorded relationships within a selected snapshot.
             </span>
           </div>
         </details>

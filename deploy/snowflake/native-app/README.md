@@ -81,7 +81,7 @@ token file. The app does not request a user password or private key.
 2. Approve the requested compute-pool and endpoint privileges. The grant callback then creates API/UI resources. `core.health_check()` reports configuration flags, not live service health.
 3. Leave advisory external access integrations unbound for an air-gapped install,
    or approve the named feeds before enabling the scanner service.
-4. Native App scan dispatch is currently unavailable. Use an authenticated external `agent-bom scan --snowflake -f json -o snowflake-report.json` invocation to produce a local report; it is not automatically ingested into this app.
+4. Configure [authenticated account scans](AUTHENTICATED_SCANS.md) through an operator-bound Native App workload identity. The REST adapter and connection wizard are implemented; consumer-account execution still requires live validation. `core.trigger_scan()` and the prototype scanner service remain unsupported. An external `agent-bom scan --snowflake -f json -o snowflake-report.json` produces a local report; it is not automatically ingested into this app.
 
 ## Procedures
 

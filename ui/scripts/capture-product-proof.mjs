@@ -2807,8 +2807,8 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "mesh-live.png",
-      page: "/graph?lens=mesh&capture=1",
-      scope: "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
+      page: `/graph?lens=mesh&scan=${SCAN_ID}&agent=agent%3Adeveloper-copilot&capture=1`,
+      scope: "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
     },
     {
       path: "gateway-policies-live.png",
@@ -3302,7 +3302,7 @@ async function main() {
       minGraphEdges: 6,
     });
     await page.setViewportSize({ width: 1440, height: 1120 });
-    await capture(page, "/graph?lens=mesh&capture=1", "mesh-live.png", async (meshPage) => {
+    await capture(page, `/graph?lens=mesh&scan=${SCAN_ID}&agent=agent%3Adeveloper-copilot&capture=1`, "mesh-live.png", async (meshPage) => {
       // ReactFlow can preserve a hidden, pre-measurement node tree across an
       // App Router transition. A hard reload gives the capture a fresh canvas
       // and makes the readiness assertion deterministic in both themes.
@@ -3314,7 +3314,7 @@ async function main() {
         .waitFor({ state: "visible", timeout: 30_000 });
       await meshPage
         .locator(".react-flow__node:visible")
-        .filter({ hasText: "sre-runbook-agent" })
+        .filter({ hasText: /sre[ -]runbook[ -]agent/i })
         .first()
         .waitFor({ state: "visible", timeout: 30_000 });
       const showAll = meshPage.getByRole("button", { name: "Show all", exact: true });
@@ -3331,9 +3331,9 @@ async function main() {
         "developer-copilot",
         "sre-runbook-agent",
         "filesystem MCP",
-        "Uses",
+        "Recorded connection",
       ],
-      expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`],
+      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/agents", "/v1/graph/incident-edges"],
       minGraphNodes: 4,
       minGraphEdges: 3,
     });

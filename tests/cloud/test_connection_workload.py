@@ -258,3 +258,15 @@ def test_snowflake_workload_fails_closed(
     binding["_write"]()
     with pytest.raises(ConnectionBrokerError):
         broker_session(snowflake_binding)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_snowflake_workload_advertisement_requires_native_deployment(monkeypatch: pytest.MonkeyPatch, enabled: bool) -> None:
+    from agent_bom.cloud.connection_workload import supported_workload_modes
+
+    monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_NATIVE_APP", "1" if enabled else "0")
+    modes = supported_workload_modes()
+    assert ("snowflake" in modes) is enabled
+    assert modes["gcp"] == ["workload_identity"]
+    if enabled:
+        assert modes["snowflake"] == ["workload_identity"]

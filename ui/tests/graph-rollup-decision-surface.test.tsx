@@ -32,6 +32,46 @@ function item(
 }
 
 describe("GraphRollupDecisionSurface", () => {
+  it("combines type and context search without inventing matches", () => {
+    render(<GraphRollupDecisionSurface items={[
+      item("prod-agent", { entity_type: "agent", context: { environment: "production" } }),
+      item("dev-agent", { entity_type: "agent", context: { environment: "development" } }),
+      item("prod-server", { entity_type: "server", context: { environment: "production" } }),
+    ]} edges={[]} onDrill={vi.fn()} onInvestigate={vi.fn()} />);
+    fireEvent.click(screen.getByText("Filter nodes and scopes"));
+    fireEvent.change(screen.getByLabelText("Asset type"), { target: { value: "agent" } });
+    fireEvent.change(screen.getByLabelText("Search this scope"), { target: { value: "production" } });
+    expect(screen.getByText("Scope prod-agent")).toBeInTheDocument();
+    expect(screen.queryByText("Scope dev-agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Scope prod-server")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search this scope"), { target: { value: "absent" } });
+    expect(screen.getByRole("status")).toHaveTextContent("No nodes match");
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("Scope dev-agent")).toBeInTheDocument();
+  });
+
+  it("bounds relationship details and preserves direction and type", () => {
+    render(<GraphRollupDecisionSurface items={[item("root"), item("neighbor")]} edges={
+      Array.from({ length: 15 }, () => ({ source: "neighbor", target: "root", count: 2, relationships: ["uses"] }))
+    } onDrill={vi.fn()} onInvestigate={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: "Inspect relationship endpoint Scope neighbor (neighbor)" })).toHaveLength(24);
+    expect(screen.getAllByText("Showing 12 of 15 rows.")).toHaveLength(2);
+    expect(screen.getAllByText(/do not establish runtime execution/)).toHaveLength(2);
+  });
+
+  it("investigates the exact endpoint when labels collide and keeps unknown endpoints literal", () => {
+    const onInvestigate = vi.fn();
+    const selected = item("prod", { label: "Shared name" });
+    render(<GraphRollupDecisionSurface items={[selected, item("dev", { label: "Shared name" })]}
+      edges={[{ source: "prod", target: "external-id", count: 1, relationships: ["stores"] }]}
+      onDrill={vi.fn()} onInvestigate={onInvestigate} />);
+    fireEvent.click(screen.getByRole("button", { name: "Inspect relationship endpoint Shared name (prod)" }));
+    expect(onInvestigate).toHaveBeenCalledWith(selected);
+    expect(screen.getByText("external-id")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /external-id/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Coverage may be incomplete/)).toBeInTheDocument();
+  });
+
   it("keeps an explicit return to summary available from the graph", () => {
     const onSummary = vi.fn();
     const onGraph = vi.fn();

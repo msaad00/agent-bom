@@ -1,3 +1,4 @@
+import { nodeRiskAssessment } from "@/lib/node-risk-assessment";
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 
 import {
@@ -382,6 +383,7 @@ function toLineageData(
     entityType: String(node.entity_type),
     status: String(node.status ?? ""),
     riskScore: node.risk_score,
+    riskAssessment: nodeRiskAssessment(node.risk_assessment),
     severity: node.severity,
     firstSeen: node.first_seen,
     lastSeen: node.last_seen,

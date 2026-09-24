@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -25,6 +26,28 @@ def stable_node_id(*parts: str) -> str:
     """Deterministic UUID v5 from content parts."""
     fingerprint = ":".join(p.lower().strip() for p in parts if p)
     return str(uuid.uuid5(_AGENT_BOM_NS, fingerprint))
+
+
+def normalize_risk_assessment(value: Any, score: Any) -> dict[str, Any]:
+    """Validate provenance bound to this exact finite score, including zero."""
+    if isinstance(value, dict) and value.get("status") == "assessed":
+        basis, scope = value.get("basis"), value.get("scope")
+        bound = value.get("scored_value")
+        if (
+            isinstance(basis, str)
+            and basis.strip()
+            and isinstance(scope, str)
+            and scope.strip()
+            and isinstance(score, (int, float))
+            and not isinstance(score, bool)
+            and isinstance(bound, (int, float))
+            and not isinstance(bound, bool)
+            and math.isfinite(score)
+            and math.isfinite(bound)
+            and bound == score
+        ):
+            return {"status": "assessed", "basis": basis.strip(), "scope": scope.strip()}
+    return {"status": "not_assessed", "basis": None, "scope": None}
 
 
 @dataclass(slots=True)
@@ -120,6 +143,34 @@ class UnifiedNode:
             self.first_seen = _now_iso()
         if not self.last_seen:
             self.last_seen = self.first_seen
+        assessment = self.attributes.get("risk_assessment")
+        if isinstance(assessment, dict) and assessment.get("status") == "assessed" and "scored_value" not in assessment:
+            self.attributes["risk_assessment"] = {**assessment, "scored_value": self.risk_score}
+
+    @property
+    def risk_assessment(self) -> dict[str, Any]:
+        """Explicit scoring provenance; a number alone never proves assessment."""
+        return normalize_risk_assessment(self.attributes.get("risk_assessment"), self.risk_score)
+
+    def mark_risk_assessed(self, *, basis: str, scope: str) -> None:
+        """Record the existing score's method and limited evidence scope."""
+        self.attributes["risk_assessment"] = {"status": "assessed", "basis": basis, "scope": scope, "scored_value": self.risk_score}
+        if self.risk_assessment["status"] != "assessed":
+            self.attributes["risk_assessment"] = self.risk_assessment
+
+    def merge_attributes_and_risk(self, incoming: UnifiedNode) -> None:
+        """Keep the winning numeric score paired with its own provenance."""
+        assessment = self.risk_assessment
+        candidate = incoming.risk_assessment
+        if incoming.risk_score > self.risk_score or (
+            incoming.risk_score == self.risk_score and assessment["status"] != "assessed" and candidate["status"] == "assessed"
+        ):
+            self.risk_score = incoming.risk_score
+            assessment = candidate
+        self.attributes.update(incoming.attributes)
+        self.attributes["risk_assessment"] = (
+            {**assessment, "scored_value": self.risk_score} if assessment["status"] == "assessed" else assessment
+        )
 
     @property
     def canonical_id(self) -> str:
@@ -141,6 +192,7 @@ class UnifiedNode:
             "type_uid": self.type_uid,
             "status": self.status.value if isinstance(self.status, NodeStatus) else self.status,
             "risk_score": self.risk_score,
+            "risk_assessment": self.risk_assessment,
             "severity": self.severity,
             "severity_id": self.severity_id,
             "first_seen": self.first_seen,
@@ -155,6 +207,8 @@ class UnifiedNode:
     def from_dict(cls, data: dict[str, Any]) -> UnifiedNode:
         dims = data.get("dimensions", {})
         attributes = dict(data.get("attributes", {}))
+        if "risk_assessment" in data:
+            attributes["risk_assessment"] = data["risk_assessment"]
         if data.get("canonical_id") and not attributes.get("canonical_id"):
             attributes["canonical_id"] = data["canonical_id"]
         return cls(

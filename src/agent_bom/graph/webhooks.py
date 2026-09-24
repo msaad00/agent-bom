@@ -59,6 +59,7 @@ def _graph_node_ref(
     node = graph.nodes.get(node_id)
     if node is None:
         return None
+    assessment = getattr(node, "risk_assessment", {"status": "not_assessed", "basis": None, "scope": None})
     return build_event_ref(
         ref_type=node.entity_type.value,
         ref_id=node.id,
@@ -68,6 +69,10 @@ def _graph_node_ref(
             "severity": node.severity,
             "status": node.status.value if hasattr(node.status, "value") else str(node.status),
             "risk_score": node.risk_score,
+            # Event-reference attributes are scalar by contract.
+            "risk_assessment_status": assessment["status"],
+            "risk_assessment_basis": assessment["basis"],
+            "risk_assessment_scope": assessment["scope"],
         },
     )
 
@@ -132,6 +137,7 @@ def compute_delta_alerts(
                 "scan_id": new_graph.scan_id,
                 "delta_type": "new_vulnerability",
                 "risk_score": node.risk_score,
+                "risk_assessment": getattr(node, "risk_assessment", {"status": "not_assessed", "basis": None, "scope": None}),
                 "cvss_score": node.attributes.get("cvss_score"),
                 "is_kev": node.attributes.get("is_kev", False),
                 "affected_agent_count": node.attributes.get("affected_agent_count", 0),
@@ -164,6 +170,7 @@ def compute_delta_alerts(
                 "scan_id": new_graph.scan_id,
                 "delta_type": "new_misconfiguration",
                 "risk_score": node.risk_score,
+                "risk_assessment": getattr(node, "risk_assessment", {"status": "not_assessed", "basis": None, "scope": None}),
             }
             alerts.append(
                 {

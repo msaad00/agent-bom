@@ -29,6 +29,7 @@ export type LineageNodeData = {
   entityType?: string | undefined;
   status?: string | undefined;
   riskScore?: number | undefined;
+  riskAssessment?: import("@/lib/node-risk-assessment").NodeRiskAssessment | undefined;
   firstSeen?: string | undefined;
   lastSeen?: string | undefined;
   dataSources?: string[] | undefined;

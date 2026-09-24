@@ -608,6 +608,7 @@ def _node_observation_receipt(observation: _NodeObservation) -> dict[str, Any]:
         "source_node_id": node.id,
         "data_sources": sorted(set(node.data_sources)),
         "risk_score": float(node.risk_score),
+        "risk_assessment": node.risk_assessment,
         "severity": node.severity,
         "attribute_digest": _digest(node.attributes),
     }
@@ -643,6 +644,8 @@ def _merge_node(observations: Sequence[_NodeObservation]) -> UnifiedNode:
     for item in ordered:
         dimensions = dimensions.merge(item.node.dimensions)
 
+    risk_source = max(ordered, key=lambda item: (float(item.node.risk_score), item.node.risk_assessment["status"] == "assessed")).node
+    attributes["risk_assessment"] = {**risk_source.risk_assessment, "scored_value": risk_source.risk_score}
     first_seen_values = [item.node.first_seen for item in ordered if item.node.first_seen]
     last_seen_values = [item.node.last_seen for item in ordered if item.node.last_seen]
     return UnifiedNode(

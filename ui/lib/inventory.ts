@@ -1,3 +1,4 @@
+import { nodeRiskAssessment, type NodeRiskAssessment } from "@/lib/node-risk-assessment";
 import {
   Package,
   Server,
@@ -232,6 +233,7 @@ export interface AssetRow {
   severity: string;
   severityRank: number;
   riskScore: number;
+  riskAssessment?: NodeRiskAssessment | undefined;
   status: string;
   ecosystem: string | undefined;
   provider: string | undefined;
@@ -290,6 +292,7 @@ export function inventoryAssetToRow(asset: InventoryAsset): AssetRow | null {
     severity,
     severityRank: severityRank(severity),
     riskScore: typeof asset.risk === "number" ? asset.risk : 0,
+    riskAssessment: nodeRiskAssessment(asset.risk_assessment),
     status: asset.status || "unknown",
     ecosystem: asset.ecosystem || undefined,
     provider: asset.provider || undefined,
@@ -455,6 +458,7 @@ export function buildInventory(graph: UnifiedGraphResponse): InventoryModel {
       severity,
       severityRank: severityRank(severity),
       riskScore: typeof node.risk_score === "number" ? node.risk_score : 0,
+      riskAssessment: nodeRiskAssessment(node.risk_assessment),
       status: node.status ?? "unknown",
       ecosystem: nodeDimension(node, "ecosystem") ?? attrString(node, "ecosystem"),
       provider:

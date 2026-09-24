@@ -637,7 +637,10 @@ def apply_nhi_governance(
             node.attributes["nhi_risk_factors"] = list(v.risk_factors)
         # Surface the score on the node's own risk_score (0-10) so default graph
         # ranking reflects it, without dropping the precise 0-100 attribute.
-        node.risk_score = max(node.risk_score, round(v.risk_score / 10.0, 2))
+        candidate_score = round(v.risk_score / 10.0, 2)
+        if candidate_score > node.risk_score or (candidate_score == node.risk_score and node.risk_assessment["status"] != "assessed"):
+            node.risk_score = candidate_score
+            node.mark_risk_assessed(basis="identity_governance_verdict_scaled_to_10", scope="recorded_identity_governance_signals")
         if v.unused_targets:
             over_granted += 1
         if v.is_dormant:

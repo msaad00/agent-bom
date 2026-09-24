@@ -509,6 +509,8 @@ def apply_aspm_overlay(
             data_sources=[_OVERLAY_SOURCE],
             dimensions=NodeDimensions(surface=GraphSemanticLayer.APP.value),
         )
+        if occurrences and not severity_counts.get(_UNKNOWN):
+            node.mark_risk_assessed(basis="sum_of_recorded_finding_severity_weights", scope="recorded_application_finding_occurrences")
         if app_node_id not in graph.nodes:
             applications_created += 1
         graph.add_node(node)

@@ -740,3 +740,31 @@ test("estate map renders a recorded scan without fabricating environment metadat
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await page.screenshot({ path: testInfo.outputPath("recorded-scan-map.png"), fullPage: true });
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`node risk assessment disclosure in ${theme}`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    await routeLargeGraphPage(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    let assessed = false;
+    await page.route("**/v1/graph/node/**", route => route.fulfill({ json: {
+      node: { ...node("agent:large", "agent", "Large Estate Agent"), risk_score: 0,
+        risk_assessment: { status: assessed ? "assessed" : "not_assessed", basis: assessed ? "fixture" : null, scope: assessed ? "node" : null } },
+      edges_in: [], edges_out: [], neighbors: [], sources: [],
+      impact: { affected_count: 0, affected_by_type: {}, max_depth_reached: 0 },
+    } }));
+    for (const state of [false, true]) {
+      assessed = state;
+      await page.goto("/graph?rollup=0&vulnOnly=0&severity=&layers=agent,package");
+      const sigma = page.getByTestId("sigma-graph-overview");
+      await expect(sigma).toBeVisible();
+      await sigma.getByText("Map controls", { exact: true }).click();
+      await sigma.getByLabel("Find a displayed asset").fill("agent:large");
+      await sigma.getByRole("button", { name: "Large Estate Agent · agent:large", exact: true }).click();
+      const drawer = page.getByTestId("graph-entity-drawer");
+      await expect(drawer.getByText(assessed ? "0.0" : "Not assessed", { exact: true })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`node-risk-${theme}-${assessed ? "assessed" : "unknown"}.png`), fullPage: true });
+    }
+  });
+}

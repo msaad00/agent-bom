@@ -1,5 +1,6 @@
 "use client";
 
+import { nodeRiskLabel } from "@/lib/node-risk-assessment";
 import Link from "next/link";
 import { Bug, ExternalLink, FileCheck, Network, Share2 } from "lucide-react";
 
@@ -109,8 +110,8 @@ export function AssetDetail({
         </div>
         <div className="bg-[color:var(--surface)] px-3 py-2">
           <p className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">Risk</p>
-          <p className="mt-0.5 font-mono text-lg font-semibold text-[color:var(--foreground)]">
-            {row.riskScore ? row.riskScore.toFixed(0) : "—"}
+          <p className="mt-0.5 font-mono text-sm font-semibold text-[color:var(--foreground)]">
+            {nodeRiskLabel(row.riskScore, row.riskAssessment)}
           </p>
         </div>
       </div>

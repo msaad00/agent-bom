@@ -1,5 +1,6 @@
 "use client";
 
+import { nodeRiskLabel } from "@/lib/node-risk-assessment";
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
@@ -531,14 +532,15 @@ export function LineageDetailPanel({
       <RuntimeEvidenceBadge tier={data.runtimeEvidenceTier} />
 
       {(data.status ||
+        data.riskAssessment != null ||
         data.riskScore != null ||
         data.firstSeen ||
         data.lastSeen) && (
         <div className="space-y-2">
           <Label>Lifecycle</Label>
           {data.status && <Row label="Status" value={data.status} />}
-          {data.riskScore != null && (
-            <Row label="Node risk score" value={data.riskScore.toFixed(1)} />
+          {(data.riskScore != null || data.riskAssessment != null) && (
+            <Row label="Node risk score" value={nodeRiskLabel(data.riskScore, data.riskAssessment)} />
           )}
           {data.firstSeen && (
             <Row label="First seen" value={shortDate(data.firstSeen)} />

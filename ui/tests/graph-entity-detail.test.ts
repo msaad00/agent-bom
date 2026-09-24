@@ -118,3 +118,11 @@ describe("graph-entity-detail", () => {
     ).toBe("/remediation?id=1");
   });
 });
+
+it("replaces stale assessment metadata when authoritative legacy detail has no assessment", () => {
+  const data = mergeGraphNodeDetail({ label: "Agent", nodeType: "agent", riskScore: 5, riskAssessment: { status: "assessed", basis: "old", scope: "node" } }, {
+    node: { id: "agent", entity_type: "agent", risk_score: 0, attributes: {} }, edges_in: [], edges_out: [], neighbors: [], sources: [], impact: { affected_count: 0, affected_by_type: {}, max_depth_reached: 0 },
+  } as unknown as GraphNodeDetailResponse);
+  expect(data.riskAssessment?.status).toBe("not_assessed");
+  expect(data.riskScore).toBe(0);
+});

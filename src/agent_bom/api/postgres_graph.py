@@ -1238,7 +1238,9 @@ class PostgresGraphStore:
             return builder.build()
         with _tenant_connection(self._pool) as conn:
             for row in conn.execute(
-                "SELECT id, entity_type, label, severity, status, risk_score FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s",
+                "SELECT id, entity_type, label, severity, status, risk_score, "
+                "CASE WHEN entity_type = 'agent' THEN attributes::jsonb -> 'risk_assessment' END "
+                "FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s",
                 (tenant, scan_id),
             ):
                 builder.add_node(
@@ -1248,6 +1250,7 @@ class PostgresGraphStore:
                     severity=row[3] or "",
                     status=row[4],
                     risk_score=row[5],
+                    risk_assessment=row[6],
                 )
             for row in conn.execute(
                 "SELECT source_node, target_node FROM attack_paths WHERE tenant_id = %s AND scan_id = %s",

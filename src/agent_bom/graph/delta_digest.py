@@ -29,9 +29,10 @@ agent-ref map — never the full node objects, attributes, edges, or adjacency.
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from agent_bom.graph.node import normalize_risk_assessment
 from agent_bom.graph.types import EntityType
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ class PriorNodeRef:
     severity: str
     status: str
     risk_score: float
+    risk_assessment: dict[str, Any] = field(default_factory=lambda: {"status": "not_assessed", "basis": None, "scope": None})
 
 
 # Shared sentinel for every non-agent prior node. ``compute_delta_alerts`` only
@@ -157,6 +159,7 @@ class PriorSnapshotDigestBuilder:
         severity: str = "",
         status: str = "",
         risk_score: float = 0.0,
+        risk_assessment: Any = None,
     ) -> None:
         self._all_ids.add(node_id)
         et = entity_type.value if isinstance(entity_type, EntityType) else entity_type
@@ -168,6 +171,7 @@ class PriorSnapshotDigestBuilder:
                 severity=severity or "",
                 status=status or "",
                 risk_score=risk_score or 0.0,
+                risk_assessment=normalize_risk_assessment(risk_assessment, risk_score),
             )
 
     def add_attack_path(self, source: str, target: str) -> None:
@@ -195,6 +199,7 @@ def digest_from_graph(graph: UnifiedGraph) -> PriorSnapshotDigest:
             severity=node.severity or "",
             status=node.status.value if hasattr(node.status, "value") else str(node.status),
             risk_score=node.risk_score,
+            risk_assessment=node.attributes.get("risk_assessment"),
         )
     for path in graph.attack_paths:
         builder.add_attack_path(path.source, path.target)

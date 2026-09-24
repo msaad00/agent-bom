@@ -462,6 +462,7 @@ export interface InventoryFindingSummary {
 }
 
 export interface InventoryAssetBase {
+  risk_assessment?: import("@/lib/node-risk-assessment").NodeRiskAssessment | undefined;
   id: string;
   type: string;
   name: string;
@@ -959,6 +960,7 @@ export interface GraphSemanticClustersResponse {
 }
 
 export interface GraphAgentSelectorItem {
+  risk_assessment?: import("@/lib/node-risk-assessment").NodeRiskAssessment | undefined;
   id: string;
   label: string;
   risk_score: number;

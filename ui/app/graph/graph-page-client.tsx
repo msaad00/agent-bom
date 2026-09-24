@@ -1,5 +1,7 @@
 "use client";
 
+import { mergeGraphNodeDetail } from "@/lib/graph-entity-detail";
+import { nodeRiskAssessment, nodeRiskLabel } from "@/lib/node-risk-assessment";
 import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
 import { relationshipEdgeTypes } from "@/components/relationship-edge";
 import { GraphRollupCountNotice } from "@/components/graph-rollup-count-notice";
@@ -491,6 +493,7 @@ function buildFallbackNodeData(node: UnifiedNode): LineageNodeData {
     entityType: String(node.entity_type),
     status: String(node.status ?? ""),
     riskScore: node.risk_score,
+    riskAssessment: nodeRiskAssessment(node.risk_assessment),
     severity: node.severity,
     firstSeen: node.first_seen,
     lastSeen: node.last_seen,
@@ -525,63 +528,12 @@ function mergeNodeDetail(
   base: LineageNodeData,
   detail: GraphNodeDetailResponse,
 ): LineageNodeData {
-  const mergedAttributes = {
-    ...(base.attributes ?? {}),
-    ...(detail.node.attributes ?? {}),
-    node_id: detail.node.id,
-  };
-  return {
-    ...base,
-    entityType: String(detail.node.entity_type),
-    status: String(detail.node.status ?? base.status ?? ""),
-    riskScore: detail.node.risk_score ?? base.riskScore,
-    severity: detail.node.severity || base.severity,
-    firstSeen: detail.node.first_seen || base.firstSeen,
-    lastSeen: detail.node.last_seen || base.lastSeen,
-    dataSources: detail.node.data_sources?.length
-      ? detail.node.data_sources
-      : base.dataSources,
-    complianceTags: detail.node.compliance_tags?.length
-      ? detail.node.compliance_tags
-      : base.complianceTags,
-    attributes: mergedAttributes,
-    neighborCount: detail.neighbors.length,
-    sourceCount: detail.sources.length,
-    incomingEdgeCount: detail.edges_in.length,
-    outgoingEdgeCount: detail.edges_out.length,
-    impactCount: detail.impact.affected_count,
-    maxImpactDepth: detail.impact.max_depth_reached,
-    impactByType: detail.impact.affected_by_type,
-    impactCompleteness: detail.impact.completeness,
-    description:
-      base.description ||
-      stringAttribute(mergedAttributes, "description") ||
-      stringAttribute(mergedAttributes, "recommendation") ||
-      stringAttribute(mergedAttributes, "framework") ||
-      stringAttribute(mergedAttributes, "source"),
-    version:
-      base.version ||
-      stringAttribute(mergedAttributes, "version") ||
-      stringAttribute(mergedAttributes, "hash"),
-    ecosystem: base.ecosystem || stringAttribute(mergedAttributes, "ecosystem"),
-    versionSource:
-      base.versionSource ||
-      versionProvenanceAttribute(mergedAttributes, "version_source") ||
-      stringAttribute(mergedAttributes, "version_source"),
-    versionConfidence:
-      base.versionConfidence ||
-      versionProvenanceAttribute(mergedAttributes, "confidence") ||
-      stringAttribute(mergedAttributes, "version_confidence"),
-    command:
-      base.command ||
-      stringAttribute(mergedAttributes, "command") ||
-      stringAttribute(mergedAttributes, "transport") ||
-      stringAttribute(mergedAttributes, "url"),
-    agentType:
-      base.agentType || stringAttribute(mergedAttributes, "agent_type"),
-    agentStatus:
-      base.agentStatus || stringAttribute(mergedAttributes, "status"),
-  };
+  const fallback = buildFallbackNodeData({ ...detail.node, attributes: { ...base.attributes, ...detail.node.attributes } });
+  const merged = mergeGraphNodeDetail(base, detail);
+  for (const key of ["description", "version", "ecosystem", "versionSource", "versionConfidence", "command", "agentType", "agentStatus"] as const) {
+    merged[key] = base[key] || fallback[key];
+  }
+  return merged;
 }
 
 function buildPathEdgeKeys(hops: string[]): Set<string> {
@@ -3154,10 +3106,7 @@ function GraphPageInner() {
                       {result.severity && <span>{result.severity}</span>}
                       <span>
                         risk{" "}
-                        {typeof result.risk_score === "number" &&
-                        Number.isFinite(result.risk_score)
-                          ? result.risk_score.toFixed(1)
-                          : "N/A"}
+                        {nodeRiskLabel(result.risk_score, result.risk_assessment)}
                       </span>
                     </div>
                   </button>

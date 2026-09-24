@@ -198,3 +198,15 @@ describe("graph entity drawer tabs", () => {
     expect(screen.queryByRole("tablist")).toBeNull();
   });
 });
+
+it.each([undefined, { status: "not_assessed", basis: null, scope: null }] as const)("does not display an unassessed legacy node score", assessment => {
+  render(<GraphEntityDrawer data={{ label: "Agent", nodeType: "agent", riskScore: 9.5, riskAssessment: assessment }} enrich={false} onClose={noop} />);
+  expect(screen.getByText("Not assessed")).toBeTruthy();
+  expect(screen.queryByText("9.5", { exact: true })).toBeNull();
+});
+
+it("displays an explicitly assessed zero without converting it to unknown", () => {
+  render(<GraphEntityDrawer data={{ label: "Agent", nodeType: "agent", riskScore: 0, riskAssessment: { status: "assessed", basis: "test", scope: "node" } }} enrich={false} onClose={noop} />);
+  expect(screen.getByText("0.0", { exact: true })).toBeTruthy();
+  expect(screen.queryByText("Not assessed")).toBeNull();
+});

@@ -461,6 +461,17 @@ def project_estate_into_graph(
                 severity=severity,
                 risk_score=SEVERITY_RISK_SCORE.get(severity, 0.0),
                 attributes={
+                    **(
+                        {
+                            "risk_assessment": {
+                                "status": "assessed",
+                                "basis": "recorded_finding_severity_weight",
+                                "scope": "synthetic_estate_finding",
+                            }
+                        }
+                        if severity in SEVERITY_RISK_SCORE and severity != "unknown"
+                        else {}
+                    ),
                     "finding_id": finding.id,
                     "canonical_finding_id": finding.canonical_id,
                     "finding_type": finding.finding_type.value,

@@ -455,12 +455,10 @@ class StoreBackedUnifiedGraph(UnifiedGraph):
 def _merge_node(existing: UnifiedNode, incoming: UnifiedNode) -> None:
     """In-place merge-union mirroring :meth:`UnifiedGraph.add_node` exactly."""
     existing.last_seen = incoming.last_seen or _now_iso()
-    existing.attributes.update(incoming.attributes)
+    existing.merge_attributes_and_risk(incoming)
     if SEVERITY_RANK.get(incoming.severity, 0) > SEVERITY_RANK.get(existing.severity, 0):
         existing.severity = incoming.severity
         existing.severity_id = incoming.severity_id
-    if incoming.risk_score > existing.risk_score:
-        existing.risk_score = incoming.risk_score
     existing_sources = set(existing.data_sources)
     for ds in incoming.data_sources:
         if ds not in existing_sources:

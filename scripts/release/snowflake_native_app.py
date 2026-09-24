@@ -155,6 +155,18 @@ def validate(version: str | None = None) -> None:
         if ":latest" in text or f":{tag}" not in text:
             raise ValueError(f"{spec.relative_to(ROOT)} must use the immutable release tag {tag}")
         service_spec = _yaml(spec)
+        if spec.name == "service-spec.yaml":
+            volumes = service_spec["spec"].get("volumes", [])
+            evidence = next((v for v in volumes if v.get("name") == "evidence"), {})
+            api = service_spec["spec"]["containers"][0]
+            if (
+                evidence.get("source") != "block"
+                or evidence.get("size") != "4Gi"
+                or evidence.get("blockConfig", {}).get("encryption") != "SNOWFLAKE_FULL"
+                or {"name": "evidence", "mountPath": "/var/lib/agent-bom"} not in api.get("volumeMounts", [])
+                or api.get("env", {}).get("AGENT_BOM_DB") != "/var/lib/agent-bom/control-plane.db"
+            ):
+                raise ValueError("Native API requires its encrypted single-instance evidence block volume")
         endpoints = {entry["name"] for entry in service_spec["spec"].get("endpoints", [])}
         roles = service_spec.get("serviceRoles", [])
         if not roles or any(not set(role.get("endpoints", [])) <= endpoints for role in roles):

@@ -487,3 +487,11 @@ def test_codeql_skips_only_prose_image_pushes_and_preserves_required_pr_checks()
         assert "paths-ignore" not in triggers[event]
     assert "schedule" in triggers and "workflow_dispatch" in triggers
     assert set(workflow["jobs"]) == {"analyze-python", "analyze-actions"}
+
+
+def test_keycloak_image_participates_in_dependency_maintenance() -> None:
+    config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
+    assert any(
+        update["package-ecosystem"] == "docker" and update.get("directory") == "/deploy/keycloak"
+        for update in config["updates"]
+    )

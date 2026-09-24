@@ -106,8 +106,10 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
         "dependency-map-live.png",
         "remediation-live.png",
     ]
-    assert journey.count('width="920"') == 3
+    assert journey.count('width="920"') == 2
+    assert journey.count('width="1440"') == 1
     assert journey.count('width="450"') == 2
+    assert "<summary>Explore graph navigation, permissions and evidence</summary>" in journey
     grc = journey.split("### Security, engineering and GRC:", 1)[1].split("### AppSec", 1)[0]
     assert "dashboard-live.png" in grc
     assert "dashboard-paths-live.png" not in grc
@@ -139,7 +141,7 @@ def test_readme_leads_with_discover_scan_correlate_act_brand_header() -> None:
 
 def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    integrations = readme.split("### Work with your existing tools", 1)[1].split("## Quick start", 1)[0]
+    integrations = readme.split("<summary>Work with your existing tools</summary>", 1)[1].split("## Quick start", 1)[0]
     for capability in ("CLI or GitHub Action", "REST API", "MCP", "SARIF", "CycloneDX", "SPDX", "fleet sync", "runtime evidence"):
         assert capability in integrations
     assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in integrations

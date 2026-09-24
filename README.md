@@ -38,19 +38,16 @@
 
 ### Security, engineering and GRC: prioritize risk and assessment gaps
 
-Start with **Posture**, open **Top risks** for findings and evidence, and use
-**Assets & coverage** for scoped inventory. Review evaluated controls and framework
-assessment gaps in **Compliance**; pass rate and assessment coverage are separate.
+Start with **Posture**, inspect evidence in **Top risks**, and scope inventory in **Assets & coverage**.
+**Compliance** separates evaluated-control pass rate from assessment coverage.
 OWASP and MITRE ATLAS risk mappings describe applicability, not control pass/fail.
-The offline synthetic enterprise estate shown here includes evaluated checks;
-these results do not establish certification or an audit opinion.
+The offline synthetic enterprise estate includes evaluated checks; results do not establish certification or an audit opinion.
 
 <p align="center">
-  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Overview of posture, findings and assessment gaps with evaluated-control counts and framework logos in a labeled sample environment" width="920"></a>
+  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Overview of posture, findings and assessment gaps with evaluated-control counts and framework logos in a labeled sample environment" width="1440"></a>
 </p>
 
-Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png),
-and [framework controls and evidence](site-docs/features/compliance.md).
+Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), and [framework controls and evidence](site-docs/features/compliance.md).
 
 ### AppSec and cloud teams: explain why a finding matters
 
@@ -70,17 +67,22 @@ path does not by itself prove exploitation or successful data access.
 
 Select either preview for the full-size view. Left: labeled sample data. Right: reference lab with modeled infrastructure.
 
-Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity, set traversal
-direction and hop limit, and expand relevant relationships; badges pair each verb with an icon so types stay
-distinguishable without color. The ordered path and hop inspector expose evidence freshness and unknowns.
-Large scopes use bounded pages and disclose when the current view is incomplete.
-From **Context**, start with a compact agent neighborhood, expand connections by type, and select nodes or arrows for evidence. Use **Focus here**, **Back**, or an exact identifier to navigate loaded evidence without displaying the whole graph. Open **Investigate reach & permissions** for permission receipts, CVE prerequisites and related activity; missing exploitability stays **not assessed**. [Investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
+<details>
+<summary>Explore graph navigation, permissions and evidence</summary>
+
+Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity,
+set direction and hop limits, and expand bounded pages; incomplete views are labeled.
+In **Context**, use **Focus here**, **Back**, or an exact identifier. Select a node or
+arrow to inspect its evidence, freshness and unknowns. **Investigate reach & permissions**
+opens permission receipts, CVE prerequisites and related activity; missing exploitability
+stays **not assessed**. [Investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
+
+</details>
 
 ### Engineers and GRC: prioritize findings and verify fixes
 
-Review findings by priority, affected asset, detection evidence and available
-fix. Open remediation to compare package upgrades and mapped controls, assign
-owners, set SLAs and re-scan to verify fixes.
+Review findings by priority, affected asset and evidence. Open remediation for package
+upgrades and mapped controls, assign owners, set SLAs and re-scan to verify fixes.
 
 <p align="center">
   <a href="docs/images/dependency-map-live.png"><img src="docs/images/dependency-map-live.png" alt="Actual Findings screen with labeled sample findings, priority, affected assets, detection evidence and remediation actions" width="920"></a>
@@ -132,16 +134,16 @@ authenticated deployment guide below for a shared instance.
 [Choose a deployment](site-docs/deployment/overview.md) · [Enterprise configuration](docs/ENTERPRISE.md) ·
 [Connect cloud accounts](docs/CLOUD_CONNECT.md)
 
-### Work with your existing tools
+<details>
+<summary>Work with your existing tools</summary>
 
-Use the **CLI or GitHub Action** in CI, the **REST API** for automation, and
-**MCP** from coding assistants. Export **SARIF, CycloneDX, SPDX, JSON and HTML**
-for downstream workflows. Cloud connectors and fleet sync feed the control
-plane; proxy and gateway deployments contribute runtime evidence.
+Use **CLI or GitHub Action**, **REST API**, or **MCP**; export **SARIF, CycloneDX, SPDX, JSON and HTML**.
+Cloud connectors and fleet sync collect inventory; proxy and gateway deployments add runtime evidence.
 
 [Integration capability matrix](docs/INTEGRATIONS.md) · [MCP client setup](docs/MCP_CLIENT_GUIDES.md) ·
-[Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) ·
-[Smithery setup and manifest](site-docs/integrations/smithery.md)
+[Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) · [Smithery setup and manifest](site-docs/integrations/smithery.md)
+
+</details>
 
 ## Quick start
 

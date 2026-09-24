@@ -9,6 +9,12 @@ function report(score: unknown = null) {
 }
 
 describe("CLI JSON report import", () => {
+  it("accepts unrated advisories emitted by the CLI", () => {
+    const data = report();
+    data.agents[0]!.mcp_servers[0]!.packages[0]!.vulnerabilities[0]!.severity = "unknown";
+    data.blast_radius[0]!.severity = "unknown";
+    expect(validateScanReport(JSON.stringify(data)).ok).toBe(true);
+  });
   it("rejects malformed canonical totals instead of rendering them", () => {
     expect(validateScanReport(JSON.stringify({ ...report(), finding_summary: { total: 1, by_severity: { high: "one" } } })).ok).toBe(false);
   });

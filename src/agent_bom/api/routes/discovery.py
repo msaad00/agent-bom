@@ -55,39 +55,18 @@ def _tenant_id(request: Request) -> str:
 
 
 def _discover_agents_with_demo_fallback() -> list[Any]:
-    """Live local-disk discovery, plus the curated inventory in demo-estate mode.
-
-    This used to fall back only when live discovery found *nothing*, justified by
-    "on a hosted demo server there are no local agent configs to discover". That
-    assumption was wrong: the hosted image ships the ``mcp`` CLI at
-    ``/app/.venv/bin/mcp``, so discovery returned exactly ONE agent, the
-    ``if agents: return agents`` guard short-circuited, and the curated inventory
-    never loaded. ``/v1/agents/mesh`` then served a single unlinked node and the
-    Agent Topology page rendered a "trust mesh" of one dot on a 4,101-asset
-    estate. One incidental binary in the image defeated the whole demo estate.
-
-    In demo-estate mode the curated inventory IS the story, so it is always
-    included, merged with anything genuinely discovered (by agent name, live
-    discovery winning) rather than gated on discovery being empty.
-
-    Real deployments — env unset — still get live discovery only, including when
-    it finds nothing. Demo rows must never appear in a real tenant's topology.
-    """
-    from agent_bom.discovery import discover_all
-
-    agents = discover_all()
-
+    """Use curated agents in demo mode and host discovery in real deployments."""
     from agent_bom.demo_estate.bootstrap import demo_estate_enabled
 
     if not demo_estate_enabled():
-        return agents
+        from agent_bom.discovery import discover_all
+
+        return discover_all()
 
     from agent_bom.cli._common import _build_agents_from_inventory
     from agent_bom.demo import DEMO_INVENTORY
 
-    demo_agents = _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
-    discovered_names = {getattr(agent, "name", "") for agent in agents}
-    return [*agents, *(a for a in demo_agents if getattr(a, "name", "") not in discovered_names)]
+    return _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
 
 
 def _merge_strings(*values: list[str]) -> list[str]:
@@ -607,10 +586,9 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
 
 
 def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
-    from agent_bom.discovery import discover_all
     from agent_bom.parsers import extract_packages
 
-    agents = discover_all()
+    agents = _discover_agents_with_demo_fallback()
     agent = None
     for a in agents:
         if a.name == agent_name:

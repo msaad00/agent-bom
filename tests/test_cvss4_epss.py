@@ -11,6 +11,13 @@ from agent_bom.scanners import _parse_cvss4_vector, parse_cvss_vector, parse_osv
 
 
 class TestCVSS4Parsing:
+    def test_single_high_confidentiality_impact_is_high_not_critical(self):
+        """The former approximation scored this vector 9.4 instead of 8.7."""
+        vector = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"
+        assert parse_cvss_vector(vector) == 8.7
+        severity, score, source = parse_osv_severity({"severity": [{"type": "CVSS_V4", "score": vector}]})
+        assert (severity, score, source) == (Severity.HIGH, 8.7, "cvss")
+
     def test_critical_network_vector(self):
         """CVSS:4.0 all-high network vector should score >= 9.0."""
         v = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"

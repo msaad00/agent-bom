@@ -18,6 +18,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Calculate CVSS v4 scores with the macrovector algorithm, preserving the correct severity at build-gate thresholds.
+- Keep curated demo agent discovery independent of host configuration and serve matching agent detail and lifecycle routes.
+- Accept unknown severity when importing JSON reports.
+- Retain findings totals when the count cache expires during an in-flight request.
+- Evaluate collected IAM policy documents before assigning unconditional admin-equivalence labels, including explicit denies, resource scope, and unresolved conditions.
+- Repair Snowflake Native App installation contracts and reject unsupported scan dispatch explicitly.
 - Explore persisted Context connections with canonical agent IDs, compact canvases, explicit paging and collapse, and selected relationship labels. Clear stale or account-scoped evidence and resolve graph IDs without downloading full scan reports.
 - Persist tenant-scoped export destinations on Postgres and preserve unknown vulnerability scores in warehouse feeds.
 - Preserve shared scan jobs across replica startup and bind dispatch lease updates to the owning claim.

@@ -2161,32 +2161,64 @@ def _find_call_node(func: _FunctionAnalysis, call_name: str, line_number: int) -
     return None
 
 
-def _call_has_tainted_argument(func: _FunctionAnalysis, call: ast.Call) -> bool:
-    """One-hop taint check for a single call site: does an argument to ``call``
-    trace to the enclosing function's own parameter, or to a direct call to a
-    known untrusted-source primitive?
+def _call_has_tainted_argument(func: _FunctionAnalysis, call: ast.Call) -> bool | None:
+    """Track straight-line local argument flow within one function boundary.
 
-    Reuses the same untrusted-source primitive (:func:`_is_untrusted_source_call`)
-    that already backs the AppSec taint-flow findings in this module, so
-    "input()", "request.args.get(...)", etc. are recognized consistently.
-
-    Deliberately a single hop: this does not walk further up the call graph to
-    prove the enclosing function's own parameter is itself externally
-    controlled beyond this one function boundary. A parameter of a helper
-    function three calls deep from a tool entrypoint is treated the same as a
-    parameter of the entrypoint itself — that transitive proof is the
-    documented gap this slice leaves open.
+    True records any argument derived from a parameter or untrusted primitive;
+    it does not identify a vulnerable parameter or prove external exploitability.
+    False means no such flow in the supported expressions. Unsupported control
+    flow, external values and missing syntax remain unassessed (None).
     """
-    param_names = set(func.param_names)
-    arg_exprs: list[ast.expr] = [*call.args, *(kw.value for kw in call.keywords)]
-    for arg in arg_exprs:
-        if _names_in_expr(arg) & param_names:
-            return True
-        if isinstance(arg, ast.Call):
-            source_name = _call_name(arg.func)
-            if source_name and _is_untrusted_source_call(source_name):
+    if func.node is None:
+        return None
+    arguments = func.node.args
+    parameters = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+    parameters += [arg for arg in (arguments.vararg, arguments.kwarg) if arg is not None]
+    values: dict[str, bool | None] = {arg.arg: True for arg in parameters}
+
+    def expression(expr: ast.AST) -> bool | None:
+        if isinstance(expr, ast.Constant):
+            return False
+        if isinstance(expr, ast.Name):
+            return values.get(expr.id)
+        if isinstance(expr, ast.Call):
+            name = _call_name(expr.func)
+            if name and _is_untrusted_source_call(name):
                 return True
-    return False
+            # Unknown callees may transform or sanitize their arguments.
+            return None
+        if isinstance(expr, (ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp, ast.NamedExpr)):
+            return None
+        parts = [expression(child) for child in ast.iter_child_nodes(expr) if isinstance(child, ast.expr)]
+        return True if True in parts else None if None in parts or not parts else False
+
+    for statement in func.node.body:
+        contains_call = any(node is call for node in ast.walk(statement))
+        if contains_call:
+            if not isinstance(statement, (ast.Assign, ast.AnnAssign, ast.Expr, ast.Return)):
+                return None
+            results = [expression(arg) for arg in [*call.args, *(kw.value for kw in call.keywords)]]
+            return True if True in results else None if None in results else False
+        if isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            value = expression(statement.value) if statement.value is not None else None
+            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    values[target.id] = value
+                else:
+                    for name in ast.walk(target):
+                        if isinstance(name, ast.Name) and isinstance(name.ctx, ast.Store):
+                            values[name.id] = None
+        else:
+            # Assignments inside branches/loops cannot safely preserve an old
+            # value. Do not visit nested function bodies as executed statements.
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                values[statement.name] = None
+                continue
+            for name in ast.walk(statement):
+                if isinstance(name, ast.Name) and isinstance(name.ctx, (ast.Store, ast.Del)):
+                    values[name.id] = None
+    return None
 
 
 def _build_dependency_symbol_reach(
@@ -2242,7 +2274,7 @@ def _build_dependency_symbol_reach(
                     continue
                 seen.add(dedup_key)
                 call_node = _find_call_node(current, raw_name, line_num)
-                tainted_argument = call_node is not None and _call_has_tainted_argument(current, call_node)
+                tainted_argument = _call_has_tainted_argument(current, call_node) if call_node is not None else None
                 reached.append(
                     DependencySymbolReach(
                         entrypoint=application_entrypoint.name if application_entrypoint else exposed_root_name,

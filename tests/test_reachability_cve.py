@@ -362,11 +362,11 @@ def test_classify_reachability_surfaces_tainted_argument_evidence() -> None:
     assert signal.tainted_argument is True
 
 
-def test_classify_reachability_tainted_argument_false_by_default() -> None:
+def test_classify_reachability_tainted_argument_unknown_by_default() -> None:
     index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2.sandbox", "SandboxedEnvironment")])
     signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
     assert signal.state == FUNCTION_REACHABLE
-    assert signal.tainted_argument is False
+    assert signal.tainted_argument is None
 
 
 def test_package_reachable_never_carries_tainted_argument_evidence() -> None:
@@ -386,7 +386,7 @@ def test_package_reachable_never_carries_tainted_argument_evidence() -> None:
     index = SymbolReachIndex.from_reaches([untainted_package_reach])
     signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
     assert signal.state == PACKAGE_REACHABLE
-    assert signal.tainted_argument is False
+    assert signal.tainted_argument is None
 
 
 # ── Go module ⇄ import-path join ──────────────────────────────────────────
@@ -592,12 +592,12 @@ def test_wiring_stamps_tainted_argument_on_python_row() -> None:
     assert br.symbol_reachability_tainted_argument is True
 
 
-def test_wiring_tainted_argument_false_without_taint_evidence() -> None:
+def test_wiring_tainted_argument_unknown_without_taint_evidence() -> None:
     br = _python_br(["get"])
     stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
     assert stamped == 1
     assert br.symbol_reachability == FUNCTION_REACHABLE
-    assert br.symbol_reachability_tainted_argument is False
+    assert br.symbol_reachability_tainted_argument is None
 
 
 def test_wiring_can_stamp_without_rescoring() -> None:
@@ -1047,3 +1047,63 @@ def test_dynamic_dispatch_is_never_upgraded_to_function_reachable(tmp_path: Path
         index=index,
     )
     assert signal.state != FUNCTION_REACHABLE
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("value = url\n    return requests.get(value)", True),
+        ("value = url\n    alias = value\n    return requests.get(alias)", True),
+        ("value = url\n    value = 'fixed'\n    return requests.get(value)", False),
+        ("url = 'fixed'\n    return requests.get(url)", False),
+        ("value = input()\n    return requests.get(value)", True),
+        ("return requests.get('fixed', timeout=url)", True),
+        ("return requests.get(external_value)", None),
+        ("if url:\n        value = url\n    return requests.get(value)", None),
+    ],
+)
+def test_taint_tracks_local_assignments_without_claiming_unavailable_analysis(tmp_path: Path, body: str, expected: bool | None) -> None:
+    (tmp_path / "agent.py").write_text(f"import requests\n\n@tool\ndef fetch(url):\n    {body}\n")
+    signal = classify_reachability(
+        package="requests", advisory=_requests_get_advisory(), index=SymbolReachIndex.from_ast_result(analyze_project(tmp_path))
+    )
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.tainted_argument is expected
+
+
+def test_missing_advisory_symbols_does_not_claim_negative_taint() -> None:
+    signal = classify_reachability(
+        package="requests",
+        advisory={"id": "example", "affected": []},
+        index=SymbolReachIndex.from_reaches([_reach("requests", "requests", "get")]),
+    )
+    assert signal.tainted_argument is None
+
+
+@pytest.mark.parametrize("parameters", ["url, /", "*, url", "*url", "**url"])
+def test_taint_recognizes_all_python_parameter_kinds(tmp_path: Path, parameters: str) -> None:
+    (tmp_path / "agent.py").write_text(f"import requests\n\n@tool\ndef fetch({parameters}):\n    return requests.get(url)\n")
+    signal = classify_reachability(
+        package="requests", advisory=_requests_get_advisory(), index=SymbolReachIndex.from_ast_result(analyze_project(tmp_path))
+    )
+    assert signal.tainted_argument is True
+
+
+@pytest.mark.parametrize(("values", "expected"), [([False, None], None), ([True, None], True), ([False, False], False)])
+def test_taint_aggregates_all_matched_call_sites(values: list[bool | None], expected: bool | None) -> None:
+    reaches = [_reach("requests", "requests", "get") for _ in values]
+    for reach, value in zip(reaches, values):
+        reach.tainted_argument = value
+    signal = classify_reachability(package="requests", advisory=_requests_get_advisory(), index=SymbolReachIndex.from_reaches(reaches))
+    assert signal.tainted_argument is expected
+
+
+@pytest.mark.parametrize("value", [None, False, True])
+def test_json_preserves_unassessed_and_assessed_taint(value: bool | None) -> None:
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.json_fmt import to_json
+
+    br = _python_br(["get"])
+    br.symbol_reachability_tainted_argument = value
+    payload = to_json(AIBOMReport(agents=[], blast_radii=[br]))
+    assert payload["blast_radius"][0]["symbol_reachability_tainted_argument"] is value

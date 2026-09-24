@@ -22,7 +22,7 @@ import {
   type LegendItem,
 } from "@/lib/graph-utils";
 import { displayContextDescription } from "@/lib/context-graph";
-import { lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
+import { FLOW_NODE_TYPES, lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
 import {
   EntityType,
   type UnifiedEdge,
@@ -84,47 +84,6 @@ export interface UnifiedGraphFlowResult {
   summary: UnifiedGraphFlowSummary;
 }
 
-const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
-  provider: "providerNode",
-  agent: "agentNode",
-  org: "providerNode",
-  account: "providerNode",
-  user: "userNode",
-  group: "groupNode",
-  role: "credentialNode",
-  policy: "credentialNode",
-  serviceAccount: "serviceAccountNode",
-  servicePrincipal: "serviceAccountNode",
-  federatedIdentity: "serviceAccountNode",
-  environment: "environmentNode",
-  fleet: "fleetNode",
-  cluster: "clusterNode",
-  server: "serverNode",
-  sharedServer: "sharedServerNode",
-  package: "packageNode",
-  vulnerability: "vulnNode",
-  credential: "credentialNode",
-  tool: "toolNode",
-  model: "modelNode",
-  framework: "frameworkNode",
-  dataset: "datasetNode",
-  container: "containerNode",
-  cloudResource: "cloudResourceNode",
-  misconfiguration: "misconfigNode",
-  managedIdentity: "managedIdentityNode",
-  accessGrant: "accessGrantNode",
-  accessPolicy: "accessPolicyNode",
-  driftIncident: "driftIncidentNode",
-  dataStore: "dataStoreNode",
-  directory: "containerNode",
-  sourceFile: "packageNode",
-  configFile: "packageNode",
-  codeModule: "packageNode",
-  ciJob: "toolNode",
-  apiGateway: "cloudResourceNode",
-  toolCall: "toolNode",
-  blueprint: "accessPolicyNode",
-};
 
 /** Resolve an API entity to the renderer registered by the graph canvas. */
 export function flowRendererTypeForEntity(entityType: EntityType | string): string | null {

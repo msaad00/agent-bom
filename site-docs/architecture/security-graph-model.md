@@ -19,6 +19,26 @@ snapshot gets large?"
 This is not a best-effort browser-only canvas. It is a persisted graph snapshot
 loaded from the control plane.
 
+## Data locations, access and evidence sources
+
+Open a completed scan in **Investigation**, select a recorded data store or dataset,
+then inspect its relationships and source evidence. The artifact is the persisted
+graph snapshot; use the recorded resource identity to investigate permissions or
+runtime receipts next.
+
+| Question | Graph evidence | Interpretation |
+|---|---|---|
+| Where does data live? | `data_store`, `dataset`, and `stores` relationships | Recorded or derived storage structure; account, region and environment are available only when supplied by the source. |
+| Who has access? | Identity and permission relationships, including `has_permission` | Read the permission evidence and conditions; a structural path alone does not establish authorization. |
+| Who accessed it? | Runtime `accessed` relationships and associated receipts | Inspect the recorded operation, outcome and time. A denied attempt is not a successful read. |
+| How did this evidence arrive? | Node `data_sources`, relationship evidence and snapshot context | Collection provenance, such as scan, connector or imported evidence; not the location of the underlying business data. |
+
+Cloud enrichment can derive a companion data-store node from resource metadata
+for buckets, databases, lakes and warehouses. That classification is not a
+content scan, complete lineage map or proof of sensitive records. Ingesting
+inventory or a scan report does not by itself ingest the contents of those stores.
+Source coverage and missing location or access evidence must be evaluated separately.
+
 ## Reachability truth
 
 Every path distinguishes executable evidence from investigation context:

@@ -2752,7 +2752,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Default Posture view with current findings, freshness, and risk and scoped inventory drilldowns",
+      scope: "Combined posture and assessment overview with current findings, evaluated-control counts, and visible framework logos",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
@@ -3214,7 +3214,21 @@ async function main() {
       expectedText: [/Review these findings first/i, /Top risks/i, /Assets & coverage/i],
       expectedApiPaths: ["/v1/overview", "/v1/inventory/summary"], assertNoHorizontalOverflow: true,
     };
-    await capture(page, "/?capture=1", "dashboard-live.png", preparePosture, postureAssertions);
+    const overviewPage = await newCapturePage(CAPTURE_THEME, { width: 1040, height: 1100 });
+    await capture(overviewPage, "/?capture=1", "dashboard-live.png", async (dashboardPage) => {
+      await preparePosture(dashboardPage);
+      const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
+      await frameworks.getByText("NIST AI RMF", { exact: false }).first().waitFor({ state: "visible" });
+      const bottom = await frameworks.evaluate(element => Math.ceil(element.getBoundingClientRect().bottom + window.scrollY));
+      await dashboardPage.setViewportSize({ width: 1040, height: bottom + 24 });
+      await scrollTo(dashboardPage, 0);
+    }, {
+      ...postureAssertions,
+      expectedText: [...postureAssertions.expectedText, "NIST AI RMF", "NIST SP 800-53", "CMMC 2.0", /Risk mappings/i],
+      viewportSelectors: ['section[aria-label="Compliance & frameworks"]', '[role="tabpanel"][aria-labelledby]', "#demo-estate-watermark"],
+      readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 920, minFontPx: 12 },
+    });
+    await overviewPage.close();
     await capture(page, "/?capture=1", "dashboard-risks-live.png", prepareExecutiveRisks, executiveRiskAssertions);
     const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1040, height: 1100 });
     await capture(frameworkPage, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {

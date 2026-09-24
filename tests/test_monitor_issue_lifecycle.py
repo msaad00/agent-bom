@@ -242,3 +242,31 @@ def test_deployment_issue_mutation_is_default_branch_only():
     assert steps
     for step in steps:
         assert "github.ref" in step["if"] and "github.event.repository.default_branch" in step["if"]
+
+
+@pytest.mark.parametrize(
+    "workflow,job,title",
+    [
+        ("main-failure-alert.yml", "alert", "ci-regression: Publish to Registries failing on main"),
+        ("surface-freshness.yml", "freshness", "supply-chain-drift: distribution surfaces out of sync"),
+    ],
+)
+def test_same_failure_from_a_different_run_does_not_update_issue(workflow, job, title):
+    created = run_monitor(workflow, job, [])[0]
+    previous_body = created["body"].replace("/99", "/98").replace("- Actor: @owner", "- Actor: @previous-owner")
+    issue = {"number": 123, "title": title, "state": "open", "body": previous_body}
+    assert run_monitor(workflow, job, [issue]) == []
+
+
+@pytest.mark.parametrize(
+    "workflow,job,title,old,new",
+    [
+        ("main-failure-alert.yml", "alert", "ci-regression: Publish to Registries failing on main", "aaaaaaa", "bbbbbbb"),
+        ("surface-freshness.yml", "freshness", "supply-chain-drift: distribution surfaces out of sync", "0.103.2", "0.103.1"),
+    ],
+)
+def test_changed_failure_evidence_still_updates_issue(workflow, job, title, old, new):
+    created = run_monitor(workflow, job, [])[0]
+    issue = {"number": 123, "title": title, "state": "open", "body": created["body"].replace(old, new)}
+    events = run_monitor(workflow, job, [issue])
+    assert len(events) == 1 and events[0]["kind"] == "update"

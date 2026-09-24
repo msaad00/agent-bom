@@ -429,6 +429,8 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
     finally:
         set_graph_store(original)
 
+
+class TestPersistedGraphQueries:
     def test_edge_history_tracks_new_changed_removed_and_unchanged_edges(self, graph_db):
         g1 = UnifiedGraph(scan_id="history-s1", tenant_id="default", created_at="2026-06-01T00:00:00Z")
         for node_id in ("agent:a", "server:b", "tool:c", "vuln:d"):
@@ -445,7 +447,13 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
             )
         )
         g1.add_edge(UnifiedEdge(source="server:b", target="tool:c", relationship=RelationshipType.PROVIDES_TOOL, confidence=0.8))
-        g1.add_edge(UnifiedEdge(source="tool:c", target="vuln:d", relationship=RelationshipType.VULNERABLE_TO))
+        # The source supplies this end time; absence in g2 alone must never
+        # invent a validity end for a possibly incomplete later collection.
+        g1.add_edge(
+            UnifiedEdge(source="tool:c", target="vuln:d", relationship=RelationshipType.VULNERABLE_TO, valid_to="2026-06-02T00:00:00Z")
+        )
+        for edge in g1.edges:
+            edge.first_seen = edge.last_seen = edge.valid_from = g1.created_at
         save_graph(graph_db, g1)
 
         g2 = UnifiedGraph(scan_id="history-s2", tenant_id="default", created_at="2026-06-02T00:00:00Z")
@@ -464,6 +472,8 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
         )
         g2.add_edge(UnifiedEdge(source="server:b", target="tool:c", relationship=RelationshipType.PROVIDES_TOOL, confidence=0.8))
         g2.add_edge(UnifiedEdge(source="agent:a", target="tool:c", relationship=RelationshipType.REACHES_TOOL))
+        for edge in g2.edges:
+            edge.first_seen = edge.last_seen = edge.valid_from = g2.created_at
         save_graph(graph_db, g2)
 
         changes = changed_edges_between_scans(graph_db, "history-s1", "history-s2", tenant_id="default")
@@ -829,6 +839,12 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
         graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
         store.save_graph(graph)
 
+        # _ensure_schema_initialized performs one migration pass on this
+        # process's first read; subsequent reads must not take that write path.
+        first_read = store.load_graph(tenant_id="tenant-alpha", scan_id="read-scan")
+        assert first_read is not None
+        assert set(first_read.nodes) == {"agent:a"}
+
         def fail_backfill(*_args, **_kwargs):
             raise sqlite3.OperationalError("database is locked")
 
@@ -976,11 +992,14 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
         graph.add_edge(UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO, traversable=True))
         store.save_graph(graph)
 
-        paths, reachable, truncated = store.bfs_paths(tenant_id="default", scan_id="traversal-scan", source="agent:a", max_depth=3)
+        paths, reachable, truncated, depth_limited = store.bfs_paths(
+            tenant_id="default", scan_id="traversal-scan", source="agent:a", max_depth=3
+        )
 
         assert reachable == {"server:s", "vuln:cve"}
         assert paths == [["agent:a", "server:s"], ["agent:a", "server:s", "vuln:cve"]]
         assert truncated is False
+        assert depth_limited is False
 
     def test_sqlite_graph_store_bfs_paths_traverse_persisted_identity_hops(self, tmp_path):
         from agent_bom.graph.builder import build_unified_graph_from_report
@@ -1020,7 +1039,7 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
 
         account_id = "account:aws:123456789012"
         resource_id = "cloud_resource:aws:bedrock:agent:arn:aws:bedrock:us-east-1:123456789012:agent/agent-abc"
-        paths, reachable, truncated = store.bfs_paths(
+        paths, reachable, truncated, depth_limited = store.bfs_paths(
             tenant_id="default",
             scan_id="identity-hop-scan",
             source=account_id,
@@ -1028,10 +1047,22 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
         )
 
         assert truncated is False
+        assert depth_limited is False
         assert resource_id in reachable
         assert "agent:cloud-agent" in reachable
         assert [account_id, resource_id] in paths
         assert [account_id, resource_id, "agent:cloud-agent"] in paths
+
+        _, bounded_reachable, budget_truncated, depth_limited = store.bfs_paths(
+            tenant_id="default",
+            scan_id="identity-hop-scan",
+            source=account_id,
+            max_depth=1,
+        )
+        assert resource_id in bounded_reachable
+        assert "agent:cloud-agent" not in bounded_reachable
+        assert budget_truncated is False
+        assert depth_limited is True
 
     def test_sqlite_graph_store_impact_of_uses_reverse_edges(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")

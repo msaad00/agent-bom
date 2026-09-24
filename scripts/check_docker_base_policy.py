@@ -98,6 +98,11 @@ POLICY: dict[str, BasePolicy] = {
         expected_tags=("3.11.12-slim",),
         rationale="Snowpark requires Python 3.11; held back from 3.12 for snowflake-snowpark-python compatibility.",
     ),
+    "deploy/docker/Dockerfile.native-app": BasePolicy(
+        image="python",
+        expected_tags=("3.11.12-slim",),
+        rationale="Native App keeps the Snowpark Python 3.11 base; only its volume initializer runs before privilege reduction.",
+    ),
     "deploy/docker/Dockerfile.collector": BasePolicy(
         image="python",
         expected_tags=("3.12.13-slim",),

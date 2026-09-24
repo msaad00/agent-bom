@@ -32,6 +32,7 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("integrations/glama/server.json", re.compile(r'("version":\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Snowpark Dockerfile
     ("deploy/docker/Dockerfile.snowpark", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
+    ("deploy/docker/Dockerfile.native-app", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("Dockerfile", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # Compose + packaged manifests
     ("deploy/docker-compose.pilot.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),

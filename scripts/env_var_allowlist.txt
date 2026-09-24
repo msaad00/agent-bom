@@ -577,3 +577,6 @@ AGENT_BOM_MANAGED_TRIAL_INVITATIONS
 # Operator-owned workload binding file is reloaded per broker use so revocation
 # and rotation take effect without a restart; never selected through the API.
 AGENT_BOM_CONNECTION_WORKLOAD_BINDINGS_FILE
+
+# Ephemeral deployment probe credential passed through process environment.
+AGENT_BOM_DEPLOYMENT_BEARER_TOKEN

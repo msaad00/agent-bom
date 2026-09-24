@@ -112,6 +112,7 @@ jobs:
               `- SHA: \`${sha}\``,
               `- Run: ${htmlUrl}`,
               `- Actor: @${context.payload.workflow_run.actor.login}`,
+              `- Latest runs: ${context.serverUrl}/${owner}/${repo}/actions/workflows/${context.payload.workflow_run.workflow_id}`,
               "",
               "This issue was opened automatically so main failures do not sit unnoticed.",
             ].join("\n");
@@ -141,7 +142,9 @@ jobs:
             const candidates = existing.filter((issue) => issue.title === title && !issue.pull_request);
             const match = candidates.find((issue) => issue.state === "open") || candidates[0];
             if (match) {
-              if (match.state === "open" && match.body === body) return;
+              // Run URLs and actors change on retries without changing the incident.
+              const evidence = value => (value || "").replace(/^- (Run:|Actor:) .*$/gm, "");
+              if (match.state === "open" && evidence(match.body) === evidence(body)) return;
               await github.rest.issues.update({
                 owner,
                 repo,

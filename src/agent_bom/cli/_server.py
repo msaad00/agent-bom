@@ -268,6 +268,14 @@ def _enforce_writable_control_plane_state(command: str) -> None:
 
 def _enforce_remote_mcp_auth_defaults(host: str, bearer_token: str | None, allow_insecure_no_auth: bool) -> None:
     """Refuse unauthenticated remote MCP transports on non-loopback binds."""
+    from agent_bom.mcp_tools.oauth import OAuthConfig, oauth_configured
+
+    if oauth_configured():
+        try:
+            OAuthConfig.from_env()  # Incomplete configuration never opens a listener.
+        except ValueError as exc:
+            raise click.ClickException("Incomplete or invalid MCP OAuth configuration") from exc
+        return
     if bearer_token or _is_loopback_host(host):
         return
     if allow_insecure_no_auth:
@@ -1191,11 +1199,17 @@ def mcp_server_cmd(
         if not _is_loopback_host(host):
             os.environ["AGENT_BOM_MCP_REMOTE_BIND"] = "1"
 
+    from agent_bom.mcp_tools.oauth import oauth_configured
+
     # Stdio uses its parent process boundary; inherited HTTP credentials do not
     # activate a token verifier for a local session.
     try:
         server = create_mcp_server(
-            host=host, port=port, bearer_token=bearer_token if transport in ("sse", "streamable-http") else None, profile=profile
+            host=host,
+            port=port,
+            bearer_token=bearer_token if transport in ("sse", "streamable-http") else None,
+            profile=profile,
+            oauth_enabled=transport in ("sse", "streamable-http") and oauth_configured(),
         )
     except ValueError as exc:
         from agent_bom.security import sanitize_error
@@ -1218,6 +1232,7 @@ def mcp_server_cmd(
                     bearer_token=bearer_token,
                     allow_insecure_no_auth=allow_insecure_no_auth,
                     mcp_remote=True,
+                    oidc_enabled=oauth_configured(),
                 ),
             ),
         ]

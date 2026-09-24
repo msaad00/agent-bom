@@ -56,6 +56,7 @@ def create_fastmcp_server(
     version: str,
     token_verifier_factory: Callable[[str], Any],
     profile: str = "scan",
+    oauth_enabled: bool = False,
 ):
     """Create the FastMCP server with optional static bearer auth."""
     from mcp.server.auth.settings import AuthSettings
@@ -69,7 +70,26 @@ def create_fastmcp_server(
 
     auth_settings = None
     token_verifier = None
-    if bearer_token:
+    if oauth_enabled:
+        from agent_bom.mcp_tools.oauth import OAuthConfig, OAuthTokenVerifier
+
+        if bearer_token or os.environ.get("AGENT_BOM_MCP_OPERATOR_TOKEN"):
+            raise ValueError("Choose MCP OAuth or static bearer authentication, not both")
+        config = OAuthConfig.from_env()
+        public_url = _public_base_url(host, port).rstrip("/") + "/mcp"
+        if public_url != config.audience:
+            raise ValueError("MCP OAuth audience must equal the public MCP endpoint URL")
+        resource_validation: dict[str, Any] = (
+            {"validate_token_resource": True} if "validate_token_resource" in AuthSettings.model_fields else {}
+        )
+        auth_settings = AuthSettings(
+            issuer_url=_HTTP_URL_ADAPTER.validate_python(config.issuer),
+            resource_server_url=_HTTP_URL_ADAPTER.validate_python(config.audience),
+            required_scopes=["read"],
+            **resource_validation,
+        )
+        token_verifier = OAuthTokenVerifier(config)
+    elif bearer_token:
         resource_url: AnyHttpUrl = _HTTP_URL_ADAPTER.validate_python(_public_base_url(host, port))
         auth_settings = AuthSettings(
             issuer_url=resource_url,

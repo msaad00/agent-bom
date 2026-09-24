@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -299,7 +300,11 @@ def validate_server_card_release(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Probe the MCP health endpoint used by CI workflows.")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Railway base URL or MCP endpoint URL.")
-    parser.add_argument("--bearer-token", default=None, help="Optional bearer token for authenticated probes.")
+    parser.add_argument(
+        "--bearer-token",
+        default=os.environ.get("AGENT_BOM_DEPLOYMENT_BEARER_TOKEN"),
+        help="Optional bearer token for authenticated probes.",
+    )
     parser.add_argument("--attempts", type=int, default=1, help="Number of probe attempts before failing.")
     parser.add_argument(
         "--backoff-seconds",

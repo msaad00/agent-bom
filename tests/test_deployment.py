@@ -542,7 +542,7 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     assert "RAILWAY_MCP_BEARER_TOKEN" in workflow
     assert "SMITHERY_SERVER_QUALIFIED_NAME" in workflow
     assert "--surface smithery" in workflow
-    assert "python3 -m agent_bom.deployment_probe" in workflow
+    assert "python3 scripts/deploy/probe_with_oauth.py --" in workflow
     assert "tool_count" in workflow
     assert "smithery-oauth" in workflow
     assert "probe_failed=true" in workflow
@@ -888,7 +888,7 @@ def test_deploy_mcp_sse_workflow_uses_bearer_token_for_health_check():
     """Post-deploy health verification should use the same auth contract as Railway."""
     workflow = (ROOT / ".github" / "workflows" / "deploy-mcp-sse.yml").read_text()
     assert "RAILWAY_MCP_BEARER_TOKEN" in workflow
-    assert "python3 -m agent_bom.deployment_probe" in workflow
+    assert "python3 scripts/deploy/probe_with_oauth.py --" in workflow
     assert "--attempts 5" in workflow
 
 

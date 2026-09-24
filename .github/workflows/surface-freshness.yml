@@ -156,6 +156,8 @@ jobs:
               "",
               `Probe evidence: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId} (surface-freshness-evidence artifact; retained for 7 days).`,
               "",
+              `Latest probe runs: ${context.serverUrl}/${owner}/${repo}/actions/workflows/surface-freshness.yml`,
+              "",
               "**Statuses**",
               "- `stale` — surface version, visible release copy, or indexed tool contract differs; use that provider's supported publish or sync path, then re-run verification.",
               "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
@@ -196,7 +198,9 @@ jobs:
             }
 
             if (match) {
-              if (match.state === "open" && match.body === body) return;
+              // Preserve the first matching evidence snapshot without daily issue churn.
+              const evidence = value => (value || "").replace(/^Probe evidence:.*$/gm, "");
+              if (match.state === "open" && evidence(match.body) === evidence(body)) return;
               await github.rest.issues.update({ owner, repo, issue_number: match.number, state: "open", body });
               return;
             }

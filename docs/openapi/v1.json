@@ -27182,6 +27182,7 @@
               "description": "Exact canonical node ID",
               "maxLength": 4096,
               "minLength": 1,
+              "pattern": "^[^\\x00]*$",
               "title": "Node Id",
               "type": "string"
             }
@@ -27195,6 +27196,7 @@
               "anyOf": [
                 {
                   "maxLength": 4096,
+                  "pattern": "^[^\\x00]*$",
                   "type": "string"
                 },
                 {
@@ -27393,6 +27395,7 @@
             "name": "node_id",
             "required": true,
             "schema": {
+              "pattern": "^[^\\x00]*$",
               "title": "Node Id",
               "type": "string"
             }
@@ -27405,6 +27408,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "pattern": "^[^\\x00]*$",
                   "type": "string"
                 },
                 {
@@ -27456,6 +27460,7 @@
             "name": "node_id",
             "required": true,
             "schema": {
+              "pattern": "^[^\\x00]*$",
               "title": "Node Id",
               "type": "string"
             }
@@ -27468,6 +27473,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "pattern": "^[^\\x00]*$",
                   "type": "string"
                 },
                 {
@@ -27545,6 +27551,7 @@
             "name": "node_id",
             "required": true,
             "schema": {
+              "pattern": "^[^\\x00]*$",
               "title": "Node Id",
               "type": "string"
             }
@@ -27557,6 +27564,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "pattern": "^[^\\x00]*$",
                   "type": "string"
                 },
                 {
@@ -27608,6 +27616,7 @@
             "name": "node_id",
             "required": true,
             "schema": {
+              "pattern": "^[^\\x00]*$",
               "title": "Node Id",
               "type": "string"
             }
@@ -27620,6 +27629,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "pattern": "^[^\\x00]*$",
                   "type": "string"
                 },
                 {

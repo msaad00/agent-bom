@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -315,6 +316,7 @@ def test_scan_packages_skips_osv_for_db_covered_packages():
     db_key = "pypi:requests@2.28.0"
 
     with (
+        patch("agent_bom.vuln_freshness.compute_freshness", return_value=SimpleNamespace(stale=False)),
         patch("agent_bom.scanners._scan_packages_local_db", return_value=(1, {db_key})),
         patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
         patch("agent_bom.scanners.query_osv_batch") as mock_osv,
@@ -352,6 +354,7 @@ def test_scan_packages_only_skips_exact_db_covered_version():
     newer = _make_pkg("requests", "2.31.0")
 
     with (
+        patch("agent_bom.vuln_freshness.compute_freshness", return_value=SimpleNamespace(stale=False)),
         patch("agent_bom.scanners._scan_packages_local_db", return_value=(1, {"pypi:requests@2.28.0"})),
         patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
         patch("agent_bom.scanners.query_osv_batch", return_value={}) as mock_osv,
@@ -655,3 +658,28 @@ def test_scan_packages_offline_gap_warning_omits_empty_ecosystem_parens(monkeypa
     assert all("()" not in w for w in warnings), warnings
     # No double space left behind where the ecosystem list would have gone.
     assert all("ecosystem(s)  " not in w for w in warnings), warnings
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stale,offline,prefer_local,expected",
+    [(True, False, False, True), (True, False, True, True), (False, False, True, False), (True, True, False, False)],
+)
+async def test_stale_local_coverage_does_not_suppress_online_osv(stale, offline, prefer_local, expected):
+    from unittest.mock import AsyncMock
+
+    from agent_bom.scanners import ScanOptions, scan_packages
+
+    package = Package(name="requests", version="2.28.0", ecosystem="pypi")
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, {"pypi:requests@2.28.0"})),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value={"PyPI"}),
+        patch("agent_bom.vuln_freshness.compute_freshness", return_value=SimpleNamespace(stale=stale)),
+        patch("agent_bom.scanners.query_osv_batch", new_callable=AsyncMock, return_value={}) as osv,
+        patch("agent_bom.scanners.record_scan_warning") as warning,
+    ):
+        await scan_packages([package], options=ScanOptions(offline=offline, prefer_local_db=prefer_local))
+    assert osv.called is expected
+
+    if not offline:
+        warning.assert_not_called()

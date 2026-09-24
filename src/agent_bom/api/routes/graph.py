@@ -34,12 +34,12 @@ import logging
 import os
 import time
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Literal, Optional, TypeVar, cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.responses import Response
 
 from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, containment_drilldown_graph
@@ -114,6 +114,9 @@ class _GraphAdmissionRoute(APIRoute):
 
         return admitted_handler
 
+
+# PostgreSQL text cannot contain NUL; reject identifiers at the API boundary.
+GraphIdentifier = Annotated[str, StringConstraints(pattern=r"^[^\x00]*$")]
 
 router = APIRouter(route_class=_GraphAdmissionRoute)
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
@@ -2879,8 +2882,8 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
 @router.get("/graph/node/{node_id}", tags=["graph"])
 async def get_graph_node(
     request: Request,
-    node_id: str,
-    scan_id: Optional[str] = Query(None, description="Scan ID"),
+    node_id: GraphIdentifier,
+    scan_id: Optional[GraphIdentifier] = Query(None, description="Scan ID"),
 ) -> dict:
     """Get a single node with its edges, neighbors, and impact stats."""
     node_context = await _graph_store_call(
@@ -2906,8 +2909,8 @@ async def get_graph_node(
 @router.get("/graph/incident-edges", tags=["graph"], response_model=IncidentEdgePageResponse)
 async def get_graph_incident_edges(
     request: Request,
-    node_id: str = Query(..., min_length=1, max_length=4096, description="Exact canonical node ID"),
-    scan_id: str | None = Query(
+    node_id: GraphIdentifier = Query(..., min_length=1, max_length=4096, pattern=r"^[^\x00]*$", description="Exact canonical node ID"),
+    scan_id: GraphIdentifier | None = Query(
         None, max_length=4096, description="Snapshot ID; latest initially. Reuse the returned ID for subsequent pages."
     ),
     snapshot_generation: str | None = Query(
@@ -2982,8 +2985,8 @@ async def get_graph_incident_edges(
 @router.get("/graph/node/{node_id}/neighbors", tags=["graph"])
 async def get_graph_node_neighbors(
     request: Request,
-    node_id: str,
-    scan_id: Optional[str] = Query(None, description="Scan ID; latest if omitted"),
+    node_id: GraphIdentifier,
+    scan_id: Optional[GraphIdentifier] = Query(None, description="Scan ID; latest if omitted"),
     limit: int = Query(24, ge=1, le=100, description="Max neighbors returned per expand"),
     direction: str = Query("both", description="out=dependencies, in=dependents, both=either"),
 ) -> dict:

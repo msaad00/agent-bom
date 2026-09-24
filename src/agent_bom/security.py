@@ -789,8 +789,59 @@ _SANITIZE_PAYLOAD_CACHE_LIMIT = 262_144
 _SANITIZE_PAYLOAD_CACHE_MISS = object()
 
 
+_REPORT_COORDINATE_KEYS = {
+    "id",
+    "canonical_id",
+    "node_id",
+    "node_ids",
+    "nodeids",
+    "edge_id",
+    "edge_ids",
+    "edgeids",
+    "source",
+    "target",
+    "source_id",
+    "target_id",
+    "source_node_id",
+    "target_node_id",
+    "purl",
+    "identifier",
+    "finding_group_key",
+}
+_REPORT_AUTH_MODES = {
+    "env-credentials",
+    "url-embedded-credentials",
+    "network-no-auth-observed",
+    "local-stdio",
+    "managed_identity",
+    "workload_identity",
+}
+
+
+def _safe_report_coordinate(value: str) -> bool:
+    """Check coordinate components, not the entropy of combined namespaces.
+
+    Namespace separators make valid purls and graph coordinates look random.
+    Retain credential-pattern, encoded-secret and per-component entropy checks;
+    a field named node_id is not permission to export an embedded token.
+    """
+    if ":" not in value or "://" in value or any(character.isspace() or ord(character) < 32 for character in value):
+        return False
+    if text_requires_redaction(value):
+        return False
+    components = [_decode_reference_component(part) for part in re.split(r"[/:@|?&#><]", value) if part]
+    return bool(components) and all(
+        not _REFERENCE_ENCODED_OCTET_RE.search(part) and not _looks_sensitive_value(part) for part in components
+    )
+
+
 def _sanitize_sensitive_string(value: str, *, key: object | None, max_str_len: int) -> object:
     """Redact one string while preserving the caller's field-sensitive rules."""
+    key_text = str(key or "").strip().lower().replace("-", "_")
+    if key_text == "auth_mode" and value in _REPORT_AUTH_MODES:
+        return value
+    if key_text in _REPORT_COORDINATE_KEYS and _safe_report_coordinate(value):
+        return sanitize_text(value, max_len=max_str_len)
     # A credential env-var NAME is an identifier, not a secret value.  Keep
     # it intact so distinct credentials stay distinct graph nodes; still
     # redact defensively if the string itself looks like a leaked secret.

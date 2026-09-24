@@ -60,7 +60,7 @@ function hasPollutionKeys(jsonText: string): boolean {
 function validateVuln(v: unknown, path: string): string | null {
   if (!isPlainObject(v)) return `${path}: must be an object`;
   if (!isString(v.id) || !v.id) return `${path}.id: must be a non-empty string`;
-  const SEVERITIES = ["critical", "high", "medium", "low", "none"];
+  const SEVERITIES = ["critical", "high", "medium", "low", "none", "unknown"];
   if (!SEVERITIES.includes(v.severity as string))
     return `${path}.severity: must be one of ${SEVERITIES.join(", ")}`;
   if (v.cvss_score != null && !isFiniteNum(v.cvss_score))

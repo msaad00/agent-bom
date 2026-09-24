@@ -70,6 +70,15 @@ def test_empty_discovery_still_falls_back(monkeypatch: pytest.MonkeyPatch, demo_
     assert discovery._discover_agents_with_demo_fallback()
 
 
+def test_demo_discovery_never_reads_host_configuration(monkeypatch: pytest.MonkeyPatch, demo_mode) -> None:
+    def unexpected_host_discovery():
+        pytest.fail("demo discovery must not inspect host configuration")
+
+    monkeypatch.setattr("agent_bom.discovery.discover_all", unexpected_host_discovery)
+
+    assert discovery._discover_agents_with_demo_fallback()
+
+
 def test_real_deployments_never_get_demo_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     """Demo rows must never appear in a real tenant's topology.
 

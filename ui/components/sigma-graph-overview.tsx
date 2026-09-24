@@ -247,6 +247,11 @@ export function SigmaGraphOverview({
             };
           },
         });
+        // Sigma's hover bubble is white in both themes; use dark text inside it.
+        const drawHover = renderer.getSetting("defaultDrawNodeHover");
+        renderer.setSetting("defaultDrawNodeHover", (context, data, settings) =>
+          drawHover(context, data, { ...settings, labelColor: { color: "#111827" } }),
+        );
         rendererRef.current = renderer;
         const positionGroupLabels = () => {
           if (!renderer || !groupLabelsRef.current) return;

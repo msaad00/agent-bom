@@ -62,6 +62,8 @@ vi.mock("sigma", () => {
       }
 
       getCamera() { return this.camera; }
+      getSetting() { return () => undefined; }
+      setSetting() { return this; }
       on() { return this; }
       refresh() { return this; }
       kill() { this.killed = true; }

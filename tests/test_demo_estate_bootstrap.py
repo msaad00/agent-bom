@@ -944,6 +944,13 @@ def test_demo_estate_agents_fall_back_to_demo_inventory(demo_estate_client: Test
     mesh = demo_estate_client.get("/v1/agents/mesh", headers=VIEWER).json()
     assert len(mesh.get("nodes") or []) >= 5, mesh
 
+    detail = demo_estate_client.get("/v1/agents/support-copilot", headers=VIEWER)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["agent"]["name"] == "support-copilot"
+
+    lifecycle = demo_estate_client.get("/v1/agents/support-copilot/lifecycle", headers=VIEWER)
+    assert lifecycle.status_code == 200, lifecycle.text
+
 
 def test_demo_estate_agents_no_fallback_without_demo_mode(
     monkeypatch: pytest.MonkeyPatch,

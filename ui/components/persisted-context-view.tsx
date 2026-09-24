@@ -21,6 +21,16 @@ import { BACKGROUND_COLOR, BACKGROUND_GAP, CONTROLS_CLASS, NODE_COLOR_MAP } from
 import { useAuthState } from "@/components/auth-provider";
 import { useIncidentNeighborhood, type IncidentDirection } from "@/hooks/use-incident-neighborhood";
 
+export function AdminAssessment({ attributes }: { attributes: Record<string, unknown> }) {
+  const status = attributes.admin_equivalence_status;
+  if (typeof status !== "string") return null;
+  const labels: Record<string, string> = { admin: "Admin", conditional_admin: "Conditional admin", not_admin: "Not admin", unknown: "Unknown" };
+  return <div className="mt-2 text-sm"><p>Admin assessment: <strong>{labels[status] ?? "Unknown"}</strong></p>
+    <p className="text-xs text-[var(--text-secondary)]">{status === "conditional_admin" ? "Broad admin permissions are conditional. The required request context has not been verified." : status === "not_admin" ? "Collected policies do not establish admin permissions." : status === "admin" ? "Collected identity policies grant admin permissions within their recorded resource scope. Other authorization controls may still apply." : "Available evidence does not establish an admin verdict."}</p>
+    {Array.isArray(attributes.admin_equivalence_resource_scopes) && attributes.admin_equivalence_resource_scopes.length > 0 && <p className="break-all text-xs">Scope: {attributes.admin_equivalence_resource_scopes.filter((scope): scope is string => typeof scope === "string").join(", ")}</p>}
+  </div>;
+}
+
 const recordedLabel = (relationship: string) => relationship === "uses" ? "Recorded connection" : contextRelationshipLabel(relationship);
 
 /** Curved recorded edges; direction markers and labels retain their evidence meaning. */
@@ -218,7 +228,7 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
         <h2 className="break-words text-lg font-semibold">{edge ? recordedLabel(String(edge.relationship)) : selected?.label || "Select an entity"}</h2>
         {edge ? <><p className="break-words">{label(edge.source)} {edge.direction === "bidirectional" ? "↔" : edge.direction === "directed" ? "→" : "—"} {label(edge.target)}</p><p>Recorded direction: {edge.direction}</p><p className="break-words">Evidence basis: {String(edge.evidence.evidence_tier ?? edge.evidence.evidence_basis ?? edge.evidence.basis ?? "unknown")}</p><p className="break-words">Runtime outcome: {String(edge.evidence.runtime_outcome ?? "unknown")}</p><button className="context-action" onClick={() => setSelectedEdge(null)}>Close inspection</button></> : selected ? <>
           <Link className="context-action inline-block" href={buildGraphInvestigationHref({ scanId, rootId: selected.id })}>Investigate reach &amp; permissions</Link>
-          <details><summary className="cursor-pointer text-sm">Recorded identity</summary><p className="text-sm">{String(selected.entity_type).replaceAll("_", " ")}</p><code className="block break-all text-xs">{selected.id}</code></details>
+          <details><summary className="cursor-pointer text-sm">Recorded identity</summary><p className="text-sm">{String(selected.entity_type).replaceAll("_", " ")}</p><code className="block break-all text-xs">{selected.id}</code><AdminAssessment attributes={selected.attributes} /></details>
           <div className="flex flex-wrap gap-2"><button className="context-action" onClick={() => setFocusId(selected.id)}>Focus here</button>
             {!lastPage && <button className="context-action" disabled={graph.busy || graph.capped || graph.stale} onClick={() => void graph.load(selected.id)}>Expand connections</button>}
             {lastPage?.next_cursor && <button className="context-action" disabled={graph.busy || graph.capped || graph.stale} onClick={() => void graph.load(selected.id, lastPage.next_cursor!)}>Load more relationships</button>}

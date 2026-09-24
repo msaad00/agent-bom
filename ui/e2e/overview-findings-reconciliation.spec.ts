@@ -509,6 +509,11 @@ for (const theme of ["light", "dark"] as const) {
         schema_version: "inventory.summary.v1", scan_id: "scope-snapshot", total_assets: 127,
         by_type: {agent: 2, server: 3, tool: 10, tool_call: 50, model: 40, framework: 20, user: 2},
       }}));
+      const expensiveRequests: string[] = [];
+      page.on("request", request => {
+        const path = new URL(request.url()).pathname;
+        if (/^\/v1\/scan\//.test(path) || path === "/v1/agents") expensiveRequests.push(path);
+      });
       await page.goto("/");
       await expect(page.getByRole("tab", {name: "Posture"})).toHaveAttribute("aria-selected", "true");
       await expect(page.getByRole("tablist", {name: "Risk overview views"}).getByRole("tab")).toHaveText(["Posture", "Top risks", "Assets & coverage"]);
@@ -561,6 +566,7 @@ for (const theme of ["light", "dark"] as const) {
         expect(await tile.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       await page.getByRole("region", {name: "Recorded assets"}).screenshot({path: testInfo.outputPath(`overview-assets-zoom-${theme}-${viewport.width}.png`), animations: "disabled"});
+      expect(expensiveRequests).toEqual([]);
     });
   }
 }

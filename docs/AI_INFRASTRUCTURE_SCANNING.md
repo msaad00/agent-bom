@@ -214,3 +214,17 @@ See [`examples/ai-infra/`](../examples/ai-infra/) for ready-to-run scan scripts:
 - `amd-rocm-scan.sh` — Scan AMD ROCm images
 - `pytorch-triton-scan.sh` — Scan PyTorch + Triton inference
 - `gpu-fleet-k8s-scan.sh` — Scan Kubernetes GPU workloads
+
+
+### Argument-flow evidence in JSON
+
+Scan a Python project with `agent-bom scan -p ./project -f json -o report.json`.
+In a blast-radius row, `symbol_reachability_tainted_argument` is `true` when
+bounded local analysis traces any call argument to a function parameter or a
+recognized untrusted source. Straight-line local assignments are followed;
+reassignment replaces the prior value. `false` means the supported analysis
+found no such flow. `null` means analysis is unavailable, including advisories
+without affected symbols, unsupported languages or control flow, and unknown
+external values. Inspect the affected symbols and call evidence before deciding
+whether the vulnerable parameter can receive attacker-controlled input. This
+field does not prove exploitability or change severity or reachability verdicts.

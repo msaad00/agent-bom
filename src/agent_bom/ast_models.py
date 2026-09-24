@@ -108,8 +108,8 @@ class DependencySymbolReach:
     # deliberately scoped to a single hop — it does not prove the calling
     # function's own parameter is itself externally controlled beyond this
     # one function boundary. Python-only today; other language parsers leave
-    # this at the honest default.
-    tainted_argument: bool = False
+    # this at None (not assessed). False is reserved for an assessed call.
+    tainted_argument: bool | None = None
 
 
 @dataclass

@@ -114,6 +114,7 @@ function staleScan(jobId: string) {
 describe("Overview canonical finding counts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMock.getInventorySummary.mockResolvedValue(null);
     Object.assign(deploymentCounts, { critical: 7, high: 11, medium: 13, low: 17, unrated: 19, total: 67, kev: 5 });
     apiMock.getPosture.mockResolvedValue({ grade: "D", score: 49 });
     apiMock.getOverview.mockResolvedValue(overviewFixture());
@@ -167,6 +168,30 @@ describe("Overview canonical finding counts", () => {
       expect(apiMock.getOverview).toHaveBeenCalledWith();
       expect(screen.getByLabelText("Evidence scopes")).toHaveTextContent("Findings: Current tenant");
     } finally { window.history.replaceState({}, "", "/"); }
+  });
+
+  it("waits for overview and uses summaries without scanning the host or downloading full reports", async () => {
+    let resolveOverview!: (value: OverviewResponse) => void;
+    apiMock.getOverview.mockReturnValue(new Promise<OverviewResponse>((resolve) => { resolveOverview = resolve; }));
+    apiMock.getInventorySummary.mockResolvedValue({
+      scan_id: "connected-estate", total_assets: 120, by_type: { agent: 93, package: 27 },
+      by_group: {}, completeness: "complete", scope: "snapshot",
+    });
+    await act(async () => { render(<Dashboard />); });
+    expect(apiMock.getScan).not.toHaveBeenCalled();
+    expect(apiMock.listAgents).not.toHaveBeenCalled();
+    await act(async () => resolveOverview({ ...overviewFixture(), finding_counts: { ...deploymentCounts } }));
+    expect(apiMock.getScan).not.toHaveBeenCalled();
+    expect(apiMock.listAgents).not.toHaveBeenCalled();
+    expect(cockpitProps.mock.lastCall?.[0]).toMatchObject({ agents: 93, signals: { packages: 27, tools: null } });
+  });
+
+  it("keeps unavailable inventory counts unknown instead of substituting local discovery", async () => {
+    apiMock.getOverview.mockResolvedValue({ ...overviewFixture(), finding_counts: { ...deploymentCounts } });
+    apiMock.getInventorySummary.mockRejectedValue(new Error("inventory unavailable"));
+    await act(async () => { render(<Dashboard />); });
+    expect(apiMock.listAgents).not.toHaveBeenCalled();
+    expect(cockpitProps.mock.lastCall?.[0]).toMatchObject({ agents: null, signals: { packages: null, tools: null } });
   });
 
   it("does not present pending initial requests as an empty estate or a scan recommendation", async () => {

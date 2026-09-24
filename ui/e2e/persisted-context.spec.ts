@@ -174,3 +174,33 @@ test("client navigation to another explicit snapshot replaces the Context worksp
   await page.getByRole("button", { name: /Cloud/ }).click();
   await expect(page).toHaveURL(/scan=second&lens=cloud/);
 });
+
+for (const theme of ["light", "dark"] as const) for (const width of [1440, 390]) {
+  test(`conditional admin evidence stays disclosed ${theme} ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    const role = { ...node("role:conditional", "role", "Deployment role"), attributes: {
+      admin_equivalence_status: "conditional_admin", admin_equivalence_resource_scopes: ["arn:aws:iam::123456789012:*"]
+    } };
+    await page.route("**/v1/**", route => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/v1/auth/me") return route.fulfill({ json: { authenticated: true, auth_required: false, tenant_id: "fixture", auth_method: "anonymous", role: "admin", configured_modes: [], recommended_ui_mode: "no_auth", memberships: [] } });
+      if (url.pathname === "/v1/jobs") return route.fulfill({ json: { jobs: [{ job_id: "iam", status: "done" }], total: 1 } });
+      if (url.pathname === "/v1/scan/iam/status") return route.fulfill({ json: { job_id: "iam", status: "done", graph_scan_id: "iam" } });
+      if (url.pathname === "/v1/graph/agents") return route.fulfill({ json: { scan_id: "iam", agents: [agent], pagination: { total: 1 } } });
+      if (url.pathname === "/v1/graph/incident-edges") return route.fulfill({ json: { scan_id: "iam", snapshot_generation: generation, node_id: root, found: true, direction: "both", limit: 24, node: agent, nodes: [role], edges: [relation(root, role.id, "assumes")], next_cursor: null, completeness: { status: "complete", complete: true, truncated: false, sampled: false, total: 1, returned: 1, missing_endpoint_count: 0, scope: "incident_edge_page" } } });
+      return route.fulfill({ json: {} });
+    });
+    await page.goto("/graph?lens=context");
+    const inspector = page.getByLabel("Agent neighborhood inspector");
+    await inspector.getByText(/^Loaded entities \(\d+\)$/).click();
+    await inspector.getByRole("button", { name: /Deployment role.*role:conditional/ }).click();
+    await expect(inspector.getByText("Conditional admin", { exact: true })).not.toBeVisible();
+    await inspector.getByText("Recorded identity", { exact: true }).click();
+    await expect(inspector.getByText("Conditional admin", { exact: true })).toBeVisible();
+    await expect(inspector.getByText(/request context has not been verified/)).toBeVisible();
+    await expect(inspector.getByText(/Scope: arn:aws:iam/)).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`admin-${theme}-${width}.png`), fullPage: true });
+  });
+}

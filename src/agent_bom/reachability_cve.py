@@ -134,12 +134,14 @@ class SymbolReachIndex:
     # ``DependencySymbolReach.tainted_argument``). Additive evidence only —
     # never used to decide the reachability state itself.
     _tainted_symbols_by_key: dict[str, set[str]] = field(default_factory=dict)
+    _unassessed_symbols_by_key: dict[str, set[str]] = field(default_factory=dict)
 
     @classmethod
     def from_reaches(cls, reaches: Iterable["DependencySymbolReach"]) -> "SymbolReachIndex":
         symbols_by_key: dict[str, set[str]] = {}
         paths_by_key: dict[str, tuple[str, ...]] = {}
         tainted_by_key: dict[str, set[str]] = {}
+        unassessed_by_key: dict[str, set[str]] = {}
         for reach in reaches:
             if not reach.package:
                 continue
@@ -149,14 +151,16 @@ class SymbolReachIndex:
             # ``Type``. The advisory side never expands (see _symbol_tokens).
             tokens = _symbol_tokens(reach.symbol, expand_head=True)
             bucket |= tokens
-            if getattr(reach, "tainted_argument", False):
+            if getattr(reach, "tainted_argument", None) is None:
+                unassessed_by_key.setdefault(key, set()).update(tokens)
+            if getattr(reach, "tainted_argument", None):
                 tainted_by_key.setdefault(key, set()).update(tokens)
             # Keep the shortest (closest) call path as evidence per package.
             existing = paths_by_key.get(key)
             candidate = tuple(reach.call_path)
             if candidate and (existing is None or len(candidate) < len(existing)):
                 paths_by_key[key] = candidate
-        return cls(symbols_by_key, paths_by_key, tainted_by_key)
+        return cls(symbols_by_key, paths_by_key, tainted_by_key, unassessed_by_key)
 
     @classmethod
     def from_ast_result(cls, result: "ASTAnalysisResult") -> "SymbolReachIndex":
@@ -237,6 +241,10 @@ class SymbolReachIndex:
             if key != exact and key.startswith(prefix):
                 symbols |= syms
         return symbols
+
+    def unassessed_taint_symbols(self, package: str, *, ecosystem: str = "pypi") -> set[str]:
+        """Symbols with at least one call site lacking argument analysis."""
+        return set().union(*(self._unassessed_symbols_by_key.get(key, set()) for key in self._matching_keys(package, ecosystem)))
 
     def call_path_for_package(self, package: str, *, ecosystem: str = "pypi") -> tuple[str, ...]:
         shortest: tuple[str, ...] = ()
@@ -357,7 +365,7 @@ class ReachabilitySignal:
     # single-hop check, not full inter-procedural taint proof: it does not
     # verify the calling function's own parameter is itself externally
     # controlled beyond that one function boundary.
-    tainted_argument: bool = False
+    tainted_argument: bool | None = None
 
     @property
     def function_reachable(self) -> bool:
@@ -697,6 +705,7 @@ def classify_reachability(
     # (non-Go, or GHSA function lists) fall back to package-level reach.
     matched: set[str] = set()
     tainted_matched: set[str] = set()
+    unassessed_matched: set[str] = set()
     for path, syms in advisory_by_path.items():
         if not syms:
             continue
@@ -706,6 +715,7 @@ def classify_reachability(
         else:
             reached = index.symbols_for_package(package, ecosystem=eco)
             tainted_reached = index.tainted_symbols_for_package(package, ecosystem=eco)
+        unassessed_matched |= syms & reached & index.unassessed_taint_symbols(path if path and eco == "go" else package, ecosystem=eco)
         matched |= syms & reached
         tainted_matched |= syms & tainted_reached
 
@@ -718,7 +728,7 @@ def classify_reachability(
             advisory_symbols=tuple(sorted(advisory_symbols)),
             call_path=call_path,
             advisory_identifiers=advisory_ids,
-            tainted_argument=bool(tainted_matched),
+            tainted_argument=True if tainted_matched else None if unassessed_matched else False,
         )
 
     if pkg_reached:

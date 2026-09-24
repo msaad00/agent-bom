@@ -981,10 +981,11 @@ class BlastRadius:
     # to a direct untrusted-source call (agent_bom.reachability_cve.classify_
     # reachability / ReachabilitySignal.tainted_argument). Additive evidence
     # only — never upgrades/downgrades symbol_reachability or risk scoring.
-    # Python-only today; other ecosystems always carry the honest default.
+    # None means not assessed; False means the bounded analysis found no taint.
+    # Python-only today; unsupported ecosystems remain unassessed.
     # Appended after the existing reachability fields to preserve positional
     # construction compatibility (see the comment above dependency_reachable).
-    symbol_reachability_tainted_argument: bool = False
+    symbol_reachability_tainted_argument: Optional[bool] = None
 
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius.

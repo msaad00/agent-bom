@@ -49,6 +49,7 @@ def test_one_incidental_agent_does_not_suppress_the_demo_estate(monkeypatch: pyt
     agents = discovery._discover_agents_with_demo_fallback()
 
     assert len(agents) > 1, "a single incidental agent must not stand in for the estate"
+    assert "mcp-cli" not in {agent.name for agent in agents}
 
 
 def test_demo_estate_renders_a_real_mesh(monkeypatch: pytest.MonkeyPatch, demo_mode) -> None:
@@ -59,6 +60,7 @@ def test_demo_estate_renders_a_real_mesh(monkeypatch: pytest.MonkeyPatch, demo_m
     names = {getattr(agent, "name", "") for agent in agents}
 
     assert len(names) > 1
+    assert "mcp-cli" not in names
 
 
 def test_empty_discovery_still_falls_back(monkeypatch: pytest.MonkeyPatch, demo_mode) -> None:

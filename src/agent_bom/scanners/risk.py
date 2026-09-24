@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, Optional, cast
+from typing import Any, Optional
+
+from cvss import CVSS4
 
 from agent_bom.models import Severity
 
@@ -82,48 +84,9 @@ _CVSS3_CIA = {"N": 0.00, "L": 0.22, "H": 0.56}
 
 
 def _parse_cvss4_vector(vector: str) -> Optional[float]:
-    """Extract an approximate base score from a CVSS 4.0 vector string."""
+    """Score CVSS 4.0 with its macrovector algorithm, not v3-style weights."""
     try:
-        parts = vector.split("/")[1:]
-        metrics = dict(p.split(":") for p in parts)
-
-        av = {"N": 1.0, "A": 0.75, "L": 0.55, "P": 0.20}.get(metrics.get("AV", ""), None)
-        ac = {"L": 1.0, "H": 0.55}.get(metrics.get("AC", ""), None)
-        attack_requirements = {"N": 1.0, "P": 0.60}.get(metrics.get("AT", ""), None)
-        pr = {"N": 1.0, "L": 0.65, "H": 0.30}.get(metrics.get("PR", ""), None)
-        ui = {"N": 1.0, "P": 0.70, "A": 0.55}.get(metrics.get("UI", ""), None)
-
-        vc = {"H": 0.56, "L": 0.22, "N": 0.0}.get(metrics.get("VC", ""), None)
-        vi = {"H": 0.56, "L": 0.22, "N": 0.0}.get(metrics.get("VI", ""), None)
-        va = {"H": 0.56, "L": 0.22, "N": 0.0}.get(metrics.get("VA", ""), None)
-
-        required = (av, ac, attack_requirements, pr, ui, vc, vi, va)
-        if any(value is None for value in required):
-            return None
-
-        av = float(cast(float, av))
-        ac = float(cast(float, ac))
-        attack_requirements = float(cast(float, attack_requirements))
-        pr = float(cast(float, pr))
-        ui = float(cast(float, ui))
-        vc = float(cast(float, vc))
-        vi = float(cast(float, vi))
-        va = float(cast(float, va))
-
-        sc = {"H": 0.56, "L": 0.22, "N": 0.0}.get(metrics.get("SC", "N"), 0.0)
-        si = {"H": 0.56, "L": 0.22, "N": 0.0}.get(metrics.get("SI", "N"), 0.0)
-        sa = {"H": 0.56, "L": 0.22, "N": 0.0}.get(metrics.get("SA", "N"), 0.0)
-
-        isc = 1.0 - (1.0 - vc) * (1.0 - vi) * (1.0 - va)
-        isc_sub = 1.0 - (1.0 - sc) * (1.0 - si) * (1.0 - sa)
-        impact = max(isc, isc + 0.25 * isc_sub)
-
-        if impact <= 0:
-            return 0.0
-
-        exploitability = av * ac * attack_requirements * pr * ui
-        raw = min(10.0, 1.1 * (6.42 * impact + 8.22 * exploitability * 0.6))
-        return math.ceil(raw * 10) / 10.0
+        return float(CVSS4(vector).scores()[0])
     except Exception as exc:  # noqa: BLE001
         _logger.debug("CVSS 4.0 vector parse failed for %r: %s", vector, exc)
         return None

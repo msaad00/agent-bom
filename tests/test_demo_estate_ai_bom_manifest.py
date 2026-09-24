@@ -115,6 +115,7 @@ def test_fleet_server_counts_and_observations_share_declared_links(seeded_stores
     fleet = {a.agent_id: a for a in _get_fleet_store().list_by_tenant(seeded_stores)}
     observations = {o.server_stable_id: o for o in _get_mcp_observation_store().list_by_tenant(seeded_stores)}
     for agent in agents:
+        assert fleet[f"demo-fleet-{agent.asset_id}"].agent_type == agent.tags.get("agent_framework", "mcp-client")
         target = agent.tags.get("uses_server")
         assert fleet[f"demo-fleet-{agent.asset_id}"].server_count == int(target in servers)
     for server in servers:
@@ -129,7 +130,7 @@ def test_old_demo_associations_are_repaired_once(seeded_stores):
 
     store = _get_fleet_store()
     old = next(a for a in store.list_by_tenant(seeded_stores) if a.agent_id.startswith("demo-fleet-"))
-    old.tags = [tag for tag in old.tags if tag != "demo-associations-v2"]
+    old.tags = [tag for tag in old.tags if tag != "demo-associations-v3"]
     old.server_count = 999
     store.put(old)
     unrelated = old.model_copy(update={"agent_id": "customer-agent", "name": "Customer agent"})

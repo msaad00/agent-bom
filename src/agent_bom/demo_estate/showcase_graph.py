@@ -36,8 +36,8 @@ SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
 # ``Remediation`` object frozen to its Python repr, and a running demo would have
 # served that snapshot forever. The seven-day gap is the drift lens's window and
 # is preserved on every bump.
-# The September 24 seed adds declared agent/server associations shared with fleet.
-_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 24, 0, 0, 0, tzinfo=timezone.utc)
+# The September 24 01:00 seed adds declared model/framework associations shared with fleet.
+_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 24, 1, 0, 0, tzinfo=timezone.utc)
 _SHOWCASE_IMPORT_NOW = datetime.now(timezone.utc)
 # Preserve the deterministic target once it is in the past. Before then, clamp
 # to the current UTC day's start so a release candidate never presents a
@@ -288,7 +288,7 @@ def seed_showcase_fleet_and_runtime(tenant_id: str = SHOWCASE_TENANT) -> dict[st
 
     fleet_store = _get_fleet_store()
     observation_store = _get_mcp_observation_store()
-    association_revision = "demo-associations-v2"
+    association_revision = "demo-associations-v3"
     existing = [a for a in fleet_store.list_by_tenant(tenant_id) if a.agent_id.startswith("demo-fleet-")]
     if existing and all(association_revision in a.tags for a in existing):
         return {"seeded": False, "reason": "fleet_present"}

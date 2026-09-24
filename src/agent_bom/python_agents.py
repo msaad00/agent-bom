@@ -438,8 +438,10 @@ def _extract_agent_defs(content: str, filename: str) -> list[_PythonAgentDef]:
 
         tools_node = _keyword_value(node, "tools")
         tool_source = "keyword-tools-arg"
-        if tools_node is None and call_name == "create_react_agent" and len(node.args) >= 2:
-            tools_node = node.args[1]
+        # LangChain initialize_agent(tools, llm) reverses the LangGraph order.
+        tools_position = {"create_react_agent": 1, "initialize_agent": 0}.get(call_name)
+        if tools_node is None and tools_position is not None and len(node.args) > tools_position:
+            tools_node = node.args[tools_position]
             tool_source = "positional-tools-arg"
 
         all_tools = resolve_tool_expr(tools_node)

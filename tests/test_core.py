@@ -2452,6 +2452,28 @@ def test_python_agents_detects_langgraph_positional_tools_arg(tmp_path):
     assert tool.discovery_confidence == "high"
 
 
+@pytest.mark.parametrize("tools_expression", ["[search, lookup]", "toolset"])
+def test_python_agents_detects_langchain_initialize_positional_tools(tmp_path, tools_expression):
+    (tmp_path / "requirements.txt").write_text("langchain==0.2.0\n")
+    (tmp_path / "agent.py").write_text(
+        "from langchain.agents import initialize_agent\n"
+        "from langchain_core.tools import tool\n"
+        "@tool\ndef search(query: str): return query\n"
+        "@tool\ndef lookup(query: str): return query\n"
+        "@tool\ndef unused(query: str): return query\n"
+        "toolset = [search, lookup]\n"
+        f"agent = initialize_agent({tools_expression}, llm)\n"
+    )
+    from agent_bom.python_agents import scan_python_agents
+
+    agents, _ = scan_python_agents(str(tmp_path))
+    assert len(agents) == 1
+    tools = agents[0].mcp_servers[0].tools
+    assert {tool.name for tool in tools} == {"search", "lookup"}
+    assert all(tool.discovery_source == "decorator+positional-tools-arg" for tool in tools)
+    assert all(tool.discovery_confidence == "high" for tool in tools)
+
+
 def test_cli_scan_has_agent_project_flag():
     """CLI scan command exposes --agent-project flag."""
     runner = CliRunner()

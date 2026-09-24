@@ -50,7 +50,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.demo_estate.enterprise_correlation import EnterpriseCorrelation
     from agent_bom.finding import Finding
 
-ESTATE_GRAPH_VERSION = "estate_graph.v1"
+ESTATE_GRAPH_VERSION = "estate_graph.v2"
 
 # Data source stamped on every projected node/edge so a demo estate can always
 # be told apart from a real scan in the same graph.
@@ -97,6 +97,7 @@ _RESOURCE_ENTITY_TYPES: dict[str, EntityType] = {
     "server": EntityType.SERVER,
     "tool": EntityType.TOOL,
     "agent": EntityType.AGENT,
+    "framework": EntityType.FRAMEWORK,
     # AI estate — first party, inside the cloud accounts. Mapped explicitly for
     # the same reason as everything above: an unmapped type silently renders as a
     # generic cloud resource, so a Bedrock agent and an EC2 instance would be
@@ -158,6 +159,8 @@ GRAPH_CANVAS_NODE_BUDGET = 5000
 # "this AI service reaches that data through that identity".
 _TOPOLOGY_TAGS: tuple[tuple[str, RelationshipType], ...] = (
     ("uses_server", RelationshipType.USES),
+    ("uses_model", RelationshipType.SERVES_MODEL),
+    ("uses_framework", RelationshipType.USES_FRAMEWORK),
     ("uses_identity", RelationshipType.ASSUMES),
     ("reads_data", RelationshipType.CAN_ACCESS),
     ("delegates_to", RelationshipType.DELEGATED_TO),
@@ -383,13 +386,22 @@ def project_estate_into_graph(
     # renders a tree, and a tree cannot express "this AI service assumes that
     # role and reads that table" — which is the whole reason the AI estate was
     # generated inside the cloud accounts rather than beside them.
-    known_asset_ids = {asset.asset_id for asset in estate.assets}
+    assets_by_id = {asset.asset_id: asset for asset in estate.assets}
+    known_asset_ids = set(assets_by_id)
     topology_edges = 0
     exposure_edges = 0
     for asset in estate.assets:
         for tag, relationship in _TOPOLOGY_TAGS:
             target = asset.tags.get(tag, "")
             if not target or target not in known_asset_ids or target == asset.asset_id:
+                continue
+            expected_target = {"uses_model": EntityType.MODEL, "uses_framework": EntityType.FRAMEWORK}.get(tag)
+            if expected_target is not None and (
+                graph.nodes[asset.asset_id].entity_type != EntityType.AGENT
+                or graph.nodes[target].entity_type != expected_target
+                or asset.tenant_id != estate.tenant_id
+                or assets_by_id[target].tenant_id != estate.tenant_id
+            ):
                 continue
             # Images consume their package contents; workloads consume images.
             source = asset.asset_id

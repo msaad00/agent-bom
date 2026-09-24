@@ -389,3 +389,69 @@ def test_declared_agent_server_links_are_projected(estate, projected):
     for agent in agents:
         matching = [e for e in graph.edges if e.source == agent.asset_id and e.target == agent.tags["uses_server"]]
         assert any(e.relationship == RelationshipType.USES for e in matching)
+
+
+def test_declared_agent_models_and_frameworks_are_projected(estate, projected) -> None:
+    graph, _ = projected
+    agents = [a for a in estate.assets if a.resource_type == "agent" and a.tags.get("agent_role")]
+    assert agents and all(a.tags.get("uses_model") and a.tags.get("uses_framework") for a in agents)
+    for agent in agents:
+        for tag, relationship, target_type in (
+            ("uses_model", RelationshipType.SERVES_MODEL, EntityType.MODEL),
+            ("uses_framework", RelationshipType.USES_FRAMEWORK, EntityType.FRAMEWORK),
+        ):
+            target = agent.tags[tag]
+            assert graph.nodes[target].entity_type == target_type
+            edges = [e for e in graph.edges if e.source == agent.asset_id and e.target == target and e.relationship == relationship]
+            assert len(edges) == 1
+            assert edges[0].evidence["reason"] == f"estate_{tag}"
+            assert edges[0].provenance["source"] == "demo-estate"
+            assert graph.nodes[target].attributes["synthetic"] is True
+        assert graph.nodes[agent.tags["uses_framework"]].label == agent.tags["agent_framework"]
+
+
+@pytest.mark.parametrize("reference", [None, "missing:model", "wrong-type"])
+def test_agent_model_links_require_declared_typed_targets(estate, reference: str | None) -> None:
+    agent = next(a for a in estate.assets if a.resource_type == "agent")
+    other = next(a for a in estate.assets if a.resource_type == "server")
+    tags = {"model_family": "gpt-4.1", "environment": agent.environment}
+    if reference is not None:
+        tags.update(
+            uses_model=other.asset_id if reference == "wrong-type" else reference,
+            uses_framework=other.asset_id if reference == "wrong-type" else reference,
+        )
+    isolated = estate.model_copy(update={"assets": (agent.model_copy(update={"tags": tags}), other)})
+    graph = UnifiedGraph(scan_id="association-contract", tenant_id=estate.tenant_id)
+    project_estate_into_graph(graph, isolated)
+    assert not any(e.relationship in {RelationshipType.SERVES_MODEL, RelationshipType.USES_FRAMEWORK} for e in graph.edges)
+    assert not graph.nodes_by_type(EntityType.MODEL)
+    assert not graph.nodes_by_type(EntityType.FRAMEWORK)
+
+
+def test_declared_agent_model_does_not_cross_tenant(estate) -> None:
+    agent = next(a for a in estate.assets if a.resource_type == "agent")
+    model = next(a for a in estate.assets if a.resource_type == "hosted_model")
+    isolated = estate.model_copy(
+        update={
+            "assets": (
+                agent.model_copy(update={"tags": {"uses_model": model.asset_id}}),
+                model.model_copy(update={"tenant_id": "other-tenant"}),
+            )
+        }
+    )
+    graph = UnifiedGraph(scan_id="association-tenant", tenant_id=estate.tenant_id)
+    project_estate_into_graph(graph, isolated)
+    assert not any(e.relationship == RelationshipType.SERVES_MODEL for e in graph.edges)
+
+
+def test_demo_agent_without_model_inventory_has_no_model_reference(estate) -> None:
+    from agent_bom.demo_estate.enterprise_ai import build_third_party_ai_assets, index_cloud_accounts
+
+    assets = build_third_party_ai_assets(
+        index_cloud_accounts(estate.assets), tenant_id=estate.tenant_id, mcp_servers=0, agents=2, external_models=0
+    )
+    agents = [asset for asset in assets if asset.resource_type == "agent"]
+    assert len(agents) == 2
+    assert all("uses_model" not in agent.tags for agent in agents)
+    known = {asset.asset_id for asset in assets}
+    assert all(agent.tags["uses_framework"] in known for agent in agents)

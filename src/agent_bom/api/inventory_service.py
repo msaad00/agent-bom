@@ -210,6 +210,7 @@ def asset_row(node: Any) -> dict[str, Any]:
         "environment": _node_environment(node),
         "provider": _node_provider(node),
         "risk": node.risk_score,
+        "risk_assessment": node.risk_assessment,
         "severity": node.severity,
         "status": node.status.value if hasattr(node.status, "value") else str(node.status),
         "source": sources[0] if sources else "",

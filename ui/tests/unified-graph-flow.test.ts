@@ -270,3 +270,12 @@ describe("explicit investigation context", () => {
     expect(buildUnifiedFlowGraph(graph, { ...context, vulnOnly: true }).nodes).toHaveLength(0);
   });
 });
+
+it.each([false, true])("preserves explicit risk assessment through the flow adapter (assessed=%s)", assessed => {
+  const agent = node("agent", EntityType.AGENT, "Agent");
+  if (assessed) agent.risk_assessment = { status: "assessed", basis: "test", scope: "node" };
+  const graph = { scan_id: "assessment", tenant_id: "default", created_at: createdAt, nodes: [agent], edges: [], attack_paths: [], interaction_risks: [] } as unknown as UnifiedGraphData;
+  const data = buildUnifiedFlowGraph(graph, createFocusedGraphFilters(), new Set([agent.id])).nodes[0]!.data;
+  expect(data.riskScore).toBe(0);
+  expect(data.riskAssessment?.status).toBe(assessed ? "assessed" : "not_assessed");
+});

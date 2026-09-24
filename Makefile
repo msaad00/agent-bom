@@ -57,6 +57,7 @@ preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do
 	@echo "→ documented surface counts";            python scripts/check-counts.py
 	@echo "→ product surface contract";             python scripts/check_product_surface_contract.py
 	@echo "→ graph proof fixtures";                 python scripts/check_graph_epic_proof.py
+	@echo "→ reference evidence lab";               python scripts/generate_reference_evidence_lab.py --check
 	@echo "→ enterprise demo surfaces";             python scripts/check_enterprise_demo_surfaces.py
 	@echo "→ release/README consistency";           python scripts/check_release_consistency.py
 	@echo "→ release evidence matrix";              python scripts/check_release_evidence_matrix.py
@@ -78,6 +79,7 @@ preflight-fix:  ## Regenerate every drift artifact so you never push stale OpenA
 	python sdks/shared/generate-patterns.py
 	python scripts/product_metrics_snapshot.py --write
 	python scripts/generate_mcp_profile_catalog.py
+	python scripts/generate_reference_evidence_lab.py
 	@echo "✓ regenerated — run 'git status', review, and commit the artifacts"
 
 docker-build:  ## Build Docker image

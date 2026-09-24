@@ -1,5 +1,6 @@
 "use client";
 
+import { nodeRiskLabel } from "@/lib/node-risk-assessment";
 import Link from "next/link";
 import { ExternalLink, Route } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -216,7 +217,7 @@ function FindingRow({
   const severity = data.severity?.toUpperCase() ?? "UNKNOWN";
   const cvss = typeof data.cvssScore === "number" ? data.cvssScore.toFixed(1) : "N/A";
   const epss = typeof data.epssScore === "number" ? `${(data.epssScore * 100).toFixed(1)}%` : "N/A";
-  const risk = typeof data.riskScore === "number" ? data.riskScore.toFixed(1) : "N/A";
+  const risk = nodeRiskLabel(data.riskScore, data.riskAssessment);
   const osvUrl = getOsvVulnerabilityUrl(data.label);
   const severityClass =
     data.severity === "critical"

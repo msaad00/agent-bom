@@ -1,5 +1,7 @@
 "use client";
 
+import { NODE_LABELS } from "@/lib/entity-labels";
+import { nodeRiskLabel } from "@/lib/node-risk-assessment";
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
@@ -89,48 +91,6 @@ const TYPE_ICON: Record<
   blueprint: DraftingCompass,
 };
 
-const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
-  provider: "Provider",
-  agent: "Agent",
-  org: "Organization",
-  account: "Account",
-  user: "User",
-  group: "Group",
-  role: "Role",
-  policy: "Policy",
-  serviceAccount: "Service Account",
-  servicePrincipal: "Service Principal",
-  federatedIdentity: "Federated Identity",
-  environment: "Environment",
-  fleet: "Fleet",
-  cluster: "Cluster",
-  server: "MCP Server",
-  sharedServer: "Shared MCP Server",
-  package: "Package",
-  vulnerability: "Vulnerability",
-  misconfiguration: "Misconfiguration",
-  credential: "Credential",
-  tool: "Tool",
-  model: "Model",
-  framework: "Framework",
-  dataset: "Dataset",
-  container: "Container",
-  cloudResource: "Cloud Resource",
-  managedIdentity: "Managed Identity",
-  accessGrant: "Access Grant",
-  accessPolicy: "Access Policy",
-  driftIncident: "Drift Incident",
-  dataStore: "Data Store",
-  directory: "Directory",
-  sourceFile: "Source File",
-  configFile: "Config File",
-  codeModule: "Code Module",
-  ciJob: "CI/CD Job",
-  apiGateway: "API Gateway",
-  toolCall: "Tool Call",
-  blueprint: "Blueprint",
-};
-
 const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
   provider: "border-[var(--border-subtle)]",
   agent: "border-emerald-700",
@@ -196,6 +156,7 @@ export function LineageDetailPanel({
   footerSlot?: ReactNode;
 }) {
   const Icon = TYPE_ICON[data.nodeType];
+  const typeLabel = data.nodeType === "server" ? "MCP Server" : data.nodeType === "sharedServer" ? "Shared MCP Server" : NODE_LABELS[data.nodeType];
   const osvUrl =
     data.nodeType === "vulnerability"
       ? getOsvVulnerabilityUrl(data.label)
@@ -531,14 +492,15 @@ export function LineageDetailPanel({
       <RuntimeEvidenceBadge tier={data.runtimeEvidenceTier} />
 
       {(data.status ||
+        data.riskAssessment != null ||
         data.riskScore != null ||
         data.firstSeen ||
         data.lastSeen) && (
         <div className="space-y-2">
           <Label>Lifecycle</Label>
           {data.status && <Row label="Status" value={data.status} />}
-          {data.riskScore != null && (
-            <Row label="Node risk score" value={data.riskScore.toFixed(1)} />
+          {(data.riskScore != null || data.riskAssessment != null) && (
+            <Row label="Node risk score" value={nodeRiskLabel(data.riskScore, data.riskAssessment)} />
           )}
           {data.firstSeen && (
             <Row label="First seen" value={shortDate(data.firstSeen)} />
@@ -773,7 +735,7 @@ export function LineageDetailPanel({
     return createPortal(
       <div className="fixed inset-0 z-[80]" data-testid="graph-entity-drawer">
         <Drawer open onClose={onClose} onBack={onClose} title={data.label}
-          eyebrow={TYPE_LABELS[data.nodeType]} size="none" resizable={false}
+          eyebrow={typeLabel} size="none" resizable={false}
           bodyClassName="!p-0 flex flex-col" footer={footerSlot}>
           {headerSlot ? <div className="shrink-0 px-4 pt-3 pb-3">{headerSlot}</div> : null}
           {tabBar}
@@ -815,7 +777,7 @@ export function LineageDetailPanel({
       <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
         <div className="min-w-0">
           <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
-            {TYPE_LABELS[data.nodeType]}
+            {typeLabel}
           </span>
           <div className="flex items-center gap-2 mt-0.5">
             <Icon className="w-4 h-4 shrink-0 text-[var(--text-secondary)]" />

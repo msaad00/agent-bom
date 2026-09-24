@@ -1034,7 +1034,8 @@ def _exposure_ref_for_node(node_id: str, nodes_by_id: dict[str, Any]) -> dict[st
     }
     if getattr(node, "severity", ""):
         ref["severity"] = node.severity
-    if float(getattr(node, "risk_score", 0.0) or 0.0) > 0:
+    ref["risk_assessment"] = node.risk_assessment
+    if float(getattr(node, "risk_score", 0.0) or 0.0) > 0 or node.risk_assessment["status"] == "assessed":
         ref["riskScore"] = node.risk_score
     return ref
 
@@ -2743,6 +2744,7 @@ async def list_graph_agents(
                 "id": node.id,
                 "label": node.label,
                 "risk_score": node.risk_score,
+                "risk_assessment": node.risk_assessment,
                 "severity": node.severity,
                 "status": node.status.value if hasattr(node.status, "value") else str(node.status),
                 "data_sources": node.data_sources,

@@ -1504,7 +1504,9 @@ def prior_delta_digest(
     if not effective_scan_id:
         return builder.build()
     for row in conn.execute(
-        "SELECT id, entity_type, label, severity, status, risk_score FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?",
+        "SELECT id, entity_type, label, severity, status, risk_score, "
+        "CASE WHEN entity_type = 'agent' THEN json_extract(attributes, '$.risk_assessment') END AS risk_assessment "
+        "FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?",
         (tenant_id, effective_scan_id),
     ):
         builder.add_node(
@@ -1514,6 +1516,7 @@ def prior_delta_digest(
             severity=row["severity"] or "",
             status=row["status"],
             risk_score=row["risk_score"],
+            risk_assessment=json.loads(row["risk_assessment"]) if row["risk_assessment"] else None,
         )
     for row in conn.execute(
         "SELECT source_node, target_node FROM attack_paths WHERE tenant_id = ? AND scan_id = ?",

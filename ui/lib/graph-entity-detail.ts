@@ -3,6 +3,7 @@
  * into LineageNodeData and resolve rubric fields (semantic layer, next action).
  */
 
+import { nodeRiskAssessment } from "@/lib/node-risk-assessment";
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
 import type { GraphNodeDetailResponse } from "@/lib/api-types";
 import { GRAPH_NODE_KIND_META } from "@/lib/graph-schema";
@@ -81,6 +82,7 @@ export function mergeGraphNodeDetail(
     entityType: String(detail.node.entity_type),
     status: String(detail.node.status ?? base.status ?? ""),
     riskScore: detail.node.risk_score ?? base.riskScore,
+    riskAssessment: nodeRiskAssessment(detail.node.risk_assessment),
     severity: detail.node.severity || base.severity,
     firstSeen: detail.node.first_seen || base.firstSeen,
     lastSeen: detail.node.last_seen || base.lastSeen,

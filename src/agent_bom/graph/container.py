@@ -427,14 +427,11 @@ class UnifiedGraph:
         existing = self.nodes.get(node.id)
         if existing:
             existing.last_seen = node.last_seen or _now_iso()
-            existing.attributes.update(node.attributes)
+            existing.merge_attributes_and_risk(node)
             # Severity: higher wins
             if SEVERITY_RANK.get(node.severity, 0) > SEVERITY_RANK.get(existing.severity, 0):
                 existing.severity = node.severity
                 existing.severity_id = node.severity_id
-            # Risk score: higher wins
-            if node.risk_score > existing.risk_score:
-                existing.risk_score = node.risk_score
             # Union data_sources
             existing_sources = set(existing.data_sources)
             for ds in node.data_sources:

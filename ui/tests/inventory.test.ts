@@ -303,3 +303,9 @@ it("preserves blueprint assets returned by the inventory API", () => {
   const row = inventoryAssetToRow({ id: "blueprint-1", name: "Approved service blueprint", type: "blueprint" } as Parameters<typeof inventoryAssetToRow>[0]);
   expect(row).toMatchObject({ id: "blueprint-1", kind: "code", label: "Approved service blueprint" });
 });
+
+it("preserves risk assessment through projected inventory assets", () => {
+  const base = { id: "agent", name: "Agent", type: "agent", risk: 0 } as Parameters<typeof inventoryAssetToRow>[0];
+  expect(inventoryAssetToRow(base)?.riskAssessment?.status).toBe("not_assessed");
+  expect(inventoryAssetToRow({ ...base, risk_assessment: { status: "assessed", basis: "test", scope: "node" } })?.riskAssessment?.status).toBe("assessed");
+});

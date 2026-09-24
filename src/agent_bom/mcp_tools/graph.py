@@ -178,6 +178,7 @@ def _node_ref(node_id: str, nodes_by_id: dict[str, Any]) -> dict[str, Any]:
         "role": _node_role(node),
         "severity": getattr(node, "severity", ""),
         "riskScore": float(getattr(node, "risk_score", 0.0) or 0.0),
+        "risk_assessment": getattr(node, "risk_assessment", {"status": "not_assessed", "basis": None, "scope": None}),
     }
 
 

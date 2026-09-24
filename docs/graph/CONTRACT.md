@@ -201,6 +201,27 @@ These contracts are additive foundations. Existing finding, graph, and endpoint
 payloads retain their current serialization until their producers can populate
 every field honestly and their migrations are independently tested.
 
+### Graph node score assessment
+
+Graph nodes retain the numeric `risk_score` field for compatibility. Interpret
+it with the additive `risk_assessment` object: `status`, `basis`, and `scope`.
+An assessed score names the calculation and the evidence scope it covers.
+An absent or invalid assessment is `not_assessed`, even when the legacy numeric
+field is zero or positive. A genuinely assessed zero must have explicit
+assessment metadata; an empty inventory or an absence of findings is insufficient.
+
+Node inspection displays **Not assessed** when that metadata is unavailable.
+Existing snapshots without it remain unassessed until rebuilt by a producer
+that records a calculation. This does not remove their findings or recorded
+relationships. A node score describes only its named scope; it does not prove
+complete collection, exploitability, or an observed attack. Exposure-path
+scores and finding scores keep their separate contracts.
+
+Score merges retain the winning score's own assessment. A different producer's
+basis must never be attached to that score merely because node attributes were
+combined. Persistence retains the assessment alongside node attributes without
+requiring legacy numeric consumers to migrate immediately.
+
 ---
 
 ## 2. Accuracy guarantees

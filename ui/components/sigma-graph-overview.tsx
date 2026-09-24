@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type Sigma from "sigma";
 import type { Edge, Node } from "@xyflow/react";
 import { Sparkles } from "lucide-react";
@@ -107,6 +107,7 @@ export function SigmaGraphOverview({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
+  const requestedFocusRef = useRef<string | null>(null);
   const onNodeSelectRef = useRef<SigmaGraphOverviewProps["onNodeSelect"]>(onNodeSelect);
   const [localSelectedId, setSelectedNodeId] = useState<string | null>(null);
   const selectedNodeId = selectedId === undefined ? localSelectedId : selectedId;
@@ -156,6 +157,25 @@ export function SigmaGraphOverview({
     [edges, filters, graph, nodes, grouping],
   );
   const isBudgeted = model.overview.omittedNodeCount > 0 || model.overview.omittedEdgeCount > 0;
+  const frameRequestedNode = useCallback(() => {
+    const id = requestedFocusRef.current;
+    const renderer = rendererRef.current;
+    if (!id || !renderer) return;
+    requestedFocusRef.current = null;
+    const position = renderer.getNodeDisplayData(id);
+    if (!position) return;
+    // Instant framing respects reduced motion and leaves subsequent manual pan alone.
+    renderer.getCamera().setState({ x: position.x, y: position.y, ratio: Math.min(renderer.getCamera().getState().ratio, 0.3) });
+  }, []);
+  const selectDisplayedNode = (id: string) => {
+    requestedFocusRef.current = id;
+    setSelectedNodeId(id);
+    if (controlsRef.current) controlsRef.current.open = false;
+    onNodeSelectRef.current?.(id);
+    // Selection can resize the canvas or replace its renderer; use the current one.
+    window.requestAnimationFrame(frameRequestedNode);
+  };
+
 
   useEffect(() => {
     const valid = selectedNodeId !== null && model.graph.hasNode(selectedNodeId);
@@ -269,10 +289,12 @@ export function SigmaGraphOverview({
         };
         renderer.on("afterRender", positionGroupLabels);
         renderer.on("clickNode", ({ node }) => {
+          requestedFocusRef.current = null;
           setSelectedNodeId(node);
           onNodeSelectRef.current?.(node);
         });
         renderer.on("clickStage", () => {
+          requestedFocusRef.current = null;
           setSelectedNodeId(null);
           onClearRef.current?.();
         });
@@ -297,6 +319,7 @@ export function SigmaGraphOverview({
           });
         }
         renderer.refresh();
+        frameRequestedNode();
         setRenderError(null);
       } catch (error) {
         if (!alive) return;
@@ -314,7 +337,7 @@ export function SigmaGraphOverview({
       rendererRef.current = null;
       container.replaceChildren();
     };
-  }, [cameraOwner, cameraPersistenceEnabled, cameraStorageKey, model, palette, grouping]);
+  }, [cameraOwner, cameraPersistenceEnabled, cameraStorageKey, model, palette, grouping, frameRequestedNode]);
 
   const focused = selectedNodeId && model.graph.hasNode(selectedNodeId) ? selectedNodeId : null;
   const neighbors = focused ? model.graph.neighbors(focused).filter((id) => id !== focused) : [];
@@ -344,7 +367,7 @@ export function SigmaGraphOverview({
             <input value={assetQuery} onChange={(event) => setAssetQuery(event.target.value)} className="rounded border border-outline bg-background px-2 py-1 text-foreground" placeholder="Name or exact ID" />
           </label>
           {assetQuery.trim() && <ul className="mt-2 max-h-36 overflow-y-auto">
-            {model.overview.nodes.filter((node) => `${node.id} ${node.label}`.toLowerCase().includes(assetQuery.trim().toLowerCase())).slice(0, 10).map((node) => <li key={node.id}><button type="button" className="break-all py-1 text-left text-sky-700 dark:text-sky-300" onClick={() => { setSelectedNodeId(node.id); if (controlsRef.current) controlsRef.current.open = false; onNodeSelectRef.current?.(node.id); }}>{node.label} · {node.id}</button></li>)}
+            {model.overview.nodes.filter((node) => `${node.id} ${node.label}`.toLowerCase().includes(assetQuery.trim().toLowerCase())).slice(0, 10).map((node) => <li key={node.id}><button type="button" className="break-all py-1 text-left text-sky-700 dark:text-sky-300" onClick={() => selectDisplayedNode(node.id)}>{node.label} · {node.id}</button></li>)}
             <li className="mt-1 text-ink-tertiary">Up to 10 matches from displayed assets. Use graph search for broader coverage.</li>
           </ul>}
         <label className="mt-2 flex items-center gap-2 text-xs text-ink-secondary">Group displayed assets by
@@ -376,13 +399,13 @@ export function SigmaGraphOverview({
       {focused && <div className="border-b border-outline bg-surface px-3 py-2 text-xs" aria-label="Focused graph asset">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="min-w-0 break-words"><strong>{model.graph.getNodeAttribute(focused, "label")}</strong> · {neighbors.length} connected assets in this displayed graph</p>
-          <button type="button" className="graph-chip-neutral" onClick={() => { setSelectedNodeId(null); onClearSelection?.(); }}>Clear focus</button>
+          <button type="button" className="graph-chip-neutral" onClick={() => { requestedFocusRef.current = null; setSelectedNodeId(null); onClearSelection?.(); }}>Clear focus</button>
         </div>
         <details className="mt-2">
           <summary className="cursor-pointer">Explore connected assets</summary>
           <p className="my-2 text-ink-secondary">Recorded connections, not proof of authorized access or execution. Open an asset’s details to inspect evidence or expand beyond this view.</p>
           <ul className="max-h-40 space-y-1 overflow-y-auto">
-            {neighbors.slice(0, 12).map((id) => <li key={id}><button type="button" className="text-sky-700 underline dark:text-sky-300" title={id} onClick={() => { setSelectedNodeId(id); onNodeSelectRef.current?.(id); }}>{model.graph.getNodeAttribute(id, "label")} <span className="text-ink-secondary">({model.graph.getNodeAttribute(id, "nodeType")})</span></button></li>)}
+            {neighbors.slice(0, 12).map((id) => <li key={id}><button type="button" className="text-sky-700 underline dark:text-sky-300" title={id} onClick={() => selectDisplayedNode(id)}>{model.graph.getNodeAttribute(id, "label")} <span className="text-ink-secondary">({model.graph.getNodeAttribute(id, "nodeType")})</span></button></li>)}
           </ul>
           {neighbors.length > 12 && <p>Showing 12 of {neighbors.length} connected assets. Use the details panel to investigate further.</p>}
           {neighbors.length === 0 && <p>No connected assets are present in this displayed scope.</p>}

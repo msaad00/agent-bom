@@ -312,6 +312,7 @@ export interface NodeDimensions {
 }
 
 export interface UnifiedNode {
+  risk_assessment?: import("@/lib/node-risk-assessment").NodeRiskAssessment | undefined;
   id: string;
   entity_type: EntityType | string;
   label: string;

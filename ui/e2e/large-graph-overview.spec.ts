@@ -690,11 +690,23 @@ for (const theme of ["light", "dark"] as const) {
       await sigma.getByLabel("Map grouping").selectOption("environment");
       await expect(sigma.getByText(/Environment groups/)).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`environment-overview-${theme}-${width}.png`), fullPage: true });
+      const canvas = sigma.getByTestId("sigma-graph-overview-canvas");
+      const bounds = (await canvas.boundingBox())!;
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width * 0.9, bounds.y + bounds.height * 0.8, { steps: 8 });
+      await page.mouse.up();
       await sigma.getByLabel("Find a displayed asset").fill("agent:large");
       await sigma.getByRole("button", { name: "Large Estate Agent · agent:large", exact: true }).click();
       await expect(sigma.getByLabel("Focused graph asset")).toBeVisible();
       await expect(sigma.getByRole("button", { name: "Clear focus" })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`environment-map-${theme}-${width}.png`), fullPage: true });
+      if (width === 1440) {
+        await sigma.getByText("Explore connected assets", { exact: true }).click();
+        await sigma.getByRole("button", { name: "large-package-0 (package)", exact: true }).click();
+        await expect(sigma.getByLabel("Focused graph asset")).toContainText("large-package-0");
+        await page.screenshot({ path: testInfo.outputPath(`neighbor-focus-${theme}.png`), fullPage: true });
+      }
       if (width === 390) await page.getByRole("complementary").getByRole("button", { name: "Close", exact: true }).click();
       else await sigma.getByRole("button", { name: "Clear focus" }).click();
       await expect(sigma.getByLabel("Focused graph asset")).toHaveCount(0);
@@ -740,3 +752,31 @@ test("estate map renders a recorded scan without fabricating environment metadat
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await page.screenshot({ path: testInfo.outputPath("recorded-scan-map.png"), fullPage: true });
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`node risk assessment disclosure in ${theme}`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    await routeLargeGraphPage(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    let assessed = false;
+    await page.route("**/v1/graph/node/**", route => route.fulfill({ json: {
+      node: { ...node("agent:large", "agent", "Large Estate Agent"), risk_score: 0,
+        risk_assessment: { status: assessed ? "assessed" : "not_assessed", basis: assessed ? "fixture" : null, scope: assessed ? "node" : null } },
+      edges_in: [], edges_out: [], neighbors: [], sources: [],
+      impact: { affected_count: 0, affected_by_type: {}, max_depth_reached: 0 },
+    } }));
+    for (const state of [false, true]) {
+      assessed = state;
+      await page.goto("/graph?rollup=0&vulnOnly=0&severity=&layers=agent,package");
+      const sigma = page.getByTestId("sigma-graph-overview");
+      await expect(sigma).toBeVisible();
+      await sigma.getByText("Map controls", { exact: true }).click();
+      await sigma.getByLabel("Find a displayed asset").fill("agent:large");
+      await sigma.getByRole("button", { name: "Large Estate Agent · agent:large", exact: true }).click();
+      const drawer = page.getByTestId("graph-entity-drawer");
+      await expect(drawer.getByText(assessed ? "0.0" : "Not assessed", { exact: true })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`node-risk-${theme}-${assessed ? "assessed" : "unknown"}.png`), fullPage: true });
+    }
+  });
+}

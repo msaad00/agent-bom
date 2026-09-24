@@ -14,6 +14,7 @@
  */
 
 import { GitCompareArrows } from "lucide-react";
+import { GraphLensLegend } from "./graph-lens-legend";
 
 import {
   CHANGE_KIND_META,
@@ -69,71 +70,14 @@ export function GraphDriftLegend({
   attributeSummaries,
 }: GraphDriftLegendProps) {
   return (
-    <div
-      data-testid="graph-drift-legend"
-      className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3"
+    <GraphLensLegend id="graph-drift" title="Drift lens" icon={GitCompareArrows} tone="sky"
+      active={active} onToggleActive={onToggleActive} filter={filter} onFilterChange={onFilterChange}
+      switchToggle groupLabel="Drift focus"
+      chips={DRIFT_LENS_FILTERS.map(id => ({ id, label: CHIP_LABELS[id], count: chipCount(id, counts, criticalCount) }))}
+      inactiveContent={<>Turn the lens on to classify this snapshot against{" "}
+        {comparedLabel ? <span className="font-mono">{comparedLabel}</span> : "the previous snapshot"}{" "}
+        — new, changed, and removed assets get distinct rings and chips.</>}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <GitCompareArrows className="h-4 w-4 text-sky-400" />
-          <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
-            Drift lens
-          </span>
-          {comparedLabel ? (
-            <span className="text-xs text-[var(--text-tertiary)]">
-              vs <span className="font-mono">{comparedLabel}</span>
-            </span>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={active}
-          data-testid="graph-drift-toggle"
-          onClick={() => onToggleActive(!active)}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            active
-              ? "border-sky-500/60 bg-sky-500/15 text-sky-700 dark:text-sky-200"
-              : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
-          }`}
-        >
-          {active ? "Lens on" : "Lens off"}
-        </button>
-      </div>
-
-      {active ? (
-        <>
-          <div
-            className="mt-3 flex flex-wrap gap-2"
-            data-testid="graph-drift-chips"
-            role="group"
-            aria-label="Drift focus"
-          >
-            {DRIFT_LENS_FILTERS.map((chip) => {
-              const selected = chip === filter;
-              const count = chipCount(chip, counts, criticalCount);
-              return (
-                <button
-                  key={chip}
-                  type="button"
-                  aria-pressed={selected}
-                  data-testid={`graph-drift-chip-${chip}`}
-                  onClick={() => onFilterChange(chip)}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                    selected
-                      ? "border-sky-500/60 bg-sky-500/15 text-sky-100"
-                      : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {CHIP_LABELS[chip]}
-                  <span className="ml-1.5 font-mono text-[11px] text-[var(--text-tertiary)]">
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
           <div
             className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5"
             data-testid="graph-drift-legend-items"
@@ -175,18 +119,6 @@ export function GraphDriftLegend({
               ))}
             </div>
           ) : null}
-        </>
-      ) : (
-        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
-          Turn the lens on to classify this snapshot against{" "}
-          {comparedLabel ? (
-            <span className="font-mono">{comparedLabel}</span>
-          ) : (
-            "the previous snapshot"
-          )}{" "}
-          — new, changed, and removed assets get distinct rings and chips.
-        </p>
-      )}
-    </div>
+    </GraphLensLegend>
   );
 }

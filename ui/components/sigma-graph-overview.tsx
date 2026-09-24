@@ -161,11 +161,11 @@ export function SigmaGraphOverview({
     const id = requestedFocusRef.current;
     const renderer = rendererRef.current;
     if (!id || !renderer) return;
+    requestedFocusRef.current = null;
     const position = renderer.getNodeDisplayData(id);
     if (!position) return;
     // Instant framing respects reduced motion and leaves subsequent manual pan alone.
     renderer.getCamera().setState({ x: position.x, y: position.y, ratio: Math.min(renderer.getCamera().getState().ratio, 0.3) });
-    requestedFocusRef.current = null;
   }, []);
   const selectDisplayedNode = (id: string) => {
     requestedFocusRef.current = id;
@@ -289,10 +289,12 @@ export function SigmaGraphOverview({
         };
         renderer.on("afterRender", positionGroupLabels);
         renderer.on("clickNode", ({ node }) => {
+          requestedFocusRef.current = null;
           setSelectedNodeId(node);
           onNodeSelectRef.current?.(node);
         });
         renderer.on("clickStage", () => {
+          requestedFocusRef.current = null;
           setSelectedNodeId(null);
           onClearRef.current?.();
         });
@@ -397,7 +399,7 @@ export function SigmaGraphOverview({
       {focused && <div className="border-b border-outline bg-surface px-3 py-2 text-xs" aria-label="Focused graph asset">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="min-w-0 break-words"><strong>{model.graph.getNodeAttribute(focused, "label")}</strong> · {neighbors.length} connected assets in this displayed graph</p>
-          <button type="button" className="graph-chip-neutral" onClick={() => { setSelectedNodeId(null); onClearSelection?.(); }}>Clear focus</button>
+          <button type="button" className="graph-chip-neutral" onClick={() => { requestedFocusRef.current = null; setSelectedNodeId(null); onClearSelection?.(); }}>Clear focus</button>
         </div>
         <details className="mt-2">
           <summary className="cursor-pointer">Explore connected assets</summary>

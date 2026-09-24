@@ -8,6 +8,7 @@
  */
 
 import { Radar } from "lucide-react";
+import { GraphLensLegend } from "./graph-lens-legend";
 
 import {
   EVIDENCE_LENS_FILTERS,
@@ -36,64 +37,10 @@ export function GraphEvidenceLegend({
   onFilterChange,
   counts,
 }: GraphEvidenceLegendProps) {
-  return (
-    <div
-      data-testid="graph-evidence-legend"
-      className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Radar className="h-4 w-4 text-violet-400" />
-          <span className="text-[10px] uppercase tracking-[0.24em] text-violet-400">
-            Evidence lens
-          </span>
-        </div>
-        <button
-          type="button"
-          data-testid="graph-evidence-toggle"
-          aria-pressed={active}
-          onClick={() => onToggleActive(!active)}
-          className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-            active
-              ? "border-violet-500/60 bg-violet-500/15 text-violet-100"
-              : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
-          }`}
-        >
-          {active ? "Lens on" : "Lens off"}
-        </button>
-      </div>
-
-      {active ? (
-        <div className="mt-3 flex flex-wrap gap-2" data-testid="graph-evidence-chips">
-          {EVIDENCE_LENS_FILTERS.map((chip) => {
-            const selected = filter === chip;
-            return (
-              <button
-                key={chip}
-                type="button"
-                aria-pressed={selected}
-                data-testid={`graph-evidence-chip-${chip}`}
-                onClick={() => onFilterChange(chip)}
-                className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                  selected
-                    ? "border-violet-500/60 bg-violet-500/15 text-violet-100"
-                    : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
-                }`}
-              >
-                {CHIP_LABELS[chip]}
-                <span className="ml-1.5 font-mono text-[11px] text-[var(--text-tertiary)]">
-                  {counts[chip]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
-          Turn the lens on to highlight nodes backed by runtime observed or blocked
-          evidence instead of static scan inference alone.
-        </p>
-      )}
-    </div>
-  );
+  return <GraphLensLegend
+    id="graph-evidence" title="Evidence lens" icon={Radar} tone="violet"
+    active={active} onToggleActive={onToggleActive} filter={filter} onFilterChange={onFilterChange}
+    chips={EVIDENCE_LENS_FILTERS.map(id => ({ id, label: CHIP_LABELS[id], count: counts[id] }))}
+    inactiveContent="Turn the lens on to highlight nodes backed by runtime observed or blocked evidence instead of static scan inference alone."
+  />;
 }

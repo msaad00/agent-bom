@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SigmaGraphOverview } from "@/components/sigma-graph-overview";
@@ -15,6 +15,8 @@ const harness = vi.hoisted(() => ({ instances: [] as Array<{
     emit: (state: { x: number; y: number; angle: number; ratio: number }) => void;
   };
   killed: boolean;
+  events: Record<string, () => void>;
+  getNodeDisplayData: (id: string) => { x: number; y: number } | undefined;
   settings: { nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> };
 }> }));
 
@@ -59,16 +61,17 @@ vi.mock("sigma", () => {
     default: class SigmaMock {
       camera = new CameraMock();
       killed = false;
+      events: Record<string, () => void> = {};
 
       constructor(_graph: unknown, _container: unknown, public settings: { nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> }) {
         harness.instances.push(this);
       }
 
       getCamera() { return this.camera; }
-      getNodeDisplayData(id: string) { return id === "agent:a" ? { x: 0.2, y: 0.7 } : { x: 0.8, y: 0.1 }; }
+      getNodeDisplayData(id: string): { x: number; y: number } | undefined { return id === "agent:a" ? { x: 0.2, y: 0.7 } : { x: 0.8, y: 0.1 }; }
       getSetting() { return () => undefined; }
       setSetting() { return this; }
-      on() { return this; }
+      on(event: string, callback: () => void) { this.events[event] = callback; return this; }
       refresh() { return this; }
       kill() { this.killed = true; }
     },
@@ -223,4 +226,49 @@ it("frames deliberate search and neighbor selection without resetting later manu
   rerender(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} />);
   expect(harness.instances.at(-1)!.camera.setCalls.length).toBe(before);
   expect(harness.instances.at(-1)!.camera.state).toEqual(manual);
+});
+
+
+it.each(["button", "stage"])("cancels queued framing when focus clears via %s", async clearVia => {
+  render(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} />);
+  await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
+  const queued: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { queued.push(callback); return queued.length; });
+  try {
+    const camera = harness.instances.at(-1)!.camera;
+    const before = camera.setCalls.length;
+    fireEvent.click(screen.getByText("Map controls"));
+    fireEvent.change(screen.getByLabelText("Find a displayed asset"), { target: { value: "Agent A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agent A · agent:a" }));
+    if (clearVia === "button") fireEvent.click(screen.getByRole("button", { name: "Clear focus" }));
+    else act(() => harness.instances.at(-1)!.events.clickStage!());
+    act(() => queued.forEach(callback => callback(0)));
+    expect(camera.setCalls).toHaveLength(before);
+    expect(screen.queryByLabelText("Focused graph asset")).not.toBeInTheDocument();
+  } finally {
+    raf.mockRestore();
+  }
+});
+
+
+it("discards framing when its target is absent from a live renderer", async () => {
+  render(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} />);
+  await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
+  const queued: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { queued.push(callback); return queued.length; });
+  const renderer = harness.instances.at(-1)!;
+  const position = vi.spyOn(renderer, "getNodeDisplayData").mockReturnValue(undefined);
+  try {
+    const before = renderer.camera.setCalls.length;
+    fireEvent.click(screen.getByText("Map controls"));
+    fireEvent.change(screen.getByLabelText("Find a displayed asset"), { target: { value: "Agent A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agent A · agent:a" }));
+    act(() => queued.forEach(callback => callback(0)));
+    position.mockReturnValue({ x: 0.2, y: 0.7 });
+    act(() => queued.forEach(callback => callback(0)));
+    expect(renderer.camera.setCalls).toHaveLength(before);
+  } finally {
+    position.mockRestore();
+    raf.mockRestore();
+  }
 });

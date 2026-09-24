@@ -1,3 +1,4 @@
+import { NODE_LABELS } from "@/lib/entity-labels";
 import { nodeRiskAssessment } from "@/lib/node-risk-assessment";
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 
@@ -92,47 +93,6 @@ export function flowRendererTypeForEntity(entityType: EntityType | string): stri
   return nodeType ? FLOW_NODE_TYPES[nodeType] : null;
 }
 
-const NODE_LABELS: Record<LineageNodeType, string> = {
-  provider: "Provider",
-  agent: "Agent",
-  org: "Organization",
-  account: "Account",
-  user: "User",
-  group: "Group",
-  role: "Role",
-  policy: "Policy",
-  serviceAccount: "Service Account",
-  servicePrincipal: "Service Principal",
-  federatedIdentity: "Federated Identity",
-  environment: "Environment",
-  fleet: "Fleet",
-  cluster: "Cluster",
-  server: "Server",
-  sharedServer: "Shared Server",
-  package: "Package",
-  vulnerability: "Vulnerability",
-  credential: "Credential",
-  tool: "Tool",
-  model: "Model",
-  framework: "Framework",
-  dataset: "Dataset",
-  container: "Container",
-  cloudResource: "Cloud Resource",
-  misconfiguration: "Misconfiguration",
-  managedIdentity: "Managed Identity",
-  accessGrant: "Access Grant",
-  accessPolicy: "Access Policy",
-  driftIncident: "Drift Incident",
-  dataStore: "Data Store",
-  directory: "Directory",
-  sourceFile: "Source File",
-  configFile: "Config File",
-  codeModule: "Code Module",
-  ciJob: "CI/CD Job",
-  apiGateway: "API Gateway",
-  toolCall: "Tool Call",
-  blueprint: "Blueprint",
-};
 
 const NODE_LAYERS: Record<LineageNodeType, string> = {
   provider: "infra",

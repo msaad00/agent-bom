@@ -216,7 +216,7 @@ const GRAPH_FULL_FETCH_LIMIT = LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES;
 
 const GraphDriftLegend = dynamic(
   () =>
-    import("@/components/graph-drift-legend").then(
+    import("@/components/graph-lens-legends").then(
       (mod) => mod.GraphDriftLegend,
     ),
   { ssr: false },
@@ -224,7 +224,7 @@ const GraphDriftLegend = dynamic(
 
 const GraphEvidenceLegend = dynamic(
   () =>
-    import("@/components/graph-evidence-legend").then(
+    import("@/components/graph-lens-legends").then(
       (mod) => mod.GraphEvidenceLegend,
     ),
   { ssr: false },

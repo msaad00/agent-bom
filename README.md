@@ -51,10 +51,8 @@ Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](do
 
 ### AppSec and cloud teams: explain why a finding matters
 
-Follow **CVE-2023-4863 in pillow@9.0.0** through recorded relationships between
-the service, container, tool, workload identity and modeled data asset. Inspect
-the source receipts and carry the selected finding into remediation. A recorded
-path does not by itself prove exploitation or successful data access.
+Follow **CVE-2023-4863 in pillow@9.0.0** through recorded relationships between the service, container, tool, workload identity and modeled data asset.
+Inspect the source receipts and carry the selected finding into remediation. A recorded path does not by itself prove exploitation or successful data access.
 
 <table>
   <tr><th>Explore the agent neighborhood</th><th>Follow a finding to its evidence</th></tr>
@@ -77,6 +75,8 @@ arrow to inspect its evidence, freshness and unknowns. **Investigate reach & per
 opens permission receipts, CVE prerequisites and related activity; missing exploitability
 stays **not assessed**. [Investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
 
+**Connect data locations to security evidence.** Explore recorded stores and datasets alongside identities and findings.
+Distinguish storage, access evidence and collection sources; derived classifications do not prove contents or successful reads. [Data and evidence model](site-docs/architecture/security-graph-model.md#data-locations-access-and-evidence-sources).
 </details>
 
 ### Engineers and GRC: prioritize findings and verify fixes
